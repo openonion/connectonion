@@ -1,125 +1,60 @@
-"""Tools interface and built-in tools for ConnectOnion."""
+"""Tool conversion utilities for ConnectOnion."""
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any
-from datetime import datetime
-import json
+import inspect
+from typing import Callable, Dict, Any, get_type_hints
 
+# Map Python types to JSON Schema types
+TYPE_MAP = {
+    str: "string",
+    int: "integer", 
+    float: "number",
+    bool: "boolean",
+    list: "array",
+    dict: "object",
+}
 
-class Tool(ABC):
-    """Base class for all tools."""
-    
-    def __init__(self, name: str, description: str):
-        self.name = name
-        self.description = description
-    
-    @abstractmethod
-    def run(self, **kwargs) -> str:
-        """Execute the tool with given parameters."""
-        pass
-    
-    def to_function_schema(self) -> Dict[str, Any]:
-        """Convert tool to OpenAI function schema format."""
-        return {
-            "name": self.name,
-            "description": self.description,
-            "parameters": self.get_parameters_schema()
-        }
-    
-    @abstractmethod
-    def get_parameters_schema(self) -> Dict[str, Any]:
-        """Return JSON schema for tool parameters."""
-        pass
+def create_tool_from_function(func: Callable) -> Callable:
+    """
+    Converts a Python function into a tool that is compatible with the Agent,
+    by inspecting its signature and docstring.
+    """
+    name = func.__name__
+    description = inspect.getdoc(func) or f"Execute the {name} tool."
 
+    # Build the parameters schema from the function signature
+    sig = inspect.signature(func)
+    type_hints = get_type_hints(func)
+    
+    properties = {}
+    required = []
 
-class Calculator(Tool):
-    """Tool for performing mathematical calculations."""
-    
-    def __init__(self):
-        super().__init__(
-            name="calculator",
-            description="Perform mathematical calculations. Supports +, -, *, /, ** operations."
-        )
-    
-    def run(self, expression: str) -> str:
-        """Execute mathematical expression safely."""
-        try:
-            # Only allow safe operations
-            allowed_chars = "0123456789+-*/().**"
-            if all(c in allowed_chars + " " for c in expression):
-                result = eval(expression)
-                return f"Result: {result}"
-            else:
-                return "Error: Invalid characters in expression"
-        except Exception as e:
-            return f"Error: {str(e)}"
-    
-    def get_parameters_schema(self) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "expression": {
-                    "type": "string",
-                    "description": "Mathematical expression to evaluate"
-                }
-            },
-            "required": ["expression"]
-        }
+    for param in sig.parameters.values():
+        param_name = param.name
+        # Use 'str' as a fallback if no type hint is available
+        param_type = type_hints.get(param_name, str)
+        schema_type = TYPE_MAP.get(param_type, "string")
+        
+        properties[param_name] = {"type": schema_type}
 
+        if param.default is inspect.Parameter.empty:
+            required.append(param_name)
 
-class CurrentTime(Tool):
-    """Tool for getting current date and time."""
+    parameters_schema = {
+        "type": "object",
+        "properties": properties,
+    }
+    if required:
+        parameters_schema["required"] = required
     
-    def __init__(self):
-        super().__init__(
-            name="current_time",
-            description="Get the current date and time"
-        )
+    # Attach the necessary attributes for Agent compatibility
+    func.name = name
+    func.description = description
+    func.get_parameters_schema = lambda: parameters_schema
+    func.to_function_schema = lambda: {
+        "name": name,
+        "description": description,
+        "parameters": parameters_schema,
+    }
+    func.run = func  # The agent calls .run()
     
-    def run(self, format: str = "%Y-%m-%d %H:%M:%S") -> str:
-        """Return current time in specified format."""
-        return datetime.now().strftime(format)
-    
-    def get_parameters_schema(self) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "format": {
-                    "type": "string",
-                    "description": "Time format string (default: %Y-%m-%d %H:%M:%S)"
-                }
-            }
-        }
-
-
-class ReadFile(Tool):
-    """Tool for reading file contents."""
-    
-    def __init__(self):
-        super().__init__(
-            name="read_file",
-            description="Read contents of a text file"
-        )
-    
-    def run(self, filepath: str) -> str:
-        """Read and return file contents."""
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                content = f.read()
-            return content if content else "File is empty"
-        except FileNotFoundError:
-            return f"Error: File '{filepath}' not found"
-        except Exception as e:
-            return f"Error reading file: {str(e)}"
-    
-    def get_parameters_schema(self) -> Dict[str, Any]:
-        return {
-            "type": "object",
-            "properties": {
-                "filepath": {
-                    "type": "string",
-                    "description": "Path to the file to read"
-                }
-            },
-            "required": ["filepath"]
-        }
+    return func

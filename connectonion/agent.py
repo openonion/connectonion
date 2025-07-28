@@ -1,10 +1,10 @@
 """Core Agent implementation for ConnectOnion."""
 
 import time
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Callable
 from .llm import LLM, OpenAILLM
-from .tools import Tool
 from .history import History
+from .tools import create_tool_from_function
 
 
 class Agent:
@@ -14,12 +14,24 @@ class Agent:
         self,
         name: str,
         llm: Optional[LLM] = None,
-        tools: Optional[List[Tool]] = None,
+        tools: Optional[List[Callable]] = None,
+        system_prompt: Optional[str] = None,
         api_key: Optional[str] = None,
         model: str = "gpt-3.5-turbo"
     ):
         self.name = name
-        self.tools = tools or []
+        self.system_prompt = system_prompt or "You are a helpful assistant that can use tools to complete tasks."
+        
+        # Process tools: convert raw functions to tool schemas automatically
+        processed_tools = []
+        if tools:
+            for tool in tools:
+                if not hasattr(tool, 'to_function_schema'):
+                    processed_tools.append(create_tool_from_function(tool))
+                else:
+                    processed_tools.append(tool)  # Already a valid tool
+        self.tools = processed_tools
+
         self.history = History(name)
         
         # Initialize LLM
@@ -36,7 +48,7 @@ class Agent:
         """Execute a task, potentially using tools."""
         start_time = time.time()
         messages = [
-            {"role": "system", "content": "You are a helpful assistant that can use tools to complete tasks."},
+            {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": task}
         ]
         
@@ -62,7 +74,25 @@ class Agent:
                     result = "Task completed."
                 break
             
-            # Execute tool calls
+            # Add assistant message with ALL tool calls first
+            assistant_tool_calls = []
+            for tool_call in response.tool_calls:
+                assistant_tool_calls.append({
+                    "id": tool_call.id,
+                    "type": "function",
+                    "function": {
+                        "name": tool_call.name,
+                        "arguments": str(tool_call.arguments)
+                    }
+                })
+            
+            messages.append({
+                "role": "assistant",
+                "content": None,
+                "tool_calls": assistant_tool_calls
+            })
+            
+            # Execute tool calls and add individual tool responses
             for tool_call in response.tool_calls:
                 tool_name = tool_call.name
                 tool_args = tool_call.arguments
@@ -78,25 +108,12 @@ class Agent:
                 if tool_name in self.tool_map:
                     try:
                         tool_result = self.tool_map[tool_name].run(**tool_args)
-                        tool_record["result"] = tool_result
+                        tool_record["result"] = str(tool_result)  # Ensure string for JSON serialization
                         tool_record["status"] = "success"
                         
-                        # Add tool result to conversation
-                        messages.append({
-                            "role": "assistant",
-                            "content": None,
-                            "tool_calls": [{
-                                "id": tool_call.id,
-                                "type": "function",
-                                "function": {
-                                    "name": tool_name,
-                                    "arguments": str(tool_args)
-                                }
-                            }]
-                        })
                         messages.append({
                             "role": "tool",
-                            "content": tool_result,
+                            "content": str(tool_result),  # Ensure result is string
                             "tool_call_id": tool_call.id
                         })
                         
@@ -107,7 +124,7 @@ class Agent:
                         
                         messages.append({
                             "role": "tool",
-                            "content": tool_result,
+                            "content": str(tool_result),  # Ensure result is string
                             "tool_call_id": tool_call.id
                         })
                 else:
@@ -138,10 +155,16 @@ class Agent:
         
         return result
     
-    def add_tool(self, tool: Tool):
+    def add_tool(self, tool: Callable):
         """Add a new tool to the agent."""
-        self.tools.append(tool)
-        self.tool_map[tool.name] = tool
+        # Process the tool before adding it
+        if not hasattr(tool, 'to_function_schema'):
+            processed_tool = create_tool_from_function(tool)
+        else:
+            processed_tool = tool
+            
+        self.tools.append(processed_tool)
+        self.tool_map[processed_tool.name] = processed_tool
     
     def remove_tool(self, tool_name: str) -> bool:
         """Remove a tool by name."""

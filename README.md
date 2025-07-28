@@ -2,6 +2,13 @@
 
 A simple Python framework for creating AI agents that can use tools and track their behavior.
 
+## ✨ What's New
+
+- **🎯 Function-Based Tools**: Just write regular Python functions - no classes needed!
+- **🎭 System Prompts**: Define your agent's personality and role  
+- **🔄 Automatic Conversion**: Functions become OpenAI-compatible tools automatically
+- **📝 Smart Schema Generation**: Type hints become function schemas
+
 ## 🚀 Quick Start
 
 ### Installation
@@ -13,27 +20,36 @@ pip install -r requirements.txt
 ### Basic Usage
 
 ```python
-import os
+import os  
 from connectonion import Agent
-from connectonion.tools import Calculator, CurrentTime
 
 # Set your OpenAI API key
 os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 
-# Create an agent with tools
+# 1. Define tools as simple functions
+def search(query: str) -> str:
+    """Search for information."""
+    return f"Found information about {query}"
+
+def calculate(expression: str) -> float:
+    """Perform mathematical calculations."""
+    return eval(expression)  # Use safely in production
+
+# 2. Create an agent with tools and personality
 agent = Agent(
     name="my_assistant",
-    tools=[Calculator(), CurrentTime()]
+    system_prompt="You are a helpful and friendly assistant.",
+    tools=[search, calculate]
 )
 
-# Run tasks
+# 3. Use the agent
 result = agent.run("What is 25 * 4?")
-print(result)  # The agent will use the calculator tool
+print(result)  # Agent will use the calculate function
 
-result = agent.run("What time is it?")
-print(result)  # The agent will use the current time tool
+result = agent.run("Search for Python tutorials") 
+print(result)  # Agent will use the search function
 
-# View behavior history
+# 4. View behavior history (automatic!)
 print(agent.history.summary())
 ```
 
@@ -42,49 +58,78 @@ print(agent.history.summary())
 ### Agent
 The main class that orchestrates LLM calls and tool usage. Each agent:
 - Has a unique name for tracking purposes
-- Can use multiple tools
-- Automatically records all behavior to JSON files
+- Can be given a custom personality via `system_prompt`
+- Automatically converts functions to tools
+- Records all behavior to JSON files
 
-### Tools
-Self-contained functions that agents can call. Built-in tools include:
-- **Calculator**: Perform mathematical calculations
-- **CurrentTime**: Get current date and time
-- **ReadFile**: Read file contents
+### Function-Based Tools
+**NEW**: Just write regular Python functions! ConnectOnion automatically converts them to tools:
+
+```python
+def my_tool(param: str, optional_param: int = 10) -> str:
+    """This docstring becomes the tool description."""
+    return f"Processed {param} with value {optional_param}"
+
+# Use it directly - no wrapping needed!
+agent = Agent("assistant", tools=[my_tool])
+```
+
+Key features:
+- **Automatic Schema Generation**: Type hints become OpenAI function schemas
+- **Docstring Integration**: First line becomes tool description  
+- **Parameter Handling**: Supports required and optional parameters
+- **Type Conversion**: Handles different return types automatically
+
+### System Prompts
+Define your agent's personality and behavior:
+
+```python
+agent = Agent(
+    name="helpful_tutor",
+    system_prompt="You are an enthusiastic teacher who loves to educate. Be encouraging and explain concepts clearly.",
+    tools=[my_tools]
+)
+```
 
 ### History
 Automatic tracking of all agent behaviors including:
 - Tasks executed
-- Tools called with parameters
-- Results returned
-- Execution time
+- Tools called with parameters and results
+- Agent responses and execution time
 - Persistent storage in `~/.connectonion/agents/{name}/behavior.json`
 
-## 📦 Built-in Tools
+## 🎯 Example Tools
 
-### Calculator
+You can still use the traditional Tool class approach, but the new functional approach is much simpler:
+
+### Traditional Tool Classes (Still Supported)
 ```python
-from connectonion.tools import Calculator
+from connectonion.tools import Calculator, CurrentTime, ReadFile
 
-calc = Calculator()
-result = calc.run(expression="2 + 2 * 3")  # Returns: "Result: 8"
+agent = Agent("assistant", tools=[Calculator(), CurrentTime(), ReadFile()])
 ```
 
-### CurrentTime
+### New Function-Based Approach (Recommended)
 ```python
-from connectonion.tools import CurrentTime
+def calculate(expression: str) -> float:
+    """Perform mathematical calculations."""
+    return eval(expression)  # Use safely in production
 
-timer = CurrentTime()
-result = timer.run()  # Returns current timestamp
-result = timer.run(format="%Y-%m-%d")  # Returns date only
+def get_time(format: str = "%Y-%m-%d %H:%M:%S") -> str:
+    """Get current date and time."""
+    from datetime import datetime
+    return datetime.now().strftime(format)
+
+def read_file(filepath: str) -> str:
+    """Read contents of a text file."""
+    with open(filepath, 'r') as f:
+        return f.read()
+
+# Use them directly!
+agent = Agent("assistant", tools=[calculate, get_time, read_file])
 ```
 
-### ReadFile
-```python
-from connectonion.tools import ReadFile
-
-reader = ReadFile()
-result = reader.run(filepath="./example.txt")  # Returns file contents
-```
+The function-based approach is simpler, more Pythonic, and easier to test!
 
 ## 🔨 Creating Custom Tools
 
