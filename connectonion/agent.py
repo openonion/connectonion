@@ -5,6 +5,12 @@ from typing import List, Optional, Dict, Any, Callable
 from .llm import LLM, OpenAILLM
 from .history import History
 from .tools import create_tool_from_function
+from .decorators import (
+    _inject_context_for_tool, 
+    _clear_context_after_tool,
+    _is_xray_enabled,
+    _is_replay_enabled
+)
 
 
 class Agent:
@@ -56,7 +62,8 @@ class Agent:
         tool_schemas = [tool.to_function_schema() for tool in self.tools] if self.tools else None
         
         # Track all tool calls for this task
-        all_tool_calls = []
+        all_tool_calls = []  # Persisted in History for behavior tracking
+        execution_history = []  # Used by xray.trace() with timing data
         max_iterations = 10  # Prevent infinite loops
         iteration = 0
         
@@ -101,15 +108,56 @@ class Agent:
                 tool_record = {
                     "name": tool_name,
                     "arguments": tool_args,
-                    "call_id": tool_call.id
+                    "call_id": tool_call.id,
+                    "timing": 0  # Will be updated after execution
                 }
                 
                 # Execute tool
                 if tool_name in self.tool_map:
                     try:
-                        tool_result = self.tool_map[tool_name].run(**tool_args)
+                        # Prepare context data for debugging decorators
+                        previous_tools = [tc["name"] for tc in all_tool_calls]
+                        
+                        # Track execution for xray.trace() functionality
+                        # This builds a parallel structure to tool_calls but with timing data
+                        exec_entry = {
+                            "tool_name": tool_name,
+                            "parameters": tool_args,
+                            "status": "pending"  # Will be updated after execution
+                        }
+                        execution_history.append(exec_entry)
+                        
+                        # Check if tool has @xray decorator and inject context
+                        tool_func = self.tool_map[tool_name]
+                        if _is_xray_enabled(tool_func):
+                            _inject_context_for_tool(
+                                agent=self,
+                                task=task,
+                                messages=messages.copy(),  # Provide copy to avoid modifications
+                                iteration=iteration,
+                                previous_tools=previous_tools,
+                                execution_history=execution_history  # Pass execution history
+                            )
+                        
+                        # Time the execution
+                        tool_start = time.time()
+                        # Execute the tool (call the function directly to preserve decorators)
+                        tool_result = tool_func(**tool_args)
+                        tool_duration = (time.time() - tool_start) * 1000  # Convert to milliseconds
+                        
+                        # Update execution entry with timing and result
+                        # This data is used by xray.trace() to show execution flow
+                        exec_entry["timing"] = tool_duration
+                        exec_entry["result"] = tool_result
+                        exec_entry["status"] = "success"
+                        
+                        # Clear context after execution
+                        if _is_xray_enabled(tool_func):
+                            _clear_context_after_tool()
+                            
                         tool_record["result"] = str(tool_result)  # Ensure string for JSON serialization
                         tool_record["status"] = "success"
+                        tool_record["timing"] = tool_duration  # Add timing for xray.trace() to use later
                         
                         messages.append({
                             "role": "tool",
@@ -118,9 +166,24 @@ class Agent:
                         })
                         
                     except Exception as e:
+                        # Update execution entry for error case
+                        # Calculate timing if execution started
+                        if 'tool_start' in locals():
+                            tool_duration = (time.time() - tool_start) * 1000
+                            exec_entry["timing"] = tool_duration
+                        exec_entry["status"] = "error"
+                        exec_entry["error"] = str(e)
+                        
+                        # Make sure to clear context even if there's an error
+                        tool_func = self.tool_map[tool_name]
+                        if _is_xray_enabled(tool_func):
+                            _clear_context_after_tool()
+                            
                         tool_result = f"Error executing tool: {str(e)}"
                         tool_record["result"] = tool_result
                         tool_record["status"] = "error"
+                        if 'tool_duration' in locals():
+                            tool_record["timing"] = tool_duration
                         
                         messages.append({
                             "role": "tool",

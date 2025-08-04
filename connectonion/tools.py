@@ -55,6 +55,6 @@ def create_tool_from_function(func: Callable) -> Callable:
         "description": description,
         "parameters": parameters_schema,
     }
-    func.run = func  # The agent calls .run()
+    func.run = func  # The agent calls .run() - this should be the decorated function
     
     return func

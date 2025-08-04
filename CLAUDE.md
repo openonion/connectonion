@@ -34,8 +34,17 @@ pip install -r requirements.txt
 # Run all tests
 python -m pytest tests/
 
+# Run specific test categories with markers
+python -m pytest -m unit          # Unit tests only
+python -m pytest -m integration   # Integration tests only
+python -m pytest -m benchmark     # Performance benchmarks
+python -m pytest -m "not real_api"  # Skip tests requiring API keys
+
 # Run specific test file
 python -m unittest tests.test_agent
+
+# Run tests with coverage (if pytest-cov installed)
+python -m pytest --cov=connectonion --cov-report=term-missing
 ```
 
 ### Package Installation (Development)
@@ -43,22 +52,53 @@ python -m unittest tests.test_agent
 pip install -e .
 ```
 
-## Built-in Tools
+## Tool System Architecture
 
-- **Calculator**: Safe mathematical expression evaluation with restricted character set
-- **CurrentTime**: Date/time formatting with strftime support
-- **ReadFile**: UTF-8 file reading with error handling
+### Function-Based Tools (Recommended)
+ConnectOnion's primary tool approach converts regular Python functions into agent tools automatically:
+
+```python
+def my_tool(param: str, optional_param: int = 10) -> str:
+    """This docstring becomes the tool description."""
+    return f"Processed {param} with value {optional_param}"
+
+# Auto-conversion via create_tool_from_function()
+agent = Agent("assistant", tools=[my_tool])
+```
+
+The `create_tool_from_function()` utility (`connectonion/tools.py:16`) inspects function signatures and type hints to generate OpenAI-compatible schemas.
+
+### Traditional Tool Classes (Legacy Support)
+Class-based tools inherit from the abstract `Tool` base class and implement `run()` method and parameter schemas.
 
 ## Key Implementation Details
 
-### Agent Execution Loop
-Agents use a controlled iteration loop (max 10) to prevent infinite tool calling. Each iteration processes all tool calls from the LLM response before continuing.
+### Agent Execution Loop (`connectonion/agent.py:47`)
+Agents use a controlled iteration loop (max 10) to prevent infinite tool calling. Each iteration:
+1. Calls LLM with current message history and tool schemas
+2. Processes ALL tool calls from the response in parallel
+3. Adds tool results to message history
+4. Continues until no more tool calls or max iterations reached
 
-### Tool Call Recording
-Every tool execution is tracked with parameters, results, status, and call ID for complete behavior history.
+### Function Tool Auto-Conversion (`connectonion/tools.py:16`)
+The `create_tool_from_function()` utility:
+- Inspects function signatures using `inspect.signature()`
+- Maps Python types to JSON Schema types via `TYPE_MAP`
+- Generates OpenAI-compatible function schemas
+- Attaches `.name`, `.description`, `.run()`, and `.to_function_schema()` attributes
+
+### Tool Call Recording (`connectonion/history.py:43`)
+Every tool execution is tracked with:
+- Parameters passed to the tool
+- Results (success/error/not_found status)
+- Call ID for correlation
+- Complete behavior history in `~/.connectonion/agents/{name}/behavior.json`
 
 ### Error Handling
-Tool errors are captured and passed back to the LLM as tool responses, allowing the agent to adapt or retry.
+Tool errors are captured and passed back to the LLM as tool responses, allowing the agent to adapt or retry. Missing tools return "not_found" status.
 
-### OpenAI Integration
-Uses OpenAI's function calling with proper message formatting for tool results and multi-turn conversations.
+### OpenAI Integration (`connectonion/llm.py:51`)
+Uses OpenAI's function calling with proper message formatting:
+- Assistant messages include all tool_calls
+- Individual tool responses use tool_call_id for correlation
+- Supports multi-turn conversations with tool context

@@ -10,7 +10,7 @@ load_dotenv()
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from connectonion import Agent
+from connectonion import Agent, xray
 
 
 # Define helpful tools for the interactive session
@@ -31,9 +31,11 @@ def calculate(expression: str) -> float:
     except Exception as e:
         raise Exception(f"Math error: {str(e)}")
 
+@xray
 def get_time(format: str = "default") -> str:
     """Get current date and time in various formats."""
     from datetime import datetime
+    xray.agent
     
     formats = {
         "default": "%Y-%m-%d %H:%M:%S",
