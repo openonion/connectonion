@@ -186,6 +186,11 @@ def debug_info() -> str:
         
         if xray.previous_tools:
             info_parts.append(f"Previous tools: {', '.join(xray.previous_tools)}")
+            
+        # Demonstrate xray.trace() - shows execution flow up to this point
+        print("\n=== Execution Trace ===")
+        xray.trace()
+        print("===================\n")
     else:
         info_parts.append("No active Agent context")
     
@@ -299,9 +304,8 @@ def main():
     result = agent.run(trace_task)
     print(f"Result: {result[:100]}...\n")
     
-    # Show the trace of the last execution
-    print("\nExecution trace of the last task:")
-    xray.trace(agent)  # Pass the agent to trace its last execution
+    # Note: xray.trace() can only be called from within @xray decorated functions
+    print("\nTo see execution traces, add xray.trace() inside your @xray decorated tools.")
 
 
 if __name__ == "__main__":

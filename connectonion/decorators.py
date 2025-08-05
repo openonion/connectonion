@@ -308,7 +308,7 @@ class XrayDecorator:
         """Delegate representation to context for consistency."""
         return repr(self._context)
     
-    def trace(self, agent=None):
+    def trace(self):
         """
         Display a visual trace of tool execution flow.
         
@@ -316,18 +316,11 @@ class XrayDecorator:
         and execution timing in a clear, scannable format designed for
         terminal readability.
         
-        Args:
-            agent: Optional Agent instance to get execution history from.
-                   If not provided, uses current context or tries to find agent.
-        
         Usage:
             # Within an @xray decorated tool:
-            xray.trace()  # Shows current execution
+            xray.trace()  # Shows current execution flow
             
-            # From outside tool execution:
-            xray.trace(agent)  # Shows agent's last task execution
-            
-            # In debugging session:
+            # In debugging session with breakpoint:
             >>> xray.trace()
             Task: "Analyze customer feedback and generate report"
             
@@ -351,12 +344,13 @@ class XrayDecorator:
             - ERR ✗ shows errors
             - Smart truncation for long strings, images, DataFrames
         """
-        # Determine which agent to use - either provided or from current context
-        target_agent = agent or self._context.agent
-        
-        if not target_agent:
-            print("No agent available. Pass an agent instance or use within @xray context.")
+        # Get agent from current context - trace() only works inside @xray decorated functions
+        if not self._context.agent:
+            print("xray.trace() can only be used inside @xray decorated functions.")
+            print("Add @xray decorator to your tool function to enable tracing.")
             return
+            
+        target_agent = self._context.agent
             
         # Try to get from current execution context first (if called within a tool)
         execution_history = self._context._context.get('execution_history', [])

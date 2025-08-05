@@ -1,5 +1,7 @@
 # ConnectOnion
 
+> **🚧 Private Beta** - ConnectOnion is currently in private beta. [Join our waitlist](https://connectonion.com) to get early access!
+
 A simple Python framework for creating AI agents that can use tools and track their behavior.
 
 ## ✨ What's New
