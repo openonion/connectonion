@@ -1,24 +1,36 @@
 'use client'
 
 import { useState } from 'react'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, BookOpen } from 'lucide-react'
 import { DocsSidebar } from './DocsSidebar'
 import { motion, AnimatePresence } from 'framer-motion'
+import Link from 'next/link'
 
 export function MobileDocsNav() {
   const [isOpen, setIsOpen] = useState(false)
 
   return (
     <>
-      {/* Mobile Menu Button */}
-      <div className="lg:hidden fixed top-4 left-4 z-50">
-        <button
-          onClick={() => setIsOpen(!isOpen)}
-          className="p-2 rounded-lg bg-gray-800 text-white border border-gray-700 hover:bg-gray-700 transition-colors"
-          aria-label="Toggle documentation menu"
-        >
-          {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+      {/* Mobile Header Bar */}
+      <div className="lg:hidden sticky top-0 z-50 bg-gray-900/95 backdrop-blur-sm border-b border-gray-800">
+        <div className="flex items-center justify-between px-4 py-3">
+          <button
+            onClick={() => setIsOpen(!isOpen)}
+            className="p-2 rounded-md bg-gray-800/60 text-white border border-gray-700/60 hover:bg-gray-700/60 transition-colors"
+            aria-label="Toggle documentation menu"
+          >
+            {isOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+          
+          <Link href="/" className="flex items-center gap-2">
+            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
+              <BookOpen className="w-3.5 h-3.5 text-white" />
+            </div>
+            <span className="font-semibold text-white">ConnectOnion</span>
+          </Link>
+          
+          <div className="w-10" /> {/* Balance spacing */}
+        </div>
       </div>
 
       {/* Mobile Sidebar Overlay */}
@@ -40,7 +52,7 @@ export function MobileDocsNav() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'tween', duration: 0.3 }}
-              className="lg:hidden fixed left-0 top-0 h-full z-50"
+              className="lg:hidden fixed left-0 top-16 h-[calc(100vh-4rem)] z-50"
             >
               <DocsSidebar />
             </motion.div>

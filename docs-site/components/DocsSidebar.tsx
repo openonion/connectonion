@@ -1,9 +1,10 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp } from 'lucide-react'
+import { DifficultyBadge } from './DifficultyBadge'
 
 const navigation = [
   {
@@ -16,16 +17,8 @@ const navigation = [
   {
     title: 'System Prompts',
     items: [
-      { title: 'Overview', href: '/prompts' },
-      { title: 'Examples Overview', href: '/prompts/examples' },
-      { title: '1. Friendly Assistant', href: '/prompts/examples/friendly-assistant', icon: User, difficulty: 'Beginner' },
-      { title: '2. Math Tutor', href: '/prompts/examples/math-tutor', icon: Code, difficulty: 'Beginner' },
-      { title: '3. Customer Support', href: '/prompts/examples/customer-support', icon: User, difficulty: 'Intermediate' },
-      { title: '4. Code Reviewer', href: '/prompts/examples/code-reviewer', icon: Code, difficulty: 'Advanced' },
-      { title: '5. Data Analyst', href: '/prompts/examples/data-analyst', icon: Database, difficulty: 'Advanced' },
-      { title: '6. Technical Writer', href: '/prompts/examples/technical-writer', icon: FileText, difficulty: 'Expert' },
-      { title: '7. Security Analyst', href: '/prompts/examples/security-analyst', icon: Shield, difficulty: 'Expert' },
-      { title: '8. Business Strategist', href: '/prompts/examples/business-strategist', icon: TrendingUp, difficulty: 'Expert' },
+      { title: 'Loading Methods', href: '/prompts', icon: Code, difficulty: 'Start Here' },
+      { title: 'Format Support', href: '/prompts/formats', icon: FileText, difficulty: 'Interactive Demo' },
     ]
   },
   {
@@ -36,17 +29,56 @@ const navigation = [
     ]
   },
   {
-    title: 'Examples',
+    title: 'Agent Building',
     items: [
-      { title: 'Complete Examples', href: '/examples' },
+      { title: 'Examples Overview', href: '/examples' },
+      { title: '1. Hello World Agent', href: '/examples/hello-world', icon: User, difficulty: 'Beginner' },
+      { title: '2. Basic Calculator', href: '/examples/calculator', icon: Code, difficulty: 'Beginner' },
+      { title: '3. Weather Bot', href: '/examples/weather-bot', icon: Database, difficulty: 'Beginner' },
+      { title: '4. Task Manager', href: '/examples/task-manager', icon: FileText, difficulty: 'Intermediate' },
+      { title: '5. Math Tutor Agent', href: '/examples/math-tutor-agent', icon: Code, difficulty: 'Intermediate' },
+      { title: '6. File Analyzer', href: '/examples/file-analyzer', icon: FileText, difficulty: 'Advanced' },
+      { title: '7. API Client', href: '/examples/api-client', icon: Database, difficulty: 'Advanced' },
+      { title: '8. E-commerce Manager', href: '/examples/ecommerce-manager', icon: TrendingUp, difficulty: 'Expert' },
     ]
   },
 ]
 
 export function DocsSidebar() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'System Prompts'])
+  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'System Prompts', 'Agent Building'])
+  const [isClientMounted, setIsClientMounted] = useState(false)
   const pathname = usePathname()
+
+  // Initialize from localStorage after client mount to prevent hydration mismatch
+  useEffect(() => {
+    setIsClientMounted(true)
+    const saved = localStorage.getItem('docs-open-sections')
+    if (saved) {
+      try {
+        setOpenSections(JSON.parse(saved))
+      } catch {
+        // Keep default if parsing fails
+      }
+    }
+  }, [])
+
+  // Save to localStorage whenever sections change (only after client mount)
+  useEffect(() => {
+    if (isClientMounted) {
+      localStorage.setItem('docs-open-sections', JSON.stringify(openSections))
+    }
+  }, [openSections, isClientMounted])
+
+  // Auto-expand current section when navigating
+  useEffect(() => {
+    const currentSection = navigation.find(section => 
+      section.items.some(item => item.href === pathname)
+    )
+    if (currentSection && !openSections.includes(currentSection.title)) {
+      setOpenSections(prev => [...prev, currentSection.title])
+    }
+  }, [pathname, openSections])
 
   const toggleSection = (title: string) => {
     setOpenSections(prev => 
@@ -140,13 +172,12 @@ export function DocsSidebar() {
                           )}
                           <span className="truncate flex-1">{item.title}</span>
                           {item.difficulty && (
-                            <span className={`px-1.5 py-0.5 rounded text-xs font-medium flex-shrink-0 ${
-                              item.difficulty === 'Beginner' ? 'bg-green-900/50 text-green-400' :
-                              item.difficulty === 'Intermediate' ? 'bg-yellow-900/50 text-yellow-400' :
-                              item.difficulty === 'Advanced' ? 'bg-orange-900/50 text-orange-400' : 'bg-red-900/50 text-red-400'
-                            }`}>
-                              {item.difficulty.charAt(0)}
-                            </span>
+                            <DifficultyBadge 
+                              level={item.difficulty as 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert'}
+                              size="sm"
+                              showIcon={false}
+                              className="flex-shrink-0"
+                            />
                           )}
                         </div>
                       </Link>

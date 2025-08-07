@@ -4,6 +4,11 @@
   :root {
     --font-sans: var(--font-inter);
     --font-mono: var(--font-jetbrains-mono);
+    
+    /* Improved contrast colors for accessibility */
+    --text-primary: #f1f5f9;    /* gray-100 - main text */
+    --text-secondary: #cbd5e1;   /* gray-300 - secondary text with better contrast */
+    --text-muted: #94a3b8;       /* gray-400 - only for decorative, non-critical text */
   }
   
   html {
@@ -19,5 +24,16 @@
   
   code, pre {
     font-family: var(--font-mono), ui-monospace, monospace;
+  }
+}
+
+@layer utilities {
+  /* Accessible text color utilities that override Tailwind defaults */
+  .text-readable-muted {
+    color: var(--text-secondary); /* Use gray-300 equivalent for better contrast */
+  }
+  
+  .text-accessible-gray {
+    color: var(--text-secondary); /* Replaces text-gray-400 with better contrast */
   }
 }
