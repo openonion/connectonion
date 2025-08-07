@@ -1,0 +1,23 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-sans: var(--font-inter);
+    --font-mono: var(--font-jetbrains-mono);
+  }
+  
+  html {
+    font-family: var(--font-sans), system-ui, sans-serif;
+  }
+  
+  body {
+    background-color: #0f172a;
+    color: #e2e8f0;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+  
+  code, pre {
+    font-family: var(--font-mono), ui-monospace, monospace;
+  }
+}

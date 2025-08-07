@@ -83,14 +83,46 @@ Key features:
 - **Type Conversion**: Handles different return types automatically
 
 ### System Prompts
-Define your agent's personality and behavior:
+Define your agent's personality and behavior with flexible input options:
 
 ```python
+# 1. Direct string prompt
 agent = Agent(
     name="helpful_tutor",
-    system_prompt="You are an enthusiastic teacher who loves to educate. Be encouraging and explain concepts clearly.",
+    system_prompt="You are an enthusiastic teacher who loves to educate.",
     tools=[my_tools]
 )
+
+# 2. Load from file (any text file, no extension restrictions)
+agent = Agent(
+    name="support_agent",
+    system_prompt="prompts/customer_support.md"  # Automatically loads file content
+)
+
+# 3. Using Path object
+from pathlib import Path
+agent = Agent(
+    name="coder",
+    system_prompt=Path("prompts") / "senior_developer.txt"
+)
+
+# 4. None for default prompt
+agent = Agent("basic_agent")  # Uses default: "You are a helpful assistant..."
+```
+
+Example prompt file (`prompts/customer_support.md`):
+```markdown
+# Customer Support Agent
+
+You are a senior customer support specialist with expertise in:
+- Empathetic communication
+- Problem-solving
+- Technical troubleshooting
+
+## Guidelines
+- Always acknowledge the customer's concern first
+- Look for root causes, not just symptoms
+- Provide clear, actionable solutions
 ```
 
 ### History

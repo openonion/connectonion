@@ -63,17 +63,33 @@ print(result)
 
 ## Make It Yours
 
-Give your agent a personality:
+Give your agent a personality with flexible system prompts:
 
 ```python
+# Option 1: Direct string
 agent = Agent(
     name="friendly_bot",
     system_prompt="You are a cheerful assistant who loves to help!",
     tools=[calculate, search, get_time]
 )
 
+# Option 2: Load from file (auto-detected)
+agent = Agent(
+    name="expert_bot",
+    system_prompt="prompts/expert.md",  # Loads from file
+    tools=[calculate, search, get_time]
+)
+
+# Option 3: Using Path object
+from pathlib import Path
+agent = Agent(
+    name="custom_bot",
+    system_prompt=Path("prompts/custom_personality.txt"),
+    tools=[calculate, search, get_time]
+)
+
 result = agent.run("Hello!")
-# "Hey there! I'm so excited to help you today! 🌟"
+# Response will reflect the personality defined in your prompt
 ```
 
 ## Track Everything (Automatic!)

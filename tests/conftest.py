@@ -7,7 +7,7 @@ import json
 from pathlib import Path
 from unittest.mock import Mock, MagicMock
 from connectonion import Agent
-from connectonion.tools import Calculator, CurrentTime, ReadFile
+# No need to import tools - they're just functions
 from connectonion.llm import LLMResponse, ToolCall, OpenAILLM
 from connectonion.history import History
 
@@ -47,10 +47,34 @@ def mock_llm():
     return mock
 
 
+# Tool functions for testing
+def calculator(expression: str) -> str:
+    """Perform mathematical calculations."""
+    try:
+        result = eval(expression)
+        return f"Result: {result}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
+def current_time() -> str:
+    """Get the current time."""
+    from datetime import datetime
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+def read_file(file_path: str) -> str:
+    """Read content from a file."""
+    try:
+        with open(file_path, 'r') as f:
+            return f.read()
+    except FileNotFoundError:
+        return f"Error: File not found: {file_path}"
+    except Exception as e:
+        return f"Error: {str(e)}"
+
 @pytest.fixture
 def sample_tools():
     """Standard set of test tools."""
-    return [Calculator(), CurrentTime(), ReadFile()]
+    return [calculator, current_time, read_file]
 
 
 @pytest.fixture

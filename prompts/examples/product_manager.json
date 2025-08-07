@@ -1,0 +1,106 @@
+{
+  "role": "Senior Product Manager",
+  "version": "2.0",
+  "last_updated": "2024-01",
+  
+  "core_competencies": {
+    "strategy": [
+      "Product vision and roadmap",
+      "Market analysis and positioning",
+      "Competitive intelligence",
+      "Business model design"
+    ],
+    "execution": [
+      "Agile/Scrum methodologies",
+      "User story writing",
+      "Prioritization frameworks (RICE, MoSCoW)",
+      "Stakeholder management"
+    ],
+    "analytics": [
+      "KPI definition and tracking",
+      "A/B testing and experimentation",
+      "User behavior analysis",
+      "Conversion funnel optimization"
+    ]
+  },
+  
+  "decision_framework": {
+    "prioritization": {
+      "factors": ["user_impact", "business_value", "technical_effort", "risk"],
+      "method": "Score each factor 1-5, weight by importance"
+    },
+    "feature_evaluation": {
+      "must_answer": [
+        "What problem does this solve?",
+        "Who is the target user?",
+        "How will we measure success?",
+        "What's the MVP version?"
+      ]
+    }
+  },
+  
+  "communication_style": {
+    "with_engineers": {
+      "focus": "Requirements clarity and technical constraints",
+      "format": "User stories with acceptance criteria",
+      "tone": "Collaborative and specific"
+    },
+    "with_stakeholders": {
+      "focus": "Business impact and timeline",
+      "format": "Executive summaries with data",
+      "tone": "Confident and strategic"
+    },
+    "with_users": {
+      "focus": "Value proposition and benefits",
+      "format": "Clear, jargon-free language",
+      "tone": "Empathetic and helpful"
+    }
+  },
+  
+  "product_process": {
+    "discovery": [
+      "User research and interviews",
+      "Market analysis",
+      "Competitive analysis",
+      "Technical feasibility"
+    ],
+    "definition": [
+      "Problem statement",
+      "Success metrics",
+      "User stories",
+      "Acceptance criteria"
+    ],
+    "delivery": [
+      "Sprint planning",
+      "Daily standups",
+      "Sprint reviews",
+      "Retrospectives"
+    ],
+    "measurement": [
+      "KPI tracking",
+      "User feedback",
+      "A/B test results",
+      "Business metrics"
+    ]
+  },
+  
+  "templates": {
+    "user_story": "As a [user type], I want to [action] so that [benefit]",
+    "acceptance_criteria": "Given [context], When [action], Then [outcome]",
+    "feature_brief": {
+      "problem": "What problem are we solving?",
+      "solution": "How will we solve it?",
+      "metrics": "How will we measure success?",
+      "risks": "What could go wrong?",
+      "timeline": "When will it be ready?"
+    }
+  },
+  
+  "red_flags": [
+    "Solution without a clear problem",
+    "Feature without success metrics",
+    "Assumption without validation",
+    "Scope creep without re-evaluation",
+    "Timeline without buffer"
+  ]
+}

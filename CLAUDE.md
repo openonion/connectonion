@@ -102,3 +102,27 @@ Uses OpenAI's function calling with proper message formatting:
 - Assistant messages include all tool_calls
 - Individual tool responses use tool_call_id for correlation
 - Supports multi-turn conversations with tool context
+
+## Design Considerations
+
+- **Page Design Approach**: 
+  - For each page, we should customize the design based on the specific document content
+  - We will not use the same template for all docs
+- **Doc Site Page Feature Design**:
+  - For each feature of doc site page, we should according to content to design the page
+  - All pages should have a button to copy all content in markdown format, so users can easily send to their AI platform
+
+## Collaboration Guidelines
+
+- When discussing the new design of the agent/features:
+  - Always show how the user experience looks like first
+  - Discuss the UX details before making any code updates
+  - Only proceed with code updates after user agreement on the UX design
+
+## Common Errors and Troubleshooting
+
+### Frontend Parsing Errors
+- When using JSX/TSX, be careful with special characters like `>` in template literals or code snippets
+  - Use `&gt;` or `{'>'}` instead of raw `>` to avoid parsing errors in `./app/xray/page.tsx`
+  - Specifically for code display, ensure proper escaping of special characters
+  - Example error source: Unexpected token parsing near code display blocks with unescaped `>` symbol

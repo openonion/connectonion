@@ -1,0 +1,93 @@
+"""System prompt utilities for ConnectOnion."""
+
+import os
+from pathlib import Path
+from typing import Union
+
+
+DEFAULT_PROMPT = "You are a helpful assistant that can use tools to complete tasks."
+
+
+def load_system_prompt(prompt: Union[str, Path, None]) -> str:
+    """
+    Load system prompt from various sources.
+    
+    Args:
+        prompt: Can be:
+            - None: Returns default prompt
+            - str: Either a file path (if file exists) or literal prompt text
+            - Path: Path object to a text file
+            
+    Returns:
+        str: The loaded system prompt
+        
+    Examples:
+        >>> load_system_prompt(None)
+        'You are a helpful assistant that can use tools to complete tasks.'
+        
+        >>> load_system_prompt("You are a helpful assistant")
+        'You are a helpful assistant'
+        
+        >>> load_system_prompt("prompts/assistant.md")  # If file exists
+        # Returns content from the file
+        
+        >>> load_system_prompt(Path("prompts/assistant"))  # Any text file
+        # Returns content from the file
+        
+    Raises:
+        FileNotFoundError: If a Path object points to non-existent file
+        ValueError: If file is empty or not valid UTF-8 text
+    """
+    if prompt is None:
+        return DEFAULT_PROMPT
+    
+    if isinstance(prompt, Path):
+        # Explicit Path object - must exist
+        if not prompt.exists():
+            raise FileNotFoundError(f"Prompt file not found: {prompt}")
+        if not prompt.is_file():
+            raise ValueError(f"Path is not a file: {prompt}")
+        return _read_text_file(prompt)
+    
+    if isinstance(prompt, str):
+        # Check if it's an existing file
+        if os.path.exists(prompt) and os.path.isfile(prompt):
+            return _read_text_file(Path(prompt))
+        # Otherwise treat as literal prompt text
+        return prompt
+    
+    raise TypeError(f"Invalid prompt type: {type(prompt).__name__}. Expected str, Path, or None.")
+
+
+def _read_text_file(path: Path) -> str:
+    """
+    Read content from a text file.
+    
+    Args:
+        path: Path to the text file
+        
+    Returns:
+        str: File content
+        
+    Raises:
+        ValueError: If file is empty or not valid UTF-8
+    """
+    try:
+        content = path.read_text(encoding='utf-8').strip()
+        if not content:
+            raise ValueError(f"Prompt file '{path}' is empty. Please add content or use a different file.")
+        return content
+    except UnicodeDecodeError:
+        raise ValueError(
+            f"File '{path}' is not a valid UTF-8 text file. "
+            f"System prompts must be text files."
+        )
+    except ValueError:
+        # Re-raise ValueError (empty file)
+        raise
+    except PermissionError:
+        # Re-raise PermissionError
+        raise
+    except Exception as e:
+        # Catch any other unexpected errors
+        raise RuntimeError(f"Error reading prompt file '{path}': {e}")

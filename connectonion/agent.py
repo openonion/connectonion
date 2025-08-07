@@ -1,10 +1,12 @@
 """Core Agent implementation for ConnectOnion."""
 
 import time
-from typing import List, Optional, Dict, Any, Callable
+from typing import List, Optional, Dict, Any, Callable, Union
+from pathlib import Path
 from .llm import LLM, OpenAILLM
 from .history import History
 from .tools import create_tool_from_function
+from .prompts import load_system_prompt
 from .decorators import (
     _inject_context_for_tool, 
     _clear_context_after_tool,
@@ -21,12 +23,12 @@ class Agent:
         name: str,
         llm: Optional[LLM] = None,
         tools: Optional[List[Callable]] = None,
-        system_prompt: Optional[str] = None,
+        system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
         model: str = "gpt-3.5-turbo"
     ):
         self.name = name
-        self.system_prompt = system_prompt or "You are a helpful assistant that can use tools to complete tasks."
+        self.system_prompt = load_system_prompt(system_prompt)
         
         # Process tools: convert raw functions to tool schemas automatically
         processed_tools = []
