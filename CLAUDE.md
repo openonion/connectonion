@@ -126,3 +126,11 @@ Uses OpenAI's function calling with proper message formatting:
   - Use `&gt;` or `{'>'}` instead of raw `>` to avoid parsing errors in `./app/xray/page.tsx`
   - Specifically for code display, ensure proper escaping of special characters
   - Example error source: Unexpected token parsing near code display blocks with unescaped `>` symbol
+
+## Documentation Guidelines
+
+- When in the doc site introduce features, it always should start from core simple examples to add more things to it, think about a world-class tutorial, make it perfect
+  - Focus on building tutorials that progressively introduce complexity
+  - Start with the most minimal, straightforward use case
+  - Gradually build up to more advanced scenarios
+  - Ensure each step is clear, concise, and builds upon previous knowledge

@@ -1,25 +1,37 @@
 # System Prompts Collection
 
-This directory contains example system prompts for ConnectOnion agents. These prompts define agent personalities, behaviors, and approaches to tasks.
+This directory demonstrates ConnectOnion's **flexible file format support** for system prompts.
+
+## 🎯 Key Feature: Any Text Format Works
+
+ConnectOnion reads **any text file** as a system prompt:
+
+```python
+# All of these create identical agents:
+agent = Agent("bot", system_prompt="prompts/assistant.md")     # Markdown
+agent = Agent("bot", system_prompt="prompts/assistant.yaml")   # YAML
+agent = Agent("bot", system_prompt="prompts/assistant.json")   # JSON
+agent = Agent("bot", system_prompt="prompts/assistant.txt")    # Plain text
+agent = Agent("bot", system_prompt="prompts/assistant")        # No extension
+```
 
 ## Directory Structure
 
 ```
 prompts/
+├── formats/         # Same prompt in different formats (showcase)
 ├── examples/        # Complete example prompts
 ├── templates/       # Reusable prompt templates
 ├── roles/          # Role-specific prompts
 └── domains/        # Domain-specific prompts
 ```
 
-## File Formats
+## Why This Matters
 
-ConnectOnion supports multiple prompt formats:
-- **Markdown (.md)** - Human-readable, structured prompts
-- **YAML (.yaml/.yml)** - Structured data format for complex configurations
-- **JSON (.json)** - Machine-readable format with schema support
-- **Plain text (.txt)** - Simple text prompts
-- **No extension** - Any text file works
+- ✅ **No vendor lock-in** - Use any format your team prefers
+- ✅ **Future-proof** - New formats work automatically
+- ✅ **Simple** - No complex parsing or schemas
+- ✅ **Flexible** - Switch formats without code changes
 
 ## Usage
 
