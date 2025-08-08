@@ -23,7 +23,7 @@ Get up and running with ConnectOnion in under 5 minutes. Build your first AI age
 ## Installation
 
 \`\`\`bash
-pip install connectonion==0.0.1
+pip install connectonion
 \`\`\`
 
 ## Your First Agent (2 minutes)
