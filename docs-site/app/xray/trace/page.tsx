@@ -438,7 +438,7 @@ Advanced debugging with live context inspection using IDE breakpoints
 ## Installation
 
 \`\`\`bash
-pip install connectonion==0.0.1
+pip install connectonion
 \`\`\`
 
 ## Basic Usage

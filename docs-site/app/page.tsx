@@ -104,7 +104,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
             <span className="text-sm text-gray-400 font-mono">Terminal</span>
             <button
-              onClick={() => copyToClipboard('pip install connectonion==0.0.1', 'install-cmd')}
+              onClick={() => copyToClipboard('pip install connectonion', 'install-cmd')}
               className="text-gray-400 hover:text-white transition-colors p-1"
             >
               {copiedId === 'install-cmd' ? (
@@ -115,7 +115,7 @@ export default function HomePage() {
             </button>
           </div>
           <div className="bg-black p-4 font-mono text-sm">
-            <span className="text-green-400">$</span> <span className="text-white">pip install connectonion==0.0.1</span>
+            <span className="text-green-400">$</span> <span className="text-white">pip install connectonion</span>
           </div>
         </div>
       </section>

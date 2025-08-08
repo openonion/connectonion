@@ -25,7 +25,7 @@ print(response)`
 
 const expectedOutput = `Hello, Alice! Nice to meet you!`
 
-const installationCode = `pip install connectonion==0.0.1`
+const installationCode = `pip install connectonion`
 
 const fullExampleCode = `# hello_world_agent.py
 import os

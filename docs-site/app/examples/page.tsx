@@ -194,7 +194,7 @@ Each example progressively introduces new concepts:
 ## 🚀 Installation
 
 \`\`\`bash
-pip install connectonion==0.0.1
+pip install connectonion
 \`\`\`
 
 ## 📖 Usage Tips
