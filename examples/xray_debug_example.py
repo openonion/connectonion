@@ -226,7 +226,7 @@ def main():
             generate_summary,
             debug_info
         ],
-        model="gpt-3.5-turbo"  # Using 3.5 for faster responses
+        model="gpt-5-mini"  # Using gpt-5-mini for balanced performance
     )
     
     print(f"✅ Created agent '{agent.name}' with {len(agent.tools)} tools")

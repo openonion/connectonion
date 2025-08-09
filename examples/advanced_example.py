@@ -112,7 +112,7 @@ def main():
         file management, and system operations. You are professional, thorough, and provide detailed 
         explanations when working with complex tasks. Always prioritize accuracy and safety in your operations.""",
         tools=[web_search, data_analyzer, json_processor, file_manager, system_info],
-        model="gpt-3.5-turbo" 
+        model="gpt-5-mini" 
     )
     
     print(f"🤖 Agent: {agent.name}")

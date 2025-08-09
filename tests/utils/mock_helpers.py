@@ -10,7 +10,7 @@ class OpenAIMockBuilder:
     """Builder for creating OpenAI API mocks."""
     
     @staticmethod
-    def simple_response(content: str, model: str = "gpt-3.5-turbo") -> Mock:
+    def simple_response(content: str, model: str = "gpt-5-mini") -> Mock:
         """Create mock for text-only responses."""
         mock_response = MagicMock()
         mock_response.id = "chatcmpl-test123"

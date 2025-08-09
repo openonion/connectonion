@@ -269,7 +269,7 @@ agent = Agent(name="test", api_key="your-api-key-here")
 
 ### Model Selection
 ```python
-agent = Agent(name="test", model="gpt-4")  # Default: gpt-3.5-turbo
+agent = Agent(name="test", model="gpt-5")  # Default: gpt-5-mini
 ```
 
 ## 🛠️ Advanced Usage

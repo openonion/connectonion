@@ -25,7 +25,7 @@ class Agent:
         tools: Optional[List[Callable]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "gpt-3.5-turbo"
+        model: str = "gpt-5-mini"
     ):
         self.name = name
         self.system_prompt = load_system_prompt(system_prompt)

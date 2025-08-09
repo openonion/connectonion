@@ -174,7 +174,140 @@ print(response)  # Output: "Weather in NYC: sunny, 72°F"`}
         </div>
       </section>
 
+      {/* Advanced Configuration */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6">Advanced Configuration</h2>
+        
+        <p className="text-gray-300 mb-6">
+          ConnectOnion agents support multiple configuration options for different use cases:
+        </p>
 
+        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-8">
+          <div className="flex items-center justify-between bg-gray-800 border-b border-gray-700 px-4 py-3">
+            <span className="text-sm text-gray-400 font-mono">advanced_config.py</span>
+            <button
+              onClick={() => copyToClipboard(`from connectonion import Agent
+
+# Full configuration example
+agent = Agent(
+    name="advanced_assistant",
+    model="gpt-5-mini",           # Model selection (default)
+    api_key="sk-...",              # Optional API key
+    system_prompt="Be concise",    # Custom personality
+    tools=[calculate, search],    # Multiple tools
+)
+
+# Available Models:
+# - gpt-5-nano: Fastest, most cost-effective
+# - gpt-5-mini: Balanced performance (default)
+# - gpt-5: Most capable, highest quality
+
+# API Key Options:
+# 1. Environment variable (recommended):
+#    export OPENAI_API_KEY="sk-..."
+# 2. Pass directly:
+#    agent = Agent(api_key="sk-...")
+
+# System Prompt Options:
+# 1. Inline string:
+#    system_prompt="You are helpful"
+# 2. File path:
+#    system_prompt="prompts/agent.md"
+# 3. None (uses default):
+#    system_prompt=None`, 'advanced-config')}
+              className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
+            >
+              {copiedId === 'advanced-config' ? (
+                <Check className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+          
+          <div className="p-6">
+            <SyntaxHighlighter 
+              language="python" 
+              style={vscDarkPlus}
+              customStyle={{
+                background: 'transparent',
+                padding: 0,
+                margin: 0,
+                fontSize: '0.875rem',
+                lineHeight: '1.5'
+              }}
+            >
+{`from connectonion import Agent
+
+# Full configuration example
+agent = Agent(
+    name="advanced_assistant",
+    model="gpt-5-mini",           # Model selection (default)
+    api_key="sk-...",              # Optional API key
+    system_prompt="Be concise",    # Custom personality
+    tools=[calculate, search],    # Multiple tools
+)
+
+# Available Models:
+# - gpt-5-nano: Fastest, most cost-effective
+# - gpt-5-mini: Balanced performance (default)
+# - gpt-5: Most capable, highest quality
+
+# API Key Options:
+# 1. Environment variable (recommended):
+#    export OPENAI_API_KEY="sk-..."
+# 2. Pass directly:
+#    agent = Agent(api_key="sk-...")
+
+# System Prompt Options:
+# 1. Inline string:
+#    system_prompt="You are helpful"
+# 2. File path:
+#    system_prompt="prompts/agent.md"
+# 3. None (uses default):
+#    system_prompt=None`}
+            </SyntaxHighlighter>
+          </div>
+        </div>
+
+        <div className="grid md:grid-cols-3 gap-6">
+          <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
+              <span className="text-2xl">🚀</span> Model Selection
+            </h3>
+            <p className="text-sm text-gray-400 mb-3">Choose based on your needs:</p>
+            <ul className="text-sm space-y-1">
+              <li className="text-green-300"><code>gpt-5-nano</code>: Fast responses</li>
+              <li className="text-blue-300"><code>gpt-5-mini</code>: Balanced (default)</li>
+              <li className="text-purple-300"><code>gpt-5</code>: Best quality</li>
+            </ul>
+          </div>
+          
+          <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
+              <span className="text-2xl">🔑</span> API Key Setup
+            </h3>
+            <p className="text-sm text-gray-400 mb-3">Two ways to configure:</p>
+            <ul className="text-sm space-y-1">
+              <li className="text-gray-300">• Environment variable</li>
+              <li className="text-gray-300">• Direct parameter</li>
+              <li className="text-gray-300">• Custom LLM provider</li>
+            </ul>
+          </div>
+          
+          <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-4">
+            <h3 className="font-semibold text-white mb-2 flex items-center gap-2">
+              <span className="text-2xl">💬</span> System Prompts
+            </h3>
+            <p className="text-sm text-gray-400 mb-3">Define agent personality:</p>
+            <ul className="text-sm space-y-1">
+              <li className="text-gray-300">• Inline strings</li>
+              <li className="text-gray-300">• External files (.md, .txt)</li>
+              <li className="text-gray-300">• Dynamic loading</li>
+            </ul>
+          </div>
+        </div>
+      </section>
 
       {/* Next Steps */}
       <section className="mb-16">

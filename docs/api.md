@@ -13,7 +13,7 @@ Agent(
     tools: Optional[List[Callable]] = None,
     system_prompt: Union[str, Path, None] = None,
     api_key: Optional[str] = None,
-    model: str = "gpt-3.5-turbo"
+    model: str = "gpt-5-mini"
 )
 ```
 
@@ -27,7 +27,8 @@ Agent(
   - `Path`: Path object pointing to a prompt file
   - `None`: Uses default prompt
 - **api_key** (`Optional[str]`): OpenAI API key (if not using custom LLM)
-- **model** (`str`): Model name for OpenAI (default: "gpt-3.5-turbo")
+- **model** (`str`): Model name for OpenAI (default: "gpt-5-mini")
+  - Available models: `gpt-5-nano`, `gpt-5-mini`, `gpt-5`
 
 ### System Prompt Options
 
