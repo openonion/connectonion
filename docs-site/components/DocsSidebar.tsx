@@ -6,7 +6,18 @@ import { usePathname } from 'next/navigation'
 import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp } from 'lucide-react'
 import { DifficultyBadge } from './DifficultyBadge'
 
-const navigation = [
+type NavItem = {
+  title: string
+  href: string
+  icon?: any
+  difficulty?: string
+}
+type NavigationSection = {
+  title: string
+  items: NavItem[]
+}
+
+const navigation: NavigationSection[] = [
   {
     title: 'Getting Started',
     items: [
