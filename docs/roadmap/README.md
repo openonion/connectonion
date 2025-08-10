@@ -19,6 +19,9 @@
 - **[migration-strategy.md](./migration-strategy.md)** - Moving from existing systems
 // Removed: Function-as-Agent (deprecated in favor of Share & Find)
 
+### 🛡️ Security
+- **[threat-model.md](./threat-model.md)** - Multi-Agent Collaboration Threat Model
+
 ### 📊 Strategy
 - **[business-model.md](./business-model.md)** - Revenue and growth strategy
 - **[mcp-comparison-insights.md](./mcp-comparison-insights.md)** - Why we're different
