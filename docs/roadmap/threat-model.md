@@ -136,11 +136,17 @@ Persistent Threat:
 
 ## Key Insights
 
-1) Economic incentives are the root cause — most threats are profit‑driven; they will happen.
-2) Trust asymmetry is the vulnerability — information asymmetry enables deception.
-3) Scale amplifies risk — automation makes attacks replicable to millions.
-4) Combined attacks are worse — compositions create exponential damage.
-5) Defense cost dilemma — perfect defense can cost more than expected loss.
+1) Economic incentives dominate — if profitable, it will happen.
+2) Trust asymmetry is the root vulnerability — claims are cheap, verification is costly.
+3) Scale amplifies risk — automation makes attacks zero‑marginal to millions.
+4) Compositions are more dangerous — combined attacks cause cascading failures.
+5) Defense cost vs. payoff — “perfect” defense is often uneconomic; aim for “good enough”.
+6) Simplicity‑first and strong defaults reduce attack surface — fewer concepts/configs/states.
+7) Local‑first, minimal exposure — stay close to data/caller; limit public attack surface.
+8) Experience‑driven local trust beats global reputation — personal success/failure is harder to game.
+9) Explainability and reproducibility — pin versions/hashes; surface “why this was selected”.
+10) Test‑before‑trust + continuous spot‑checks — one‑time tests aren’t enough; random small samples over time.
+11) Fast recovery over zero‑failure — isolate impact, support rollback and cheap alternatives.
 
 ---
 
