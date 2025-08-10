@@ -17,7 +17,8 @@
     "react-dom": "19.1.0",
     "react-icons": "^5.5.0",
     "react-intersection-observer": "^9.16.0",
-    "react-syntax-highlighter": "^15.6.1"
+    "react-syntax-highlighter": "^15.6.1",
+    "marked": "^15.0.12"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

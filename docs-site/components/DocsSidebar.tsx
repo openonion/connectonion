@@ -29,6 +29,12 @@ const navigation = [
     ]
   },
   {
+    title: 'Security',
+    items: [
+      { title: 'Threat Model', href: '/threat-model', icon: Shield },
+    ]
+  },
+  {
     title: 'Agent Building',
     items: [
       { title: 'Examples Overview', href: '/examples' },
