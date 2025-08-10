@@ -23,7 +23,7 @@
 - `docs/roadmap/business-model.md` - Business strategy
 - `docs/roadmap/attack-defense-insights.md` - Security analysis
 - `docs/roadmap/mcp-comparison-insights.md` - MCP comparison
-- `docs/roadmap/function-as-agent.md` - Core concept
+- (removed) `docs/roadmap/function-as-agent.md` - superseded by Share & Find
 
 ### Journey Documents (KEEP)
 - `docs/roadmap/discussion-journey.md` - Our discussion history

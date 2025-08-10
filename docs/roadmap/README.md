@@ -17,7 +17,7 @@
 ### 🏗️ Implementation
 - **[technical-architecture.md](./technical-architecture.md)** - How to build it
 - **[migration-strategy.md](./migration-strategy.md)** - Moving from existing systems
-- **[function-as-agent.md](./function-as-agent.md)** - The core abstraction
+// Removed: Function-as-Agent (deprecated in favor of Share & Find)
 
 ### 📊 Strategy
 - **[business-model.md](./business-model.md)** - Revenue and growth strategy

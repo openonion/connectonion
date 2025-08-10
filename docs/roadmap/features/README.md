@@ -4,41 +4,21 @@ Simple features for agent developers.
 
 ## Core Features
 
-1. **[@agent decorator](01-agent-decorator.md)** - Make functions discoverable
-2. **[discover()](02-discover.md)** - Find agents by what they do
-3. **[Test before trust](03-test-before-trust.md)** - Try agents safely
-4. **[serve](04-serve.md)** - Share your agents
-
-## Composition
-
-5. **[Compose agents](05-compose-agents.md)** - Chain agents together
-6. **[Pipeline](14-pipeline.md)** - Build reusable workflows
+1. **[Share & Find](01-share-and-find.md)** - Share functions and find what you need with natural language
+2. **[Test before trust](03-test-before-trust.md)** - Try functions safely
 
 ## Trust & Reliability
 
-7. **[my_experience](06-my-experience.md)** - Track your agent history
-8. **[Fallback](07-fallback.md)** - Handle failures gracefully
-9. **[Monitor](10-monitor.md)** - Track agent health
+3. **[Reliability & Offline](06-reliability-and-offline.md)** - Experience, memory, and offline cache
 
 ## Analytics
 
-10. **[Agent stats](08-agent-stats.md)** - See how your agents are used
-11. **[Cost tracking](11-cost-tracking.md)** - Monitor spending
-
-## Developer Tools
-
-12. **[REPL](09-repl.md)** - Interactive development
-13. **[Visual network](12-visual-network.md)** - See agents in action
-14. **[Replay](13-replay.md)** - Time-travel debugging
-
-## Performance
-
-15. **[Local first](15-local-first.md)** - Works offline
+4. (reserved)
 
 ## Design Principles
 
-- One line to make discoverable
-- One line to discover others
+- One line to share functions
+- Natural language to find what you need
 - Everything else automatic
 - No configuration needed
 - Trust through experience
@@ -46,18 +26,21 @@ Simple features for agent developers.
 ## Getting Started
 
 ```python
-# 1. Make your function discoverable
-from connectonion import agent
+# 1. Share your function
+from connectonion import share
 
-@agent
-def translate(text: str, to_lang: str) -> str:
+def translate(text: str, to_lang: str = "en") -> str:
     return my_translation(text, to_lang)
 
-# 2. Discover other agents
-from connectonion import discover
+share(translate)  # One line to share
 
-summarizer = discover("summarize text")
+# 2. Find what you need
+from connectonion import need
+
+summarizer = need("make this text shorter")
 summary = summarizer(long_text)
 
 # That's it!
 ```
+
+See **[Share & Find](01-share-and-find.md)** for complete examples and advanced options.

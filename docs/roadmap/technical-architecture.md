@@ -10,7 +10,7 @@ ConnectOnion creates a decentralized network where agents discover and collabora
 
 ```
 ┌─────────────────────────────────────┐
-│     Application Layer (Agents)       │ ← Function as Agent
+│     Application Layer (Functions)    │ ← Share & Find
 ├─────────────────────────────────────┤
 │    Discovery Layer (Behavioral)      │ ← Semantic Matching  
 ├─────────────────────────────────────┤
