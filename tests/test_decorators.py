@@ -71,7 +71,7 @@ class TestXrayDecorator(unittest.TestCase):
         # Inject context
         _inject_context_for_tool(
             agent=mock_agent,
-            task="Test task",
+            user_prompt="Test task",
             messages=[{"role": "user", "content": "Hello"}],
             iteration=1,
             previous_tools=["tool1"]
@@ -110,7 +110,7 @@ class TestXrayDecorator(unittest.TestCase):
         
         _inject_context_for_tool(
             agent=mock_agent,
-            task="Very long task description that should be truncated in the representation",
+            user_prompt="Very long task description that should be truncated in the representation",
             messages=[{"role": "user", "content": "msg1"}, {"role": "assistant", "content": "msg2"}],
             iteration=2,
             previous_tools=["tool1", "tool2"]
@@ -269,7 +269,7 @@ class TestThreadSafety(unittest.TestCase):
             
             _inject_context_for_tool(
                 agent=mock_agent,
-                task=f"Task {thread_id}",
+                user_prompt=f"Task {thread_id}",
                 messages=[],
                 iteration=thread_id,
                 previous_tools=[]
@@ -325,7 +325,7 @@ class TestEdgeCases(unittest.TestCase):
         """Test handling of empty or None context values."""
         _inject_context_for_tool(
             agent=None,
-            task=None,
+            user_prompt=None,
             messages=None,  # This will be stored as None in context
             iteration=None,
             previous_tools=None
@@ -352,7 +352,7 @@ class TestEdgeCases(unittest.TestCase):
         
         _inject_context_for_tool(
             agent=mock_agent,
-            task="Test",
+            user_prompt="Test",
             messages=[{"role": "user", "content": "Hi"}],
             iteration=1,
             previous_tools=[]
@@ -368,8 +368,8 @@ class TestEdgeCases(unittest.TestCase):
             self.assertIsNot(context1, context2)
             
             # Modifying one shouldn't affect the other
-            context1['task'] = "Modified"
-            self.assertEqual(context2['task'], "Test")
+            context1['user_prompt'] = "Modified"
+            self.assertEqual(context2['user_prompt'], "Test")
             
             return "success"
         

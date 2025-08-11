@@ -134,3 +134,4 @@ Uses OpenAI's function calling with proper message formatting:
   - Start with the most minimal, straightforward use case
   - Gradually build up to more advanced scenarios
   - Ensure each step is clear, concise, and builds upon previous knowledge
+- pls remember the versiion should keep it under 0.0.1 to 0.0.9 when we don't have the features of agent to agent protocol, cause we are beta version

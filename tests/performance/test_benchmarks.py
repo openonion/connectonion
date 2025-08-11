@@ -88,7 +88,7 @@ class TestPerformanceBenchmarks:
         start = time.time()
         for i in range(100):
             history.record(
-                task=f"Task {i}",
+                user_prompt=f"Task {i}",
                 tool_calls=[{
                     "name": "test_tool",
                     "arguments": {"param": f"value_{i}"},
@@ -273,7 +273,7 @@ class TestStressTests:
         def write_records(history, start_id, count):
             for i in range(count):
                 history.record(
-                    task=f"Stress task {start_id}_{i}",
+                    user_prompt=f"Stress task {start_id}_{i}",
                     tool_calls=[],
                     result=f"Result {start_id}_{i}",
                     duration=0.1
