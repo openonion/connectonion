@@ -30,7 +30,7 @@ def greet(name: str) -> str:
 
 # Create agent
 agent = Agent("greeter", tools=[greet])
-result = agent.run("Say hello to Alice")
+result = agent.input("Say hello to Alice")
 
 # View execution trace
 xray.trace(agent)`,
@@ -69,7 +69,7 @@ agent = Agent(
     tools=[analyze_text, generate_summary]
 )
 
-result = agent.run("Analyze this sample text and create a summary")
+result = agent.input("Analyze this sample text and create a summary")
 
 # View the execution trace
 xray.trace(agent)`,
@@ -120,7 +120,7 @@ agent = Agent(
     tools=[validate_email, send_notification, fallback_contact]
 )
 
-result = agent.run("Send notification to user at bad-email-format")
+result = agent.input("Send notification to user at bad-email-format")
 
 # View trace showing error handling
 xray.trace(agent)`,
@@ -185,7 +185,7 @@ agent = Agent(
     tools=[fetch_user_data, complex_calculation, external_api_call, format_response]
 )
 
-result = agent.run("Generate analytics report for user ID 12345")
+result = agent.input("Generate analytics report for user ID 12345")
 
 # Analyze performance bottlenecks
 xray.trace(agent)`,
@@ -322,7 +322,7 @@ order_data = {
 }
 
 # Run with IDE breakpoints set at marked locations
-result = agent.run(f"Process this order: \{order_data}")
+result = agent.input(f"Process this order: \{order_data}")
 
 # Final comprehensive trace
 xray.trace(agent)`,
@@ -453,7 +453,7 @@ def my_tool(data: str) -> str:
     return f"Processed: {data}"
 
 agent = Agent("my_agent", tools=[my_tool])
-result = agent.run("Process this")
+result = agent.input("Process this")
 
 # View execution trace
 xray.trace(agent)
@@ -513,7 +513,7 @@ Works seamlessly with:
 
 **"No tool execution history available"**
 - Ensure tools have @xray decorator
-- Check agent.run() was called before trace()
+- Check agent.input() was called before trace()
 - Pass agent instance to trace()
 
 **Timing shows 0ms**  

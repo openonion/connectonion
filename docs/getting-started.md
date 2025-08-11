@@ -23,7 +23,7 @@ def calculate(expression: str) -> str:
 agent = Agent("assistant", tools=[calculate])
 
 # Use it!
-result = agent.run("What is 42 * 17?")
+result = agent.input("What is 42 * 17?")
 print(result)
 ```
 
@@ -57,7 +57,7 @@ agent = Agent(
 )
 
 # It can use multiple tools in one request!
-result = agent.run("Search for Python tutorials and tell me what time it is")
+result = agent.input("Search for Python tutorials and tell me what time it is")
 print(result)
 ```
 
@@ -88,7 +88,7 @@ agent = Agent(
     tools=[calculate, search, get_time]
 )
 
-result = agent.run("Hello!")
+result = agent.input("Hello!")
 # Response will reflect the personality defined in your prompt
 ```
 
@@ -131,8 +131,8 @@ def read_file(filename: str) -> str:
 assistant = Agent("file_helper", tools=[write_file, read_file])
 
 # Use it
-assistant.run("Save 'Hello World' to greeting.txt")
-assistant.run("What's in greeting.txt?")
+assistant.input("Save 'Hello World' to greeting.txt")
+assistant.input("What's in greeting.txt?")
 ```
 
 ## Next Steps

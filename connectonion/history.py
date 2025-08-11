@@ -12,7 +12,7 @@ from dataclasses import dataclass, asdict
 class BehaviorRecord:
     """Record of a single agent behavior."""
     timestamp: str
-    task: str
+    user_prompt: str
     tool_calls: List[Dict[str, Any]]
     result: str
     duration_seconds: float
@@ -40,11 +40,11 @@ class History:
         # Load existing history if available
         self._load_history()
     
-    def record(self, task: str, tool_calls: List[Dict[str, Any]], result: str, duration: float):
+    def record(self, user_prompt: str, tool_calls: List[Dict[str, Any]], result: str, duration: float):
         """Record a new behavior."""
         record = BehaviorRecord(
             timestamp=datetime.now().isoformat(),
-            task=task,
+            user_prompt=user_prompt,
             tool_calls=tool_calls,
             result=result,
             duration_seconds=duration

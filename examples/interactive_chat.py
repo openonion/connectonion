@@ -164,7 +164,7 @@ def main():
             print("\n🤖 Thinking...")
             
             try:
-                response = agent.run(user_input)
+                response = agent.input(user_input)
                 print(f"🤖 Assistant: {response}\n")
                 session_count += 1
                 

@@ -459,7 +459,7 @@ if __name__ == "__main__":
     
     for i, command in enumerate(demo_commands, 1):
         print(f"Command {i}: {command}")
-        response = agent.run(command)
+        response = agent.input(command)
         print(f"Response: {response}\\n")
         print("-" * 80)`
 

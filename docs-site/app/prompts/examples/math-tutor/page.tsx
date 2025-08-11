@@ -43,7 +43,7 @@ agent = Agent(
     tools=[...]
 )
 
-response = agent.run("I'm struggling with algebra equations. Can you help me solve 2x + 5 = 15?")
+response = agent.input("I'm struggling with algebra equations. Can you help me solve 2x + 5 = 15?")
 print(response)`
 
 const expectedOutput = `Great question! Algebra equations can definitely be tricky at first, but you've got this! Let me help you solve 2x + 5 = 15 step by step.

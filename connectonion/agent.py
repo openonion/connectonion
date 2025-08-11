@@ -52,18 +52,25 @@ class Agent:
         # Create tool mapping for quick lookup
         self.tool_map = {tool.name: tool for tool in self.tools}
     
-    def run(self, task: str) -> str:
-        """Execute a task, potentially using tools."""
+    def input(self, prompt: str) -> str:
+        """Provide input to the agent and get response.
+        
+        Args:
+            prompt: The input prompt or data to process
+            
+        Returns:
+            The agent's response after processing the input
+        """
         start_time = time.time()
         messages = [
             {"role": "system", "content": self.system_prompt},
-            {"role": "user", "content": task}
+            {"role": "user", "content": prompt}
         ]
         
         # Get tool schemas for LLM
         tool_schemas = [tool.to_function_schema() for tool in self.tools] if self.tools else None
         
-        # Track all tool calls for this task
+        # Track all tool calls for this input
         all_tool_calls = []  # Persisted in History for behavior tracking
         execution_history = []  # Used by xray.trace() with timing data
         max_iterations = 10  # Prevent infinite loops
@@ -134,7 +141,7 @@ class Agent:
                         if _is_xray_enabled(tool_func):
                             _inject_context_for_tool(
                                 agent=self,
-                                task=task,
+                                user_prompt=prompt,
                                 messages=messages.copy(),  # Provide copy to avoid modifications
                                 iteration=iteration,
                                 previous_tools=previous_tools,
@@ -212,7 +219,7 @@ class Agent:
         # Record behavior
         duration = time.time() - start_time
         self.history.record(
-            task=task,
+            user_prompt=prompt,
             tool_calls=all_tool_calls,
             result=result,
             duration=duration

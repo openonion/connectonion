@@ -116,7 +116,7 @@ from connectonion import Agent
 from connectonion.tools import Calculator
 
 agent = Agent("assistant", tools=[Calculator()])
-result = agent.run("What is 2+2?")
+result = agent.input("What is 2+2?")
 ```
 
 #### After (v0.2.0)
@@ -132,7 +132,7 @@ agent = Agent(
     system_prompt="You are a helpful math tutor.",
     tools=[calculate]
 )
-result = agent.run("What is 2+2?")
+result = agent.input("What is 2+2?")
 ```
 
 ### ⚡ Performance & Reliability

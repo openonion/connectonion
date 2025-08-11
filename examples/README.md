@@ -44,7 +44,7 @@ def calculate(expression: str) -> float:
     return eval(expression)
 
 agent = Agent("assistant", tools=[calculate])
-result = agent.run("What is 42 * 17?")
+result = agent.input("What is 42 * 17?")
 ```
 
 ### 2. `basic_example.py` - Complete Feature Demo 🎯

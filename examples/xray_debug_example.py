@@ -276,7 +276,7 @@ def main():
         print(f"\n{i}. {description}:")
         print(f"   Task: {task[:80]}...")
         try:
-            result = agent.run(task)
+            result = agent.input(task)
             print(f"   Result: {result}")
         except Exception as e:
             print(f"   Error: {e}")
@@ -301,7 +301,7 @@ def main():
     then calculate its score, and finally generate a brief summary."""
     
     print(f"Running task: {trace_task[:60]}...")
-    result = agent.run(trace_task)
+    result = agent.input(trace_task)
     print(f"Result: {result[:100]}...\n")
     
     # Note: xray.trace() can only be called from within @xray decorated functions

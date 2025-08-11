@@ -39,7 +39,7 @@ agent = Agent(
     tools=[calculate, get_help]
 )
 
-response = agent.run("What's 25 + 17 * 3?")
+response = agent.input("What's 25 + 17 * 3?")
 print(response)`
 
 const expectedOutput = `25 + 17 * 3 = 76`
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     
     for i, test in enumerate(test_cases, 1):
         print(f"Test {i}: {test}")
-        response = agent.run(test)
+        response = agent.input(test)
         print(f"Response: {response}\\n")
         print("-" * 50)`
 

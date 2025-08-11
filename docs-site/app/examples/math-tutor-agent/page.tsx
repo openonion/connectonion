@@ -321,7 +321,7 @@ if __name__ == "__main__":
     
     for i, question in enumerate(test_cases, 1):
         print(f"Student Question {i}: {question}")
-        response = agent.run(question)
+        response = agent.input(question)
         print(f"Tutor Response: {response}\\n")
         print("-" * 70)`
 

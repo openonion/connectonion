@@ -270,7 +270,7 @@ if __name__ == "__main__":
     
     for i, command in enumerate(commands, 1):
         print(f"Step {i}: {command}")
-        response = agent.run(command)
+        response = agent.input(command)
         print(f"Response: {response}\\n")
         print("-" * 60)`
 

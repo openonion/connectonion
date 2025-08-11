@@ -45,10 +45,10 @@ agent = Agent(
 )
 
 # 3. Use the agent
-result = agent.run("What is 25 * 4?")
+result = agent.input("What is 25 * 4?")
 print(result)  # Agent will use the calculate function
 
-result = agent.run("Search for Python tutorials") 
+result = agent.input("Search for Python tutorials") 
 print(result)  # Agent will use the search function
 
 # 4. View behavior history (automatic!)
@@ -277,7 +277,7 @@ agent = Agent(name="test", model="gpt-5")  # Default: gpt-5-mini
 ### Multiple Tool Calls
 Agents can chain multiple tool calls automatically:
 ```python
-result = agent.run(
+result = agent.input(
     "Calculate 15 * 8, then tell me what time you did this calculation"
 )
 # Agent will use calculator first, then current_time tool

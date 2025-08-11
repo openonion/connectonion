@@ -6,7 +6,7 @@ import psutil
 import os
 from unittest.mock import Mock
 from connectonion import Agent
-from connectonion.tools import Calculator, CurrentTime, ReadFile
+from tests.fixtures.test_tools import Calculator, CurrentTime, ReadFile
 from tests.utils.mock_helpers import LLMResponseBuilder
 
 
@@ -28,7 +28,7 @@ class TestPerformanceBenchmarks:
         times = []
         for _ in range(10):
             start = time.time()
-            agent.run("Simple task")
+            agent.input("Simple task")
             end = time.time()
             times.append(end - start)
         
@@ -64,7 +64,7 @@ class TestPerformanceBenchmarks:
             ]
             
             start = time.time()
-            agent.run("Calculate something")
+            agent.input("Calculate something")
             end = time.time()
             times.append(end - start)
         
@@ -127,7 +127,7 @@ class TestPerformanceBenchmarks:
         
         # Run multiple tasks
         for i in range(50):
-            agent.run(f"Task {i}")
+            agent.input(f"Task {i}")
         
         # Get final memory
         gc.collect()
@@ -154,7 +154,7 @@ class TestPerformanceBenchmarks:
             
             start = time.time()
             for i in range(10):
-                agent.run(f"Task {i}")
+                agent.input(f"Task {i}")
             end = time.time()
             
             return end - start
@@ -190,7 +190,7 @@ class TestPerformanceBenchmarks:
         read_tool = ReadFile()
         
         start = time.time()
-        result = read_tool.run(filepath=large_file)
+        result = read_tool.input(filepath=large_file)
         end = time.time()
         
         processing_time = end - start
@@ -221,7 +221,7 @@ class TestPerformanceBenchmarks:
         for expr in expressions:
             start = time.time()
             for _ in range(100):  # Run each expression 100 times
-                calc.run(expression=expr)
+                calc.input(expression=expr)
             end = time.time()
             times.append((end - start) / 100)  # Average time per execution
         
@@ -251,7 +251,7 @@ class TestStressTests:
         
         start = time.time()
         for i in range(1000):
-            agent.run(f"Task {i}")
+            agent.input(f"Task {i}")
         end = time.time()
         
         total_time = end - start

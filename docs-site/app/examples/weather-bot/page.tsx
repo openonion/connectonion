@@ -39,7 +39,7 @@ agent = Agent(
     tools=[get_weather, format_weather]
 )
 
-response = agent.run("What's the weather like in Tokyo?")
+response = agent.input("What's the weather like in Tokyo?")
 print(response)`
 
 const expectedOutput = `Weather Report:
@@ -167,7 +167,7 @@ if __name__ == "__main__":
     
     for i, query in enumerate(test_queries, 1):
         print(f"Query {i}: {query}")
-        response = agent.run(query)
+        response = agent.input(query)
         print(f"Response: {response}\\n")
         print("-" * 60)`
 

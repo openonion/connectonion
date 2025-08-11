@@ -69,7 +69,7 @@ Analyze our e-commerce data for Q4 2023:
 - Traffic: 62,000 unique visitors (up 25%)
 """
 
-response = agent.run(f"Please analyze this data: {analysis_request}")
+response = agent.input(f"Please analyze this data: {analysis_request}")
 print(response)`
 
 const expectedOutput = `### Executive Summary

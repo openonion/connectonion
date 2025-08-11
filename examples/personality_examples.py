@@ -94,7 +94,7 @@ def main():
         print()
         
         try:
-            result = agent.run(test_task)
+            result = agent.input(test_task)
             print(f"Response: {result}")
         except Exception as e:
             print(f"❌ Error: {str(e)}")
@@ -124,7 +124,7 @@ def main():
         for name, agent in selected_agents.items():
             print(f"🎭 {name}: ", end="")
             try:
-                result = agent.run(task)
+                result = agent.input(task)
                 print(result[:150] + "..." if len(result) > 150 else result)
             except Exception as e:
                 print(f"❌ Error: {str(e)}")

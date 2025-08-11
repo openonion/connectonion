@@ -120,37 +120,37 @@ def main():
     
     # Example 1: Complex search with parameters
     print("\n1️⃣ Advanced web search:")
-    result = agent.run("Search for 'machine learning tutorials' and limit to 3 results")
+    result = agent.input("Search for 'machine learning tutorials' and limit to 3 results")
     print(f"Result: {result}")
     
     # Example 2: Data analysis
     print("\n2️⃣ Data analysis:")
     sample_data = "artificial intelligence machine learning deep learning neural networks"
-    result = agent.run(f"Analyze this data and count the words: '{sample_data}'")
+    result = agent.input(f"Analyze this data and count the words: '{sample_data}'")
     print(f"Result: {result}")
     
     # Example 3: JSON processing
     print("\n3️⃣ JSON processing:")
     sample_json = '{"name": "ConnectOnion", "version": "0.1.0", "tools": ["search", "calculate"]}'
-    result = agent.run(f"Parse this JSON data: {sample_json}")
+    result = agent.input(f"Parse this JSON data: {sample_json}")
     print(f"Result: {result}")
     
     # Example 4: File operations
     print("\n4️⃣ File operations:")
-    result = agent.run("Write 'Hello from ConnectOnion advanced example!' to 'demo.txt'")
+    result = agent.input("Write 'Hello from ConnectOnion advanced example!' to 'demo.txt'")
     print(f"Write result: {result}")
     
-    result = agent.run("Read the content of 'demo.txt'")
+    result = agent.input("Read the content of 'demo.txt'")
     print(f"Read result: {result}")
     
     # Example 5: System information
     print("\n5️⃣ System information:")
-    result = agent.run("Tell me about the current system and time")
+    result = agent.input("Tell me about the current system and time")
     print(f"Result: {result}")
     
     # Example 6: Complex multi-tool workflow
     print("\n6️⃣ Complex workflow:")
-    result = agent.run(
+    result = agent.input(
         "Search for Python frameworks, analyze the system info, "
         "and write a summary to 'summary.txt'"
     )
@@ -158,7 +158,7 @@ def main():
     
     # Example 7: Error handling demonstration
     print("\n7️⃣ Error handling:")
-    result = agent.run("Try to parse this invalid JSON: '{invalid json}'")
+    result = agent.input("Try to parse this invalid JSON: '{invalid json}'")
     print(f"Result: {result}")
     
     # Clean up files

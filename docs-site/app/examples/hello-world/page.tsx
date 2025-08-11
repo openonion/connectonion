@@ -20,7 +20,7 @@ agent = Agent(
 )
 
 # Use it
-response = agent.run("Say hello to Alice")
+response = agent.input("Say hello to Alice")
 print(response)`
 
 const expectedOutput = `Hello, Alice! Nice to meet you!`
@@ -53,15 +53,15 @@ if __name__ == "__main__":
     print("=== Hello World Agent ===")
     
     # Simple greeting
-    response1 = agent.run("Say hello to Alice")
+    response1 = agent.input("Say hello to Alice")
     print(f"Response 1: {response1}")
     
     # Say goodbye  
-    response2 = agent.run("Say goodbye to Bob")
+    response2 = agent.input("Say goodbye to Bob")
     print(f"Response 2: {response2}")
     
     # Interactive conversation
-    response3 = agent.run("Greet John and then say goodbye to him")
+    response3 = agent.input("Greet John and then say goodbye to him")
     print(f"Response 3: {response3}")`
 
 export default function HelloWorldAgentPage() {
@@ -100,7 +100,7 @@ ${fullExampleCode}
 
 1. **Tool Functions**: Regular Python functions become agent tools automatically
 2. **Agent Creation**: Simple \`Agent()\` constructor with name and tools
-3. **Agent Execution**: Use \`.run()\` method with natural language instructions
+3. **Agent Execution**: Use \`.input()\` method with natural language instructions
 4. **Function Calling**: Agent automatically determines which tools to use
 
 This is your first step into building intelligent agents with ConnectOnion!`

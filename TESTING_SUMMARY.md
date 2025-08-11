@@ -152,7 +152,7 @@ pytest --cov=connectonion --cov-report=html
 
 ### Code Coverage
 - **Overall**: 90%+ line coverage target
-- **Critical Paths**: 100% coverage (agent.run, tool execution)
+- **Critical Paths**: 100% coverage (agent.input, tool execution)
 - **Error Handling**: 95% coverage of exception scenarios
 
 ### Test Reliability

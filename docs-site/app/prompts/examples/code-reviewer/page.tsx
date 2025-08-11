@@ -70,7 +70,7 @@ def process_user_data(user_input):
     return result
 '''
 
-response = agent.run(f"Please review this Python function: {code_to_review}")
+response = agent.input(f"Please review this Python function: {code_to_review}")
 print(response)`
 
 const expectedOutput = `**Summary**: Function processes user data by evaluating input and transforming positive numbers.

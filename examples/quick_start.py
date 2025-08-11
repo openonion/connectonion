@@ -53,15 +53,15 @@ def main():
     print("\n📝 Examples:")
     
     # Simple conversation
-    result = agent.run("Hello! What can you help me with?")
+    result = agent.input("Hello! What can you help me with?")
     print(f"\n1. Greeting: {result}")
     
     # Math calculation
-    result = agent.run("What is 42 * 17?")
+    result = agent.input("What is 42 * 17?")
     print(f"\n2. Math: {result}")
     
     # Multiple tools in one request
-    result = agent.run("Search for AI news and tell me what time it is")
+    result = agent.input("Search for AI news and tell me what time it is")
     print(f"\n3. Multiple tools: {result}")
     
     # Step 4: Check history (automatic!)

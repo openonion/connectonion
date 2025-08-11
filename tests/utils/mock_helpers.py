@@ -219,7 +219,7 @@ class AgentWorkflowMocker:
 def create_successful_agent_mock(responses: List[str]) -> Mock:
     """Create a mock agent that returns successful text responses."""
     mock_agent = Mock()
-    mock_agent.run.side_effect = responses
+    mock_agent.input.side_effect = responses
     mock_agent.name = "test_agent"
     mock_agent.list_tools.return_value = ["calculator", "current_time"]
     return mock_agent
@@ -228,6 +228,6 @@ def create_successful_agent_mock(responses: List[str]) -> Mock:
 def create_failing_agent_mock(error_message: str = "Agent error") -> Mock:
     """Create a mock agent that fails."""
     mock_agent = Mock()
-    mock_agent.run.side_effect = Exception(error_message)
+    mock_agent.input.side_effect = Exception(error_message)
     mock_agent.name = "failing_agent"
     return mock_agent

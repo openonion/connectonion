@@ -58,12 +58,12 @@ agent = Agent(name="bot")  # Default: "You are a helpful assistant..."
 
 ### Methods
 
-#### `run(task: str) -> str`
+#### `input(prompt: str) -> str`
 
-Execute a task, potentially using tools.
+Provide input to the agent and get response.
 
 ```python
-result = agent.run("Calculate 2 + 2")
+result = agent.input("Calculate 2 + 2")
 ```
 
 #### `add_tool(tool: Callable) -> None`
@@ -220,7 +220,7 @@ from connectonion import xray
 @xray
 def my_agent_function():
     agent = Agent("tracer")
-    return agent.run("task")
+    return agent.input("task")
 
 # After execution:
 xray.trace()  # Shows detailed execution flow
@@ -236,7 +236,7 @@ from connectonion import replay
 @replay
 def workflow():
     agent = Agent("bot")
-    return agent.run("task")
+    return agent.input("task")
 
 # Replay the recorded interaction
 replay.last()
@@ -255,7 +255,7 @@ def calculate(expression: str) -> str:
     return str(eval(expression))
 
 agent = Agent("calculator", tools=[calculate])
-result = agent.run("What is 15 * 4?")
+result = agent.input("What is 15 * 4?")
 ```
 
 ### Agent with Custom Prompt File
@@ -297,5 +297,5 @@ agent = Agent(
 )
 
 # Agent can use multiple tools in one request
-result = agent.run("Search for Python tutorials, calculate 42*17, and tell me the time")
+result = agent.input("Search for Python tutorials, calculate 42*17, and tell me the time")
 ```

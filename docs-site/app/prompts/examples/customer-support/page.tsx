@@ -48,7 +48,7 @@ agent = Agent(
     tools=[...]
 )
 
-response = agent.run("I've been trying to log in for 2 hours and it keeps failing. This is unacceptable!")
+response = agent.input("I've been trying to log in for 2 hours and it keeps failing. This is unacceptable!")
 print(response)`
 
 const expectedOutput = `I completely understand how frustrating this must be for you, especially after trying for 2 hours. I sincerely apologize for the inconvenience this login issue is causing.

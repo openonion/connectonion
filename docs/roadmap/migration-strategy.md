@@ -65,7 +65,7 @@ weather_agent = Agent(
 )
 
 # Use it the same way
-result = weather_agent.run("What's the weather in Paris?")
+result = weather_agent.input("What's the weather in Paris?")
 ```
 
 ### Migration Step 2: Make Discoverable
@@ -124,7 +124,7 @@ agent = initialize_agent(
     agent=AgentType.ZERO_SHOT_REACT_DESCRIPTION
 )
 
-result = agent.run("Search for Python tutorials and calculate 25 * 4")
+result = agent.input("Search for Python tutorials and calculate 25 * 4")
 ```
 
 ### Migration Step 1: Convert Tools
@@ -146,7 +146,7 @@ agent = Agent(
     tools=[search, calculate]
 )
 
-result = agent.run("Search for Python tutorials and calculate 25 * 4")
+result = agent.input("Search for Python tutorials and calculate 25 * 4")
 ```
 
 ### Migration Step 2: Simplify Chains
@@ -347,7 +347,7 @@ class HybridSystem:
         result = self.legacy_agent.process(request)
         
         # Enhance with behavioral agent
-        enhanced = self.behavior_agent.run(
+        enhanced = self.behavior_agent.input(
             f"Improve this result: {result}"
         )
         
@@ -393,7 +393,7 @@ langchain_agent = create_langchain_agent(tools, llm)
 connectonion_agent = convert_langchain(langchain_agent)
 
 # Now works with behavioral discovery
-result = connectonion_agent.run("Do something")
+result = connectonion_agent.input("Do something")
 ```
 
 ### Compatibility Wrappers

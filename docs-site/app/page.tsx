@@ -134,7 +134,7 @@ export default function HomePage() {
           <div className="flex items-center justify-between bg-gray-800 border-b border-gray-700 px-4 py-3">
             <span className="text-sm text-gray-400 font-mono">simple_example.py</span>
             <button
-              onClick={() => copyToClipboard(`from connectonion import Agent\n\ndef get_weather(city: str) -> str:\n    """Get current weather for a city."""\n    return f"Weather in {city}: sunny, 72°F"\n\n# Create agent\nagent = Agent("assistant", tools=[get_weather])\n\n# Use the agent\nresponse = agent.run("What's the weather in NYC?")\nprint(response)  # Output: "Weather in NYC: sunny, 72°F"`, 'simple-example')}
+              onClick={() => copyToClipboard(`from connectonion import Agent\n\ndef get_weather(city: str) -> str:\n    """Get current weather for a city."""\n    return f"Weather in {city}: sunny, 72°F"\n\n# Create agent\nagent = Agent("assistant", tools=[get_weather])\n\n# Use the agent\nresponse = agent.input("What's the weather in NYC?")\nprint(response)  # Output: "Weather in NYC: sunny, 72°F"`, 'simple-example')}
               className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
             >
               {copiedId === 'simple-example' ? (
@@ -167,7 +167,7 @@ def get_weather(city: str) -> str:
 agent = Agent("assistant", tools=[get_weather])
 
 # Use the agent
-response = agent.run("What's the weather in NYC?")
+response = agent.input("What's the weather in NYC?")
 print(response)  # Output: "Weather in NYC: sunny, 72°F"`}
             </SyntaxHighlighter>
           </div>

@@ -39,7 +39,7 @@ agent = Agent(
     tools=[...]
 )
 
-response = agent.run("Hi, can you help me with something?")
+response = agent.input("Hi, can you help me with something?")
 print(response)`
 
 const expectedOutput = `Hello! I'd be happy to help you today. What can I assist you with? I'm here to make sure you get the support you need, so please don't hesitate to share what's on your mind!`

@@ -84,7 +84,7 @@ Alert: Suspicious login activity detected
 - Location: Unknown/VPN
 """
 
-response = agent.run(f"Analyze this security incident: {security_incident}")
+response = agent.input(f"Analyze this security incident: {security_incident}")
 print(response)`
 
 const expectedOutput = `**SECURITY INCIDENT ANALYSIS**

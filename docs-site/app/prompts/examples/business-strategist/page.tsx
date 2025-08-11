@@ -98,7 +98,7 @@ Our SaaS company (current ARR: $5M) is considering expansion:
 Which strategy should we prioritize and why?
 """
 
-response = agent.run(strategic_question)
+response = agent.input(strategic_question)
 print(response)`
 
 const expectedOutput = `**Executive Summary**

@@ -51,7 +51,7 @@ def _set_debug_context(data: Dict[str, Any]) -> None:
     This is called by the Agent before tool execution to provide context.
     
     Args:
-        data: Dictionary containing agent, task, messages, iteration, etc.
+        data: Dictionary containing agent, user_prompt, messages, iteration, etc.
     """
     _context.data = data
 
@@ -75,7 +75,7 @@ class XrayContext:
     Container for Agent execution context accessible during debugging.
     
     This class holds all the debugging information about the current
-    Agent execution, including the agent instance, task, messages,
+    Agent execution, including the agent instance, user_prompt, messages,
     iteration count, and previously called tools.
     """
     
@@ -112,15 +112,15 @@ class XrayContext:
         return self._context.get('agent')
     
     @property
-    def task(self):
+    def user_prompt(self):
         """
-        The original task string passed to agent.run().
+        The original user prompt string passed to agent.input().
         
         Returns None if not in an active @xray decorated function.
         """
         if not self._context:
             return None
-        return self._context.get('task')
+        return self._context.get('user_prompt')
     
     @property
     def messages(self):
@@ -163,7 +163,7 @@ class XrayContext:
         Get the complete context dictionary.
         
         Returns:
-            Dictionary containing all context data (agent, task, messages, etc.)
+            Dictionary containing all context data (agent, user_prompt, messages, etc.)
         """
         return self._context.copy()
     
@@ -178,12 +178,12 @@ class XrayContext:
                     "  Use @xray decorator on your function to enable context tracking")
         
         agent_name = self.agent.name if self.agent else 'None'
-        task_preview = (self.task[:50] + '...') if self.task and len(self.task) > 50 else self.task
+        prompt_preview = (self.user_prompt[:50] + '...') if self.user_prompt and len(self.user_prompt) > 50 else self.user_prompt
         
         lines = [
             f"<XrayContext active>",
             f"  agent: '{agent_name}'",
-            f"  task: '{task_preview}'",
+            f"  user_prompt: '{prompt_preview}'",
             f"  iteration: {self.iteration}",
             f"  messages: {len(self.messages)} items",
         ]
@@ -191,7 +191,7 @@ class XrayContext:
         if self.previous_tools:
             lines.append(f"  previous_tools: {self.previous_tools}")
         
-        lines.append("  Access values with: xray.agent, xray.task, etc.")
+        lines.append("  Access values with: xray.agent, xray.user_prompt, etc.")
         
         return '\n'.join(lines)
 
@@ -234,7 +234,7 @@ class XrayDecorator:
             As decorator:
                 @xray
                 def my_tool(param: str) -> str:
-                    # Can now access xray.agent, xray.task, etc.
+                    # Can now access xray.agent, xray.user_prompt, etc.
                     return result
                     
             As function:
@@ -281,9 +281,9 @@ class XrayDecorator:
         return self._context.agent
     
     @property
-    def task(self):
-        """The original task string from agent.run()."""
-        return self._context.task
+    def user_prompt(self):
+        """The original user prompt string from agent.input()."""
+        return self._context.user_prompt
     
     @property
     def messages(self):
@@ -354,13 +354,13 @@ class XrayDecorator:
             
         # Try to get from current execution context first (if called within a tool)
         execution_history = self._context._context.get('execution_history', [])
-        task = self._context.task
+        user_prompt = self._context.user_prompt
         
         # If not in active context, get from agent's persisted history
         if not execution_history and target_agent.history.records:
-            # Get the most recent task execution
+            # Get the most recent prompt execution
             last_record = target_agent.history.records[-1]
-            task = last_record.task
+            user_prompt = last_record.user_prompt
             
             # Convert tool_calls from history format to execution_history format
             # This allows trace() to work even after the agent has finished
@@ -381,9 +381,9 @@ class XrayDecorator:
             print("Make sure you're using @xray decorator and the agent has run.")
             return
         
-        # Display the task that was executed
-        if task:
-            print(f'Task: "{task}"')
+        # Display the prompt that was executed
+        if user_prompt:
+            print(f'User Prompt: "{user_prompt}"')
             print()
         
         # Display each tool execution with visual formatting
@@ -746,7 +746,7 @@ def xray_replay(func: Callable) -> Callable:
 # Internal Helper Functions for Agent Integration
 # =============================================================================
 
-def _inject_context_for_tool(agent, task: str, messages: list, 
+def _inject_context_for_tool(agent, user_prompt: str, messages: list, 
                            iteration: int, previous_tools: list, 
                            execution_history: list = None) -> None:
     """
@@ -756,7 +756,7 @@ def _inject_context_for_tool(agent, task: str, messages: list,
     
     Args:
         agent: The Agent instance
-        task: Original task string from agent.run()
+        user_prompt: Original user prompt string from agent.input()
         messages: Conversation history
         iteration: Current iteration number
         previous_tools: List of previously called tool names
@@ -764,7 +764,7 @@ def _inject_context_for_tool(agent, task: str, messages: list,
     """
     context = {
         'agent': agent,
-        'task': task,
+        'user_prompt': user_prompt,
         'messages': messages,
         'iteration': iteration,
         'previous_tools': previous_tools

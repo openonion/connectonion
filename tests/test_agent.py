@@ -79,12 +79,12 @@ class TestAgentWithFunctionalTools(unittest.TestCase):
         # Override history path to use temp dir
         agent.history.history_file = os.path.join(self.temp_dir, "history.json")
 
-        result = agent.run("Say hello")
+        result = agent.input("Say hello")
 
         self.assertEqual(result, "Hello there! I am a test assistant.")
         # Verify history was recorded
         self.assertEqual(len(agent.history.records), 1)
-        self.assertEqual(agent.history.records[0].task, "Say hello")
+        self.assertEqual(agent.history.records[0].user_prompt, "Say hello")
         self.assertEqual(len(agent.history.records[0].tool_calls), 0)
 
     @patch('connectonion.agent.OpenAILLM')
@@ -112,7 +112,7 @@ class TestAgentWithFunctionalTools(unittest.TestCase):
         agent = Agent(name="test_single_tool", api_key="fake_key", tools=[calculator])
         agent.history.history_file = os.path.join(self.temp_dir, "history.json")
 
-        result = agent.run("What is 40 + 2?")
+        result = agent.input("What is 40 + 2?")
 
         self.assertEqual(result, "The answer is 42.")
         self.assertEqual(len(agent.history.records), 1)
@@ -153,7 +153,7 @@ class TestAgentWithFunctionalTools(unittest.TestCase):
         agent = Agent(name="test_multi_tool", api_key="fake_key", tools=[calculator, get_current_time])
         agent.history.history_file = os.path.join(self.temp_dir, "history.json")
 
-        result = agent.run("Calculate 10*5 and tell me the time.")
+        result = agent.input("Calculate 10*5 and tell me the time.")
 
         self.assertEqual(result, "The calculation resulted in 50.")
         self.assertEqual(len(agent.history.records), 1)
@@ -181,7 +181,7 @@ class TestAgentWithFunctionalTools(unittest.TestCase):
         )
         
         agent.llm = mock_llm
-        agent.run("Hello!")
+        agent.input("Hello!")
         
         # Verify the system prompt was used in the LLM call
         call_args = mock_llm.complete.call_args

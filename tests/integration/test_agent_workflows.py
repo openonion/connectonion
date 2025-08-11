@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import Mock, patch
 from connectonion import Agent
-from connectonion.tools import Calculator, CurrentTime, ReadFile
+from tests.fixtures.test_tools import Calculator, CurrentTime, ReadFile
 from tests.utils.mock_helpers import (
     LLMResponseBuilder, 
     AgentWorkflowMocker,
@@ -28,12 +28,12 @@ class TestAgentWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run task
-        result = agent.run("Hello, introduce yourself")
+        result = agent.input("Hello, introduce yourself")
         
         # Verify response
         assert "ConnectOnion" in result
         assert len(agent.history.records) == 1
-        assert agent.history.records[0].task == "Hello, introduce yourself"
+        assert agent.history.records[0].user_prompt == "Hello, introduce yourself"
         assert len(agent.history.records[0].tool_calls) == 0
     
     def test_single_tool_workflow(self, temp_dir):
@@ -50,7 +50,7 @@ class TestAgentWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run calculation task
-        result = agent.run("What is 25 times 4?")
+        result = agent.input("What is 25 times 4?")
         
         # Verify response
         assert "100" in result
@@ -75,7 +75,7 @@ class TestAgentWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run complex task
-        result = agent.run("Calculate 100 divided by 4, then tell me what time you did this")
+        result = agent.input("Calculate 100 divided by 4, then tell me what time you did this")
         
         # Verify response
         assert "25.0" in result
@@ -102,7 +102,7 @@ class TestAgentWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run file reading task
-        result = agent.run(f"Read the file {test_files['normal']} and tell me what it says")
+        result = agent.input(f"Read the file {test_files['normal']} and tell me what it says")
         
         # Verify response
         assert "Hello, ConnectOnion!" in result
@@ -139,7 +139,7 @@ class TestAgentWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run complex task
-        result = agent.run(
+        result = agent.input(
             f"Read the numbers from {numbers_file}, add them together, "
             "and tell me when you completed the calculation"
         )
@@ -171,7 +171,7 @@ class TestAgentWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run task
-        result = agent.run("Keep calculating 1 + 1")
+        result = agent.input("Keep calculating 1 + 1")
         
         # Should stop at max iterations
         assert "Maximum iterations reached" in result
@@ -202,7 +202,7 @@ class TestErrorRecoveryWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run task
-        result = agent.run("Calculate something")
+        result = agent.input("Calculate something")
         
         # Verify error recovery
         assert "4" in result
@@ -228,7 +228,7 @@ class TestErrorRecoveryWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run task
-        result = agent.run("Use a special tool")
+        result = agent.input("Use a special tool")
         
         # Verify unknown tool handling
         assert "not available" in result
@@ -252,7 +252,7 @@ class TestErrorRecoveryWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run task
-        result = agent.run("Read a file")
+        result = agent.input("Read a file")
         
         # Verify error handling
         assert "doesn't exist" in result
@@ -288,7 +288,7 @@ class TestConcurrentAgentOperations:
         results = {}
         
         def run_agent(agent, task_id):
-            result = agent.run(f"Task {task_id}")
+            result = agent.input(f"Task {task_id}")
             results[agent.name] = result
         
         # Run agents concurrently
@@ -304,8 +304,8 @@ class TestConcurrentAgentOperations:
         # Verify separate histories
         assert len(agent1.history.records) == 1
         assert len(agent2.history.records) == 1
-        assert agent1.history.records[0].task == "Task A"
-        assert agent2.history.records[0].task == "Task B"
+        assert agent1.history.records[0].user_prompt == "Task A"
+        assert agent2.history.records[0].user_prompt == "Task B"
         assert results["concurrent_agent_1"] == "Agent 1 response"
         assert results["concurrent_agent_2"] == "Agent 2 response"
 
@@ -331,13 +331,13 @@ class TestLongRunningWorkflows:
         
         # Run multiple tasks
         for i in range(20):
-            result = agent.run(f"Task {i}")
+            result = agent.input(f"Task {i}")
             assert f"Completed task {i}" in result
         
         # Verify all tasks recorded
         assert len(agent.history.records) == 20
         for i, record in enumerate(agent.history.records):
-            assert record.task == f"Task {i}"
+            assert record.user_prompt == f"Task {i}"
     
     def test_large_tool_output_handling(self, temp_dir):
         """Test agent handling tools that produce large outputs."""
@@ -360,7 +360,7 @@ class TestLongRunningWorkflows:
         agent.history.save_dir = temp_dir
         
         # Run task
-        result = agent.run("Read the large file")
+        result = agent.input("Read the large file")
         
         # Verify handling
         assert "successfully" in result

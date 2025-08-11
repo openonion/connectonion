@@ -26,7 +26,7 @@ from connectonion.decorators import xray
 ```python
 # Create and run an agent
 agent = Agent("my_agent", tools=[analyze_text, generate_summary])
-result = agent.run("Analyze this text and summarize it")
+result = agent.input("Analyze this text and summarize it")
 
 # View the execution trace
 xray.trace(agent)
@@ -152,7 +152,7 @@ xray.trace(agent)            # Visual trace of same execution
 
 ### "No tool execution history available"
 - Ensure at least one tool has @xray decorator
-- Check that agent.run() was called before trace()
+- Check that agent.input() was called before trace()
 - Pass agent instance if calling from outside tool context
 
 ### Timing shows 0ms

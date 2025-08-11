@@ -53,7 +53,7 @@ agent = Agent(
 
 # Test the agent
 print("=== Math Tutor Agent ===")
-response = agent.run("I need to calculate 15% of 240, can you help me understand this?")
+response = agent.input("I need to calculate 15% of 240, can you help me understand this?")
 print(response)`,
     output: `=== Math Tutor Agent ===
 
@@ -164,7 +164,7 @@ agent = Agent(
 
 # Test the agent
 print("=== File Analysis Agent ===")
-response = agent.run("Can you analyze the file 'example.py' and then search for all Python files in the current directory?")
+response = agent.input("Can you analyze the file 'example.py' and then search for all Python files in the current directory?")
 print(response)`,
     output: `=== File Analysis Agent ===
 
@@ -264,7 +264,7 @@ agent = Agent(
 
 # Test the agent
 print("=== API Client Agent ===")
-response = agent.run("Get the weather for New York and user info for ID 123")
+response = agent.input("Get the weather for New York and user info for ID 123")
 print(response)`,
     output: `=== API Client Agent ===
 

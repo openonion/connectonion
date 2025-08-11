@@ -76,7 +76,7 @@ Parameters: email (string), password (string)
 Returns: JWT token or error message
 """
 
-response = agent.run(doc_request)
+response = agent.input(doc_request)
 print(response)`
 
 const expectedOutput = `# User Authentication API

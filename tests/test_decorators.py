@@ -53,7 +53,7 @@ class TestXrayDecorator(unittest.TestCase):
         def test_func():
             # Access context attributes
             self.assertIsNone(xray.agent)
-            self.assertIsNone(xray.task)
+            self.assertIsNone(xray.user_prompt)
             self.assertEqual(xray.messages, [])
             self.assertIsNone(xray.iteration)
             self.assertEqual(xray.previous_tools, [])
@@ -81,7 +81,7 @@ class TestXrayDecorator(unittest.TestCase):
         def test_func():
             # Verify context is accessible
             self.assertEqual(xray.agent.name, "test_agent")
-            self.assertEqual(xray.task, "Test task")
+            self.assertEqual(xray.user_prompt, "Test task")
             self.assertEqual(len(xray.messages), 1)
             self.assertEqual(xray.iteration, 1)
             self.assertEqual(xray.previous_tools, ["tool1"])
@@ -89,7 +89,7 @@ class TestXrayDecorator(unittest.TestCase):
             # Test xray() to get full context
             context = xray()
             self.assertIn("agent", context)
-            self.assertIn("task", context)
+            self.assertIn("user_prompt", context)
             return "success"
         
         result = test_func()
@@ -259,7 +259,7 @@ class TestThreadSafety(unittest.TestCase):
             # Each thread should see its own context
             results[thread_id] = {
                 'agent': xray.agent.name if xray.agent else None,
-                'task': xray.task
+                'task': xray.user_prompt
             }
         
         def thread_work(thread_id: int):
@@ -335,7 +335,7 @@ class TestEdgeCases(unittest.TestCase):
         def test_func():
             # Should handle None values gracefully
             self.assertIsNone(xray.agent)
-            self.assertIsNone(xray.task)
+            self.assertIsNone(xray.user_prompt)
             # When None is stored in context, get() returns None, not the default
             self.assertIsNone(xray.messages)
             self.assertIsNone(xray.iteration)

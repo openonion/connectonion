@@ -155,7 +155,7 @@ Communication Style: Professional yet friendly, using technical terms when appro
 )
 
 # Use the agent
-response = agent.run("Hello!")
+response = agent.input("Hello!")
 print(response)`
     }
     
@@ -169,7 +169,7 @@ agent = Agent(
 )
 
 # Use the agent
-response = agent.run("Hello!")
+response = agent.input("Hello!")
 print(response)`
   }
 

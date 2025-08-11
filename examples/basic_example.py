@@ -63,27 +63,27 @@ def main():
     
     # Example 1: Simple task without tools
     print("\n1. Simple greeting:")
-    result = agent.run("Say hello and introduce yourself briefly")
+    result = agent.input("Say hello and introduce yourself briefly")
     print(f"Result: {result}")
     
     # Example 2: Math calculation using calculate function
     print("\n2. Math calculation:")
-    result = agent.run("What is 25 * 4 + 10?")
+    result = agent.input("What is 25 * 4 + 10?")
     print(f"Result: {result}")
     
     # Example 3: Getting current time
     print("\n3. Current time:")
-    result = agent.run("What time is it right now?")
+    result = agent.input("What time is it right now?")
     print(f"Result: {result}")
     
     # Example 4: Search simulation
     print("\n4. Search example:")
-    result = agent.run("Search for Python programming tutorials")
+    result = agent.input("Search for Python programming tutorials")
     print(f"Result: {result}")
     
     # Example 5: Complex task with multiple tool calls
     print("\n5. Complex task with multiple tools:")
-    result = agent.run("Calculate the sum of 123 + 456, then multiply by 2, search for 'AI agents', and tell me what time you did this")
+    result = agent.input("Calculate the sum of 123 + 456, then multiply by 2, search for 'AI agents', and tell me what time you did this")
     print(f"Result: {result}")
     
     # Example 6: File operations
@@ -91,7 +91,7 @@ def main():
     print("\n6. File writing:")
     
     # Write a file
-    result = agent.run(f"Write 'Hello from ConnectOnion!\\nThis is a test file with the current time.' to {test_file}")
+    result = agent.input(f"Write 'Hello from ConnectOnion!\\nThis is a test file with the current time.' to {test_file}")
     print(f"Write result: {result}")
     
     # Clean up test file
@@ -110,7 +110,7 @@ def main():
     # Add the new tool
     agent.add_tool(random_number)
     
-    result = agent.run("Generate a random number between 1 and 50")
+    result = agent.input("Generate a random number between 1 and 50")
     print(f"Result: {result}")
     
     # Show behavior summary

@@ -53,7 +53,7 @@ agent = Agent(
 )
 
 # Use the agent
-response = agent.run("What is 42 * 17 + 25?")
+response = agent.input("What is 42 * 17 + 25?")
 print(response)
 \`\`\`
 
@@ -76,7 +76,7 @@ agent = Agent(
     tools=[calculate]
 )
 
-response = agent.run("How do I calculate 15% of 240?")
+response = agent.input("How do I calculate 15% of 240?")
 print(response)
 \`\`\`
 
@@ -140,7 +140,7 @@ agent = Agent(
 )
 
 # Test multiple capabilities
-response = agent.run("Roll 3 six-sided dice, then calculate the sum times 2, and tell me the current time")
+response = agent.input("Roll 3 six-sided dice, then calculate the sum times 2, and tell me the current time")
 print(response)
 \`\`\`
 
@@ -185,7 +185,7 @@ def calculate(expression: str) -> str:
         return f"Error: {str(e)}"
 
 agent = Agent("debug_calc", tools=[calculate])
-response = agent.run("What's 50 + 30?")
+response = agent.input("What's 50 + 30?")
 \`\`\`
 
 **Output:**
@@ -284,7 +284,7 @@ def test_agent():
     ]
     
     for question, expected in test_cases:
-        response = agent.run(question)
+        response = agent.input(question)
         print(f"Q: {question}")
         print(f"A: {response}")
         print("---")
@@ -392,7 +392,7 @@ agent = Agent(
 )
 
 # Use the agent
-response = agent.run("What is 42 * 17 + 25?")
+response = agent.input("What is 42 * 17 + 25?")
 print(response)`, 'first-agent')}
               className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
             >
@@ -438,7 +438,7 @@ agent = Agent(
 )
 
 # Use the agent
-response = agent.run("What is 42 * 17 + 25?")
+response = agent.input("What is 42 * 17 + 25?")
 print(response)`}
             </SyntaxHighlighter>
           </div>
@@ -480,7 +480,7 @@ print(response)`}
     tools=[calculate]
 )
 
-response = agent.run("How do I calculate 15% of 240?")
+response = agent.input("How do I calculate 15% of 240?")
 print(response)`, 'system-prompt')}
               className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
             >
@@ -513,7 +513,7 @@ print(response)`, 'system-prompt')}
     tools=[calculate]
 )
 
-response = agent.run("How do I calculate 15% of 240?")
+response = agent.input("How do I calculate 15% of 240?")
 print(response)`}
             </SyntaxHighlighter>
           </div>
@@ -571,7 +571,7 @@ def calculate(expression: str) -> str:
         return f"Error: {str(e)}"
 
 agent = Agent("debug_calc", tools=[calculate])
-response = agent.run("What's 50 + 30?")`, 'xray-debug')}
+response = agent.input("What's 50 + 30?")`, 'xray-debug')}
               className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
             >
               {copiedId === 'xray-debug' ? (
@@ -615,7 +615,7 @@ def calculate(expression: str) -> str:
         return f"Error: {str(e)}"
 
 agent = Agent("debug_calc", tools=[calculate])
-response = agent.run("What's 50 + 30?")`}
+response = agent.input("What's 50 + 30?")`}
             </SyntaxHighlighter>
           </div>
         </div>
