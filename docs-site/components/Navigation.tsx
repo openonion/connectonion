@@ -50,6 +50,9 @@ export default function Navigation() {
             <NavLink href="https://pypi.org/project/connectonion/" icon={<ExternalLink className="w-4 h-4" />} external>
               PyPI
             </NavLink>
+            <NavLink href="https://discord.gg/4xfD9k8AUF" icon={<ExternalLink className="w-4 h-4" />} external>
+              Discord
+            </NavLink>
             
             {/* CTA Button */}
             <motion.div
@@ -94,6 +97,9 @@ export default function Navigation() {
                 </MobileNavLink>
                 <MobileNavLink href="https://pypi.org/project/connectonion/" onClick={() => setIsOpen(false)} external>
                   PyPI
+                </MobileNavLink>
+                <MobileNavLink href="https://discord.gg/4xfD9k8AUF" onClick={() => setIsOpen(false)} external>
+                  Discord
                 </MobileNavLink>
                 <div className="pt-4 border-t border-gray-800">
                   <button className="w-full btn-gradient text-white font-medium py-3 rounded-full">

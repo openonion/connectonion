@@ -1,17 +1,24 @@
 'use client'
 
-import { ShieldAlert, AlertTriangle, Link as LinkIcon, Zap, Scale, Layers, CheckCircle2, Shield, Database, DollarSign, Users, Bug, Gauge, IdCard, PackageSearch, Eye, PlugZap, ArrowRight } from 'lucide-react'
+import { useState } from 'react'
+import { ShieldAlert, AlertTriangle, Link as LinkIcon, Zap, Scale, Layers, CheckCircle2, Shield, Database, DollarSign, Users, Bug, Gauge, IdCard, PackageSearch, Eye, PlugZap, ArrowRight, Filter } from 'lucide-react'
 
 // Simple section wrapper (kept for readability only)
 
 function Section({ id, title, children, icon }: { id: string; title: string; children: React.ReactNode; icon?: React.ReactNode }) {
   return (
-    <section id={id} className="mb-12">
+    <section id={id} className="mb-12 scroll-mt-20">
       <div className="flex items-center gap-2 mb-4">
         {icon}
         <h2 className="text-xl font-semibold text-white group flex items-center gap-2">
           {title}
-          <a href={`#${id}`} className="opacity-0 group-hover:opacity-100 text-sm text-purple-300">#</a>
+          <a 
+            href={`#${id}`} 
+            className="text-sm text-purple-400 opacity-30 group-hover:opacity-100 group-focus-within:opacity-100 focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1"
+            aria-label={`Link to ${title} section`}
+          >
+            #
+          </a>
         </h2>
       </div>
       {children}
@@ -20,6 +27,17 @@ function Section({ id, title, children, icon }: { id: string; title: string; chi
 }
 
 export default function ThreatModelPage() {
+  const [filter, setFilter] = useState<'all' | 'H+H' | 'H+M' | 'L+H' | 'P'>('all')
+  const [expandedThreats, setExpandedThreats] = useState<string[]>(['threat-1', 'threat-2', 'threat-3'])
+  
+  const toggleThreat = (id: string) => {
+    setExpandedThreats(prev => 
+      prev.includes(id) 
+        ? prev.filter(t => t !== id)
+        : [...prev, id]
+    )
+  }
+
   return (
     <div className="max-w-3xl mx-auto px-6 py-10 lg:py-12 leading-7">
       {/* Hero */}
@@ -39,26 +57,94 @@ export default function ThreatModelPage() {
         </div>
         <p className="text-gray-300 max-w-2xl">Practical risks and copy‑paste playbooks. No clicks, just read and apply.</p>
       </div>
-      <div className="mt-4 flex gap-2 text-[10px] text-gray-300">
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-rose-900/30 border-rose-700 text-rose-300">H+H</span>
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-amber-900/30 border-amber-700 text-amber-300">H+M</span>
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-cyan-900/30 border-cyan-700 text-cyan-300">L+H</span>
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-purple-900/30 border-purple-700 text-purple-300">P</span>
+      <div className="mt-4 flex flex-wrap gap-2">
+        <span className="inline-flex items-center px-3 py-1.5 rounded-md bg-rose-900/40 border border-rose-600 text-rose-200 font-medium text-xs min-h-[44px]">High Risk (H+H)</span>
+        <span className="inline-flex items-center px-3 py-1.5 rounded-md bg-amber-900/40 border border-amber-600 text-amber-200 font-medium text-xs min-h-[44px]">Medium Risk (H+M)</span>
+        <span className="inline-flex items-center px-3 py-1.5 rounded-md bg-cyan-900/40 border border-cyan-600 text-cyan-200 font-medium text-xs min-h-[44px]">Low-High (L+H)</span>
+        <span className="inline-flex items-center px-3 py-1.5 rounded-md bg-purple-900/40 border border-purple-600 text-purple-200 font-medium text-xs min-h-[44px]">Persistent (P)</span>
       </div>
 
-      {/* Severity Matrix moved below as a simple reference */}
+      {/* Severity Guide and Filters */}
+      <Section id="severity-guide" title="Threat Severity Guide" icon={<Scale className="w-4 h-4 text-purple-300" />}>
+        <div className="mb-6 p-4 rounded-lg bg-gray-800/40 border border-gray-700">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <div className="text-center">
+              <div className="text-xs font-bold text-rose-400 mb-1">CRITICAL (H+H)</div>
+              <div className="text-[11px] text-gray-400">Immediate action</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs font-bold text-amber-400 mb-1">HIGH (H+M)</div>
+              <div className="text-[11px] text-gray-400">Priority fix</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs font-bold text-cyan-400 mb-1">MONITOR (L+H)</div>
+              <div className="text-[11px] text-gray-400">Plan defense</div>
+            </div>
+            <div className="text-center">
+              <div className="text-xs font-bold text-purple-400 mb-1">PERSISTENT (P)</div>
+              <div className="text-[11px] text-gray-400">Continuous guard</div>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <button 
+              onClick={() => setFilter('all')} 
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                filter === 'all' ? 'bg-gray-600 text-white' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+            >
+              <Filter className="w-3 h-3 inline mr-1" />
+              All Threats (10)
+            </button>
+            <button 
+              onClick={() => setFilter('H+H')} 
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                filter === 'H+H' ? 'bg-rose-900/50 text-rose-200 border border-rose-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+            >
+              Critical (3)
+            </button>
+            <button 
+              onClick={() => setFilter('H+M')} 
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                filter === 'H+M' ? 'bg-amber-900/50 text-amber-200 border border-amber-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+            >
+              High (3)
+            </button>
+            <button 
+              onClick={() => setFilter('L+H')} 
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                filter === 'L+H' ? 'bg-cyan-900/50 text-cyan-200 border border-cyan-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+            >
+              Monitor (3)
+            </button>
+            <button 
+              onClick={() => setFilter('P')} 
+              className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
+                filter === 'P' ? 'bg-purple-900/50 text-purple-200 border border-purple-600' : 'bg-gray-700 hover:bg-gray-600 text-gray-300'
+              }`}
+            >
+              Persistent (1)
+            </button>
+          </div>
+        </div>
+      </Section>
 
       {/* Top 10 Threats */}
       <Section id="top-10" title="Top 10 Threats" icon={<AlertTriangle className="w-4 h-4 text-amber-300" />}> 
-        <div className="space-y-6">
+        <div className="space-y-6 lg:grid lg:grid-cols-2 lg:gap-6 lg:space-y-0">
           {/* 1 Capability Fraud */}
-          <div id="threat-1" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-rose-600 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-rose-900/30 border-rose-700 text-rose-300 text-[10px]">H+H</span><Shield className="w-4 h-4 text-rose-300"/><div className="text-white font-semibold">1) Capability Fraud</div></div>
+          <div id="threat-1" className={`relative rounded-lg overflow-hidden border-l-4 border-rose-500 bg-gradient-to-r from-rose-950/30 to-transparent ring-1 ring-rose-900/50 ${filter !== 'all' && filter !== 'H+H' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">Critical Priority</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-rose-900/50 border border-rose-600 text-rose-200 text-xs font-medium">H+H</span><Shield className="w-4 h-4 text-rose-300"/><div className="text-white font-semibold">1) Capability Fraud</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">Claims are easy. Proof is hard. Always demo first.</p>
                     <div className="mt-3 w-full h-32 flex items-center justify-center gap-8 text-rose-400 bg-rose-500/5 rounded-md px-4 py-3">
                       <div className="flex flex-col items-center gap-2">
@@ -78,7 +164,7 @@ export default function ThreatModelPage() {
                         <div className="text-xs text-gray-300">Test</div>
                       </div>
                     </div>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Test before trust (tiny set)</li>
                       <li>Spot‑check weekly; pin</li>
@@ -88,13 +174,16 @@ export default function ThreatModelPage() {
           </div>
 
           {/* 2 Data Harvesting */}
-          <div id="threat-2" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-rose-600 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-rose-900/30 border-rose-700 text-rose-300 text-[10px]">H+H</span><Database className="w-4 h-4 text-rose-300"/><div className="text-white font-semibold">2) Data Harvesting</div></div>
+          <div id="threat-2" className={`relative rounded-lg overflow-hidden border-l-4 border-rose-500 bg-gradient-to-r from-rose-950/30 to-transparent ring-1 ring-rose-900/50 ${filter !== 'all' && filter !== 'H+H' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">Critical Priority</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-rose-900/50 border border-rose-600 text-rose-200 text-xs font-medium">H+H</span><Database className="w-4 h-4 text-rose-300"/><div className="text-white font-semibold">2) Data Harvesting</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">“Free” often means "we store it". Assume logging.</p>
                     <div className="mt-3 w-full h-32 flex items-center justify-center gap-8 text-rose-400 bg-rose-500/5 rounded-md px-4 py-3">
                       <div className="flex flex-col items-center gap-2">
@@ -114,7 +203,7 @@ export default function ThreatModelPage() {
                         <div className="text-xs text-gray-300">Logs</div>
                       </div>
                     </div>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Default privacy: no_log</li>
                       <li>Minimize payloads</li>
@@ -124,13 +213,16 @@ export default function ThreatModelPage() {
           </div>
 
           {/* 3 Cost Manipulation */}
-          <div id="threat-3" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-rose-600 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-rose-900/30 border-rose-700 text-rose-300 text-[10px]">H+H</span><DollarSign className="w-4 h-4 text-rose-300"/><div className="text-white font-semibold">3) Cost Manipulation</div></div>
+          <div id="threat-3" className={`relative rounded-lg overflow-hidden border-l-4 border-rose-500 bg-gradient-to-r from-rose-950/30 to-transparent ring-1 ring-rose-900/50 ${filter !== 'all' && filter !== 'H+H' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-rose-400 uppercase tracking-wider">Critical Priority</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-rose-900/50 border border-rose-600 text-rose-200 text-xs font-medium">H+H</span><DollarSign className="w-4 h-4 text-rose-300"/><div className="text-white font-semibold">3) Cost Manipulation</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">Loops, huge inputs, pricey APIs → big bill.</p>
                     <div className="mt-3 w-full h-32 flex items-center justify-center gap-8 text-rose-400">
                       <div className="flex flex-col items-center gap-2">
@@ -152,7 +244,7 @@ export default function ThreatModelPage() {
                         <div className="text-xs">Cost</div>
                       </div>
                     </div>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Timeouts & input caps</li>
                       <li>Track cost per call</li>
@@ -162,13 +254,16 @@ export default function ThreatModelPage() {
           </div>
 
           {/* 4 Collusion Attacks */}
-          <div id="threat-4" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-cyan-500 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-cyan-900/30 border-cyan-700 text-cyan-300 text-[10px]">L+H</span><Users className="w-4 h-4 text-cyan-300"/><div className="text-white font-semibold">4) Collusion Attacks</div></div>
+          <div id="threat-4" className={`relative rounded-lg overflow-hidden border-l-4 border-cyan-500 bg-gradient-to-r from-cyan-950/20 to-transparent ring-1 ring-cyan-900/40 ${filter !== 'all' && filter !== 'L+H' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Monitor</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cyan-900/40 border border-cyan-600 text-cyan-200 text-xs font-medium">L+H</span><Users className="w-4 h-4 text-cyan-300"/><div className="text-white font-semibold">4) Collusion Attacks</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">Group of agents praise each other to fake trust.</p>
                     <div className="mt-3 w-full h-32 flex items-center justify-center gap-6 text-cyan-400 bg-cyan-500/5 rounded-md px-4 py-3">
                       <div className="flex flex-col items-center gap-2">
@@ -190,7 +285,7 @@ export default function ThreatModelPage() {
                         <div className="text-xs text-gray-300">Target</div>
                       </div>
                     </div>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Independent verification</li>
                       <li>Diversity of sources</li>
@@ -200,15 +295,19 @@ export default function ThreatModelPage() {
           </div>
 
           {/* 5 Prompt Poisoning */}
-          <div id="threat-5" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-amber-500 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-amber-900/30 border-amber-700 text-amber-300 text-[10px]">H+M</span><Bug className="w-4 h-4 text-amber-300"/><div className="text-white font-semibold">5) Prompt Poisoning</div></div>
+          <div id="threat-5" className={`relative rounded-lg overflow-hidden border-l-4 border-amber-500 bg-gradient-to-r from-amber-950/20 to-transparent ring-1 ring-amber-900/40 ${filter !== 'all' && filter !== 'H+M' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">High Priority</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-amber-900/40 border border-amber-600 text-amber-200 text-xs font-medium">H+M</span><Bug className="w-4 h-4 text-amber-300"/><div className="text-white font-semibold">5) Prompt Poisoning</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">Hidden instructions in input change behavior.</p>
-                    <svg aria-hidden className="mt-3 w-full h-28 text-amber-400/90" viewBox="0 0 360 80">
+                    <div className="w-full overflow-x-auto">
+                      <svg aria-hidden className="mt-3 w-full min-w-[360px] h-28 text-amber-400/90" viewBox="0 0 360 80" preserveAspectRatio="xMidYMid meet">
                       <g fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                         <path d="M24 28 h24 v24 h-24 z M24 28 l6 -6"/>
                         <circle cx="140" cy="40" r="16"/>
@@ -226,8 +325,9 @@ export default function ThreatModelPage() {
                         <text x="140" y="66">Agent</text>
                         <text x="274" y="66">Filter</text>
                       </g>
-                    </svg>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                      </svg>
+                    </div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Sanitize inputs</li>
                       <li>Reset context</li>
@@ -237,13 +337,16 @@ export default function ThreatModelPage() {
           </div>
 
           {/* 6 Service Degradation */}
-          <div id="threat-6" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-amber-500 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-amber-900/30 border-amber-700 text-amber-300 text-[10px]">H+M</span><Gauge className="w-4 h-4 text-amber-300"/><div className="text-white font-semibold">6) Service Degradation</div></div>
+          <div id="threat-6" className={`relative rounded-lg overflow-hidden border-l-4 border-amber-500 bg-gradient-to-r from-amber-950/20 to-transparent ring-1 ring-amber-900/40 ${filter !== 'all' && filter !== 'H+M' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">High Priority</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-amber-900/40 border border-amber-600 text-amber-200 text-xs font-medium">H+M</span><Gauge className="w-4 h-4 text-amber-300"/><div className="text-white font-semibold">6) Service Degradation</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">Starts great. Degrades after lock‑in.</p>
                     <svg aria-hidden className="mt-3 w-full h-24 text-amber-400/80" viewBox="0 0 360 80">
                       <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -262,8 +365,9 @@ export default function ThreatModelPage() {
                         <text x="158" y="64">Service</text>
                         <text x="286" y="64">Degrade</text>
                       </g>
-                    </svg>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                      </svg>
+                    </div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Periodic re‑tests</li>
                       <li>Graceful fallback</li>
@@ -273,13 +377,16 @@ export default function ThreatModelPage() {
           </div>
 
           {/* 7 Identity Theft */}
-          <div id="threat-7" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-amber-500 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-amber-900/30 border-amber-700 text-amber-300 text-[10px]">H+M</span><IdCard className="w-4 h-4 text-amber-300"/><div className="text-white font-semibold">7) Identity Theft</div></div>
+          <div id="threat-7" className={`relative rounded-lg overflow-hidden border-l-4 border-amber-500 bg-gradient-to-r from-amber-950/20 to-transparent ring-1 ring-amber-900/40 ${filter !== 'all' && filter !== 'H+M' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-amber-400 uppercase tracking-wider">High Priority</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-amber-900/40 border border-amber-600 text-amber-200 text-xs font-medium">H+M</span><IdCard className="w-4 h-4 text-amber-300"/><div className="text-white font-semibold">7) Identity Theft</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">Fake the brand; mimic behavior.</p>
                     <svg aria-hidden className="mt-3 w-full h-24 text-amber-400/80" viewBox="0 0 360 80">
                       <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -300,24 +407,27 @@ export default function ThreatModelPage() {
                         <text x="211" y="66">Brand</text>
                         <text x="320" y="66">User</text>
                       </g>
-                    </svg>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                      </svg>
+                    </div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Pin source (hash/sign)</li>
                       <li>Show provenance</li>
                     </ul>
                    </div>
             </div>
-          </div>
 
           {/* 8 Supply Chain Poisoning */}
-          <div id="threat-8" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-cyan-500 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-cyan-900/30 border-cyan-700 text-cyan-300 text-[10px]">L+H</span><PackageSearch className="w-4 h-4 text-cyan-300"/><div className="text-white font-semibold">8) Supply Chain Poisoning</div></div>
+          <div id="threat-8" className={`relative rounded-lg overflow-hidden border-l-4 border-cyan-500 bg-gradient-to-r from-cyan-950/20 to-transparent ring-1 ring-cyan-900/40 ${filter !== 'all' && filter !== 'L+H' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Monitor</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cyan-900/40 border border-cyan-600 text-cyan-200 text-xs font-medium">L+H</span><PackageSearch className="w-4 h-4 text-cyan-300"/><div className="text-white font-semibold">8) Supply Chain Poisoning</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">Poison upstream → break everyone downstream.</p>
                     <div className="mt-3 w-full h-32 flex items-center justify-center gap-8 text-cyan-400">
                       <div className="flex flex-col items-center gap-2">
@@ -337,7 +447,7 @@ export default function ThreatModelPage() {
                         <div className="text-xs">Downstream</div>
                       </div>
                     </div>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Lock deps & checksums</li>
                       <li>Vendor scan (SBOM)</li>
@@ -347,13 +457,16 @@ export default function ThreatModelPage() {
           </div>
 
           {/* 9 Privacy Inference */}
-          <div id="threat-9" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-purple-500 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-purple-900/30 border-purple-700 text-purple-300 text-[10px]">P</span><Eye className="w-4 h-4 text-purple-300"/><div className="text-white font-semibold">9) Privacy Inference</div></div>
+          <div id="threat-9" className={`relative rounded-lg overflow-hidden border-l-4 border-purple-500 bg-gradient-to-r from-purple-950/20 to-transparent ring-1 ring-purple-900/40 ${filter !== 'all' && filter !== 'P' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-purple-400 uppercase tracking-wider">Continuous</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-purple-900/40 border border-purple-600 text-purple-200 text-xs font-medium">P</span><Eye className="w-4 h-4 text-purple-300"/><div className="text-white font-semibold">9) Privacy Inference</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">Small harmless queries → big private picture.</p>
                     <svg aria-hidden className="mt-3 w-full h-32 text-purple-400/90" viewBox="0 0 360 80">
                       <g fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
@@ -370,24 +483,27 @@ export default function ThreatModelPage() {
                         <text x="220" y="64">Aggregate</text>
                         <text x="288" y="64">Profile</text>
                       </g>
-                    </svg>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                      </svg>
+                    </div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Rate‑limit sensitive</li>
                       <li>Aggregate logs</li>
                     </ul>
                    </div>
             </div>
-          </div>
 
           {/* 10 Dependency Hijacking */}
-          <div id="threat-10" className="relative rounded-lg border border-gray-800 bg-gray-900/60 overflow-hidden">
-            <div className="w-full flex items-center justify-between px-4 py-3 text-left border-l-4 border-cyan-500 bg-gray-900/80">
-              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2 py-0.5 rounded-md border bg-cyan-900/30 border-cyan-700 text-cyan-300 text-[10px]">L+H</span><PlugZap className="w-4 h-4 text-cyan-300"/><div className="text-white font-semibold">10) Dependency Hijacking</div></div>
+          <div id="threat-10" className={`relative rounded-lg overflow-hidden border-l-4 border-cyan-500 bg-gradient-to-r from-cyan-950/20 to-transparent ring-1 ring-cyan-900/40 ${filter !== 'all' && filter !== 'L+H' ? 'hidden' : ''}`}>
+            <div className="absolute top-2 right-2">
+              <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider">Monitor</span>
+            </div>
+            <div className="w-full flex items-center justify-between px-4 py-3 text-left bg-gray-900/60">
+              <div className="flex items-center gap-3"><span className="inline-flex items-center px-2.5 py-1 rounded-md bg-cyan-900/40 border border-cyan-600 text-cyan-200 text-xs font-medium">L+H</span><PlugZap className="w-4 h-4 text-cyan-300"/><div className="text-white font-semibold">10) Dependency Hijacking</div></div>
             </div>
             <div className="px-5 pb-5 grid md:grid-cols-1 gap-6">
                   <div>
-                    <div className="text-[10px] inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 px-2 py-0.5 rounded-full">IDEA</div>
+                    <div className="text-xs inline-flex items-center gap-1 bg-gray-800/70 text-gray-100 px-2.5 py-1 rounded-full font-medium">💡 IDEA</div>
                     <p className="text-gray-200 text-sm mt-1 bg-gray-800/60 border border-gray-700 rounded p-3">Cheap at first. Price hike when you depend on it.</p>
                     <svg aria-hidden className="mt-3 w-full h-24 text-cyan-400/80" viewBox="0 0 360 80">
                       <g fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -405,15 +521,14 @@ export default function ThreatModelPage() {
                         <text x="157" y="66">Registry</text>
                         <text x="270" y="66">Price</text>
                       </g>
-                    </svg>
-                     <div className="mt-3 inline-flex items-center gap-1 bg-gray-800/70 text-gray-300 text-[10px] px-2 py-0.5 rounded-full"><CheckCircle2 className="w-3.5 h-3.5 text-green-400"/> Playbook</div>
+                      </svg>
+                    </div>
+                     <div className="mt-3 inline-flex items-center gap-1.5 bg-gray-800/70 text-gray-100 text-xs px-2.5 py-1 rounded-full font-medium"><CheckCircle2 className="w-4 h-4 text-green-400"/> Playbook</div>
                     <ul className="text-gray-300 text-sm list-disc list-inside space-y-1 mt-1">
                       <li>Pin versions; export</li>
                       <li>Exit plan</li>
                     </ul>
-                   </div>
             </div>
-          </div>
         </div>
       </Section>
 
@@ -426,34 +541,34 @@ export default function ThreatModelPage() {
             <div className="text-white font-semibold text-xs mb-1">High Probability + High Impact</div>
             <div className="text-gray-400 text-[11px] mb-2 tracking-wide">Prioritize now</div>
             <ul className="text-gray-300 text-xs space-y-1">
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-rose-400/90" /><a className="hover:text-white" href="#threat-1">1) Capability Fraud</a></li>
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-rose-400/90" /><a className="hover:text-white" href="#threat-2">2) Data Harvesting</a></li>
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-rose-400/90" /><a className="hover:text-white" href="#threat-3">3) Cost Manipulation</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-rose-400/90" /><a className="hover:text-white underline decoration-rose-400/30 hover:decoration-rose-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-1">1) Capability Fraud</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-rose-400/90" /><a className="hover:text-white underline decoration-rose-400/30 hover:decoration-rose-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-2">2) Data Harvesting</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-rose-400/90" /><a className="hover:text-white underline decoration-rose-400/30 hover:decoration-rose-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-3">3) Cost Manipulation</a></li>
             </ul>
           </div>
           <div className="rounded-lg border border-gray-800/80 bg-gray-900/40 hover:bg-gray-900/60 transition-colors p-3">
             <div className="text-white font-semibold text-xs mb-1">High Probability + Medium Impact</div>
             <div className="text-gray-400 text-[11px] mb-2 tracking-wide">Mitigate early</div>
             <ul className="text-gray-300 text-xs space-y-1">
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-400/90" /><a className="hover:text-white" href="#threat-5">5) Prompt Poisoning</a></li>
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-400/90" /><a className="hover:text-white" href="#threat-6">6) Service Degradation</a></li>
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-400/90" /><a className="hover:text-white" href="#threat-7">7) Identity Theft</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-400/90" /><a className="hover:text-white underline decoration-amber-400/30 hover:decoration-amber-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-5">5) Prompt Poisoning</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-400/90" /><a className="hover:text-white underline decoration-amber-400/30 hover:decoration-amber-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-6">6) Service Degradation</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-amber-400/90" /><a className="hover:text-white underline decoration-amber-400/30 hover:decoration-amber-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-7">7) Identity Theft</a></li>
             </ul>
           </div>
           <div className="rounded-lg border border-gray-800/80 bg-gray-900/40 hover:bg-gray-900/60 transition-colors p-3">
             <div className="text-white font-semibold text-xs mb-1">Low Probability + High Impact</div>
             <div className="text-gray-400 text-[11px] mb-2 tracking-wide">Plan containment</div>
             <ul className="text-gray-300 text-xs space-y-1">
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-cyan-400/90" /><a className="hover:text-white" href="#threat-4">4) Collusion Attacks</a></li>
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-cyan-400/90" /><a className="hover:text-white" href="#threat-8">8) Supply Chain Poisoning</a></li>
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-cyan-400/90" /><a className="hover:text-white" href="#threat-10">10) Dependency Hijacking</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-cyan-400/90" /><a className="hover:text-white underline decoration-cyan-400/30 hover:decoration-cyan-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-4">4) Collusion Attacks</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-cyan-400/90" /><a className="hover:text-white underline decoration-cyan-400/30 hover:decoration-cyan-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-8">8) Supply Chain Poisoning</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-cyan-400/90" /><a className="hover:text-white underline decoration-cyan-400/30 hover:decoration-cyan-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-10">10) Dependency Hijacking</a></li>
             </ul>
           </div>
           <div className="rounded-lg border border-gray-800/80 bg-gray-900/40 hover:bg-gray-900/60 transition-colors p-3">
             <div className="text-white font-semibold text-xs mb-1">Persistent Threat</div>
             <div className="text-gray-400 text-[11px] mb-2 tracking-wide">Continuous guard</div>
             <ul className="text-gray-300 text-xs space-y-1">
-              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-purple-400/90" /><a className="hover:text-white" href="#threat-9">9) Privacy Inference</a></li>
+              <li className="flex items-center gap-2"><span className="w-1.5 h-1.5 rounded-full bg-purple-400/90" /><a className="hover:text-white underline decoration-purple-400/30 hover:decoration-purple-400 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900 rounded px-1" href="#threat-9">9) Privacy Inference</a></li>
             </ul>
           </div>
         </div>

@@ -6,6 +6,7 @@ import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { WaitlistSignup } from '../components/WaitlistSignup'
 
 export default function HomePage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -49,7 +50,12 @@ export default function HomePage() {
       {/* Docs Header */}
       <header className="mb-16">
         <div className="text-center max-w-4xl mx-auto">
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-6">ConnectOnion</h1>
+          <div className="flex items-center justify-center gap-3 mb-4">
+            <h1 className="text-4xl md:text-6xl font-bold text-white">ConnectOnion</h1>
+            <span className="px-3 py-1 bg-purple-600/20 text-purple-400 text-sm font-semibold rounded-full border border-purple-500/30">
+              v0.0.1b3
+            </span>
+          </div>
           <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto">
             The simplest way to build AI agents with Python functions
           </p>
@@ -72,6 +78,15 @@ export default function HomePage() {
             >
               <Github className="w-5 h-5" />
               View on GitHub
+            </a>
+            
+            <a
+              href="https://discord.gg/4xfD9k8AUF"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors border border-indigo-500 flex items-center gap-2"
+            >
+              💬 Join Discord
             </a>
           </div>
           
@@ -309,6 +324,11 @@ agent = Agent(
         </div>
       </section>
 
+      {/* Waitlist Signup */}
+      <section className="mb-16">
+        <WaitlistSignup />
+      </section>
+
       {/* Next Steps */}
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-6">Next Steps</h2>
@@ -332,6 +352,11 @@ agent = Agent(
           <a href="https://pypi.org/project/connectonion/" className="bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-orange-500/50 transition-colors">
             <h3 className="font-semibold text-white mb-2">📦 PyPI</h3>
             <p className="text-sm text-gray-400">Package releases</p>
+          </a>
+          
+          <a href="https://discord.gg/4xfD9k8AUF" className="bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-indigo-500/50 transition-colors">
+            <h3 className="font-semibold text-white mb-2">💬 Discord</h3>
+            <p className="text-sm text-gray-400">Join our community</p>
           </a>
         </div>
       </section>

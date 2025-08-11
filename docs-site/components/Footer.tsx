@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { Github, Twitter, Mail, Heart, ArrowUpRight, Zap } from 'lucide-react'
+import { Github, Twitter, Mail, Heart, ArrowUpRight, Zap, MessageCircle } from 'lucide-react'
 import { motion } from 'framer-motion'
 
 export default function Footer() {
@@ -27,6 +27,7 @@ export default function Footer() {
             <div className="flex items-center gap-3">
               {[
                 { icon: Github, href: 'https://github.com/connectonion', label: 'GitHub' },
+                { icon: MessageCircle, href: 'https://discord.gg/4xfD9k8AUF', label: 'Discord' },
                 { icon: Twitter, href: 'https://twitter.com/connectonion', label: 'Twitter' },
                 { icon: Mail, href: 'mailto:hello@connectonion.com', label: 'Email' }
               ].map(({ icon: Icon, href, label }) => (
@@ -54,7 +55,8 @@ export default function Footer() {
                 { name: 'Getting Started', href: '/' },
                 { name: 'System Prompts', href: '/prompts' },
                 { name: '@xray Debugging', href: '/xray' },
-                { name: 'GitHub', href: 'https://github.com/connectonion/connectonion' }
+                { name: 'GitHub', href: 'https://github.com/connectonion/connectonion' },
+                { name: 'Discord Community', href: 'https://discord.gg/4xfD9k8AUF' }
               ].map((item) => (
                 <li key={item.name}>
                   <Link 

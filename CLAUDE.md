@@ -135,3 +135,4 @@ Uses OpenAI's function calling with proper message formatting:
   - Gradually build up to more advanced scenarios
   - Ensure each step is clear, concise, and builds upon previous knowledge
 - pls remember the versiion should keep it under 0.0.1 to 0.0.9 when we don't have the features of agent to agent protocol, cause we are beta version
+- you can change to 0.0.2 until 0.0.1b10
