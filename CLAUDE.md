@@ -111,6 +111,8 @@ Uses OpenAI's function calling with proper message formatting:
 - **Doc Site Page Feature Design**:
   - For each feature of doc site page, we should according to content to design the page
   - All pages should have a button to copy all content in markdown format, so users can easily send to their AI platform
+- **Doc Website UI Considerations**:
+  - The doc website UI should always be one single column for user easy to read
 
 ## Collaboration Guidelines
 
