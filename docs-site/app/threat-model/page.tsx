@@ -129,7 +129,10 @@ function ThreatCard({
 
 export default function ThreatModelPage() {
   const [filter, setFilter] = useState<'all' | 'H+H' | 'H+M' | 'L+H' | 'P'>('all')
-  const [expandedThreats, setExpandedThreats] = useState<string[]>(['threat-1', 'threat-2', 'threat-3'])
+  const [expandedThreats, setExpandedThreats] = useState<string[]>([
+    'threat-1', 'threat-2', 'threat-3', 'threat-4', 'threat-5',
+    'threat-6', 'threat-7', 'threat-8', 'threat-9', 'threat-10'
+  ])
   
   const toggleThreat = (id: string) => {
     setExpandedThreats(prev => 
