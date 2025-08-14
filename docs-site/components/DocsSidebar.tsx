@@ -219,7 +219,7 @@ export function DocsSidebar() {
         {/* Quick Links */}
         <div className="flex gap-2">
           <a
-            href="https://github.com/connectonion/connectonion"
+            href="https://github.com/wu-changxing/connectonion"
             target="_blank"
             rel="noopener noreferrer"
             className="flex-1 text-center text-xs py-1.5 px-2 bg-gray-800 hover:bg-gray-700 rounded text-gray-300 hover:text-white transition-colors"

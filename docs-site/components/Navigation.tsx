@@ -44,7 +44,7 @@ export default function Navigation() {
             <NavLink href="/xray" icon={<Zap className="w-4 h-4" />}>
               @xray
             </NavLink>
-            <NavLink href="https://github.com/connectonion/connectonion" icon={<Github className="w-4 h-4" />} external>
+            <NavLink href="https://github.com/wu-changxing/connectonion" icon={<Github className="w-4 h-4" />} external>
               GitHub
             </NavLink>
             <NavLink href="https://pypi.org/project/connectonion/" icon={<ExternalLink className="w-4 h-4" />} external>
@@ -92,7 +92,7 @@ export default function Navigation() {
                 <MobileNavLink href="/xray" onClick={() => setIsOpen(false)}>
                   @xray
                 </MobileNavLink>
-                <MobileNavLink href="https://github.com/connectonion/connectonion" onClick={() => setIsOpen(false)} external>
+                <MobileNavLink href="https://github.com/wu-changxing/connectonion" onClick={() => setIsOpen(false)} external>
                   GitHub
                 </MobileNavLink>
                 <MobileNavLink href="https://pypi.org/project/connectonion/" onClick={() => setIsOpen(false)} external>

@@ -71,7 +71,7 @@ export default function HomePage() {
             </Link>
             
             <a
-              href="https://github.com/connectonion/connectonion"
+              href="https://github.com/wu-changxing/connectonion"
               target="_blank"
               rel="noopener noreferrer"
               className="px-8 py-4 bg-gray-800 hover:bg-gray-700 text-white font-semibold rounded-lg transition-colors border border-gray-600 flex items-center gap-2"
@@ -344,7 +344,7 @@ agent = Agent(
             <p className="text-sm text-gray-400">Debug with @xray decorator</p>
           </Link>
           
-          <a href="https://github.com/connectonion/connectonion" className="bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-green-500/50 transition-colors">
+          <a href="https://github.com/wu-changxing/connectonion" className="bg-gray-900 border border-gray-700 rounded-lg p-4 hover:border-green-500/50 transition-colors">
             <h3 className="font-semibold text-white mb-2">🐙 GitHub</h3>
             <p className="text-sm text-gray-400">Source code and issues</p>
           </a>

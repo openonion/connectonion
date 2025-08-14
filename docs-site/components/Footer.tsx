@@ -26,7 +26,7 @@ export default function Footer() {
             {/* Social Links */}
             <div className="flex items-center gap-3">
               {[
-                { icon: Github, href: 'https://github.com/connectonion', label: 'GitHub' },
+                { icon: Github, href: 'https://github.com/wu-changxing/connectonion', label: 'GitHub' },
                 { icon: MessageCircle, href: 'https://discord.gg/4xfD9k8AUF', label: 'Discord' },
                 { icon: Twitter, href: 'https://twitter.com/connectonion', label: 'Twitter' },
                 { icon: Mail, href: 'mailto:hello@connectonion.com', label: 'Email' }
@@ -55,7 +55,7 @@ export default function Footer() {
                 { name: 'Getting Started', href: '/' },
                 { name: 'System Prompts', href: '/prompts' },
                 { name: '@xray Debugging', href: '/xray' },
-                { name: 'GitHub', href: 'https://github.com/connectonion/connectonion' },
+                { name: 'GitHub', href: 'https://github.com/wu-changxing/connectonion' },
                 { name: 'Discord Community', href: 'https://discord.gg/4xfD9k8AUF' }
               ].map((item) => (
                 <li key={item.name}>
@@ -78,7 +78,7 @@ export default function Footer() {
             <h4 className="text-white font-bold text-lg">Resources</h4>
             <ul className="space-y-3">
               {[
-                { name: 'GitHub Repository', href: 'https://github.com/connectonion/connectonion' },
+                { name: 'GitHub Repository', href: 'https://github.com/wu-changxing/connectonion' },
                 { name: 'PyPI Package', href: 'https://pypi.org/project/connectonion/' },
                 { name: 'Python Documentation', href: 'https://docs.python.org/' },
                 { name: 'OpenAI API', href: 'https://openai.com/api/' }
