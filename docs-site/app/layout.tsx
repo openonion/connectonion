@@ -21,9 +21,9 @@ export const metadata: Metadata = {
   title: "ConnectOnion Documentation - Build AI Agents with Python Functions",
   description: "Complete documentation for ConnectOnion: The simplest way to create AI agents that can use tools and collaborate. No classes, no complexity.",
   icons: {
-    icon: 'https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/ConnectOnion.png',
-    shortcut: 'https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/ConnectOnion.png',
-    apple: 'https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/ConnectOnion.png',
+    icon: 'https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/Onion.png',
+    shortcut: 'https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/Onion.png',
+    apple: 'https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/Onion.png',
   },
 };
 
