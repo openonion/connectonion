@@ -112,11 +112,13 @@ def main():
         file management, and system operations. You are professional, thorough, and provide detailed 
         explanations when working with complex tasks. Always prioritize accuracy and safety in your operations.""",
         tools=[web_search, data_analyzer, json_processor, file_manager, system_info],
-        model="gpt-5-mini" 
+        model="gpt-5-mini",
+        max_iterations=20  # Higher limit for complex multi-tool workflows
     )
     
     print(f"🤖 Agent: {agent.name}")
     print(f"🛠️  Tools: {', '.join(agent.list_tools())}")
+    print(f"🔄 Max iterations: {agent.max_iterations} (allows complex multi-step workflows)")
     
     # Example 1: Complex search with parameters
     print("\n1️⃣ Advanced web search:")
@@ -161,6 +163,36 @@ def main():
     result = agent.input("Try to parse this invalid JSON: '{invalid json}'")
     print(f"Result: {result}")
     
+    # Example 8: Iteration control for different complexity levels
+    print("\n8️⃣ Iteration Control Examples:")
+    
+    # Simple agent with lower iteration limit
+    simple_agent = Agent(
+        name="simple_processor",
+        tools=[json_processor, system_info],
+        max_iterations=5  # Simpler tasks need fewer iterations
+    )
+    
+    result = simple_agent.input("Get basic system info")
+    print(f"Simple task result: {result}")
+    
+    # Ultra-complex task with increased iteration limit
+    ultra_complex_result = agent.input(
+        "Search for AI frameworks, analyze system environment, create a JSON report with all findings, and save it to a timestamped file",
+        max_iterations=30  # Override for this very complex task
+    )
+    print(f"Ultra-complex task result: {ultra_complex_result}")
+    
+    # Demonstrate hitting the iteration limit
+    limited_agent = Agent(
+        name="limited_bot",
+        tools=[web_search, data_analyzer, json_processor, file_manager],
+        max_iterations=3  # Very low limit to demonstrate the behavior
+    )
+    
+    result = limited_agent.input("Search for multiple topics, analyze each one, create JSON reports for all, and save to separate files")
+    print(f"Limited agent result: {result}")
+    
     # Clean up files
     for filename in ['demo.txt', 'summary.txt']:
         if os.path.exists(filename):
@@ -190,6 +222,11 @@ def main():
     
     print(f"\n💾 Full history saved to: {agent.history.history_file}")
     print("\n✨ Advanced features demonstrated successfully!")
+    print("\n💡 Key takeaways about iteration control:")
+    print("   - Default 10 iterations work for most tasks")
+    print("   - Increase max_iterations for complex multi-step workflows")
+    print("   - Use per-request override for occasional complex tasks")
+    print("   - Lower limits provide safety for simple automation")
 
 
 if __name__ == "__main__":

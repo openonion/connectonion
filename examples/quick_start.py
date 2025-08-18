@@ -45,6 +45,7 @@ def main():
         name="my_assistant",
         system_prompt="You are a friendly and helpful assistant. Be concise but warm in your responses.",
         tools=[search, calculate, get_time]
+        # max_iterations=10 (default) - agent can try up to 10 tool calls per task
     )
     
     print(f"✅ Agent created with tools: {agent.list_tools()}")
@@ -64,11 +65,32 @@ def main():
     result = agent.input("Search for AI news and tell me what time it is")
     print(f"\n3. Multiple tools: {result}")
     
+    # Example 4: Demonstrate iteration control
+    print("\n4️⃣ Iteration Control Examples:")
+    
+    # Create a simple agent with lower iteration limit
+    simple_agent = Agent(
+        name="calculator_bot",
+        tools=[calculate],
+        max_iterations=3  # Lower limit for simple tasks
+    )
+    
+    result = simple_agent.input("What is 15 * 8?")
+    print(f"   Simple calculation (max 3 iterations): {result}")
+    
+    # Complex task might need more iterations
+    complex_result = agent.input(
+        "Search for Python tutorials, calculate how many hours in a week, and tell me the current time",
+        max_iterations=15  # Override for this specific complex task
+    )
+    print(f"   Complex task (max 15 iterations): {complex_result}")
+    
     # Step 4: Check history (automatic!)
     print(f"\n📊 Completed {len(agent.history.records)} tasks")
     print(f"📂 History saved to: {agent.history.history_file}")
     
     print("\n✨ That's it! Just define functions and pass them to Agent!")
+    print("💡 Use max_iterations to control how many tool calls the agent can make.")
 
 
 if __name__ == "__main__":

@@ -25,10 +25,12 @@ class Agent:
         tools: Optional[List[Callable]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "gpt-5-mini"
+        model: str = "gpt-5-mini",
+        max_iterations: int = 10
     ):
         self.name = name
         self.system_prompt = load_system_prompt(system_prompt)
+        self.max_iterations = max_iterations
         
         # Process tools: convert raw functions to tool schemas automatically
         processed_tools = []
@@ -52,11 +54,12 @@ class Agent:
         # Create tool mapping for quick lookup
         self.tool_map = {tool.name: tool for tool in self.tools}
     
-    def input(self, prompt: str) -> str:
+    def input(self, prompt: str, max_iterations: Optional[int] = None) -> str:
         """Provide input to the agent and get response.
         
         Args:
             prompt: The input prompt or data to process
+            max_iterations: Override agent's max_iterations for this request
             
         Returns:
             The agent's response after processing the input
@@ -73,10 +76,10 @@ class Agent:
         # Track all tool calls for this input
         all_tool_calls = []  # Persisted in History for behavior tracking
         execution_history = []  # Used by xray.trace() with timing data
-        max_iterations = 10  # Prevent infinite loops
+        effective_max_iterations = max_iterations or self.max_iterations  # Use override or agent default
         iteration = 0
         
-        while iteration < max_iterations:
+        while iteration < effective_max_iterations:
             iteration += 1
             
             # Call LLM
@@ -213,8 +216,8 @@ class Agent:
                 all_tool_calls.append(tool_record)
         
         # If we hit max iterations, set appropriate result
-        if iteration >= max_iterations:
-            result = "Task incomplete: Maximum iterations reached."
+        if iteration >= effective_max_iterations:
+            result = f"Task incomplete: Maximum iterations ({effective_max_iterations}) reached."
         
         # Record behavior
         duration = time.time() - start_time

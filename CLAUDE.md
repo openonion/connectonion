@@ -138,3 +138,123 @@ Uses OpenAI's function calling with proper message formatting:
   - Ensure each step is clear, concise, and builds upon previous knowledge
 - pls remember the versiion should keep it under 0.0.1 to 0.0.9 when we don't have the features of agent to agent protocol, cause we are beta version
 - you can change to 0.0.2 until 0.0.1b10
+
+## Core Beliefs and Process Guidelines
+
+### Core Beliefs
+- Incremental progress over big bangs - Small changes that compile and pass tests
+- Learning from existing code - Study and plan before implementing
+- Pragmatic over dogmatic - Adapt to project reality
+- Clear intent over clever code - Be boring and obvious
+
+### Simplicity Means
+- Single responsibility per function/class
+- Avoid premature abstractions
+- No clever tricks - choose the boring solution
+- If you need to explain it, it's too complex
+
+### Process
+1. **Planning & Staging**
+   - Break complex work into 3-5 stages
+   - Document in IMPLEMENTATION_PLAN.md with clear goals, success criteria, and tests
+   - Update status as progress is made
+   - Remove file when all stages are complete
+
+2. **Implementation Flow**
+   - Understand - Study existing patterns in codebase
+   - Test - Write test first (red)
+   - Implement - Minimal code to pass (green)
+   - Refactor - Clean up with tests passing
+   - Commit - With clear message linking to plan
+
+3. **When Stuck (After 3 Attempts)**
+   - CRITICAL: Maximum 3 attempts per issue, then STOP
+   - Document failures:
+     * What was tried
+     * Specific error messages
+     * Hypothesized failure reasons
+   - Research alternatives:
+     * Find 2-3 similar implementations
+     * Note different approaches
+   - Question fundamentals:
+     * Is this the right abstraction level?
+     * Can this be split into smaller problems?
+     * Is there a simpler approach?
+   - Try different angles:
+     * Different library/framework feature?
+     * Different architectural pattern?
+     * Remove abstraction instead of adding?
+
+### Technical Standards
+#### Architecture Principles
+- Composition over inheritance - Use dependency injection
+- Interfaces over singletons - Enable testing and flexibility
+- Explicit over implicit - Clear data flow and dependencies
+- Test-driven when possible - Never disable tests, fix them
+
+#### Code Quality
+- Every commit must:
+  * Compile successfully
+  * Pass all existing tests
+  * Include tests for new functionality
+  * Follow project formatting/linting
+- Before committing:
+  * Run formatters/linters
+  * Self-review changes
+  * Ensure commit message explains "why"
+
+#### Error Handling
+- Fail fast with descriptive messages
+- Include context for debugging
+- Handle errors at appropriate level
+- Never silently swallow exceptions
+
+### Decision Framework
+When multiple valid approaches exist, choose based on:
+- Testability - Can I easily test this?
+- Readability - Will someone understand this in 6 months?
+- Consistency - Does this match project patterns?
+- Simplicity - Is this the simplest solution that works?
+- Reversibility - How hard to change later?
+
+### Project Integration
+#### Learning the Codebase
+- Find 3 similar features/components
+- Identify common patterns and conventions
+- Use same libraries/utilities when possible
+- Follow existing test patterns
+
+#### Tooling
+- Use project's existing build system
+- Use project's test framework
+- Use project's formatter/linter settings
+- Don't introduce new tools without strong justification
+
+### Quality Gates
+#### Definition of Done
+- Tests written and passing
+- Code follows project conventions
+- No linter/formatter warnings
+- Commit messages are clear
+- Implementation matches plan
+- No TODOs without issue numbers
+
+#### Test Guidelines
+- Test behavior, not implementation
+- One assertion per test when possible
+- Clear test names describing scenario
+- Use existing test utilities/helpers
+- Tests should be deterministic
+
+### Important Reminders
+#### NEVER
+- Use --no-verify to bypass commit hooks
+- Disable tests instead of fixing them
+- Commit code that doesn't compile
+- Make assumptions - verify with existing code
+
+#### ALWAYS
+- Commit working code incrementally
+- Update plan documentation as you go
+- Learn from existing implementations
+- Stop after 3 failed attempts and reassess

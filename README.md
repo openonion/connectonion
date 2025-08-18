@@ -42,6 +42,7 @@ agent = Agent(
     name="my_assistant",
     system_prompt="You are a helpful and friendly assistant.",
     tools=[search, calculate]
+    # max_iterations=10 is the default - agent will try up to 10 tool calls per task
 )
 
 # 3. Use the agent
@@ -271,6 +272,45 @@ agent = Agent(name="test", api_key="your-api-key-here")
 ```python
 agent = Agent(name="test", model="gpt-5")  # Default: gpt-5-mini
 ```
+
+### Iteration Control
+Control how many tool calling iterations an agent can perform:
+
+```python
+# Default: 10 iterations (good for most tasks)
+agent = Agent(name="assistant", tools=[...])
+
+# Complex tasks may need more iterations
+research_agent = Agent(
+    name="researcher", 
+    tools=[search, analyze, summarize, write_file],
+    max_iterations=25  # Allow more steps for complex workflows
+)
+
+# Simple agents can use fewer iterations for safety
+calculator = Agent(
+    name="calc", 
+    tools=[calculate],
+    max_iterations=5  # Prevent runaway calculations
+)
+
+# Per-request override for specific complex tasks
+result = agent.input(
+    "Analyze all project files and generate comprehensive report",
+    max_iterations=50  # Override for this specific task
+)
+```
+
+When an agent reaches its iteration limit, it returns:
+```
+"Task incomplete: Maximum iterations (10) reached."
+```
+
+**Choosing the Right Limit:**
+- **Simple tasks (1-3 tools)**: 5-10 iterations
+- **Standard workflows**: 10-15 iterations (default: 10)
+- **Complex analysis**: 20-30 iterations  
+- **Research/multi-step**: 30+ iterations
 
 ## 🛠️ Advanced Usage
 

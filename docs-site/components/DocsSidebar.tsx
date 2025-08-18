@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp } from 'lucide-react'
+import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, Gauge } from 'lucide-react'
 import { DifficultyBadge } from './DifficultyBadge'
 
 type NavItem = {
@@ -23,6 +23,12 @@ const navigation: NavigationSection[] = [
     items: [
       { title: 'Introduction', href: '/' },
       { title: 'Quick Start', href: '/quickstart' },
+    ]
+  },
+  {
+    title: 'Core Concepts',
+    items: [
+      { title: 'max_iterations', href: '/max-iterations', icon: Gauge },
     ]
   },
   {
@@ -63,7 +69,7 @@ const navigation: NavigationSection[] = [
 
 export function DocsSidebar() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'System Prompts', 'Agent Building'])
+  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'Core Concepts', 'System Prompts', 'Agent Building'])
   const [isClientMounted, setIsClientMounted] = useState(false)
   const pathname = usePathname()
 
