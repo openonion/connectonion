@@ -52,3 +52,19 @@ export async function copyAllDocsToClipboard(): Promise<boolean> {
     return false;
   }
 }
+
+/**
+ * Copies a composed message that includes the user's question and the full
+ * documentation, formatted for pasting into an LLM chat.
+ */
+export async function copyAllDocsWithQuestion(question: string): Promise<boolean> {
+  try {
+    const docs = await getAllDocsContent();
+    const composed = `You are an expert assistant for the ConnectOnion framework.\n\nUser Question:\n${question || '(no question provided)'}\n\n---\nDocumentation (verbatim):\n${docs}`;
+    await navigator.clipboard.writeText(composed);
+    return true;
+  } catch (error) {
+    console.error('Failed to copy docs with question:', error);
+    return false;
+  }
+}
