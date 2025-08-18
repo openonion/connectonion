@@ -387,7 +387,7 @@ Response 3: Hello, John! Nice to meet you! Goodbye, John! It was great talking w
             <h3 className="text-lg font-semibold text-white mb-4">Requirements</h3>
             <div className="space-y-2 text-sm text-gray-300">
               <p>• Python 3.8+</p>
-              <p>• ConnectOnion v0.0.1</p>
+              <p>• ConnectOnion v0.0.1b5</p>
               <p>• OpenAI API key</p>
             </div>
           </div>

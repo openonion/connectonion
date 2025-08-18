@@ -212,7 +212,7 @@ pip install connectonion
 
 ---
 
-*All examples use ConnectOnion v0.0.1 with complete working code and realistic outputs.*`
+*All examples use ConnectOnion v0.0.1b5 with complete working code and realistic outputs.*`
 
   return (
     <div className="max-w-7xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
