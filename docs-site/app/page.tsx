@@ -7,7 +7,7 @@ import Link from 'next/link'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { WaitlistSignup } from '../components/WaitlistSignup'
-import { copyAllDocsToClipboard, copyAllDocsWithQuestion } from '../utils/copyAllDocs'
+import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
 
 export default function HomePage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -16,8 +16,7 @@ export default function HomePage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [activeExample, setActiveExample] = useState<'basic' | 'real' | 'production'>('basic')
   const [copyAllStatus, setCopyAllStatus] = useState<'idle' | 'copying' | 'done'>('idle')
-  const [copyClaudeStatus, setCopyClaudeStatus] = useState<'idle' | 'copying' | 'done'>('idle')
-  const [questionText, setQuestionText] = useState('Give me a step-by-step plan to build a calculator agent and show one real run. Use the docs verbatim as context.')
+
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
@@ -60,19 +59,7 @@ export default function HomePage() {
     }
   }
 
-  const copyAllDocsForClaude = async () => {
-    try {
-      setCopyClaudeStatus('copying')
-      const ok = await copyAllDocsWithQuestion(questionText)
-      setCopyClaudeStatus(ok ? 'done' : 'idle')
-      setTimeout(() => setCopyClaudeStatus('idle'), 2000)
-      if (ok) {
-        window.open('https://claude.ai/new', '_blank')
-      }
-    } catch {
-      setCopyClaudeStatus('idle')
-    }
-  }
+
 
   return (
     <main className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
@@ -117,17 +104,14 @@ export default function HomePage() {
             >
               💬 Join Discord
             </a>
-          </div>
-
-          {/* Copy All Docs CTA */}
-          <div className="flex flex-col sm:flex-row gap-3 justify-center items-center mb-3">
+            
             <button
               onClick={copyAllDocs}
-              className="px-6 py-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-lg transition-all duration-300 flex items-center gap-2"
+              className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-semibold rounded-lg transition-all duration-300 flex items-center gap-2"
             >
               {copyAllStatus === 'copying' ? (
                 <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   Copy All Docs
                 </>
               ) : copyAllStatus === 'done' ? (
@@ -142,37 +126,13 @@ export default function HomePage() {
                 </>
               )}
             </button>
-            <button
-              onClick={copyAllDocsForClaude}
-              className="px-6 py-3 bg-gray-800 hover:bg-gray-700 text-white font-semibold rounded-lg transition-colors border border-gray-600 flex items-center gap-2"
-              title="Copies docs to clipboard and opens Claude"
-            >
-              {copyClaudeStatus === 'copying' ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                  Copy for Claude
-                </>
-              ) : copyClaudeStatus === 'done' ? (
-                <>
-                  <Check className="w-5 h-5 text-green-300" />
-                  Copied • Opened Claude
-                </>
-              ) : (
-                <>
-                  <Copy className="w-5 h-5" />
-                  Copy for Claude
-                </>
-              )}
-            </button>
           </div>
-          <div className="max-w-3xl mx-auto mb-12 w-full">
-            <label className="block text-sm text-gray-400 mb-2">Optional: Customize the first message sent to your LLM</label>
-            <textarea
-              value={questionText}
-              onChange={(e) => setQuestionText(e.target.value)}
-              className="w-full bg-gray-900 border border-gray-700 rounded-lg p-3 text-sm text-white focus:outline-none focus:ring-2 focus:ring-purple-600/40"
-              rows={3}
-            />
+          
+          {/* Helper Caption */}
+          <div className="text-center mb-12">
+            <p className="text-sm text-gray-400">
+              Need help from AI? Copy all docs and paste into any AI assistant for comprehensive support.
+            </p>
           </div>
           
           {/* Quick Feature Highlights */}
