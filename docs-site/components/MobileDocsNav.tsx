@@ -23,9 +23,7 @@ export function MobileDocsNav() {
           </button>
           
           <Link href="/" className="flex items-center gap-2">
-            <div className="w-6 h-6 rounded-md bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-              <BookOpen className="w-3.5 h-3.5 text-white" />
-            </div>
+            <img src="https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/ConnectOnion.png" alt="ConnectOnion" className="w-6 h-6 rounded-md object-cover" />
             <span className="font-semibold text-white">ConnectOnion</span>
           </Link>
           

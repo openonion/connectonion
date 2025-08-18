@@ -144,9 +144,7 @@ export function DocsSidebar() {
       {/* Header */}
       <div className="p-6 border-b border-gray-800">
         <Link href="/" className="flex items-center gap-3 group">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-purple-500 to-pink-500 flex items-center justify-center">
-            <BookOpen className="w-4 h-4 text-white" />
-          </div>
+          <img src="https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/ConnectOnion.png" alt="ConnectOnion" className="w-8 h-8 rounded-lg object-cover" />
           <div>
             <div className="text-lg font-bold text-white">ConnectOnion</div>
             <div className="text-xs text-gray-400">Documentation v0.0.1</div>
