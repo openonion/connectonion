@@ -1,7 +1,7 @@
 """Tool conversion utilities for ConnectOnion."""
 
 import inspect
-from typing import Callable, Dict, Any, get_type_hints
+from typing import Callable, Dict, Any, get_type_hints, List
 
 # Map Python types to JSON Schema types
 TYPE_MAP = {
@@ -30,6 +30,11 @@ def create_tool_from_function(func: Callable) -> Callable:
 
     for param in sig.parameters.values():
         param_name = param.name
+        
+        # Skip 'self' parameter for bound methods
+        if param_name == 'self':
+            continue
+            
         # Use 'str' as a fallback if no type hint is available
         param_type = type_hints.get(param_name, str)
         schema_type = TYPE_MAP.get(param_type, "string")
@@ -46,15 +51,111 @@ def create_tool_from_function(func: Callable) -> Callable:
     if required:
         parameters_schema["required"] = required
     
+    # For bound methods, create a wrapper function that preserves the method
+    if inspect.ismethod(func):
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        wrapper.__name__ = name
+        wrapper.__doc__ = description
+        tool_func = wrapper
+    else:
+        tool_func = func
+    
     # Attach the necessary attributes for Agent compatibility
-    func.name = name
-    func.description = description
-    func.get_parameters_schema = lambda: parameters_schema
-    func.to_function_schema = lambda: {
+    tool_func.name = name
+    tool_func.description = description
+    tool_func.get_parameters_schema = lambda: parameters_schema
+    tool_func.to_function_schema = lambda: {
         "name": name,
         "description": description,
         "parameters": parameters_schema,
     }
-    func.run = func  # The agent calls .run() - this should be the decorated function
+    tool_func.run = tool_func  # The agent calls .run() - this should be the decorated function
     
-    return func
+    return tool_func
+
+
+def extract_methods_from_instance(instance) -> List[Callable]:
+    """
+    Extract public methods from a class instance that can be used as tools.
+    
+    Args:
+        instance: A class instance to extract methods from
+        
+    Returns:
+        List of method functions that have proper type annotations
+    """
+    methods = []
+    
+    for name in dir(instance):
+        # Skip private methods (starting with _)
+        if name.startswith('_'):
+            continue
+            
+        attr = getattr(instance, name)
+        
+        # Check if it's a callable method (not a property or static value)
+        if not callable(attr):
+            continue
+            
+        # Skip built-in methods like __class__, etc.
+        if isinstance(attr, type):
+            continue
+            
+        # Check if it's actually a bound method (has __self__)
+        if not hasattr(attr, '__self__'):
+            continue
+            
+        # Check if method has proper type annotations
+        try:
+            sig = inspect.signature(attr)
+            type_hints = get_type_hints(attr)
+            
+            # Must have return type annotation to be a valid tool
+            if 'return' not in type_hints:
+                continue
+                
+            # Process method as tool, preserving self reference
+            tool = create_tool_from_function(attr)
+            methods.append(tool)
+            
+        except (ValueError, TypeError):
+            # Skip methods that can't be inspected
+            continue
+    
+    return methods
+
+
+def is_class_instance(obj) -> bool:
+    """
+    Check if an object is a class instance (not a function, class, or module).
+    
+    Args:
+        obj: Object to check
+        
+    Returns:
+        True if obj is a class instance with callable methods
+    """
+    # Must be an object with a class
+    if not hasattr(obj, '__class__'):
+        return False
+        
+    # Should not be a function, method, or class itself
+    if inspect.isfunction(obj) or inspect.ismethod(obj) or inspect.isclass(obj):
+        return False
+        
+    # Should not be a module
+    if inspect.ismodule(obj):
+        return False
+        
+    # Should not be built-in types
+    if isinstance(obj, (list, dict, tuple, set, str, int, float, bool, type(None))):
+        return False
+        
+    # Should have some callable attributes (methods)
+    has_methods = any(
+        callable(getattr(obj, name, None)) and not name.startswith('_')
+        for name in dir(obj)
+    )
+    
+    return has_methods

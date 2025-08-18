@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
 from .llm import LLM, OpenAILLM
 from .history import History
-from .tools import create_tool_from_function
+from .tools import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .prompts import load_system_prompt
 from .decorators import (
     _inject_context_for_tool, 
@@ -22,7 +22,7 @@ class Agent:
         self,
         name: str,
         llm: Optional[LLM] = None,
-        tools: Optional[List[Callable]] = None,
+        tools: Optional[Union[List[Callable], Callable, Any]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
         model: str = "gpt-5-mini",
@@ -32,14 +32,31 @@ class Agent:
         self.system_prompt = load_system_prompt(system_prompt)
         self.max_iterations = max_iterations
         
-        # Process tools: convert raw functions to tool schemas automatically
+        # Process tools: convert raw functions and class instances to tool schemas automatically
         processed_tools = []
-        if tools:
-            for tool in tools:
-                if not hasattr(tool, 'to_function_schema'):
-                    processed_tools.append(create_tool_from_function(tool))
+        if tools is not None:
+            # Normalize tools to a list
+            if isinstance(tools, list):
+                tools_list = tools
+            else:
+                tools_list = [tools]
+            
+            # Process each tool
+            for tool in tools_list:
+                if is_class_instance(tool):
+                    # Extract methods from class instance
+                    methods = extract_methods_from_instance(tool)
+                    processed_tools.extend(methods)
+                elif callable(tool):
+                    # Handle function or method
+                    if not hasattr(tool, 'to_function_schema'):
+                        processed_tools.append(create_tool_from_function(tool))
+                    else:
+                        processed_tools.append(tool)  # Already a valid tool
                 else:
-                    processed_tools.append(tool)  # Already a valid tool
+                    # Skip non-callable, non-instance objects
+                    continue
+        
         self.tools = processed_tools
 
         self.history = History(name)

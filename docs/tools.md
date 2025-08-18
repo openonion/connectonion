@@ -9,6 +9,8 @@
 **Three lines to a working tool. Then call it.**
 
 ```python
+from connectonion import Agent
+
 def search(query: str) -> str:  # your first tool
     return f"Found results for {query}"
 
@@ -28,11 +30,18 @@ That’s it.
 
 ## Core Concepts (function tools)
 
+What you get:
+
+- Clear interfaces via Python type hints
+- Automatic tool schemas for the LLM and UIs
+- Docstrings become user-facing descriptions
+
 ### Function tools with type hints
 
 Type hints are the interface. Keep signatures explicit.
 
 ```python
+from connectonion import Agent
 from typing import List
 
 def top_k(query: str, k: int = 5) -> List[str]:
@@ -102,32 +111,108 @@ def embed(text: str) -> list[float]:
 
 Use class instances when tools need shared state, caching, or resources.
 
-### Browser automation with Playwright
+### Browser automation with Playwright (navigate, screenshot, tabs)
+
+Requirements:
+
+- Install Playwright and browsers: `pip install playwright` then `playwright install`
 
 ```python
-from playwright.sync_api import sync_playwright
+from typing import List, Optional
+from connectonion import Agent
+
+try:
+    from playwright.sync_api import sync_playwright, Page
+except ImportError:
+    raise SystemExit("Install Playwright: pip install playwright && playwright install")
+
 
 class Browser:
-    """Persistent browser session with goto()."""
-    def __init__(self):
-        self._p = sync_playwright().start()
-        self._browser = self._p.chromium.launch()
-        self._page = self._browser.new_page()
+    """Persistent browser session with navigation, screenshots, and tab control."""
 
-    def goto(self, url: str) -> str:
-        """Navigate to a URL and return the page title."""
-        self._page.goto(url)
-        return self._page.title()
+    def __init__(self):
+        self._p = None
+        self._browser = None
+        self._pages: dict[str, Page] = {}
+        self._active_tab: Optional[str] = None
+
+    def start(self, headless: bool = True) -> str:
+        """Start the browser session and open the first tab named 'main'."""
+        self._p = sync_playwright().start()
+        self._browser = self._p.chromium.launch(headless=headless)
+        self._pages["main"] = self._browser.new_page()
+        self._active_tab = "main"
+        return f"Browser started (headless={headless}) with tab 'main'"
+
+    def new_tab(self, name: str) -> str:
+        """Open a new tab with a friendly name, e.g., 'docs' or 'shop'."""
+        if not self._browser:
+            return "Error: Browser not started. Call start() first."
+        if name in self._pages:
+            return f"Tab '{name}' already exists"
+        self._pages[name] = self._browser.new_page()
+        self._active_tab = name
+        return f"Opened tab '{name}'"
+
+    def list_tabs(self) -> List[str]:
+        """List available tab names."""
+        return list(self._pages.keys())
+
+    def switch_tab(self, name: str) -> str:
+        """Switch the active tab by name."""
+        if name not in self._pages:
+            return f"Error: No tab named '{name}'"
+        self._active_tab = name
+        return f"Switched to tab '{name}'"
+
+    def goto(self, url: str, tab: Optional[str] = None) -> str:
+        """Navigate the active (or specified) tab to a URL and return the page title."""
+        if not self._pages:
+            return "Error: Browser not started. Call start() first."
+        target = tab or self._active_tab
+        page = self._pages[target]
+        page.goto(url)
+        return page.title()
+
+    def screenshot(self, path: Optional[str] = None, tab: Optional[str] = None) -> str:
+        """Save a PNG screenshot of the active (or specified) tab and return the filename."""
+        if not self._pages:
+            return "Error: Browser not started. Call start() first."
+        target = tab or self._active_tab
+        page = self._pages[target]
+        filename = path or f"{target}_screenshot.png"
+        page.screenshot(path=filename)
+        return filename
+
+    def close_tab(self, name: str) -> str:
+        """Close a tab by name."""
+        if name not in self._pages:
+            return f"Error: No tab named '{name}'"
+        self._pages[name].close()
+        del self._pages[name]
+        if self._active_tab == name:
+            self._active_tab = next(iter(self._pages), None)
+        return f"Closed tab '{name}'"
 
     def close(self) -> None:
-        self._browser.close()
-        self._p.stop()
+        """Close all tabs and stop the browser."""
+        for page in list(self._pages.values()):
+            page.close()
+        self._pages.clear()
+        if self._browser:
+            self._browser.close()
+        if self._p:
+            self._p.stop()
+
 
 browser = Browser()
-agent = Agent("helper", tools=[browser.goto])
-try:
-    agent("goto('https://example.com')")
-finally:
+agent = Agent("helper", tools=browser)
+
+# With an LLM, the agent can use natural language prompts to decide which tools to call and in what order.
+# For example, you can give the agent a high-level instruction and it will use the available tools to accomplish the task:
+
+response = agent("Open https://example.com, take a screenshot, then open a new tab to https://playwright.dev and screenshot that too. List all open tabs at the end.")
+print(response)
     browser.close()
 ```
 
@@ -291,3 +376,13 @@ agent = Agent("helper", tools=[create_ticket])
 * **Class tool** → shared state, caching, external handles.
 * **Composition** → small tools, big outcomes.
 * **Custom schemas** → robust interfaces and UIs.
+
+---
+
+## FAQ: How tools are discovered and used
+
+- The agent inspects function signatures and docstrings to build schemas automatically.
+- For class-based tools, pass an instance (not the class). Public methods with type hints become tools.
+- The first docstring line is used as the one-liner description in UIs.
+- Prefer explicit types on parameters and returns so tools are eligible and discoverable.
+- You can always call `agent.tool_map["tool_name"](**kwargs)` to run tools without an LLM.

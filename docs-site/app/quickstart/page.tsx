@@ -295,6 +295,19 @@ test_agent()
 That's it! You now have a working AI agent with tools, personality, and debugging capabilities. 🚀
 `
 
+  const iterationsSnippet = `# Control how many steps the agent can take
+agent = Agent(
+    name="assistant",
+    tools=[calculate, roll_dice, get_current_time],
+    max_iterations=10  # default is 10; tune per agent
+)
+
+# Override for a single complex request
+response = agent.input(
+    "Research, calculate, and summarize",
+    max_iterations=25
+)`
+
   return (
     <div className="max-w-4xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
       {/* Header with Copy Button */}
@@ -321,7 +334,7 @@ That's it! You now have a working AI agent with tools, personality, and debuggin
       </div>
 
       {/* Time Estimate */}
-      <div className="flex items-center gap-2 mb-12 p-4 bg-blue-900/20 border border-blue-500/30 rounded-lg">
+      <div className="flex items-center gap-2 mb-12 p-4 bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg">
         <Clock className="w-5 h-5 text-blue-400" />
         <span className="text-blue-200">
           <strong>Estimated time:</strong> 5 minutes to first working agent
@@ -456,6 +469,44 @@ print(response)`}
         </div>
       </section>
 
+      {/* Iteration Control */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">3</div>
+          Control Iterations
+        </h2>
+
+        <p className="text-gray-300 mb-6">
+          Limit how many tool calls your agent can make. Set a default on the agent and override per task when needed.
+        </p>
+
+        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
+            <span className="text-sm text-gray-300 font-mono">iterations.py</span>
+            <button
+              onClick={() => copyToClipboard(iterationsSnippet, 'iterations-snippet')}
+              className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
+            >
+              {copiedId === 'iterations-snippet' ? (
+                <Check className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+
+          <div className="p-6">
+            <SyntaxHighlighter 
+              language="python" 
+              style={vscDarkPlus}
+              customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.875rem', lineHeight: '1.5' }}
+            >
+              {iterationsSnippet}
+            </SyntaxHighlighter>
+          </div>
+        </div>
+      </section>
+
       {/* System Prompts */}
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
@@ -520,7 +571,7 @@ print(response)`}
         </div>
 
         {/* Output */}
-        <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4 mb-8">
+        <div className="bg-gradient-to-b from-purple-900/30 to-purple-800/10 border border-purple-500/30 rounded-lg p-4 mb-8">
           <div className="flex items-center gap-3 mb-3">
             <Terminal className="w-5 h-5 text-purple-400" />
             <span className="font-semibold text-purple-300">Output:</span>
@@ -621,7 +672,7 @@ response = agent.input("What's 50 + 30?")`}
         </div>
 
         {/* Output */}
-        <div className="bg-yellow-900/20 border border-yellow-500/30 rounded-lg p-4 mb-8">
+        <div className="bg-gradient-to-b from-yellow-900/30 to-yellow-800/10 border border-yellow-500/30 rounded-lg p-4 mb-8">
           <div className="flex items-center gap-3 mb-3">
             <Terminal className="w-5 h-5 text-yellow-400" />
             <span className="font-semibold text-yellow-300">Debug Output:</span>

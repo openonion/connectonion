@@ -3,8 +3,9 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, Gauge } from 'lucide-react'
+import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, Gauge, Copy, Check } from 'lucide-react'
 import { DifficultyBadge } from './DifficultyBadge'
+import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
 
 type NavItem = {
   title: string
@@ -28,13 +29,14 @@ const navigation: NavigationSection[] = [
   {
     title: 'Core Concepts',
     items: [
+      { title: 'Tools', href: '/tools', icon: Code },
+      { title: 'System Prompts', href: '/prompts', icon: Code, difficulty: 'Start Here' },
       { title: 'max_iterations', href: '/max-iterations', icon: Gauge },
     ]
   },
   {
-    title: 'System Prompts',
+    title: 'Prompt Formats',
     items: [
-      { title: 'Loading Methods', href: '/prompts', icon: Code, difficulty: 'Start Here' },
       { title: 'Format Support', href: '/prompts/formats', icon: FileText, difficulty: 'Interactive Demo' },
     ]
   },
@@ -71,6 +73,7 @@ export function DocsSidebar() {
   const [searchQuery, setSearchQuery] = useState('')
   const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'Core Concepts', 'System Prompts', 'Agent Building'])
   const [isClientMounted, setIsClientMounted] = useState(false)
+  const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success'>('idle')
   const pathname = usePathname()
 
   // Initialize from localStorage after client mount to prevent hydration mismatch
@@ -119,6 +122,22 @@ export function DocsSidebar() {
       section.title.toLowerCase().includes(searchQuery.toLowerCase())
     )
   })).filter(section => section.items.length > 0)
+
+  const handleCopyAllDocs = async () => {
+    setCopyStatus('copying')
+    try {
+      const success = await copyAllDocsToClipboard()
+      if (success) {
+        setCopyStatus('success')
+        setTimeout(() => setCopyStatus('idle'), 3000)
+      } else {
+        setCopyStatus('idle')
+      }
+    } catch (error) {
+      console.error('Failed to copy docs:', error)
+      setCopyStatus('idle')
+    }
+  }
 
   return (
     <div className="w-80 bg-gray-900 border-r border-gray-800 flex flex-col h-screen sticky top-0 z-40">
@@ -215,6 +234,30 @@ export function DocsSidebar() {
 
       {/* Footer */}
       <div className="p-4 border-t border-gray-800 space-y-3">
+        {/* Copy All Docs Button */}
+        <button
+          onClick={handleCopyAllDocs}
+          disabled={copyStatus === 'copying'}
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-700 rounded-lg text-white text-sm font-medium transition-all duration-200 transform hover:scale-[1.02] disabled:scale-100"
+        >
+          {copyStatus === 'copying' ? (
+            <>
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+              Copying...
+            </>
+          ) : copyStatus === 'success' ? (
+            <>
+              <Check className="w-4 h-4" />
+              Copied to Clipboard!
+            </>
+          ) : (
+            <>
+              <Copy className="w-4 h-4" />
+              Copy All Docs
+            </>
+          )}
+        </button>
+        
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 text-xs text-gray-400">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
