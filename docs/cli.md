@@ -24,13 +24,13 @@ Initialize a new ConnectOnion agent project in the current directory.
 
 ```bash
 # Create a meta-agent (default)
-mkdir my-meta-agent
-cd my-meta-agent
+mkdir meta-agent
+cd meta-agent
 co init
 
 # Create a web automation agent
-mkdir my-playwright-agent
-cd my-playwright-agent
+mkdir playwright-agent
+cd playwright-agent
 co init --template playwright
 ```
 
@@ -70,7 +70,7 @@ The CLI will:
 #### Meta-Agent (ConnectOnion Development Assistant)
 
 ```bash
-$ mkdir my-meta-agent && cd my-meta-agent
+$ mkdir meta-agent && cd meta-agent
 $ co init
 ✅ ConnectOnion project initialized!
 

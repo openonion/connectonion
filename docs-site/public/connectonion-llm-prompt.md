@@ -55,13 +55,13 @@ pip install connectonion
 
 ```bash
 # Create meta-agent (default) - ConnectOnion development assistant
-mkdir my-meta-agent
-cd my-meta-agent
+mkdir meta-agent
+cd meta-agent
 co init
 
 # Create web automation agent
-mkdir my-playwright-agent  
-cd my-playwright-agent
+mkdir playwright-agent  
+cd playwright-agent
 co init --template playwright
 ```
 

@@ -30,8 +30,8 @@ pip install connectonion
 
 \`\`\`bash
 # Create a new directory for your agent
-mkdir my-meta-agent
-cd my-meta-agent
+mkdir meta-agent
+cd meta-agent
 
 # Initialize the meta-agent (default)
 co init
@@ -259,7 +259,7 @@ Result: 80
           <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
             <span className="text-sm text-gray-400 font-mono">Terminal</span>
             <button
-              onClick={() => copyToClipboard('mkdir my-meta-agent\ncd my-meta-agent\nco init', 'init')}
+              onClick={() => copyToClipboard('mkdir meta-agent\ncd meta-agent\nco init', 'init')}
               className="text-gray-400 hover:text-white transition-colors p-1"
             >
               {copiedId === 'init' ? (
@@ -270,8 +270,8 @@ Result: 80
             </button>
           </div>
           <div className="bg-black p-4 font-mono text-sm">
-            <span className="text-green-400">$</span> <span className="text-white">mkdir my-meta-agent</span><br/>
-            <span className="text-green-400">$</span> <span className="text-white">cd my-meta-agent</span><br/>
+            <span className="text-green-400">$</span> <span className="text-white">mkdir meta-agent</span><br/>
+            <span className="text-green-400">$</span> <span className="text-white">cd meta-agent</span><br/>
             <span className="text-green-400">$</span> <span className="text-white">co init</span>
           </div>
         </div>

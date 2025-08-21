@@ -42,13 +42,13 @@ Initialize a new ConnectOnion agent project in the current directory.
 
 \`\`\`bash
 # Create a meta-agent (default)
-mkdir my-meta-agent
-cd my-meta-agent
+mkdir meta-agent
+cd meta-agent
 co init
 
 # Create a web automation agent
-mkdir my-playwright-agent
-cd my-playwright-agent
+mkdir playwright-agent
+cd playwright-agent
 co init --template playwright
 \`\`\`
 
@@ -243,7 +243,7 @@ python --version
               <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
                 <span className="text-sm text-gray-400 font-mono">Create meta-agent (default)</span>
                 <button
-                  onClick={() => copyToClipboard('mkdir my-meta-agent\ncd my-meta-agent\nco init', 'meta-init')}
+                  onClick={() => copyToClipboard('mkdir meta-agent\ncd meta-agent\nco init', 'meta-init')}
                   className="text-gray-400 hover:text-white transition-colors p-1"
                 >
                   {copiedId === 'meta-init' ? (
@@ -254,8 +254,8 @@ python --version
                 </button>
               </div>
               <div className="bg-black p-4 font-mono text-sm">
-                <span className="text-green-400">$</span> <span className="text-white">mkdir my-meta-agent</span><br/>
-                <span className="text-green-400">$</span> <span className="text-white">cd my-meta-agent</span><br/>
+                <span className="text-green-400">$</span> <span className="text-white">mkdir meta-agent</span><br/>
+                <span className="text-green-400">$</span> <span className="text-white">cd meta-agent</span><br/>
                 <span className="text-green-400">$</span> <span className="text-white">co init</span>
               </div>
             </div>
@@ -265,7 +265,7 @@ python --version
               <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
                 <span className="text-sm text-gray-400 font-mono">Create web automation agent</span>
                 <button
-                  onClick={() => copyToClipboard('mkdir my-playwright-agent\ncd my-playwright-agent\nco init --template playwright', 'playwright-init')}
+                  onClick={() => copyToClipboard('mkdir playwright-agent\ncd playwright-agent\nco init --template playwright', 'playwright-init')}
                   className="text-gray-400 hover:text-white transition-colors p-1"
                 >
                   {copiedId === 'playwright-init' ? (
@@ -276,8 +276,8 @@ python --version
                 </button>
               </div>
               <div className="bg-black p-4 font-mono text-sm">
-                <span className="text-green-400">$</span> <span className="text-white">mkdir my-playwright-agent</span><br/>
-                <span className="text-green-400">$</span> <span className="text-white">cd my-playwright-agent</span><br/>
+                <span className="text-green-400">$</span> <span className="text-white">mkdir playwright-agent</span><br/>
+                <span className="text-green-400">$</span> <span className="text-white">cd playwright-agent</span><br/>
                 <span className="text-green-400">$</span> <span className="text-white">co init --template playwright</span>
               </div>
             </div>

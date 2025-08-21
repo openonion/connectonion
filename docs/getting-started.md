@@ -14,8 +14,8 @@ The fastest way to start is with the ConnectOnion CLI:
 
 ```bash
 # Create a directory for your meta-agent
-mkdir my-meta-agent
-cd my-meta-agent
+mkdir meta-agent
+cd meta-agent
 
 # Initialize the meta-agent
 co init

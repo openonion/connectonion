@@ -12,8 +12,8 @@ pip install connectonion
 
 ```bash
 # Create a new directory for your agent
-mkdir my-meta-agent
-cd my-meta-agent
+mkdir meta-agent
+cd meta-agent
 
 # Initialize the meta-agent (default)
 co init
