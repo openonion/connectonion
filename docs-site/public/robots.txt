@@ -1,0 +1,30 @@
+# ConnectOnion Robots.txt
+# Connect Onion Framework Documentation
+
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /_next/
+Disallow: /node_modules/
+
+# Search Engine Crawlers
+User-agent: Googlebot
+Allow: /
+Crawl-delay: 0
+
+User-agent: Bingbot
+Allow: /
+Crawl-delay: 0
+
+User-agent: Slurp
+Allow: /
+Crawl-delay: 0
+
+User-agent: DuckDuckBot
+Allow: /
+Crawl-delay: 0
+
+# Sitemap Location
+Sitemap: https://connectonion.com/sitemap.xml
+
+# ConnectOnion (Connect Onion) - The simplest Python framework for building AI agents

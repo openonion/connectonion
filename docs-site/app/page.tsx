@@ -68,12 +68,16 @@ export default function HomePage() {
         <div className="text-center max-w-4xl mx-auto">
           <div className="flex items-center justify-center gap-3 mb-4">
             <h1 className="text-4xl md:text-6xl font-bold text-white">ConnectOnion</h1>
+          <span className="sr-only">Connect Onion AI Framework</span>
             <span className="px-3 py-1 bg-purple-600/20 text-purple-400 text-sm font-semibold rounded-full border border-purple-500/30">
               v0.0.1b6
             </span>
           </div>
-          <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto">
+          <p className="text-xl md:text-2xl text-gray-300 mb-4 max-w-3xl mx-auto">
             The simplest way to build AI agents with Python functions
+          </p>
+          <p className="text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
+            Connect Onion framework - Transform any Python function into a powerful AI tool. No complexity, just results.
           </p>
           
           {/* CTA Buttons */}
@@ -234,6 +238,65 @@ print(response)  # Output: "Weather in NYC: sunny, 72°F"`}
         </div>
       </section>
 
+      {/* Why Connect Onion? - SEO Section */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6">Why Choose Connect Onion Framework?</h2>
+        
+        <div className="prose prose-invert max-w-none mb-8">
+          <p className="text-gray-300 text-lg leading-relaxed">
+            <strong>ConnectOnion (Connect Onion)</strong> revolutionizes AI agent development by eliminating unnecessary complexity. 
+            While other frameworks require complex class hierarchies and boilerplate code, Connect Onion lets you 
+            build powerful AI agents using simple Python functions you already know how to write.
+          </p>
+          
+          <div className="grid md:grid-cols-2 gap-8 mt-8">
+            <div>
+              <h3 className="text-xl font-semibold text-white mb-4">🧅 The Connect Onion Philosophy</h3>
+              <p className="text-gray-300">
+                Like peeling an onion, Connect Onion reveals layers of functionality without overwhelming complexity. 
+                Start simple with basic functions, then progressively add capabilities as needed. ConnectOnion makes 
+                connecting AI to your code as natural as calling a function.
+              </p>
+            </div>
+            
+            <div>
+              <h3 className="text-xl font-semibold text-white mb-4">⚡ Connect Onion vs Traditional Frameworks</h3>
+              <ul className="space-y-2 text-gray-300">
+                <li className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>No complex class inheritance - just functions</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Connect Onion auto-discovers tool schemas from type hints</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>Built-in behavior tracking and debugging</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <span className="text-green-400">✓</span>
+                  <span>5-minute setup vs hours of configuration</span>
+                </li>
+              </ul>
+            </div>
+          </div>
+        </div>
+        
+        <div className="bg-gradient-to-r from-purple-900/20 to-pink-900/20 border border-purple-500/30 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-white mb-3">🚀 Get Started with Connect Onion in Seconds</h3>
+          <p className="text-gray-300 mb-4">
+            ConnectOnion is designed for developers who want to connect AI capabilities to their applications 
+            without learning a new framework. If you can write a Python function, you can build an AI agent with Connect Onion.
+          </p>
+          <div className="flex gap-4">
+            <code className="bg-black/30 px-3 py-1 rounded text-purple-300">pip install connectonion</code>
+            <span className="text-gray-400">→</span>
+            <span className="text-green-300">Start building in 60 seconds</span>
+          </div>
+        </div>
+      </section>
+
       {/* Advanced Configuration */}
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-6">Advanced Configuration</h2>
@@ -372,6 +435,58 @@ agent = Agent(
       {/* Waitlist Signup */}
       <section className="mb-16">
         <WaitlistSignup />
+      </section>
+
+      {/* FAQ Section for SEO */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6">Frequently Asked Questions about ConnectOnion</h2>
+        
+        <div className="space-y-6">
+          <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-white mb-3">What is ConnectOnion (Connect Onion)?</h3>
+            <p className="text-gray-300">
+              ConnectOnion, also known as Connect Onion, is a Python framework that makes building AI agents incredibly simple. 
+              Instead of complex class hierarchies, Connect Onion lets you create powerful AI agents using regular Python functions. 
+              It's designed for developers who want to connect AI capabilities to their applications without learning a new framework.
+            </p>
+          </div>
+          
+          <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-white mb-3">How does Connect Onion differ from other AI frameworks?</h3>
+            <p className="text-gray-300">
+              Connect Onion stands out by eliminating complexity. While frameworks like LangChain require extensive boilerplate 
+              and class inheritance, ConnectOnion works with simple functions. Just write a Python function, and Connect Onion 
+              automatically converts it into a tool your AI agent can use. No abstractions, no complexity - just results.
+            </p>
+          </div>
+          
+          <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-white mb-3">Can I use ConnectOnion with OpenAI's GPT models?</h3>
+            <p className="text-gray-300">
+              Yes! ConnectOnion (Connect Onion) is built to work seamlessly with OpenAI's GPT models including GPT-4, GPT-4 Turbo, 
+              and GPT-3.5. Simply provide your OpenAI API key, and Connect Onion handles all the integration details. The framework 
+              also supports custom LLM providers if you need to use other models.
+            </p>
+          </div>
+          
+          <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-white mb-3">How quickly can I build an agent with Connect Onion?</h3>
+            <p className="text-gray-300">
+              You can have a working AI agent in under 60 seconds with ConnectOnion. Install with <code className="bg-black/30 px-2 py-1 rounded">pip install connectonion</code>, 
+              write a simple Python function, and create an agent with one line of code. Connect Onion's simplicity means you spend 
+              time building features, not fighting with framework complexity.
+            </p>
+          </div>
+          
+          <div className="bg-gray-900/50 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-white mb-3">Is ConnectOnion suitable for production use?</h3>
+            <p className="text-gray-300">
+              Absolutely! Connect Onion includes production-ready features like automatic behavior tracking, comprehensive error handling, 
+              configurable iteration limits, and the @xray debugging decorator. Many developers use ConnectOnion in production for 
+              customer support bots, data analysis agents, and automation workflows.
+            </p>
+          </div>
+        </div>
       </section>
 
       {/* Next Steps */}
