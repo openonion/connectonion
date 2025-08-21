@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, Play, Terminal, ArrowRight, Zap, FileText, Clock } from 'lucide-react'
+import { Copy, Check, Play, Terminal, ArrowRight, Zap, FileText, Clock, Code, Wrench } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
@@ -18,17 +18,107 @@ export default function QuickStartPage() {
 
   const markdownContent = `# ConnectOnion Quick Start Guide
 
-Get up and running with ConnectOnion in under 5 minutes. Build your first AI agent that can use tools and track behavior automatically.
+Get up and running with ConnectOnion in under 2 minutes.
 
-## Installation
+## 1. Install ConnectOnion
 
 \`\`\`bash
 pip install connectonion
 \`\`\`
 
-## Your First Agent (2 minutes)
+## 2. Create Your First Meta-Agent
 
-Create a simple calculator agent:
+\`\`\`bash
+# Create a new directory for your agent
+mkdir my-meta-agent
+cd my-meta-agent
+
+# Initialize the meta-agent (default)
+co init
+\`\`\`
+
+This creates a ConnectOnion development assistant with powerful capabilities:
+- \`agent.py\` - Meta-agent with documentation expertise and development tools
+- \`prompt.md\` - System prompt for your agent
+- \`.env.example\` - Template for API keys
+- \`.co/docs/\` - Embedded ConnectOnion documentation for offline reference
+
+## 3. Set Up Your API Key
+
+\`\`\`bash
+cp .env.example .env
+\`\`\`
+
+Edit \`.env\` and add your OpenAI API key:
+\`\`\`
+OPENAI_API_KEY=sk-your-actual-api-key-here
+\`\`\`
+
+## 4. Run Your Agent
+
+\`\`\`bash
+python agent.py
+\`\`\`
+
+Your meta-agent comes with powerful built-in tools:
+- **answer_connectonion_question()** - Expert answers from embedded docs
+- **create_agent_from_template()** - Generate complete agent code
+- **generate_tool_code()** - Create tool functions
+- **create_test_for_agent()** - Generate pytest test suites
+- **think()** - Self-reflection to analyze task completion
+- **generate_todo_list()** - Create structured plans (uses GPT-4o-mini)
+- **suggest_project_structure()** - Architecture recommendations
+
+## Try These Commands
+
+Once your meta-agent is running, try these:
+
+\`\`\`python
+# Learn about ConnectOnion
+result = agent.input("What is ConnectOnion and how do tools work?")
+
+# Generate agent code
+result = agent.input("Create a web scraper agent")
+
+# Create tool functions
+result = agent.input("Generate a tool for sending emails")
+
+# Get project structure advice
+result = agent.input("Suggest structure for a multi-agent system")
+
+# Generate a structured plan
+result = agent.input("Create a to-do list for building a REST API")
+\`\`\`
+
+## Choose a Different Template
+
+ConnectOnion offers specialized templates:
+
+### Playwright Agent (Web Automation)
+\`\`\`bash
+co init --template playwright
+\`\`\`
+
+Perfect for:
+- Web scraping and data extraction
+- Browser automation and testing
+- Form filling and submission
+- Screenshot capture
+- Link crawling
+
+Comes with stateful browser tools:
+- \`start_browser()\` - Launch browser instance
+- \`navigate()\` - Go to URLs
+- \`scrape_content()\` - Extract page content
+- \`fill_form()\` - Fill and submit forms
+- \`take_screenshot()\` - Capture pages
+- And many more browser automation tools
+
+Note: Requires \`pip install playwright && playwright install\`
+
+## Create a Custom Tool Agent
+
+You can also create agents from scratch with custom tools:
 
 \`\`\`python
 from connectonion import Agent
@@ -36,127 +126,25 @@ from connectonion import Agent
 def calculate(expression: str) -> str:
     """Safely evaluate mathematical expressions."""
     try:
-        # Only allow safe mathematical expressions
         allowed_chars = set('0123456789+-*/()., ')
         if all(c in allowed_chars for c in expression):
             result = eval(expression)
             return f"Result: {result}"
         else:
-            return "Error: Invalid characters in expression"
+            return "Error: Invalid characters"
     except Exception as e:
         return f"Error: {str(e)}"
 
 # Create agent with the tool
 agent = Agent(
     name="calculator", 
-    tools=[calculate]
+    tools=[calculate],
+    system_prompt="You are a helpful math tutor."
 )
 
 # Use the agent
 response = agent.input("What is 42 * 17 + 25?")
-print(response)
-\`\`\`
-
-**Output:**
-\`\`\`
-Result: 739
-\`\`\`
-
-## Adding Personality with System Prompts
-
-Make your agent more helpful:
-
-\`\`\`python
-agent = Agent(
-    name="math_tutor",
-    system_prompt="""You are a friendly math tutor. When solving problems:
-    1. Show your work step by step
-    2. Explain the reasoning
-    3. Encourage the user""",
-    tools=[calculate]
-)
-
-response = agent.input("How do I calculate 15% of 240?")
-print(response)
-\`\`\`
-
-**Output:**
-\`\`\`
-I'd be happy to help you calculate 15% of 240! Let me break this down:
-
-To find 15% of 240, I need to multiply 240 by 0.15 (since 15% = 15/100 = 0.15).
-
-Let me calculate that: 240 * 0.15
-
-Result: 36.0
-
-So 15% of 240 is 36. Great job asking for help with percentages - they're really useful in everyday life!
-\`\`\`
-
-## Multiple Tools Example
-
-Create an agent with multiple capabilities:
-
-\`\`\`python
-from connectonion import Agent
-import random
-from datetime import datetime
-
-def calculate(expression: str) -> str:
-    """Safely evaluate mathematical expressions."""
-    try:
-        allowed_chars = set('0123456789+-*/()., ')
-        if all(c in allowed_chars for c in expression):
-            result = eval(expression)
-            return f"Calculation result: {result}"
-        else:
-            return "Error: Invalid characters in expression"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-def roll_dice(sides: int = 6, count: int = 1) -> str:
-    """Roll dice and return the results."""
-    if count > 10:
-        return "Maximum 10 dice allowed"
-    
-    rolls = [random.randint(1, sides) for _ in range(count)]
-    total = sum(rolls)
-    
-    if count == 1:
-        return f"🎲 Rolled a {rolls[0]} (d{sides})"
-    else:
-        return f"🎲 Rolled {count}d{sides}: {rolls} = {total}"
-
-def get_current_time() -> str:
-    """Get the current date and time."""
-    now = datetime.now()
-    return f"Current time: {now.strftime('%Y-%m-%d %H:%M:%S')}"
-
-# Create multi-tool agent
-agent = Agent(
-    name="assistant",
-    system_prompt="You are a helpful assistant that can do math, roll dice, and tell time. Be friendly and explain what you're doing.",
-    tools=[calculate, roll_dice, get_current_time]
-)
-
-# Test multiple capabilities
-response = agent.input("Roll 3 six-sided dice, then calculate the sum times 2, and tell me the current time")
-print(response)
-\`\`\`
-
-**Output:**
-\`\`\`
-I'll help you with all three tasks! Let me start by rolling the dice.
-
-🎲 Rolled 3d6: [4, 2, 6] = 12
-
-Now I'll calculate the sum times 2:
-Calculation result: 24
-
-And here's the current time:
-Current time: 2024-01-15 14:30:22
-
-So you rolled a total of 12, which times 2 equals 24. Hope that helps!
+print(response)  # Result: 739
 \`\`\`
 
 ## Debugging with @xray
@@ -174,21 +162,14 @@ def calculate(expression: str) -> str:
     print(f"🔍 User's original request: {xray.task}")
     print(f"🔍 This is iteration #{xray.iteration}")
     
-    try:
-        allowed_chars = set('0123456789+-*/()., ')
-        if all(c in allowed_chars for c in expression):
-            result = eval(expression)
-            return f"Result: {result}"
-        else:
-            return "Error: Invalid characters"
-    except Exception as e:
-        return f"Error: {str(e)}"
+    result = eval(expression)
+    return f"Result: {result}"
 
 agent = Agent("debug_calc", tools=[calculate])
 response = agent.input("What's 50 + 30?")
 \`\`\`
 
-**Output:**
+Output:
 \`\`\`
 🔍 Agent 'debug_calc' is calculating: 50 + 30
 🔍 User's original request: What's 50 + 30?
@@ -196,117 +177,12 @@ response = agent.input("What's 50 + 30?")
 Result: 80
 \`\`\`
 
-## File-Based System Prompts
-
-For complex prompts, use external files:
-
-Create \`prompts/customer_support.md\`:
-\`\`\`markdown
-# Customer Support Specialist
-
-You are a professional customer support agent.
-
-## Core Principles
-- Always be empathetic and patient
-- Focus on solving the customer's problem
-- Provide clear, step-by-step solutions
-- Follow up to ensure satisfaction
-
-## Response Style
-- Start with acknowledgment
-- Ask clarifying questions if needed  
-- Provide actionable solutions
-- End with next steps
-\`\`\`
-
-Then use it in code:
-
-\`\`\`python
-agent = Agent(
-    name="support",
-    system_prompt="prompts/customer_support.md",  # Loads from file
-    tools=[your_tools]
-)
-\`\`\`
-
 ## Next Steps
 
-🎯 **What to explore next:**
-
-1. **[System Prompts](/prompts)** - Learn advanced prompting techniques
-2. **[@xray Debugging](/xray)** - Master agent debugging and introspection  
-3. **[Examples](/examples)** - See real-world agent implementations
-4. **[API Reference](/api)** - Complete technical documentation
-
-## Common Patterns
-
-### Environment-Specific Configuration
-
-\`\`\`python
-import os
-
-# Different prompts for different environments
-env = os.getenv("ENVIRONMENT", "development")
-prompt_file = f"prompts/{env}/agent.md"
-
-agent = Agent(
-    name="app_assistant",
-    system_prompt=prompt_file,
-    tools=[your_tools]
-)
-\`\`\`
-
-### Error Handling
-
-\`\`\`python
-def safe_tool(input_data: str) -> str:
-    """Tool with proper error handling."""
-    try:
-        # Your tool logic here
-        result = process_data(input_data)
-        return f"Success: {result}"
-    except ValueError as e:
-        return f"Input error: {str(e)}"
-    except Exception as e:
-        return f"Unexpected error: {str(e)}"
-\`\`\`
-
-### Testing Your Agent
-
-\`\`\`python
-def test_agent():
-    """Simple agent testing."""
-    agent = Agent("test", tools=[calculate])
-    
-    test_cases = [
-        ("What is 2+2?", "4"),
-        ("Calculate 10*5", "50"),
-    ]
-    
-    for question, expected in test_cases:
-        response = agent.input(question)
-        print(f"Q: {question}")
-        print(f"A: {response}")
-        print("---")
-
-test_agent()
-\`\`\`
-
-That's it! You now have a working AI agent with tools, personality, and debugging capabilities. 🚀
-`
-
-  const iterationsSnippet = `# Control how many steps the agent can take
-agent = Agent(
-    name="assistant",
-    tools=[calculate, roll_dice, get_current_time],
-    max_iterations=10  # default is 10; tune per agent
-)
-
-# Override for a single complex request
-response = agent.input(
-    "Research, calculate, and summarize",
-    max_iterations=25
-)`
+- [System Prompts](/prompts) - Learn advanced prompting techniques
+- [@xray Debugging](/xray) - Master agent debugging and introspection  
+- [Examples](/examples) - See real-world agent implementations
+- [Templates Guide](/templates) - Explore all available templates`
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
@@ -322,7 +198,7 @@ response = agent.input(
           
           <h1 className="text-4xl font-bold text-white mb-4">Quick Start Guide</h1>
           <p className="text-xl text-gray-300">
-            Get up and running with ConnectOnion in under 5 minutes. Build your first AI agent with tools and automatic behavior tracking.
+            Get up and running with ConnectOnion in under 2 minutes.
           </p>
         </div>
         
@@ -337,7 +213,7 @@ response = agent.input(
       <div className="flex items-center gap-2 mb-12 p-4 bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg">
         <Clock className="w-5 h-5 text-blue-400" />
         <span className="text-blue-200">
-          <strong>Estimated time:</strong> 5 minutes to first working agent
+          <strong>Estimated time:</strong> 2 minutes to first working agent
         </span>
       </div>
 
@@ -345,7 +221,7 @@ response = agent.input(
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
           <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white font-bold">1</div>
-          Installation
+          Install ConnectOnion
         </h2>
         
         <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
@@ -368,48 +244,296 @@ response = agent.input(
         </div>
       </section>
 
-      {/* Your First Agent */}
+      {/* Create Meta-Agent */}
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center text-white font-bold">2</div>
-          Your First Agent (2 minutes)
+          Create Your First Meta-Agent
         </h2>
         
         <p className="text-gray-300 mb-6">
-          Let's create a simple calculator agent that can solve math problems:
+          Initialize a ConnectOnion development assistant with powerful built-in capabilities:
+        </p>
+
+        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
+          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+            <span className="text-sm text-gray-400 font-mono">Terminal</span>
+            <button
+              onClick={() => copyToClipboard('mkdir my-meta-agent\ncd my-meta-agent\nco init', 'init')}
+              className="text-gray-400 hover:text-white transition-colors p-1"
+            >
+              {copiedId === 'init' ? (
+                <Check className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+          <div className="bg-black p-4 font-mono text-sm">
+            <span className="text-green-400">$</span> <span className="text-white">mkdir my-meta-agent</span><br/>
+            <span className="text-green-400">$</span> <span className="text-white">cd my-meta-agent</span><br/>
+            <span className="text-green-400">$</span> <span className="text-white">co init</span>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg p-6 mb-8">
+          <h3 className="text-lg font-semibold text-blue-200 mb-4">Your meta-agent includes:</h3>
+          <ul className="space-y-2 text-blue-100">
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 mt-1">•</span>
+              <span><strong>answer_connectonion_question()</strong> - Expert answers from embedded docs</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 mt-1">•</span>
+              <span><strong>create_agent_from_template()</strong> - Generate complete agent code</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 mt-1">•</span>
+              <span><strong>generate_tool_code()</strong> - Create tool functions</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 mt-1">•</span>
+              <span><strong>create_test_for_agent()</strong> - Generate pytest test suites</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 mt-1">•</span>
+              <span><strong>think()</strong> - Self-reflection to analyze tasks</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 mt-1">•</span>
+              <span><strong>generate_todo_list()</strong> - Create structured plans (uses GPT-4o-mini)</span>
+            </li>
+            <li className="flex items-start gap-2">
+              <span className="text-blue-400 mt-1">•</span>
+              <span><strong>suggest_project_structure()</strong> - Architecture recommendations</span>
+            </li>
+          </ul>
+        </div>
+      </section>
+
+      {/* Set Up API Key */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center text-white font-bold">3</div>
+          Set Up Your API Key
+        </h2>
+        
+        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-4">
+          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+            <span className="text-sm text-gray-400 font-mono">Terminal</span>
+            <button
+              onClick={() => copyToClipboard('cp .env.example .env', 'env-copy')}
+              className="text-gray-400 hover:text-white transition-colors p-1"
+            >
+              {copiedId === 'env-copy' ? (
+                <Check className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+          <div className="bg-black p-4 font-mono text-sm">
+            <span className="text-green-400">$</span> <span className="text-white">cp .env.example .env</span>
+          </div>
+        </div>
+
+        <p className="text-gray-300 mb-4">Then edit <code className="bg-gray-800 px-2 py-1 rounded text-blue-300">.env</code> and add your OpenAI API key:</p>
+
+        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
+          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+            <span className="text-sm text-gray-400 font-mono">.env</span>
+          </div>
+          <div className="bg-black p-4 font-mono text-sm">
+            <span className="text-gray-400"># OpenAI API Configuration</span><br/>
+            <span className="text-white">OPENAI_API_KEY=sk-your-actual-api-key-here</span>
+          </div>
+        </div>
+      </section>
+
+      {/* Try Commands */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">4</div>
+          Try These Commands
+        </h2>
+        
+        <p className="text-gray-300 mb-6">
+          Your meta-agent can help you build ConnectOnion projects:
         </p>
 
         <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
           <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-            <span className="text-sm text-gray-300 font-mono">first_agent.py</span>
+            <span className="text-sm text-gray-300 font-mono">example_usage.py</span>
+            <button
+              onClick={() => copyToClipboard(`# Learn about ConnectOnion
+result = agent.input("What is ConnectOnion and how do tools work?")
+
+# Generate agent code
+result = agent.input("Create a web scraper agent")
+
+# Create tool functions  
+result = agent.input("Generate a tool for sending emails")
+
+# Get project structure advice
+result = agent.input("Suggest structure for a multi-agent system")
+
+# Generate a structured plan
+result = agent.input("Create a to-do list for building a REST API")`, 'meta-examples')}
+              className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
+            >
+              {copiedId === 'meta-examples' ? (
+                <Check className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+          
+          <div className="p-6">
+            <SyntaxHighlighter 
+              language="python" 
+              style={vscDarkPlus}
+              customStyle={{
+                background: 'transparent',
+                padding: 0,
+                margin: 0,
+                fontSize: '0.875rem',
+                lineHeight: '1.5'
+              }}
+            >
+{`# Learn about ConnectOnion
+result = agent.input("What is ConnectOnion and how do tools work?")
+
+# Generate agent code
+result = agent.input("Create a web scraper agent")
+
+# Create tool functions  
+result = agent.input("Generate a tool for sending emails")
+
+# Get project structure advice
+result = agent.input("Suggest structure for a multi-agent system")
+
+# Generate a structured plan
+result = agent.input("Create a to-do list for building a REST API")`}
+            </SyntaxHighlighter>
+          </div>
+        </div>
+      </section>
+
+      {/* Playwright Template */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <div className="w-8 h-8 bg-yellow-600 rounded-lg flex items-center justify-center text-white font-bold">5</div>
+          Alternative: Playwright Web Automation
+        </h2>
+        
+        <p className="text-gray-300 mb-6">
+          For web automation tasks, use the Playwright template:
+        </p>
+
+        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
+          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+            <span className="text-sm text-gray-400 font-mono">Terminal</span>
+            <button
+              onClick={() => copyToClipboard('co init --template playwright', 'playwright-init')}
+              className="text-gray-400 hover:text-white transition-colors p-1"
+            >
+              {copiedId === 'playwright-init' ? (
+                <Check className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+          <div className="bg-black p-4 font-mono text-sm">
+            <span className="text-green-400">$</span> <span className="text-white">co init --template playwright</span>
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-b from-yellow-900/30 to-yellow-800/10 border border-yellow-500/30 rounded-lg p-6 mb-8">
+          <h3 className="text-lg font-semibold text-yellow-200 mb-4">Stateful browser tools included:</h3>
+          <div className="grid md:grid-cols-2 gap-3 text-yellow-100 text-sm">
+            <div className="flex items-start gap-2">
+              <span className="text-yellow-400 mt-1">•</span>
+              <span><strong>start_browser()</strong> - Launch browser</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-yellow-400 mt-1">•</span>
+              <span><strong>navigate()</strong> - Go to URLs</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-yellow-400 mt-1">•</span>
+              <span><strong>scrape_content()</strong> - Extract content</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-yellow-400 mt-1">•</span>
+              <span><strong>fill_form()</strong> - Complete forms</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-yellow-400 mt-1">•</span>
+              <span><strong>take_screenshot()</strong> - Capture pages</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-yellow-400 mt-1">•</span>
+              <span><strong>extract_links()</strong> - Get all links</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-yellow-400 mt-1">•</span>
+              <span><strong>click()</strong> - Click elements</span>
+            </div>
+            <div className="flex items-start gap-2">
+              <span className="text-yellow-400 mt-1">•</span>
+              <span><strong>execute_javascript()</strong> - Run JS</span>
+            </div>
+          </div>
+          <p className="text-yellow-200 mt-4 text-sm">
+            <strong>Note:</strong> Requires <code className="bg-black/30 px-2 py-1 rounded">pip install playwright && playwright install</code>
+          </p>
+        </div>
+      </section>
+
+      {/* Custom Tool Example */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <div className="w-8 h-8 bg-green-600 rounded-lg flex items-center justify-center text-white font-bold">6</div>
+          Create a Custom Tool Agent
+        </h2>
+        
+        <p className="text-gray-300 mb-6">
+          You can also create agents from scratch with custom tools:
+        </p>
+
+        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
+          <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
+            <span className="text-sm text-gray-300 font-mono">calculator_agent.py</span>
             <button
               onClick={() => copyToClipboard(`from connectonion import Agent
 
 def calculate(expression: str) -> str:
     """Safely evaluate mathematical expressions."""
     try:
-        # Only allow safe mathematical expressions
         allowed_chars = set('0123456789+-*/()., ')
         if all(c in allowed_chars for c in expression):
             result = eval(expression)
             return f"Result: {result}"
         else:
-            return "Error: Invalid characters in expression"
+            return "Error: Invalid characters"
     except Exception as e:
         return f"Error: {str(e)}"
 
 # Create agent with the tool
 agent = Agent(
     name="calculator", 
-    tools=[calculate]
+    tools=[calculate],
+    system_prompt="You are a helpful math tutor."
 )
 
 # Use the agent
 response = agent.input("What is 42 * 17 + 25?")
-print(response)`, 'first-agent')}
+print(response)  # Result: 739`, 'custom-tool')}
               className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
             >
-              {copiedId === 'first-agent' ? (
+              {copiedId === 'custom-tool' ? (
                 <Check className="w-4 h-4 text-green-400" />
               ) : (
                 <Copy className="w-4 h-4" />
@@ -434,25 +558,25 @@ print(response)`, 'first-agent')}
 def calculate(expression: str) -> str:
     """Safely evaluate mathematical expressions."""
     try:
-        # Only allow safe mathematical expressions
         allowed_chars = set('0123456789+-*/()., ')
         if all(c in allowed_chars for c in expression):
             result = eval(expression)
             return f"Result: {result}"
         else:
-            return "Error: Invalid characters in expression"
+            return "Error: Invalid characters"
     except Exception as e:
         return f"Error: {str(e)}"
 
 # Create agent with the tool
 agent = Agent(
     name="calculator", 
-    tools=[calculate]
+    tools=[calculate],
+    system_prompt="You are a helpful math tutor."
 )
 
 # Use the agent
 response = agent.input("What is 42 * 17 + 25?")
-print(response)`}
+print(response)  # Result: 739`}
             </SyntaxHighlighter>
           </div>
         </div>
@@ -469,127 +593,10 @@ print(response)`}
         </div>
       </section>
 
-      {/* Iteration Control */}
-      <section className="mb-16">
-        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">3</div>
-          Control Iterations
-        </h2>
-
-        <p className="text-gray-300 mb-6">
-          Limit how many tool calls your agent can make. Set a default on the agent and override per task when needed.
-        </p>
-
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-            <span className="text-sm text-gray-300 font-mono">iterations.py</span>
-            <button
-              onClick={() => copyToClipboard(iterationsSnippet, 'iterations-snippet')}
-              className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
-            >
-              {copiedId === 'iterations-snippet' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-
-          <div className="p-6">
-            <SyntaxHighlighter 
-              language="python" 
-              style={vscDarkPlus}
-              customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.875rem', lineHeight: '1.5' }}
-            >
-              {iterationsSnippet}
-            </SyntaxHighlighter>
-          </div>
-        </div>
-      </section>
-
-      {/* System Prompts */}
-      <section className="mb-16">
-        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-          <div className="w-8 h-8 bg-purple-600 rounded-lg flex items-center justify-center text-white font-bold">3</div>
-          Adding Personality with System Prompts
-        </h2>
-        
-        <p className="text-gray-300 mb-6">
-          Make your agent more helpful and educational by adding a system prompt:
-        </p>
-
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-            <span className="text-sm text-gray-300 font-mono">math_tutor.py</span>
-            <button
-              onClick={() => copyToClipboard(`agent = Agent(
-    name="math_tutor",
-    system_prompt="""You are a friendly math tutor. When solving problems:
-    1. Show your work step by step
-    2. Explain the reasoning
-    3. Encourage the user""",
-    tools=[calculate]
-)
-
-response = agent.input("How do I calculate 15% of 240?")
-print(response)`, 'system-prompt')}
-              className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
-            >
-              {copiedId === 'system-prompt' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          
-          <div className="p-6">
-            <SyntaxHighlighter 
-              language="python" 
-              style={vscDarkPlus}
-              customStyle={{
-                background: 'transparent',
-                padding: 0,
-                margin: 0,
-                fontSize: '0.875rem',
-                lineHeight: '1.5'
-              }}
-            >
-{`agent = Agent(
-    name="math_tutor",
-    system_prompt="""You are a friendly math tutor. When solving problems:
-    1. Show your work step by step
-    2. Explain the reasoning
-    3. Encourage the user""",
-    tools=[calculate]
-)
-
-response = agent.input("How do I calculate 15% of 240?")
-print(response)`}
-            </SyntaxHighlighter>
-          </div>
-        </div>
-
-        {/* Output */}
-        <div className="bg-gradient-to-b from-purple-900/30 to-purple-800/10 border border-purple-500/30 rounded-lg p-4 mb-8">
-          <div className="flex items-center gap-3 mb-3">
-            <Terminal className="w-5 h-5 text-purple-400" />
-            <span className="font-semibold text-purple-300">Output:</span>
-          </div>
-          <div className="font-mono text-purple-200 bg-black/30 rounded p-3 text-sm">
-            I'd be happy to help you calculate 15% of 240! Let me break this down:<br/><br/>
-            To find 15% of 240, I need to multiply 240 by 0.15 (since 15% = 15/100 = 0.15).<br/><br/>
-            Let me calculate that: 240 * 0.15<br/><br/>
-            Result: 36.0<br/><br/>
-            So 15% of 240 is 36. Great job asking for help with percentages - they're really useful in everyday life!
-          </div>
-        </div>
-      </section>
-
       {/* Debugging with @xray */}
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-          <div className="w-8 h-8 bg-yellow-600 rounded-lg flex items-center justify-center text-white font-bold">4</div>
+          <div className="w-8 h-8 bg-red-600 rounded-lg flex items-center justify-center text-white font-bold">7</div>
           Debugging with @xray
         </h2>
         
@@ -611,15 +618,8 @@ def calculate(expression: str) -> str:
     print(f"🔍 User's original request: {xray.task}")
     print(f"🔍 This is iteration #{xray.iteration}")
     
-    try:
-        allowed_chars = set('0123456789+-*/()., ')
-        if all(c in allowed_chars for c in expression):
-            result = eval(expression)
-            return f"Result: {result}"
-        else:
-            return "Error: Invalid characters"
-    except Exception as e:
-        return f"Error: {str(e)}"
+    result = eval(expression)
+    return f"Result: {result}"
 
 agent = Agent("debug_calc", tools=[calculate])
 response = agent.input("What's 50 + 30?")`, 'xray-debug')}
@@ -655,15 +655,8 @@ def calculate(expression: str) -> str:
     print(f"🔍 User's original request: {xray.task}")
     print(f"🔍 This is iteration #{xray.iteration}")
     
-    try:
-        allowed_chars = set('0123456789+-*/()., ')
-        if all(c in allowed_chars for c in expression):
-            result = eval(expression)
-            return f"Result: {result}"
-        else:
-            return "Error: Invalid characters"
-    except Exception as e:
-        return f"Error: {str(e)}"
+    result = eval(expression)
+    return f"Result: {result}"
 
 agent = Agent("debug_calc", tools=[calculate])
 response = agent.input("What's 50 + 30?")`}
@@ -672,12 +665,12 @@ response = agent.input("What's 50 + 30?")`}
         </div>
 
         {/* Output */}
-        <div className="bg-gradient-to-b from-yellow-900/30 to-yellow-800/10 border border-yellow-500/30 rounded-lg p-4 mb-8">
+        <div className="bg-gradient-to-b from-red-900/30 to-red-800/10 border border-red-500/30 rounded-lg p-4 mb-8">
           <div className="flex items-center gap-3 mb-3">
-            <Terminal className="w-5 h-5 text-yellow-400" />
-            <span className="font-semibold text-yellow-300">Debug Output:</span>
+            <Terminal className="w-5 h-5 text-red-400" />
+            <span className="font-semibold text-red-300">Debug Output:</span>
           </div>
-          <div className="font-mono text-yellow-200 bg-black/30 rounded p-3 text-sm">
+          <div className="font-mono text-red-200 bg-black/30 rounded p-3 text-sm">
             🔍 Agent 'debug_calc' is calculating: 50 + 30<br/>
             🔍 User's original request: What's 50 + 30?<br/>
             🔍 This is iteration #1<br/>
@@ -720,6 +713,38 @@ response = agent.input("What's 50 + 30?")`}
             <h3 className="text-xl font-semibold text-white mb-2">Deep Dive into @xray</h3>
             <p className="text-green-100 text-sm">
               Master debugging and get complete visibility into your agent's decision-making.
+            </p>
+          </Link>
+
+          <Link 
+            href="/examples" 
+            className="group bg-gradient-to-r from-blue-900/20 to-blue-800/20 border border-blue-500/30 rounded-xl p-6 hover:border-blue-400/50 transition-all"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-blue-600 rounded-xl flex items-center justify-center">
+                <Code className="w-6 h-6 text-white" />
+              </div>
+              <ArrowRight className="w-5 h-5 text-blue-400 group-hover:translate-x-1 transition-transform" />
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">Real-World Examples</h3>
+            <p className="text-blue-100 text-sm">
+              See complete agent implementations for various use cases.
+            </p>
+          </Link>
+
+          <Link 
+            href="/tools" 
+            className="group bg-gradient-to-r from-orange-900/20 to-orange-800/20 border border-orange-500/30 rounded-xl p-6 hover:border-orange-400/50 transition-all"
+          >
+            <div className="flex items-center justify-between mb-4">
+              <div className="w-12 h-12 bg-orange-600 rounded-xl flex items-center justify-center">
+                <Wrench className="w-6 h-6 text-white" />
+              </div>
+              <ArrowRight className="w-5 h-5 text-orange-400 group-hover:translate-x-1 transition-transform" />
+            </div>
+            <h3 className="text-xl font-semibold text-white mb-2">Build Custom Tools</h3>
+            <p className="text-orange-100 text-sm">
+              Learn how to create powerful tools for your agents.
             </p>
           </Link>
         </div>

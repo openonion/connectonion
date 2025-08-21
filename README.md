@@ -16,10 +16,21 @@ A simple Python framework for creating AI agents that can use tools and track th
 ### Installation
 
 ```bash
-pip install -r requirements.txt
+pip install connectonion
 ```
 
-### Basic Usage
+### Quickest Start - Use the CLI
+
+```bash
+# Create a new agent project with one command
+co init
+
+# Follow the prompts to set up your API key and run
+cp .env.example .env  # Add your OpenAI API key
+python agent.py
+```
+
+### Manual Usage
 
 ```python
 import os  
@@ -166,7 +177,47 @@ agent = Agent("assistant", tools=[calculate, get_time, read_file])
 
 The function-based approach is simpler, more Pythonic, and easier to test!
 
+## 🎨 CLI Templates
+
+ConnectOnion CLI provides templates to get you started quickly:
+
+```bash
+# Basic agent with ConnectOnion knowledge
+co init
+
+# Conversational chat agent
+co init --template chat
+
+# Data analysis agent
+co init --template data
+
+# With additional examples
+co init --with-examples
+```
+
+Each template includes:
+- Pre-configured agent with relevant tools
+- Customizable system prompt in `prompt.md`
+- Environment configuration template
+- Embedded ConnectOnion documentation
+
+Learn more in the [CLI Documentation](docs/cli.md) and [Templates Guide](docs/templates.md).
+
 ## 🔨 Creating Custom Tools
+
+The simplest way is to use functions (recommended):
+
+```python
+def weather(city: str) -> str:
+    """Get current weather for a city."""
+    # Your weather API logic here
+    return f"Weather in {city}: Sunny, 22°C"
+
+# That's it! Use it directly
+agent = Agent(name="weather_agent", tools=[weather])
+```
+
+Or use the Tool class for more control:
 
 ```python
 from connectonion.tools import Tool
@@ -179,22 +230,17 @@ class WeatherTool(Tool):
         )
     
     def run(self, city: str) -> str:
-        # Your weather API logic here
         return f"Weather in {city}: Sunny, 22°C"
     
     def get_parameters_schema(self):
         return {
             "type": "object",
             "properties": {
-                "city": {
-                    "type": "string",
-                    "description": "Name of the city"
-                }
+                "city": {"type": "string", "description": "City name"}
             },
             "required": ["city"]
         }
 
-# Use with agent
 agent = Agent(name="weather_agent", tools=[WeatherTool()])
 ```
 
@@ -203,11 +249,24 @@ agent = Agent(name="weather_agent", tools=[WeatherTool()])
 ```
 connectonion/
 ├── connectonion/
-│   ├── __init__.py     # Main exports
-│   ├── agent.py        # Agent class
-│   ├── tools.py        # Tool interface and built-ins
-│   ├── llm.py          # LLM interface and OpenAI implementation
-│   └── history.py      # Behavior tracking
+│   ├── __init__.py         # Main exports
+│   ├── agent.py            # Agent class
+│   ├── tools.py            # Tool interface and built-ins
+│   ├── llm.py              # LLM interface and OpenAI implementation
+│   ├── history.py          # Behavior tracking
+│   └── cli/                # CLI module
+│       ├── main.py         # CLI commands
+│       ├── docs.md         # Embedded documentation
+│       └── templates/      # Agent templates
+│           ├── basic_agent.py
+│           ├── chat_agent.py
+│           ├── data_agent.py
+│           └── *.md        # Prompt templates
+├── docs/                   # Documentation
+│   ├── getting-started.md
+│   ├── cli.md
+│   ├── templates.md
+│   └── ...
 ├── examples/
 │   └── basic_example.py
 ├── tests/

@@ -8,7 +8,9 @@ with open("README.md", "r", encoding="utf-8") as fh:
 requirements = [
     "openai>=1.0.0",
     "pydantic>=2.0.0", 
-    "python-dotenv>=1.0.0"
+    "python-dotenv>=1.0.0",
+    "click>=8.0.0",
+    "toml>=0.10.2"
 ]
 
 setup(
@@ -21,6 +23,15 @@ setup(
     long_description_content_type="text/markdown",
     url="https://github.com/connectonion/connectonion",
     packages=find_packages(),
+    package_data={
+        'connectonion.cli': [
+            'docs.md',  # Include docs.md in the package
+            'templates/*.py',  # Include template Python files
+            'templates/*.md',  # Include template markdown files
+            'templates/.env.example',  # Include env example
+            'templates/.gitignore',  # Include gitignore template
+        ],
+    },
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",
@@ -41,5 +52,11 @@ setup(
         "Bug Reports": "https://github.com/connectonion/connectonion/issues",
         "Source": "https://github.com/connectonion/connectonion",
         "Documentation": "https://github.com/connectonion/connectonion#readme",
+    },
+    entry_points={
+        "console_scripts": [
+            "co=connectonion.cli.main:cli",
+            "connectonion=connectonion.cli.main:cli",
+        ],
     },
 )

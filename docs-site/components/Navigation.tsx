@@ -2,7 +2,7 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { Menu, X, Github, ExternalLink, Zap, FileText } from 'lucide-react'
+import { Menu, X, Github, ExternalLink, Zap, FileText, Terminal } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
 export default function Navigation() {
@@ -40,6 +40,9 @@ export default function Navigation() {
           <div className="hidden lg:flex items-center gap-8">
             <NavLink href="/docs" icon={<FileText className="w-4 h-4" />}>
               Docs
+            </NavLink>
+            <NavLink href="/cli" icon={<Terminal className="w-4 h-4" />}>
+              CLI
             </NavLink>
             <NavLink href="/xray" icon={<Zap className="w-4 h-4" />}>
               @xray
@@ -88,6 +91,9 @@ export default function Navigation() {
               <div className="py-6 space-y-4">
                 <MobileNavLink href="/docs" onClick={() => setIsOpen(false)}>
                   Docs
+                </MobileNavLink>
+                <MobileNavLink href="/cli" onClick={() => setIsOpen(false)}>
+                  CLI
                 </MobileNavLink>
                 <MobileNavLink href="/xray" onClick={() => setIsOpen(false)}>
                   @xray

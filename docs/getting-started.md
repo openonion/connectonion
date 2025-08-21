@@ -5,11 +5,32 @@ Build your first AI agent in 60 seconds.
 ## Install
 
 ```bash
-pip install -r requirements.txt
-export OPENAI_API_KEY="your-key-here"
+pip install connectonion
 ```
 
-## Your First Agent
+## Quick Start with CLI
+
+The fastest way to start is with the ConnectOnion CLI:
+
+```bash
+# Create a directory for your meta-agent
+mkdir my-meta-agent
+cd my-meta-agent
+
+# Initialize the meta-agent
+co init
+
+# Copy .env.example to .env and add your OpenAI API key
+cp .env.example .env
+# Edit .env and add your key
+
+# Run your meta-agent
+python agent.py
+```
+
+That's it! You now have a self-reflective meta-agent with planning capabilities. 🎉
+
+## Manual Setup (Alternative)
 
 ```python
 from connectonion import Agent
@@ -28,6 +49,7 @@ print(result)
 ```
 
 **Output:**
+
 ```
 To calculate 42 * 17, I'll use the calculator tool.
 
@@ -102,6 +124,7 @@ print(agent.history.summary())
 ```
 
 **Output:**
+
 ```
 Agent: assistant
 Total tasks: 3
@@ -135,10 +158,29 @@ assistant.input("Save 'Hello World' to greeting.txt")
 assistant.input("What's in greeting.txt?")
 ```
 
+## CLI Templates
+
+ConnectOnion provides different templates for common use cases:
+
+```bash
+# Conversational agent
+co init --template chat
+
+# Data analysis agent
+co init --template data
+
+# Include example tools
+co init --with-examples
+```
+
+Learn more about templates in the [Templates Documentation](templates.md).
+
 ## Next Steps
 
 Ready for more?
 
+- **[CLI Reference](cli.md)** - All CLI commands and options
+- **[Templates](templates.md)** - Pre-built agent templates
 - **[Core Concepts](concepts.md)** - How agents and tools work
 - **[Examples](examples.md)** - Copy-paste ready code
 - **[API Reference](api.md)** - Detailed documentation

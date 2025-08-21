@@ -40,6 +40,98 @@ export OPENAI_API_KEY="your-api-key-here"
 
 ---
 
+## CLI Reference - Quick Project Setup
+
+ConnectOnion includes a CLI for quickly scaffolding agent projects.
+
+### Installation
+The CLI is automatically installed with ConnectOnion:
+```bash
+pip install connectonion
+# Provides two commands: 'co' and 'connectonion'
+```
+
+### Initialize a Project
+
+```bash
+# Create meta-agent (default) - ConnectOnion development assistant
+mkdir my-meta-agent
+cd my-meta-agent
+co init
+
+# Create web automation agent
+mkdir my-playwright-agent  
+cd my-playwright-agent
+co init --template playwright
+```
+
+### CLI Options
+
+- `co init` - Initialize a new agent project
+  - `--template, -t` - Choose template: `meta-agent` (default), `playwright`, `basic` (alias)
+  - `--with-examples` - Include additional example tools
+  - `--force` - Overwrite existing files
+
+### What Gets Created
+
+```
+my-project/
+├── agent.py           # Main agent implementation
+├── prompt.md          # System prompt (markdown)
+├── .env.example       # Environment variables template
+├── .co/               # ConnectOnion metadata
+│   ├── config.toml    # Project configuration
+│   └── docs/
+│       └── connectonion.md  # Embedded framework documentation
+└── .gitignore         # Git ignore rules (if in git repo)
+```
+
+### Available Templates
+
+**Meta-Agent (Default)** - ConnectOnion development assistant with built-in tools:
+- `answer_connectonion_question()` - Expert answers from embedded docs
+- `create_agent_from_template()` - Generate complete agent code
+- `generate_tool_code()` - Create tool functions
+- `create_test_for_agent()` - Generate pytest test suites
+- `think()` - Self-reflection to analyze task completion
+- `generate_todo_list()` - Create structured plans (uses GPT-4o-mini)
+- `suggest_project_structure()` - Architecture recommendations
+
+**Playwright Template** - Web automation with stateful browser control:
+- `start_browser()` - Launch browser instance
+- `navigate()` - Go to URLs
+- `scrape_content()` - Extract page content
+- `fill_form()` - Fill and submit forms
+- `take_screenshot()` - Capture pages
+- `extract_links()` - Get all links
+- `execute_javascript()` - Run JS code
+- `close_browser()` - Clean up resources
+
+Note: Playwright template requires `pip install playwright && playwright install`
+
+### Interactive Features
+
+The CLI will:
+- Warn if you're in a special directory (home, root, system)
+- Ask for confirmation if the directory is not empty
+- Automatically detect git repositories and update `.gitignore`
+- Provide clear next steps after initialization
+
+### Quick Start After Init
+
+```bash
+# 1. Copy environment template
+cp .env.example .env
+
+# 2. Add your OpenAI API key to .env
+echo "OPENAI_API_KEY=sk-your-key-here" > .env
+
+# 3. Run your agent
+python agent.py
+```
+
+---
+
 ## Quick Start Template
 
 ```python
