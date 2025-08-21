@@ -15,7 +15,7 @@ requirements = [
 
 setup(
     name="connectonion",
-    version="0.0.1b5",
+    version="0.0.1b6",
     author="ConnectOnion Team",
     author_email="pypi@connectonion.com",
     description="A simple Python framework for creating AI agents with behavior tracking",

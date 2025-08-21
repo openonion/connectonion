@@ -69,7 +69,7 @@ export default function HomePage() {
           <div className="flex items-center justify-center gap-3 mb-4">
             <h1 className="text-4xl md:text-6xl font-bold text-white">ConnectOnion</h1>
             <span className="px-3 py-1 bg-purple-600/20 text-purple-400 text-sm font-semibold rounded-full border border-purple-500/30">
-              v0.0.1b5
+              v0.0.1b6
             </span>
           </div>
           <p className="text-xl md:text-2xl text-gray-300 mb-8 max-w-3xl mx-auto">

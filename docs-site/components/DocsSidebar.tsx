@@ -148,7 +148,7 @@ export function DocsSidebar() {
           <img src="https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/Onion.png" alt="ConnectOnion" className="w-8 h-8 rounded-lg object-cover" />
           <div>
             <div className="text-lg font-bold text-white">ConnectOnion</div>
-            <div className="text-xs text-gray-400">Documentation v0.0.1b5</div>
+            <div className="text-xs text-gray-400">Documentation v0.0.1b6</div>
           </div>
         </Link>
       </div>
@@ -260,7 +260,7 @@ export function DocsSidebar() {
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3 text-xs text-gray-400">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            <span>v0.0.1b5</span>
+            <span>v0.0.1b6</span>
           </div>
         </div>
         
