@@ -36,7 +36,8 @@ def format_weather(weather_data: dict) -> str:
 # Create weather agent
 agent = Agent(
     name="weather_bot",
-    tools=[get_weather, format_weather]
+    tools=[get_weather, format_weather],
+    max_iterations=5  # Weather queries are simple
 )
 
 response = agent.input("What's the weather like in Tokyo?")

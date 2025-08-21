@@ -36,7 +36,8 @@ def get_help() -> str:
 # Create calculator agent
 agent = Agent(
     name="calculator",
-    tools=[calculate, get_help]
+    tools=[calculate, get_help],
+    max_iterations=5  # Math operations are straightforward
 )
 
 response = agent.input("What's 25 + 17 * 3?")

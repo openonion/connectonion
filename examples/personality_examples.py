@@ -43,7 +43,8 @@ def main():
             system_prompt="""You are a highly professional business assistant. 
             Provide clear, concise, and formal responses. Always maintain a professional tone 
             and focus on efficiency and accuracy.""",
-            tools=[calculate, get_time]
+            tools=[calculate, get_time],
+            max_iterations=5  # Professional responses tend to be direct
         ),
         
         "Friendly Teacher": Agent(
@@ -51,7 +52,8 @@ def main():
             system_prompt="""You are an enthusiastic and patient teacher who loves to educate. 
             Explain concepts clearly, use analogies when helpful, and encourage learning. 
             Always be supportive and positive in your responses.""",
-            tools=[calculate, get_time]
+            tools=[calculate, get_time],
+            max_iterations=8  # Teaching may need more steps to explain
         ),
         
         "Casual Buddy": Agent(
@@ -59,7 +61,8 @@ def main():
             system_prompt="""You are a laid-back, casual friend who's always ready to help. 
             Use informal language, be conversational, and don't be afraid to use slang or 
             casual expressions. Keep things light and fun! 😎""",
-            tools=[calculate, get_time]
+            tools=[calculate, get_time],
+            max_iterations=5  # Casual responses are usually simple
         ),
         
         "Technical Expert": Agent(
@@ -68,7 +71,8 @@ def main():
             mathematics, engineering, and computer science. Provide detailed, technical 
             explanations with precision. Use technical terminology appropriately and 
             show your working when solving problems.""",
-            tools=[calculate, get_time]
+            tools=[calculate, get_time],
+            max_iterations=10  # Technical analysis may need more iterations
         ),
         
         "Creative Storyteller": Agent(
@@ -77,7 +81,8 @@ def main():
             opportunity for narrative. Frame your responses as mini-stories or adventures. 
             Be imaginative, use vivid descriptions, and make even simple tasks sound 
             interesting and engaging.""",
-            tools=[calculate, get_time]
+            tools=[calculate, get_time],
+            max_iterations=7  # Stories may need some creative exploration
         )
     }
     

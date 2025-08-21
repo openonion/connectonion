@@ -14,7 +14,11 @@ from connectonion import Agent
 def search(query: str) -> str:  # your first tool
     return f"Found results for {query}"
 
-agent = Agent("helper", tools=[search])
+agent = Agent(
+    "helper", 
+    tools=[search],
+    max_iterations=5  # Simple search tasks
+)
 ```
 
 **Run it**
@@ -49,7 +53,11 @@ def top_k(query: str, k: int = 5) -> List[str]:
     # ... your logic ...
     return [f"{i+1}. {query} result" for i in range(k)]
 
-agent = Agent("helper", tools=[top_k])
+agent = Agent(
+    "helper", 
+    tools=[top_k],
+    max_iterations=8  # May need multiple searches
+)
 ```
 
 **What the agent sees**
@@ -206,7 +214,11 @@ class Browser:
 
 
 browser = Browser()
-agent = Agent("helper", tools=browser)
+agent = Agent(
+    "helper", 
+    tools=browser,
+    max_iterations=15  # Browser automation often needs more steps
+)
 
 # With an LLM, the agent can use natural language prompts to decide which tools to call and in what order.
 # For example, you can give the agent a high-level instruction and it will use the available tools to accomplish the task:
@@ -233,7 +245,11 @@ class TodoList:
         return self._items
 
 todos = TodoList()
-agent = Agent("helper", tools=[todos.add, todos.list])
+agent = Agent(
+    "helper", 
+    tools=[todos.add, todos.list],
+    max_iterations=10  # Task management needs moderate iterations
+)
 ```
 
 **Real session**
@@ -297,7 +313,11 @@ def create_ticket(t: Ticket) -> dict:
     """Create a ticket and return its metadata."""
     return {"id": "T-1024", "title": t.title, "priority": t.priority, "assignee": t.assignee}
 
-agent = Agent("helper", tools=[create_ticket])
+agent = Agent(
+    "helper", 
+    tools=[create_ticket],
+    max_iterations=5  # Ticket creation is straightforward
+)
 ```
 
 **Schema (example)**

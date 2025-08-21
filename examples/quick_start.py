@@ -44,8 +44,8 @@ def main():
     agent = Agent(
         name="my_assistant",
         system_prompt="You are a friendly and helpful assistant. Be concise but warm in your responses.",
-        tools=[search, calculate, get_time]
-        # max_iterations=10 (default) - agent can try up to 10 tool calls per task
+        tools=[search, calculate, get_time],
+        max_iterations=10  # Default - agent can try up to 10 tool calls per task
     )
     
     print(f"✅ Agent created with tools: {agent.list_tools()}")

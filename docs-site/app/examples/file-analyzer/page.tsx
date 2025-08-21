@@ -67,7 +67,8 @@ def search_files(directory: str, pattern: str) -> str:
 # Create file analysis agent
 agent = Agent(
     name="file_analyst",
-    tools=[analyze_file, search_files]
+    tools=[analyze_file, search_files],
+    max_iterations=12  # File analysis may need multiple searches
 )`
 
 const fullExampleCode = `# file_analyzer_agent.py

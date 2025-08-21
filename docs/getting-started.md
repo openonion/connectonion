@@ -41,7 +41,11 @@ def calculate(expression: str) -> str:
     return str(eval(expression))
 
 # Create your agent
-agent = Agent("assistant", tools=[calculate])
+agent = Agent(
+    "assistant", 
+    tools=[calculate],
+    max_iterations=5  # Simple calculations don't need many iterations
+)
 
 # Use it!
 result = agent.input("What is 42 * 17?")
@@ -75,7 +79,8 @@ def get_time() -> str:
 # Create a more capable agent
 agent = Agent(
     name="assistant",
-    tools=[calculate, search, get_time]
+    tools=[calculate, search, get_time],
+    max_iterations=10  # Default for general purpose agents
 )
 
 # It can use multiple tools in one request!
@@ -151,7 +156,11 @@ def read_file(filename: str) -> str:
         return f.read()
 
 # Create a file assistant
-assistant = Agent("file_helper", tools=[write_file, read_file])
+assistant = Agent(
+    "file_helper", 
+    tools=[write_file, read_file],
+    max_iterations=8  # File operations are usually straightforward
+)
 
 # Use it
 assistant.input("Save 'Hello World' to greeting.txt")

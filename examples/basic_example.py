@@ -55,7 +55,8 @@ def main():
     agent = Agent(
         name="assistant",
         system_prompt="You are a helpful assistant that can use tools to complete tasks.",
-        tools=[search, calculate, current_time, write_file]
+        tools=[search, calculate, current_time, write_file],
+        max_iterations=8  # Standard for general purpose tasks
     )
     
     print("ConnectOnion Agent Example - Simple Function-Based Tools")

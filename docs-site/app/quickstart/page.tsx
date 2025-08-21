@@ -139,7 +139,8 @@ def calculate(expression: str) -> str:
 agent = Agent(
     name="calculator", 
     tools=[calculate],
-    system_prompt="You are a helpful math tutor."
+    system_prompt="You are a helpful math tutor.",
+    max_iterations=5  # Simple calculations need few iterations
 )
 
 # Use the agent
@@ -165,7 +166,7 @@ def calculate(expression: str) -> str:
     result = eval(expression)
     return f"Result: {result}"
 
-agent = Agent("debug_calc", tools=[calculate])
+agent = Agent("debug_calc", tools=[calculate], max_iterations=5)
 response = agent.input("What's 50 + 30?")
 \`\`\`
 
@@ -525,7 +526,8 @@ def calculate(expression: str) -> str:
 agent = Agent(
     name="calculator", 
     tools=[calculate],
-    system_prompt="You are a helpful math tutor."
+    system_prompt="You are a helpful math tutor.",
+    max_iterations=5  # Simple calculations need few iterations
 )
 
 # Use the agent
@@ -571,7 +573,8 @@ def calculate(expression: str) -> str:
 agent = Agent(
     name="calculator", 
     tools=[calculate],
-    system_prompt="You are a helpful math tutor."
+    system_prompt="You are a helpful math tutor.",
+    max_iterations=5  # Simple calculations need few iterations
 )
 
 # Use the agent
@@ -621,7 +624,7 @@ def calculate(expression: str) -> str:
     result = eval(expression)
     return f"Result: {result}"
 
-agent = Agent("debug_calc", tools=[calculate])
+agent = Agent("debug_calc", tools=[calculate], max_iterations=5)
 response = agent.input("What's 50 + 30?")`, 'xray-debug')}
               className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
             >
@@ -658,7 +661,7 @@ def calculate(expression: str) -> str:
     result = eval(expression)
     return f"Result: {result}"
 
-agent = Agent("debug_calc", tools=[calculate])
+agent = Agent("debug_calc", tools=[calculate], max_iterations=5)
 response = agent.input("What's 50 + 30?")`}
             </SyntaxHighlighter>
           </div>

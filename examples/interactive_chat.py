@@ -137,7 +137,8 @@ def main():
         You love helping users with their questions and tasks. Be engaging, helpful, and 
         occasionally use emojis to make the conversation more lively. When using tools, 
         explain what you're doing in a natural, conversational way.""",
-        tools=[search, calculate, get_time, weather, write_note, read_note, help_commands]
+        tools=[search, calculate, get_time, weather, write_note, read_note, help_commands],
+        max_iterations=10  # Standard for conversational interactions
     )
     
     print(f"✅ Agent ready with tools: {', '.join(agent.list_tools())}")

@@ -20,7 +20,7 @@ export default function ToolsDocsPage() {
 def search(query: str) -> str:
     return f"Found results for {query}"
 
-agent = Agent("helper", tools=[search])
+agent = Agent("helper", tools=[search], max_iterations=5)
 
 print(agent.input("Find Python tutorials"))`
 
@@ -31,7 +31,7 @@ def top_k(query: str, k: int = 5) -> List[str]:
     """Return the top-k result titles for a query."""
     return [f"{i+1}. {query} result" for i in range(k)]
 
-agent = Agent("helper", tools=[top_k])
+agent = Agent("helper", tools=[top_k], max_iterations=8)
 
 print(agent.input("top_k('vector db', k=3)"))`
 
@@ -117,7 +117,7 @@ class Browser:
             self._p.stop()
 
 browser = Browser()
-agent = Agent("helper", tools=browser)
+agent = Agent("helper", tools=browser, max_iterations=15)
 
 # Try tools directly
 print(browser.start())

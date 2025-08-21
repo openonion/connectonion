@@ -226,7 +226,8 @@ def main():
             generate_summary,
             debug_info
         ],
-        model="gpt-5-mini"  # Using gpt-5-mini for balanced performance
+        model="gpt-5-mini",  # Using gpt-5-mini for balanced performance
+        max_iterations=10  # Standard for debugging and analysis tasks
     )
     
     print(f"✅ Created agent '{agent.name}' with {len(agent.tools)} tools")

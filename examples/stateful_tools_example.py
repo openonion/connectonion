@@ -152,6 +152,7 @@ def demo_web_scraping():
         name="web_scraper", 
         tools=scraper,  # Pass class instance directly!
         system_prompt="You are a web scraping assistant. Follow user instructions step by step.",
+        max_iterations=12,  # Web scraping often needs multiple steps
         api_key="fake_key_for_demo"  # Just for demo - won't actually call LLM
     )
     
@@ -203,6 +204,7 @@ def demo_mixed_tools():
         name="mixed_agent",
         tools=[db, scraper, simple_calculator],  # Mix everything!
         system_prompt="You are a versatile assistant with database, web scraping, and calculation capabilities.",
+        max_iterations=15,  # Complex data operations need more iterations
         api_key="fake_key_for_demo"  # Just for demo
     )
     
@@ -255,7 +257,12 @@ def demo_resource_cleanup():
             print("Resources cleaned up!")
     
     processor = FileProcessor()
-    agent = Agent(name="file_agent", tools=processor, api_key="fake_key_for_demo")
+    agent = Agent(
+        name="file_agent", 
+        tools=processor, 
+        max_iterations=8,  # File operations usually don't need many iterations
+        api_key="fake_key_for_demo"
+    )
     
     # Demonstrate tool usage
     print("\n--- Simulating File Processing ---")

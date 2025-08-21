@@ -58,7 +58,8 @@ def complete_task(task_id: int) -> str:
 # Create task manager agent  
 agent = Agent(
     name="task_manager",
-    tools=[add_task, list_tasks, complete_task]
+    tools=[add_task, list_tasks, complete_task],
+    max_iterations=10  # Task management may need multiple operations
 )`
 
 const fullExampleCode = `# task_manager_agent.py

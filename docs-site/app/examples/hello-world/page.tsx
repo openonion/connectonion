@@ -16,7 +16,8 @@ def greet(name: str) -> str:
 # Create the simplest agent
 agent = Agent(
     name="greeter",
-    tools=[greet]
+    tools=[greet],
+    max_iterations=3  # Simple greeting needs few iterations
 )
 
 # Use it
@@ -45,7 +46,8 @@ def say_goodbye(name: str) -> str:
 # Create your first agent
 agent = Agent(
     name="greeter",
-    tools=[greet, say_goodbye]
+    tools=[greet, say_goodbye],
+    max_iterations=5  # Simple conversational tasks
 )
 
 if __name__ == "__main__":

@@ -158,6 +158,7 @@ def demo_google_search():
         system_prompt="""You are a web automation assistant. 
         Help users navigate websites, search for information, and take screenshots.
         Always be step-by-step and describe what you're doing.""",
+        max_iterations=15,  # Browser automation often needs more iterations
         api_key="demo_key"  # Replace with real key for actual LLM usage
     )
     
@@ -244,6 +245,7 @@ def demo_with_real_llm():
         Help users navigate websites efficiently. Always start the browser first.
         Take screenshots when you reach important pages.
         Be descriptive about what you see and do.""",
+        max_iterations=20,  # Web automation may need many steps
         api_key=api_key
     )
     
