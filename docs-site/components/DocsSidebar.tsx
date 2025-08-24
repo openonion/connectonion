@@ -32,6 +32,7 @@ const navigation: NavigationSection[] = [
     items: [
       { title: 'Tools', href: '/tools', icon: Code },
       { title: 'System Prompts', href: '/prompts', icon: Code, difficulty: 'Start Here' },
+      { title: 'Trust Parameter', href: '/trust', icon: Shield, difficulty: 'Important' },
       { title: 'max_iterations', href: '/max-iterations', icon: Gauge },
     ]
   },
@@ -68,11 +69,18 @@ const navigation: NavigationSection[] = [
       { title: '8. E-commerce Manager', href: '/examples/ecommerce-manager', icon: TrendingUp, difficulty: 'Expert' },
     ]
   },
+  {
+    title: 'Blog',
+    items: [
+      { title: 'All Posts', href: '/blog', icon: BookOpen },
+      { title: 'Why We Chose "Trust"', href: '/blog/trust-keyword', icon: Users, difficulty: 'Design Decision' },
+    ]
+  },
 ]
 
 export function DocsSidebar() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'Core Concepts', 'System Prompts', 'Agent Building'])
+  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'Core Concepts', 'System Prompts', 'Agent Building', 'Blog'])
   const [isClientMounted, setIsClientMounted] = useState(false)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success'>('idle')
   const pathname = usePathname()
