@@ -26,11 +26,27 @@ class Agent:
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
         model: str = "gpt-5-mini",
-        max_iterations: int = 10
+        max_iterations: int = 10,
+        trust: Optional[Union[str, Path, 'Agent']] = None
     ):
         self.name = name
         self.system_prompt = load_system_prompt(system_prompt)
         self.max_iterations = max_iterations
+        
+        # Handle trust parameter - convert to trust agent
+        from .trust import create_trust_agent, get_default_trust_level
+        
+        # If trust is None, check for environment default
+        if trust is None:
+            trust = get_default_trust_level()
+        
+        # Only create trust agent if we're not already a trust agent
+        # (to prevent infinite recursion when creating trust agents)
+        if name and name.startswith('trust_agent_'):
+            self.trust = None  # Trust agents don't need their own trust agents
+        else:
+            # Store the trust agent directly (or None)
+            self.trust = create_trust_agent(trust, api_key=api_key, model=model)
         
         # Process tools: convert raw functions and class instances to tool schemas automatically
         processed_tools = []
