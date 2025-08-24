@@ -1,12 +1,26 @@
 # Test Before Trust
 
-Try agents before using them in production.
+The `trust="tested"` parameter automatically tests agents before using them.
 
-## Usage
+## Automatic Testing with Trust Parameter
 
 ```python
-# Test an agent
-translator = discover("translate")
+# Automatic testing when trust="tested" (default)
+translator = need("translate", trust="tested")
+# ConnectOnion automatically tests the agent before returning it
+
+# Skip testing for development
+translator = need("translate", trust="open")
+
+# Only use pre-verified agents
+translator = need("translate", trust="strict")
+```
+
+## Manual Testing
+
+```python
+# Test an agent manually
+translator = need("translate", trust="open")  # Get untested agent
 result = translator.test("Hello", to_lang="es")
 
 if result == "Hola":

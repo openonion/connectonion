@@ -1,8 +1,8 @@
-# Agent-to-Agent Authentication: Design Principles
+# Agent-to-Agent Trust: Design Principles
 
-## Core Principle: Authentication IS an Agent
+## Core Principle: Trust IS an Agent
 
-Authentication isn't a protocol - it's just another agent with trust-checking tools.
+Trust isn't a protocol - it's just another agent with trust-checking tools.
 
 ## Five Guiding Principles
 
@@ -53,8 +53,41 @@ Trust levels grow through interaction:
 
 Start with synthetic tests, build to production use. Trust degrades through failures, grows through success.
 
+## Implementation: The `trust` Parameter
+
+The `trust` parameter provides flexible trust configuration for both serving and consuming agents:
+
+### Three Forms of Trust
+
+1. **Trust Level (String)** - Simple predefined levels
+   - `"open"` - Trust everyone (development)
+   - `"tested"` - Test before trusting (default)
+   - `"strict"` - Only verified/whitelisted agents (production)
+
+2. **Trust Policy (Prompt)** - Natural language requirements
+   ```python
+   trust = """
+   I trust agents that:
+   - Pass capability tests
+   - Respond within 500ms
+   - Are on my whitelist OR from local network
+   """
+   ```
+
+3. **Trust Agent** - Custom agent with trust tools
+   ```python
+   trust_agent = Agent("guardian", tools=[verify, check_whitelist])
+   agent = Agent("my_bot", trust=trust_agent)
+   ```
+
+### Bidirectional Trust
+
+The same `trust` parameter works for both:
+- **As Server**: `Agent("my_service", tools=[...], trust="strict")` - Who can use me
+- **As Client**: `need("service", trust="strict")` - Who I trust to use
+
 ## The Result
 
 When agents need to establish trust, their trust agents simply have a conversation. No special protocols. No complex frameworks. Just agents talking to agents using the same ConnectOnion tools.
 
-Authentication becomes invisible - exactly as it should be.
+Trust becomes invisible - exactly as it should be.

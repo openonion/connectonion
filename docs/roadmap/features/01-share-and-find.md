@@ -34,7 +34,8 @@ from connectonion import Agent
 
 agent = Agent(
     name="writer-a1",
-    share=[translate, analyze_sentiment]  # functions only; names default to fn.__name__
+    share=[translate, analyze_sentiment],  # functions only; names default to fn.__name__
+    trust="tested"  # How others must prove themselves to use my services
 ).start()
 
 # Discovery stays the same
@@ -51,6 +52,10 @@ from connectonion import need
 # Just describe what you need
 translator = need("translate text to spanish")
 result = translator("Hello")  # "Hola"
+
+# With trust requirements
+translator = need("translate text to spanish", trust="strict")  # Only verified
+analyzer = need("analyze sentiment", trust="tested")  # Test before use
 
 # Any natural description works
 analyzer = need("figure out if this review is positive")
@@ -148,16 +153,24 @@ for translator in translators:
         continue
 ```
 
-### Quality Requirements
+### Trust Requirements
 ```python
-# Only high-quality functions
-translator = need("translate text", min_quality=0.9)
+# Different trust levels
+translator = need("translate text", trust="strict")  # Only verified/whitelisted
+analyzer = need("analyze data", trust="tested")      # Test before use
+scraper = need("scrape web", trust="open")          # Trust anyone (dev mode)
 
-# Prefer local functions
-local_analyzer = need("analyze data", prefer_local=True)
+# Custom trust policy
+translator = need("translate text", trust="""
+    I trust agents that:
+    - Pass translation tests
+    - Respond within 500ms
+    - Are from trusted domains
+""")
 
-# Prefer fast functions
-quick_processor = need("process image", max_response_time=100)
+# Custom trust agent
+my_trust = Agent("guardian", tools=[verify_capability, check_whitelist])
+translator = need("translate text", trust=my_trust)
 ```
 
 ### Test Before Use
