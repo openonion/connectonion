@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, Gauge, Copy, Check, Terminal } from 'lucide-react'
+import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Users, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, Gauge, Copy, Check, Terminal, Rocket } from 'lucide-react'
 import { DifficultyBadge } from './DifficultyBadge'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
 
@@ -76,11 +76,17 @@ const navigation: NavigationSection[] = [
       { title: 'Why We Chose "Trust"', href: '/blog/trust-keyword', icon: Users, difficulty: 'Design Decision' },
     ]
   },
+  {
+    title: 'Roadmap',
+    items: [
+      { title: 'Coming Soon Features', href: '/roadmap', icon: Rocket, difficulty: 'Preview' },
+    ]
+  },
 ]
 
 export function DocsSidebar() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'Core Concepts', 'System Prompts', 'Agent Building', 'Blog'])
+  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'Core Concepts', 'System Prompts', 'Agent Building', 'Blog', 'Roadmap'])
   const [isClientMounted, setIsClientMounted] = useState(false)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success'>('idle')
   const pathname = usePathname()
@@ -156,7 +162,10 @@ export function DocsSidebar() {
           <img src="https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/Onion.png" alt="ConnectOnion" className="w-8 h-8 rounded-lg object-cover" />
           <div>
             <div className="text-lg font-bold text-white">ConnectOnion</div>
-            <div className="text-xs text-gray-400">Documentation v0.0.1b6</div>
+            <div className="flex items-center gap-2 text-xs text-gray-400">
+              <span>Documentation v0.0.1b6</span>
+              <span className="px-1.5 py-0.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full text-[10px] font-semibold">BETA</span>
+            </div>
           </div>
         </Link>
       </div>
@@ -266,9 +275,10 @@ export function DocsSidebar() {
         </button>
         
         <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3 text-xs text-gray-400">
+          <div className="flex items-center gap-2 text-xs text-gray-400">
             <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
             <span>v0.0.1b6</span>
+            <span className="px-1.5 py-0.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full text-[10px] font-semibold">BETA</span>
           </div>
         </div>
         
