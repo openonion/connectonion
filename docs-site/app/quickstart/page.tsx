@@ -1,15 +1,16 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, Play, Terminal, ArrowRight, Zap, FileText, Clock, Code, Wrench } from 'lucide-react'
+import { Play, Terminal, ArrowRight, Zap, FileText, Clock, Code, Wrench, Copy, Check } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
+import { CommandBlock } from '../../components/CommandBlock'
 
 export default function QuickStartPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
-
+  
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
     setCopiedId(id)
@@ -225,24 +226,9 @@ Result: 80
           Install ConnectOnion
         </h2>
         
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
-            <span className="text-sm text-gray-400 font-mono">Terminal</span>
-            <button
-              onClick={() => copyToClipboard('pip install connectonion', 'install')}
-              className="text-gray-400 hover:text-white transition-colors p-1"
-            >
-              {copiedId === 'install' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          <div className="bg-black p-4 font-mono text-sm">
-            <span className="text-green-400">$</span> <span className="text-white">pip install connectonion</span>
-          </div>
-        </div>
+        <CommandBlock 
+          commands={['pip install connectonion']}
+        />
       </section>
 
       {/* Create Meta-Agent */}
@@ -256,25 +242,14 @@ Result: 80
           Initialize a ConnectOnion development assistant with powerful built-in capabilities:
         </p>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
-            <span className="text-sm text-gray-400 font-mono">Terminal</span>
-            <button
-              onClick={() => copyToClipboard('mkdir meta-agent\ncd meta-agent\nco init', 'init')}
-              className="text-gray-400 hover:text-white transition-colors p-1"
-            >
-              {copiedId === 'init' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          <div className="bg-black p-4 font-mono text-sm">
-            <span className="text-green-400">$</span> <span className="text-white">mkdir meta-agent</span><br/>
-            <span className="text-green-400">$</span> <span className="text-white">cd meta-agent</span><br/>
-            <span className="text-green-400">$</span> <span className="text-white">co init</span>
-          </div>
+        <div className="mb-6">
+          <CommandBlock 
+            commands={[
+              'mkdir meta-agent',
+              'cd meta-agent',
+              'co init'
+            ]}
+          />
         </div>
 
         <div className="bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg p-6 mb-8">
@@ -319,23 +294,10 @@ Result: 80
           Set Up Your API Key
         </h2>
         
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-4">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
-            <span className="text-sm text-gray-400 font-mono">Terminal</span>
-            <button
-              onClick={() => copyToClipboard('cp .env.example .env', 'env-copy')}
-              className="text-gray-400 hover:text-white transition-colors p-1"
-            >
-              {copiedId === 'env-copy' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          <div className="bg-black p-4 font-mono text-sm">
-            <span className="text-green-400">$</span> <span className="text-white">cp .env.example .env</span>
-          </div>
+        <div className="mb-4">
+          <CommandBlock 
+            commands={['cp .env.example .env']}
+          />
         </div>
 
         <p className="text-gray-300 mb-4">Then edit <code className="bg-gray-800 px-2 py-1 rounded text-blue-300">.env</code> and add your OpenAI API key:</p>
@@ -432,23 +394,10 @@ result = agent.input("Create a to-do list for building a REST API")`}
           For web automation tasks, use the Playwright template:
         </p>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
-            <span className="text-sm text-gray-400 font-mono">Terminal</span>
-            <button
-              onClick={() => copyToClipboard('co init --template playwright', 'playwright-init')}
-              className="text-gray-400 hover:text-white transition-colors p-1"
-            >
-              {copiedId === 'playwright-init' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          <div className="bg-black p-4 font-mono text-sm">
-            <span className="text-green-400">$</span> <span className="text-white">co init --template playwright</span>
-          </div>
+        <div className="mb-6">
+          <CommandBlock 
+            commands={['co init --template playwright']}
+          />
         </div>
 
         <div className="bg-gradient-to-b from-yellow-900/30 to-yellow-800/10 border border-yellow-500/30 rounded-lg p-6 mb-8">

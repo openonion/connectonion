@@ -1,28 +1,21 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, Terminal, Play, ArrowRight, BookOpen, Code, Zap, Clock, Users, Activity, CheckCircle, AlertCircle, Github } from 'lucide-react'
+import { Terminal, Play, ArrowRight, BookOpen, Code, Zap, Clock, Users, Activity, CheckCircle, AlertCircle, Github } from 'lucide-react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { WaitlistSignup } from '../components/WaitlistSignup'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
+import { CommandBlock } from '../components/CommandBlock'
 
 export default function HomePage() {
-  const [copiedId, setCopiedId] = useState<string | null>(null)
   const [isRunning, setIsRunning] = useState(false)
   const [terminalOutput, setTerminalOutput] = useState<string[]>([])
   const [currentStep, setCurrentStep] = useState(1)
   const [activeExample, setActiveExample] = useState<'basic' | 'real' | 'production'>('basic')
   const [copyAllStatus, setCopyAllStatus] = useState<'idle' | 'copying' | 'done'>('idle')
-
-
-  const copyToClipboard = (text: string, id: string) => {
-    navigator.clipboard.writeText(text)
-    setCopiedId(id)
-    setTimeout(() => setCopiedId(null), 2000)
-  }
 
   const runQuickstart = async () => {
     setIsRunning(true)
@@ -167,23 +160,10 @@ export default function HomePage() {
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-6">Installation</h2>
         
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-8">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
-            <span className="text-sm text-gray-400 font-mono">Terminal</span>
-            <button
-              onClick={() => copyToClipboard('pip install connectonion', 'install-cmd')}
-              className="text-gray-400 hover:text-white transition-colors p-1"
-            >
-              {copiedId === 'install-cmd' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          <div className="bg-black p-4 font-mono text-sm">
-            <span className="text-green-400">$</span> <span className="text-white">pip install connectonion</span>
-          </div>
+        <div className="mb-8">
+          <CommandBlock 
+            commands={['pip install connectonion']}
+          />
         </div>
       </section>
       

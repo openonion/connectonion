@@ -139,6 +139,40 @@ Uses OpenAI's function calling with proper message formatting:
 - pls remember the versiion should keep it under 0.0.1 to 0.0.9 when we don't have the features of agent to agent protocol, cause we are beta version
 - you can change to 0.0.2 until 0.0.1b10
 
+### Command Block UI Pattern
+
+When displaying terminal commands in the documentation site:
+
+1. **Use the CommandBlock component** (`docs-site/components/CommandBlock.tsx`) for all terminal commands
+2. **Never include $ signs in the copyable text** - the $ sign should be displayed visually but marked as `select-none`
+3. **Implementation pattern**:
+   ```tsx
+   import { CommandBlock } from '../../components/CommandBlock'
+   
+   // Single command
+   <CommandBlock commands={['pip install connectonion']} />
+   
+   // Multiple commands
+   <CommandBlock 
+     commands={[
+       'mkdir my-project',
+       'cd my-project',
+       'co init'
+     ]}
+   />
+   ```
+
+4. **Visual design**:
+   - $ signs are displayed in gray (`text-gray-500`) and non-selectable (`select-none`)
+   - Commands have hover effect (`hover:bg-white/5`) to show interactivity
+   - Copy button copies all commands without $ signs, joined with newlines
+   - Shows green checkmark when successfully copied
+
+5. **User benefits**:
+   - Users can click copy button to get clean commands ready for terminal
+   - Manual text selection won't accidentally grab $ signs
+   - Multi-line commands are properly formatted for pasting
+
 ## Core Beliefs and Process Guidelines
 
 ### Core Beliefs
