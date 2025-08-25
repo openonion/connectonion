@@ -30,10 +30,10 @@ const navigation: NavigationSection[] = [
   {
     title: 'Core Concepts',
     items: [
+      { title: 'max_iterations', href: '/max-iterations', icon: Gauge, difficulty: 'Start Here' },
       { title: 'Tools', href: '/tools', icon: Code },
-      { title: 'System Prompts', href: '/prompts', icon: Code, difficulty: 'Start Here' },
-      { title: 'Trust Parameter', href: '/trust', icon: Shield, difficulty: 'Important' },
-      { title: 'max_iterations', href: '/max-iterations', icon: Gauge },
+      { title: 'System Prompts', href: '/prompts', icon: Code },
+      { title: 'Trust Parameter', href: '/trust', icon: Shield },
     ]
   },
   {
