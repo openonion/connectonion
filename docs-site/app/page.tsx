@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Terminal, Play, ArrowRight, BookOpen, Code, Zap, Clock, Users, Activity, CheckCircle, AlertCircle, Github } from 'lucide-react'
+import { Terminal, Play, ArrowRight, BookOpen, Code, Zap, Clock, Users, Activity, CheckCircle, AlertCircle, Github, Copy, Check } from 'lucide-react'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -16,6 +16,7 @@ export default function HomePage() {
   const [currentStep, setCurrentStep] = useState(1)
   const [activeExample, setActiveExample] = useState<'basic' | 'real' | 'production'>('basic')
   const [copyAllStatus, setCopyAllStatus] = useState<'idle' | 'copying' | 'done'>('idle')
+  const [copiedId, setCopiedId] = useState<string | null>(null)
 
   const runQuickstart = async () => {
     setIsRunning(true)
@@ -50,6 +51,12 @@ export default function HomePage() {
     } catch {
       setCopyAllStatus('idle')
     }
+  }
+
+  const copyToClipboard = (text: string, id: string) => {
+    navigator.clipboard.writeText(text)
+    setCopiedId(id)
+    setTimeout(() => setCopiedId(null), 2000)
   }
 
 
