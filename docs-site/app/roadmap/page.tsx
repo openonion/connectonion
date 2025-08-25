@@ -268,12 +268,12 @@ export default function RoadmapPage() {
               Request Feature
             </a>
             <a
-              href="https://github.com/wu-changxing/connectonion/discussions"
+              href="https://discord.gg/4xfD9k8AUF"
               target="_blank"
               rel="noopener noreferrer"
               className="px-4 py-2 bg-gray-700 text-white rounded-lg text-sm font-medium hover:bg-gray-600 transition-colors"
             >
-              Join Discussion
+              Join Discord
             </a>
           </div>
         </div>
