@@ -1,5 +1,5 @@
 interface DifficultyBadgeProps {
-  level: 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert'
+  level: 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert' | 'Start Here' | 'Important' | 'Design Decision' | 'Preview' | 'Browse'
   size?: 'sm' | 'md' | 'lg'
   showIcon?: boolean
   className?: string
@@ -33,6 +33,41 @@ const difficultyConfig = {
     border: 'border-red-500/30',
     icon: '🔴',
     description: 'Enterprise business logic, multi-system coordination'
+  },
+  'Start Here': {
+    bg: 'bg-purple-900/50',
+    text: 'text-purple-400',
+    border: 'border-purple-500/30',
+    icon: '⭐',
+    description: 'Recommended starting point'
+  },
+  'Important': {
+    bg: 'bg-blue-900/50',
+    text: 'text-blue-400',
+    border: 'border-blue-500/30',
+    icon: '❗',
+    description: 'Critical information'
+  },
+  'Design Decision': {
+    bg: 'bg-indigo-900/50',
+    text: 'text-indigo-400',
+    border: 'border-indigo-500/30',
+    icon: '💡',
+    description: 'Architectural and design insights'
+  },
+  'Preview': {
+    bg: 'bg-pink-900/50',
+    text: 'text-pink-400',
+    border: 'border-pink-500/30',
+    icon: '👀',
+    description: 'Preview of upcoming features'
+  },
+  'Browse': {
+    bg: 'bg-gray-800/50',
+    text: 'text-gray-400',
+    border: 'border-gray-600/30',
+    icon: '📚',
+    description: 'Browse all examples'
   }
 }
 

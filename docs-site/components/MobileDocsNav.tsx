@@ -40,7 +40,7 @@ export function MobileDocsNav() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="lg:hidden fixed inset-0 bg-black/50 z-40"
+              className="lg:hidden fixed inset-0 bg-black/60 z-45"
               onClick={() => setIsOpen(false)}
             />
             
@@ -50,7 +50,7 @@ export function MobileDocsNav() {
               animate={{ x: 0 }}
               exit={{ x: '-100%' }}
               transition={{ type: 'tween', duration: 0.3 }}
-              className="lg:hidden fixed left-0 top-16 h-[calc(100vh-4rem)] z-50"
+              className="lg:hidden fixed left-0 top-0 h-screen z-50"
             >
               <DocsSidebar />
             </motion.div>

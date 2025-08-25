@@ -3,7 +3,7 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Users, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, Gauge, Copy, Check, Terminal, Rocket } from 'lucide-react'
+import { Search, FileText, Zap, Code, Settings, BookOpen, ChevronRight, ChevronDown, User, Users, Database, Brain, Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, Gauge, Copy, Check, Terminal, Rocket, Cloud, MoreHorizontal } from 'lucide-react'
 import { DifficultyBadge } from './DifficultyBadge'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
 
@@ -56,17 +56,13 @@ const navigation: NavigationSection[] = [
     ]
   },
   {
-    title: 'Agent Building',
+    title: 'Examples',
     items: [
-      { title: 'Examples Overview', href: '/examples' },
-      { title: '1. Hello World Agent', href: '/examples/hello-world', icon: User, difficulty: 'Beginner' },
-      { title: '2. Basic Calculator', href: '/examples/calculator', icon: Code, difficulty: 'Beginner' },
-      { title: '3. Weather Bot', href: '/examples/weather-bot', icon: Database, difficulty: 'Beginner' },
-      { title: '4. Task Manager', href: '/examples/task-manager', icon: FileText, difficulty: 'Intermediate' },
-      { title: '5. Math Tutor Agent', href: '/examples/math-tutor-agent', icon: Code, difficulty: 'Intermediate' },
-      { title: '6. File Analyzer', href: '/examples/file-analyzer', icon: FileText, difficulty: 'Advanced' },
-      { title: '7. API Client', href: '/examples/api-client', icon: Database, difficulty: 'Advanced' },
-      { title: '8. E-commerce Manager', href: '/examples/ecommerce-manager', icon: TrendingUp, difficulty: 'Expert' },
+      { title: 'All Examples', href: '/examples', icon: FolderOpen, difficulty: 'Browse' },
+      { title: 'Hello World', href: '/examples/hello-world', icon: Play, difficulty: 'Beginner' },
+      { title: 'Calculator', href: '/examples/calculator', icon: Code, difficulty: 'Beginner' },
+      { title: 'Weather Bot', href: '/examples/weather-bot', icon: Cloud, difficulty: 'Intermediate' },
+      { title: 'More Examples', href: '/examples#advanced', icon: MoreHorizontal },
     ]
   },
   {
@@ -86,7 +82,7 @@ const navigation: NavigationSection[] = [
 
 export function DocsSidebar() {
   const [searchQuery, setSearchQuery] = useState('')
-  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'Core Concepts', 'System Prompts', 'Agent Building', 'Blog', 'Roadmap'])
+  const [openSections, setOpenSections] = useState<string[]>(['Getting Started'])
   const [isClientMounted, setIsClientMounted] = useState(false)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success'>('idle')
   const pathname = usePathname()
@@ -97,7 +93,10 @@ export function DocsSidebar() {
     const saved = localStorage.getItem('docs-open-sections')
     if (saved) {
       try {
-        setOpenSections(JSON.parse(saved))
+        const parsed = JSON.parse(saved)
+        if (parsed && parsed.length > 0) {
+          setOpenSections(parsed)
+        }
       } catch {
         // Keep default if parsing fails
       }
@@ -117,9 +116,16 @@ export function DocsSidebar() {
       section.items.some(item => item.href === pathname)
     )
     if (currentSection && !openSections.includes(currentSection.title)) {
-      setOpenSections(prev => [...prev, currentSection.title])
+      setOpenSections(prev => {
+        // Only keep Getting Started and the current section open
+        const newSections = ['Getting Started']
+        if (currentSection.title !== 'Getting Started') {
+          newSections.push(currentSection.title)
+        }
+        return newSections
+      })
     }
-  }, [pathname, openSections])
+  }, [pathname])
 
   const toggleSection = (title: string) => {
     setOpenSections(prev => 
@@ -155,7 +161,7 @@ export function DocsSidebar() {
   }
 
   return (
-    <div className="w-80 bg-gray-900 border-r border-gray-800 flex flex-col h-screen sticky top-0 z-40">
+    <div className="w-64 lg:w-72 xl:w-80 bg-gray-900 border-r border-gray-800 flex flex-col h-screen sticky top-0 z-40">
       {/* Header */}
       <div className="p-6 border-b border-gray-800">
         <Link href="/" className="flex items-center gap-3 group">
