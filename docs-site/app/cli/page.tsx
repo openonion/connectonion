@@ -16,6 +16,42 @@ export default function CLIPage() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  // Command block component for better reusability
+  const CommandBlock = ({ 
+    title, 
+    commands, 
+    id 
+  }: { 
+    title?: string
+    commands: string[]
+    id: string 
+  }) => (
+    <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
+      <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
+        <span className="text-sm text-gray-400 font-mono">{title || 'Terminal'}</span>
+        <button
+          onClick={() => copyToClipboard(commands.join('\n'), id)}
+          className="text-gray-400 hover:text-white transition-colors p-1.5 rounded hover:bg-gray-700"
+          title="Copy commands"
+        >
+          {copiedId === id ? (
+            <Check className="w-4 h-4 text-green-400" />
+          ) : (
+            <Copy className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+      <div className="bg-black/90 p-4 font-mono text-sm">
+        {commands.map((cmd, index) => (
+          <div key={index} className="group hover:bg-white/5 -mx-4 px-4 py-0.5">
+            <span className="select-none text-gray-500 mr-2">$</span>
+            <span className="text-gray-100">{cmd}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
   const markdownContent = `# ConnectOnion CLI Reference
 
 The ConnectOnion CLI provides commands to quickly scaffold and manage AI agent projects.
@@ -195,26 +231,12 @@ python --version
           The CLI is automatically installed when you install ConnectOnion:
         </p>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
-            <span className="text-sm text-gray-400 font-mono">Terminal</span>
-            <button
-              onClick={() => copyToClipboard('pip install connectonion', 'install')}
-              className="text-gray-400 hover:text-white transition-colors p-1"
-            >
-              {copiedId === 'install' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          <div className="bg-black p-4 font-mono text-sm">
-            <span className="text-green-400">$</span> <span className="text-white">pip install connectonion</span>
-          </div>
-        </div>
+        <CommandBlock 
+          commands={['pip install connectonion']}
+          id="install"
+        />
 
-        <div className="bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg p-4">
+        <div className="bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg p-4 mt-6">
           <p className="text-blue-200">
             This provides two equivalent commands: <code className="bg-black/30 px-2 py-1 rounded">co</code> (short form) 
             and <code className="bg-black/30 px-2 py-1 rounded">connectonion</code> (full form)
@@ -239,48 +261,26 @@ python --version
           
           <div className="space-y-4">
             {/* Meta-agent */}
-            <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
-                <span className="text-sm text-gray-400 font-mono">Create meta-agent (default)</span>
-                <button
-                  onClick={() => copyToClipboard('mkdir meta-agent\ncd meta-agent\nco init', 'meta-init')}
-                  className="text-gray-400 hover:text-white transition-colors p-1"
-                >
-                  {copiedId === 'meta-init' ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              <div className="bg-black p-4 font-mono text-sm">
-                <span className="text-green-400">$</span> <span className="text-white">mkdir meta-agent</span><br/>
-                <span className="text-green-400">$</span> <span className="text-white">cd meta-agent</span><br/>
-                <span className="text-green-400">$</span> <span className="text-white">co init</span>
-              </div>
-            </div>
+            <CommandBlock 
+              title="Create meta-agent (default)"
+              commands={[
+                'mkdir meta-agent',
+                'cd meta-agent',
+                'co init'
+              ]}
+              id="meta-init"
+            />
 
             {/* Playwright */}
-            <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-              <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
-                <span className="text-sm text-gray-400 font-mono">Create web automation agent</span>
-                <button
-                  onClick={() => copyToClipboard('mkdir playwright-agent\ncd playwright-agent\nco init --template playwright', 'playwright-init')}
-                  className="text-gray-400 hover:text-white transition-colors p-1"
-                >
-                  {copiedId === 'playwright-init' ? (
-                    <Check className="w-4 h-4 text-green-400" />
-                  ) : (
-                    <Copy className="w-4 h-4" />
-                  )}
-                </button>
-              </div>
-              <div className="bg-black p-4 font-mono text-sm">
-                <span className="text-green-400">$</span> <span className="text-white">mkdir playwright-agent</span><br/>
-                <span className="text-green-400">$</span> <span className="text-white">cd playwright-agent</span><br/>
-                <span className="text-green-400">$</span> <span className="text-white">co init --template playwright</span>
-              </div>
-            </div>
+            <CommandBlock 
+              title="Create web automation agent"
+              commands={[
+                'mkdir playwright-agent',
+                'cd playwright-agent',
+                'co init --template playwright'
+              ]}
+              id="playwright-init"
+            />
           </div>
         </div>
 
@@ -466,7 +466,7 @@ result = agent.input("Create a web scraper agent")
 
 # Create tool functions
 result = agent.input("Generate a tool for sending emails")`, 'meta-usage')}
-                className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
+                className="text-gray-400 hover:text-white transition-colors p-1.5 rounded hover:bg-gray-700"
               >
                 {copiedId === 'meta-usage' ? (
                   <Check className="w-4 h-4 text-green-400" />
@@ -578,9 +578,13 @@ result = agent.input("Generate a tool for sending emails")`}
             <div className="mt-4 p-3 bg-black/30 rounded-lg flex items-center gap-2">
               <AlertCircle className="w-4 h-4 text-yellow-400" />
               <p className="text-yellow-200 text-sm">
-                Note: Requires <code className="bg-black/50 px-2 py-0.5 rounded">pip install playwright && playwright install</code>
+                Note: Requires running the following command first:
               </p>
             </div>
+            <CommandBlock 
+              commands={['pip install playwright && playwright install']}
+              id="playwright-install"
+            />
           </div>
         </div>
       </section>
@@ -650,6 +654,39 @@ result = agent.input("Generate a tool for sending emails")`}
             <p className="text-gray-300 text-sm">
               The docs in <code className="bg-black/30 px-2 py-1 rounded">.co/docs/</code> allow agents to work offline.
             </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Troubleshooting */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6">Troubleshooting</h2>
+
+        <div className="space-y-6">
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-white mb-3">Python Version</h3>
+            <p className="text-gray-300 mb-4">
+              ConnectOnion requires Python 3.8 or higher. Check your version:
+            </p>
+            <CommandBlock 
+              commands={['python --version']}
+              id="python-version"
+            />
+          </div>
+
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-white mb-3">API Keys Setup</h3>
+            <p className="text-gray-300 mb-4">
+              After running <code className="bg-gray-800 px-2 py-1 rounded">co init</code>, set up your API keys:
+            </p>
+            <CommandBlock 
+              commands={[
+                'cp .env.example .env',
+                '# Edit .env and add your actual API keys',
+                'nano .env  # or use your preferred editor'
+              ]}
+              id="api-keys"
+            />
           </div>
         </div>
       </section>
