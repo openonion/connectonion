@@ -1,10 +1,10 @@
-# Design Decision: Choosing `llm()` as the Function Name
+# Design Decision: Choosing `llm_do()` as the Function Name
 
 ## Date
-2024-01-29
+2024-01-29 (Updated: 2024-01-30)
 
 ## Status
-Decided
+Decided → Revised
 
 ## Context
 
@@ -14,38 +14,57 @@ We needed a simple, intuitive function for one-shot LLM calls with optional stru
 - Accept prompts as strings or file paths
 - Be immediately understandable to developers
 
-## Options Considered
+## Initial Decision: `llm()`
 
-### 1. `llm()` ✅ **CHOSEN**
+We initially chose `llm()` for its simplicity. However, user feedback revealed a critical issue:
+- **`llm` reads as a noun, not a verb**
+- Functions should be actions (verbs)
+- Users were confused about what `llm()` does at a glance
+
+## Final Decision: `llm_do()`
+
+After extensive analysis, we chose `llm_do()` because:
+
+1. **Has a clear verb**: "do" is the most versatile action word
+2. **Works for all use cases**:
+   ```python
+   answer = llm_do("What's 2+2?")  # Do the calculation
+   invoice = llm_do(text, output=Invoice)  # Do the extraction
+   translation = llm_do("Hello", prompt="Translate")  # Do the translation
+   ```
+3. **Immediately clear**: Users understand it's performing an action
+4. **Still short**: Only 6 characters
+
+## Options We Considered
+
+### 1. `llm_do()` ✅ **CHOSEN**
+```python
+answer = llm_do("What's 2+2?")
+data = llm_do(text, output=Report)
+```
+
+**Pros:**
+- Clear verb that implies action
+- Works naturally for ALL use cases
+- Professional yet simple
+- Only 6 characters
+
+**Cons:**
+- Slightly longer than `llm()`
+
+### 2. `llm()` (Original)
 ```python
 answer = llm("What's 2+2?")
-data = llm(text, output=Report)
 ```
 
 **Pros:**
-- Most intuitive - developers immediately understand it's an LLM call
-- Short (3 characters)
-- Honest about what it does
-- No new concepts to learn
-- Follows Python convention (lowercase function vs uppercase LLM class)
+- Shortest possible (3 chars)
+- Clean look
 
 **Cons:**
-- Potential confusion with existing `LLM` class (but context makes it clear)
-- Very generic name
-
-### 2. `ask()`
-```python
-answer = ask("What's 2+2?")
-```
-
-**Pros:**
-- Natural, conversational
-- Zero learning curve
-- No naming conflicts
-
-**Cons:**
-- Doesn't convey all use cases (formatting, extraction)
-- Might imply Q&A only
+- **Reads as noun, not verb**
+- Unclear what action it performs
+- Users confused at first glance
 
 ### 3. `llm_oneshot()`
 ```python
@@ -55,122 +74,129 @@ result = llm_oneshot("Process this")
 **Pros:**
 - Explicitly describes behavior
 - Zero ambiguity
-- No conflicts
 
 **Cons:**
-- Verbose (12 characters)
+- Too verbose (11 characters)
 - Feels like enterprise Java
-- Not "cool" or Pythonic
+- Not elegant
 
-### 4. `smart()`
+### 4. `llm_tap()`
 ```python
-result = smart("Analyze this")
+answer = llm_tap("What's 2+2?")
 ```
 
 **Pros:**
-- Implies intelligence
-- Short and memorable
+- Elegant, modern feel
+- Short (7 chars)
 
 **Cons:**
-- Vague - what does "smart" mean?
-- Could be anything
+- Only sounds good for questions
+- Weird for extraction/conversion tasks
 
-### 5. `ai()`
+### 5. `llm_go()`
 ```python
-result = ai("Hello")
+answer = llm_go("What's 2+2?")
 ```
 
 **Pros:**
-- Short, modern
-- Clear it uses AI
+- Very short (6 chars)
+- Simple verb
 
 **Cons:**
-- Too generic
-- Could be confused with module/class
+- Too vague ("go where?")
+- Doesn't indicate what happens
 
-### 6. `gen()`
+### 6. `llm_gen()`
 ```python
-result = gen("Write a poem")
+answer = llm_gen("What's 2+2?")
 ```
 
 **Pros:**
-- Modern, aligns with "Gen AI" trend
-- Short (3 characters)
-- Versatile meaning
+- "gen" is a clear verb (generate)
+- Modern (Gen AI)
 
 **Cons:**
-- Implies generation, not analysis/extraction
-- Less intuitive than `llm()`
+- Implies generation only
+- Not intuitive for extraction tasks
 
-### 7. `format()` ❌
+### 7. `llm_call()`
 ```python
-result = format(data, output=Model)
-```
-
-**Cons:**
-- Conflicts with Python builtin!
-- Misleading (does more than format)
-
-### 8. `complete()`
-```python
-result = complete("The capital of France is")
+answer = llm_call("What's 2+2?")
 ```
 
 **Pros:**
-- Matches OpenAI terminology
-- Technically accurate
+- "Call" implies single execution
+- Natural phrasing
 
 **Cons:**
-- Implies text completion, not Q&A
-- Longer than `llm()`
+- Could be confused with function calls
+- Less versatile than "do"
 
-## Decision
+### 8. `ask()`
+```python
+answer = ask("What's 2+2?")
+```
 
-We chose **`llm()`** because:
+**Pros:**
+- Natural, conversational
+- Very short
 
-1. **Most Intuitive**: Every developer understands `llm("question")` makes an LLM call
-2. **No Learning Curve**: The name is self-documenting
-3. **Flexible Semantics**: Works for asking, formatting, extracting, thinking - the name doesn't prescribe the action
-4. **Clean Separation**: 
-   - `llm()` = function (lowercase) 
-   - `LLM` = class (uppercase)
-   - `agent.llm` = instance variable
-5. **Pythonic**: Follows conventions, short, clear
+**Cons:**
+- Doesn't convey all use cases
+- Too informal for extraction/analysis
 
-## Implementation Notes
+## Implementation
 
 ```python
-# Clear distinction in imports
-from connectonion import llm  # Function
-from connectonion.llm import LLM  # Class (if needed)
+from connectonion import llm_do
 
-# No confusion in practice
-result = llm("Quick question")      # Function call
-agent.llm = OpenAILLM()             # Instance variable
-response = agent.llm.complete(...)  # Method call
+# Clear distinction in usage
+result = llm_do("Quick question")      # Verb makes action clear
+agent.llm = OpenAILLM()                # Noun for the instance
+response = agent.llm.complete(...)     # Method on the instance
 ```
+
+## Testing Against Real Use Cases
+
+Looking at our documentation examples:
+
+```python
+# Data Extraction
+invoice = llm_do(invoice_text, output=Invoice)  # ✅ "Do the extraction"
+
+# Analysis
+analysis = llm_do(text, output=FeedbackAnalysis)  # ✅ "Do the analysis"
+
+# Translation
+translation = llm_do("Hello", prompt="Translate")  # ✅ "Do the translation"
+
+# Validation
+is_valid = llm_do("Is this SQL valid?")  # ✅ "Do the validation"
+```
+
+`llm_do()` reads naturally across all use cases, while alternatives like `llm_tap()` only work for some.
 
 ## Consequences
 
 ### Positive
-- Developers immediately understand the function
-- No need for documentation to explain the name
-- Natural progression: `llm()` for simple, `Agent()` for complex
-- Maintains simplicity principle
+- Users immediately understand it's an action
+- Works naturally for all use cases
+- Clear contrast with `Agent()` for complex workflows
+- Follows function naming best practices (verb-based)
 
 ### Negative
-- Slightly generic name
-- Potential initial confusion with LLM class (but quickly resolved by context)
+- Slightly longer than original `llm()` (6 vs 3 chars)
+- Need to update all documentation and examples
 
 ## Lessons Learned
 
-1. **Intuitive > Clever**: `llm()` is boring but immediately understood
-2. **Context Resolves Ambiguity**: Python conventions and usage patterns clarify any confusion
-3. **Short Names Matter**: 3 characters vs 12 makes a difference in daily use
-4. **Don't Overthink**: The obvious choice (`llm()`) was the right choice
+1. **Functions need verbs**: Even if shorter, noun-based function names confuse users
+2. **Versatility matters**: The verb must work for ALL use cases, not just some
+3. **User feedback is crucial**: The confusion with `llm()` only became clear through usage
+4. **"Do" is the ultimate verb**: It's the most versatile action word in English
 
 ## References
 
 - [Principle: Simple things simple](../principles.md)
 - [Python naming conventions](https://peps.python.org/pep-0008/)
-- Similar patterns: `datetime.datetime`, `list()` function vs `List` type
+- Similar patterns: `requests.get()`, `json.loads()`, `pd.read_csv()`

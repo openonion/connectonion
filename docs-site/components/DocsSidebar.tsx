@@ -89,6 +89,16 @@ export function DocsSidebar() {
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success'>('idle')
   const pathname = usePathname()
 
+  // Auto-expand section containing current page
+  useEffect(() => {
+    const currentSection = navigation.find(section => 
+      section.items.some(item => item.href === pathname)
+    )
+    if (currentSection && !openSections.includes(currentSection.title)) {
+      setOpenSections(prev => [...prev, currentSection.title])
+    }
+  }, [pathname])
+
   // Initialize from localStorage after client mount to prevent hydration mismatch
   useEffect(() => {
     setIsClientMounted(true)
@@ -214,25 +224,26 @@ export function DocsSidebar() {
             </button>
             
             {openSections.includes(section.title) && (
-              <ul className="mt-2 space-y-1">
+              <ul className="mt-2 space-y-1" role="list">
                 {section.items.map((item) => {
                   const isActive = pathname === item.href
                   const IconComponent = item.icon
                   const isPromptExample = item.href.includes('/prompts/examples/') && item.href !== '/prompts/examples'
                   
                   return (
-                    <li key={item.href}>
+                    <li key={item.href} role="listitem">
                       <Link
                         href={item.href}
-                        className={`block px-4 py-2 text-sm transition-colors relative ${
+                        className={`block px-4 py-2.5 min-h-[40px] text-sm rounded-md mx-2 transition-all relative ${
                           isActive
-                            ? 'text-purple-400 bg-purple-900/20 border-r-2 border-purple-400'
-                            : 'text-gray-400 hover:text-white hover:bg-gray-800/50'
+                            ? 'nav-current'
+                            : 'text-gray-300 hover:text-white hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-inset'
                         } ${isPromptExample ? 'pl-6' : ''}`}
+                        aria-current={isActive ? 'page' : undefined}
                       >
                         <div className="flex items-center gap-3">
                           {IconComponent ? (
-                            <IconComponent className="w-3.5 h-3.5 flex-shrink-0" />
+                            <IconComponent className="w-4 h-4 flex-shrink-0" />
                           ) : (
                             <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50 flex-shrink-0" />
                           )}

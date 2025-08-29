@@ -24,8 +24,9 @@ export function CommandBlock({ title, commands, id }: CommandBlockProps) {
         <span className="text-sm text-gray-400 font-mono">{title || 'Terminal'}</span>
         <button
           onClick={copyToClipboard}
-          className="text-gray-400 hover:text-white transition-colors p-1.5 rounded hover:bg-gray-700"
+          className="btn-ghost p-2 min-h-[32px] min-w-[32px] !px-2 !py-2"
           title="Copy commands"
+          aria-label={copied ? 'Copied!' : 'Copy commands'}
         >
           {copied ? (
             <Check className="w-4 h-4 text-green-400" />

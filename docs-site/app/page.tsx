@@ -67,7 +67,7 @@ export default function HomePage() {
       <header className="mb-16">
         <div className="text-center max-w-4xl mx-auto">
           <div className="flex items-center justify-center gap-3 mb-4">
-            <h1 className="text-4xl md:text-6xl font-bold text-white">ConnectOnion</h1>
+            <h1 className="heading-1 md:text-6xl">ConnectOnion</h1>
           <span className="sr-only">Connect Onion AI Framework</span>
             <div className="flex items-center gap-2">
               <span className="px-3 py-1 bg-purple-600/20 text-purple-400 text-sm font-semibold rounded-full border border-purple-500/30">
@@ -76,10 +76,10 @@ export default function HomePage() {
               <span className="px-2 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-bold rounded-full">BETA</span>
             </div>
           </div>
-          <p className="text-xl md:text-2xl text-gray-300 mb-4 max-w-3xl mx-auto">
+          <p className="body-large md:text-2xl mb-4 max-w-3xl mx-auto">
             The simplest way to build AI agents with Python functions
           </p>
-          <p className="text-lg text-gray-400 mb-8 max-w-2xl mx-auto">
+          <p className="body-base text-gray-300 mb-8 max-w-2xl mx-auto">
             Connect Onion framework - Transform any Python function into a powerful AI tool. No complexity, just results.
           </p>
           
@@ -87,7 +87,7 @@ export default function HomePage() {
           <div className="flex flex-col sm:flex-row gap-4 justify-center items-center mb-6">
             <Link 
               href="/quickstart"
-              className="px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white font-semibold rounded-lg transition-all duration-300 shadow-lg hover:shadow-xl flex items-center gap-2"
+              className="btn-primary px-8 py-4 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 shadow-lg hover:shadow-xl flex items-center gap-2"
             >
               <Play className="w-5 h-5" />
               Get Started (5 min)
@@ -97,7 +97,7 @@ export default function HomePage() {
               href="https://github.com/wu-changxing/connectonion"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-8 py-4 bg-gray-800 hover:bg-gray-700 text-white font-semibold rounded-lg transition-colors border border-gray-600 flex items-center gap-2"
+              className="btn-secondary px-8 py-4 flex items-center gap-2"
             >
               <Github className="w-5 h-5" />
               View on GitHub
@@ -107,14 +107,14 @@ export default function HomePage() {
               href="https://discord.gg/4xfD9k8AUF"
               target="_blank"
               rel="noopener noreferrer"
-              className="px-8 py-4 bg-indigo-600 hover:bg-indigo-700 text-white font-semibold rounded-lg transition-colors border border-indigo-500 flex items-center gap-2"
+              className="btn-primary px-8 py-4 !bg-indigo-600 hover:!bg-indigo-700 flex items-center gap-2"
             >
               💬 Join Discord
             </a>
             
             <button
               onClick={copyAllDocs}
-              className="px-8 py-4 bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 text-white font-semibold rounded-lg transition-all duration-300 flex items-center gap-2"
+              className="btn-primary px-8 py-4 !bg-gradient-to-r from-emerald-600 to-blue-600 hover:from-emerald-700 hover:to-blue-700 flex items-center gap-2"
             >
               {copyAllStatus === 'copying' ? (
                 <>

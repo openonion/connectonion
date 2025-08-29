@@ -1,13 +1,20 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Menu, X, BookOpen } from 'lucide-react'
 import { DocsSidebar } from './DocsSidebar'
 import { motion, AnimatePresence } from 'framer-motion'
 import Link from 'next/link'
+import { usePathname } from 'next/navigation'
 
 export function MobileDocsNav() {
   const [isOpen, setIsOpen] = useState(false)
+  const pathname = usePathname()
+  
+  // Auto-close menu when route changes
+  useEffect(() => {
+    setIsOpen(false)
+  }, [pathname])
 
   return (
     <>

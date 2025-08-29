@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import CopyButton from '../../components/CopyButton'
+import CodeWithResult from '../../components/CodeWithResult'
 import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
 import { CommandBlock } from '../../components/CommandBlock'
 import { ChevronRight, Zap, Package, Shield, Code, Layers, ArrowRight } from 'lucide-react'
@@ -17,9 +18,9 @@ Make direct LLM calls with optional structured output.
 ## Quick Start
 
 \`\`\`python
-from connectonion import llm
+from connectonion import llm_do
 
-answer = llm("What's 2+2?")  
+answer = llm_do("What's 2+2?")  
 print(answer)  # "4"
 \`\`\`
 
@@ -238,17 +239,14 @@ except Exception as e:
             <section className="mb-12">
               <h2 className="text-2xl font-bold text-green-400 mb-4">Quick Start</h2>
               
-              <div className="bg-gray-900 rounded-lg p-6 mb-6">
-                <div className="relative">
-                  <CopyButton text={`from connectonion import llm\n\nanswer = llm("What's 2+2?")\nprint(answer)  # "4"`} />
-                  <pre className="text-sm overflow-x-auto">
-                    <code className="language-python">{`from connectonion import llm
+              <CodeWithResult 
+                code={`from connectonion import llm_do
 
-answer = llm("What's 2+2?")  
-print(answer)  # "4"`}</code>
-                  </pre>
-                </div>
-              </div>
+answer = llm_do("What's 2+2?")
+print(answer)`}
+                result={`4`}
+                className="mb-6"
+              />
               
               <p className="text-gray-300">That's it! One function for any LLM task.</p>
             </section>
@@ -257,40 +255,26 @@ print(answer)  # "4"`}</code>
             <section className="mb-12">
               <h2 className="text-2xl font-bold text-green-400 mb-4">With Structured Output</h2>
               
-              <div className="bg-gray-900 rounded-lg p-6 mb-6">
-                <div className="relative">
-                  <CopyButton text={`from pydantic import BaseModel
+              <CodeWithResult 
+                code={`from pydantic import BaseModel
 
 class Analysis(BaseModel):
     sentiment: str
     confidence: float
     keywords: list[str]
 
-result = llm(
+result = llm_do(
     "I absolutely love this product! Best purchase ever!",
     output=Analysis
 )
-print(result.sentiment)    # "positive"
-print(result.confidence)   # 0.98
-print(result.keywords)     # ["love", "best", "ever"]`} />
-                  <pre className="text-sm overflow-x-auto">
-                    <code className="language-python">{`from pydantic import BaseModel
-
-class Analysis(BaseModel):
-    sentiment: str
-    confidence: float
-    keywords: list[str]
-
-result = llm(
-    "I absolutely love this product! Best purchase ever!",
-    output=Analysis
-)
-print(result.sentiment)    # "positive"
-print(result.confidence)   # 0.98
-print(result.keywords)     # ["love", "best", "ever"]`}</code>
-                  </pre>
-                </div>
-              </div>
+print(result.sentiment)
+print(result.confidence)
+print(result.keywords)`}
+                result={`positive
+0.98
+["love", "best", "ever"]`}
+                className="mb-6"
+              />
             </section>
 
             {/* Real Examples */}
@@ -301,9 +285,10 @@ print(result.keywords)     # ["love", "best", "ever"]`}</code>
                 {/* Extract Data from Text */}
                 <div>
                   <h3 className="text-xl font-semibold text-green-400 mb-3">Extract Data from Text</h3>
-                  <div className="bg-gray-900 rounded-lg p-6">
-                    <div className="relative">
-                      <CopyButton text={`class Invoice(BaseModel):
+                  <CodeWithResult 
+                    code={`from pydantic import BaseModel
+
+class Invoice(BaseModel):
     invoice_number: str
     total_amount: float
     due_date: str
@@ -314,68 +299,47 @@ Total: $1,234.56
 Due: January 15, 2024
 """
 
-invoice = llm(invoice_text, output=Invoice)
-print(invoice.total_amount)  # 1234.56`} />
-                      <pre className="text-sm overflow-x-auto">
-                        <code className="language-python">{`class Invoice(BaseModel):
-    invoice_number: str
-    total_amount: float
-    due_date: str
-
-invoice_text = """
-Invoice #INV-2024-001
-Total: $1,234.56
-Due: January 15, 2024
-"""
-
-invoice = llm(invoice_text, output=Invoice)
-print(invoice.total_amount)  # 1234.56`}</code>
-                      </pre>
-                    </div>
-                  </div>
+invoice = llm_do(invoice_text, output=Invoice)
+print(invoice.invoice_number)
+print(invoice.total_amount)
+print(invoice.due_date)`}
+                    result={`INV-2024-001
+1234.56
+January 15, 2024`}
+                  />
                 </div>
 
                 {/* Use Custom Prompts */}
                 <div>
                   <h3 className="text-xl font-semibold text-green-400 mb-3">Use Custom Prompts</h3>
-                  <div className="bg-gray-900 rounded-lg p-6">
-                    <div className="relative">
-                      <CopyButton text={`# With prompt file
-summary = llm(
-    long_article,
-    prompt="prompts/summarizer.md"  # Loads from file
-)
-
-# With inline prompt
-translation = llm(
+                  <CodeWithResult 
+                    code={`# With inline prompt
+translation = llm_do(
     "Hello world",
     prompt="You are a translator. Translate to Spanish only."
 )
-print(translation)  # "Hola mundo"`} />
-                      <pre className="text-sm overflow-x-auto">
-                        <code className="language-python">{`# With prompt file
-summary = llm(
-    long_article,
+print(translation)
+
+# With prompt file
+summary = llm_do(
+    "Long technical article about AI...",
     prompt="prompts/summarizer.md"  # Loads from file
 )
+print(summary)`}
+                    result={`Hola mundo
 
-# With inline prompt
-translation = llm(
-    "Hello world",
-    prompt="You are a translator. Translate to Spanish only."
-)
-print(translation)  # "Hola mundo"`}</code>
-                      </pre>
-                    </div>
-                  </div>
+AI technology is rapidly advancing with breakthroughs in...`}
+                  />
                 </div>
 
                 {/* Quick Analysis Tool */}
                 <div>
                   <h3 className="text-xl font-semibold text-green-400 mb-3">Quick Analysis Tool</h3>
-                  <div className="bg-gray-900 rounded-lg p-6">
-                    <div className="relative">
-                      <CopyButton text={`def analyze_feedback(text: str) -> str:
+                  <CodeWithResult 
+                    code={`from connectonion import llm_do, Agent
+from pydantic import BaseModel
+
+def analyze_feedback(text: str) -> str:
     """Analyze customer feedback with structured output."""
     
     class FeedbackAnalysis(BaseModel):
@@ -384,37 +348,20 @@ print(translation)  # "Hola mundo"`}</code>
         summary: str
         action_required: bool
     
-    analysis = llm(text, output=FeedbackAnalysis)
+    analysis = llm_do(text, output=FeedbackAnalysis)
     
     if analysis.action_required:
         return f"🚨 {analysis.priority.upper()}: {analysis.summary}"
     return f"📝 {analysis.category}: {analysis.summary}"
 
-# Use in an agent
-from connectonion import Agent
-agent = Agent("support", tools=[analyze_feedback])`} />
-                      <pre className="text-sm overflow-x-auto">
-                        <code className="language-python">{`def analyze_feedback(text: str) -> str:
-    """Analyze customer feedback with structured output."""
-    
-    class FeedbackAnalysis(BaseModel):
-        category: str  # bug, feature, praise, complaint
-        priority: str  # high, medium, low
-        summary: str
-        action_required: bool
-    
-    analysis = llm(text, output=FeedbackAnalysis)
-    
-    if analysis.action_required:
-        return f"🚨 {analysis.priority.upper()}: {analysis.summary}"
-    return f"📝 {analysis.category}: {analysis.summary}"
+# Test the function
+result = analyze_feedback("The app crashes when I try to upload files!")
+print(result)
 
 # Use in an agent
-from connectonion import Agent
-agent = Agent("support", tools=[analyze_feedback])`}</code>
-                      </pre>
-                    </div>
-                  </div>
+agent = Agent("support", tools=[analyze_feedback])`}
+                    result={`🚨 HIGH: Application crashes during file upload process`}
+                  />
                 </div>
               </div>
             </section>
@@ -493,53 +440,86 @@ agent = Agent("support", tools=[analyze_feedback])`}</code>
             <section className="mb-12">
               <h2 className="text-2xl font-bold text-green-400 mb-6">Common Patterns</h2>
               
-              <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-6">
                 {/* Data Extraction */}
-                <div className="bg-gray-900 rounded-lg p-6">
+                <div>
                   <h3 className="text-lg font-semibold text-green-400 mb-3">Data Extraction</h3>
-                  <pre className="text-sm overflow-x-auto">
-                    <code className="language-python">{`class Person(BaseModel):
+                  <CodeWithResult 
+                    code={`from pydantic import BaseModel
+
+class Person(BaseModel):
     name: str
     age: int
     occupation: str
 
-person = llm("John Doe, 30, software engineer", output=Person)`}</code>
-                  </pre>
+person = llm_do("John Doe, 30, software engineer", output=Person)
+print(f"Name: {person.name}")
+print(f"Age: {person.age}")
+print(f"Job: {person.occupation}")`}
+                    result={`Name: John Doe
+Age: 30
+Job: software engineer`}
+                  />
                 </div>
 
                 {/* Quick Decisions */}
-                <div className="bg-gray-900 rounded-lg p-6">
+                <div>
                   <h3 className="text-lg font-semibold text-green-400 mb-3">Quick Decisions</h3>
-                  <pre className="text-sm overflow-x-auto">
-                    <code className="language-python">{`is_urgent = llm("Customer says: My server is down!") 
-if "urgent" in is_urgent.lower():
-    escalate()`}</code>
-                  </pre>
+                  <CodeWithResult 
+                    code={`def check_urgency(message: str) -> bool:
+    is_urgent = llm_do(f"Is this urgent? Reply yes/no: {message}")
+    return "yes" in is_urgent.lower()
+
+# Test with customer message
+if check_urgency("Customer says: My server is down!"):
+    print("🚨 Escalating to on-call team...")
+else:
+    print("📝 Added to regular queue")`}
+                    result={`🚨 Escalating to on-call team...`}
+                  />
                 </div>
 
                 {/* Format Conversion */}
-                <div className="bg-gray-900 rounded-lg p-6">
+                <div>
                   <h3 className="text-lg font-semibold text-green-400 mb-3">Format Conversion</h3>
-                  <pre className="text-sm overflow-x-auto">
-                    <code className="language-python">{`class JSONData(BaseModel):
+                  <CodeWithResult 
+                    code={`from pydantic import BaseModel
+
+class JSONData(BaseModel):
     data: dict
 
-json_result = llm("Convert to JSON: name=John age=30", output=JSONData)
-print(json_result.data)  # {"name": "John", "age": 30}`}</code>
-                  </pre>
+json_result = llm_do(
+    "Convert to JSON: name=John age=30 city=NYC",
+    output=JSONData
+)
+print(json_result.data)`}
+                    result={`{'name': 'John', 'age': 30, 'city': 'NYC'}`}
+                  />
                 </div>
 
                 {/* Validation */}
-                <div className="bg-gray-900 rounded-lg p-6">
+                <div>
                   <h3 className="text-lg font-semibold text-green-400 mb-3">Validation</h3>
-                  <pre className="text-sm overflow-x-auto">
-                    <code className="language-python">{`def validate_input(user_text: str) -> bool:
-    result = llm(
-        f"Is this valid SQL? Reply yes/no only: {user_text}",
+                  <CodeWithResult 
+                    code={`def validate_sql(query: str) -> bool:
+    result = llm_do(
+        f"Is this valid SQL? Reply yes/no only: {query}",
         temperature=0  # Maximum consistency
     )
-    return result.strip().lower() == "yes"`}</code>
-                  </pre>
+    return result.strip().lower() == "yes"
+
+# Test queries
+queries = [
+    "SELECT * FROM users WHERE id = 1",
+    "SLECT * FORM users"  # Typo
+]
+
+for q in queries:
+    is_valid = validate_sql(q)
+    print(f"{'✓' if is_valid else '✗'} {q[:30]}...")`}
+                    result={`✓ SELECT * FROM users WHERE id...
+✗ SLECT * FORM users...`}
+                  />
                 </div>
               </div>
             </section>
@@ -553,7 +533,7 @@ print(json_result.data)  # {"name": "John", "age": 30}`}</code>
                   <thead>
                     <tr className="border-b border-gray-700">
                       <th className="text-left py-3 px-4 text-green-400">Feature</th>
-                      <th className="text-left py-3 px-4 text-green-400">llm()</th>
+                      <th className="text-left py-3 px-4 text-green-400">llm_do()</th>
                       <th className="text-left py-3 px-4 text-green-400">Agent()</th>
                     </tr>
                   </thead>
@@ -587,24 +567,28 @@ print(json_result.data)  # {"name": "John", "age": 30}`}</code>
                 </table>
               </div>
 
-              <div className="bg-gray-900 rounded-lg p-6">
-                <div className="relative">
-                  <CopyButton text={`# Use llm() for simple tasks
-answer = llm("What's the capital of France?")
+              <CodeWithResult 
+                code={`from connectonion import llm_do, Agent
+
+# Use llm_do() for simple tasks
+answer = llm_do("What's the capital of France?")
+print(f"Capital: {answer}")
 
 # Use Agent for multi-step workflows
-agent = Agent("assistant", tools=[search, calculate])
-result = agent.input("Find the population and calculate density")`} />
-                  <pre className="text-sm overflow-x-auto">
-                    <code className="language-python">{`# Use llm() for simple tasks
-answer = llm("What's the capital of France?")
+def search_population(city: str) -> int:
+    # Simulated search function
+    return 2_161_000 if city == "Paris" else 0
 
-# Use Agent for multi-step workflows
-agent = Agent("assistant", tools=[search, calculate])
-result = agent.input("Find the population and calculate density")`}</code>
-                  </pre>
-                </div>
-              </div>
+def calculate_density(population: int, area_km2: float) -> float:
+    return population / area_km2
+
+agent = Agent("assistant", tools=[search_population, calculate_density])
+result = agent.input("Find Paris population and calculate density (area: 105 km²)")
+print(f"Agent result: {result}")`}
+                result={`Capital: Paris
+
+Agent result: The population density of Paris is approximately 20,580 people per km²`}
+              />
             </section>
 
             {/* Tips */}

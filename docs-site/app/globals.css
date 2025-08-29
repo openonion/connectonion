@@ -37,6 +37,101 @@
   }
 }
 
+@layer components {
+  /* Typography System - Consistent heading hierarchy */
+  .heading-1 {
+    @apply text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight leading-tight;
+  }
+  .heading-2 {
+    @apply text-xl sm:text-2xl lg:text-3xl font-semibold leading-tight;
+  }
+  .heading-3 {
+    @apply text-lg sm:text-xl lg:text-2xl font-semibold leading-snug;
+  }
+  .heading-4 {
+    @apply text-base sm:text-lg lg:text-xl font-semibold leading-snug;
+  }
+  
+  /* Body text styles */
+  .body-large {
+    @apply text-base sm:text-lg leading-relaxed text-gray-200;
+  }
+  .body-base {
+    @apply text-sm sm:text-base leading-relaxed text-gray-200;
+  }
+  .body-small {
+    @apply text-xs sm:text-sm leading-relaxed text-gray-300;
+  }
+  
+  /* Interactive States - Consistent across all components */
+  .interactive {
+    @apply transition-all duration-200 touch-manipulation;
+  }
+  
+  /* Button base with proper touch targets */
+  .btn {
+    @apply px-4 py-2.5 min-h-[44px] min-w-[44px] rounded-lg font-medium interactive
+           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  
+  .btn-primary {
+    @apply btn bg-purple-600 hover:bg-purple-700 active:scale-[0.98] 
+           focus:ring-purple-500 text-white;
+  }
+  
+  .btn-secondary {
+    @apply btn bg-gray-700 hover:bg-gray-600 active:scale-[0.98]
+           focus:ring-gray-500 text-gray-100;
+  }
+  
+  .btn-ghost {
+    @apply btn bg-transparent hover:bg-gray-800 active:bg-gray-700
+           focus:ring-gray-500 text-gray-200;
+  }
+  
+  /* Link states with keyboard focus */
+  .link {
+    @apply interactive underline-offset-2 rounded-sm
+           focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900;
+  }
+  
+  .link-primary {
+    @apply link text-purple-400 hover:text-purple-300 underline;
+  }
+  
+  .link-nav {
+    @apply link text-gray-300 hover:text-purple-400 no-underline;
+  }
+  
+  /* Card interactive states */
+  .card-interactive {
+    @apply interactive border border-gray-800 rounded-lg
+           hover:border-gray-700 hover:bg-gray-900/50
+           focus-within:ring-2 focus-within:ring-purple-500 focus-within:ring-offset-2 focus-within:ring-offset-gray-900;
+  }
+  
+  /* Navigation current page indicator */
+  .nav-current {
+    @apply bg-purple-600/20 text-purple-300 border-l-4 border-purple-500 font-medium;
+  }
+  
+  .nav-item {
+    @apply interactive px-3 py-2 rounded-md text-sm
+           hover:bg-gray-800 focus:bg-gray-800
+           focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-inset;
+  }
+  
+  /* Loading states */
+  .skeleton {
+    @apply animate-pulse bg-gray-800 rounded;
+  }
+  
+  .loading-spinner {
+    @apply animate-spin h-5 w-5 text-purple-500;
+  }
+}
+
 @layer utilities {
   /* Accessible text color utilities that override Tailwind defaults */
   .text-readable-muted {

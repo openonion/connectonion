@@ -298,3 +298,5 @@ When multiple valid approaches exist, choose based on:
 - Update plan documentation as you go
 - Learn from existing implementations
 - Stop after 3 failed attempts and reassess
+- for the UI, always remember that:
+Each code block, the left side is the code, and the right side is after running the code block. What's the result it will be?So basically, a left side called right side running result.

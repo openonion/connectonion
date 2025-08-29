@@ -7,6 +7,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
 import { CommandBlock } from '../../components/CommandBlock'
+import CodeWithResult from '../../components/CodeWithResult'
 
 export default function QuickStartPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -453,11 +454,8 @@ result = agent.input("Create a to-do list for building a REST API")`}
           You can also create agents from scratch with custom tools:
         </p>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-            <span className="text-sm text-gray-300 font-mono">calculator_agent.py</span>
-            <button
-              onClick={() => copyToClipboard(`from connectonion import Agent
+        <CodeWithResult 
+          code={`from connectonion import Agent
 
 def calculate(expression: str) -> str:
     """Safely evaluate mathematical expressions."""
@@ -481,68 +479,16 @@ agent = Agent(
 
 # Use the agent
 response = agent.input("What is 42 * 17 + 25?")
-print(response)  # Result: 739`, 'custom-tool')}
-              className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
-            >
-              {copiedId === 'custom-tool' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          
-          <div className="p-6">
-            <SyntaxHighlighter 
-              language="python" 
-              style={vscDarkPlus}
-              customStyle={{
-                background: 'transparent',
-                padding: 0,
-                margin: 0,
-                fontSize: '0.875rem',
-                lineHeight: '1.5'
-              }}
-            >
-{`from connectonion import Agent
+print(response)`}
+          result={`Let me calculate that for you.
 
-def calculate(expression: str) -> str:
-    """Safely evaluate mathematical expressions."""
-    try:
-        allowed_chars = set('0123456789+-*/()., ')
-        if all(c in allowed_chars for c in expression):
-            result = eval(expression)
-            return f"Result: {result}"
-        else:
-            return "Error: Invalid characters"
-    except Exception as e:
-        return f"Error: {str(e)}"
+42 * 17 = 714
+714 + 25 = 739
 
-# Create agent with the tool
-agent = Agent(
-    name="calculator", 
-    tools=[calculate],
-    system_prompt="You are a helpful math tutor.",
-    max_iterations=5  # Simple calculations need few iterations
-)
+The answer is 739.`}
+          className="mb-8"
+        />
 
-# Use the agent
-response = agent.input("What is 42 * 17 + 25?")
-print(response)  # Result: 739`}
-            </SyntaxHighlighter>
-          </div>
-        </div>
-
-        {/* Output */}
-        <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4 mb-8">
-          <div className="flex items-center gap-3 mb-3">
-            <Terminal className="w-5 h-5 text-green-400" />
-            <span className="font-semibold text-green-300">Output:</span>
-          </div>
-          <div className="font-mono text-green-200 bg-black/30 rounded p-3">
-            Result: 739
-          </div>
-        </div>
       </section>
 
       {/* Debugging with @xray */}
@@ -556,11 +502,8 @@ print(response)  # Result: 739`}
           Use the @xray decorator to see what your agent is thinking:
         </p>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-            <span className="text-sm text-gray-300 font-mono">debug_example.py</span>
-            <button
-              onClick={() => copyToClipboard(`from connectonion import Agent
+        <CodeWithResult 
+          code={`from connectonion import Agent
 from connectonion.decorators import xray
 
 @xray
@@ -574,61 +517,16 @@ def calculate(expression: str) -> str:
     return f"Result: {result}"
 
 agent = Agent("debug_calc", tools=[calculate], max_iterations=5)
-response = agent.input("What's 50 + 30?")`, 'xray-debug')}
-              className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
-            >
-              {copiedId === 'xray-debug' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          
-          <div className="p-6">
-            <SyntaxHighlighter 
-              language="python" 
-              style={vscDarkPlus}
-              customStyle={{
-                background: 'transparent',
-                padding: 0,
-                margin: 0,
-                fontSize: '0.875rem',
-                lineHeight: '1.5'
-              }}
-            >
-{`from connectonion import Agent
-from connectonion.decorators import xray
+response = agent.input("What's 50 + 30?")
+print(response)`}
+          result={`🔍 Agent 'debug_calc' is calculating: 50 + 30
+🔍 User's original request: What's 50 + 30?
+🔍 This is iteration #1
+Result: 80
 
-@xray
-def calculate(expression: str) -> str:
-    """Math tool with debugging enabled."""
-    print(f"🔍 Agent '{xray.agent.name}' is calculating: {expression}")
-    print(f"🔍 User's original request: {xray.task}")
-    print(f"🔍 This is iteration #{xray.iteration}")
-    
-    result = eval(expression)
-    return f"Result: {result}"
-
-agent = Agent("debug_calc", tools=[calculate], max_iterations=5)
-response = agent.input("What's 50 + 30?")`}
-            </SyntaxHighlighter>
-          </div>
-        </div>
-
-        {/* Output */}
-        <div className="bg-gradient-to-b from-red-900/30 to-red-800/10 border border-red-500/30 rounded-lg p-4 mb-8">
-          <div className="flex items-center gap-3 mb-3">
-            <Terminal className="w-5 h-5 text-red-400" />
-            <span className="font-semibold text-red-300">Debug Output:</span>
-          </div>
-          <div className="font-mono text-red-200 bg-black/30 rounded p-3 text-sm">
-            🔍 Agent 'debug_calc' is calculating: 50 + 30<br/>
-            🔍 User's original request: What's 50 + 30?<br/>
-            🔍 This is iteration #1<br/>
-            Result: 80
-          </div>
-        </div>
+The result is 80.`}
+          className="mb-8"
+        />
       </section>
 
       {/* Next Steps */}

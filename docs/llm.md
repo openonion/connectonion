@@ -5,9 +5,9 @@ Make direct LLM calls with optional structured output.
 ## Quick Start
 
 ```python
-from connectonion import llm
+from connectonion import llm_do_do
 
-answer = llm("What's 2+2?")  
+answer = llm_do("What's 2+2?")  
 print(answer)  # "4"
 ```
 
@@ -23,7 +23,7 @@ class Analysis(BaseModel):
     confidence: float
     keywords: list[str]
 
-result = llm(
+result = llm_do(
     "I absolutely love this product! Best purchase ever!",
     output=Analysis
 )
@@ -48,7 +48,7 @@ Total: $1,234.56
 Due: January 15, 2024
 """
 
-invoice = llm(invoice_text, output=Invoice)
+invoice = llm_do(invoice_text, output=Invoice)
 print(invoice.total_amount)  # 1234.56
 ```
 
@@ -56,13 +56,13 @@ print(invoice.total_amount)  # 1234.56
 
 ```python
 # With prompt file
-summary = llm(
+summary = llm_do(
     long_article,
     prompt="prompts/summarizer.md"  # Loads from file
 )
 
 # With inline prompt
-translation = llm(
+translation = llm_do(
     "Hello world",
     prompt="You are a translator. Translate to Spanish only."
 )
@@ -81,7 +81,7 @@ def analyze_feedback(text: str) -> str:
         summary: str
         action_required: bool
     
-    analysis = llm(text, output=FeedbackAnalysis)
+    analysis = llm_do(text, output=FeedbackAnalysis)
     
     if analysis.action_required:
         return f"🚨 {analysis.priority.upper()}: {analysis.summary}"
@@ -95,7 +95,7 @@ agent = Agent("support", tools=[analyze_feedback])
 ## Advanced Usage
 
 ```python
-result = llm(
+result = llm_do(
     input="Your text here",
     output=YourModel,        # Optional: Pydantic model for structure
     prompt="instructions",   # Optional: String or file path
@@ -131,12 +131,12 @@ class Person(BaseModel):
     age: int
     occupation: str
 
-person = llm("John Doe, 30, software engineer", output=Person)
+person = llm_do("John Doe, 30, software engineer", output=Person)
 ```
 
 ### Quick Decisions
 ```python
-is_urgent = llm("Customer says: My server is down!") 
+is_urgent = llm_do("Customer says: My server is down!") 
 if "urgent" in is_urgent.lower():
     escalate()
 ```
@@ -146,14 +146,14 @@ if "urgent" in is_urgent.lower():
 class JSONData(BaseModel):
     data: dict
 
-json_result = llm("Convert to JSON: name=John age=30", output=JSONData)
+json_result = llm_do("Convert to JSON: name=John age=30", output=JSONData)
 print(json_result.data)  # {"name": "John", "age": 30}
 ```
 
 ### Validation
 ```python
 def validate_input(user_text: str) -> bool:
-    result = llm(
+    result = llm_do(
         f"Is this valid SQL? Reply yes/no only: {user_text}",
         temperature=0  # Maximum consistency
     )
@@ -169,7 +169,7 @@ def validate_input(user_text: str) -> bool:
 
 ## Comparison with Agent
 
-| Feature | `llm()` | `Agent()` |
+| Feature | `llm_do()` | `Agent()` |
 |---------|---------|-----------|
 | Purpose | One-shot calls | Multi-step workflows |
 | Tools | No | Yes |
@@ -178,8 +178,8 @@ def validate_input(user_text: str) -> bool:
 | Best for | Quick tasks | Complex automation |
 
 ```python
-# Use llm() for simple tasks
-answer = llm("What's the capital of France?")
+# Use llm_do() for simple tasks
+answer = llm_do("What's the capital of France?")
 
 # Use Agent for multi-step workflows
 agent = Agent("assistant", tools=[search, calculate])
@@ -189,11 +189,11 @@ result = agent.input("Find the population and calculate density")
 ## Error Handling
 
 ```python
-from connectonion import llm
+from connectonion import llm_do
 from pydantic import ValidationError
 
 try:
-    result = llm("Analyze this", output=ComplexModel)
+    result = llm_do("Analyze this", output=ComplexModel)
 except ValidationError as e:
     print(f"Output didn't match model: {e}")
 except Exception as e:

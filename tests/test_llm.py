@@ -1,4 +1,4 @@
-"""Tests for the llm() one-shot function."""
+"""Tests for the llm_do() one-shot function."""
 
 import unittest
 import os
@@ -14,7 +14,7 @@ from typing import Optional
 load_dotenv()
 
 # Import will be updated when implementation is ready
-# from connectonion import llm
+# from connectonion import llm_do
 
 
 # Test models for structured output
@@ -40,7 +40,7 @@ class ComplexModel(BaseModel):
 
 
 class TestLLMFunction(unittest.TestCase):
-    """Test the llm() one-shot function."""
+    """Test the llm_do() one-shot function."""
     
     def setUp(self):
         """Set up test fixtures."""
@@ -67,8 +67,8 @@ class TestLLMFunction(unittest.TestCase):
         mock_llm.complete.return_value = Mock(content="4", tool_calls=[])
         mock_llm_class.return_value = mock_llm
         
-        from connectonion import llm
-        result = llm("What's 2+2?")
+        from connectonion import llm_do
+        result = llm_do("What's 2+2?")
         
         self.assertEqual(result, "4")
         mock_llm.complete.assert_called_once()
@@ -86,8 +86,8 @@ class TestLLMFunction(unittest.TestCase):
         )
         mock_llm_class.return_value = mock_llm
         
-        from connectonion import llm
-        result = llm("Extract data", output=SimpleModel)
+        from connectonion import llm_do
+        result = llm_do("Extract data", output=SimpleModel)
         
         self.assertIsInstance(result, SimpleModel)
         self.assertEqual(result.value, "test")
@@ -102,8 +102,8 @@ class TestLLMFunction(unittest.TestCase):
         mock_llm.complete.return_value = Mock(content="Translated", tool_calls=[])
         mock_llm_class.return_value = mock_llm
         
-        from connectonion import llm
-        result = llm(
+        from connectonion import llm_do
+        result = llm_do(
             "Hello",
             prompt="You are a translator. Translate to Spanish."
         )
@@ -127,8 +127,8 @@ class TestLLMFunction(unittest.TestCase):
             mock_llm.complete.return_value = Mock(content="Response", tool_calls=[])
             mock_llm_class.return_value = mock_llm
             
-            from connectonion import llm
-            result = llm("Test", prompt=str(prompt_file))
+            from connectonion import llm_do
+            result = llm_do("Test", prompt=str(prompt_file))
             
             # Verify file content was loaded
             call_args = mock_llm.complete.call_args[0][0]
@@ -140,8 +140,8 @@ class TestLLMFunction(unittest.TestCase):
         """Test using custom model parameter."""
         self.skipTest("Need to update mocking for new implementation")
         
-        from connectonion import llm
-        result = llm("Test", model="gpt-4")
+        from connectonion import llm_do
+        result = llm_do("Test", model="gpt-4")
         
         # Verify model was passed to OpenAILLM
         mock_llm_class.assert_called_with(
@@ -158,8 +158,8 @@ class TestLLMFunction(unittest.TestCase):
         mock_llm.complete.return_value = Mock(content="Creative", tool_calls=[])
         mock_llm_class.return_value = mock_llm
         
-        from connectonion import llm
-        result = llm("Write a poem", temperature=1.5)
+        from connectonion import llm_do
+        result = llm_do("Write a poem", temperature=1.5)
         
         # Temperature should be passed through to the LLM call
         # This would depend on implementation details
@@ -182,17 +182,17 @@ class TestLLMFunction(unittest.TestCase):
             )
             mock_llm_class.return_value = mock_llm
             
-            from connectonion import llm
+            from connectonion import llm_do
             with self.assertRaises(ValidationError):
-                llm("Extract", output=SimpleModel)
+                llm_do("Extract", output=SimpleModel)
     
     def test_prompt_file_not_found(self):
         """Test error when prompt file doesn't exist."""
         self.skipTest("Waiting for implementation")
         
-        from connectonion import llm
+        from connectonion import llm_do
         with self.assertRaises(FileNotFoundError):
-            llm("Test", prompt="nonexistent_file.md")
+            llm_do("Test", prompt="nonexistent_file.md")
     
     def test_api_error_handling(self):
         """Test handling of API errors."""
@@ -203,9 +203,9 @@ class TestLLMFunction(unittest.TestCase):
             mock_llm.complete.side_effect = Exception("API Error")
             mock_llm_class.return_value = mock_llm
             
-            from connectonion import llm
+            from connectonion import llm_do
             with self.assertRaises(Exception) as ctx:
-                llm("Test")
+                llm_do("Test")
             self.assertIn("API Error", str(ctx.exception))
     
     # -------------------------------------------------------------------------
@@ -218,8 +218,8 @@ class TestLLMFunction(unittest.TestCase):
         if not self.api_key:
             self.skipTest("OPENAI_API_KEY not found")
         
-        from connectonion import llm
-        result = llm("What is 2+2? Reply with just the number.")
+        from connectonion import llm_do
+        result = llm_do("What is 2+2? Reply with just the number.")
         
         self.assertIsNotNone(result)
         self.assertIn("4", result)
@@ -230,13 +230,13 @@ class TestLLMFunction(unittest.TestCase):
         if not self.api_key:
             self.skipTest("OPENAI_API_KEY not found")
         
-        from connectonion import llm
+        from connectonion import llm_do
         
         class TestResult(BaseModel):
             answer: int
             explanation: str
         
-        result = llm(
+        result = llm_do(
             "What is 10 times 5?",
             output=TestResult
         )
@@ -251,8 +251,8 @@ class TestLLMFunction(unittest.TestCase):
         if not self.api_key:
             self.skipTest("OPENAI_API_KEY not found")
         
-        from connectonion import llm
-        result = llm(
+        from connectonion import llm_do
+        result = llm_do(
             "Bonjour",
             prompt="You are a translator. Translate from French to English only. Be concise."
         )
@@ -267,18 +267,18 @@ class TestLLMFunction(unittest.TestCase):
     # -------------------------------------------------------------------------
     
     def test_llm_function_in_agent_tool(self):
-        """Test using llm() inside an Agent tool."""
+        """Test using llm_do() inside an Agent tool."""
         self.skipTest("Waiting for implementation")
         
         from connectonion import Agent, llm
         
         def analyze_text(text: str) -> str:
-            """Tool that uses llm() internally."""
+            """Tool that uses llm_do() internally."""
             class Result(BaseModel):
                 summary: str
                 word_count: int
             
-            analysis = llm(f"Analyze: {text}", output=Result)
+            analysis = llm_do(f"Analyze: {text}", output=Result)
             return f"Summary: {analysis.summary} ({analysis.word_count} words)"
         
         with patch('connectonion.llm_function.OpenAILLM') as mock_llm_class:
@@ -310,8 +310,8 @@ class TestLLMFunction(unittest.TestCase):
             )
             mock_llm_class.return_value = mock_llm
             
-            from connectonion import llm
-            result = llm("Generate complex data", output=ComplexModel)
+            from connectonion import llm_do
+            result = llm_do("Generate complex data", output=ComplexModel)
             
             self.assertIsInstance(result, ComplexModel)
             self.assertEqual(result.title, "Test")
@@ -325,9 +325,9 @@ class TestLLMFunction(unittest.TestCase):
     
     def test_empty_input(self):
         """Test handling of empty input."""
-        from connectonion import llm
+        from connectonion import llm_do
         with self.assertRaises(ValueError):
-            llm("")
+            llm_do("")
     
     def test_very_long_input(self):
         """Test handling of very long input."""
@@ -338,18 +338,18 @@ class TestLLMFunction(unittest.TestCase):
             mock_llm.complete.return_value = Mock(content="Summary", tool_calls=[])
             mock_llm_class.return_value = mock_llm
             
-            from connectonion import llm
+            from connectonion import llm_do
             long_text = "word " * 10000  # Very long input
-            result = llm(long_text)
+            result = llm_do(long_text)
             
             self.assertEqual(result, "Summary")
     
     def test_concurrent_calls(self):
-        """Test thread safety of concurrent llm() calls."""
+        """Test thread safety of concurrent llm_do() calls."""
         self.skipTest("Waiting for implementation")
         
         import threading
-        from connectonion import llm
+        from connectonion import llm_do
         
         results = []
         
@@ -362,7 +362,7 @@ class TestLLMFunction(unittest.TestCase):
                 )
                 mock_llm_class.return_value = mock_llm
                 
-                result = llm(prompt)
+                result = llm_do(prompt)
                 results.append(result)
         
         threads = []
