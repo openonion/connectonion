@@ -40,7 +40,7 @@ export function MobileDocsNav() {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="lg:hidden fixed inset-0 bg-black/60 z-45"
+              className="lg:hidden fixed inset-0 bg-black/60 z-40"
               onClick={() => setIsOpen(false)}
             />
             

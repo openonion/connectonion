@@ -1,7 +1,7 @@
 'use client'
 
-import { useState } from 'react'
-import { ShieldAlert, AlertTriangle, Link as LinkIcon, Zap, Scale, Layers, CheckCircle2, Shield, Database, DollarSign, Users, Bug, Gauge, IdCard, PackageSearch, Eye, PlugZap, ArrowRight, Filter, AlertCircle, Lock, Activity, TrendingUp, ChevronDown, ChevronUp } from 'lucide-react'
+import { useEffect, useState, useRef } from 'react'
+import { ShieldAlert, AlertTriangle, Link as LinkIcon, Zap, Scale, Layers, CheckCircle2, Shield, Database, DollarSign, Users, Bug, Gauge, IdCard, PackageSearch, Eye, PlugZap, ArrowRight, Filter, AlertCircle, Lock, Activity, TrendingUp, ChevronDown, ChevronUp, Menu, X } from 'lucide-react'
 
 function Section({ id, title, children, icon }: { id: string; title: string; children: React.ReactNode; icon?: React.ReactNode }) {
   return (
@@ -89,36 +89,44 @@ function ThreatCard({
   if (!visible) return null
 
   return (
-    <div id={id} className={`relative rounded-lg overflow-hidden border-l-4 ${colors.border} bg-gradient-to-r ${colors.gradient} to-transparent ring-1 ${colors.ring}`}>
-      <div className="absolute top-3 right-3">
-        <span className={`text-xs font-bold ${colors.label} uppercase tracking-wider`}>{severityLabel}</span>
-      </div>
+    <div id={id} className={`relative rounded-lg overflow-hidden border-l-4 ${colors.border} bg-gradient-to-r ${colors.gradient} to-transparent ring-1 ${colors.ring} transition-all duration-300 ${expanded ? 'scale-[1.01]' : ''}`}>
       
       <button
         onClick={onToggle}
-        className="w-full px-4 py-4 text-left bg-gray-900/60 hover:bg-gray-900/70 transition-colors"
+        aria-expanded={expanded}
+        aria-controls={`${id}-panel`}
+        className="w-full px-3 sm:px-4 py-3 sm:py-4 text-left bg-gray-900/60 hover:bg-gray-900/70 active:bg-gray-900/80 transition-colors touch-manipulation"
       >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <span className={`inline-flex items-center px-2.5 py-1 rounded-md ${colors.badge} text-xs font-medium border`}>
-              {severity}
-            </span>
-            <Icon className={`w-5 h-5 ${colors.label}`} />
-            <div className="text-white font-semibold text-lg">
+        <div className="flex items-center justify-between" id={`${id}-header`}>
+          <div className="flex items-start sm:items-center gap-2 sm:gap-3 min-w-0 flex-col sm:flex-row">
+            <div className="flex items-center gap-2">
+              <span className={`inline-flex items-center px-2 py-0.5 sm:px-2.5 sm:py-1 rounded-md ${colors.badge} text-[10px] sm:text-xs font-medium border`}>
+                {severity}
+              </span>
+              <Icon className={`w-4 h-4 sm:w-5 sm:h-5 ${colors.label} flex-shrink-0`} />
+            </div>
+            <div className="text-white font-semibold text-sm sm:text-base leading-snug break-words flex-1">
               {number}) {title}
             </div>
           </div>
-          {expanded ? <ChevronUp className="w-5 h-5 text-gray-400" /> : <ChevronDown className="w-5 h-5 text-gray-400" />}
+          <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+            <span className={`hidden lg:inline text-[10px] sm:text-[11px] font-bold ${colors.label} uppercase tracking-wider`}>
+              {severityLabel}
+            </span>
+            <div className={`p-1 rounded-full ${expanded ? 'bg-gray-700/50' : ''}`}>
+              {expanded ? <ChevronUp className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" /> : <ChevronDown className="w-4 h-4 sm:w-5 sm:h-5 text-gray-400" />}
+            </div>
+          </div>
         </div>
       </button>
 
       {expanded && (
-        <div className="px-6 pb-6 pt-4">
-          <p className="text-gray-200 text-base leading-relaxed mb-6 bg-gray-800/50 rounded-lg p-4 border border-gray-700">
+        <div id={`${id}-panel`} role="region" aria-labelledby={`${id}-header`} className="px-4 sm:px-6 pb-4 sm:pb-6 pt-3 sm:pt-4 animate-in slide-in-from-top-2 duration-300">
+          <p className="text-gray-200 text-sm sm:text-base leading-relaxed mb-4 sm:mb-6 bg-gray-800/50 rounded-lg p-3 sm:p-4 border border-gray-700">
             {insight}
           </p>
           
-          <div className="mt-6">
+          <div className="mt-4 sm:mt-6 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             {diagram}
           </div>
         </div>
@@ -129,17 +137,66 @@ function ThreatCard({
 
 export default function ThreatModelPage() {
   const [filter, setFilter] = useState<'all' | 'H+H' | 'H+M' | 'L+H' | 'P'>('all')
-  const [expandedThreats, setExpandedThreats] = useState<string[]>([
-    'threat-1', 'threat-2', 'threat-3', 'threat-4', 'threat-5',
-    'threat-6', 'threat-7', 'threat-8', 'threat-9', 'threat-10'
-  ])
+  const [expandedThreats, setExpandedThreats] = useState<string[]>([])
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
+  const [scrollProgress, setScrollProgress] = useState(0)
+  const contentRef = useRef<HTMLDivElement>(null)
+
+  // Default expansion: collapse on mobile, expand all on desktop
+  useEffect(() => {
+    const allThreatIds = Array.from({ length: 10 }, (_, i) => `threat-${i + 1}`)
+    if (typeof window !== 'undefined') {
+      if (window.innerWidth >= 1024) {
+        setExpandedThreats(allThreatIds)
+      } else {
+        setExpandedThreats(['threat-1'])
+      }
+    }
+  }, [])
+
+  // Track scroll progress for mobile
+  useEffect(() => {
+    const handleScroll = () => {
+      const windowHeight = window.innerHeight
+      const documentHeight = document.documentElement.scrollHeight - windowHeight
+      const scrollTop = window.scrollY
+      const progress = Math.min((scrollTop / documentHeight) * 100, 100)
+      setScrollProgress(progress)
+    }
+
+    window.addEventListener('scroll', handleScroll)
+    return () => window.removeEventListener('scroll', handleScroll)
+  }, [])
+
+  // Auto-expand relevant items when a severity filter is selected; scroll to first
+  useEffect(() => {
+    if (filter === 'all') return
+    const matching = threats
+      .filter(t => t.severity === filter)
+      .map(t => t.id)
+    setExpandedThreats(matching)
+    if (typeof window !== 'undefined' && window.innerWidth < 1024 && matching.length > 0) {
+      setTimeout(() => {
+        const el = document.getElementById(matching[0])
+        el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      }, 50)
+    }
+  }, [filter])
   
   const toggleThreat = (id: string) => {
-    setExpandedThreats(prev => 
-      prev.includes(id) 
-        ? prev.filter(t => t !== id)
-        : [...prev, id]
-    )
+    setExpandedThreats(prev => {
+      const isOpen = prev.includes(id)
+      const next = isOpen ? prev.filter(t => t !== id) : [...prev, id]
+      // Smooth scroll the newly opened item into view on small screens
+      if (!isOpen && typeof window !== 'undefined' && window.innerWidth < 1024) {
+        // Delay to allow panel to render/expand
+        setTimeout(() => {
+          const el = document.getElementById(id)
+          el?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+        }, 50)
+      }
+      return next
+    })
   }
 
   const threats = [
@@ -159,9 +216,9 @@ export default function ThreatModelPage() {
               <div className="w-2 h-2 rounded-full bg-green-500"></div>
               THE CLAIM
             </div>
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-green-500/20 to-green-600/20 border-2 border-green-500/50 flex items-center justify-center flex-shrink-0">
-                <Zap className="w-8 h-8 text-green-400" />
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl bg-gradient-to-br from-green-500/20 to-green-600/20 border-2 border-green-500/50 flex items-center justify-center flex-shrink-0">
+                <Zap className="w-7 h-7 sm:w-8 sm:h-8 text-green-400" />
               </div>
               <div className="flex-1">
                 <div className="bg-gray-800/80 rounded-xl p-4 border border-gray-600">
@@ -181,9 +238,9 @@ export default function ThreatModelPage() {
               <div className="w-2 h-2 rounded-full bg-red-500"></div>
               THE REALITY
             </div>
-            <div className="flex items-center gap-4">
-              <div className="w-16 h-16 rounded-xl bg-gradient-to-br from-red-500/20 to-red-600/20 border-2 border-red-500/50 flex items-center justify-center flex-shrink-0">
-                <AlertCircle className="w-8 h-8 text-red-400" />
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
+              <div className="w-12 h-12 sm:w-16 sm:h-16 rounded-xl bg-gradient-to-br from-red-500/20 to-red-600/20 border-2 border-red-500/50 flex items-center justify-center flex-shrink-0">
+                <AlertCircle className="w-7 h-7 sm:w-8 sm:h-8 text-red-400" />
               </div>
               <div className="flex-1">
                 <div className="bg-gray-800/80 rounded-xl p-4 border border-gray-600">
@@ -216,7 +273,7 @@ export default function ThreatModelPage() {
               <div className="w-2 h-2 rounded-full bg-blue-500"></div>
               WHAT USERS THINK
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-4">
               <div className="bg-gray-800/80 rounded-lg px-4 py-3 border border-gray-600">
                 <div className="text-base text-blue-400 font-medium">"Fix my code"</div>
               </div>
@@ -239,7 +296,7 @@ export default function ThreatModelPage() {
               WHAT ACTUALLY HAPPENS
             </div>
             <div className="space-y-4">
-              <div className="flex items-start gap-4">
+              <div className="flex flex-col sm:flex-row items-start gap-4">
                 <div className="bg-gray-800/80 rounded-lg px-4 py-3 border border-gray-600 flex-shrink-0">
                   <div className="text-base text-blue-400 font-medium">"Fix my code"</div>
                 </div>
@@ -256,7 +313,7 @@ export default function ThreatModelPage() {
                   </div>
                 </div>
               </div>
-              <div className="flex items-center gap-3 ml-4">
+              <div className="flex items-center gap-3 ml-4 flex-wrap">
                 <div className="text-sm text-gray-400">Stored forever in:</div>
                 <div className="flex gap-2">
                   {[1, 2, 3].map(i => (
@@ -313,7 +370,7 @@ export default function ThreatModelPage() {
               <div className="w-2 h-2 rounded-full bg-red-500"></div>
               YOUR BILL
             </div>
-            <div className="flex items-center justify-between">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-6">
               <div className="space-y-3">
                 <div className="flex items-center gap-3">
                   <div className="text-sm text-gray-400">Normal usage:</div>
@@ -350,10 +407,10 @@ export default function ThreatModelPage() {
               THE CONSPIRACY
             </div>
             <div className="space-y-4">
-              <div className="flex items-center gap-4">
-                <div className="flex -space-x-4">
+              <div className="flex flex-col sm:flex-row items-center gap-4">
+                <div className="flex -space-x-3 sm:-space-x-4">
                   {['A', 'B', 'C'].map(agent => (
-                    <div key={agent} className="w-14 h-14 rounded-full bg-red-900/20 border-2 border-red-500/50 flex items-center justify-center">
+                    <div key={agent} className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-red-900/20 border-2 border-red-500/50 flex items-center justify-center">
                       <div className="text-xs text-red-400 font-bold">{agent}</div>
                     </div>
                   ))}
@@ -374,7 +431,7 @@ export default function ThreatModelPage() {
               <div className="w-2 h-2 rounded-full bg-red-500"></div>
               WHAT VICTIMS SEE
             </div>
-            <div className="flex items-center justify-between gap-4">
+            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="bg-gray-800/80 rounded-lg p-4 border border-gray-600 flex-1">
                 <div className="space-y-2">
                   <div className="text-sm text-green-400 flex items-center gap-2">
@@ -472,7 +529,7 @@ export default function ThreatModelPage() {
             THE BAIT-AND-SWITCH
           </div>
           <div className="bg-black/30 p-4 rounded-lg border border-gray-800">
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
               <div className="text-center">
                 <div className="text-xs text-gray-400 mb-2">Trial Period</div>
                 <div className="h-20 bg-gradient-to-t from-green-900/20 to-green-500/30 rounded-lg border border-green-500/50 flex items-end justify-center p-2">
@@ -613,7 +670,7 @@ export default function ThreatModelPage() {
             BUILDING YOUR PROFILE
           </div>
           <div className="bg-black/30 p-4 rounded-lg border border-gray-800">
-            <div className="grid grid-cols-2 gap-4 mb-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
               <div className="space-y-2">
                 <div className="text-xs text-gray-400 mb-2">Innocent Questions:</div>
                 <div className="bg-purple-900/10 rounded p-2 border border-purple-500/20">
@@ -691,10 +748,10 @@ export default function ThreatModelPage() {
   ]
 
   return (
-    <div className="max-w-4xl mx-auto px-6 py-10 lg:py-12 leading-7">
+    <div className="max-w-4xl mx-auto px-4 sm:px-6 py-8 lg:py-12 leading-7">
       {/* Hero */}
       <div className="mb-10 relative overflow-hidden rounded-xl border border-gray-800 bg-gradient-to-br from-gray-900 to-gray-950 p-6 lg:p-8">
-        <svg aria-hidden="true" className="pointer-events-none absolute -top-16 -right-16 h-64 w-64 opacity-20" viewBox="0 0 200 200">
+        <svg aria-hidden="true" className="pointer-events-none absolute -top-16 -right-16 h-64 w-64 opacity-20 -z-10" viewBox="0 0 200 200">
           <defs>
             <linearGradient id="g" x1="0" x2="1" y1="0" y2="1">
               <stop offset="0%" stopColor="#A78BFA" />
@@ -707,7 +764,7 @@ export default function ThreatModelPage() {
           <ShieldAlert className="w-6 h-6 text-purple-300" />
           <h1 className="text-3xl md:text-4xl font-bold text-white">Threat Model</h1>
         </div>
-        <p className="text-gray-300 max-w-2xl">Practical risks and copy-paste playbooks. No clicks, just read and apply.</p>
+        <p className="text-gray-300 max-w-2xl">Understanding the risks in AI agent networks to build better defenses.</p>
       </div>
 
       {/* Severity Guide and Filters */}
@@ -731,7 +788,8 @@ export default function ThreatModelPage() {
               <div className="text-[11px] text-gray-400">Continuous guard</div>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
+          {/* Sticky filter + controls on mobile for quick access */}
+          <div className="flex flex-wrap gap-2 sticky top-14 z-30 bg-gray-950/80 backdrop-blur md:static md:bg-transparent md:backdrop-blur-0 p-2 -mx-2 md:mx-0 rounded-md">
             <button 
               onClick={() => setFilter('all')} 
               className={`px-3 py-1.5 text-xs rounded-md transition-colors ${
@@ -773,6 +831,20 @@ export default function ThreatModelPage() {
             >
               Persistent (1)
             </button>
+            <div className="ml-auto flex gap-2">
+              <button
+                onClick={() => setExpandedThreats([])}
+                className="px-3 py-1.5 text-xs rounded-md bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600"
+              >
+                Collapse all
+              </button>
+              <button
+                onClick={() => setExpandedThreats(Array.from({ length: 10 }, (_, i) => `threat-${i + 1}`))}
+                className="px-3 py-1.5 text-xs rounded-md bg-gray-800 hover:bg-gray-700 text-gray-200 border border-gray-600"
+              >
+                Expand all
+              </button>
+            </div>
           </div>
         </div>
       </Section>

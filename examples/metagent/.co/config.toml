@@ -1,0 +1,17 @@
+[project]
+name = "metagent"
+created = "2025-08-29T13:19:29.310517"
+framework_version = "0.0.1b6"
+
+[cli]
+version = "1.0.0"
+command = "co init --template meta-agent"
+template = "meta-agent"
+
+[agent]
+default_model = "gpt-4"
+max_iterations = 10
+
+[docs]
+version = "1.0.0"
+embedded = true

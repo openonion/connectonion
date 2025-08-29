@@ -4,7 +4,7 @@ from connectonion import Agent
 import json
 from dotenv import load_dotenv
 
-# Load environment variables
+# Load environment variables from .env file
 load_dotenv()
 
 
@@ -81,10 +81,6 @@ def create_agent_from_template(agent_name: str, template: str = "basic", descrip
     """
     templates = {
         "basic": '''from connectonion import Agent
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 def main_task(input: str) -> str:
     """Process the main task."""
@@ -93,8 +89,7 @@ def main_task(input: str) -> str:
 agent = Agent(
     name="{name}",
     system_prompt="You are a helpful {description} assistant.",
-    tools=[main_task],
-    model="o4-mini"
+    tools=[main_task]
 )
 
 if __name__ == "__main__":
@@ -102,10 +97,6 @@ if __name__ == "__main__":
     print(result)
 ''',
         "tool": '''from connectonion import Agent
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 def {name}_tool(data: str) -> str:
     """{description}"""
@@ -116,16 +107,11 @@ def {name}_tool(data: str) -> str:
 agent = Agent(
     name="{name}",
     system_prompt="prompt.md",
-    tools=[{name}_tool],
-    model="o4-mini"
+    tools=[{name}_tool]
 )
 ''',
         "multi-tool": '''from connectonion import Agent
 from typing import List, Dict
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
 
 def analyze(data: str) -> str:
     """Analyze the input data."""
@@ -143,7 +129,6 @@ agent = Agent(
     name="{name}",
     system_prompt="prompt.md",
     tools=[analyze, process, report],
-    model="o4-mini",
     max_iterations=15
 )
 '''
@@ -288,13 +273,13 @@ def generate_todo_list(task_description: str, priority: str = "normal") -> str:
     """Generate a structured to-do list for a given task.
     
     Breaks down complex tasks into actionable items.
-    Uses o4-mini model for efficient list generation.
+    Uses GPT-4o-mini model for efficient list generation.
     
     Args:
         task_description: The task or project to create a to-do list for
         priority: Priority level ('high', 'normal', 'low')
     """
-    # This would call o4-mini in production
+    # This would call GPT-4o-mini in production
     # For template, we provide a structured example
     
     todo_template = {
@@ -309,7 +294,7 @@ def generate_todo_list(task_description: str, priority: str = "normal") -> str:
             "6. Document the code",
             "7. Review and refactor"
         ],
-        "model_note": "Using o4-mini for efficient task breakdown"
+        "model_note": "Using gpt-4o-mini for efficient task breakdown"
     }
     
     return f"📝 To-Do List for '{task_description}':\n" + json.dumps(todo_template, indent=2)

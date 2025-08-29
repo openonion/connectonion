@@ -25,6 +25,16 @@
   code, pre {
     font-family: var(--font-mono), ui-monospace, monospace;
   }
+
+  /* Mobile-friendly media and code rendering */
+  img, video {
+    max-width: 100%;
+    height: auto;
+  }
+  pre {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
 }
 
 @layer utilities {

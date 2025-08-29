@@ -62,7 +62,7 @@ export default function HomePage() {
 
 
   return (
-    <main className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-10 lg:py-12 pt-12">
       {/* Docs Header */}
       <header className="mb-16">
         <div className="text-center max-w-4xl mx-auto">
@@ -199,7 +199,7 @@ export default function HomePage() {
             </button>
           </div>
           
-          <div className="p-6">
+          <div className="p-6 overflow-x-auto">
             <SyntaxHighlighter 
               language="python" 
               style={vscDarkPlus}
@@ -411,7 +411,7 @@ agent = Agent(
             </button>
           </div>
           
-          <div className="p-6">
+          <div className="p-6 overflow-x-auto">
             <SyntaxHighlighter 
               language="python" 
               style={vscDarkPlus}

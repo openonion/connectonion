@@ -34,7 +34,7 @@ export function CommandBlock({ title, commands, id }: CommandBlockProps) {
           )}
         </button>
       </div>
-      <div className="bg-black/90 p-4 font-mono text-sm">
+      <div className="bg-black/90 p-4 font-mono text-sm overflow-x-auto">
         {commands.map((cmd, index) => (
           <div key={index} className="group hover:bg-white/5 -mx-4 px-4 py-0.5">
             <span className="select-none text-gray-500 mr-2">$</span>

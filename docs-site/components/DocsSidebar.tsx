@@ -69,6 +69,7 @@ const navigation: NavigationSection[] = [
     title: 'Blog',
     items: [
       { title: 'All Posts', href: '/blog', icon: BookOpen },
+      { title: 'Network Protocol Design', href: '/blog/network-protocol-design', icon: GitBranch, difficulty: 'Architecture' },
       { title: 'Why We Chose "Trust"', href: '/blog/trust-keyword', icon: Users, difficulty: 'Design Decision' },
     ]
   },
@@ -161,7 +162,7 @@ export function DocsSidebar() {
   }
 
   return (
-    <div className="w-64 lg:w-72 xl:w-80 bg-gray-900 border-r border-gray-800 flex flex-col h-screen sticky top-0 z-40">
+    <div className="w-[85vw] sm:w-64 lg:w-72 xl:w-80 bg-gray-900 border-r border-gray-800 flex flex-col h-screen sticky top-0 z-40">
       {/* Header */}
       <div className="p-6 border-b border-gray-800">
         <Link href="/" className="flex items-center gap-3 group">
