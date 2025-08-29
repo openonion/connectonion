@@ -370,8 +370,8 @@ agent = Agent("support", tools=[analyze_feedback])`}
             <section className="mb-12">
               <h2 className="text-2xl font-bold text-green-400 mb-4">Parameters</h2>
               
-              <div className="overflow-x-auto">
-                <table className="w-full border-collapse">
+              <div className="table-wrapper">
+                <table className="min-w-full border-collapse">
                   <thead>
                     <tr className="border-b border-gray-700">
                       <th className="text-left py-3 px-4 text-green-400">Parameter</th>

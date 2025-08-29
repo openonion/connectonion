@@ -9,6 +9,7 @@ import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { WaitlistSignup } from '../components/WaitlistSignup'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
 import { CommandBlock } from '../components/CommandBlock'
+import CodeWithResult from '../components/CodeWithResult'
 
 export default function HomePage() {
   const [isRunning, setIsRunning] = useState(false)
@@ -184,34 +185,8 @@ export default function HomePage() {
           </div>
         </div>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-8">
-          <div className="flex items-center justify-between bg-gray-800 border-b border-gray-700 px-4 py-3">
-            <span className="text-sm text-gray-400 font-mono">simple_example.py</span>
-            <button
-              onClick={() => copyToClipboard(`from connectonion import Agent\n\ndef get_weather(city: str) -> str:\n    """Get current weather for a city."""\n    return f"Weather in {city}: sunny, 72°F"\n\n# Create agent\nagent = Agent("assistant", tools=[get_weather])\n\n# Use the agent\nresponse = agent.input("What's the weather in NYC?")\nprint(response)  # Output: "Weather in NYC: sunny, 72°F"`, 'simple-example')}
-              className="p-2 rounded-lg text-gray-400 hover:text-white hover:bg-gray-700 transition-colors"
-            >
-              {copiedId === 'simple-example' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          
-          <div className="p-6 overflow-x-auto">
-            <SyntaxHighlighter 
-              language="python" 
-              style={vscDarkPlus}
-              customStyle={{
-                background: 'transparent',
-                padding: 0,
-                margin: 0,
-                fontSize: '0.875rem',
-                lineHeight: '1.5'
-              }}
-            >
-{`from connectonion import Agent
+        <CodeWithResult 
+          code={`from connectonion import Agent
 
 def get_weather(city: str) -> str:
     """Get current weather for a city."""
@@ -222,10 +197,14 @@ agent = Agent("assistant", tools=[get_weather])
 
 # Use the agent
 response = agent.input("What's the weather in NYC?")
-print(response)  # Output: "Weather in NYC: sunny, 72°F"`}
-            </SyntaxHighlighter>
-          </div>
-        </div>
+print(response)`}
+          result={`I'll check the weather in NYC for you.
+
+Weather in NYC: sunny, 72°F
+
+The current weather in New York City is sunny with a temperature of 72°F. It's a beautiful day!`}
+          className="mb-8"
+        />
       </section>
 
       {/* Best Agent Framework Comparison - SEO Section */}

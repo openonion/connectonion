@@ -325,62 +325,101 @@ Result: 80
           Your meta-agent can help you build ConnectOnion projects:
         </p>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden mb-6">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-            <span className="text-sm text-gray-300 font-mono">example_usage.py</span>
-            <button
-              onClick={() => copyToClipboard(`# Learn about ConnectOnion
+        <div className="space-y-6">
+          {/* Learn about ConnectOnion */}
+          <CodeWithResult 
+            code={`# Learn about ConnectOnion
 result = agent.input("What is ConnectOnion and how do tools work?")
+print(result)`}
+            result={`ConnectOnion is a Python framework for building AI agents with a focus on simplicity. 
+Here's how it works:
 
-# Generate agent code
+1. **Agent Creation**: Create agents with a name, tools, and optional system prompt
+2. **Tools**: Functions that agents can call. Any Python function can be a tool!
+3. **Automatic Schema Generation**: Type hints are converted to OpenAI function schemas
+4. **Iteration Control**: Use max_iterations to prevent infinite loops
+5. **Built-in History**: All agent interactions are automatically saved
+
+Tools work by:
+- Converting Python functions to OpenAI-compatible schemas
+- The agent decides when to call tools based on the task
+- Tool results are fed back to the agent for further processing
+- Multiple tools can be called in sequence to complete complex tasks`}
+            className="mb-4"
+          />
+
+          {/* Generate agent code */}
+          <CodeWithResult 
+            code={`# Generate agent code
 result = agent.input("Create a web scraper agent")
+print(result[:500] + "...")  # Show first 500 chars`}
+            result={`Here's a complete web scraper agent using ConnectOnion:
 
-# Create tool functions  
+\`\`\`python
+from connectonion import Agent
+import requests
+from bs4 import BeautifulSoup
+
+def scrape_url(url: str) -> str:
+    """Scrape content from a URL."""
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    return soup.get_text()[:1000]
+
+def extract_links(url: str) -> list[str]:
+    """Extract all links from a webpage."""
+    response = requests.get(url)
+    soup = BeautifulSoup(response.text, 'html.parser')
+    return [a['href'] for a in soup.find_all('a', href=True)]...`}
+            className="mb-4"
+          />
+
+          {/* Create tool functions */}
+          <CodeWithResult 
+            code={`# Create tool functions
 result = agent.input("Generate a tool for sending emails")
+print(result)`}
+            result={`Here's an email sending tool for your agent:
 
-# Get project structure advice
-result = agent.input("Suggest structure for a multi-agent system")
+\`\`\`python
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 
-# Generate a structured plan
-result = agent.input("Create a to-do list for building a REST API")`, 'meta-examples')}
-              className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
-            >
-              {copiedId === 'meta-examples' ? (
-                <Check className="w-4 h-4 text-green-400" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </button>
-          </div>
-          
-          <div className="p-6">
-            <SyntaxHighlighter 
-              language="python" 
-              style={vscDarkPlus}
-              customStyle={{
-                background: 'transparent',
-                padding: 0,
-                margin: 0,
-                fontSize: '0.875rem',
-                lineHeight: '1.5'
-              }}
-            >
-{`# Learn about ConnectOnion
-result = agent.input("What is ConnectOnion and how do tools work?")
+def send_email(to: str, subject: str, body: str, from_email: str = "agent@example.com") -> str:
+    """Send an email to the specified recipient.
+    
+    Args:
+        to: Recipient email address
+        subject: Email subject line
+        body: Email body content
+        from_email: Sender email address
+        
+    Returns:
+        Status message indicating success or failure
+    """
+    try:
+        msg = MIMEMultipart()
+        msg['From'] = from_email
+        msg['To'] = to
+        msg['Subject'] = subject
+        msg.attach(MIMEText(body, 'plain'))
+        
+        # Configure your SMTP server
+        server = smtplib.SMTP('smtp.gmail.com', 587)
+        server.starttls()
+        server.login(from_email, 'your_app_password')
+        server.send_message(msg)
+        server.quit()
+        
+        return f"Email sent successfully to {to}"
+    except Exception as e:
+        return f"Failed to send email: {str(e)}"
+\`\`\`
 
-# Generate agent code
-result = agent.input("Create a web scraper agent")
-
-# Create tool functions  
-result = agent.input("Generate a tool for sending emails")
-
-# Get project structure advice
-result = agent.input("Suggest structure for a multi-agent system")
-
-# Generate a structured plan
-result = agent.input("Create a to-do list for building a REST API")`}
-            </SyntaxHighlighter>
-          </div>
+Usage: agent = Agent("mailer", tools=[send_email])`}
+            className="mb-4"
+          />
         </div>
       </section>
 
@@ -403,7 +442,7 @@ result = agent.input("Create a to-do list for building a REST API")`}
 
         <div className="bg-gradient-to-b from-yellow-900/30 to-yellow-800/10 border border-yellow-500/30 rounded-lg p-6 mb-8">
           <h3 className="text-lg font-semibold text-yellow-200 mb-4">Stateful browser tools included:</h3>
-          <div className="grid md:grid-cols-2 gap-3 text-yellow-100 text-sm">
+          <div className="grid sm:grid-cols-2 gap-3 text-yellow-100 text-sm">
             <div className="flex items-start gap-2">
               <span className="text-yellow-400 mt-1">•</span>
               <span><strong>start_browser()</strong> - Launch browser</span>
@@ -533,7 +572,7 @@ The result is 80.`}
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-8">🎯 What's Next?</h2>
         
-        <div className="grid md:grid-cols-2 gap-6">
+        <div className="grid sm:grid-cols-2 gap-4 sm:gap-6">
           <Link 
             href="/prompts" 
             className="group bg-gradient-to-r from-purple-900/20 to-purple-800/20 border border-purple-500/30 rounded-xl p-6 hover:border-purple-400/50 transition-all"

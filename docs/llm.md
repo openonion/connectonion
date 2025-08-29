@@ -58,13 +58,13 @@ print(invoice.total_amount)  # 1234.56
 # With prompt file
 summary = llm_do(
     long_article,
-    prompt="prompts/summarizer.md"  # Loads from file
+    system_prompt="prompts/summarizer.md"  # Loads from file
 )
 
 # With inline prompt
 translation = llm_do(
     "Hello world",
-    prompt="You are a translator. Translate to Spanish only."
+    system_prompt="You are a translator. Translate to Spanish only."
 )
 print(translation)  # "Hola mundo"
 ```
@@ -98,7 +98,7 @@ agent = Agent("support", tools=[analyze_feedback])
 result = llm_do(
     input="Your text here",
     output=YourModel,        # Optional: Pydantic model for structure
-    prompt="instructions",   # Optional: String or file path
+    system_prompt="instructions",   # Optional: String or file path
     model="gpt-4",          # Optional: Default is "gpt-4o-mini"
     temperature=0.7,        # Optional: Default is 0.1 (consistent)
 )
@@ -110,7 +110,7 @@ result = llm_do(
 |-----------|------|---------|-------------|
 | `input` | str | required | The input text/question |
 | `output` | BaseModel | None | Pydantic model for structured output |
-| `prompt` | str\|Path | None | System prompt (string or file path) |
+| `system_prompt` | str\|Path | None | System prompt (string or file path) |
 | `model` | str | "gpt-4o-mini" | OpenAI model to use (fast & cheap by default) |
 | `temperature` | float | 0.1 | Randomness (0=deterministic, 2=creative) |
 

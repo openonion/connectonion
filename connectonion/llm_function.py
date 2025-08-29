@@ -13,7 +13,7 @@ T = TypeVar('T', bound=BaseModel)
 def llm_do(
     input: str,
     output: Optional[Type[T]] = None,
-    prompt: Optional[Union[str, Path]] = None,
+    system_prompt: Optional[Union[str, Path]] = None,
     model: str = "gpt-4o-mini",
     temperature: float = 0.1,
     api_key: Optional[str] = None
@@ -24,7 +24,7 @@ def llm_do(
     Args:
         input: The input text/question to send to the LLM
         output: Optional Pydantic model class for structured output
-        prompt: Optional system prompt (string or file path)
+        system_prompt: Optional system prompt (string or file path)
         model: OpenAI model to use (default: "gpt-4o-mini")
         temperature: Sampling temperature (default: 0.1 for consistency)
         api_key: Optional OpenAI API key (uses environment variable if not provided)
@@ -45,10 +45,10 @@ def llm_do(
         >>> result = llm("I love this!", output=Analysis)
         >>> print(result.sentiment)  # "positive"
         
-        >>> # With custom prompt
-        >>> translation = llm(
+        >>> # With custom system prompt
+        >>> translation = llm_do(
         ...     "Hello world",
-        ...     prompt="You are a translator. Translate to Spanish."
+        ...     system_prompt="You are a translator. Translate to Spanish."
         ... )
     """
     # Validate input
@@ -56,10 +56,10 @@ def llm_do(
         raise ValueError("Input cannot be empty")
     
     # Load system prompt
-    if prompt:
-        system_prompt = load_system_prompt(prompt)
+    if system_prompt:
+        prompt_text = load_system_prompt(system_prompt)
     else:
-        system_prompt = "You are a helpful assistant."
+        prompt_text = "You are a helpful assistant."
     
     # Get API key
     api_key = api_key or os.getenv("OPENAI_API_KEY")
@@ -75,7 +75,7 @@ def llm_do(
     
     # Build messages
     messages = [
-        {"role": "system", "content": system_prompt},
+        {"role": "system", "content": prompt_text},
         {"role": "user", "content": input}
     ]
     

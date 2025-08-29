@@ -22,6 +22,12 @@
     -moz-osx-font-smoothing: grayscale;
   }
   
+  /* Prevent horizontal overflow from long strings/URLs */
+  a, p, span, div {
+    overflow-wrap: break-word;
+    word-wrap: break-word;
+  }
+  
   code, pre {
     font-family: var(--font-mono), ui-monospace, monospace;
   }
@@ -140,5 +146,42 @@
   
   .text-accessible-gray {
     color: var(--text-secondary); /* Replaces text-gray-400 with better contrast */
+  }
+  
+  /* Mobile-specific fixes */
+  .break-words-anywhere {
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+  
+  /* Prevent horizontal scroll from code blocks */
+  .code-wrapper {
+    @apply overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0;
+  }
+  
+  /* Responsive table wrapper */
+  .table-wrapper {
+    @apply overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0;
+  }
+  
+  /* Z-index scale for consistent layering */
+  .z-dropdown { z-index: 10; }
+  .z-sticky { z-index: 20; }
+  .z-overlay { z-index: 30; }
+  .z-modal { z-index: 40; }
+  .z-notification { z-index: 50; }
+  
+  /* Mobile-optimized touch targets */
+  .touch-target {
+    @apply min-h-[44px] min-w-[44px];
+  }
+  
+  /* Mobile padding utilities */
+  .px-mobile {
+    @apply px-3 sm:px-6 lg:px-8;
+  }
+  
+  .py-mobile {
+    @apply py-4 sm:py-8 lg:py-12;
   }
 }

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { Copy, Check, Code, Layers, Compass, Monitor } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import CodeWithResult from '../../components/CodeWithResult'
 
 export default function ToolsDocsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -150,22 +151,19 @@ browser.close()`
       {/* Quick Start */}
       <section className="mb-14">
         <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Layers className="w-5 h-5 text-purple-400"/>Quick Start</h2>
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-            <span className="text-sm text-gray-300 font-mono">quick_tool.py</span>
-            <button
-              onClick={() => copyToClipboard(quickStart, 'quick')}
-              className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
-            >
-              {copiedId === 'quick' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-          <div className="p-6">
-            <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.9rem', lineHeight: '1.6' }}>
-              {quickStart}
-            </SyntaxHighlighter>
-          </div>
-        </div>
+        <CodeWithResult 
+          code={quickStart}
+          result={`I'll search for Python tutorials.
+
+Found results for Python tutorials
+
+Based on my search, here are some excellent Python tutorials for you:
+1. Official Python Tutorial - Great for beginners
+2. Real Python - Comprehensive guides and examples  
+3. Python.org Beginner's Guide - Step-by-step introduction
+4. W3Schools Python Tutorial - Interactive examples
+5. Codecademy Python Course - Hands-on learning`}
+        />
       </section>
 
       {/* Function Tools */}
@@ -173,55 +171,59 @@ browser.close()`
         <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Code className="w-5 h-5 text-blue-400"/>Function Tools</h2>
         <p className="text-gray-300 mb-4">Use Python type hints as your interface. Keep signatures explicit and return structures when needed.</p>
         <div className="grid grid-cols-1 gap-6">
-          <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-              <span className="text-sm text-gray-300 font-mono">top_k.py</span>
-              <button onClick={() => copyToClipboard(functionTool, 'func')} className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700">
-                {copiedId === 'func' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-            <div className="p-6">
-              <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.85rem' }}>
-                {functionTool}
-              </SyntaxHighlighter>
-            </div>
-          </div>
+          <CodeWithResult 
+            code={functionTool}
+            result={`I'll search for the top 3 results about vector databases.
 
-          <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-              <span className="text-sm text-gray-300 font-mono">structured.py</span>
-              <button onClick={() => copyToClipboard(structuredReturn, 'structured')} className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700">
-                {copiedId === 'structured' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-              </button>
-            </div>
-            <div className="p-6">
-              <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.85rem' }}>
-                {structuredReturn}
-              </SyntaxHighlighter>
-            </div>
-          </div>
+['1. vector db result', '2. vector db result', '3. vector db result']
+
+Here are the top 3 results for "vector db":
+1. vector db result
+2. vector db result  
+3. vector db result`}
+            className="mb-4"
+          />
+
+          <CodeWithResult 
+            code={structuredReturn}
+            result={`# When called with search_hits("machine learning", k=2):
+[
+  {
+    'title': 'machine learning 0',
+    'url': 'https://example.com/0',
+    'score': 0.9
+  },
+  {
+    'title': 'machine learning 1', 
+    'url': 'https://example.com/1',
+    'score': 0.8
+  }
+]`}
+            className="mb-4"
+          />
         </div>
       </section>
 
       {/* Stateful Tools (Playwright) */}
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Monitor className="w-5 h-5 text-emerald-400"/>Stateful Tools: Playwright</h2>
-        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-          <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-            <span className="text-sm text-gray-300 font-mono">browser_tools.py</span>
-            <button
-              onClick={() => copyToClipboard(playwright, 'playwright')}
-              className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-700"
-            >
-              {copiedId === 'playwright' ? <Check className="w-4 h-4 text-green-400" /> : <Copy className="w-4 h-4" />}
-            </button>
-          </div>
-          <div className="p-6">
-            <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.8rem' }}>
-              {playwright}
-            </SyntaxHighlighter>
-          </div>
-        </div>
+        <CodeWithResult 
+          code={playwright}
+          result={`Browser started
+Example Domain
+example.png
+Opened tab 'docs'
+Playwright
+docs.png
+['main', 'docs']
+
+# Agent interaction example:
+agent.input("Navigate to Google and take a screenshot")
+> "I'll navigate to Google and capture a screenshot for you."
+> Browser started
+> Navigating to https://google.com
+> Screenshot saved as google_screenshot.png`}
+        />
       </section>
     </div>
   )

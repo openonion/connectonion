@@ -105,7 +105,7 @@ class TestLLMFunction(unittest.TestCase):
         from connectonion import llm_do
         result = llm_do(
             "Hello",
-            prompt="You are a translator. Translate to Spanish."
+            system_prompt="You are a translator. Translate to Spanish."
         )
         
         # Verify the prompt was included in the system message
@@ -128,7 +128,7 @@ class TestLLMFunction(unittest.TestCase):
             mock_llm_class.return_value = mock_llm
             
             from connectonion import llm_do
-            result = llm_do("Test", prompt=str(prompt_file))
+            result = llm_do("Test", system_prompt=str(prompt_file))
             
             # Verify file content was loaded
             call_args = mock_llm.complete.call_args[0][0]
@@ -192,7 +192,7 @@ class TestLLMFunction(unittest.TestCase):
         
         from connectonion import llm_do
         with self.assertRaises(FileNotFoundError):
-            llm_do("Test", prompt="nonexistent_file.md")
+            llm_do("Test", system_prompt="nonexistent_file.md")
     
     def test_api_error_handling(self):
         """Test handling of API errors."""
@@ -254,7 +254,7 @@ class TestLLMFunction(unittest.TestCase):
         from connectonion import llm_do
         result = llm_do(
             "Bonjour",
-            prompt="You are a translator. Translate from French to English only. Be concise."
+            system_prompt="You are a translator. Translate from French to English only. Be concise."
         )
         
         self.assertIsNotNone(result)

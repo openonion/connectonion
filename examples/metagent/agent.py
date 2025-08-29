@@ -1,6 +1,7 @@
 """Meta-Agent - Your ConnectOnion development assistant with documentation expertise"""
 
 from connectonion import Agent, xray
+from connectonion.llm_function import llm_do
 import json
 from dotenv import load_dotenv
 
@@ -70,82 +71,7 @@ def answer_connectonion_question(question: str) -> str:
         return f"Here's an overview of ConnectOnion:\n\n{overview}\n\n💡 Try asking about specific topics like 'tools', 'agents', 'xray', or 'system prompts'."
 
 
-def create_agent_from_template(agent_name: str, template: str = "basic", description: str = "") -> str:
-    """Create a new ConnectOnion agent from a template.
-    
-    Helps users quickly scaffold new agents for their projects.
-    
-    Args:
-        agent_name: Name for the new agent (e.g., 'web_scraper', 'data_processor')
-        template: Template type ('basic', 'tool', 'multi-tool')
-        description: What this agent should do
-    """
-    templates = {
-        "basic": '''from connectonion import Agent
-
-def main_task(input: str) -> str:
-    """Process the main task."""
-    return f"Processing: {input}"
-
-agent = Agent(
-    name="{name}",
-    system_prompt="You are a helpful {description} assistant.",
-    tools=[main_task]
-)
-
-if __name__ == "__main__":
-    result = agent.input("Hello!")
-    print(result)
-''',
-        "tool": '''from connectonion import Agent
-
-def {name}_tool(data: str) -> str:
-    """{description}"""
-    # Your implementation here
-    result = f"Processed {data}"
-    return result
-
-agent = Agent(
-    name="{name}",
-    system_prompt="prompt.md",
-    tools=[{name}_tool]
-)
-''',
-        "multi-tool": '''from connectonion import Agent
-from typing import List, Dict
-
-def analyze(data: str) -> str:
-    """Analyze the input data."""
-    return f"Analysis complete: {data}"
-
-def process(data: str, mode: str = "standard") -> str:
-    """Process data with specified mode."""
-    return f"Processed in {mode} mode: {data}"
-
-def report(results: str, format: str = "text") -> str:
-    """Generate a report from results."""
-    return f"Report ({format}): {results}"
-
-agent = Agent(
-    name="{name}",
-    system_prompt="prompt.md",
-    tools=[analyze, process, report],
-    max_iterations=15
-)
-'''
-    }
-    
-    if template not in templates:
-        return f"Unknown template '{template}'. Available: basic, tool, multi-tool"
-    
-    code = templates[template].format(
-        name=agent_name.replace('-', '_').lower(),
-        description=description or agent_name
-    )
-    
-    filename = f"{agent_name.lower()}_agent.py"
-    
-    return f"📝 Agent template created:\n\nFilename: {filename}\n\n```python\n{code}\n```\n\nSave this code to {filename} and customize as needed."
+ 
 
 
 def generate_tool_code(tool_name: str, parameters: str, description: str) -> str:
@@ -260,14 +186,14 @@ if __name__ == "__main__":
 
 @xray
 def think(context: str = "current situation") -> str:
-    """Reflect on the current task progress and determine next steps.
-    
-    This meta-cognitive tool helps analyze whether tasks are complete.
-    
-    Args:
-        context: What to think about (e.g., 'task completion', 'next steps', 'current progress')
-    """
-    return f"Reflecting on {context}: Evaluating task progress and determining if additional steps are needed."
+    """Reflect using llm_do on a simple JSON dump of xray.messages."""
+    transcript = json.dumps(xray.messages or [])
+    return llm_do(
+        input=f"Context: {context}\n\nMessages: {transcript}",
+        prompt="think_prompt.md",
+        model="o4-mini",
+        temperature=0.1,
+    )
 
 
 def generate_todo_list(task_description: str, priority: str = "normal") -> str:
@@ -387,7 +313,6 @@ agent = Agent(
     system_prompt="prompt.md",
     tools=[
         answer_connectonion_question,  # Primary documentation tool
-        create_agent_from_template,     # Agent generation
         generate_tool_code,             # Tool code generation
         create_test_for_agent,          # Test generation
         think,                          # Self-reflection
