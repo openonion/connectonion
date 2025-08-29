@@ -1,421 +1,162 @@
 """Meta-Agent - Your ConnectOnion development assistant with documentation expertise"""
 
 from connectonion import Agent, xray
+from connectonion import llm_do
 import json
 from dotenv import load_dotenv
+from pathlib import Path
+import subprocess
+import platform
+import shutil
 
-# Load environment variables
+
+# Load environment variables from .env file
 load_dotenv()
 
-
 @xray
-def answer_connectonion_question(question: str) -> str:
-    """Answer questions about ConnectOnion based on the embedded documentation.
-    
-    This is your primary tool for helping users understand ConnectOnion.
-    Reads from the comprehensive docs in .co/docs/connectonion.md
-    
-    Args:
-        question: Question about ConnectOnion (e.g., 'How do tools work?', 'What is xray?')
-    """
-    docs_path = ".co/docs/connectonion.md"
-    
+def extract_relevant_connectonion_text(question: str, docs_path: str = ".co/docs/connectonion.md") -> str:
+    """Load docs and use llm_do to extract relevant text for the question."""
     try:
         with open(docs_path, 'r', encoding='utf-8') as f:
             docs = f.read()
     except FileNotFoundError:
         return "ConnectOnion documentation not found. Try running 'co init' again."
-    
-    # Search for relevant content in the documentation
-    lines = docs.split('\n')
-    
-    # Look for the most relevant section
-    relevant_sections = []
-    current_section = []
-    in_relevant_section = False
-    
-    keywords = question.lower().split()
-    
-    for i, line in enumerate(lines):
-        # Check if this line contains relevant keywords
-        line_lower = line.lower()
-        if any(keyword in line_lower for keyword in keywords if len(keyword) > 3):
-            in_relevant_section = True
-            # Include context before
-            start = max(0, i - 3)
-            for j in range(start, i):
-                if lines[j] not in current_section:
-                    current_section.append(lines[j])
-        
-        if in_relevant_section:
-            current_section.append(line)
-            
-            # Stop at next major section or after collecting enough
-            if len(current_section) > 40 or (line.startswith('##') and len(current_section) > 10):
-                relevant_sections.append('\n'.join(current_section))
-                current_section = []
-                in_relevant_section = False
-    
-    # Add any remaining section
-    if current_section:
-        relevant_sections.append('\n'.join(current_section))
-    
-    if relevant_sections:
-        doc_response = "Based on the ConnectOnion documentation:\n\n"
-        doc_response += '\n\n---\n\n'.join(relevant_sections[:2])  # Return top 2 most relevant sections
-        return doc_response
-    else:
-        # Provide overview if no specific match
-        overview = '\n'.join(lines[:50])
-        return f"Here's an overview of ConnectOnion:\n\n{overview}\n\n💡 Try asking about specific topics like 'tools', 'agents', 'xray', or 'system prompts'."
-
-
-@xray
-def create_agent_from_template(agent_name: str, template: str = "basic", description: str = "") -> str:
-    """Create a new ConnectOnion agent from a template.
-    
-    Helps users quickly scaffold new agents for their projects.
-    
-    Args:
-        agent_name: Name for the new agent (e.g., 'web_scraper', 'data_processor')
-        template: Template type ('basic', 'tool', 'multi-tool')
-        description: What this agent should do
-    """
-    templates = {
-        "basic": '''from connectonion import Agent
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-def main_task(input: str) -> str:
-    """Process the main task."""
-    return f"Processing: {input}"
-
-agent = Agent(
-    name="{name}",
-    system_prompt="You are a helpful {description} assistant.",
-    tools=[main_task],
-    model="o4-mini"
-)
-
-if __name__ == "__main__":
-    result = agent.input("Hello!")
-    print(result)
-''',
-        "tool": '''from connectonion import Agent
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-def {name}_tool(data: str) -> str:
-    """{description}"""
-    # Your implementation here
-    result = f"Processed {data}"
-    return result
-
-agent = Agent(
-    name="{name}",
-    system_prompt="prompt.md",
-    tools=[{name}_tool],
-    model="o4-mini"
-)
-''',
-        "multi-tool": '''from connectonion import Agent
-from typing import List, Dict
-from dotenv import load_dotenv
-
-# Load environment variables
-load_dotenv()
-
-def analyze(data: str) -> str:
-    """Analyze the input data."""
-    return f"Analysis complete: {data}"
-
-def process(data: str, mode: str = "standard") -> str:
-    """Process data with specified mode."""
-    return f"Processed in {mode} mode: {data}"
-
-def report(results: str, format: str = "text") -> str:
-    """Generate a report from results."""
-    return f"Report ({format}): {results}"
-
-agent = Agent(
-    name="{name}",
-    system_prompt="prompt.md",
-    tools=[analyze, process, report],
-    model="o4-mini",
-    max_iterations=15
-)
-'''
-    }
-    
-    if template not in templates:
-        return f"Unknown template '{template}'. Available: basic, tool, multi-tool"
-    
-    code = templates[template].format(
-        name=agent_name.replace('-', '_').lower(),
-        description=description or agent_name
+    # Use llm_do with a retrieval prompt file to select relevant content
+    return llm_do(
+        input=f"Question: {question}\n\nDocumentation:\n{docs}",
+        system_prompt="prompts/docs_retrieve_prompt.md",
+        model="gpt-4o-mini",
+        temperature=0.1,
     )
-    
-    filename = f"{agent_name.lower()}_agent.py"
-    
-    return f"📝 Agent template created:\n\nFilename: {filename}\n\n```python\n{code}\n```\n\nSave this code to {filename} and customize as needed."
 
 
 @xray
-def generate_tool_code(tool_name: str, parameters: str, description: str) -> str:
-    """Generate ConnectOnion tool function code.
-    
-    Helps users create properly formatted tool functions.
-    
-    Args:
-        tool_name: Name of the tool function
-        parameters: Comma-separated parameters (e.g., 'url: str, timeout: int = 30')
-        description: What this tool does
-    """
-    # Clean up the tool name
-    clean_name = tool_name.replace('-', '_').replace(' ', '_').lower()
-    
-    # Parse parameters
-    if not parameters:
-        parameters = ""
-    
-    code = f'''def {clean_name}({parameters}) -> str:
-    """{description}
-    
-    Args:
-        # Add parameter descriptions here
-    """
-    # TODO: Implement your tool logic here
-    
-    # Example implementation:
-    result = "Tool executed successfully"
-    
-    return result
+def answer_connectonion_question(question: str) -> str:
+    """Answer a question using relevant text extracted from documentation via llm_do."""
+    relevant = extract_relevant_connectonion_text(question)
+    return llm_do(
+        input=f"Question: {question}\n\nRelevant context:\n{relevant}",
+        system_prompt="prompts/answer_prompt.md",
+        model="gpt-4o-mini",
+        temperature=0.1,
+    )
 
-
-# Add this tool to your agent:
-# agent = Agent(
-#     name="my_agent",
-#     tools=[{clean_name}, ...other_tools]
-# )'''
-    
-    return f"🔧 Tool function generated:\n\n```python\n{code}\n```\n\nThis tool follows ConnectOnion best practices:\n- ✅ Type hints on parameters\n- ✅ Returns string\n- ✅ Descriptive docstring\n- ✅ Ready to use with Agent"
-
-
-@xray
-def create_test_for_agent(agent_file: str = "agent.py") -> str:
-    """Generate test code for a ConnectOnion agent.
-    
-    Creates pytest-compatible test cases.
-    
-    Args:
-        agent_file: Path to the agent file to test
-    """
-    test_code = f'''"""Tests for {agent_file}"""
-
-import pytest
-from unittest.mock import patch, MagicMock
-import sys
-import os
-
-# Add parent directory to path
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from {agent_file.replace('.py', '')} import agent
-
-
-class TestAgent:
-    """Test suite for the agent."""
-    
-    def test_agent_initialization(self):
-        """Test that agent initializes correctly."""
-        assert agent.name is not None
-        assert len(agent.tools) > 0
-        assert agent.system_prompt is not None
-    
-    def test_agent_has_required_tools(self):
-        """Test that agent has all required tools."""
-        tool_names = agent.list_tools()
-        assert len(tool_names) > 0
-        # Add specific tool checks here
-    
-    @patch.dict(os.environ, {{"OPENAI_API_KEY": "test-key"}})
-    def test_agent_input(self):
-        """Test agent input processing."""
-        with patch.object(agent.llm, 'call') as mock_call:
-            # Mock the LLM response
-            mock_call.return_value = "Test response"
-            
-            result = agent.input("Test query")
-            assert result == "Test response"
-            mock_call.assert_called_once()
-    
-    def test_tool_execution(self):
-        """Test that tools execute correctly."""
-        # Get first tool
-        if agent.tools:
-            tool = agent.tools[0]
-            # Test tool execution
-            # Adjust based on your tool's parameters
-            try:
-                result = tool.run()
-                assert result is not None
-            except TypeError:
-                # Tool requires parameters
-                pass
-
-
-if __name__ == "__main__":
-    pytest.main([__file__, "-v"])
-'''
-    
-    filename = f"test_{agent_file.replace('.py', '')}.py"
-    
-    return f"🧪 Test file generated:\n\nFilename: {filename}\n\n```python\n{test_code}\n```\n\nRun tests with: `pytest {filename}`"
 
 
 @xray
 def think(context: str = "current situation") -> str:
-    """Reflect on the current task progress and determine next steps.
-    
-    This meta-cognitive tool helps analyze whether tasks are complete.
-    
-    Args:
-        context: What to think about (e.g., 'task completion', 'next steps', 'current progress')
-    """
-    return f"Reflecting on {context}: Evaluating task progress and determining if additional steps are needed."
+    """Reflect using llm_do on a simple JSON dump of xray.messages."""
+    transcript = json.dumps(xray.messages or [])
+    return llm_do(
+        input=f"Context: {context}\n\nMessages: {transcript}",
+        system_prompt="prompts/think_prompt.md",
+        model="gpt-4o-mini",
+        temperature=0.1,
+    )
+ 
+
+
+def add_todo(task: str) -> str:
+    """Add a to-do item to todo.md as an unchecked task."""
+    if not task or not task.strip():
+        return "Please provide a non-empty task."
+    path = Path(__file__).resolve().parent / "todo.md"
+    if not path.exists():
+        path.write_text("", encoding="utf-8")
+    with path.open("a", encoding="utf-8") as f:
+        f.write(f"- [ ] {task.strip()}\n")
+    return f"Added to-do: {task.strip()}"
+
+
+def delete_todo(task: str) -> str:
+    """Delete the first matching to-do (checked or unchecked) from todo.md."""
+    path = Path(__file__).resolve().parent / "todo.md"
+    if not path.exists():
+        path.write_text("", encoding="utf-8")
+    lines = path.read_text(encoding="utf-8").splitlines()
+    new_lines = []
+    removed = False
+    for line in lines:
+        if (line.startswith("- [ ] ") or line.startswith("- [x] ")) and task in line and not removed:
+            removed = True
+            continue
+        new_lines.append(line)
+    if not removed:
+        return "To-do not found."
+    path.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+    return f"Deleted to-do: {task}"
+
+
+def list_todos() -> str:
+    """Return the current contents of todo.md or a notice if empty."""
+    path = Path(__file__).resolve().parent / "todo.md"
+    if not path.exists():
+        path.write_text("", encoding="utf-8")
+    content = path.read_text(encoding="utf-8")
+    lines = [ln for ln in content.splitlines() if ln.strip()]
+    if len(lines) == 0:
+        return "No to-dos yet. Use add_todo(task) to add one."
+    return content
 
 
 @xray
-def generate_todo_list(task_description: str, priority: str = "normal") -> str:
-    """Generate a structured to-do list for a given task.
+def run_shell(command: str, timeout: int = 120, cwd: str = "") -> str:
+    """Execute a shell command cross-platform and return output.
     
-    Breaks down complex tasks into actionable items.
-    Uses o4-mini model for efficient list generation.
-    
-    Args:
-        task_description: The task or project to create a to-do list for
-        priority: Priority level ('high', 'normal', 'low')
+    Works on macOS/Linux and Windows. Uses bash/sh when available on *nix,
+    and PowerShell (or cmd) on Windows.
     """
-    # This would call o4-mini in production
-    # For template, we provide a structured example
-    
-    todo_template = {
-        "task": task_description,
-        "priority": priority,
-        "steps": [
-            "1. Understand requirements",
-            "2. Design the solution",
-            "3. Implement core functionality",
-            "4. Add error handling",
-            "5. Write tests",
-            "6. Document the code",
-            "7. Review and refactor"
-        ],
-        "model_note": "Using o4-mini for efficient task breakdown"
-    }
-    
-    return f"📝 To-Do List for '{task_description}':\n" + json.dumps(todo_template, indent=2)
+    cmd = command.strip()
+    if not cmd:
+        return "No command provided."
+    system = platform.system()
+    if system == "Windows":
+        if shutil.which("powershell"):
+            argv = ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd]
+        else:
+            argv = ["cmd", "/c", cmd]
+    else:
+        if shutil.which("bash"):
+            argv = ["bash", "-lc", cmd]
+        else:
+            argv = ["sh", "-lc", cmd]
+    try:
+        proc = subprocess.run(
+            argv,
+            capture_output=True,
+            text=True,
+            cwd=cwd or None,
+            timeout=timeout
+        )
+        stdout = proc.stdout or ""
+        stderr = proc.stderr or ""
+        return (
+            f"exit_code: {proc.returncode}\n"
+            f"stdout:\n{stdout}\n"
+            f"stderr:\n{stderr}".rstrip()
+        )
+    except subprocess.TimeoutExpired as e:
+        return f"Command timed out after {timeout}s. Partial output:\nstdout:\n{e.stdout or ''}\nstderr:\n{e.stderr or ''}"
+    except Exception as e:
+        return f"Error executing command: {e}"
 
 
-@xray
-def suggest_project_structure(project_type: str = "agent") -> str:
-    """Suggest a project structure for ConnectOnion projects.
-    
-    Args:
-        project_type: Type of project ('agent', 'multi-agent', 'tool-library', 'api')
-    """
-    structures = {
-        "agent": """
-📁 Suggested ConnectOnion Agent Project Structure:
-```
-my-agent/
-├── agent.py           # Main agent implementation
-├── prompt.md          # System prompt
-├── tools/
-│   ├── __init__.py
-│   ├── core_tools.py  # Core tool implementations
-│   └── helpers.py     # Helper utilities
-├── tests/
-│   ├── test_agent.py
-│   └── test_tools.py
-├── .env.example       # Environment template
-├── .co/               # ConnectOnion metadata
-│   └── docs/
-├── requirements.txt   # Dependencies
-└── README.md          # Project documentation
-```
-""",
-        "multi-agent": """
-📁 Multi-Agent System Structure:
-```
-multi-agent-system/
-├── agents/
-│   ├── __init__.py
-│   ├── coordinator.py    # Main coordinator agent
-│   ├── researcher.py     # Research agent
-│   ├── analyzer.py       # Analysis agent
-│   └── reporter.py       # Reporting agent
-├── shared/
-│   ├── tools.py         # Shared tools
-│   └── prompts/         # Prompt templates
-├── orchestrator.py      # Agent orchestration logic
-├── tests/
-└── .co/
-```
-""",
-        "tool-library": """
-📁 Tool Library Structure:
-```
-connectonion-tools/
-├── tools/
-│   ├── __init__.py
-│   ├── web.py          # Web-related tools
-│   ├── data.py         # Data processing tools
-│   ├── file.py         # File operation tools
-│   └── api.py          # API integration tools
-├── examples/
-│   └── example_agent.py
-├── tests/
-└── setup.py            # For distribution
-```
-""",
-        "api": """
-📁 API-Based Agent Structure:
-```
-api-agent/
-├── app.py              # FastAPI/Flask app
-├── agent.py            # ConnectOnion agent
-├── api/
-│   ├── routes.py       # API endpoints
-│   └── models.py       # Request/response models
-├── tools/
-├── tests/
-└── Dockerfile          # Container deployment
-```
-"""
-    }
-    
-    return structures.get(project_type, structures["agent"]) + "\n💡 Use this structure as a starting point and adapt to your needs."
+ 
 
 
 # Create the meta-agent with comprehensive ConnectOnion knowledge
 agent = Agent(
     name="meta_agent",
-    system_prompt="prompt.md",
+    system_prompt="prompts/metagent.md",
     tools=[
         answer_connectonion_question,  # Primary documentation tool
-        create_agent_from_template,     # Agent generation
-        generate_tool_code,             # Tool code generation
-        create_test_for_agent,          # Test generation
         think,                          # Self-reflection
-        generate_todo_list,             # Task planning
-        suggest_project_structure       # Project structure
+        add_todo,
+        delete_todo,
+        list_todos,
+        run_shell
     ],
-    model="o4-mini",
+    model="gpt-4o-mini",
     max_iterations=15  # More iterations for complex assistance
 )
 
@@ -431,7 +172,7 @@ if __name__ == "__main__":
     print("\nTry: 'How do tools work in ConnectOnion?'")
     print("     'Create a web scraper agent'")
     print("     'Generate a tool for sending emails'")
-
+    
     # Interactive loop
     print("\nType 'exit' or 'quit' to end the conversation.")
     while True:
