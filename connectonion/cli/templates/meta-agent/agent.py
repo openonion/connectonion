@@ -156,7 +156,7 @@ agent = Agent(
         list_todos,
         run_shell
     ],
-    model="gpt-4o-mini",
+    model="o4-mini",
     max_iterations=15  # More iterations for complex assistance
 )
 

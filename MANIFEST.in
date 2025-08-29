@@ -1,0 +1,7 @@
+include README.md
+include LICENSE
+recursive-include connectonion/cli/templates *
+include connectonion/cli/docs.md
+global-exclude *.pyc
+global-exclude __pycache__
+global-exclude .DS_Store

@@ -30,12 +30,11 @@ setup(
     package_data={
         'connectonion.cli': [
             'docs.md',  # Include docs.md in the package
-            'templates/*.py',  # Include template Python files
-            'templates/*.md',  # Include template markdown files
-            'templates/.env.example',  # Include env example
-            'templates/.gitignore',  # Include gitignore template
+            'templates/**/*',  # Include all files in template folders recursively
+            'templates/**/.env.example',  # Include hidden files like .env.example
         ],
     },
+    include_package_data=True,
     classifiers=[
         "Development Status :: 4 - Beta",
         "Intended Audience :: Developers",

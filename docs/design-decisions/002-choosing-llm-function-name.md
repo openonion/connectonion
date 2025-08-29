@@ -30,7 +30,7 @@ After extensive analysis, we chose `llm_do()` because:
    ```python
    answer = llm_do("What's 2+2?")  # Do the calculation
    invoice = llm_do(text, output=Invoice)  # Do the extraction
-   translation = llm_do("Hello", prompt="Translate")  # Do the translation
+   translation = llm_do("Hello", system_prompt="Translate")  # Do the translation
    ```
 3. **Immediately clear**: Users understand it's performing an action
 4. **Still short**: Only 6 characters
@@ -168,7 +168,7 @@ invoice = llm_do(invoice_text, output=Invoice)  # ✅ "Do the extraction"
 analysis = llm_do(text, output=FeedbackAnalysis)  # ✅ "Do the analysis"
 
 # Translation
-translation = llm_do("Hello", prompt="Translate")  # ✅ "Do the translation"
+translation = llm_do("Hello", system_prompt="Translate")  # ✅ "Do the translation"
 
 # Validation
 is_valid = llm_do("Is this SQL valid?")  # ✅ "Do the validation"

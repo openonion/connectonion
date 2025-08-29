@@ -1,12 +1,10 @@
-"""Main CLI entry point for ConnectOnion."""
+"""Main CLI entry point for ConnectOnion - Simplified version."""
 
 import os
-import sys
 import shutil
 import toml
 from datetime import datetime
 from pathlib import Path
-from typing import Optional
 
 import click
 
@@ -14,33 +12,23 @@ from .. import __version__
 
 
 def is_directory_empty(directory: str) -> bool:
-    """Check if a directory is empty (only . and .. allowed)."""
-    try:
-        contents = os.listdir(directory)
-        # Filter out . and .. which are always present
-        meaningful_contents = [item for item in contents if item not in ['.', '..']]
-        return len(meaningful_contents) == 0
-    except (OSError, FileNotFoundError):
-        return True
+    """Check if a directory is empty."""
+    contents = os.listdir(directory)
+    meaningful_contents = [item for item in contents if item not in ['.', '..']]
+    return len(meaningful_contents) == 0
 
 
 def is_special_directory(directory: str) -> bool:
-    """Check if directory is a special system directory that should warn user."""
+    """Check if directory is a special system directory."""
     abs_path = os.path.abspath(directory)
     
-    # Home directory
     if abs_path == os.path.expanduser("~"):
         return True
-    
-    # Root directory
     if abs_path == "/":
         return True
-    
-    # Skip temp directories (common in tests)
     if "/tmp" in abs_path or "temp" in abs_path.lower():
         return False
     
-    # System directories
     system_dirs = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/opt"]
     for sys_dir in system_dirs:
         if abs_path.startswith(sys_dir + "/") or abs_path == sys_dir:
@@ -49,169 +37,18 @@ def is_special_directory(directory: str) -> bool:
     return False
 
 
-def get_special_directory_warning(directory: str) -> Optional[str]:
-    """Get appropriate warning message for special directories."""
+def get_special_directory_warning(directory: str) -> str:
+    """Get warning message for special directories."""
     abs_path = os.path.abspath(directory)
     
     if abs_path == os.path.expanduser("~"):
-        return "⚠️  You're in your home directory. This will add ConnectOnion files to ~/"
+        return "⚠️  You're in your HOME directory. Consider creating a project folder first."
+    elif abs_path == "/":
+        return "⚠️  You're in the ROOT directory. This is not recommended!"
+    elif any(abs_path.startswith(d) for d in ["/usr", "/etc", "/bin", "/sbin", "/lib", "/opt"]):
+        return "⚠️  You're in a SYSTEM directory. This could affect system files!"
     
-    if abs_path == "/":
-        return "⚠️  You're in the root directory! This is not recommended."
-    
-    # Skip temp directories (common in tests)
-    if "/tmp" in abs_path or "temp" in abs_path.lower():
-        return None
-    
-    system_dirs = ["/usr", "/etc", "/bin", "/sbin", "/lib", "/opt"]
-    for sys_dir in system_dirs:
-        if abs_path.startswith(sys_dir + "/") or abs_path == sys_dir:
-            return f"⚠️  You're in a system directory ({sys_dir}). This is not recommended."
-    
-    return None
-
-
-def get_template_content(template_name: str, file_type: str) -> str:
-    """Get content for template files."""
-    # Get template files from cli/templates folder
-    cli_dir = Path(__file__).parent
-    template_dir = cli_dir / "templates"
-    
-    # Map template combinations to file names
-    template_map = {
-        ("meta-agent", "agent"): "meta_agent.py",
-        ("meta-agent", "prompt"): "meta_prompt.md",
-        ("basic", "agent"): "meta_agent.py",  # Alias for backward compatibility
-        ("basic", "prompt"): "meta_prompt.md",  # Alias for backward compatibility
-        ("playwright", "agent"): "playwright_agent.py",
-        ("playwright", "prompt"): "playwright_prompt.md",
-    }
-    
-    # Shared files (used across all templates)
-    shared_files = {
-        "env": ".env.example",
-        "gitignore": ".gitignore",
-    }
-    
-    # Determine which file to read
-    template_file = None
-    
-    # Check template-specific files
-    if (template_name, file_type) in template_map:
-        template_file = template_dir / template_map[(template_name, file_type)]
-    # Check shared files
-    elif file_type in shared_files:
-        template_file = template_dir / shared_files[file_type]
-    # Default prompt for unknown templates
-    elif file_type == "prompt":
-        template_file = template_dir / "meta_prompt.md"
-    
-    # Try to read template file
-    if template_file and template_file.exists():
-        try:
-            return template_file.read_text()
-        except Exception as e:
-            print(f"Warning: Could not read template file {template_file}: {e}")
-    
-    # Return empty string if no template found
     return ""
-
-
-def get_connectonion_docs() -> str:
-    """Get ConnectOnion documentation content for embedding in projects."""
-    # Read from the embedded docs.md file
-    # This file is included in the package and works even when installed via pip
-    docs_path = Path(__file__).parent / "docs.md"
-    
-    try:
-        return docs_path.read_text(encoding='utf-8')
-    except FileNotFoundError:
-        # Fallback if docs.md is missing
-        return """# ConnectOnion Reference
-
-ConnectOnion is a Python framework for creating AI agents with tools.
-
-For full documentation, visit: https://github.com/connectonion/connectonion
-"""
-
-
-def create_co_metadata(directory: str, template: str = "basic") -> None:
-    """Create .co directory with metadata and documentation."""
-    co_dir = os.path.join(directory, ".co")
-    os.makedirs(co_dir, exist_ok=True)
-    
-    # Create docs directory
-    docs_dir = os.path.join(co_dir, "docs")
-    os.makedirs(docs_dir, exist_ok=True)
-    
-    # Save ConnectOnion documentation
-    docs_file = os.path.join(docs_dir, "connectonion.md")
-    docs_content = get_connectonion_docs()
-    with open(docs_file, "w") as f:
-        f.write(docs_content)
-    
-    # Create config.toml with better structure
-    config = {
-        "project": {
-            "name": os.path.basename(directory) or "connectonion-agent",
-            "created": datetime.now().isoformat(),
-            "framework_version": __version__,
-        },
-        "cli": {
-            "version": "1.0.0",
-            "command": f"co init --template {template}",
-            "template": template,
-        },
-        "agent": {
-            "default_model": "gpt-4",
-            "max_iterations": 10,
-        },
-        "docs": {
-            "version": "1.0.0",
-            "embedded": True,
-        }
-    }
-    
-    config_file = os.path.join(co_dir, "config.toml")
-    with open(config_file, "w") as f:
-        toml.dump(config, f)
-
-
-def create_file_if_not_exists(file_path: str, content: str, force: bool = False) -> bool:
-    """
-    Create a file with content if it doesn't exist.
-    
-    Returns:
-        True if file was created, False if it already existed
-    """
-    if os.path.exists(file_path) and not force:
-        return False
-    
-    with open(file_path, "w") as f:
-        f.write(content)
-    return True
-
-
-def append_to_gitignore(directory: str, content: str) -> None:
-    """Append ConnectOnion-specific entries to existing .gitignore."""
-    gitignore_path = os.path.join(directory, ".gitignore")
-    
-    if os.path.exists(gitignore_path):
-        # Read existing content
-        with open(gitignore_path, "r") as f:
-            existing_content = f.read()
-        
-        # Check if our content is already there
-        if "# ConnectOnion" not in existing_content:
-            # Append our content
-            with open(gitignore_path, "a") as f:
-                if not existing_content.endswith("\n"):
-                    f.write("\n")
-                f.write(content)
-    else:
-        # Create new .gitignore
-        with open(gitignore_path, "w") as f:
-            f.write(content.lstrip())
 
 
 @click.group()
@@ -223,19 +60,13 @@ def cli():
 
 @cli.command()
 @click.option('--template', '-t', default='meta-agent', 
-              type=click.Choice(['meta-agent', 'playwright', 'basic']),
+              type=click.Choice(['meta-agent', 'playwright']),
               help='Template to use for the agent (default: meta-agent)')
-@click.option('--with-examples', is_flag=True,
-              help='Include additional example tools')
 @click.option('--force', is_flag=True,
               help='Overwrite existing files')
-def init(template: str, with_examples: bool, force: bool):
+def init(template: str, force: bool):
     """Initialize a ConnectOnion project in the current directory."""
     current_dir = os.getcwd()
-    
-    # Map "basic" to "meta-agent" for backward compatibility
-    if template == "basic":
-        template = "meta-agent"
     
     # Check for special directories
     warning = get_special_directory_warning(current_dir)
@@ -252,114 +83,148 @@ def init(template: str, with_examples: bool, force: bool):
             click.echo("Initialization cancelled.")
             return
     
-    # Files to create
+    # Get template directory
+    cli_dir = Path(__file__).parent
+    template_dir = cli_dir / "templates" / template
+    
+    if not template_dir.exists():
+        click.echo(f"❌ Template '{template}' not found!")
+        return
+    
+    # Copy all files from template directory
     files_created = []
     files_skipped = []
     
-    try:
-        # Create agent.py
-        agent_content = get_template_content(template, "agent")
-        agent_path = os.path.join(current_dir, "agent.py")
-        
-        if create_file_if_not_exists(agent_path, agent_content, force):
-            files_created.append("agent.py")
-        else:
-            files_skipped.append("agent.py (already exists)")
-        
-        # Create prompt.md - ConnectOnion best practice: system prompts in markdown
-        prompt_content = get_template_content(template, "prompt")
-        prompt_path = os.path.join(current_dir, "prompt.md")
-        
-        if create_file_if_not_exists(prompt_path, prompt_content, force):
-            files_created.append("prompt.md")
-        else:
-            files_skipped.append("prompt.md (already exists)")
-        
-        # Create .env.example
-        env_content = get_template_content(template, "env")
-        env_path = os.path.join(current_dir, ".env.example")
-        
-        if create_file_if_not_exists(env_path, env_content, force):
-            files_created.append(".env.example")
-        else:
-            files_skipped.append(".env.example (already exists)")
-        
-        # Create .co metadata with docs
-        create_co_metadata(current_dir, template)
-        files_created.append(".co/")
-        files_created.append(".co/docs/connectonion.md")
-        
-        # Handle .gitignore if in git repo
-        if os.path.exists(os.path.join(current_dir, ".git")):
-            gitignore_content = get_template_content(template, "gitignore")
-            append_to_gitignore(current_dir, gitignore_content)
-            gitignore_path = os.path.join(current_dir, ".gitignore")
-            if os.path.exists(gitignore_path):
-                files_created.append(".gitignore (updated)")
-            else:
-                files_created.append(".gitignore")
-        
-        # Add example tools if requested
-        if with_examples:
-            examples_dir = os.path.join(current_dir, "examples")
-            os.makedirs(examples_dir, exist_ok=True)
+    for item in template_dir.iterdir():
+        # Skip hidden files except .env.example
+        if item.name.startswith('.') and item.name != '.env.example':
+            continue
             
-            # Copy examples_tools.py
-            examples_content = get_template_content("basic", "examples")
-            if not examples_content:
-                # Fallback content
-                examples_content = "# Additional example tools would go here\\n"
-            
-            examples_path = os.path.join(examples_dir, "tools.py")
-            if create_file_if_not_exists(examples_path, examples_content, force):
-                files_created.append("examples/tools.py")
+        dest_path = Path(current_dir) / item.name
         
-        # Show results
-        click.echo("\\n✅ ConnectOnion project initialized!")
-        
-        if files_created:
-            click.echo("\\nCreated:")
-            for file in files_created:
-                # Add descriptions for each file type
-                if file == "agent.py":
-                    click.echo(f"   ├── {file} (Agent implementation with tools)")
-                elif file == "prompt.md":
-                    click.echo(f"   ├── {file} (System prompt - edit this to customize agent behavior)")
-                elif file == ".env.example":
-                    click.echo(f"   ├── {file} (API key configuration template)")
-                elif file == ".co/":
-                    click.echo(f"   ├── {file} (ConnectOnion metadata)")
-                elif file == ".co/docs/connectonion.md":
-                    click.echo(f"   ├── {file} (ConnectOnion reference documentation)")
-                elif ".gitignore" in file:
-                    click.echo(f"   ├── {file} (Git ignore rules)")
-                elif "examples/" in file:
-                    click.echo(f"   ├── {file} (Additional example tools)")
+        try:
+            if item.is_dir():
+                # Copy directory
+                if dest_path.exists() and not force:
+                    files_skipped.append(f"{item.name}/ (already exists)")
                 else:
-                    click.echo(f"   ├── {file}")
-        
-        if files_skipped:
-            click.echo("\\nSkipped (already exists):")
-            for file in files_skipped:
-                click.echo(f"   ├── {file}")
-        
-        # Show next steps
-        click.echo(f"\\n🚀 Next steps:")
-        click.echo("   1. Copy .env.example to .env and add your API keys")
-        click.echo("   2. Edit prompt.md to customize your agent's personality")
-        click.echo("   3. Run: python agent.py")
-        click.echo("   4. Start building your agent!")
-        
-        if template != "meta-agent":
-            click.echo(f"\\n💡 You're using the '{template}' template with specialized tools.")
-        
-    except PermissionError:
-        click.echo("❌ Error: Permission denied. Cannot write to this directory.")
-        sys.exit(1)
-    except Exception as e:
-        click.echo(f"❌ Error initializing project: {str(e)}")
-        sys.exit(1)
+                    if dest_path.exists():
+                        shutil.rmtree(dest_path)
+                    shutil.copytree(item, dest_path)
+                    files_created.append(f"{item.name}/")
+            else:
+                # Copy file
+                if dest_path.exists() and not force:
+                    files_skipped.append(f"{item.name} (already exists)")
+                else:
+                    shutil.copy2(item, dest_path)
+                    files_created.append(item.name)
+        except Exception as e:
+            click.echo(f"❌ Error copying {item.name}: {e}")
+    
+    # Create .co directory with metadata
+    co_dir = Path(current_dir) / ".co"
+    co_dir.mkdir(exist_ok=True)
+    
+    # Create docs directory and copy documentation
+    docs_dir = co_dir / "docs"
+    docs_dir.mkdir(exist_ok=True)
+    
+    # Copy ConnectOnion documentation if it exists in template
+    template_docs = template_dir / "connectonion.md"
+    if template_docs.exists():
+        shutil.copy2(template_docs, docs_dir / "connectonion.md")
+        files_created.append(".co/docs/connectonion.md")
+    
+    # Create config.toml
+    config = {
+        "project": {
+            "name": os.path.basename(current_dir) or "connectonion-agent",
+            "created": datetime.now().isoformat(),
+            "framework_version": __version__,
+        },
+        "cli": {
+            "version": "1.0.0",
+            "command": f"co init --template {template}",
+            "template": template,
+        },
+        "agent": {
+            "default_model": "o4-mini" if template == "meta-agent" else "gpt-4o-mini",
+            "max_iterations": 15 if template == "meta-agent" else 10,
+        },
+    }
+    
+    config_path = co_dir / "config.toml"
+    with open(config_path, "w") as f:
+        toml.dump(config, f)
+    files_created.append(".co/config.toml")
+    
+    # Handle .gitignore if in git repo
+    if (Path(current_dir) / ".git").exists():
+        gitignore_path = Path(current_dir) / ".gitignore"
+        gitignore_content = """
+# ConnectOnion
+.env
+.co/cache/
+.co/logs/
+*.pyc
+__pycache__/
+todo.md
+"""
+        if gitignore_path.exists():
+            with open(gitignore_path, "a") as f:
+                if "# ConnectOnion" not in gitignore_path.read_text():
+                    f.write(gitignore_content)
+            files_created.append(".gitignore (updated)")
+        else:
+            gitignore_path.write_text(gitignore_content.lstrip())
+            files_created.append(".gitignore")
+    
+    # Show results
+    click.echo("\n✅ ConnectOnion project initialized!")
+    
+    if files_created:
+        click.echo("\nCreated:")
+        for file in files_created:
+            if file == "agent.py":
+                click.echo(f"  • {file} - Main agent implementation")
+            elif file == "prompts/":
+                click.echo(f"  • {file} - System prompts directory")
+            elif file == ".env.example":
+                click.echo(f"  • {file} - Environment variables template")
+            elif file == "README.md":
+                click.echo(f"  • {file} - Project documentation")
+            elif file == ".co/":
+                click.echo(f"  • {file} - ConnectOnion metadata")
+            else:
+                click.echo(f"  • {file}")
+    
+    if files_skipped:
+        click.echo("\nSkipped (already exist):")
+        for file in files_skipped:
+            click.echo(f"  • {file}")
+    
+    # Next steps
+    click.echo("\n📝 Next steps:")
+    click.echo("1. Copy .env.example to .env and add your OpenAI API key:")
+    click.echo("   cp .env.example .env")
+    click.echo("   # Then edit .env to add your key")
+    click.echo("\n2. Install dependencies:")
+    click.echo("   pip install python-dotenv")
+    if template == "playwright":
+        click.echo("   pip install playwright")
+        click.echo("   playwright install")
+    click.echo("\n3. Run your agent:")
+    click.echo("   python agent.py")
+    click.echo("\n📚 Documentation: https://github.com/wu-changxing/connectonion")
+    click.echo("💬 Discord: https://discord.gg/4xfD9k8AUF")
+
+
+# Entry points for both 'co' and 'connectonion' commands
+def main():
+    """Main entry point."""
+    cli()
 
 
 if __name__ == "__main__":
-    cli()
+    main()

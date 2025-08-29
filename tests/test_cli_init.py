@@ -51,6 +51,12 @@ class TestCliInit:
         assert os.path.exists(os.path.join(temp_dir, ".env.example"))
         assert os.path.exists(os.path.join(temp_dir, ".co"))
         assert os.path.isdir(os.path.join(temp_dir, ".co"))
+        
+        # Check prompts folder for meta-agent (default template)
+        assert os.path.exists(os.path.join(temp_dir, "prompts"))
+        assert os.path.isdir(os.path.join(temp_dir, "prompts"))
+        assert os.path.exists(os.path.join(temp_dir, "prompts", "metagent.md"))
+        assert os.path.exists(os.path.join(temp_dir, "README.md"))
     
     def test_init_creates_working_agent_file(self):
         """Test that agent.py is properly formed and executable."""
@@ -167,58 +173,55 @@ class TestCliInit:
         assert result.exit_code == 0  # User declined
         assert "root" in result.output.lower() or "system" in result.output.lower()
     
-    def test_init_with_examples_flag(self):
-        """Test that --with-examples creates additional files."""
+    def test_init_invalid_template_fails(self):
+        """Test that invalid template name fails gracefully."""
         temp_dir = self.create_temp_dir(empty=True)
         
         with patch('os.getcwd', return_value=temp_dir):
             from connectonion.cli.main import cli
-            result = self.runner.invoke(cli, ['init', '--with-examples'])
+            result = self.runner.invoke(cli, ['init', '--template', 'invalid'])
         
-        assert result.exit_code == 0
-        
-        # Should create basic files
-        assert os.path.exists(os.path.join(temp_dir, "agent.py"))
-        
-        # Should create additional example files
-        examples_dir = os.path.join(temp_dir, "examples")
-        assert os.path.exists(examples_dir) or os.path.exists(os.path.join(temp_dir, "tools.py"))
+        # Should fail with an error
+        assert result.exit_code != 0
     
-    def test_init_template_chat(self):
-        """Test --template chat creates chat-specific agent."""
+    def test_init_template_playwright(self):
+        """Test --template playwright creates browser automation agent."""
         temp_dir = self.create_temp_dir(empty=True)
         
         with patch('os.getcwd', return_value=temp_dir):
             from connectonion.cli.main import cli
-            result = self.runner.invoke(cli, ['init', '--template', 'chat'])
+            result = self.runner.invoke(cli, ['init', '--template', 'playwright'])
         
         assert result.exit_code == 0
         
-        # Check agent.py has chat-specific content
+        # Check agent.py has playwright content
         agent_file = os.path.join(temp_dir, "agent.py")
         with open(agent_file, "r") as f:
             content = f.read()
         
-        # Should have conversational elements
-        assert "chat" in content.lower() or "conversation" in content.lower()
+        # Should have browser automation elements
+        assert "playwright" in content.lower() or "browser" in content.lower()
+        # Playwright template has single prompt.md file
+        assert os.path.exists(os.path.join(temp_dir, "prompt.md"))
+        assert not os.path.exists(os.path.join(temp_dir, "prompts"))
     
-    def test_init_template_data(self):
-        """Test --template data creates data analysis agent."""
+    def test_init_template_meta_agent(self):
+        """Test --template meta-agent creates documentation assistant."""
         temp_dir = self.create_temp_dir(empty=True)
         
         with patch('os.getcwd', return_value=temp_dir):
             from connectonion.cli.main import cli
-            result = self.runner.invoke(cli, ['init', '--template', 'data'])
+            result = self.runner.invoke(cli, ['init', '--template', 'meta-agent'])
         
         assert result.exit_code == 0
         
-        # Check agent.py has data-specific content
-        agent_file = os.path.join(temp_dir, "agent.py")
-        with open(agent_file, "r") as f:
-            content = f.read()
-        
-        # Should have data analysis tools
-        assert "data" in content.lower() or "analyze" in content.lower()
+        # Check meta-agent has prompts folder structure
+        assert os.path.exists(os.path.join(temp_dir, "prompts"))
+        assert os.path.exists(os.path.join(temp_dir, "prompts", "metagent.md"))
+        assert os.path.exists(os.path.join(temp_dir, "prompts", "docs_retrieve_prompt.md"))
+        assert os.path.exists(os.path.join(temp_dir, "prompts", "answer_prompt.md"))
+        assert os.path.exists(os.path.join(temp_dir, "prompts", "think_prompt.md"))
+        assert os.path.exists(os.path.join(temp_dir, "README.md"))
     
     def test_init_in_git_repo_creates_gitignore(self):
         """Test that init in git repo creates .gitignore."""

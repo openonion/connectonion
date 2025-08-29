@@ -34,7 +34,7 @@ def llm_do(
     
     Examples:
         >>> # Simple string response
-        >>> answer = llm("What's 2+2?")
+        >>> answer = llm_do("What's 2+2?")
         >>> print(answer)  # "4"
         
         >>> # With structured output
@@ -42,7 +42,7 @@ def llm_do(
         ...     sentiment: str
         ...     score: float
         >>> 
-        >>> result = llm("I love this!", output=Analysis)
+        >>> result = llm_do("I love this!", output=Analysis)
         >>> print(result.sentiment)  # "positive"
         
         >>> # With custom system prompt

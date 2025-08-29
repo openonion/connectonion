@@ -56,7 +56,7 @@ class TestLLMFunction(unittest.TestCase):
     # Basic Functionality Tests (Mocked)
     # -------------------------------------------------------------------------
     
-    @patch('connectonion.llm_function.openai.OpenAI')
+    @patch('openai.OpenAI')
     def test_simple_string_input_output(self, mock_openai_class):
         """Test basic string input returns string output."""
         # Skip until we update mocking
@@ -73,7 +73,7 @@ class TestLLMFunction(unittest.TestCase):
         self.assertEqual(result, "4")
         mock_llm.complete.assert_called_once()
     
-    @patch('connectonion.llm_function.openai.OpenAI')
+    @patch('openai.OpenAI')
     def test_structured_output_with_pydantic(self, mock_openai_class):
         """Test structured output using Pydantic model."""
         self.skipTest("Need to update mocking for new implementation")
@@ -93,9 +93,9 @@ class TestLLMFunction(unittest.TestCase):
         self.assertEqual(result.value, "test")
         self.assertEqual(result.count, 42)
     
-    @patch('connectonion.llm_function.openai.OpenAI')
-    def test_prompt_as_string(self, mock_openai_class):
-        """Test using a string prompt."""
+    @patch('openai.OpenAI')
+    def test_system_prompt_as_string(self, mock_openai_class):
+        """Test using a string system prompt."""
         self.skipTest("Need to update mocking for new implementation")
         
         mock_llm = Mock()
@@ -114,18 +114,18 @@ class TestLLMFunction(unittest.TestCase):
         self.assertEqual(system_msg["role"], "system")
         self.assertIn("translator", system_msg["content"])
     
-    def test_prompt_as_file(self):
-        """Test loading prompt from file."""
+    def test_system_prompt_as_file(self):
+        """Test loading system prompt from file."""
         self.skipTest("Need to update mocking for new implementation")
         
         # Create a temporary prompt file
         prompt_file = Path(self.temp_dir) / "test_prompt.md"
         prompt_file.write_text("You are a helpful assistant.")
         
-        with patch('connectonion.llm_function.OpenAILLM') as mock_llm_class:
+        with patch('openai.OpenAI') as mock_openai_class:
             mock_llm = Mock()
             mock_llm.complete.return_value = Mock(content="Response", tool_calls=[])
-            mock_llm_class.return_value = mock_llm
+            mock_openai_class.return_value = mock_llm
             
             from connectonion import llm_do
             result = llm_do("Test", system_prompt=str(prompt_file))
@@ -135,7 +135,7 @@ class TestLLMFunction(unittest.TestCase):
             system_msg = call_args[0]
             self.assertIn("helpful assistant", system_msg["content"])
     
-    @patch('connectonion.llm_function.openai.OpenAI')
+    @patch('openai.OpenAI')
     def test_custom_model_parameter(self, mock_openai_class):
         """Test using custom model parameter."""
         self.skipTest("Need to update mocking for new implementation")
@@ -149,7 +149,7 @@ class TestLLMFunction(unittest.TestCase):
             model="gpt-4"
         )
     
-    @patch('connectonion.llm_function.openai.OpenAI')
+    @patch('openai.OpenAI')
     def test_temperature_parameter(self, mock_openai_class):
         """Test temperature parameter affects LLM call."""
         self.skipTest("Need to update mocking for new implementation")
@@ -173,21 +173,21 @@ class TestLLMFunction(unittest.TestCase):
         """Test handling when LLM output doesn't match Pydantic model."""
         self.skipTest("Waiting for implementation")
         
-        with patch('connectonion.llm_function.OpenAILLM') as mock_llm_class:
+        with patch('openai.OpenAI') as mock_openai_class:
             mock_llm = Mock()
             # Return invalid JSON for the model
             mock_llm.complete.return_value = Mock(
                 content='{"wrong": "fields"}',
                 tool_calls=[]
             )
-            mock_llm_class.return_value = mock_llm
+            mock_openai_class.return_value = mock_llm
             
             from connectonion import llm_do
             with self.assertRaises(ValidationError):
                 llm_do("Extract", output=SimpleModel)
     
-    def test_prompt_file_not_found(self):
-        """Test error when prompt file doesn't exist."""
+    def test_system_prompt_file_not_found(self):
+        """Test error when system prompt file doesn't exist."""
         self.skipTest("Waiting for implementation")
         
         from connectonion import llm_do
@@ -198,10 +198,10 @@ class TestLLMFunction(unittest.TestCase):
         """Test handling of API errors."""
         self.skipTest("Waiting for implementation")
         
-        with patch('connectonion.llm_function.OpenAILLM') as mock_llm_class:
+        with patch('openai.OpenAI') as mock_openai_class:
             mock_llm = Mock()
             mock_llm.complete.side_effect = Exception("API Error")
-            mock_llm_class.return_value = mock_llm
+            mock_openai_class.return_value = mock_llm
             
             from connectonion import llm_do
             with self.assertRaises(Exception) as ctx:
@@ -246,8 +246,8 @@ class TestLLMFunction(unittest.TestCase):
         self.assertIsNotNone(result.explanation)
     
     @pytest.mark.real_api
-    def test_real_api_with_prompt(self):
-        """Test real API with custom prompt."""
+    def test_real_api_with_system_prompt(self):
+        """Test real API with custom system prompt."""
         if not self.api_key:
             self.skipTest("OPENAI_API_KEY not found")
         
@@ -281,13 +281,13 @@ class TestLLMFunction(unittest.TestCase):
             analysis = llm_do(f"Analyze: {text}", output=Result)
             return f"Summary: {analysis.summary} ({analysis.word_count} words)"
         
-        with patch('connectonion.llm_function.OpenAILLM') as mock_llm_class:
+        with patch('openai.OpenAI') as mock_openai_class:
             mock_llm = Mock()
             mock_llm.complete.return_value = Mock(
                 content='{"summary": "Test summary", "word_count": 10}',
                 tool_calls=[]
             )
-            mock_llm_class.return_value = mock_llm
+            mock_openai_class.return_value = mock_llm
             
             agent = Agent("test", tools=[analyze_text])
             # This would need more mocking for the agent's LLM calls
@@ -297,7 +297,7 @@ class TestLLMFunction(unittest.TestCase):
         """Test with complex nested Pydantic model."""
         self.skipTest("Waiting for implementation")
         
-        with patch('connectonion.llm_function.OpenAILLM') as mock_llm_class:
+        with patch('openai.OpenAI') as mock_openai_class:
             mock_llm = Mock()
             mock_llm.complete.return_value = Mock(
                 content='''{
@@ -308,7 +308,7 @@ class TestLLMFunction(unittest.TestCase):
                 }''',
                 tool_calls=[]
             )
-            mock_llm_class.return_value = mock_llm
+            mock_openai_class.return_value = mock_llm
             
             from connectonion import llm_do
             result = llm_do("Generate complex data", output=ComplexModel)
@@ -333,10 +333,10 @@ class TestLLMFunction(unittest.TestCase):
         """Test handling of very long input."""
         self.skipTest("Waiting for implementation")
         
-        with patch('connectonion.llm_function.OpenAILLM') as mock_llm_class:
+        with patch('openai.OpenAI') as mock_openai_class:
             mock_llm = Mock()
             mock_llm.complete.return_value = Mock(content="Summary", tool_calls=[])
-            mock_llm_class.return_value = mock_llm
+            mock_openai_class.return_value = mock_llm
             
             from connectonion import llm_do
             long_text = "word " * 10000  # Very long input
@@ -354,13 +354,13 @@ class TestLLMFunction(unittest.TestCase):
         results = []
         
         def make_call(prompt, index):
-            with patch('connectonion.llm_function.OpenAILLM') as mock_llm_class:
+            with patch('openai.OpenAI') as mock_openai_class:
                 mock_llm = Mock()
                 mock_llm.complete.return_value = Mock(
                     content=f"Response {index}",
                     tool_calls=[]
                 )
-                mock_llm_class.return_value = mock_llm
+                mock_openai_class.return_value = mock_llm
                 
                 result = llm_do(prompt)
                 results.append(result)

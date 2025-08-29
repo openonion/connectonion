@@ -5,7 +5,7 @@ Make direct LLM calls with optional structured output.
 ## Quick Start
 
 ```python
-from connectonion import llm_do_do
+from connectonion import llm_do
 
 answer = llm_do("What's 2+2?")  
 print(answer)  # "4"
@@ -97,10 +97,10 @@ agent = Agent("support", tools=[analyze_feedback])
 ```python
 result = llm_do(
     input="Your text here",
-    output=YourModel,        # Optional: Pydantic model for structure
-    system_prompt="instructions",   # Optional: String or file path
-    model="gpt-4",          # Optional: Default is "gpt-4o-mini"
-    temperature=0.7,        # Optional: Default is 0.1 (consistent)
+    output=YourModel,              # Optional: Pydantic model for structure
+    system_prompt="instructions", # Optional: String or file path
+    model="gpt-4o-mini",              # Optional: Default is "gpt-4o-mini"
+    temperature=0.7,               # Optional: Default is 0.1 (consistent)
 )
 ```
 

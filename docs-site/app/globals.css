@@ -1,187 +1,438 @@
 @import "tailwindcss";
 
-@layer base {
-  :root {
-    --font-sans: var(--font-inter);
-    --font-mono: var(--font-jetbrains-mono);
-    
-    /* Improved contrast colors for accessibility */
-    --text-primary: #f1f5f9;    /* gray-100 - main text */
-    --text-secondary: #cbd5e1;   /* gray-300 - secondary text with better contrast */
-    --text-muted: #94a3b8;       /* gray-400 - only for decorative, non-critical text */
-  }
+:root {
+  --font-sans: var(--font-inter);
+  --font-mono: var(--font-jetbrains-mono);
   
-  html {
-    font-family: var(--font-sans), system-ui, sans-serif;
-  }
-  
-  body {
-    background-color: #0f172a;
-    color: #e2e8f0;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-  }
-  
-  /* Prevent horizontal overflow from long strings/URLs */
-  a, p, span, div {
-    overflow-wrap: break-word;
-    word-wrap: break-word;
-  }
-  
-  code, pre {
-    font-family: var(--font-mono), ui-monospace, monospace;
-  }
-
-  /* Mobile-friendly media and code rendering */
-  img, video {
-    max-width: 100%;
-    height: auto;
-  }
-  pre {
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+  /* Improved contrast colors for accessibility */
+  --text-primary: #f1f5f9;    /* gray-100 - main text */
+  --text-secondary: #cbd5e1;   /* gray-300 - secondary text with better contrast */
+  --text-muted: #94a3b8;       /* gray-400 - only for decorative, non-critical text */
 }
 
-@layer components {
-  /* Typography System - Consistent heading hierarchy */
+html {
+  font-family: var(--font-sans), system-ui, sans-serif;
+}
+
+body {
+  background-color: #0f172a;
+  color: #e2e8f0;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prevent horizontal overflow from long strings/URLs */
+a, p, span, div {
+  overflow-wrap: break-word;
+  word-wrap: break-word;
+}
+
+code, pre {
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+/* Mobile-friendly media and code rendering */
+img, video {
+  max-width: 100%;
+  height: auto;
+}
+
+pre {
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+}
+
+/* Typography System - Consistent heading hierarchy */
+.heading-1 {
+  font-size: 1.5rem; /* 24px */
+  line-height: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+}
+@media (min-width: 640px) {
   .heading-1 {
-    @apply text-2xl sm:text-3xl lg:text-4xl font-bold tracking-tight leading-tight;
+    font-size: 1.875rem; /* 30px */
+    line-height: 2.25rem;
   }
-  .heading-2 {
-    @apply text-xl sm:text-2xl lg:text-3xl font-semibold leading-tight;
-  }
-  .heading-3 {
-    @apply text-lg sm:text-xl lg:text-2xl font-semibold leading-snug;
-  }
-  .heading-4 {
-    @apply text-base sm:text-lg lg:text-xl font-semibold leading-snug;
-  }
-  
-  /* Body text styles */
-  .body-large {
-    @apply text-base sm:text-lg leading-relaxed text-gray-200;
-  }
-  .body-base {
-    @apply text-sm sm:text-base leading-relaxed text-gray-200;
-  }
-  .body-small {
-    @apply text-xs sm:text-sm leading-relaxed text-gray-300;
-  }
-  
-  /* Interactive States - Consistent across all components */
-  .interactive {
-    @apply transition-all duration-200 touch-manipulation;
-  }
-  
-  /* Button base with proper touch targets */
-  .btn {
-    @apply px-4 py-2.5 min-h-[44px] min-w-[44px] rounded-lg font-medium interactive
-           focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-900
-           disabled:opacity-50 disabled:cursor-not-allowed;
-  }
-  
-  .btn-primary {
-    @apply btn bg-purple-600 hover:bg-purple-700 active:scale-[0.98] 
-           focus:ring-purple-500 text-white;
-  }
-  
-  .btn-secondary {
-    @apply btn bg-gray-700 hover:bg-gray-600 active:scale-[0.98]
-           focus:ring-gray-500 text-gray-100;
-  }
-  
-  .btn-ghost {
-    @apply btn bg-transparent hover:bg-gray-800 active:bg-gray-700
-           focus:ring-gray-500 text-gray-200;
-  }
-  
-  /* Link states with keyboard focus */
-  .link {
-    @apply interactive underline-offset-2 rounded-sm
-           focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-offset-2 focus:ring-offset-gray-900;
-  }
-  
-  .link-primary {
-    @apply link text-purple-400 hover:text-purple-300 underline;
-  }
-  
-  .link-nav {
-    @apply link text-gray-300 hover:text-purple-400 no-underline;
-  }
-  
-  /* Card interactive states */
-  .card-interactive {
-    @apply interactive border border-gray-800 rounded-lg
-           hover:border-gray-700 hover:bg-gray-900/50
-           focus-within:ring-2 focus-within:ring-purple-500 focus-within:ring-offset-2 focus-within:ring-offset-gray-900;
-  }
-  
-  /* Navigation current page indicator */
-  .nav-current {
-    @apply bg-purple-600/20 text-purple-300 border-l-4 border-purple-500 font-medium;
-  }
-  
-  .nav-item {
-    @apply interactive px-3 py-2 rounded-md text-sm
-           hover:bg-gray-800 focus:bg-gray-800
-           focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-inset;
-  }
-  
-  /* Loading states */
-  .skeleton {
-    @apply animate-pulse bg-gray-800 rounded;
-  }
-  
-  .loading-spinner {
-    @apply animate-spin h-5 w-5 text-purple-500;
+}
+@media (min-width: 1024px) {
+  .heading-1 {
+    font-size: 2.25rem; /* 36px */
+    line-height: 2.5rem;
   }
 }
 
-@layer utilities {
-  /* Accessible text color utilities that override Tailwind defaults */
-  .text-readable-muted {
-    color: var(--text-secondary); /* Use gray-300 equivalent for better contrast */
+.heading-2 {
+  font-size: 1.25rem; /* 20px */
+  line-height: 1.75rem;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+}
+@media (min-width: 640px) {
+  .heading-2 {
+    font-size: 1.5rem; /* 24px */
+    line-height: 2rem;
   }
-  
-  .text-accessible-gray {
-    color: var(--text-secondary); /* Replaces text-gray-400 with better contrast */
+}
+@media (min-width: 1024px) {
+  .heading-2 {
+    font-size: 1.875rem; /* 30px */
+    line-height: 2.25rem;
   }
-  
-  /* Mobile-specific fixes */
-  .break-words-anywhere {
-    overflow-wrap: anywhere;
-    word-break: break-word;
+}
+
+.heading-3 {
+  font-size: 1.125rem; /* 18px */
+  line-height: 1.75rem;
+  font-weight: 600;
+}
+@media (min-width: 640px) {
+  .heading-3 {
+    font-size: 1.25rem; /* 20px */
+    line-height: 1.75rem;
   }
-  
-  /* Prevent horizontal scroll from code blocks */
+}
+@media (min-width: 1024px) {
+  .heading-3 {
+    font-size: 1.5rem; /* 24px */
+    line-height: 2rem;
+  }
+}
+
+.heading-4 {
+  font-size: 1rem; /* 16px */
+  line-height: 1.5rem;
+  font-weight: 600;
+}
+@media (min-width: 640px) {
+  .heading-4 {
+    font-size: 1.125rem; /* 18px */
+    line-height: 1.75rem;
+  }
+}
+@media (min-width: 1024px) {
+  .heading-4 {
+    font-size: 1.25rem; /* 20px */
+    line-height: 1.75rem;
+  }
+}
+
+/* Body text styles */
+.body-large {
+  font-size: 1rem; /* 16px */
+  line-height: 1.75rem;
+  color: #e5e7eb; /* gray-200 */
+}
+@media (min-width: 640px) {
+  .body-large {
+    font-size: 1.125rem; /* 18px */
+    line-height: 1.75rem;
+  }
+}
+
+.body-base {
+  font-size: 0.875rem; /* 14px */
+  line-height: 1.75rem;
+  color: #e5e7eb; /* gray-200 */
+}
+@media (min-width: 640px) {
+  .body-base {
+    font-size: 1rem; /* 16px */
+    line-height: 1.75rem;
+  }
+}
+
+.body-small {
+  font-size: 0.75rem; /* 12px */
+  line-height: 1.75rem;
+  color: #d1d5db; /* gray-300 */
+}
+@media (min-width: 640px) {
+  .body-small {
+    font-size: 0.875rem; /* 14px */
+    line-height: 1.75rem;
+  }
+}
+
+/* Interactive States - Consistent across all components */
+.interactive {
+  transition: all 200ms;
+  touch-action: manipulation;
+}
+
+/* Button base with proper touch targets */
+.btn {
+  padding: 0.625rem 1rem;
+  min-height: 44px;
+  min-width: 44px;
+  border-radius: 0.5rem;
+  font-weight: 500;
+  transition: all 200ms;
+  touch-action: manipulation;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.btn:focus {
+  outline: 2px solid;
+  outline-offset: 2px;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-primary {
+  background-color: #9333ea; /* purple-600 */
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: #7e22ce; /* purple-700 */
+}
+
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+.btn-primary:focus {
+  outline-color: #a855f7; /* purple-500 */
+}
+
+.btn-secondary {
+  background-color: #374151; /* gray-700 */
+  color: #f3f4f6; /* gray-100 */
+}
+
+.btn-secondary:hover {
+  background-color: #4b5563; /* gray-600 */
+}
+
+.btn-secondary:active {
+  transform: scale(0.98);
+}
+
+.btn-secondary:focus {
+  outline-color: #6b7280; /* gray-500 */
+}
+
+.btn-ghost {
+  background-color: transparent;
+  color: #e5e7eb; /* gray-200 */
+}
+
+.btn-ghost:hover {
+  background-color: #1f2937; /* gray-800 */
+}
+
+.btn-ghost:active {
+  background-color: #374151; /* gray-700 */
+}
+
+.btn-ghost:focus {
+  outline-color: #6b7280; /* gray-500 */
+}
+
+/* Link states with keyboard focus */
+.link {
+  transition: all 200ms;
+  text-underline-offset: 2px;
+  border-radius: 0.125rem;
+  outline: 2px solid transparent;
+  outline-offset: 2px;
+}
+
+.link:focus {
+  outline: 2px solid #a855f7; /* purple-500 */
+  outline-offset: 2px;
+}
+
+.link-primary {
+  color: #c084fc; /* purple-400 */
+  text-decoration: underline;
+}
+
+.link-primary:hover {
+  color: #d8b4fe; /* purple-300 */
+}
+
+.link-nav {
+  color: #d1d5db; /* gray-300 */
+  text-decoration: none;
+}
+
+.link-nav:hover {
+  color: #c084fc; /* purple-400 */
+}
+
+/* Card interactive states */
+.card-interactive {
+  transition: all 200ms;
+  border: 1px solid #1f2937; /* gray-800 */
+  border-radius: 0.5rem;
+}
+
+.card-interactive:hover {
+  border-color: #374151; /* gray-700 */
+  background-color: rgba(17, 24, 39, 0.5); /* gray-900/50 */
+}
+
+.card-interactive:focus-within {
+  outline: 2px solid #a855f7; /* purple-500 */
+  outline-offset: 2px;
+}
+
+/* Navigation current page indicator */
+.nav-current {
+  background-color: rgba(147, 51, 234, 0.2); /* purple-600/20 */
+  color: #d8b4fe; /* purple-300 */
+  border-left: 4px solid #a855f7; /* purple-500 */
+  font-weight: 500;
+}
+
+.nav-item {
+  transition: all 200ms;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.375rem;
+  font-size: 0.875rem;
+}
+
+.nav-item:hover {
+  background-color: #1f2937; /* gray-800 */
+}
+
+.nav-item:focus {
+  background-color: #1f2937; /* gray-800 */
+  outline: 2px solid #a855f7; /* purple-500 */
+  outline-offset: -2px;
+}
+
+/* Loading states */
+.skeleton {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+  background-color: #1f2937; /* gray-800 */
+  border-radius: 0.25rem;
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+.loading-spinner {
+  animation: spin 1s linear infinite;
+  height: 1.25rem;
+  width: 1.25rem;
+  color: #a855f7; /* purple-500 */
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Mobile-specific fixes */
+.break-words-anywhere {
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+/* Prevent horizontal scroll from code blocks */
+.code-wrapper {
+  overflow-x: auto;
+  margin-left: -1rem;
+  margin-right: -1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 640px) {
   .code-wrapper {
-    @apply overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
   }
-  
-  /* Responsive table wrapper */
+}
+
+/* Responsive table wrapper */
+.table-wrapper {
+  overflow-x: auto;
+  margin-left: -1rem;
+  margin-right: -1rem;
+  padding-left: 1rem;
+  padding-right: 1rem;
+}
+@media (min-width: 640px) {
   .table-wrapper {
-    @apply overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0;
+    margin-left: 0;
+    margin-right: 0;
+    padding-left: 0;
+    padding-right: 0;
   }
-  
-  /* Z-index scale for consistent layering */
-  .z-dropdown { z-index: 10; }
-  .z-sticky { z-index: 20; }
-  .z-overlay { z-index: 30; }
-  .z-modal { z-index: 40; }
-  .z-notification { z-index: 50; }
-  
-  /* Mobile-optimized touch targets */
-  .touch-target {
-    @apply min-h-[44px] min-w-[44px];
-  }
-  
-  /* Mobile padding utilities */
+}
+
+/* Z-index scale for consistent layering */
+.z-dropdown { z-index: 10; }
+.z-sticky { z-index: 20; }
+.z-overlay { z-index: 30; }
+.z-modal { z-index: 40; }
+.z-notification { z-index: 50; }
+
+/* Mobile-optimized touch targets */
+.touch-target {
+  min-height: 44px;
+  min-width: 44px;
+}
+
+/* Mobile padding utilities */
+.px-mobile {
+  padding-left: 0.75rem; /* 12px */
+  padding-right: 0.75rem;
+}
+@media (min-width: 640px) {
   .px-mobile {
-    @apply px-3 sm:px-6 lg:px-8;
+    padding-left: 1.5rem; /* 24px */
+    padding-right: 1.5rem;
   }
-  
+}
+@media (min-width: 1024px) {
+  .px-mobile {
+    padding-left: 2rem; /* 32px */
+    padding-right: 2rem;
+  }
+}
+
+.py-mobile {
+  padding-top: 1rem; /* 16px */
+  padding-bottom: 1rem;
+}
+@media (min-width: 640px) {
   .py-mobile {
-    @apply py-4 sm:py-8 lg:py-12;
+    padding-top: 2rem; /* 32px */
+    padding-bottom: 2rem;
   }
+}
+@media (min-width: 1024px) {
+  .py-mobile {
+    padding-top: 3rem; /* 48px */
+    padding-bottom: 3rem;
+  }
+}
+
+/* Accessible text color utilities */
+.text-readable-muted {
+  color: var(--text-secondary); /* Use gray-300 equivalent for better contrast */
+}
+
+.text-accessible-gray {
+  color: var(--text-secondary); /* Replaces text-gray-400 with better contrast */
 }
