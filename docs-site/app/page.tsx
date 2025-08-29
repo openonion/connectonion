@@ -201,8 +201,10 @@ print(response)`}
       {/* Core Features - Enhanced Visual Design */}
       <section className="mb-24">
         <div className="text-center mb-12">
-          <h2 className="text-4xl font-bold text-white mb-4">Simple by Design</h2>
-          <p className="text-lg text-gray-300">Everything you need, nothing you don't</p>
+          <h2 className="text-4xl font-bold text-white mb-4">
+            Simple but <span className="text-gradient bg-gradient-to-r from-green-400 to-emerald-400 bg-clip-text text-transparent">Production Ready</span>
+          </h2>
+          <p className="text-lg text-gray-300">Everything you need for real-world applications</p>
         </div>
         
         <div className="grid md:grid-cols-3 gap-8 max-w-5xl mx-auto">
@@ -213,6 +215,9 @@ print(response)`}
               <p className="text-gray-300">
                 Your existing Python functions become AI tools automatically. No wrappers, no decorators needed.
               </p>
+              <div className="mt-4 pt-4 border-t border-blue-500/20">
+                <span className="text-xs text-blue-400 font-semibold">PRODUCTION READY</span>
+              </div>
             </div>
           </div>
           
@@ -223,6 +228,9 @@ print(response)`}
               <p className="text-gray-300">
                 @xray decorator shows what your agent is thinking. Debug with complete transparency.
               </p>
+              <div className="mt-4 pt-4 border-t border-purple-500/20">
+                <span className="text-xs text-purple-400 font-semibold">BUILT-IN DEBUGGING</span>
+              </div>
             </div>
           </div>
           
@@ -233,6 +241,147 @@ print(response)`}
               <p className="text-gray-300">
                 Every interaction is automatically saved. Analyze, replay, and learn from agent behavior.
               </p>
+              <div className="mt-4 pt-4 border-t border-green-500/20">
+                <span className="text-xs text-green-400 font-semibold">AUDIT TRAIL</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Production Features Showcase - NEW SECTION */}
+      <section className="mb-24">
+        <div className="text-center mb-12">
+          <h2 className="text-4xl font-bold text-white mb-4">Production Features Built-In</h2>
+          <p className="text-lg text-gray-300">Enterprise-grade capabilities without the complexity</p>
+        </div>
+
+        {/* CLI Feature Display */}
+        <div className="mb-12 max-w-5xl mx-auto">
+          <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl p-8 border border-gray-700">
+            <div className="flex items-center gap-3 mb-6">
+              <Terminal className="w-6 h-6 text-blue-400" />
+              <h3 className="text-2xl font-bold text-white">Professional CLI</h3>
+              <span className="px-3 py-1 bg-green-600/20 text-green-400 text-xs font-bold rounded-full border border-green-500/30">
+                READY TO USE
+              </span>
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="bg-black/40 rounded-lg p-4 font-mono text-sm">
+                <div className="text-gray-400 mb-2"># Initialize project with templates</div>
+                <div className="text-green-400">$ co init --template meta-agent</div>
+                <div className="text-gray-500 mt-2">
+                  ✓ Created agent.py<br/>
+                  ✓ Created prompt.md<br/>
+                  ✓ Created .env.example<br/>
+                  ✓ Ready to build!
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
+                  <div>
+                    <p className="text-white font-semibold">Project Templates</p>
+                    <p className="text-gray-400 text-sm">Meta-agent, Playwright, Custom templates</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
+                  <div>
+                    <p className="text-white font-semibold">Environment Management</p>
+                    <p className="text-gray-400 text-sm">Automatic .env setup and validation</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-green-400 mt-0.5" />
+                  <div>
+                    <p className="text-white font-semibold">Best Practices</p>
+                    <p className="text-gray-400 text-sm">Gitignore, folder structure, config files</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Debugging Feature Display */}
+        <div className="mb-12 max-w-5xl mx-auto">
+          <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl p-8 border border-gray-700">
+            <div className="flex items-center gap-3 mb-6">
+              <Zap className="w-6 h-6 text-purple-400" />
+              <h3 className="text-2xl font-bold text-white">@xray Debugging</h3>
+              <span className="px-3 py-1 bg-purple-600/20 text-purple-400 text-xs font-bold rounded-full border border-purple-500/30">
+                ZERO CONFIG
+              </span>
+            </div>
+            
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="bg-black/40 rounded-lg p-4 font-mono text-sm">
+                <div className="text-gray-400 mb-2"># Add one decorator</div>
+                <div className="text-purple-400">@xray</div>
+                <div className="text-blue-400">def process_data(data):</div>
+                <div className="text-gray-300 ml-4">return analyze(data)</div>
+                <div className="text-gray-500 mt-3">
+                  🔍 Agent: assistant<br/>
+                  🔍 Task: Process user data<br/>
+                  🔍 Iteration: 1<br/>
+                  🔍 Result: Success
+                </div>
+              </div>
+              
+              <div className="space-y-3">
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-purple-400 mt-0.5" />
+                  <div>
+                    <p className="text-white font-semibold">Real-time Insights</p>
+                    <p className="text-gray-400 text-sm">See what your agent is thinking</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-purple-400 mt-0.5" />
+                  <div>
+                    <p className="text-white font-semibold">Iteration Tracking</p>
+                    <p className="text-gray-400 text-sm">Monitor tool calls and decisions</p>
+                  </div>
+                </div>
+                <div className="flex items-start gap-2">
+                  <CheckCircle className="w-5 h-5 text-purple-400 mt-0.5" />
+                  <div>
+                    <p className="text-white font-semibold">Performance Metrics</p>
+                    <p className="text-gray-400 text-sm">Execution time and resource usage</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Error Handling & Recovery */}
+        <div className="max-w-5xl mx-auto">
+          <div className="bg-gradient-to-r from-gray-900 to-gray-800 rounded-2xl p-8 border border-gray-700">
+            <div className="flex items-center gap-3 mb-6">
+              <Activity className="w-6 h-6 text-orange-400" />
+              <h3 className="text-2xl font-bold text-white">Automatic Recovery</h3>
+              <span className="px-3 py-1 bg-orange-600/20 text-orange-400 text-xs font-bold rounded-full border border-orange-500/30">
+                SELF-HEALING
+              </span>
+            </div>
+            
+            <div className="grid md:grid-cols-3 gap-4">
+              <div className="bg-black/40 rounded-lg p-4">
+                <div className="text-orange-400 font-bold mb-2">Retry Logic</div>
+                <p className="text-gray-300 text-sm">Automatic retries with exponential backoff</p>
+              </div>
+              <div className="bg-black/40 rounded-lg p-4">
+                <div className="text-orange-400 font-bold mb-2">Error Context</div>
+                <p className="text-gray-300 text-sm">Rich error messages with actionable fixes</p>
+              </div>
+              <div className="bg-black/40 rounded-lg p-4">
+                <div className="text-orange-400 font-bold mb-2">Graceful Degradation</div>
+                <p className="text-gray-300 text-sm">Fallback strategies when tools fail</p>
+              </div>
             </div>
           </div>
         </div>
