@@ -17,7 +17,7 @@ export function SearchHighlight({ text, query, className = '' }: SearchHighlight
     <span className={className}>
       {parts.map((part, index) => 
         part.toLowerCase() === query.toLowerCase() ? (
-          <mark key={index} className="bg-yellow-500/30 text-yellow-200 px-0.5 rounded">
+          <mark key={index} className="bg-purple-500/30 text-purple-200 px-0.5 rounded font-medium">
             {part}
           </mark>
         ) : (

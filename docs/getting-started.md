@@ -172,14 +172,30 @@ assistant.input("What's in greeting.txt?")
 ConnectOnion provides different templates for common use cases:
 
 ```bash
-# Conversational agent
-co init --template chat
+# Meta-agent (default) - ConnectOnion development assistant
+co init
 
-# Data analysis agent
-co init --template data
+# Web automation with Playwright
+co init --template playwright
+```
 
-# Include example tools
-co init --with-examples
+### What Gets Created
+
+```
+my-project/
+├── agent.py           # Main agent implementation
+├── prompts/           # System prompts (meta-agent only)
+│   ├── metagent.md
+│   ├── docs_retrieve_prompt.md
+│   ├── answer_prompt.md
+│   └── think_prompt.md
+├── prompt.md          # System prompt (playwright only)
+├── README.md          # Project documentation (meta-agent only)
+├── .env.example       # Environment variables template
+└── .co/               # ConnectOnion metadata
+    ├── config.toml
+    └── docs/
+        └── connectonion.md  # Embedded framework documentation
 ```
 
 Learn more about templates in the [Templates Documentation](templates.md).

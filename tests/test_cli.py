@@ -60,7 +60,7 @@ class TestCliInit:
                 config = toml.load(f)
                 assert 'project' in config
                 assert 'cli' in config
-                assert config['cli']['template'] in ['meta-agent', 'basic']  # basic maps to meta-agent
+                assert config['cli']['template'] in ['meta-agent', 'playwright']
     
     def test_init_templates(self):
         """Test that different templates create appropriate agents."""
@@ -68,7 +68,7 @@ class TestCliInit:
             from connectonion.cli.main import cli
             
             # Test chat template
-            result = self.runner.invoke(cli, ['init', '--template', 'chat'])
+            result = self.runner.invoke(cli, ['init', '--template', 'invalid'])
             assert result.exit_code == 0
             
             with open('agent.py') as f:

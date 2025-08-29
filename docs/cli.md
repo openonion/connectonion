@@ -36,19 +36,36 @@ co init --template playwright
 
 #### Options
 
-- `--template, -t`: Choose a template (`meta-agent`, `playwright`, `basic`)
+- `--template, -t`: Choose a template (`meta-agent`, `playwright`)
   - `meta-agent` (default): ConnectOnion development assistant with docs expertise
   - `playwright`: Web automation agent with stateful browser control
-  - `basic`: Alias for meta-agent (backward compatibility)
-- `--with-examples`: Include additional example tools
 - `--force`: Overwrite existing files
 
 #### What Gets Created
 
+**Meta-Agent Template (default):**
 ```
 my-project/
-├── agent.py           # Main agent implementation
-├── prompt.md          # System prompt (best practice: use markdown)
+├── agent.py           # Main agent with llm_do integration
+├── prompts/           # System prompts directory
+│   ├── metagent.md    # Main system prompt
+│   ├── docs_retrieve_prompt.md  # Document retrieval
+│   ├── answer_prompt.md         # Answer generation
+│   └── think_prompt.md          # Reflection/thinking
+├── README.md          # Project documentation
+├── .env.example       # Environment variables template
+├── .co/               # ConnectOnion metadata
+│   ├── config.toml    # Project configuration
+│   └── docs/
+│       └── connectonion.md  # Embedded framework documentation
+└── .gitignore         # Git ignore rules (if in git repo)
+```
+
+**Playwright Template:**
+```
+my-project/
+├── agent.py           # Browser automation agent
+├── prompt.md          # System prompt
 ├── .env.example       # Environment variables template
 ├── .co/               # ConnectOnion metadata
 │   ├── config.toml    # Project configuration
@@ -75,8 +92,9 @@ $ co init
 ✅ ConnectOnion project initialized!
 
 Created:
-   ├── agent.py (Agent implementation with tools)
-   ├── prompt.md (System prompt - edit this to customize agent behavior)
+   ├── agent.py (Meta-agent with llm_do integration)
+   ├── prompts/ (System prompts directory)
+   ├── README.md (Project documentation)
    ├── .env.example (API key configuration template)
    ├── .co/ (ConnectOnion metadata)
    ├── .co/docs/connectonion.md (ConnectOnion reference documentation)

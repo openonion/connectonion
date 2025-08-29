@@ -301,13 +301,8 @@ python --version
                   <td className="px-4 py-3 font-mono text-sm text-blue-300">--template, -t</td>
                   <td className="px-4 py-3 text-gray-300">
                     Choose a template: <code className="bg-gray-800 px-2 py-1 rounded text-xs">meta-agent</code> (default), 
-                    <code className="bg-gray-800 px-2 py-1 rounded text-xs ml-2">playwright</code>, 
-                    <code className="bg-gray-800 px-2 py-1 rounded text-xs ml-2">basic</code> (alias)
+                    <code className="bg-gray-800 px-2 py-1 rounded text-xs ml-2">playwright</code>
                   </td>
-                </tr>
-                <tr>
-                  <td className="px-4 py-3 font-mono text-sm text-blue-300">--with-examples</td>
-                  <td className="px-4 py-3 text-gray-300">Include additional example tools</td>
                 </tr>
                 <tr>
                   <td className="px-4 py-3 font-mono text-sm text-blue-300">--force</td>
@@ -322,55 +317,103 @@ python --version
         <div className="mb-8">
           <h3 className="text-lg font-semibold text-white mb-4">What Gets Created</h3>
           
-          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
-            <div className="font-mono text-sm text-gray-300">
-              <div className="flex items-center gap-2 mb-2">
-                <Folder className="w-4 h-4 text-yellow-400" />
-                <span className="text-white">my-project/</span>
-              </div>
-              <div className="ml-6 space-y-1">
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-blue-400" />
-                  <span>agent.py</span>
-                  <span className="text-gray-500 ml-4"># Main agent implementation</span>
+          <div className="grid md:grid-cols-2 gap-4">
+            {/* Meta-Agent Structure */}
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-blue-300 mb-3">Meta-Agent (default)</h4>
+              <div className="font-mono text-xs text-gray-300">
+                <div className="flex items-center gap-2 mb-2">
+                  <Folder className="w-3 h-3 text-yellow-400" />
+                  <span className="text-white">my-project/</span>
                 </div>
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-green-400" />
-                  <span>prompt.md</span>
-                  <span className="text-gray-500 ml-4"># System prompt (markdown)</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <FileText className="w-4 h-4 text-gray-400" />
-                  <span>.env.example</span>
-                  <span className="text-gray-500 ml-4"># Environment variables template</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <Folder className="w-4 h-4 text-yellow-400" />
-                  <span>.co/</span>
-                  <span className="text-gray-500 ml-4"># ConnectOnion metadata</span>
-                </div>
-                <div className="ml-6 space-y-1">
+                <div className="ml-4 space-y-1">
                   <div className="flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-purple-400" />
-                    <span>config.toml</span>
-                    <span className="text-gray-500 ml-4"># Project configuration</span>
+                    <FileText className="w-3 h-3 text-blue-400" />
+                    <span>agent.py</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Folder className="w-4 h-4 text-yellow-400" />
-                    <span>docs/</span>
+                    <Folder className="w-3 h-3 text-yellow-400" />
+                    <span>prompts/</span>
                   </div>
-                  <div className="ml-6">
+                  <div className="ml-4 space-y-1">
                     <div className="flex items-center gap-2">
-                      <FileText className="w-4 h-4 text-gray-400" />
-                      <span>connectonion.md</span>
-                      <span className="text-gray-500 ml-4"># Embedded docs</span>
+                      <FileText className="w-3 h-3 text-green-400" />
+                      <span>metagent.md</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3 h-3 text-green-400" />
+                      <span>docs_retrieve_prompt.md</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3 h-3 text-green-400" />
+                      <span>answer_prompt.md</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3 h-3 text-green-400" />
+                      <span>think_prompt.md</span>
                     </div>
                   </div>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-3 h-3 text-purple-400" />
+                    <span>README.md</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-3 h-3 text-gray-400" />
+                    <span>.env.example</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Folder className="w-3 h-3 text-yellow-400" />
+                    <span>.co/</span>
+                  </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  <GitBranch className="w-4 h-4 text-orange-400" />
-                  <span>.gitignore</span>
-                  <span className="text-gray-500 ml-4"># Git ignore rules (if in git repo)</span>
+              </div>
+            </div>
+
+            {/* Playwright Structure */}
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
+              <h4 className="text-sm font-semibold text-purple-300 mb-3">Playwright Template</h4>
+              <div className="font-mono text-xs text-gray-300">
+                <div className="flex items-center gap-2 mb-2">
+                  <Folder className="w-3 h-3 text-yellow-400" />
+                  <span className="text-white">my-project/</span>
+                </div>
+                <div className="ml-4 space-y-1">
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-3 h-3 text-blue-400" />
+                    <span>agent.py</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-3 h-3 text-green-400" />
+                    <span>prompt.md</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-3 h-3 text-gray-400" />
+                    <span>.env.example</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Folder className="w-3 h-3 text-yellow-400" />
+                    <span>.co/</span>
+                  </div>
+                  <div className="ml-4 space-y-1">
+                    <div className="flex items-center gap-2">
+                      <FileText className="w-3 h-3 text-purple-400" />
+                      <span>config.toml</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Folder className="w-3 h-3 text-yellow-400" />
+                      <span>docs/</span>
+                    </div>
+                    <div className="ml-4">
+                      <div className="flex items-center gap-2">
+                        <FileText className="w-3 h-3 text-gray-400" />
+                        <span>connectonion.md</span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <GitBranch className="w-3 h-3 text-orange-400" />
+                    <span>.gitignore</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -393,7 +436,7 @@ python --version
           </h3>
           
           <p className="text-gray-300 mb-6">
-            A ConnectOnion development assistant with powerful built-in tools:
+            A ConnectOnion development assistant powered by <code className="bg-gray-800 px-2 py-1 rounded text-xs">llm_do()</code> for intelligent operations:
           </p>
 
           <div className="bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg p-6 mb-6">
@@ -403,27 +446,27 @@ python --version
                   <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
                   <div>
                     <span className="font-semibold text-blue-200">answer_connectonion_question()</span>
-                    <p className="text-gray-400 text-xs">Expert answers from embedded docs</p>
+                    <p className="text-gray-400 text-xs">Uses llm_do() for intelligent doc retrieval</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
                   <div>
-                    <span className="font-semibold text-blue-200">create_agent_from_template()</span>
-                    <p className="text-gray-400 text-xs">Generate complete agent code</p>
+                    <span className="font-semibold text-blue-200">think()</span>
+                    <p className="text-gray-400 text-xs">AI reflection on task progress</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
                   <div>
-                    <span className="font-semibold text-blue-200">generate_tool_code()</span>
-                    <p className="text-gray-400 text-xs">Create tool functions</p>
+                    <span className="font-semibold text-blue-200">add_todo() / delete_todo()</span>
+                    <p className="text-gray-400 text-xs">Task management functions</p>
                   </div>
                 </div>
                 <div className="flex items-start gap-2">
                   <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
                   <div>
-                    <span className="font-semibold text-blue-200">create_test_for_agent()</span>
+                    <span className="font-semibold text-blue-200">run_shell()</span>
                     <p className="text-gray-400 text-xs">Generate pytest test suites</p>
                   </div>
                 </div>

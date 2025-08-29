@@ -244,7 +244,9 @@ except Exception as e:
 
 answer = llm_do("What's 2+2?")
 print(answer)`}
-                result={`4`}
+                result={`>>> answer = llm_do("What's 2+2?")
+>>> print(answer)
+4`}
                 className="mb-6"
               />
               
@@ -270,9 +272,12 @@ result = llm_do(
 print(result.sentiment)
 print(result.confidence)
 print(result.keywords)`}
-                result={`positive
+                result={`>>> print(result.sentiment)
+'positive'
+>>> print(result.confidence)
 0.98
-["love", "best", "ever"]`}
+>>> print(result.keywords)
+['love', 'best', 'ever']`}
                 className="mb-6"
               />
             </section>
@@ -303,9 +308,12 @@ invoice = llm_do(invoice_text, output=Invoice)
 print(invoice.invoice_number)
 print(invoice.total_amount)
 print(invoice.due_date)`}
-                    result={`INV-2024-001
+                    result={`>>> print(invoice.invoice_number)
+'INV-2024-001'
+>>> print(invoice.total_amount)
 1234.56
-January 15, 2024`}
+>>> print(invoice.due_date)
+'January 15, 2024'`}
                   />
                 </div>
 
@@ -326,9 +334,11 @@ summary = llm_do(
     prompt="prompts/summarizer.md"  # Loads from file
 )
 print(summary)`}
-                    result={`Hola mundo
+                    result={`>>> print(translation)
+'Hola mundo'
 
-AI technology is rapidly advancing with breakthroughs in...`}
+>>> print(summary)
+'AI technology is rapidly advancing with breakthroughs in...'`}
                   />
                 </div>
 
@@ -360,7 +370,9 @@ print(result)
 
 # Use in an agent
 agent = Agent("support", tools=[analyze_feedback])`}
-                    result={`🚨 HIGH: Application crashes during file upload process`}
+                    result={`>>> result = analyze_feedback("The app crashes when I try to upload files!")
+>>> print(result)
+🚨 HIGH: Application crashes during file upload process`}
                   />
                 </div>
               </div>
@@ -456,8 +468,11 @@ person = llm_do("John Doe, 30, software engineer", output=Person)
 print(f"Name: {person.name}")
 print(f"Age: {person.age}")
 print(f"Job: {person.occupation}")`}
-                    result={`Name: John Doe
+                    result={`>>> print(f"Name: {person.name}")
+Name: John Doe
+>>> print(f"Age: {person.age}")
 Age: 30
+>>> print(f"Job: {person.occupation}")
 Job: software engineer`}
                   />
                 </div>
@@ -475,7 +490,11 @@ if check_urgency("Customer says: My server is down!"):
     print("🚨 Escalating to on-call team...")
 else:
     print("📝 Added to regular queue")`}
-                    result={`🚨 Escalating to on-call team...`}
+                    result={`>>> if check_urgency("Customer says: My server is down!"):
+...     print("🚨 Escalating to on-call team...")
+... else:
+...     print("📝 Added to regular queue")
+🚨 Escalating to on-call team...`}
                   />
                 </div>
 
@@ -493,7 +512,8 @@ json_result = llm_do(
     output=JSONData
 )
 print(json_result.data)`}
-                    result={`{'name': 'John', 'age': 30, 'city': 'NYC'}`}
+                    result={`>>> print(json_result.data)
+{'name': 'John', 'age': 30, 'city': 'NYC'}`}
                   />
                 </div>
 
@@ -517,7 +537,10 @@ queries = [
 for q in queries:
     is_valid = validate_sql(q)
     print(f"{'✓' if is_valid else '✗'} {q[:30]}...")`}
-                    result={`✓ SELECT * FROM users WHERE id...
+                    result={`>>> for q in queries:
+...     is_valid = validate_sql(q)
+...     print(f"{'✓' if is_valid else '✗'} {q[:30]}...")
+✓ SELECT * FROM users WHERE id...
 ✗ SLECT * FORM users...`}
                   />
                 </div>
@@ -585,8 +608,11 @@ def calculate_density(population: int, area_km2: float) -> float:
 agent = Agent("assistant", tools=[search_population, calculate_density])
 result = agent.input("Find Paris population and calculate density (area: 105 km²)")
 print(f"Agent result: {result}")`}
-                result={`Capital: Paris
+                result={`>>> print(f"Capital: {answer}")
+Capital: Paris
 
+>>> result = agent.input("Find Paris population and calculate density (area: 105 km²)")
+>>> print(f"Agent result: {result}")
 Agent result: The population density of Paris is approximately 20,580 people per km²`}
               />
             </section>

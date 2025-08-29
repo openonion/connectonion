@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { DocsSidebar } from '../../../components/DocsSidebar'
 import { MobileDocsNav } from '../../../components/MobileDocsNav'
-import { CopyButton } from '../../../components/CopyButton'
+import CopyButton from '../../../components/CopyButton'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
 
 export default function NetworkProtocolDesignBlog() {

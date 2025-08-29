@@ -191,8 +191,8 @@ co init --template chat
 # Data analysis agent
 co init --template data
 
-# With additional examples
-co init --with-examples
+# Web automation with Playwright
+co init --template playwright
 ```
 
 Each template includes:

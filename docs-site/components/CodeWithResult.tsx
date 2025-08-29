@@ -28,6 +28,95 @@ export default function CodeWithResult({
     setTimeout(() => setCopied(false), 2000)
   }
 
+  // Function to render Python REPL output with syntax highlighting
+  const renderPythonRepl = (text: string) => {
+    const lines = text.split('\n')
+    
+    return lines.map((line, index) => {
+      const trimmedLine = line.trimStart()
+      const indent = line.length - trimmedLine.length
+      
+      // Python prompt lines
+      if (trimmedLine.startsWith('>>>') || trimmedLine.startsWith('...')) {
+        const prompt = trimmedLine.substring(0, 3)
+        const code = trimmedLine.substring(3)
+        
+        return (
+          <div key={index} className="font-mono text-sm">
+            <span className="text-green-400">{' '.repeat(indent)}{prompt}</span>
+            <span className="text-gray-100">{code}</span>
+          </div>
+        )
+      }
+      
+      // Comments (both in prompts and outputs)
+      if (trimmedLine.includes('#')) {
+        const parts = line.split('#')
+        const beforeComment = parts[0]
+        const comment = parts.slice(1).join('#')
+        
+        return (
+          <div key={index} className="font-mono text-sm">
+            <span className="text-gray-100">{beforeComment}</span>
+            <span className="text-gray-500">#{comment}</span>
+          </div>
+        )
+      }
+      
+      // String outputs (in quotes)
+      if (trimmedLine.match(/^["'].*["']$/)) {
+        return (
+          <div key={index} className="font-mono text-sm">
+            <span className="text-yellow-300">{line}</span>
+          </div>
+        )
+      }
+      
+      // Numbers
+      if (trimmedLine.match(/^\d+(\.\d+)?$/)) {
+        return (
+          <div key={index} className="font-mono text-sm">
+            <span className="text-cyan-300">{line}</span>
+          </div>
+        )
+      }
+      
+      // Boolean values
+      if (trimmedLine === 'True' || trimmedLine === 'False' || trimmedLine === 'None') {
+        return (
+          <div key={index} className="font-mono text-sm">
+            <span className="text-purple-400">{line}</span>
+          </div>
+        )
+      }
+      
+      // Dict/List representations
+      if (trimmedLine.startsWith('{') || trimmedLine.startsWith('[') || trimmedLine.startsWith('(')) {
+        return (
+          <div key={index} className="font-mono text-sm">
+            <span className="text-blue-300">{line}</span>
+          </div>
+        )
+      }
+      
+      // Object representations like <ClassName>
+      if (trimmedLine.match(/^<.*>$/)) {
+        return (
+          <div key={index} className="font-mono text-sm">
+            <span className="text-purple-300">{line}</span>
+          </div>
+        )
+      }
+      
+      // Default output
+      return (
+        <div key={index} className="font-mono text-sm text-gray-100">
+          {line || '\u00A0'}
+        </div>
+      )
+    })
+  }
+
   return (
     <div className={`bg-gray-900 rounded-lg overflow-hidden ${className}`}>
       <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-gray-800">
@@ -70,16 +159,13 @@ export default function CodeWithResult({
             <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
               <div className="flex items-center gap-2">
                 <Play className="w-4 h-4 text-green-400" />
-                <span className="text-sm text-gray-300 font-mono">Result</span>
+                <span className="text-sm text-gray-300 font-mono">Python REPL</span>
               </div>
-              {showRunButton && (
-                <span className="text-xs text-gray-500 italic">After running</span>
-              )}
             </div>
-            <div className="p-4 overflow-x-auto">
-              <pre className="text-sm text-gray-300 font-mono whitespace-pre-wrap">
-                {result}
-              </pre>
+            <div className="p-4 overflow-x-auto bg-gray-950">
+              <div className="space-y-0.5">
+                {renderPythonRepl(result)}
+              </div>
             </div>
           </div>
         )}

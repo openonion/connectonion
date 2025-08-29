@@ -68,8 +68,7 @@ co init --template playwright
 ### CLI Options
 
 - `co init` - Initialize a new agent project
-  - `--template, -t` - Choose template: `meta-agent` (default), `playwright`, `basic` (alias)
-  - `--with-examples` - Include additional example tools
+  - `--template, -t` - Choose template: `meta-agent` (default), `playwright`
   - `--force` - Overwrite existing files
 
 ### What Gets Created

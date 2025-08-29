@@ -8,7 +8,8 @@ import {
   ChevronRight, ChevronDown, User, Users, Database, Brain, 
   Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, 
   Gauge, Copy, Check, Terminal, Rocket, Cloud, MoreHorizontal,
-  X, ArrowUp, ArrowDown
+  X, ArrowUp, ArrowDown, Home, BookOpenText, Bug, MessageSquare,
+  Layers, Sparkles, Calculator, Bot, Package, MessageCircle
 } from 'lucide-react'
 import { DifficultyBadge } from './DifficultyBadge'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
@@ -30,8 +31,8 @@ const navigation: NavigationSection[] = [
   {
     title: 'Getting Started',
     items: [
-      { title: 'Introduction', href: '/', keywords: ['intro', 'overview', 'start', 'begin'] },
-      { title: 'Quick Start', href: '/quickstart', keywords: ['setup', 'install', 'begin', 'tutorial'] },
+      { title: 'Introduction', href: '/', icon: Home, keywords: ['intro', 'overview', 'start', 'begin'] },
+      { title: 'Quick Start', href: '/quickstart', icon: Rocket, keywords: ['setup', 'install', 'begin', 'tutorial'] },
       { title: 'CLI Reference', href: '/cli', icon: Terminal, keywords: ['command', 'terminal', 'co', 'commands'] },
     ]
   },
@@ -41,7 +42,7 @@ const navigation: NavigationSection[] = [
       { title: 'max_iterations', href: '/max-iterations', icon: Gauge, difficulty: 'Start Here', keywords: ['loop', 'limit', 'iteration', 'control'] },
       { title: 'LLM Function', href: '/llm', icon: Zap, keywords: ['ai', 'model', 'openai', 'language'] },
       { title: 'Tools', href: '/tools', icon: Code, keywords: ['function', 'utility', 'actions', 'capabilities'] },
-      { title: 'System Prompts', href: '/prompts', icon: Code, keywords: ['template', 'prompt', 'system', 'message'] },
+      { title: 'System Prompts', href: '/prompts', icon: MessageSquare, keywords: ['template', 'prompt', 'system', 'message'] },
       { title: 'Trust Parameter', href: '/trust', icon: Shield, keywords: ['security', 'safety', 'trust', 'permission'] },
     ]
   },
@@ -54,8 +55,8 @@ const navigation: NavigationSection[] = [
   {
     title: 'Debugging',
     items: [
-      { title: '@xray Decorator', href: '/xray', keywords: ['debug', 'xray', 'decorator', 'trace', 'monitor'] },
-      { title: 'trace() Visual Flow', href: '/xray/trace', keywords: ['trace', 'flow', 'visual', 'debug', 'execution'] },
+      { title: '@xray Decorator', href: '/xray', icon: Bug, keywords: ['debug', 'xray', 'decorator', 'trace', 'monitor'] },
+      { title: 'trace() Visual Flow', href: '/xray/trace', icon: GitBranch, keywords: ['trace', 'flow', 'visual', 'debug', 'execution'] },
     ]
   },
   {
@@ -68,10 +69,10 @@ const navigation: NavigationSection[] = [
     title: 'Examples',
     items: [
       { title: 'All Examples', href: '/examples', icon: FolderOpen, difficulty: 'Browse', keywords: ['examples', 'samples', 'demos', 'tutorials'] },
-      { title: 'Hello World', href: '/examples/hello-world', icon: Play, difficulty: 'Beginner', keywords: ['hello', 'basic', 'simple', 'first'] },
-      { title: 'Calculator', href: '/examples/calculator', icon: Code, difficulty: 'Beginner', keywords: ['calculator', 'math', 'compute', 'arithmetic'] },
+      { title: 'Hello World', href: '/examples/hello-world', icon: Sparkles, difficulty: 'Beginner', keywords: ['hello', 'basic', 'simple', 'first'] },
+      { title: 'Calculator', href: '/examples/calculator', icon: Calculator, difficulty: 'Beginner', keywords: ['calculator', 'math', 'compute', 'arithmetic'] },
       { title: 'Weather Bot', href: '/examples/weather-bot', icon: Cloud, difficulty: 'Intermediate', keywords: ['weather', 'bot', 'api', 'forecast'] },
-      { title: 'More Examples', href: '/examples#advanced', icon: MoreHorizontal, keywords: ['advanced', 'more', 'complex', 'additional'] },
+      { title: 'More Examples', href: '/examples#advanced', icon: Layers, keywords: ['advanced', 'more', 'complex', 'additional'] },
     ]
   },
   {
@@ -214,9 +215,17 @@ export function DocsSidebar() {
     setSelectedIndex(0)
   }
 
-  // Keyboard navigation
+  // Keyboard navigation and shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Cmd+K or Ctrl+K to focus search
+      if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        return
+      }
+
+      // Only handle navigation when search is active
       if (!searchQuery) return
 
       switch(e.key) {
@@ -293,59 +302,101 @@ export function DocsSidebar() {
   return (
     <div className="w-[75vw] max-w-sm sm:w-64 lg:w-72 xl:w-80 bg-gray-900 border-r border-gray-800 flex flex-col h-screen sticky top-0 z-40">
       {/* Header */}
-      <div className="p-6 border-b border-gray-800">
+      <div className="p-4 border-b border-gray-800">
         <Link href="/" className="flex items-center gap-3 group">
           <img src="https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/Onion.png" alt="ConnectOnion" className="w-8 h-8 rounded-lg object-cover" />
           <div>
             <div className="text-lg font-bold text-white">ConnectOnion</div>
-            <div className="flex items-center gap-2 text-xs text-gray-400">
-              <span>Documentation v0.0.1b6</span>
-              <span className="px-1.5 py-0.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full text-[10px] font-semibold">BETA</span>
-            </div>
+            <div className="text-xs text-gray-400">Documentation</div>
           </div>
         </Link>
       </div>
 
       {/* Enhanced Search */}
       <div className="p-4 border-b border-gray-800">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+        <div className="relative group">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 transition-colors group-focus-within:text-purple-400" />
           <input
             ref={searchInputRef}
             type="text"
-            placeholder="Search docs... (↑↓ to navigate)"
+            placeholder="Search docs..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="w-full pl-10 pr-8 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 focus:outline-none transition-all text-sm"
           />
-          {searchQuery && (
+          {searchQuery ? (
             <button
               onClick={() => {
                 setSearchQuery('')
                 setSearchResults([])
               }}
-              className="absolute right-2 top-1/2 -translate-y-1/2 p-1 hover:bg-gray-700 rounded"
+              className="absolute right-2 top-1/2 -translate-y-1/2 p-1.5 hover:bg-gray-700 rounded transition-colors"
+              aria-label="Clear search"
             >
-              <X className="w-3 h-3 text-gray-400" />
+              <X className="w-4 h-4 text-gray-400 hover:text-white" />
             </button>
+          ) : (
+            <div className="absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-gray-500 font-mono px-1.5 py-0.5 bg-gray-700 rounded">
+              ⌘K
+            </div>
           )}
         </div>
+        
+        {/* Search help text - always visible */}
+        {!searchQuery && (
+          <div className="mt-2 text-[11px] text-gray-500">
+            Search by title, keywords, or sections
+          </div>
+        )}
         
         {/* Search Results Summary */}
         {searchQuery && (
           <div className="mt-2 space-y-1">
             <div className="text-xs text-gray-400">
-              {searchResults.length} results for "{searchQuery}"
+              {searchResults.length === 0 ? 'No' : searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found
             </div>
             {searchResults.length > 0 && (
-              <div className="text-xs text-gray-500 flex items-center gap-1">
-                <ArrowUp className="w-3 h-3" />
-                <ArrowDown className="w-3 h-3" />
-                to navigate • Enter to select
+              <div className="text-[11px] text-gray-500 flex items-center gap-2">
+                <div className="flex items-center gap-1">
+                  <kbd className="px-1 py-0.5 text-[10px] bg-gray-700 rounded">↑</kbd>
+                  <kbd className="px-1 py-0.5 text-[10px] bg-gray-700 rounded">↓</kbd>
+                  <span>Navigate</span>
+                </div>
+                <span className="text-gray-600">•</span>
+                <div className="flex items-center gap-1">
+                  <kbd className="px-1.5 py-0.5 text-[10px] bg-gray-700 rounded">↵</kbd>
+                  <span>Select</span>
+                </div>
               </div>
             )}
           </div>
         )}
+      </div>
+
+      {/* Quick Actions */}
+      <div className="px-4 py-2 border-b border-gray-800">
+        <button
+          onClick={handleCopyAllDocs}
+          disabled={copyStatus === 'copying'}
+          className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800 rounded-md text-gray-300 hover:text-white disabled:text-gray-500 text-sm transition-all"
+        >
+          {copyStatus === 'copying' ? (
+            <>
+              <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              <span>Copying...</span>
+            </>
+          ) : copyStatus === 'success' ? (
+            <>
+              <Check className="w-4 h-4 text-green-400" />
+              <span>Copied!</span>
+            </>
+          ) : (
+            <>
+              <Copy className="w-4 h-4" />
+              <span>Copy All Docs</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* Navigation with Search Highlighting */}
@@ -361,8 +412,8 @@ export function DocsSidebar() {
                   href={result.item.href}
                   className={`block px-3 py-2 rounded-md text-sm transition-all ${
                     idx === selectedIndex 
-                      ? 'bg-purple-600/20 text-purple-300 border border-purple-500/50' 
-                      : 'bg-gray-800/50 text-gray-300 hover:bg-gray-800'
+                      ? 'bg-purple-500/20 text-purple-200 ring-2 ring-purple-400/50' 
+                      : 'bg-gray-800/50 text-gray-300 hover:bg-gray-800 hover:text-white'
                   }`}
                 >
                   <div className="flex items-center justify-between">
@@ -375,10 +426,10 @@ export function DocsSidebar() {
                     </div>
                     <div className="flex items-center gap-1">
                       {result.matches.includes('title') && (
-                        <span className="text-[10px] px-1 bg-green-900/50 text-green-400 rounded">title</span>
+                        <span className="text-[10px] px-1 bg-purple-900/30 text-purple-400 rounded">exact</span>
                       )}
                       {result.matches.includes('keywords') && (
-                        <span className="text-[10px] px-1 bg-blue-900/50 text-blue-400 rounded">keyword</span>
+                        <span className="text-[10px] px-1 bg-purple-900/30 text-purple-400 rounded">tag</span>
                       )}
                     </div>
                   </div>
@@ -422,18 +473,16 @@ export function DocsSidebar() {
                         href={item.href}
                         className={`block px-4 py-2.5 min-h-[40px] text-sm rounded-md mx-2 transition-all relative ${
                           isActive
-                            ? 'nav-current'
+                            ? 'bg-purple-500/20 text-purple-200 border-l-4 border-purple-400 font-medium'
                             : isInResults && searchQuery
-                            ? 'bg-yellow-900/10 text-yellow-200 border border-yellow-500/20'
-                            : 'text-gray-300 hover:text-white hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500 focus:ring-inset'
+                            ? 'bg-purple-500/10 text-purple-300 ring-1 ring-purple-500/30'
+                            : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:ring-inset'
                         } ${isPromptExample ? 'pl-6' : ''}`}
                         aria-current={isActive ? 'page' : undefined}
                       >
                         <div className="flex items-center gap-3">
-                          {IconComponent ? (
+                          {IconComponent && (
                             <IconComponent className="w-4 h-4 flex-shrink-0" />
-                          ) : (
-                            <div className="w-1.5 h-1.5 rounded-full bg-current opacity-50 flex-shrink-0" />
                           )}
                           <SearchHighlight 
                             text={item.title} 
@@ -468,57 +517,48 @@ export function DocsSidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="p-4 border-t border-gray-800 space-y-3">
-        {/* Copy All Docs Button */}
-        <button
-          onClick={handleCopyAllDocs}
-          disabled={copyStatus === 'copying'}
-          className="w-full flex items-center justify-center gap-2 py-2.5 px-3 bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 disabled:from-gray-600 disabled:to-gray-700 rounded-lg text-white text-sm font-medium transition-all duration-200 transform hover:scale-[1.02] disabled:scale-100"
-        >
-          {copyStatus === 'copying' ? (
-            <>
-              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-              Copying...
-            </>
-          ) : copyStatus === 'success' ? (
-            <>
-              <Check className="w-4 h-4" />
-              Copied to Clipboard!
-            </>
-          ) : (
-            <>
-              <Copy className="w-4 h-4" />
-              Copy All Docs
-            </>
-          )}
-        </button>
-        
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2 text-xs text-gray-400">
-            <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse" />
-            <span>v0.0.1b6</span>
-            <span className="px-1.5 py-0.5 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-full text-[10px] font-semibold">BETA</span>
-          </div>
-        </div>
-        
-        {/* Quick Links */}
-        <div className="flex gap-2">
+      <div className="p-3 border-t border-gray-800 space-y-2">
+        {/* Community Links */}
+        <div className="grid grid-cols-3 gap-1.5">
           <a
             href="https://github.com/wu-changxing/connectonion"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 text-center text-xs py-1.5 px-2 bg-gray-800 hover:bg-gray-700 rounded text-gray-300 hover:text-white transition-colors"
+            className="flex flex-col items-center gap-1 py-2 px-2 bg-gray-800/30 hover:bg-gray-800/60 rounded-md text-gray-400 hover:text-white transition-all group"
+            title="GitHub Repository"
           >
-            GitHub
+            <GitBranch className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
+            <span className="text-[10px]">GitHub</span>
           </a>
           <a
             href="https://pypi.org/project/connectonion/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex-1 text-center text-xs py-1.5 px-2 bg-gray-800 hover:bg-gray-700 rounded text-gray-300 hover:text-white transition-colors"
+            className="flex flex-col items-center gap-1 py-2 px-2 bg-gray-800/30 hover:bg-gray-800/60 rounded-md text-gray-400 hover:text-white transition-all group"
+            title="PyPI Package"
           >
-            PyPI
+            <Package className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
+            <span className="text-[10px]">PyPI</span>
           </a>
+          <a
+            href="https://discord.gg/4xfD9k8AUF"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex flex-col items-center gap-1 py-2 px-2 bg-gray-800/30 hover:bg-gray-800/60 rounded-md text-gray-400 hover:text-white transition-all group"
+            title="Join Discord"
+          >
+            <MessageCircle className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
+            <span className="text-[10px]">Discord</span>
+          </a>
+        </div>
+        
+        {/* Version Status */}
+        <div className="flex items-center justify-between px-2 py-1.5 bg-gray-800/20 rounded-md">
+          <div className="flex items-center gap-2">
+            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Status: Active"></div>
+            <span className="text-[11px] text-gray-400">v0.0.1b6</span>
+          </div>
+          <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-[10px] font-medium">BETA</span>
         </div>
       </div>
     </div>
