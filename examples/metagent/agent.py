@@ -1,13 +1,14 @@
 """Meta-Agent - Your ConnectOnion development assistant with documentation expertise"""
 
-from connectonion import Agent
+from connectonion import Agent, xray
 import json
 from dotenv import load_dotenv
+
 
 # Load environment variables from .env file
 load_dotenv()
 
-
+@xray
 def answer_connectonion_question(question: str) -> str:
     """Answer questions about ConnectOnion based on the embedded documentation.
     
@@ -257,7 +258,7 @@ if __name__ == "__main__":
     
     return f"🧪 Test file generated:\n\nFilename: {filename}\n\n```python\n{test_code}\n```\n\nRun tests with: `pytest {filename}`"
 
-
+@xray
 def think(context: str = "current situation") -> str:
     """Reflect on the current task progress and determine next steps.
     

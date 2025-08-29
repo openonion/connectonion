@@ -1,6 +1,6 @@
 """Meta-Agent - Your ConnectOnion development assistant with documentation expertise"""
 
-from connectonion import Agent
+from connectonion import Agent, xray
 import json
 from dotenv import load_dotenv
 
@@ -8,6 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+@xray
 def answer_connectonion_question(question: str) -> str:
     """Answer questions about ConnectOnion based on the embedded documentation.
     
@@ -69,6 +70,7 @@ def answer_connectonion_question(question: str) -> str:
         return f"Here's an overview of ConnectOnion:\n\n{overview}\n\n💡 Try asking about specific topics like 'tools', 'agents', 'xray', or 'system prompts'."
 
 
+@xray
 def create_agent_from_template(agent_name: str, template: str = "basic", description: str = "") -> str:
     """Create a new ConnectOnion agent from a template.
     
@@ -162,6 +164,7 @@ agent = Agent(
     return f"📝 Agent template created:\n\nFilename: {filename}\n\n```python\n{code}\n```\n\nSave this code to {filename} and customize as needed."
 
 
+@xray
 def generate_tool_code(tool_name: str, parameters: str, description: str) -> str:
     """Generate ConnectOnion tool function code.
     
@@ -202,6 +205,7 @@ def generate_tool_code(tool_name: str, parameters: str, description: str) -> str
     return f"🔧 Tool function generated:\n\n```python\n{code}\n```\n\nThis tool follows ConnectOnion best practices:\n- ✅ Type hints on parameters\n- ✅ Returns string\n- ✅ Descriptive docstring\n- ✅ Ready to use with Agent"
 
 
+@xray
 def create_test_for_agent(agent_file: str = "agent.py") -> str:
     """Generate test code for a ConnectOnion agent.
     
@@ -273,6 +277,7 @@ if __name__ == "__main__":
     return f"🧪 Test file generated:\n\nFilename: {filename}\n\n```python\n{test_code}\n```\n\nRun tests with: `pytest {filename}`"
 
 
+@xray
 def think(context: str = "current situation") -> str:
     """Reflect on the current task progress and determine next steps.
     
@@ -284,6 +289,7 @@ def think(context: str = "current situation") -> str:
     return f"Reflecting on {context}: Evaluating task progress and determining if additional steps are needed."
 
 
+@xray
 def generate_todo_list(task_description: str, priority: str = "normal") -> str:
     """Generate a structured to-do list for a given task.
     
@@ -315,6 +321,7 @@ def generate_todo_list(task_description: str, priority: str = "normal") -> str:
     return f"📝 To-Do List for '{task_description}':\n" + json.dumps(todo_template, indent=2)
 
 
+@xray
 def suggest_project_structure(project_type: str = "agent") -> str:
     """Suggest a project structure for ConnectOnion projects.
     

@@ -10,7 +10,7 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
     print("⚠️  Playwright not installed. Run: pip install playwright && playwright install")
 
-from connectonion import Agent
+from connectonion import Agent, xray
 from typing import Optional, List, Dict
 import json
 
@@ -26,6 +26,7 @@ class BrowserAutomation:
         self.visited_urls = []
         self.downloads = []
     
+    @xray
     def start_browser(self, headless: bool = True) -> str:
         """Start a browser instance.
         
@@ -43,6 +44,7 @@ class BrowserAutomation:
         self.page = self.browser.new_page()
         return f"✅ Browser started (headless={headless})"
     
+    @xray
     def navigate(self, url: str, wait_until: str = "load") -> str:
         """Navigate to a URL.
         
@@ -61,6 +63,7 @@ class BrowserAutomation:
         except Exception as e:
             return f"❌ Navigation failed: {e}"
     
+    @xray
     def take_screenshot(self, filename: str = None, full_page: bool = False) -> str:
         """Take a screenshot of the current page.
         
@@ -81,6 +84,7 @@ class BrowserAutomation:
         except Exception as e:
             return f"❌ Screenshot failed: {e}"
     
+    @xray
     def scrape_content(self, selector: str = "body") -> str:
         """Extract text content from the page.
         
@@ -100,6 +104,7 @@ class BrowserAutomation:
         except Exception as e:
             return f"❌ Scraping failed: {e}"
     
+    @xray
     def fill_form(self, form_data: str) -> str:
         """Fill form fields on the page.
         
@@ -123,6 +128,7 @@ class BrowserAutomation:
         except Exception as e:
             return f"❌ Form filling failed: {e}"
     
+    @xray
     def click(self, selector: str) -> str:
         """Click an element on the page.
         
@@ -140,6 +146,7 @@ class BrowserAutomation:
         except Exception as e:
             return f"❌ Click failed on {selector}: {e}"
     
+    @xray
     def extract_links(self, filter_pattern: str = "") -> str:
         """Extract all links from the current page.
         
@@ -172,6 +179,7 @@ class BrowserAutomation:
         except Exception as e:
             return f"❌ Link extraction failed: {e}"
     
+    @xray
     def wait_for_element(self, selector: str, timeout: int = 5000) -> str:
         """Wait for an element to appear on the page.
         
@@ -188,6 +196,7 @@ class BrowserAutomation:
         except Exception as e:
             return f"❌ Element {selector} did not appear within {timeout}ms"
     
+    @xray
     def execute_javascript(self, script: str) -> str:
         """Execute JavaScript code on the page.
         
@@ -203,6 +212,7 @@ class BrowserAutomation:
         except Exception as e:
             return f"❌ JavaScript execution failed: {e}"
     
+    @xray
     def get_page_info(self) -> str:
         """Get information about the current page."""
         if not self.page:
@@ -216,6 +226,7 @@ class BrowserAutomation:
         
         return f"📊 Page info:\n" + json.dumps(info, indent=2)
     
+    @xray
     def get_session_info(self) -> str:
         """Get information about the browser session."""
         info = {
@@ -228,6 +239,7 @@ class BrowserAutomation:
         
         return f"📊 Session info:\n" + json.dumps(info, indent=2)
     
+    @xray
     def close_browser(self) -> str:
         """Close the browser and clean up resources."""
         if self.page:

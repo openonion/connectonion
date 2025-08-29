@@ -31,6 +31,7 @@ const navigation: NavigationSection[] = [
     title: 'Core Concepts',
     items: [
       { title: 'max_iterations', href: '/max-iterations', icon: Gauge, difficulty: 'Start Here' },
+      { title: 'LLM Function', href: '/llm', icon: Zap },
       { title: 'Tools', href: '/tools', icon: Code },
       { title: 'System Prompts', href: '/prompts', icon: Code },
       { title: 'Trust Parameter', href: '/trust', icon: Shield },

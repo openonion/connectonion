@@ -48,6 +48,7 @@ When users ask about ConnectOnion:
 2. Provide relevant code examples when applicable
 3. Suggest next steps or related topics
 
+
 When users need code:
 1. Use appropriate generation tools
 2. Explain the generated code

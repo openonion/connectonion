@@ -15,7 +15,11 @@ requirements = [
 
 setup(
     name="connectonion",
-    version="0.0.1b6",
+    # Version numbering strategy:
+    # - Use 0.0.1b7, 0.0.1b8, 0.0.1b9, 0.0.1b10 for beta releases
+    # - Only move to 0.0.2 after we have agent-to-agent protocol features complete
+    # - We are in beta until core networking features are implemented
+    version="0.0.1b7",
     author="ConnectOnion Team",
     author_email="pypi@connectonion.com",
     description="A simple Python framework for creating AI agents with behavior tracking",
