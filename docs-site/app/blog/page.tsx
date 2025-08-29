@@ -1,9 +1,19 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, BookOpen, Calendar, Clock, Users } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BookOpen, Calendar, Clock, Users, Terminal, Code2, Network } from 'lucide-react'
 
 const blogPosts = [
+  {
+    title: 'Designing the Network Protocol',
+    subtitle: 'From Complexity to Clarity',
+    date: 'December 2024',
+    readTime: '12 min read',
+    href: '/blog/network-protocol-design',
+    icon: Network,
+    tags: ['Design Decision', 'Network', 'Protocol'],
+    excerpt: 'How we evolved from complex architectures to a simple, powerful protocol. Learn why we chose messages over sessions, public keys as addresses, and simplicity over sophistication.'
+  },
   {
     title: 'Why We Chose "Trust"',
     subtitle: 'The Story Behind ConnectOnion\'s Authentication Keyword',
@@ -13,6 +23,26 @@ const blogPosts = [
     icon: Users,
     tags: ['Design Decision', 'Authentication', 'Trust'],
     excerpt: 'After evaluating 15+ options, we settled on "trust" as our authentication keyword. Learn why this bidirectional term perfectly captures our behavioral verification approach.'
+  },
+  {
+    title: 'Why We Chose `llm_do()` Over `llm()`',
+    subtitle: 'Functions Need Verbs',
+    date: 'December 2024',
+    readTime: '7 min read',
+    href: '/blog/llm-do',
+    icon: Code2,
+    tags: ['Design Decision', 'API Design', 'Naming'],
+    excerpt: 'Functions should be verbs, not nouns. Discover why we added three characters to transform the entire developer experience with one-shot LLM calls.'
+  },
+  {
+    title: 'Why We Chose `input()` Over `run()`',
+    subtitle: 'The Power of User Mental Models',
+    date: 'December 2024',
+    readTime: '8 min read',
+    href: '/blog/input-method',
+    icon: Terminal,
+    tags: ['Design Decision', 'API Design', 'UX'],
+    excerpt: '40% of users naturally tried `input()` first. Learn how aligning with user mental models increased our first-time success rate from 67% to 89%.'
   }
 ]
 

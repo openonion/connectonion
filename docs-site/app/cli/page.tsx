@@ -5,7 +5,7 @@ import { Copy, Check, Terminal, ArrowRight, FileText, Package, Folder, GitBranch
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
-import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
+import { CopyPromptButton } from '../../components/CopyPromptButton'
 
 export default function CLIPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -52,148 +52,6 @@ export default function CLIPage() {
     </div>
   )
 
-  const markdownContent = `# ConnectOnion CLI Reference
-
-The ConnectOnion CLI provides commands to quickly scaffold and manage AI agent projects.
-
-## Installation
-
-The CLI is automatically installed when you install ConnectOnion:
-
-\`\`\`bash
-pip install connectonion
-\`\`\`
-
-This provides two equivalent commands:
-- \`co\` (short form)
-- \`connectonion\` (full form)
-
-## Commands
-
-### co init
-
-Initialize a new ConnectOnion agent project in the current directory.
-
-#### Basic Usage
-
-\`\`\`bash
-# Create a meta-agent (default)
-mkdir meta-agent
-cd meta-agent
-co init
-
-# Create a web automation agent
-mkdir playwright-agent
-cd playwright-agent
-co init --template playwright
-\`\`\`
-
-#### Options
-
-- \`--template, -t\`: Choose a template (\`meta-agent\`, \`playwright\`, \`basic\`)
-  - \`meta-agent\` (default): ConnectOnion development assistant with docs expertise
-  - \`playwright\`: Web automation agent with stateful browser control
-  - \`basic\`: Alias for meta-agent (backward compatibility)
-- \`--with-examples\`: Include additional example tools
-- \`--force\`: Overwrite existing files
-
-#### What Gets Created
-
-\`\`\`
-my-project/
-├── agent.py           # Main agent implementation
-├── prompt.md          # System prompt (markdown format)
-├── .env.example       # Environment variables template
-├── .co/               # ConnectOnion metadata
-│   ├── config.toml    # Project configuration
-│   └── docs/
-│       └── connectonion.md  # Embedded framework documentation
-└── .gitignore         # Git ignore rules (if in git repo)
-\`\`\`
-
-## Templates
-
-### Meta-Agent (Default)
-
-The meta-agent template is a ConnectOnion development assistant with powerful built-in tools:
-
-- **answer_connectonion_question()** - Expert answers from embedded docs
-- **create_agent_from_template()** - Generate complete agent code
-- **generate_tool_code()** - Create tool functions
-- **create_test_for_agent()** - Generate pytest test suites
-- **think()** - Self-reflection to analyze task completion
-- **generate_todo_list()** - Create structured plans (uses GPT-4o-mini)
-- **suggest_project_structure()** - Architecture recommendations
-
-\`\`\`python
-# Learn about ConnectOnion
-result = agent.input("What is ConnectOnion and how do tools work?")
-
-# Generate agent code
-result = agent.input("Create a web scraper agent")
-
-# Create tool functions
-result = agent.input("Generate a tool for sending emails")
-
-# Task planning
-result = agent.input("Create a to-do list for building a REST API")
-\`\`\`
-
-### Playwright Template
-
-Web automation agent with stateful browser control:
-
-- **start_browser()** - Launch browser instance
-- **navigate()** - Go to URLs
-- **scrape_content()** - Extract page content
-- **fill_form()** - Fill and submit forms
-- **take_screenshot()** - Capture pages
-- **extract_links()** - Get all links
-- **execute_javascript()** - Run JS code
-- **close_browser()** - Clean up resources
-
-Note: Requires \`pip install playwright && playwright install\`
-
-## Interactive Features
-
-The CLI will:
-- Warn if you're in a special directory (home, root, system)
-- Ask for confirmation if the directory is not empty
-- Automatically detect git repositories and update \`.gitignore\`
-- Provide clear next steps after initialization
-
-## Project Structure
-
-### .co/ Directory
-
-The \`.co/\` directory contains:
-- \`config.toml\`: Project metadata (version, creation date, template used)
-- \`docs/connectonion.md\`: Embedded documentation for offline reference
-- \`history/\`: Agent behavior history (created at runtime)
-
-## Best Practices
-
-1. **Always use markdown for prompts**: Store system prompts in \`prompt.md\` files
-2. **Environment variables**: Never commit \`.env\` files, use \`.env.example\` as template
-3. **Git integration**: The CLI automatically handles \`.gitignore\` for git repositories
-4. **Documentation**: The embedded docs in \`.co/docs/\` allow agents to work offline
-
-## Troubleshooting
-
-### Permission Denied
-If you see "Permission denied" errors, ensure you have write permissions in the current directory.
-
-### API Keys
-Remember to:
-1. Copy \`.env.example\` to \`.env\`
-2. Add your actual API keys
-3. Never commit \`.env\` to version control
-
-### Python Version
-ConnectOnion requires Python 3.8 or higher. Check your version:
-\`\`\`bash
-python --version
-\`\`\``
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
@@ -213,11 +71,7 @@ python --version
           </p>
         </div>
         
-        <CopyMarkdownButton 
-          content={markdownContent}
-          filename="connectonion-cli.md"
-          className="ml-8 flex-shrink-0"
-        />
+        <CopyPromptButton />
       </div>
 
       {/* Installation */}

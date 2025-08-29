@@ -21,9 +21,11 @@ co init
 
 This creates a ConnectOnion development assistant with powerful capabilities:
 - `agent.py` - Meta-agent with documentation expertise and development tools
-- `prompt.md` - System prompt for your agent
+- `prompt.md` - Main system prompt for your agent
+- `prompts/` - Folder with specialized prompts for different operations
 - `.env.example` - Template for API keys
-- `.co/docs/` - Embedded ConnectOnion documentation for offline reference
+- `.co/` - Configuration and embedded ConnectOnion documentation
+- `.gitignore` - Pre-configured to exclude sensitive files
 
 ## 3. Set Up Your API Key
 

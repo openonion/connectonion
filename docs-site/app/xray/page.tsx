@@ -2,7 +2,7 @@
 
 import { motion } from 'framer-motion'
 import { Zap, ArrowRight, Activity } from 'lucide-react'
-import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
+import { CopyPromptButton } from '../../components/CopyPromptButton'
 import CodeWithResult from '../../components/CodeWithResult'
 import Link from 'next/link'
 // React Icons
@@ -20,21 +20,28 @@ export default function XrayPage() {
       {/* Hero Section */}
       <section className="relative overflow-hidden py-20">
         <div className="container mx-auto px-6">
-          <div className="text-center max-w-4xl mx-auto">
-            <div className="inline-flex items-center gap-3 bg-purple-900/20 border border-purple-500/30 rounded-full px-6 py-3 mb-8">
-              <VscDebugAlt className="w-5 h-5 text-purple-400" />
-              <span className="text-sm font-medium">Debug with @xray</span>
-              <RiSearchEyeLine className="w-5 h-5 text-purple-300" />
+          <div className="max-w-4xl mx-auto">
+            <div className="flex justify-between items-start mb-8">
+              <div className="text-center flex-1">
+                <div className="inline-flex items-center gap-3 bg-purple-900/20 border border-purple-500/30 rounded-full px-6 py-3 mb-8">
+                  <VscDebugAlt className="w-5 h-5 text-purple-400" />
+                  <span className="text-sm font-medium">Debug with @xray</span>
+                  <RiSearchEyeLine className="w-5 h-5 text-purple-300" />
+                </div>
+                
+                <h1 className="text-4xl md:text-5xl font-bold mb-6 text-gray-100">
+                  <FaBrain className="inline mr-3 text-purple-400" />
+                  See what your AI agent is thinking
+                </h1>
+                
+                <p className="text-xl text-gray-300 max-w-3xl mx-auto mb-12">
+                  Add one decorator and unlock debugging superpowers. No more black box AI.
+                </p>
+              </div>
+              <div className="flex-shrink-0 ml-8">
+                <CopyPromptButton />
+              </div>
             </div>
-            
-            <h1 className="text-4xl md:text-5xl font-bold mb-6 text-gray-100">
-              <FaBrain className="inline mr-3 text-purple-400" />
-              See what your AI agent is thinking
-            </h1>
-            
-            <p className="text-xl text-gray-300 max-w-3xl mx-auto mb-12">
-              Add one decorator and unlock debugging superpowers. No more black box AI.
-            </p>
             
             {/* Visual Flow Diagram */}
             <div className="bg-gray-900 border border-gray-700 rounded-lg p-8 max-w-2xl mx-auto">

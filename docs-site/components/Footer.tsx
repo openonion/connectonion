@@ -7,6 +7,35 @@ import { motion } from 'framer-motion'
 export default function Footer() {
   return (
     <footer className="bg-gray-950 border-t border-gray-800/50">
+      {/* CTA Section for GitHub and Discord */}
+      <div className="bg-gradient-to-r from-purple-900/20 to-pink-900/20 border-b border-gray-800/50">
+        <div className="container mx-auto px-6 lg:px-8 py-8">
+          <div className="flex flex-col md:flex-row items-center justify-center gap-4">
+            <a
+              href="https://github.com/wu-changxing/connectonion"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-6 py-3 bg-gray-900 hover:bg-gray-800 border border-gray-700 hover:border-gray-600 rounded-lg text-white font-medium transition-all group"
+            >
+              <Github className="w-5 h-5" />
+              <span>Star on GitHub</span>
+              <ArrowUpRight className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+            </a>
+            
+            <a
+              href="https://discord.gg/4xfD9k8AUF"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center gap-3 px-6 py-3 bg-purple-600 hover:bg-purple-700 rounded-lg text-white font-medium transition-all group"
+            >
+              <MessageCircle className="w-5 h-5" />
+              <span>Join our Discord</span>
+              <ArrowUpRight className="w-4 h-4 opacity-50 group-hover:opacity-100 transition-opacity" />
+            </a>
+          </div>
+        </div>
+      </div>
+
       {/* Main Footer */}
       <div className="container mx-auto px-6 lg:px-8 py-16">
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-8 lg:gap-12">

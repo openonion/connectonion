@@ -1,9 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-import { DocsSidebar } from "../components/DocsSidebar";
-import { MobileDocsNav } from "../components/MobileDocsNav";
-import Footer from "../components/Footer";
+import ClientLayout from "../components/ClientLayout";
 import Script from "next/script";
 
 const inter = Inter({ 
@@ -220,23 +218,9 @@ export default function RootLayout({
         />
       </head>
       <body className={`${inter.className} bg-gray-950 text-white`}>
-        {/* Mobile Documentation Navigation */}
-        <MobileDocsNav />
-        
-        <div className="flex min-h-screen">
-          {/* Desktop Sidebar */}
-          <div className="hidden lg:block">
-            <DocsSidebar />
-          </div>
-          
-          {/* Main Content */}
-          <main className="flex-1 min-w-0 flex flex-col">
-            <div className="flex-1">
-              {children}
-            </div>
-            <Footer />
-          </main>
-        </div>
+        <ClientLayout>
+          {children}
+        </ClientLayout>
       </body>
     </html>
   );

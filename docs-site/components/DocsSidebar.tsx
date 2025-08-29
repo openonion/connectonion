@@ -14,6 +14,7 @@ import {
 import { DifficultyBadge } from './DifficultyBadge'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
 import { SearchHighlight } from './SearchHighlight'
+import { performFullTextSearch, pageContentIndex } from '../utils/searchIndex'
 
 type NavItem = {
   title: string
@@ -40,23 +41,18 @@ const navigation: NavigationSection[] = [
     title: 'Core Concepts',
     items: [
       { title: 'max_iterations', href: '/max-iterations', icon: Gauge, difficulty: 'Start Here', keywords: ['loop', 'limit', 'iteration', 'control'] },
-      { title: 'LLM Function', href: '/llm', icon: Zap, keywords: ['ai', 'model', 'openai', 'language'] },
+      { title: '@xray Decorator', href: '/xray', icon: Bug, keywords: ['debug', 'xray', 'decorator', 'trace', 'monitor', 'visibility'] },
+      { title: 'LLM Function', href: '/llm_do', icon: Zap, keywords: ['ai', 'model', 'openai', 'language', 'llm_do'] },
       { title: 'Tools', href: '/tools', icon: Code, keywords: ['function', 'utility', 'actions', 'capabilities'] },
       { title: 'System Prompts', href: '/prompts', icon: MessageSquare, keywords: ['template', 'prompt', 'system', 'message'] },
       { title: 'Trust Parameter', href: '/trust', icon: Shield, keywords: ['security', 'safety', 'trust', 'permission'] },
     ]
   },
   {
-    title: 'Prompt Formats',
+    title: 'Advanced Features',
     items: [
-      { title: 'Format Support', href: '/prompts/formats', icon: FileText, difficulty: 'Interactive Demo', keywords: ['format', 'prompt', 'template', 'syntax'] },
-    ]
-  },
-  {
-    title: 'Debugging',
-    items: [
-      { title: '@xray Decorator', href: '/xray', icon: Bug, keywords: ['debug', 'xray', 'decorator', 'trace', 'monitor'] },
       { title: 'trace() Visual Flow', href: '/xray/trace', icon: GitBranch, keywords: ['trace', 'flow', 'visual', 'debug', 'execution'] },
+      { title: 'Prompt Formats', href: '/prompts/formats', icon: FileText, difficulty: 'Interactive Demo', keywords: ['format', 'prompt', 'template', 'syntax'] },
     ]
   },
   {
@@ -80,7 +76,9 @@ const navigation: NavigationSection[] = [
     items: [
       { title: 'All Posts', href: '/blog', icon: BookOpen, keywords: ['blog', 'posts', 'articles', 'news'] },
       { title: 'Network Protocol Design', href: '/blog/network-protocol-design', icon: GitBranch, difficulty: 'Architecture', keywords: ['network', 'protocol', 'architecture', 'design'] },
-      { title: 'Why We Chose "Trust"', href: '/blog/trust-keyword', icon: Users, difficulty: 'Design Decision', keywords: ['trust', 'design', 'decision', 'philosophy'] },
+      { title: 'Why We Chose "Trust"', href: '/blog/trust-keyword', icon: Users, difficulty: 'Design Decision', keywords: ['trust', 'design', 'decision', 'authentication'] },
+      { title: 'Why `llm_do()` Over `llm()`', href: '/blog/llm-do', icon: Code, difficulty: 'Design Decision', keywords: ['llm', 'function', 'naming', 'api', 'design'] },
+      { title: 'Why `input()` Over `run()`', href: '/blog/input-method', icon: Terminal, difficulty: 'Design Decision', keywords: ['input', 'run', 'api', 'mental', 'model', 'ux'] },
     ]
   },
   {
@@ -158,44 +156,62 @@ export function DocsSidebar() {
     }
   }, [pathname])
 
-  // Fuzzy search with scoring
+  // Enhanced full-text search
   const performSearch = (query: string) => {
     if (!query.trim()) {
       setSearchResults([])
       return
     }
 
-    const q = query.toLowerCase()
+    // Use the enhanced full-text search
+    const fullTextResults = performFullTextSearch(query)
+    
+    // Map results back to navigation items
     const results: SearchResult[] = []
+    const processedHrefs = new Set<string>()
+    
+    // First, add results from full-text search
+    fullTextResults.forEach(pageResult => {
+      // Find the corresponding navigation item
+      navigation.forEach(section => {
+        const navItem = section.items.find(item => item.href === pageResult.href)
+        if (navItem && !processedHrefs.has(navItem.href)) {
+          processedHrefs.add(navItem.href)
+          results.push({
+            item: navItem,
+            section: section.title,
+            score: 100, // High score for full-text matches
+            matches: ['content']
+          })
+        }
+      })
+    })
 
+    // Then add traditional navigation search results for items not yet included
+    const q = query.toLowerCase()
     navigation.forEach(section => {
       section.items.forEach(item => {
+        if (processedHrefs.has(item.href)) return // Skip if already added
+        
         let score = 0
         const matches: string[] = []
 
-        // Title match (highest score)
+        // Title match
         if (item.title.toLowerCase().includes(q)) {
           score += 10
           matches.push('title')
         }
 
-        // Keywords match (medium score)
+        // Keywords match
         if (item.keywords?.some(k => k.includes(q))) {
           score += 5
           matches.push('keywords')
         }
 
-        // Section title match (low score)
+        // Section title match
         if (section.title.toLowerCase().includes(q)) {
           score += 2
           matches.push('section')
-        }
-
-        // Fuzzy match on title (very low score)
-        const titleWords = item.title.toLowerCase().split(/\s+/)
-        if (titleWords.some(word => word.startsWith(q))) {
-          score += 1
-          matches.push('partial')
         }
 
         if (score > 0) {
@@ -300,20 +316,20 @@ export function DocsSidebar() {
   }
 
   return (
-    <div className="w-[75vw] max-w-sm sm:w-64 lg:w-72 xl:w-80 bg-gray-900 border-r border-gray-800 flex flex-col h-screen sticky top-0 z-40">
+    <div className="w-[75vw] max-w-sm sm:w-64 lg:w-72 xl:w-80 bg-gray-900 border-r border-gray-700/50 flex flex-col h-screen sticky top-0 z-40">
       {/* Header */}
-      <div className="p-4 border-b border-gray-800">
+      <div className="p-4 border-b border-gray-700/50">
         <Link href="/" className="flex items-center gap-3 group">
           <img src="https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/Onion.png" alt="ConnectOnion" className="w-8 h-8 rounded-lg object-cover" />
           <div>
             <div className="text-lg font-bold text-white">ConnectOnion</div>
-            <div className="text-xs text-gray-400">Documentation</div>
+            <div className="text-sm text-gray-300">Documentation</div>
           </div>
         </Link>
       </div>
 
       {/* Enhanced Search */}
-      <div className="p-4 border-b border-gray-800">
+      <div className="p-4 pb-2 bg-gray-800/30">
         <div className="relative group">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 transition-colors group-focus-within:text-purple-400" />
           <input
@@ -322,7 +338,7 @@ export function DocsSidebar() {
             placeholder="Search docs..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-8 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:border-purple-500 focus:ring-2 focus:ring-purple-500/30 focus:outline-none transition-all text-sm"
+            className="w-full pl-10 pr-8 py-2.5 bg-gray-800/50 border border-gray-600 rounded-lg text-gray-100 placeholder-gray-400 focus:border-purple-400 focus:ring-2 focus:ring-purple-400/20 focus:outline-none transition-all text-sm font-normal"
           />
           {searchQuery ? (
             <button
@@ -342,53 +358,42 @@ export function DocsSidebar() {
           )}
         </div>
         
-        {/* Search help text - always visible */}
+        {/* Search help text - more compact */}
         {!searchQuery && (
-          <div className="mt-2 text-[11px] text-gray-500">
+          <div className="mt-1.5 text-[11px] text-gray-500">
             Search by title, keywords, or sections
           </div>
         )}
         
         {/* Search Results Summary */}
         {searchQuery && (
-          <div className="mt-2 space-y-1">
-            <div className="text-xs text-gray-400">
-              {searchResults.length === 0 ? 'No' : searchResults.length} result{searchResults.length !== 1 ? 's' : ''} found
+          <div className="mt-1.5">
+            <div className="text-[11px] text-gray-500">
+              {searchResults.length === 0 
+                ? 'No results found' 
+                : `${searchResults.length} result${searchResults.length !== 1 ? 's' : ''} • Use arrow keys`
+              }
             </div>
-            {searchResults.length > 0 && (
-              <div className="text-[11px] text-gray-500 flex items-center gap-2">
-                <div className="flex items-center gap-1">
-                  <kbd className="px-1 py-0.5 text-[10px] bg-gray-700 rounded">↑</kbd>
-                  <kbd className="px-1 py-0.5 text-[10px] bg-gray-700 rounded">↓</kbd>
-                  <span>Navigate</span>
-                </div>
-                <span className="text-gray-600">•</span>
-                <div className="flex items-center gap-1">
-                  <kbd className="px-1.5 py-0.5 text-[10px] bg-gray-700 rounded">↵</kbd>
-                  <span>Select</span>
-                </div>
-              </div>
-            )}
           </div>
         )}
       </div>
 
       {/* Quick Actions */}
-      <div className="px-4 py-2 border-b border-gray-800">
+      <div className="px-3 py-2 border-b border-gray-700/50">
         <button
           onClick={handleCopyAllDocs}
           disabled={copyStatus === 'copying'}
-          className="w-full flex items-center justify-center gap-2 py-2 px-3 bg-gray-800 hover:bg-gray-700 disabled:bg-gray-800 rounded-md text-gray-300 hover:text-white disabled:text-gray-500 text-sm transition-all"
+          className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-gradient-to-r from-purple-600/80 to-pink-600/80 hover:from-purple-600 hover:to-pink-600 disabled:from-gray-600 disabled:to-gray-700 rounded-lg text-white font-medium text-sm transition-all transform hover:scale-[1.02] shadow-lg shadow-purple-500/20"
         >
           {copyStatus === 'copying' ? (
             <>
-              <div className="w-3 h-3 border-2 border-gray-400 border-t-transparent rounded-full animate-spin" />
+              <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
               <span>Copying...</span>
             </>
           ) : copyStatus === 'success' ? (
             <>
-              <Check className="w-4 h-4 text-green-400" />
-              <span>Copied!</span>
+              <Check className="w-4 h-4" />
+              <span>Copied to Clipboard!</span>
             </>
           ) : (
             <>
@@ -400,66 +405,66 @@ export function DocsSidebar() {
       </div>
 
       {/* Navigation with Search Highlighting */}
-      <nav className="flex-1 overflow-y-auto py-4">
-        {/* Quick Jump when searching */}
+      <nav className="flex-1 overflow-y-auto py-4 px-2 custom-scrollbar bg-gray-900/50">
+        {/* Search Results Preview */}
         {searchQuery && searchResults.length > 0 && (
-          <div className="mb-4 px-4">
-            <div className="text-xs text-gray-500 mb-2">Quick Jump</div>
-            <div className="space-y-1">
-              {searchResults.slice(0, 3).map((result, idx) => (
-                <Link
-                  key={result.item.href}
-                  href={result.item.href}
-                  className={`block px-3 py-2 rounded-md text-sm transition-all ${
-                    idx === selectedIndex 
-                      ? 'bg-purple-500/20 text-purple-200 ring-2 ring-purple-400/50' 
-                      : 'bg-gray-800/50 text-gray-300 hover:bg-gray-800 hover:text-white'
-                  }`}
-                >
-                  <div className="flex items-center justify-between">
+          <div className="mb-4 mx-1">
+            <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-lg p-3 border border-purple-500/20">
+              <div className="text-xs font-medium text-purple-400 mb-2 flex items-center gap-2">
+                <Sparkles className="w-3 h-3" />
+                Top Matches
+              </div>
+              <div className="space-y-1">
+                {searchResults.slice(0, 3).map((result, idx) => (
+                  <Link
+                    key={result.item.href}
+                    href={result.item.href}
+                    className={`block px-3 py-2 rounded-md text-sm transition-all ${
+                      idx === selectedIndex 
+                        ? 'bg-purple-500/20 text-purple-100' 
+                        : 'hover:bg-purple-500/10 text-gray-300 hover:text-purple-200'
+                    }`}
+                  >
                     <div className="flex items-center gap-2">
-                      {result.item.icon && <result.item.icon className="w-3 h-3" />}
-                      <SearchHighlight 
-                        text={result.item.title} 
-                        query={searchQuery}
-                      />
-                    </div>
-                    <div className="flex items-center gap-1">
-                      {result.matches.includes('title') && (
-                        <span className="text-[10px] px-1 bg-purple-900/30 text-purple-400 rounded">exact</span>
-                      )}
-                      {result.matches.includes('keywords') && (
-                        <span className="text-[10px] px-1 bg-purple-900/30 text-purple-400 rounded">tag</span>
+                      {result.item.icon && <result.item.icon className={`w-4 h-4 ${idx === selectedIndex ? 'text-purple-300' : 'text-gray-500'}`} />}
+                      <div className="flex-1">
+                        <SearchHighlight 
+                          text={result.item.title} 
+                          query={searchQuery}
+                        />
+                        <div className="text-xs text-gray-500 mt-0.5">{result.section}</div>
+                      </div>
+                      {result.score >= 10 && (
+                        <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/20 text-purple-300 rounded-full font-medium">BEST</span>
                       )}
                     </div>
-                  </div>
-                  <div className="text-[10px] text-gray-500 mt-1">{result.section}</div>
-                </Link>
-              ))}
+                  </Link>
+                ))}
+              </div>
             </div>
           </div>
         )}
 
         {/* Regular Navigation */}
-        {filteredNavigation.map((section) => (
-          <div key={section.title} className="mb-6">
+        {filteredNavigation.map((section, sectionIdx) => (
+          <div key={section.title} className={`${sectionIdx > 0 ? 'mt-4' : ''} mb-2`}>
             <button
               onClick={() => toggleSection(section.title)}
-              className="w-full flex items-center justify-between px-4 py-2 text-left text-sm font-semibold text-gray-300 hover:text-white transition-colors"
+              className="w-full flex items-center justify-between px-3 py-2 mb-2 text-left text-xs font-bold text-gray-400 uppercase tracking-wider hover:text-gray-200 transition-colors"
             >
               <SearchHighlight 
                 text={section.title} 
                 query={searchQuery}
               />
               {openSections.includes(section.title) ? (
-                <ChevronDown className="w-4 h-4" />
+                <ChevronDown className="w-3 h-3" />
               ) : (
-                <ChevronRight className="w-4 h-4" />
+                <ChevronRight className="w-3 h-3" />
               )}
             </button>
             
             {openSections.includes(section.title) && (
-              <ul className="mt-2 space-y-1" role="list">
+              <ul className="space-y-0.5" role="list">
                 {section.items.map((item) => {
                   const isActive = pathname === item.href
                   const IconComponent = item.icon
@@ -471,18 +476,20 @@ export function DocsSidebar() {
                     <li key={item.href} role="listitem">
                       <Link
                         href={item.href}
-                        className={`block px-4 py-2.5 min-h-[40px] text-sm rounded-md mx-2 transition-all relative ${
+                        className={`block px-3 py-2.5 text-sm font-normal rounded-lg mx-1 transition-all relative group ${
                           isActive
-                            ? 'bg-purple-500/20 text-purple-200 border-l-4 border-purple-400 font-medium'
+                            ? 'bg-purple-500/25 text-white font-medium shadow-sm ring-1 ring-purple-400/30'
                             : isInResults && searchQuery
-                            ? 'bg-purple-500/10 text-purple-300 ring-1 ring-purple-500/30'
-                            : 'text-gray-400 hover:text-gray-200 hover:bg-gray-800/50 focus:outline-none focus:ring-2 focus:ring-purple-500/50 focus:ring-inset'
-                        } ${isPromptExample ? 'pl-6' : ''}`}
+                            ? 'bg-purple-500/10 text-purple-100'
+                            : 'text-gray-300 hover:text-white hover:bg-gray-700/40'
+                        } ${isPromptExample ? 'ml-3' : ''}`}
                         aria-current={isActive ? 'page' : undefined}
                       >
-                        <div className="flex items-center gap-3">
+                        <div className="flex items-center gap-2.5">
                           {IconComponent && (
-                            <IconComponent className="w-4 h-4 flex-shrink-0" />
+                            <IconComponent className={`w-4 h-4 flex-shrink-0 ${
+                              isActive ? 'text-purple-300' : 'text-gray-400'
+                            }`} />
                           )}
                           <SearchHighlight 
                             text={item.title} 
@@ -490,12 +497,17 @@ export function DocsSidebar() {
                             className="truncate flex-1"
                           />
                           {item.difficulty && (
-                            <DifficultyBadge 
-                              level={item.difficulty as 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert'}
-                              size="sm"
-                              showIcon={false}
-                              className="flex-shrink-0"
-                            />
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${
+                              item.difficulty === 'Start Here' 
+                                ? 'bg-purple-500/20 text-purple-400' 
+                                : item.difficulty === 'Beginner'
+                                ? 'bg-green-500/20 text-green-400'
+                                : item.difficulty === 'Intermediate'
+                                ? 'bg-yellow-500/20 text-yellow-400'
+                                : 'bg-gray-500/20 text-gray-400'
+                            }`}>
+                              {item.difficulty}
+                            </span>
                           )}
                         </div>
                       </Link>
@@ -517,48 +529,41 @@ export function DocsSidebar() {
       </nav>
 
       {/* Footer */}
-      <div className="p-3 border-t border-gray-800 space-y-2">
+      <div className="border-t border-gray-700/50 bg-gray-800/30">
         {/* Community Links */}
-        <div className="grid grid-cols-3 gap-1.5">
+        <div className="flex items-center justify-around py-2 px-2">
           <a
             href="https://github.com/wu-changxing/connectonion"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-col items-center gap-1 py-2 px-2 bg-gray-800/30 hover:bg-gray-800/60 rounded-md text-gray-400 hover:text-white transition-all group"
-            title="GitHub Repository"
+            className="p-2 rounded-lg text-gray-400 hover:text-purple-300 hover:bg-gray-700/50 transition-all"
+            title="GitHub"
           >
-            <GitBranch className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
-            <span className="text-[10px]">GitHub</span>
+            <GitBranch className="w-4 h-4" />
           </a>
           <a
             href="https://pypi.org/project/connectonion/"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-col items-center gap-1 py-2 px-2 bg-gray-800/30 hover:bg-gray-800/60 rounded-md text-gray-400 hover:text-white transition-all group"
-            title="PyPI Package"
+            className="p-2 rounded-lg text-gray-400 hover:text-purple-300 hover:bg-gray-700/50 transition-all"
+            title="PyPI"
           >
-            <Package className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
-            <span className="text-[10px]">PyPI</span>
+            <Package className="w-4 h-4" />
           </a>
           <a
             href="https://discord.gg/4xfD9k8AUF"
             target="_blank"
             rel="noopener noreferrer"
-            className="flex flex-col items-center gap-1 py-2 px-2 bg-gray-800/30 hover:bg-gray-800/60 rounded-md text-gray-400 hover:text-white transition-all group"
-            title="Join Discord"
+            className="p-2 rounded-lg text-gray-400 hover:text-purple-300 hover:bg-gray-700/50 transition-all"
+            title="Discord"
           >
-            <MessageCircle className="w-4 h-4 group-hover:text-purple-400 transition-colors" />
-            <span className="text-[10px]">Discord</span>
+            <MessageCircle className="w-4 h-4" />
           </a>
-        </div>
-        
-        {/* Version Status */}
-        <div className="flex items-center justify-between px-2 py-1.5 bg-gray-800/20 rounded-md">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse" title="Status: Active"></div>
-            <span className="text-[11px] text-gray-400">v0.0.1b6</span>
+          <div className="flex items-center gap-2 px-2">
+            <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
+            <span className="text-xs text-gray-400">v0.0.1b6</span>
+            <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded-full font-bold">BETA</span>
           </div>
-          <span className="px-2 py-0.5 bg-purple-500/20 text-purple-400 rounded text-[10px] font-medium">BETA</span>
         </div>
       </div>
     </div>

@@ -5,9 +5,12 @@ import Link from 'next/link';
 import { ChevronLeft, Copy, Check, Zap, Settings, Brain, Gauge, Lightbulb } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { CopyPromptButton } from '../../components/CopyPromptButton'
 
 export default function MaxIterationsPage() {
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
+
+;
 
   const copyToClipboard = (text: string, section: string) => {
     navigator.clipboard.writeText(text);
@@ -100,43 +103,45 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen bg-slate-950">
       {/* Header */}
       <header className="bg-gray-900 border-b border-gray-800">
-        <div className="max-w-4xl mx-auto px-8">
+        <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-6">
             <div className="flex items-center">
-              <Link href="/" className="flex items-center text-gray-300 hover:text-white mr-8">
+              <Link href="/" className="flex items-center text-gray-300 hover:text-white mr-4 sm:mr-8 transition-colors">
                 <ChevronLeft className="w-5 h-5 mr-1" />
-                Back to Docs
+                <span className="hidden sm:inline">Back to Docs</span>
+                <span className="sm:hidden">Back</span>
               </Link>
-              <h1 className="text-2xl font-bold text-white">max_iterations Guide</h1>
+              <h1 className="heading-2 text-white">max_iterations Guide</h1>
             </div>
+            <CopyPromptButton />
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-4xl mx-auto px-8 py-12">
+      <main className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 py-8 lg:py-12">
         {/* Hero Section */}
-        <div className="bg-gradient-to-b from-violet-700 to-purple-700 rounded-2xl p-8 mb-12 text-white">
+        <div className="bg-gradient-to-r from-purple-900/30 to-purple-800/20 border border-purple-500/20 rounded-xl p-6 lg:p-8 mb-12">
           <div className="max-w-3xl">
-            <h2 className="text-3xl font-bold mb-4">Control Your Agent's Power</h2>
-            <p className="text-xl mb-6">
+            <h2 className="heading-1 text-white mb-4">Control Your Agent's Power</h2>
+            <p className="body-large text-gray-200 mb-6">
               max_iterations determines how many tool calls your agent can make. 
               Master this to build efficient, reliable agents.
             </p>
-            <div className="flex items-center space-x-4 text-sm">
-              <span className="flex items-center">
-                <Zap className="w-4 h-4 mr-1" />
+            <div className="flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-6 text-sm">
+              <span className="flex items-center text-purple-300">
+                <Zap className="w-4 h-4 mr-2 flex-shrink-0" />
                 Default: 10 iterations
               </span>
-              <span className="flex items-center">
-                <Settings className="w-4 h-4 mr-1" />
+              <span className="flex items-center text-purple-300">
+                <Settings className="w-4 h-4 mr-2 flex-shrink-0" />
                 Fully customizable
               </span>
-              <span className="flex items-center">
-                <Brain className="w-4 h-4 mr-1" />
+              <span className="flex items-center text-purple-300">
+                <Brain className="w-4 h-4 mr-2 flex-shrink-0" />
                 Smart patterns included
               </span>
             </div>
@@ -145,90 +150,131 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
 
         {/* What Are Iterations */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4">What Are Iterations?</h2>
-          <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
-            <p className="text-gray-300 mb-4">
+          <h2 className="heading-2 text-white mb-6">What Are Iterations?</h2>
+          <div className="bg-gray-900/50 rounded-lg border border-gray-700 p-6">
+            <p className="body-base text-gray-200 mb-6">
               Think of iterations as "attempts" - how many times your agent can use tools to complete a task.
             </p>
-            <pre className="bg-black/40 rounded-lg p-4 font-mono text-sm text-gray-200">
+            <div className="bg-black/50 rounded-lg p-4 overflow-x-auto">
+              <SyntaxHighlighter 
+                language="bash" 
+                style={vscDarkPlus}
+                customStyle={{
+                  background: 'transparent',
+                  margin: 0,
+                  padding: 0,
+                  fontSize: '0.875rem'
+                }}
+              >
 {`# Your agent tries to complete the task
 # Iteration 1: "I need to search for info" → calls search tool
 # Iteration 2: "Now I'll calculate something" → calls calculate tool
 # Iteration 3: "Let me save the result" → calls save tool
 # Done! Task completed in 3 iterations`}
-            </pre>
+              </SyntaxHighlighter>
+            </div>
           </div>
         </section>
 
         {/* Quick Start */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-6">Quick Start - Super Simple</h2>
+          <h2 className="heading-2 text-white mb-6">Quick Start - Super Simple</h2>
           
-          <div className="grid grid-cols-1 gap-6">
+          <div className="space-y-6">
             {/* Basic Usage */}
-            <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-3">
+            <div className="bg-gray-900/50 rounded-lg border border-gray-700 p-6">
+              <h3 className="heading-3 text-white mb-4">
                 The Basics (90% of cases)
               </h3>
-              <div className="rounded overflow-hidden mb-3">
-                <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', margin: 0, padding: 0, fontSize: '0.85rem' }}>
+              <div className="bg-black/30 rounded-lg overflow-hidden mb-4 custom-scrollbar">
+                <SyntaxHighlighter 
+                  language="python" 
+                  style={vscDarkPlus} 
+                  customStyle={{ 
+                    background: 'transparent', 
+                    margin: 0, 
+                    padding: '1rem', 
+                    fontSize: '0.875rem',
+                    lineHeight: '1.5'
+                  }}
+                >
                   {examples.basic}
                 </SyntaxHighlighter>
               </div>
               <button
                 onClick={() => copyToClipboard(examples.basic, 'basic')}
-                className="flex items-center text-sm text-violet-400 hover:text-violet-300"
+                className="flex items-center text-sm text-purple-400 hover:text-purple-300 transition-colors"
               >
                 {copiedSection === 'basic' ? (
-                  <Check className="w-4 h-4 mr-1" />
+                  <Check className="w-4 h-4 mr-2" />
                 ) : (
-                  <Copy className="w-4 h-4 mr-1" />
+                  <Copy className="w-4 h-4 mr-2" />
                 )}
                 Copy code
               </button>
             </div>
 
             {/* Complex Tasks */}
-            <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-3">
+            <div className="bg-gray-900/50 rounded-lg border border-gray-700 p-6">
+              <h3 className="heading-3 text-white mb-4">
                 When You Need More Power
               </h3>
-              <div className="rounded overflow-hidden mb-3">
-                <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', margin: 0, padding: 0, fontSize: '0.85rem' }}>
+              <div className="bg-black/30 rounded-lg overflow-hidden mb-4 custom-scrollbar">
+                <SyntaxHighlighter 
+                  language="python" 
+                  style={vscDarkPlus} 
+                  customStyle={{ 
+                    background: 'transparent', 
+                    margin: 0, 
+                    padding: '1rem', 
+                    fontSize: '0.875rem',
+                    lineHeight: '1.5'
+                  }}
+                >
                   {examples.complex}
                 </SyntaxHighlighter>
               </div>
               <button
                 onClick={() => copyToClipboard(examples.complex, 'complex')}
-                className="flex items-center text-sm text-violet-400 hover:text-violet-300"
+                className="flex items-center text-sm text-purple-400 hover:text-purple-300 transition-colors"
               >
                 {copiedSection === 'complex' ? (
-                  <Check className="w-4 h-4 mr-1" />
+                  <Check className="w-4 h-4 mr-2" />
                 ) : (
-                  <Copy className="w-4 h-4 mr-1" />
+                  <Copy className="w-4 h-4 mr-2" />
                 )}
                 Copy code
               </button>
             </div>
 
             {/* Override */}
-            <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-3">
+            <div className="bg-gray-900/50 rounded-lg border border-gray-700 p-6">
+              <h3 className="heading-3 text-white mb-4">
                 Quick Override for One Task
               </h3>
-              <div className="rounded overflow-hidden mb-3">
-                <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', margin: 0, padding: 0, fontSize: '0.85rem' }}>
+              <div className="bg-black/30 rounded-lg overflow-hidden mb-4 custom-scrollbar">
+                <SyntaxHighlighter 
+                  language="python" 
+                  style={vscDarkPlus} 
+                  customStyle={{ 
+                    background: 'transparent', 
+                    margin: 0, 
+                    padding: '1rem', 
+                    fontSize: '0.875rem',
+                    lineHeight: '1.5'
+                  }}
+                >
                   {examples.override}
                 </SyntaxHighlighter>
               </div>
               <button
                 onClick={() => copyToClipboard(examples.override, 'override')}
-                className="flex items-center text-sm text-violet-400 hover:text-violet-300"
+                className="flex items-center text-sm text-purple-400 hover:text-purple-300 transition-colors"
               >
                 {copiedSection === 'override' ? (
-                  <Check className="w-4 h-4 mr-1" />
+                  <Check className="w-4 h-4 mr-2" />
                 ) : (
-                  <Copy className="w-4 h-4 mr-1" />
+                  <Copy className="w-4 h-4 mr-2" />
                 )}
                 Copy code
               </button>
@@ -238,30 +284,40 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
 
         {/* Real Examples */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4">Real Examples</h2>
+          <h2 className="heading-2 text-white mb-6">Real Examples</h2>
           
           <div className="space-y-6">
             {/* Calculator Example */}
-            <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-3">
+            <div className="bg-gray-900/50 rounded-lg border border-gray-700 p-6">
+              <h3 className="heading-3 text-white mb-4">
                 Simple Calculator Bot
               </h3>
-              <p className="text-gray-300 mb-3">
+              <p className="body-base text-gray-200 mb-4">
                 Calculator needs very few iterations - math is straightforward.
               </p>
-              <div className="rounded overflow-hidden mb-3">
-                <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', margin: 0, padding: 0, fontSize: '0.85rem' }}>
+              <div className="bg-black/30 rounded-lg overflow-hidden mb-4 custom-scrollbar">
+                <SyntaxHighlighter 
+                  language="python" 
+                  style={vscDarkPlus} 
+                  customStyle={{ 
+                    background: 'transparent', 
+                    margin: 0, 
+                    padding: '1rem', 
+                    fontSize: '0.875rem',
+                    lineHeight: '1.5'
+                  }}
+                >
                   {examples.calculator}
                 </SyntaxHighlighter>
               </div>
               <button
                 onClick={() => copyToClipboard(examples.calculator, 'calculator')}
-                className="flex items-center text-sm text-violet-400 hover:text-violet-300"
+                className="flex items-center text-sm text-purple-400 hover:text-purple-300 transition-colors"
               >
                 {copiedSection === 'calculator' ? (
-                  <Check className="w-4 h-4 mr-1" />
+                  <Check className="w-4 h-4 mr-2" />
                 ) : (
-                  <Copy className="w-4 h-4 mr-1" />
+                  <Copy className="w-4 h-4 mr-2" />
                 )}
                 Copy code
               </button>
@@ -269,14 +325,14 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
 
             {/* Error Message */}
             <div className="bg-yellow-900/20 rounded-lg border border-yellow-500/30 p-6">
-              <h3 className="text-lg font-semibold text-white mb-3">
+              <h3 className="heading-3 text-white mb-4">
                 What Happens When You Hit The Limit?
               </h3>
-              <div className="bg-black/30 rounded p-4 font-mono text-sm mb-3 text-red-300">
-                "Task incomplete: Maximum iterations (10) reached."
+              <div className="bg-black/40 rounded-lg p-4 font-mono text-sm mb-4">
+                <span className="text-red-300">"Task incomplete: Maximum iterations (10) reached."</span>
               </div>
-              <p className="text-gray-300">
-                <strong>Solution:</strong> Increase <code className="bg-black/30 px-1 py-0.5 rounded">max_iterations</code> for the agent or this specific task.
+              <p className="body-base text-gray-200">
+                <strong className="text-yellow-300">Solution:</strong> Increase <code className="bg-black/40 px-2 py-1 rounded text-purple-300">max_iterations</code> for the agent or this specific task.
               </p>
             </div>
           </div>
@@ -284,59 +340,79 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
 
         {/* Cool Tricks */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-6 flex items-center">
-            <Lightbulb className="w-6 h-6 mr-2 text-yellow-500" />
+          <h2 className="heading-2 text-white mb-6 flex items-center">
+            <Lightbulb className="w-6 h-6 mr-3 text-yellow-500 flex-shrink-0" />
             Cool Tricks & Advanced Patterns
           </h2>
 
-          <div className="grid grid-cols-1 gap-6">
+          <div className="space-y-6">
             {/* Auto-Retry */}
-            <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-3">
+            <div className="bg-gray-900/50 rounded-lg border border-gray-700 p-6">
+              <h3 className="heading-3 text-white mb-4">
                 Trick 1: Auto-Retry with Higher Limit
               </h3>
-              <p className="text-gray-300 mb-3">
+              <p className="body-base text-gray-200 mb-4">
                 Automatically increases iterations if task fails.
               </p>
-              <div className="rounded overflow-hidden mb-3">
-                <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', margin: 0, padding: 0, fontSize: '0.85rem' }}>
+              <div className="bg-black/30 rounded-lg overflow-x-auto mb-4">
+                <SyntaxHighlighter 
+                  language="python" 
+                  style={vscDarkPlus} 
+                  customStyle={{ 
+                    background: 'transparent', 
+                    margin: 0, 
+                    padding: '1rem', 
+                    fontSize: '0.875rem',
+                    lineHeight: '1.5'
+                  }}
+                >
                   {examples.autoRetry}
                 </SyntaxHighlighter>
               </div>
               <button
                 onClick={() => copyToClipboard(examples.autoRetry, 'autoRetry')}
-                className="flex items-center text-sm text-violet-400 hover:text-violet-300"
+                className="flex items-center text-sm text-purple-400 hover:text-purple-300 transition-colors"
               >
                 {copiedSection === 'autoRetry' ? (
-                  <Check className="w-4 h-4 mr-1" />
+                  <Check className="w-4 h-4 mr-2" />
                 ) : (
-                  <Copy className="w-4 h-4 mr-1" />
+                  <Copy className="w-4 h-4 mr-2" />
                 )}
                 Copy code
               </button>
             </div>
 
             {/* Self-Adjusting */}
-            <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 p-6">
-              <h3 className="text-lg font-semibold text-white mb-3">
+            <div className="bg-gray-900/50 rounded-lg border border-gray-700 p-6">
+              <h3 className="heading-3 text-white mb-4">
                 Trick 2: Self-Adjusting Agent
               </h3>
-              <p className="text-gray-300 mb-3">
+              <p className="body-base text-gray-200 mb-4">
                 Agent that learns optimal iterations from history.
               </p>
-              <div className="rounded overflow-hidden mb-3">
-                <SyntaxHighlighter language="python" style={vscDarkPlus} customStyle={{ background: 'transparent', margin: 0, padding: 0, fontSize: '0.85rem' }}>
+              <div className="bg-black/30 rounded-lg overflow-x-auto mb-4">
+                <SyntaxHighlighter 
+                  language="python" 
+                  style={vscDarkPlus} 
+                  customStyle={{ 
+                    background: 'transparent', 
+                    margin: 0, 
+                    padding: '1rem', 
+                    fontSize: '0.875rem',
+                    lineHeight: '1.5'
+                  }}
+                >
                   {examples.selfAdjusting}
                 </SyntaxHighlighter>
               </div>
               <button
                 onClick={() => copyToClipboard(examples.selfAdjusting, 'selfAdjusting')}
-                className="flex items-center text-sm text-violet-400 hover:text-violet-300"
+                className="flex items-center text-sm text-purple-400 hover:text-purple-300 transition-colors"
               >
                 {copiedSection === 'selfAdjusting' ? (
-                  <Check className="w-4 h-4 mr-1" />
+                  <Check className="w-4 h-4 mr-2" />
                 ) : (
-                  <Copy className="w-4 h-4 mr-1" />
+                  <Copy className="w-4 h-4 mr-2" />
                 )}
                 Copy code
               </button>
@@ -346,127 +422,132 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
 
         {/* Quick Reference Table */}
         <section className="mb-12">
-          <h2 className="text-2xl font-bold text-white mb-4 flex items-center">
-            <Gauge className="w-6 h-6 mr-2" />
+          <h2 className="heading-2 text-white mb-6 flex items-center">
+            <Gauge className="w-6 h-6 mr-3 flex-shrink-0" />
             Quick Reference
           </h2>
           
-          <div className="bg-gray-900 rounded-lg shadow-sm border border-gray-700 overflow-hidden">
-            <table className="min-w-full divide-y divide-gray-800">
-              <thead className="bg-gray-800">
-                <tr>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    What You're Doing
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Iterations
-                  </th>
-                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-300 uppercase tracking-wider">
-                    Example
-                  </th>
-                </tr>
-              </thead>
-              <tbody className="bg-gray-900 divide-y divide-gray-800">
-                <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                    Simple Q&A
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    3-5
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    "What's the weather?"
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                    Calculations
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    5-10
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    "Calculate my taxes"
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                    Multi-step tasks
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    10-20
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    "Search and summarize"
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                    Complex workflows
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    20-40
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    "Analyze all data and generate report"
-                  </td>
-                </tr>
-                <tr>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-white">
-                    Research projects
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    30-50
-                  </td>
-                  <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-300">
-                    "Research topic from multiple sources"
-                  </td>
-                </tr>
-              </tbody>
-            </table>
+          <div className="bg-gray-900/50 rounded-lg border border-gray-700 overflow-hidden">
+            <div className="overflow-x-auto custom-scrollbar">
+              <table className="min-w-full divide-y divide-gray-800">
+                <thead className="bg-gray-800/50">
+                  <tr>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">
+                      What You're Doing
+                    </th>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">
+                      Iterations
+                    </th>
+                    <th className="px-4 lg:px-6 py-4 text-left text-xs font-medium text-gray-200 uppercase tracking-wider">
+                      Example
+                    </th>
+                  </tr>
+                </thead>
+                <tbody className="bg-gray-900/30 divide-y divide-gray-800">
+                  <tr className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 lg:px-6 py-4 text-sm font-medium text-white">
+                      Simple Q&A
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-purple-300 font-semibold">
+                      3-5
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-gray-200">
+                      "What's the weather?"
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 lg:px-6 py-4 text-sm font-medium text-white">
+                      Calculations
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-purple-300 font-semibold">
+                      5-10
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-gray-200">
+                      "Calculate my taxes"
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 lg:px-6 py-4 text-sm font-medium text-white">
+                      Multi-step tasks
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-purple-300 font-semibold">
+                      10-20
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-gray-200">
+                      "Search and summarize"
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 lg:px-6 py-4 text-sm font-medium text-white">
+                      Complex workflows
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-purple-300 font-semibold">
+                      20-40
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-gray-200">
+                      "Analyze all data and generate report"
+                    </td>
+                  </tr>
+                  <tr className="hover:bg-gray-800/30 transition-colors">
+                    <td className="px-4 lg:px-6 py-4 text-sm font-medium text-white">
+                      Research projects
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-purple-300 font-semibold">
+                      30-50
+                    </td>
+                    <td className="px-4 lg:px-6 py-4 text-sm text-gray-200">
+                      "Research topic from multiple sources"
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 
         {/* One Minute Summary */}
         <section className="mb-12">
-          <div className="bg-gradient-to-b from-emerald-900/30 to-emerald-800/10 rounded-lg border border-emerald-500/30 p-8">
-            <h2 className="text-2xl font-bold text-white mb-4">
-              ⏱️ The One-Minute Summary
+          <div className="bg-gradient-to-r from-emerald-900/30 to-emerald-800/20 rounded-lg border border-emerald-500/30 p-6 lg:p-8">
+            <h2 className="heading-2 text-white mb-6 flex items-center">
+              <span className="text-2xl mr-3">⏱️</span>
+              The One-Minute Summary
             </h2>
-            <ol className="space-y-2 text-gray-300">
-              <li className="flex items-start">
-                <span className="font-bold mr-2">1.</span>
-                Most agents are fine with default <code className="bg-black/30 px-2 py-1 rounded">max_iterations=10</code>
+            <ol className="space-y-3 text-gray-200">
+              <li className="flex items-start gap-3">
+                <span className="font-bold text-emerald-300 flex-shrink-0">1.</span>
+                <span>Most agents are fine with default <code className="bg-black/40 px-2 py-1 rounded text-purple-300">max_iterations=10</code></span>
               </li>
-              <li className="flex items-start">
-                <span className="font-bold mr-2">2.</span>
-                Simple bots can use 5, complex ones need 20-30
+              <li className="flex items-start gap-3">
+                <span className="font-bold text-emerald-300 flex-shrink-0">2.</span>
+                <span>Simple bots can use 5, complex ones need 20-30</span>
               </li>
-              <li className="flex items-start">
-                <span className="font-bold mr-2">3.</span>
-                Override per-task when needed: <code className="bg-black/30 px-2 py-1 rounded">agent.input(prompt, max_iterations=X)</code>
+              <li className="flex items-start gap-3">
+                <span className="font-bold text-emerald-300 flex-shrink-0">3.</span>
+                <span>Override per-task when needed: <code className="bg-black/40 px-2 py-1 rounded text-purple-300">agent.input(prompt, max_iterations=X)</code></span>
               </li>
-              <li className="flex items-start">
-                <span className="font-bold mr-2">4.</span>
-                If you see "Maximum iterations reached", just increase the limit
+              <li className="flex items-start gap-3">
+                <span className="font-bold text-emerald-300 flex-shrink-0">4.</span>
+                <span>If you see "Maximum iterations reached", just increase the limit</span>
               </li>
-              <li className="flex items-start">
-                <span className="font-bold mr-2">5.</span>
-                Advanced: Build smart agents that adjust limits automatically
+              <li className="flex items-start gap-3">
+                <span className="font-bold text-emerald-300 flex-shrink-0">5.</span>
+                <span>Advanced: Build smart agents that adjust limits automatically</span>
               </li>
             </ol>
-            <p className="mt-6 text-lg font-semibold text-emerald-200">
-              That's it! You now know everything about iteration control. Start simple, adjust when needed! 🚀
-            </p>
+            <div className="mt-6 p-4 bg-emerald-900/20 rounded-lg border border-emerald-500/20">
+              <p className="body-large text-emerald-200 font-semibold">
+                That's it! You now know everything about iteration control. Start simple, adjust when needed!
+              </p>
+            </div>
           </div>
         </section>
 
         {/* Navigation */}
-        <div className="flex justify-between items-center pt-8 border-t border-gray-800">
-          <Link href="/xray" className="text-violet-400 hover:text-violet-300 font-medium">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-8 border-t border-gray-800">
+          <Link href="/xray" className="text-purple-400 hover:text-purple-300 font-medium transition-colors text-center sm:text-left">
             ← Previous: Xray Debugging
           </Link>
-          <Link href="/prompts" className="text-violet-400 hover:text-violet-300 font-medium">
+          <Link href="/prompts" className="text-purple-400 hover:text-purple-300 font-medium transition-colors text-center sm:text-right">
             Next: System Prompts →
           </Link>
         </div>

@@ -26,7 +26,7 @@ const navigation = [
     title: 'Core Concepts',
     items: [
       { title: 'max_iterations', href: '/max-iterations', icon: Gauge, difficulty: 'Start Here', keywords: ['loop', 'limit'] },
-      { title: 'LLM Function', href: '/llm', icon: Zap, keywords: ['ai', 'model'] },
+      { title: 'LLM Function', href: '/llm_do', icon: Zap, keywords: ['ai', 'model', 'llm_do'] },
       { title: 'Tools', href: '/tools', icon: Code, keywords: ['function', 'utility'] },
       { title: 'System Prompts', href: '/prompts', icon: FileText, keywords: ['template', 'prompt'] },
       { title: 'Trust Parameter', href: '/trust', icon: Shield, keywords: ['security', 'safety'] },

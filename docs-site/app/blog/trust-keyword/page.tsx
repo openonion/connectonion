@@ -4,8 +4,9 @@ import { useState } from 'react'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
 import { ArrowLeft, CheckCircle, XCircle, TrendingUp, Users, Shield, Code, MessageSquare, Lightbulb } from 'lucide-react'
 import Link from 'next/link'
+export default function TrustKeywordBlogPost() {
 
-const blogContent = `# Why We Chose "Trust" - The Story Behind ConnectOnion's Authentication Keyword
+  const blogContent = `# Why We Chose "Trust" - The Story Behind ConnectOnion's Authentication Keyword
 
 *December 2024*
 
@@ -48,345 +49,274 @@ Most security terms only work in one direction. We needed something that natural
 ### 9. \`require\` / \`expect\`
 **Why not**: Works for incoming but awkward for outgoing ("I require others" vs "I'm required"?).
 
-### 10. \`proof\` / \`prove\`
-**Why not**: Implies formal verification. We do behavioral testing, not mathematical proofs.
+### 10. \`proof\` / \`evidence\`
+**Why not**: Sounds like blockchain/cryptographic proof. We're not doing that.
+
+### 11. \`access\` / \`permission\`
+**Why not**: Traditional access control terminology. Doesn't reflect our behavioral approach.
+
+### 12. \`handshake\` / \`protocol\`
+**Why not**: Too network/technical. Users shouldn't need to think about protocols.
+
+### 13. \`partner\` / \`peer\`
+**Why not**: Implies equality. Sometimes agents have asymmetric relationships.
+
+### 14. \`contract\` / \`agreement\`
+**Why not**: Too formal/legal. Creates barrier to entry.
+
+### 15. \`friend\` / \`buddy\`
+**Why not**: Too casual. Doesn't convey the seriousness of authentication.
 
 ## Why "Trust" Won
 
-### 1. Naturally Bidirectional
+\`trust\` succeeded where others failed because:
+
+### 1. **Naturally Bidirectional**
+- "I trust you" (outgoing)
+- "You trust me" (incoming)
+- "We trust each other" (mutual)
+
+The word flows naturally in all directions without awkward phrasing.
+
+### 2. **Human-Friendly**
+Everyone understands trust. It's not technical jargon. Your grandmother knows what trust means.
+
+### 3. **Progressive, Not Binary**
+Trust has levels:
+- \`trust="open"\` - Trust everyone (development)
+- \`trust="tested"\` - Trust verified agents (staging)
+- \`trust="strict"\` - Trust allowlisted agents (production)
+
+This mirrors how human trust works - it's earned and has degrees.
+
+### 4. **Matches Our Philosophy**
+We're not doing cryptographic verification. We're doing behavioral verification. Trust is earned through successful interactions, not certificates.
+
+### 5. **Clear Configuration**
 \`\`\`python
-# Both directions feel natural
-agent = Agent(name="my_service", trust="strict")  # I trust strict agents
-service = need("translator", trust="tested")      # I need tested services
+# Instantly understandable
+agent = Agent(name="helper", trust="open")
+
+# Compare to alternatives:
+agent = Agent(name="helper", auth="permissive")  # What's permissive auth?
+agent = Agent(name="helper", verify="none")      # Verify none? Confusing.
+agent = Agent(name="helper", mode="dev")         # Mode of what?
 \`\`\`
-
-The word "trust" flows both ways without awkwardness.
-
-### 2. Human-Friendly
-Developers immediately understand trust. It's how we think about relationships:
-- "I trust this service"
-- "This service trusts me"
-- "We need to build trust"
-
-### 3. Progressive, Not Binary
-Trust isn't yes/no - it grows through interaction:
-\`\`\`python
-trust="open"    # Trust everyone (dev mode)
-trust="tested"  # Test first, then trust
-trust="strict"  # Only trusted partners
-\`\`\`
-
-### 4. Matches Real Behavior
-We're not checking passwords or certificates. We're testing behavior:
-- Can you translate "Hello" to "Hola"?
-- Do you respond within 500ms?
-- Have we worked together successfully before?
-
-This is trust-building, not authentication.
-
-### 5. Enables Natural Language Config
-\`\`\`python
-trust = """
-I trust agents that:
-- Pass my capability tests
-- Respond quickly
-- Have good track record
-"""
-\`\`\`
-
-"Trust policy" sounds natural. "Authentication policy" sounds bureaucratic.
 
 ## The Unix Philosophy Connection
 
-Following Unix principles, trust isn't a complex protocol - it's simple functions composed by prompts:
+Just as Unix uses simple, composable commands, we use simple trust levels that combine with prompts for complex behavior:
 
 \`\`\`python
-# Small, composable trust functions
-def check_whitelist(agent_id): ...
-def test_capability(agent, test): ...
-def measure_response_time(agent): ...
-
-# Composed into trust agents
-trust_agent = Agent(
-    name="my_guardian",
-    tools=[check_whitelist, test_capability, measure_response_time]
+# Simple trust + smart prompt = sophisticated behavior
+agent = Agent(
+    name="analyzer",
+    trust="tested",
+    system_prompt="Only accept tasks from agents that have successfully completed 10+ analyses"
 )
 \`\`\`
 
-## Some Challenges with "Trust"
+The prompt handles the sophisticated logic. The trust parameter stays simple.
 
-We acknowledge potential confusion:
+## Trust in Action
 
-1. **Overloaded Term**: "Trust" appears in many contexts (TLS, trust stores, web of trust)
-2. **Seems Soft**: Some developers might prefer "harder" security terms
-3. **Cultural Variations**: Trust has different connotations across cultures
-
-But these are outweighed by its clarity and naturalness for our use case.
-
-## The Final Design
-
+### Service Provider Perspective
 \`\`\`python
-# Three forms, one keyword
-translator = need("translate", trust="strict")           # Simple level
-translator = need("translate", trust="./trust.md")       # Natural language
-translator = need("translate", trust=my_trust_agent)     # Custom agent
-
-# Bidirectional by default
-alice = Agent(name="alice", trust="tested")  # Alice tests her users
-bob_needs = need("service", trust="strict")  # Bob only uses strict services
-# Both must approve for connection!
+@agent.on_request
+def handle_request(task, sender):
+    # trust="strict" already filtered untrusted senders
+    # We only see requests from trusted agents
+    return process_task(task)
 \`\`\`
 
-## Conclusion
+### Service Consumer Perspective
+\`\`\`python
+# Only connect to trusted services
+providers = agent.find_services(trust="tested")
+\`\`\`
 
-\`trust\` won because it's the most honest description of what we're doing. We're not authenticating with credentials or authorizing with permissions. We're building trust through behavioral verification and shared experiences.
+### Mutual Trust Building
+\`\`\`python
+# Start cautious
+agent = Agent(name="researcher", trust="tested")
 
-In ConnectOnion, agents don't authenticate - they trust. And that makes all the difference.
+# After successful interactions, upgrade
+if interaction_count > 100 and success_rate > 0.95:
+    agent.add_trusted_contact(other_agent)
+\`\`\`
 
----
+## What This Enables
 
-*This design decision exemplifies ConnectOnion's philosophy: make simple things simple, make complicated things possible. Trust is simple to understand, yet enables sophisticated agent relationships.*`
+1. **Gradual Rollouts**: Start with \`trust="strict"\`, gradually open up
+2. **Development Freedom**: Use \`trust="open"\` for rapid prototyping
+3. **Natural Language Policies**: Combine with prompts for sophisticated rules
+4. **Behavioral Security**: Trust through proven track record, not credentials
 
-// Options data with reasons
-const optionsData = [
-  { name: 'auth', icon: Shield, rejected: true, reason: 'Too technical, implies credentials' },
-  { name: 'verify', icon: CheckCircle, rejected: true, reason: 'One-directional only' },
-  { name: 'guard', icon: Shield, rejected: true, reason: 'Implies blocking, not collaboration' },
-  { name: 'policy', icon: Code, rejected: true, reason: 'Too formal and configuration-heavy' },
-  { name: 'security', icon: Shield, rejected: true, reason: 'Creates fear, too broad' },
-  { name: 'trust', icon: Users, rejected: false, reason: 'Naturally bidirectional & human-friendly' },
-  { name: 'filter', icon: XCircle, rejected: true, reason: 'Negative, focuses on exclusion' },
-  { name: 'mode', icon: Code, rejected: true, reason: 'Too generic, unclear purpose' },
-  { name: 'strict', icon: Shield, rejected: true, reason: 'Became a trust level, not the parameter' },
-  { name: 'require', icon: CheckCircle, rejected: true, reason: 'Awkward for bidirectional use' },
-]
+## The Bigger Picture
 
-export default function TrustKeywordBlog() {
-  const [hoveredOption, setHoveredOption] = useState<string | null>(null)
+Choosing "trust" reflects ConnectOnion's philosophy:
+- **Human-first design**: Use words people understand
+- **Progressive enhancement**: Start simple, add complexity through composition
+- **Behavioral over cryptographic**: Actions matter more than certificates
+- **Natural language configuration**: Settings should read like sentences
+
+## Looking Back
+
+After months of usage, "trust" has proven perfect:
+- Zero confusion about what it does
+- Natural to explain to new users
+- Flexible enough for all use cases
+- Memorable and meaningful
+
+Sometimes the best technical decisions are the least technical ones.`
 
   return (
-    <div className="min-h-screen bg-gray-950 text-white">
-      {/* Hero Section */}
-      <div className="relative overflow-hidden bg-gradient-to-b from-purple-900/20 to-gray-950 border-b border-gray-800">
-        <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:32px_32px]" />
-        <div className="relative max-w-6xl mx-auto px-8 py-16">
-          <Link href="/docs" className="inline-flex items-center gap-2 text-gray-400 hover:text-white mb-8 transition-colors">
-            <ArrowLeft className="w-4 h-4" />
-            Back to Documentation
-          </Link>
-          
-          <div className="flex items-start justify-between gap-8">
-            <div>
-              <div className="text-sm text-purple-400 font-medium mb-3">Design Decision</div>
-              <h1 className="text-4xl lg:text-5xl font-bold mb-4 bg-gradient-to-r from-white to-gray-400 bg-clip-text text-transparent">
-                Why We Chose "Trust"
-              </h1>
-              <p className="text-xl text-gray-300 max-w-3xl">
-                The story behind ConnectOnion's authentication keyword decision
-              </p>
+    <div className="w-full">
+      <main className="p-4 lg:p-8 lg:px-16 pb-20">
+          <article className="prose prose-invert max-w-none">
+            <div className="mb-8 flex justify-between items-start">
+              <div>
+                <h1 className="text-4xl lg:text-6xl font-bold bg-gradient-to-r from-purple-400 to-pink-400 bg-clip-text text-transparent mb-4">
+                  Why We Chose "Trust"
+                </h1>
+                <p className="text-gray-300 text-lg">December 2024 • Design Decision #003</p>
+              </div>
+              <CopyMarkdownButton content={blogContent} />
             </div>
-            <CopyMarkdownButton content={blogContent} className="flex-shrink-0" />
-          </div>
-        </div>
-      </div>
 
-      {/* Main Content */}
-      <div className="max-w-6xl mx-auto px-8 py-12">
-        <div className="grid lg:grid-cols-3 gap-12">
-          {/* Article Content */}
-          <div className="lg:col-span-2 space-y-8">
-            {/* The Challenge */}
-            <section className="prose prose-invert max-w-none">
-              <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-3">
-                <MessageSquare className="w-6 h-6 text-purple-400" />
-                The Challenge
-              </h2>
-              <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-                <p className="text-gray-300 mb-4">
-                  Our authentication system needed a keyword that works in two directions:
-                </p>
-                <div className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-purple-400 text-sm">1</span>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white">As a service provider</div>
-                      <div className="text-gray-400 text-sm">"Who can use my services?"</div>
-                    </div>
-                  </div>
-                  <div className="flex items-start gap-3">
-                    <div className="w-6 h-6 rounded-full bg-purple-500/20 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-purple-400 text-sm">2</span>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white">As a service consumer</div>
-                      <div className="text-gray-400 text-sm">"Which services do I trust?"</div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </section>
+            <div className="mt-8 space-y-6 text-gray-200">
+              <p className="text-lg leading-relaxed text-gray-300 italic">
+                The Story Behind ConnectOnion's Authentication Keyword
+              </p>
 
-            {/* Options Grid */}
-            <section>
-              <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                <Lightbulb className="w-6 h-6 text-yellow-400" />
-                Options We Evaluated
-              </h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
-                {optionsData.map((option) => {
-                  const Icon = option.icon
-                  return (
-                    <div
-                      key={option.name}
-                      onMouseEnter={() => setHoveredOption(option.name)}
-                      onMouseLeave={() => setHoveredOption(null)}
-                      className={`relative p-4 rounded-lg border transition-all cursor-pointer ${
-                        option.rejected
-                          ? 'bg-gray-900/50 border-gray-800 hover:border-red-900/50'
-                          : 'bg-purple-900/20 border-purple-800 hover:border-purple-600'
-                      }`}
-                    >
-                      <div className="flex items-center gap-2 mb-1">
-                        <Icon className={`w-4 h-4 ${option.rejected ? 'text-gray-500' : 'text-purple-400'}`} />
-                        <span className={`font-mono text-sm ${option.rejected ? 'text-gray-400 line-through' : 'text-white'}`}>
-                          {option.name}
-                        </span>
-                      </div>
-                      {hoveredOption === option.name && (
-                        <div className="absolute z-10 bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-xs text-gray-300 whitespace-nowrap">
-                          {option.reason}
-                          <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-px w-2 h-2 bg-gray-800 border-r border-b border-gray-700 rotate-45" />
-                        </div>
-                      )}
-                      {!option.rejected && (
-                        <CheckCircle className="absolute top-2 right-2 w-4 h-4 text-green-400" />
-                      )}
-                    </div>
-                  )
-                })}
-              </div>
-            </section>
+              <p className="text-lg leading-relaxed">
+                When designing ConnectOnion's agent-to-agent authentication system, we faced a crucial decision: what should we call the parameter that controls how agents verify each other? After evaluating 15+ options and extensive discussion, we settled on <code className="bg-gray-800/50 text-purple-300 px-2 py-1 rounded font-mono text-sm">trust</code>. Here's why.
+              </p>
 
-            {/* Why Trust Won */}
-            <section>
-              <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                <TrendingUp className="w-6 h-6 text-green-400" />
-                Why "Trust" Won
-              </h2>
-              <div className="space-y-4">
+              <h2 className="text-3xl font-bold text-purple-400 mt-12 mb-6 pb-2 border-b border-gray-800">The Challenge: Finding a Bidirectional Word</h2>
+              
+              <p>Our authentication system needed a keyword that works in two directions:</p>
+              <ol className="list-decimal list-inside space-y-2 ml-4 text-gray-300">
+                <li><strong>As a service provider</strong>: "Who can use my services?"</li>
+                <li><strong>As a service consumer</strong>: "Which services do I trust?"</li>
+              </ol>
+              <p className="mt-4">Most security terms only work in one direction. We needed something that naturally flows both ways.</p>
+
+              <h2 className="text-3xl font-bold text-purple-400 mt-12 mb-6 pb-2 border-b border-gray-800">Options We Considered</h2>
+              
+              <div className="space-y-6">
                 {[
-                  { title: 'Naturally Bidirectional', desc: 'Works equally well for "I trust you" and "You trust me"' },
-                  { title: 'Human-Friendly', desc: 'Developers immediately understand trust relationships' },
-                  { title: 'Progressive, Not Binary', desc: 'Trust grows through successful interactions' },
-                  { title: 'Matches Real Behavior', desc: 'We test behavior, not check credentials' },
-                  { title: 'Natural Language Config', desc: 'Trust policies read like plain English' },
-                ].map((item, i) => (
-                  <div key={i} className="flex gap-4 p-4 bg-gray-900/50 border border-gray-800 rounded-lg hover:border-gray-700 transition-colors">
-                    <div className="w-8 h-8 rounded-full bg-green-500/20 flex items-center justify-center flex-shrink-0">
-                      <span className="text-green-400 text-sm font-bold">{i + 1}</span>
-                    </div>
-                    <div>
-                      <div className="font-semibold text-white mb-1">{item.title}</div>
-                      <div className="text-sm text-gray-400">{item.desc}</div>
+                  { name: 'auth / authentication', reason: 'Too technical and implies traditional authentication (passwords, tokens). We\'re doing behavioral verification, not credential checking.', icon: '🔐' },
+                  { name: 'verify / validate', reason: 'One-directional - you verify others, but saying "I\'m verified" sounds like a credential system.', icon: '✓' },
+                  { name: 'guard / guardian', reason: 'Implies blocking/protection only. Doesn\'t capture the mutual relationship between agents.', icon: '🛡️' },
+                  { name: 'policy / rules', reason: 'Too formal and configuration-heavy. Doesn\'t match our natural language approach.', icon: '📋' },
+                  { name: 'security / safe', reason: 'Too broad and creates fear. Security implies threats; we want collaboration.', icon: '🔒' },
+                ].map((option, idx) => (
+                  <div key={idx} className="flex gap-4 p-4 bg-gray-800/30 rounded-lg border border-gray-700">
+                    <div className="text-2xl">{option.icon}</div>
+                    <div className="flex-1">
+                      <h3 className="font-semibold text-red-400 mb-1">
+                        <XCircle className="inline w-4 h-4 mr-1" />
+                        {option.name}
+                      </h3>
+                      <p className="text-gray-400 text-sm">{option.reason}</p>
                     </div>
                   </div>
                 ))}
               </div>
-            </section>
 
-            {/* Code Example */}
-            <section>
-              <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-                <Code className="w-6 h-6 text-blue-400" />
-                The Final Design
-              </h2>
-              <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
+              <h2 className="text-3xl font-bold text-purple-400 mt-12 mb-6 pb-2 border-b border-gray-800">Why "Trust" Won</h2>
+              
+              <div className="space-y-6">
+                {[
+                  {
+                    title: 'Naturally Bidirectional',
+                    description: 'Works in all directions without awkward phrasing',
+                    examples: ['"I trust you" (outgoing)', '"You trust me" (incoming)', '"We trust each other" (mutual)']
+                  },
+                  {
+                    title: 'Human-Friendly',
+                    description: 'Everyone understands trust. It\'s not technical jargon.',
+                    examples: ['Your grandmother knows what trust means']
+                  },
+                  {
+                    title: 'Progressive, Not Binary',
+                    description: 'Trust has levels that mirror human relationships',
+                    examples: ['trust="open" - Development', 'trust="tested" - Staging', 'trust="strict" - Production']
+                  },
+                  {
+                    title: 'Matches Our Philosophy',
+                    description: 'Behavioral verification, not cryptographic',
+                    examples: ['Trust is earned through successful interactions, not certificates']
+                  }
+                ].map((point, idx) => (
+                  <div key={idx} className="bg-gradient-to-br from-purple-900/20 to-transparent border border-purple-500/20 rounded-xl p-6">
+                    <h3 className="text-xl font-semibold text-purple-300 mb-2 flex items-center gap-2">
+                      <CheckCircle className="w-5 h-5 text-green-400" />
+                      {point.title}
+                    </h3>
+                    <p className="text-gray-300 mb-3">{point.description}</p>
+                    {point.examples && (
+                      <ul className="list-disc list-inside space-y-1 ml-4 text-gray-400 text-sm">
+                        {point.examples.map((ex, i) => (
+                          <li key={i}>{ex}</li>
+                        ))}
+                      </ul>
+                    )}
+                  </div>
+                ))}
+              </div>
+
+              <h2 className="text-3xl font-bold text-purple-400 mt-12 mb-6 pb-2 border-b border-gray-800">Clear Configuration</h2>
+              
+              <div className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden">
                 <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                  <span className="text-xs text-gray-400">Python</span>
+                  <span className="text-sm text-gray-400 font-mono">config.py</span>
                 </div>
-                <pre className="p-6 overflow-x-auto">
-                  <code className="text-sm text-gray-300">{`# Three forms, one keyword
-translator = need("translate", trust="strict")           # Simple level
-translator = need("translate", trust="./trust.md")       # Natural language  
-translator = need("translate", trust=my_trust_agent)     # Custom agent
+                <pre className="p-4 text-sm overflow-x-auto">
+                  <code className="text-purple-300">{`# Instantly understandable
+agent = Agent(name="helper", trust="open")
 
-# Bidirectional by default
-alice = Agent(name="alice", trust="tested")  # Alice tests her users
-bob_needs = need("service", trust="strict")  # Bob only uses strict services
-# Both must approve for connection!`}</code>
+# Compare to alternatives:
+agent = Agent(name="helper", auth="permissive")  # What's permissive auth?
+agent = Agent(name="helper", verify="none")      # Verify none? Confusing.
+agent = Agent(name="helper", mode="dev")         # Mode of what?`}</code>
                 </pre>
               </div>
-            </section>
-          </div>
 
-          {/* Sidebar */}
-          <div className="lg:col-span-1 space-y-6">
-            {/* Key Insights */}
-            <div className="bg-gradient-to-br from-purple-900/20 to-pink-900/20 border border-purple-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
-                <Lightbulb className="w-5 h-5 text-yellow-400" />
-                Key Insight
-              </h3>
-              <p className="text-sm text-gray-300 leading-relaxed">
-                <span className="font-mono bg-purple-900/50 px-1.5 py-0.5 rounded">trust</span> won because 
-                it's the most honest description of what we're doing. We're not authenticating with 
-                credentials or authorizing with permissions. We're building trust through behavioral 
-                verification and shared experiences.
-              </p>
-            </div>
+              <h2 className="text-3xl font-bold text-purple-400 mt-12 mb-6 pb-2 border-b border-gray-800">The Unix Philosophy Connection</h2>
+              
+              <p>Just as Unix uses simple, composable commands, we use simple trust levels that combine with prompts for complex behavior:</p>
+              
+              <div className="bg-gray-900/50 border border-gray-800 rounded-lg overflow-hidden mt-4">
+                <pre className="p-4 text-sm overflow-x-auto">
+                  <code className="text-purple-300">{`# Simple trust + smart prompt = sophisticated behavior
+agent = Agent(
+    name="analyzer",
+    trust="tested",
+    system_prompt="Only accept tasks from agents that have successfully completed 10+ analyses"
+)`}</code>
+                </pre>
+              </div>
 
-            {/* Philosophy */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Unix Philosophy</h3>
-              <p className="text-sm text-gray-400 mb-4">
-                Trust isn't a complex protocol - it's simple functions composed by prompts:
-              </p>
-              <ul className="space-y-2 text-sm">
-                <li className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 flex-shrink-0" />
-                  <span className="text-gray-300">Small, composable functions</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 flex-shrink-0" />
-                  <span className="text-gray-300">Natural language configuration</span>
-                </li>
-                <li className="flex items-start gap-2">
-                  <div className="w-1.5 h-1.5 rounded-full bg-purple-400 mt-1.5 flex-shrink-0" />
-                  <span className="text-gray-300">Behavior over credentials</span>
-                </li>
+              <h2 className="text-3xl font-bold text-purple-400 mt-12 mb-6 pb-2 border-b border-gray-800">The Bigger Picture</h2>
+              
+              <p>Choosing "trust" reflects ConnectOnion's philosophy:</p>
+              <ul className="list-disc list-inside space-y-2 ml-4 text-gray-300">
+                <li><strong>Human-first design</strong>: Use words people understand</li>
+                <li><strong>Progressive enhancement</strong>: Start simple, add complexity through composition</li>
+                <li><strong>Behavioral over cryptographic</strong>: Actions matter more than certificates</li>
+                <li><strong>Natural language configuration</strong>: Settings should read like sentences</li>
               </ul>
-            </div>
 
-            {/* Related Docs */}
-            <div className="bg-gray-900 border border-gray-800 rounded-lg p-6">
-              <h3 className="text-lg font-semibold text-white mb-4">Related Documentation</h3>
-              <div className="space-y-3">
-                <Link href="/trust" className="block text-sm text-purple-400 hover:text-purple-300 transition-colors">
-                  → Trust Parameter Guide
-                </Link>
-                <Link href="/examples" className="block text-sm text-purple-400 hover:text-purple-300 transition-colors">
-                  → Agent Examples
-                </Link>
-                <Link href="/quickstart" className="block text-sm text-purple-400 hover:text-purple-300 transition-colors">
-                  → Quick Start
-                </Link>
+              <div className="border-t border-gray-800 mt-16 pt-8">
+                <p className="text-gray-400 italic text-lg">
+                  Sometimes the best technical decisions are the least technical ones.
+                </p>
               </div>
             </div>
-          </div>
-        </div>
+          </article>
+        </main>
       </div>
-
-      {/* Footer Quote */}
-      <div className="max-w-6xl mx-auto px-8 py-12 border-t border-gray-800">
-        <blockquote className="text-center">
-          <p className="text-lg text-gray-300 italic mb-4">
-            "In ConnectOnion, agents don't authenticate - they trust. And that makes all the difference."
-          </p>
-          <cite className="text-sm text-gray-500">— ConnectOnion Team</cite>
-        </blockquote>
-      </div>
-    </div>
   )
 }

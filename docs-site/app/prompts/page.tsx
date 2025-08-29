@@ -5,7 +5,7 @@ import { Copy, Check, FileText, Play, ArrowRight, Info, AlertTriangle, FolderOpe
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
-import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
+import { CopyPromptButton } from '../../components/CopyPromptButton'
 
 export default function PromptsOverviewPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -77,66 +77,6 @@ result = agent.input(
     max_iterations=25
 )`
 
-  const markdownContent = `# System Prompts Guide
-
-Learn how to craft effective system prompts that define your agent's personality, behavior, and approach to tasks.
-
-## Quick Start
-
-ConnectOnion offers three flexible ways to provide system prompts to your agents:
-
-### Method 1: Direct String
-\`\`\`python
-agent = Agent(
-    name="helper",
-    system_prompt="You are a helpful and friendly assistant.",
-    tools=[...]
-)
-\`\`\`
-
-### Method 2: Load from File
-\`\`\`python
-agent = Agent(
-    name="expert",
-    system_prompt="prompts/expert.md",  # Auto-loads content
-    tools=[...]
-)
-\`\`\`
-
-### Method 3: Path Object
-\`\`\`python
-from pathlib import Path
-agent = Agent(
-    name="specialist",
-    system_prompt=Path("prompts/specialist.txt"),
-    tools=[...]
-)
-\`\`\`
-
-## Supported File Formats
-
-ConnectOnion supports multiple prompt formats:
-
-- **.md** - Markdown files for human-readable, structured prompts
-- **.yaml/.yml** - YAML format for structured data with metadata
-- **.json** - JSON format for machine-readable prompts with schemas
-- **.txt** - Plain text files for simple prompts
-- **No extension** - Any text file works
-
-## Best Practices
-
-1. **Define Clear Role** - Start with who the agent is and their expertise
-2. **Set Behavioral Guidelines** - Specify how the agent should act and communicate
-3. **Include Domain Knowledge** - Add specific knowledge areas and constraints
-4. **Specify Output Format** - Define how responses should be structured
-
-## What's Next
-
-- [Best Practices](/prompts/best-practices) - Learn proven patterns for writing effective prompts
-- [Examples](/prompts/examples) - Browse real-world prompt examples for different roles
-- [File Organization](/prompts/organization) - Learn how to organize your prompt files
-- [Testing](/prompts/testing) - Test and validate your system prompts
-`
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
@@ -157,11 +97,7 @@ ConnectOnion supports multiple prompt formats:
           </p>
         </div>
         
-        <CopyMarkdownButton 
-          content={markdownContent}
-          filename="system-prompts-guide.md"
-          className="ml-8 flex-shrink-0"
-        />
+        <CopyPromptButton />
       </div>
 
       {/* Recommended: Markdown Files */}
@@ -212,11 +148,16 @@ ConnectOnion supports multiple prompt formats:
           <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-gray-700 bg-gray-800">
               <span className="text-sm text-gray-300 font-mono">prompts/assistant.md</span>
-              <CopyMarkdownButton 
-                content={recommendedMarkdown}
-                filename="assistant.md"
-                className="ml-4"
-              />
+              <button
+                onClick={() => copyToClipboard(recommendedMarkdown, 'recommendedMarkdown')}
+                className="text-gray-400 hover:text-white transition-colors p-1"
+              >
+                {copiedId === 'recommendedMarkdown' ? (
+                  <Check className="w-4 h-4 text-green-400" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+              </button>
             </div>
             <div className="p-6">
               <SyntaxHighlighter 

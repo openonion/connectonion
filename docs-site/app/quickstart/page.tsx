@@ -5,7 +5,7 @@ import { Play, Terminal, ArrowRight, Zap, FileText, Clock, Code, Wrench, Copy, C
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
-import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
+import { CopyPromptButton } from '../../components/CopyPromptButton'
 import { CommandBlock } from '../../components/CommandBlock'
 import CodeWithResult from '../../components/CodeWithResult'
 
@@ -18,174 +18,6 @@ export default function QuickStartPage() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
-  const markdownContent = `# ConnectOnion Quick Start Guide
-
-Get up and running with ConnectOnion in under 2 minutes.
-
-## 1. Install ConnectOnion
-
-\`\`\`bash
-pip install connectonion
-\`\`\`
-
-## 2. Create Your First Meta-Agent
-
-\`\`\`bash
-# Create a new directory for your agent
-mkdir meta-agent
-cd meta-agent
-
-# Initialize the meta-agent (default)
-co init
-\`\`\`
-
-This creates a ConnectOnion development assistant with powerful capabilities:
-- \`agent.py\` - Meta-agent with documentation expertise and development tools
-- \`prompt.md\` - System prompt for your agent
-- \`.env.example\` - Template for API keys
-- \`.co/docs/\` - Embedded ConnectOnion documentation for offline reference
-
-## 3. Set Up Your API Key
-
-\`\`\`bash
-cp .env.example .env
-\`\`\`
-
-Edit \`.env\` and add your OpenAI API key:
-\`\`\`
-OPENAI_API_KEY=sk-your-actual-api-key-here
-\`\`\`
-
-## 4. Run Your Agent
-
-\`\`\`bash
-python agent.py
-\`\`\`
-
-Your meta-agent comes with powerful built-in tools:
-- **answer_connectonion_question()** - Expert answers from embedded docs
-- **create_agent_from_template()** - Generate complete agent code
-- **generate_tool_code()** - Create tool functions
-- **create_test_for_agent()** - Generate pytest test suites
-- **think()** - Self-reflection to analyze task completion
-- **generate_todo_list()** - Create structured plans (uses GPT-4o-mini)
-- **suggest_project_structure()** - Architecture recommendations
-
-## Try These Commands
-
-Once your meta-agent is running, try these:
-
-\`\`\`python
-# Learn about ConnectOnion
-result = agent.input("What is ConnectOnion and how do tools work?")
-
-# Generate agent code
-result = agent.input("Create a web scraper agent")
-
-# Create tool functions
-result = agent.input("Generate a tool for sending emails")
-
-# Get project structure advice
-result = agent.input("Suggest structure for a multi-agent system")
-
-# Generate a structured plan
-result = agent.input("Create a to-do list for building a REST API")
-\`\`\`
-
-## Choose a Different Template
-
-ConnectOnion offers specialized templates:
-
-### Playwright Agent (Web Automation)
-\`\`\`bash
-co init --template playwright
-\`\`\`
-
-Perfect for:
-- Web scraping and data extraction
-- Browser automation and testing
-- Form filling and submission
-- Screenshot capture
-- Link crawling
-
-Comes with stateful browser tools:
-- \`start_browser()\` - Launch browser instance
-- \`navigate()\` - Go to URLs
-- \`scrape_content()\` - Extract page content
-- \`fill_form()\` - Fill and submit forms
-- \`take_screenshot()\` - Capture pages
-- And many more browser automation tools
-
-Note: Requires \`pip install playwright && playwright install\`
-
-## Create a Custom Tool Agent
-
-You can also create agents from scratch with custom tools:
-
-\`\`\`python
-from connectonion import Agent
-
-def calculate(expression: str) -> str:
-    """Safely evaluate mathematical expressions."""
-    try:
-        allowed_chars = set('0123456789+-*/()., ')
-        if all(c in allowed_chars for c in expression):
-            result = eval(expression)
-            return f"Result: {result}"
-        else:
-            return "Error: Invalid characters"
-    except Exception as e:
-        return f"Error: {str(e)}"
-
-# Create agent with the tool
-agent = Agent(
-    name="calculator", 
-    tools=[calculate],
-    system_prompt="You are a helpful math tutor.",
-    max_iterations=5  # Simple calculations need few iterations
-)
-
-# Use the agent
-response = agent.input("What is 42 * 17 + 25?")
-print(response)  # Result: 739
-\`\`\`
-
-## Debugging with @xray
-
-See what your agent is thinking:
-
-\`\`\`python
-from connectonion import Agent
-from connectonion.decorators import xray
-
-@xray
-def calculate(expression: str) -> str:
-    """Math tool with debugging enabled."""
-    print(f"🔍 Agent '{xray.agent.name}' is calculating: {expression}")
-    print(f"🔍 User's original request: {xray.task}")
-    print(f"🔍 This is iteration #{xray.iteration}")
-    
-    result = eval(expression)
-    return f"Result: {result}"
-
-agent = Agent("debug_calc", tools=[calculate], max_iterations=5)
-response = agent.input("What's 50 + 30?")
-\`\`\`
-
-Output:
-\`\`\`
-🔍 Agent 'debug_calc' is calculating: 50 + 30
-🔍 User's original request: What's 50 + 30?
-🔍 This is iteration #1
-Result: 80
-\`\`\`
-
-## Next Steps
-
-- [System Prompts](/prompts) - Learn advanced prompting techniques
-- [@xray Debugging](/xray) - Master agent debugging and introspection  
-- [Examples](/examples) - See real-world agent implementations
-- [Templates Guide](/templates) - Explore all available templates`
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
@@ -205,11 +37,7 @@ Result: 80
           </p>
         </div>
         
-        <CopyMarkdownButton 
-          content={markdownContent}
-          filename="connectonion-quickstart.md"
-          className="ml-8 flex-shrink-0"
-        />
+        <CopyPromptButton />
       </div>
 
       {/* Time Estimate */}
@@ -251,6 +79,26 @@ Result: 80
               'co init'
             ]}
           />
+        </div>
+
+        <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 mb-8">
+          <h3 className="text-lg font-semibold text-gray-200 mb-4">Files created:</h3>
+          <div className="font-mono text-sm space-y-1 text-gray-300">
+            <div>meta-agent/</div>
+            <div className="ml-4">├── agent.py <span className="text-gray-500"># Your meta-agent with tools</span></div>
+            <div className="ml-4">├── prompt.md <span className="text-gray-500"># Main system prompt</span></div>
+            <div className="ml-4">├── prompts/ <span className="text-gray-500"># Specialized prompts</span></div>
+            <div className="ml-8">├── metagent.md</div>
+            <div className="ml-8">├── docs_retrieve_prompt.md</div>
+            <div className="ml-8">├── answer_prompt.md</div>
+            <div className="ml-8">└── think_prompt.md</div>
+            <div className="ml-4">├── .env.example <span className="text-gray-500"># API key template</span></div>
+            <div className="ml-4">├── .gitignore <span className="text-gray-500"># Git config</span></div>
+            <div className="ml-4">└── .co/ <span className="text-gray-500"># ConnectOnion config</span></div>
+            <div className="ml-8">├── config.toml</div>
+            <div className="ml-8">└── docs/</div>
+            <div className="ml-12">└── connectonion.md</div>
+          </div>
         </div>
 
         <div className="bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg p-6 mb-8">
@@ -331,7 +179,9 @@ Result: 80
             code={`# Learn about ConnectOnion
 result = agent.input("What is ConnectOnion and how do tools work?")
 print(result)`}
-            result={`ConnectOnion is a Python framework for building AI agents with a focus on simplicity. 
+            result={`>>> result = agent.input("What is ConnectOnion and how do tools work?")
+>>> print(result)
+ConnectOnion is a Python framework for building AI agents with a focus on simplicity. 
 Here's how it works:
 
 1. **Agent Creation**: Create agents with a name, tools, and optional system prompt
@@ -353,7 +203,9 @@ Tools work by:
             code={`# Generate agent code
 result = agent.input("Create a web scraper agent")
 print(result[:500] + "...")  # Show first 500 chars`}
-            result={`Here's a complete web scraper agent using ConnectOnion:
+            result={`>>> result = agent.input("Create a web scraper agent")
+>>> print(result[:500] + "...")
+Here's a complete web scraper agent using ConnectOnion:
 
 \`\`\`python
 from connectonion import Agent
@@ -379,7 +231,9 @@ def extract_links(url: str) -> list[str]:
             code={`# Create tool functions
 result = agent.input("Generate a tool for sending emails")
 print(result)`}
-            result={`Here's an email sending tool for your agent:
+            result={`>>> result = agent.input("Generate a tool for sending emails")
+>>> print(result)
+Here's an email sending tool for your agent:
 
 \`\`\`python
 import smtplib

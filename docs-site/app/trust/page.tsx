@@ -1,182 +1,10 @@
 'use client'
 
-import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
+import { CopyPromptButton } from '../../components/CopyPromptButton'
+import CodeWithResult from '../../components/CodeWithResult'
 import { Shield, Users, Code, Zap, CheckCircle, TrendingUp, AlertCircle, BookOpen } from 'lucide-react'
 import Link from 'next/link'
 
-const trustContent = `# Trust in ConnectOnion
-
-The \`trust\` parameter provides flexible, bidirectional trust configuration for agent interactions.
-
-## Quick Start
-
-\`\`\`python
-from connectonion import Agent, need
-
-# Simple trust levels
-translator = need("translate", trust="strict")   # Production: verified only
-analyzer = need("analyze", trust="tested")       # Default: test first
-scraper = need("scrape", trust="open")          # Development: trust all
-
-# For your own agent
-agent = Agent(
-    name="my_service",
-    tools=[process_data],
-    trust="strict"  # Who can use my services
-)
-\`\`\`
-
-## Three Forms of Trust
-
-### 1. Trust Levels (String)
-
-Simple predefined levels for common scenarios:
-
-\`\`\`python
-# Development - trust everyone
-agent = need("service", trust="open")
-
-# Default - test before trusting
-agent = need("service", trust="tested")
-
-# Production - only verified/whitelisted
-agent = need("service", trust="strict")
-\`\`\`
-
-### 2. Trust Policy (Natural Language)
-
-Express complex requirements in plain English:
-
-\`\`\`python
-# Inline policy
-translator = need("translate", trust="""
-    I trust agents that:
-    - Pass capability tests
-    - Respond within 500ms
-    - Are on my whitelist OR from local network
-""")
-
-# From file
-translator = need("translate", trust="./trust_policy.md")
-\`\`\`
-
-### 3. Trust Agent
-
-For maximum control, use a custom trust agent:
-
-\`\`\`python
-# Create a trust agent with verification tools
-trust_agent = Agent(
-    name="my_guardian",
-    tools=[
-        check_whitelist,
-        verify_capability,
-        measure_response_time,
-        check_reputation
-    ],
-    system_prompt="""
-        You verify other agents before allowing interaction.
-        Be strict with payment processors, relaxed with read-only services.
-    """
-)
-
-# Use it for your agent
-my_agent = Agent(
-    name="my_service",
-    tools=[process_payment],
-    trust=trust_agent  # My guardian protects me
-)
-
-# And for discovering services
-payment = need("payment processor", trust=trust_agent)
-\`\`\`
-
-## Bidirectional Trust
-
-The same \`trust\` parameter works in both directions:
-
-\`\`\`python
-# As a SERVICE provider (who can use me?)
-alice_agent = Agent(
-    name="alice_translator",
-    tools=[translate],
-    trust="tested"  # Users must pass my tests
-)
-
-# As a SERVICE consumer (who do I trust?)
-translator = need("translate", trust="strict")  # I only use verified services
-
-# Both trust requirements must be satisfied for interaction!
-\`\`\`
-
-## Progressive Trust Building
-
-Trust grows through successful interactions:
-
-\`\`\`python
-# First encounter - requires testing
-translator = need("translate", trust="tested")
-# → Agent is tested before use
-
-# After successful interactions
-# → Agent automatically added to "verified" list
-
-# Future encounters
-translator = need("translate", trust="tested")
-# → Skip testing, already verified
-\`\`\`
-
-## Environment-Based Defaults
-
-ConnectOnion automatically adjusts trust based on environment:
-
-\`\`\`python
-# No trust parameter needed - auto-detected!
-translator = need("translate")
-
-# In development (localhost, Jupyter)
-# → Defaults to trust="open"
-
-# In test files (test_*.py)
-# → Defaults to trust="tested"
-
-# In production
-# → Defaults to trust="strict"
-
-# Override when needed
-translator = need("translate", trust="open")  # Force open even in production
-\`\`\`
-
-## Common Patterns
-
-### Development Mode
-\`\`\`python
-# Trust everyone for rapid development
-connectonion.set_default_trust("open")
-\`\`\`
-
-### Production Mode
-\`\`\`python
-# Strict verification for production
-payment = need("payment processor", trust="strict")
-sensitive = need("data processor", trust="strict")
-\`\`\`
-
-### Mixed Trust
-\`\`\`python
-# Different trust for different services
-scraper = need("web scraper", trust="open")      # Low risk
-analyzer = need("analyze data", trust="tested")   # Medium risk
-payment = need("process payment", trust="strict") # High risk
-\`\`\`
-
-## Security Best Practices
-
-1. **Production = Strict**: Always use \`trust="strict"\` in production
-2. **Test Sensitive Operations**: Payment, data modification, etc.
-3. **Whitelist Critical Services**: Manually verify and whitelist
-4. **Monitor Trust Decisions**: Log all trust evaluations
-5. **Regular Audits**: Review whitelist and trust policies`
 
 export default function TrustPage() {
   return (
@@ -195,7 +23,7 @@ export default function TrustPage() {
                 Flexible, bidirectional trust configuration for agent interactions
               </p>
             </div>
-            <CopyMarkdownButton content={trustContent} className="flex-shrink-0" />
+            <CopyPromptButton />
           </div>
 
           {/* Why Trust Blog Link */}
@@ -220,12 +48,8 @@ export default function TrustPage() {
                 <Zap className="w-6 h-6 text-yellow-400" />
                 Quick Start
               </h2>
-              <div className="bg-gray-900 border border-gray-800 rounded-lg overflow-hidden">
-                <div className="bg-gray-800 px-4 py-2 border-b border-gray-700">
-                  <span className="text-xs text-gray-400">Python</span>
-                </div>
-                <pre className="p-6 overflow-x-auto">
-                  <code className="text-sm text-gray-300">{`from connectonion import Agent, need
+              <CodeWithResult
+                code={`from connectonion import Agent, need
 
 # Simple trust levels
 translator = need("translate", trust="strict")   # Production: verified only
@@ -237,9 +61,15 @@ agent = Agent(
     name="my_service",
     tools=[process_data],
     trust="strict"  # Who can use my services
-)`}</code>
-                </pre>
-              </div>
+)`}
+                fileName="trust_config.py"
+                result={`>>> translator = need("translate", trust="strict")
+>>> print(translator)
+<Agent: translate (strict trust)>
+
+>>> agent = Agent(name="my_service", tools=[process_data], trust="strict")
+>>> print(f"Agent {agent.name} configured with strict trust policy")`}
+              />
             </section>
 
             {/* Three Forms */}
@@ -280,14 +110,18 @@ agent = Agent(
                     <span className="text-purple-400">2.</span> Trust Policy (Natural Language)
                   </h3>
                   <p className="text-gray-400 mb-4">Express complex requirements in plain English:</p>
-                  <pre className="p-4 bg-gray-800/50 rounded overflow-x-auto">
-                    <code className="text-sm text-gray-300">{`trust = """
+                  <CodeWithResult
+                    code={`trust = """
 I trust agents that:
 - Pass capability tests
 - Respond within 500ms
 - Are on my whitelist OR from local network
-"""`}</code>
-                  </pre>
+"""
+
+translator = need("translate", trust=trust)`}
+                    fileName="natural_language_trust.py"
+                    className="mt-4"
+                  />
                 </div>
 
                 {/* Trust Agent */}
@@ -296,13 +130,22 @@ I trust agents that:
                     <span className="text-purple-400">3.</span> Trust Agent
                   </h3>
                   <p className="text-gray-400 mb-4">For maximum control, use a custom trust agent with verification tools</p>
-                  <pre className="p-4 bg-gray-800/50 rounded overflow-x-auto">
-                    <code className="text-sm text-gray-300">{`trust_agent = Agent(
+                  <CodeWithResult
+                    code={`trust_agent = Agent(
     name="my_guardian",
     tools=[check_whitelist, verify_capability],
-    system_prompt="You verify other agents..."
-)`}</code>
-                  </pre>
+    system_prompt="You verify other agents before allowing interaction."
+)
+
+# Use it for your services
+my_agent = Agent(
+    name="my_service",
+    tools=[process_payment],
+    trust=trust_agent  # Guardian protects your agent
+)`}
+                    fileName="trust_agent.py"
+                    className="mt-4"
+                  />
                 </div>
               </div>
             </section>
@@ -318,22 +161,43 @@ I trust agents that:
                   The same <span className="font-mono bg-purple-900/50 px-1.5 py-0.5 rounded">trust</span> parameter 
                   works in both directions:
                 </p>
-                <div className="grid md:grid-cols-2 gap-4">
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-purple-400 mb-2">As Service Provider</h4>
-                    <p className="text-sm text-gray-300 mb-2">"Who can use me?"</p>
-                    <pre className="text-xs text-gray-400 overflow-x-auto">
-                      <code>{`Agent(name="alice", trust="tested")`}</code>
-                    </pre>
-                  </div>
-                  <div className="bg-gray-900/50 border border-gray-800 rounded-lg p-4">
-                    <h4 className="text-sm font-semibold text-purple-400 mb-2">As Service Consumer</h4>
-                    <p className="text-sm text-gray-300 mb-2">"Who do I trust?"</p>
-                    <pre className="text-xs text-gray-400 overflow-x-auto">
-                      <code>{`need("service", trust="strict")`}</code>
-                    </pre>
-                  </div>
-                </div>
+                
+                <CodeWithResult
+                  code={`from connectonion import Agent, need, share
+
+# Alice creates a translation service
+alice = Agent(
+    name="alice_translator",
+    tools=[translate],
+    trust="tested"  # Test users before serving them
+)
+share(alice)  # Make Alice available to others
+
+# Bob looks for a translator
+translator = need(
+    "translate to Spanish",
+    trust="strict"  # Bob only uses verified services
+)
+
+# What happens:
+# 1. Bob's trust agent evaluates Alice (strict check)
+# 2. Alice's trust agent evaluates Bob (test required)
+# 3. Both must approve for connection to succeed`}
+                  fileName="bidirectional_trust.py"
+                  result={`>>> share(alice)
+Agent 'alice_translator' shared on network
+
+>>> translator = need("translate to Spanish", trust="strict")
+Evaluating agent: alice_translator
+✓ Verified agent credentials
+✓ Passed capability test
+✓ Response time: 245ms
+
+>>> translator.input("Hello world")
+"Hola mundo"`}
+                  className="mt-4"
+                />
+                
                 <div className="mt-4 p-3 bg-purple-900/30 border border-purple-700 rounded">
                   <p className="text-sm text-purple-300 flex items-center gap-2">
                     <CheckCircle className="w-4 h-4" />
