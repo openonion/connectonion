@@ -6,6 +6,7 @@ import { Bug, Eye, Play, Terminal, Clock, Zap, Copy, Check, ArrowRight, Search, 
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
+import CodeWithResult from '../../components/CodeWithResult'
 import Link from 'next/link'
 // React Icons
 import { FaPython, FaRobot, FaBug, FaEye, FaClock, FaCode, FaFileCode, FaNetworkWired, FaChartLine, FaBrain } from 'react-icons/fa'
@@ -440,12 +441,13 @@ def analyze_sentiment(text: str) -> str:
             Practical Use Cases
           </h2>
           
-          <div className="grid lg:grid-cols-3 gap-8">
-            {[
-              {
-                title: 'Understand Context',
-                description: 'See why a tool was called and what led to it',
-                code: `@xray
+          <div className="space-y-8">
+            {/* Understand Context */}
+            <div>
+              <h3 className="font-bold text-xl mb-2">Understand Context</h3>
+              <p className="text-gray-300 mb-4">See why a tool was called and what led to it</p>
+              <CodeWithResult 
+                code={`@xray
 def emergency_shutdown():
     print(f"Shutdown: {xray.task}")
     print(f"After: {xray.previous_tools}")
@@ -453,62 +455,55 @@ def emergency_shutdown():
     if xray.iteration == 1:
         return "Try restarting first"
     
-    return "System shutdown complete"`
-              },
-              {
-                title: 'Adaptive Behavior',
-                description: 'Change tool behavior based on execution context',
-                code: `@xray
+    return "System shutdown complete"`}
+                result={`Shutdown: Server is not responding, please help
+After: ['check_server_status', 'restart_service']
+
+System shutdown complete`}
+              />
+            </div>
+
+            {/* Adaptive Behavior */}
+            <div>
+              <h3 className="font-bold text-xl mb-2">Adaptive Behavior</h3>
+              <p className="text-gray-300 mb-4">Change tool behavior based on execution context</p>
+              <CodeWithResult 
+                code={`@xray
 def fetch_data(source: str) -> str:
     # Use cache on repeated calls
     if "fetch_data" in xray.previous_tools:
         return "Using cached data"
     
     # Fresh fetch on first call
-    return f"Fresh data from {source}"`
-              },
-              {
-                title: 'Debug Complex Flows',
-                description: 'Get full visibility into multi-step agent processes',
-                code: `@xray
+    return f"Fresh data from {source}"`}
+                result={`# First call:
+Fresh data from database
+
+# Second call (same agent session):
+Using cached data`}
+              />
+            </div>
+
+            {/* Debug Complex Flows */}
+            <div>
+              <h3 className="font-bold text-xl mb-2">Debug Complex Flows</h3>
+              <p className="text-gray-300 mb-4">Get full visibility into multi-step agent processes</p>
+              <CodeWithResult 
+                code={`@xray
 def process_order(order_id: str) -> str:
     if xray.agent:
         print(f"Agent: {xray.agent.name}")
         print(f"Request: {xray.task}")
         print(f"Messages: {len(xray.messages)}")
     
-    return f"Order {order_id} processed"`
-              }
-            ].map((useCase, i) => (
-              <motion.div
-                key={useCase.title}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                transition={{ delay: i * 0.1 }}
-                className="glass-subtle rounded-lg overflow-hidden card-hover"
-              >
-                <div className="p-6 border-b border-gray-800/50">
-                  <h3 className="font-bold text-xl mb-2">{useCase.title}</h3>
-                  <p className="text-gray-300">{useCase.description}</p>
-                </div>
-                <div className="syntax-highlighter-wrapper">
-                  <SyntaxHighlighter 
-                    language="python" 
-                    style={vscDarkPlus}
-                    customStyle={{
-                      background: 'transparent',
-                      padding: '1.5rem',
-                      margin: 0,
-                      fontSize: '0.8rem',
-                      lineHeight: '1.4'
-                    }}
-                    wrapLines={true}
-                  >
-                    {useCase.code}
-                  </SyntaxHighlighter>
-                </div>
-              </motion.div>
-            ))}
+    return f"Order {order_id} processed"`}
+                result={`Agent: sales_assistant
+Request: Process order ABC123 for customer
+Messages: 5
+
+Order ABC123 processed`}
+              />
+            </div>
           </div>
         </div>
       </section>
