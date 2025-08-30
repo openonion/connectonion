@@ -7,6 +7,7 @@ import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/pri
 import Link from 'next/link'
 import { CommandBlock } from '../../components/CommandBlock'
 import { FileTree } from '../../components/FileTree'
+import { PageNavigation } from '../../components/PageNavigation'
 
 export default function CLIPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -526,6 +527,9 @@ result = agent.input("Generate a tool for sending emails")`}
           <ArrowRight className="w-4 h-4" />
         </Link>
       </nav>
+
+      {/* Navigation */}
+      <PageNavigation />
     </div>
   )
 }
