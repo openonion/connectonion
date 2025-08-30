@@ -15,6 +15,7 @@ import { DifficultyBadge } from './DifficultyBadge'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
 import { SearchHighlight } from './SearchHighlight'
 import { performFullTextSearch, pageContentIndex } from '../utils/searchIndex'
+import { searchPages } from '../utils/enhancedSearch'
 
 type NavItem = {
   title: string
@@ -156,22 +157,22 @@ export function DocsSidebar() {
     }
   }, [pathname])
 
-  // Enhanced full-text search
+  // Enhanced full-text search with fuzzy matching and typo tolerance
   const performSearch = (query: string) => {
     if (!query.trim()) {
       setSearchResults([])
       return
     }
 
-    // Use the enhanced full-text search
-    const fullTextResults = performFullTextSearch(query)
+    // Use the enhanced search with fuzzy matching
+    const enhancedResults = searchPages(query)
     
     // Map results back to navigation items
     const results: SearchResult[] = []
     const processedHrefs = new Set<string>()
     
-    // First, add results from full-text search
-    fullTextResults.forEach(pageResult => {
+    // Process enhanced search results
+    enhancedResults.forEach(pageResult => {
       // Find the corresponding navigation item
       navigation.forEach(section => {
         const navItem = section.items.find(item => item.href === pageResult.href)
@@ -180,50 +181,46 @@ export function DocsSidebar() {
           results.push({
             item: navItem,
             section: section.title,
-            score: 100, // High score for full-text matches
+            score: 100, // High score for enhanced matches
             matches: ['content']
           })
         }
       })
     })
 
-    // Then add traditional navigation search results for items not yet included
-    const q = query.toLowerCase()
-    navigation.forEach(section => {
-      section.items.forEach(item => {
-        if (processedHrefs.has(item.href)) return // Skip if already added
-        
-        let score = 0
-        const matches: string[] = []
+    // If we have fewer than 5 results, also check navigation items directly
+    if (results.length < 5) {
+      const q = query.toLowerCase()
+      navigation.forEach(section => {
+        section.items.forEach(item => {
+          if (processedHrefs.has(item.href)) return // Skip if already added
+          
+          let score = 0
+          const matches: string[] = []
 
-        // Title match
-        if (item.title.toLowerCase().includes(q)) {
-          score += 10
-          matches.push('title')
-        }
+          // Title match
+          if (item.title.toLowerCase().includes(q)) {
+            score += 10
+            matches.push('title')
+          }
 
-        // Keywords match
-        if (item.keywords?.some(k => k.includes(q))) {
-          score += 5
-          matches.push('keywords')
-        }
+          // Keywords match
+          if (item.keywords?.some(k => k.includes(q))) {
+            score += 5
+            matches.push('keywords')
+          }
 
-        // Section title match
-        if (section.title.toLowerCase().includes(q)) {
-          score += 2
-          matches.push('section')
-        }
-
-        if (score > 0) {
-          results.push({
-            item,
-            section: section.title,
-            score,
-            matches
-          })
-        }
+          if (score > 0 && results.length < 10) { // Limit total results
+            results.push({
+              item,
+              section: section.title,
+              score,
+              matches
+            })
+          }
+        })
       })
-    })
+    }
 
     // Sort by score (highest first)
     results.sort((a, b) => b.score - a.score)
@@ -358,10 +355,10 @@ export function DocsSidebar() {
           )}
         </div>
         
-        {/* Search help text - more compact */}
+        {/* Search help text - more informative */}
         {!searchQuery && (
           <div className="mt-1.5 text-[11px] text-gray-500">
-            Search by title, keywords, or sections
+            Search everything • Typo-tolerant • Smart matching
           </div>
         )}
         
@@ -413,9 +410,10 @@ export function DocsSidebar() {
               <div className="text-xs font-medium text-purple-400 mb-2 flex items-center gap-2">
                 <Sparkles className="w-3 h-3" />
                 Top Matches
+                <span className="text-[10px] text-gray-500">({searchResults.length} found)</span>
               </div>
               <div className="space-y-1">
-                {searchResults.slice(0, 3).map((result, idx) => (
+                {searchResults.slice(0, 5).map((result, idx) => (
                   <Link
                     key={result.item.href}
                     href={result.item.href}
@@ -432,15 +430,25 @@ export function DocsSidebar() {
                           text={result.item.title} 
                           query={searchQuery}
                         />
-                        <div className="text-xs text-gray-500 mt-0.5">{result.section}</div>
+                        <div className="flex items-center gap-2 mt-0.5">
+                          <span className="text-xs text-gray-500">{result.section}</span>
+                          {result.matches.includes('content') && (
+                            <span className="text-[9px] px-1 py-0.5 bg-blue-500/20 text-blue-300 rounded">content</span>
+                          )}
+                        </div>
                       </div>
-                      {result.score >= 10 && (
+                      {idx === 0 && (
                         <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/20 text-purple-300 rounded-full font-medium">BEST</span>
                       )}
                     </div>
                   </Link>
                 ))}
               </div>
+              {searchResults.length > 5 && (
+                <div className="text-[10px] text-gray-500 text-center mt-2">
+                  +{searchResults.length - 5} more results
+                </div>
+              )}
             </div>
           </div>
         )}

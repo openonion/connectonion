@@ -8,6 +8,7 @@ import Link from 'next/link'
 import { CopyPromptButton } from '../../components/CopyPromptButton'
 import { CommandBlock } from '../../components/CommandBlock'
 import CodeWithResult from '../../components/CodeWithResult'
+import { FileTree } from '../../components/FileTree'
 
 export default function QuickStartPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -81,25 +82,47 @@ export default function QuickStartPage() {
           />
         </div>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 mb-8">
-          <h3 className="text-lg font-semibold text-gray-200 mb-4">Files created:</h3>
-          <div className="font-mono text-sm space-y-1 text-gray-300">
-            <div>meta-agent/</div>
-            <div className="ml-4">├── agent.py <span className="text-gray-500"># Your meta-agent with tools</span></div>
-            <div className="ml-4">├── prompt.md <span className="text-gray-500"># Main system prompt</span></div>
-            <div className="ml-4">├── prompts/ <span className="text-gray-500"># Specialized prompts</span></div>
-            <div className="ml-8">├── metagent.md</div>
-            <div className="ml-8">├── docs_retrieve_prompt.md</div>
-            <div className="ml-8">├── answer_prompt.md</div>
-            <div className="ml-8">└── think_prompt.md</div>
-            <div className="ml-4">├── .env.example <span className="text-gray-500"># API key template</span></div>
-            <div className="ml-4">├── .gitignore <span className="text-gray-500"># Git config</span></div>
-            <div className="ml-4">└── .co/ <span className="text-gray-500"># ConnectOnion config</span></div>
-            <div className="ml-8">├── config.toml</div>
-            <div className="ml-8">└── docs/</div>
-            <div className="ml-12">└── connectonion.md</div>
-          </div>
-        </div>
+        <FileTree 
+          structure={[
+            {
+              name: 'meta-agent',
+              type: 'folder',
+              children: [
+                { name: 'agent.py', type: 'file', comment: 'Your meta-agent with tools', icon: 'python' },
+                { name: 'prompt.md', type: 'file', comment: 'Main system prompt', icon: 'markdown' },
+                {
+                  name: 'prompts',
+                  type: 'folder',
+                  comment: 'Specialized prompts',
+                  children: [
+                    { name: 'metagent.md', type: 'file', icon: 'markdown' },
+                    { name: 'docs_retrieve_prompt.md', type: 'file', icon: 'markdown' },
+                    { name: 'answer_prompt.md', type: 'file', icon: 'markdown' },
+                    { name: 'think_prompt.md', type: 'file', icon: 'markdown' }
+                  ]
+                },
+                { name: '.env.example', type: 'file', comment: 'API key template', icon: 'env' },
+                { name: '.gitignore', type: 'file', comment: 'Git config', icon: 'git' },
+                {
+                  name: '.co',
+                  type: 'folder',
+                  comment: 'ConnectOnion config',
+                  children: [
+                    { name: 'config.toml', type: 'file', icon: 'config' },
+                    {
+                      name: 'docs',
+                      type: 'folder',
+                      children: [
+                        { name: 'connectonion.md', type: 'file', icon: 'markdown' }
+                      ]
+                    }
+                  ]
+                }
+              ]
+            }
+          ]}
+          className="mb-8"
+        />
 
         <div className="bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg p-6 mb-8">
           <h3 className="text-lg font-semibold text-blue-200 mb-4">Your meta-agent includes:</h3>

@@ -1,11 +1,13 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, Terminal, ArrowRight, FileText, Package, Folder, GitBranch, AlertCircle, Zap, Code } from 'lucide-react'
+import { Copy, Check, Terminal, ArrowRight, FileText, Package, GitBranch, AlertCircle, Zap, Code } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CopyPromptButton } from '../../components/CopyPromptButton'
+import { CommandBlock } from '../../components/CommandBlock'
+import { FileTree } from '../../components/FileTree'
 
 export default function CLIPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -16,41 +18,6 @@ export default function CLIPage() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
-  // Command block component for better reusability
-  const CommandBlock = ({ 
-    title, 
-    commands, 
-    id 
-  }: { 
-    title?: string
-    commands: string[]
-    id: string 
-  }) => (
-    <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-      <div className="flex items-center justify-between bg-gray-800 px-4 py-2 border-b border-gray-700">
-        <span className="text-sm text-gray-400 font-mono">{title || 'Terminal'}</span>
-        <button
-          onClick={() => copyToClipboard(commands.join('\n'), id)}
-          className="text-gray-400 hover:text-white transition-colors p-1.5 rounded hover:bg-gray-700"
-          title="Copy commands"
-        >
-          {copiedId === id ? (
-            <Check className="w-4 h-4 text-green-400" />
-          ) : (
-            <Copy className="w-4 h-4" />
-          )}
-        </button>
-      </div>
-      <div className="bg-black/90 p-4 font-mono text-sm">
-        {commands.map((cmd, index) => (
-          <div key={index} className="group hover:bg-white/5 -mx-4 px-4 py-0.5">
-            <span className="select-none text-gray-500 mr-2">$</span>
-            <span className="text-gray-100">{cmd}</span>
-          </div>
-        ))}
-      </div>
-    </div>
-  )
 
 
   return (
@@ -87,7 +54,6 @@ export default function CLIPage() {
 
         <CommandBlock 
           commands={['pip install connectonion']}
-          id="install"
         />
 
         <div className="bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg p-4 mt-6">
@@ -122,7 +88,6 @@ export default function CLIPage() {
                 'cd meta-agent',
                 'co init'
               ]}
-              id="meta-init"
             />
 
             {/* Playwright */}
@@ -133,7 +98,6 @@ export default function CLIPage() {
                 'cd playwright-agent',
                 'co init --template playwright'
               ]}
-              id="playwright-init"
             />
           </div>
         </div>
@@ -173,103 +137,65 @@ export default function CLIPage() {
           
           <div className="grid md:grid-cols-2 gap-4">
             {/* Meta-Agent Structure */}
-            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
+            <div>
               <h4 className="text-sm font-semibold text-blue-300 mb-3">Meta-Agent (default)</h4>
-              <div className="font-mono text-xs text-gray-300">
-                <div className="flex items-center gap-2 mb-2">
-                  <Folder className="w-3 h-3 text-yellow-400" />
-                  <span className="text-white">my-project/</span>
-                </div>
-                <div className="ml-4 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-3 h-3 text-blue-400" />
-                    <span>agent.py</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Folder className="w-3 h-3 text-yellow-400" />
-                    <span>prompts/</span>
-                  </div>
-                  <div className="ml-4 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-3 h-3 text-green-400" />
-                      <span>metagent.md</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-3 h-3 text-green-400" />
-                      <span>docs_retrieve_prompt.md</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-3 h-3 text-green-400" />
-                      <span>answer_prompt.md</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-3 h-3 text-green-400" />
-                      <span>think_prompt.md</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-3 h-3 text-purple-400" />
-                    <span>README.md</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-3 h-3 text-gray-400" />
-                    <span>.env.example</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Folder className="w-3 h-3 text-yellow-400" />
-                    <span>.co/</span>
-                  </div>
-                </div>
-              </div>
+              <FileTree 
+                structure={[
+                  {
+                    name: 'my-project',
+                    type: 'folder',
+                    children: [
+                      { name: 'agent.py', type: 'file', icon: 'python' },
+                      { 
+                        name: 'prompts',
+                        type: 'folder',
+                        children: [
+                          { name: 'metagent.md', type: 'file', icon: 'markdown' },
+                          { name: 'docs_retrieve_prompt.md', type: 'file', icon: 'markdown' },
+                          { name: 'answer_prompt.md', type: 'file', icon: 'markdown' },
+                          { name: 'think_prompt.md', type: 'file', icon: 'markdown' }
+                        ]
+                      },
+                      { name: 'README.md', type: 'file', icon: 'markdown' },
+                      { name: '.env.example', type: 'file', icon: 'env' },
+                      { name: '.co', type: 'folder' }
+                    ]
+                  }
+                ]}
+              />
             </div>
 
             {/* Playwright Structure */}
-            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4">
+            <div>
               <h4 className="text-sm font-semibold text-purple-300 mb-3">Playwright Template</h4>
-              <div className="font-mono text-xs text-gray-300">
-                <div className="flex items-center gap-2 mb-2">
-                  <Folder className="w-3 h-3 text-yellow-400" />
-                  <span className="text-white">my-project/</span>
-                </div>
-                <div className="ml-4 space-y-1">
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-3 h-3 text-blue-400" />
-                    <span>agent.py</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-3 h-3 text-green-400" />
-                    <span>prompt.md</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <FileText className="w-3 h-3 text-gray-400" />
-                    <span>.env.example</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Folder className="w-3 h-3 text-yellow-400" />
-                    <span>.co/</span>
-                  </div>
-                  <div className="ml-4 space-y-1">
-                    <div className="flex items-center gap-2">
-                      <FileText className="w-3 h-3 text-purple-400" />
-                      <span>config.toml</span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Folder className="w-3 h-3 text-yellow-400" />
-                      <span>docs/</span>
-                    </div>
-                    <div className="ml-4">
-                      <div className="flex items-center gap-2">
-                        <FileText className="w-3 h-3 text-gray-400" />
-                        <span>connectonion.md</span>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <GitBranch className="w-3 h-3 text-orange-400" />
-                    <span>.gitignore</span>
-                  </div>
-                </div>
-              </div>
+              <FileTree 
+                structure={[
+                  {
+                    name: 'my-project',
+                    type: 'folder',
+                    children: [
+                      { name: 'agent.py', type: 'file', icon: 'python' },
+                      { name: 'prompt.md', type: 'file', icon: 'markdown' },
+                      { name: '.env.example', type: 'file', icon: 'env' },
+                      {
+                        name: '.co',
+                        type: 'folder',
+                        children: [
+                          { name: 'config.toml', type: 'file', icon: 'config' },
+                          {
+                            name: 'docs',
+                            type: 'folder',
+                            children: [
+                              { name: 'connectonion.md', type: 'file', icon: 'markdown' }
+                            ]
+                          }
+                        ]
+                      },
+                      { name: '.gitignore', type: 'file', icon: 'git' }
+                    ]
+                  }
+                ]}
+              />
             </div>
           </div>
         </div>
@@ -480,7 +406,6 @@ result = agent.input("Generate a tool for sending emails")`}
             </div>
             <CommandBlock 
               commands={['pip install playwright && playwright install']}
-              id="playwright-install"
             />
           </div>
         </div>
@@ -567,7 +492,6 @@ result = agent.input("Generate a tool for sending emails")`}
             </p>
             <CommandBlock 
               commands={['python --version']}
-              id="python-version"
             />
           </div>
 
@@ -582,7 +506,6 @@ result = agent.input("Generate a tool for sending emails")`}
                 '# Edit .env and add your actual API keys',
                 'nano .env  # or use your preferred editor'
               ]}
-              id="api-keys"
             />
           </div>
         </div>
