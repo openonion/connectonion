@@ -2,10 +2,10 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { ChevronLeft, Copy, Check, Zap, Settings, Brain, Gauge, Lightbulb } from 'lucide-react';
+import { Copy, Check, Zap, Settings, Brain, Gauge, Lightbulb } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { CopyPromptButton } from '../../components/CopyPromptButton'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { PageNavigation } from '../../components/PageNavigation'
 
 export default function MaxIterationsPage() {
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
@@ -116,7 +116,6 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
               </Link>
               <h1 className="heading-2 text-white">max_iterations Guide</h1>
             </div>
-            <CopyPromptButton />
           </div>
         </div>
       </header>
@@ -158,13 +157,14 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
             <div className="bg-black/50 rounded-lg p-4 overflow-x-auto">
               <SyntaxHighlighter 
                 language="bash" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{
                   background: 'transparent',
                   margin: 0,
                   padding: 0,
                   fontSize: '0.875rem'
                 }}
+                showLineNumbers={true}
               >
 {`# Your agent tries to complete the task
 # Iteration 1: "I need to search for info" → calls search tool
@@ -189,7 +189,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
               <div className="bg-black/30 rounded-lg overflow-hidden mb-4 custom-scrollbar">
                 <SyntaxHighlighter 
                   language="python" 
-                  style={vscDarkPlus} 
+                  style={monokai} 
                   customStyle={{ 
                     background: 'transparent', 
                     margin: 0, 
@@ -197,6 +197,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
                     fontSize: '0.875rem',
                     lineHeight: '1.5'
                   }}
+                  showLineNumbers={true}
                 >
                   {examples.basic}
                 </SyntaxHighlighter>
@@ -222,7 +223,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
               <div className="bg-black/30 rounded-lg overflow-hidden mb-4 custom-scrollbar">
                 <SyntaxHighlighter 
                   language="python" 
-                  style={vscDarkPlus} 
+                  style={monokai} 
                   customStyle={{ 
                     background: 'transparent', 
                     margin: 0, 
@@ -230,6 +231,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
                     fontSize: '0.875rem',
                     lineHeight: '1.5'
                   }}
+                  showLineNumbers={true}
                 >
                   {examples.complex}
                 </SyntaxHighlighter>
@@ -255,7 +257,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
               <div className="bg-black/30 rounded-lg overflow-hidden mb-4 custom-scrollbar">
                 <SyntaxHighlighter 
                   language="python" 
-                  style={vscDarkPlus} 
+                  style={monokai} 
                   customStyle={{ 
                     background: 'transparent', 
                     margin: 0, 
@@ -263,6 +265,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
                     fontSize: '0.875rem',
                     lineHeight: '1.5'
                   }}
+                  showLineNumbers={true}
                 >
                   {examples.override}
                 </SyntaxHighlighter>
@@ -298,7 +301,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
               <div className="bg-black/30 rounded-lg overflow-hidden mb-4 custom-scrollbar">
                 <SyntaxHighlighter 
                   language="python" 
-                  style={vscDarkPlus} 
+                  style={monokai} 
                   customStyle={{ 
                     background: 'transparent', 
                     margin: 0, 
@@ -306,6 +309,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
                     fontSize: '0.875rem',
                     lineHeight: '1.5'
                   }}
+                  showLineNumbers={true}
                 >
                   {examples.calculator}
                 </SyntaxHighlighter>
@@ -357,7 +361,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
               <div className="bg-black/30 rounded-lg overflow-x-auto mb-4">
                 <SyntaxHighlighter 
                   language="python" 
-                  style={vscDarkPlus} 
+                  style={monokai} 
                   customStyle={{ 
                     background: 'transparent', 
                     margin: 0, 
@@ -365,6 +369,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
                     fontSize: '0.875rem',
                     lineHeight: '1.5'
                   }}
+                  showLineNumbers={true}
                 >
                   {examples.autoRetry}
                 </SyntaxHighlighter>
@@ -393,7 +398,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
               <div className="bg-black/30 rounded-lg overflow-x-auto mb-4">
                 <SyntaxHighlighter 
                   language="python" 
-                  style={vscDarkPlus} 
+                  style={monokai} 
                   customStyle={{ 
                     background: 'transparent', 
                     margin: 0, 
@@ -401,6 +406,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
                     fontSize: '0.875rem',
                     lineHeight: '1.5'
                   }}
+                  showLineNumbers={true}
                 >
                   {examples.selfAdjusting}
                 </SyntaxHighlighter>
@@ -543,14 +549,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
         </section>
 
         {/* Navigation */}
-        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pt-8 border-t border-gray-800">
-          <Link href="/xray" className="text-purple-400 hover:text-purple-300 font-medium transition-colors text-center sm:text-left">
-            ← Previous: Xray Debugging
-          </Link>
-          <Link href="/prompts" className="text-purple-400 hover:text-purple-300 font-medium transition-colors text-center sm:text-right">
-            Next: System Prompts →
-          </Link>
-        </div>
+        <PageNavigation />
       </main>
     </div>
   );

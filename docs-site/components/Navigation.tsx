@@ -2,18 +2,70 @@
 
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
-import { Menu, X, Github, ExternalLink, Zap, FileText, Terminal } from 'lucide-react'
+import { Menu, X, Github, ExternalLink, Zap, FileText, Terminal, Copy, Check, Download } from 'lucide-react'
 import { motion, AnimatePresence } from 'framer-motion'
 
-export default function Navigation() {
+interface NavigationProps {
+  markdownContent?: string
+  markdownPath?: string
+  filename?: string
+}
+
+export default function Navigation({ markdownContent, markdownPath, filename = 'content.md' }: NavigationProps) {
   const [isOpen, setIsOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
+  const [copied, setCopied] = useState(false)
+  const [content, setContent] = useState(markdownContent || '')
 
   useEffect(() => {
     const handleScroll = () => setScrolled(window.scrollY > 20)
     window.addEventListener('scroll', handleScroll)
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  // Fetch markdown content if path is provided
+  useEffect(() => {
+    if (markdownPath && !markdownContent) {
+      fetch(markdownPath)
+        .then(res => res.text())
+        .then(text => setContent(text))
+        .catch(err => console.error('Failed to load markdown:', err))
+    } else if (markdownContent) {
+      setContent(markdownContent)
+    }
+  }, [markdownPath, markdownContent])
+
+  const handleCopy = async () => {
+    if (!content) return
+    
+    try {
+      await navigator.clipboard.writeText(content)
+      setCopied(true)
+      
+      // Haptic feedback for mobile
+      if ('vibrate' in navigator) {
+        navigator.vibrate(50)
+      }
+      
+      setTimeout(() => setCopied(false), 2000)
+    } catch (err) {
+      console.error('Failed to copy:', err)
+    }
+  }
+
+  const handleDownload = () => {
+    if (!content) return
+    
+    const blob = new Blob([content], { type: 'text/markdown' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+    URL.revokeObjectURL(url)
+  }
 
   return (
     <header className={`fixed top-0 w-full z-50 transition-all duration-300 ${
@@ -38,7 +90,7 @@ export default function Navigation() {
           
           {/* Desktop Navigation */}
           <div className="hidden lg:flex items-center gap-8">
-            <NavLink href="/docs" icon={<FileText className="w-4 h-4" />}>
+            <NavLink href="/quickstart" icon={<FileText className="w-4 h-4" />}>
               Docs
             </NavLink>
             <NavLink href="/cli" icon={<Terminal className="w-4 h-4" />}>
@@ -69,14 +121,32 @@ export default function Navigation() {
             </motion.div>
           </div>
 
-          {/* Mobile Menu Button */}
-          <button
-            onClick={() => setIsOpen(!isOpen)}
-            className="lg:hidden p-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
-            aria-label="Toggle navigation menu"
-          >
-            {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-          </button>
+          {/* Mobile Menu and Copy Buttons */}
+          <div className="lg:hidden flex items-center gap-2">
+            {/* Mobile Copy Button - Always visible in header */}
+            {content && (
+              <button
+                onClick={handleCopy}
+                className={`p-2 rounded-lg transition-all duration-200 ${
+                  copied 
+                    ? 'bg-green-600/20 text-green-400' 
+                    : 'text-gray-300 hover:text-white hover:bg-gray-800'
+                }`}
+                aria-label={copied ? "Copied!" : "Copy page as markdown"}
+              >
+                {copied ? <Check className="w-5 h-5" /> : <Copy className="w-5 h-5" />}
+              </button>
+            )}
+            
+            {/* Mobile Menu Button */}
+            <button
+              onClick={() => setIsOpen(!isOpen)}
+              className="p-2 rounded-lg text-gray-300 hover:text-white hover:bg-gray-800 transition-colors"
+              aria-label="Toggle navigation menu"
+            >
+              {isOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+            </button>
+          </div>
         </div>
 
         {/* Mobile Menu */}
@@ -89,7 +159,7 @@ export default function Navigation() {
               className="lg:hidden border-t border-gray-800/50 bg-gray-950/95 backdrop-blur-xl"
             >
               <div className="py-6 space-y-4">
-                <MobileNavLink href="/docs" onClick={() => setIsOpen(false)}>
+                <MobileNavLink href="/quickstart" onClick={() => setIsOpen(false)}>
                   Docs
                 </MobileNavLink>
                 <MobileNavLink href="/cli" onClick={() => setIsOpen(false)}>

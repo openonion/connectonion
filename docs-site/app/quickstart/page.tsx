@@ -3,9 +3,8 @@
 import { useState } from 'react'
 import { Play, Terminal, ArrowRight, Zap, FileText, Clock, Code, Wrench, Copy, Check } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
-import { CopyPromptButton } from '../../components/CopyPromptButton'
 import { CommandBlock } from '../../components/CommandBlock'
 import CodeWithResult from '../../components/CodeWithResult'
 import { FileTree } from '../../components/FileTree'
@@ -19,6 +18,23 @@ export default function QuickStartPage() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  // Function to copy the entire page markdown content
+  const copyPageContent = async () => {
+    // This would be the markdown content for the page
+    const markdownContent = `# Quick Start Guide
+
+Get up and running with ConnectOnion in under 2 minutes.
+
+## Installation
+\`\`\`bash
+pip install connectonion
+\`\`\`
+
+## Create Your First Agent
+...` // Add full content here
+    
+    await navigator.clipboard.writeText(markdownContent)
+  }
 
   return (
     <div className="max-w-4xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
@@ -37,17 +53,15 @@ export default function QuickStartPage() {
             Get up and running with ConnectOnion in under 2 minutes.
           </p>
         </div>
-        
-        <CopyPromptButton />
       </div>
 
-      {/* Time Estimate */}
-      <div className="flex items-center gap-2 mb-12 p-4 bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg">
-        <Clock className="w-5 h-5 text-blue-400" />
-        <span className="text-blue-200">
-          <strong>Estimated time:</strong> 2 minutes to first working agent
-        </span>
-      </div>
+        {/* Time Estimate */}
+        <div className="flex items-center gap-2 mb-12 p-4 bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg">
+          <Clock className="w-5 h-5 text-blue-400" />
+          <span className="text-blue-200">
+            <strong>Estimated time:</strong> 2 minutes to first working agent
+          </span>
+        </div>
 
       {/* Installation */}
       <section className="mb-16">

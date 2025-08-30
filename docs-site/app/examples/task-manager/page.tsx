@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Copy, Check, FileText, ArrowRight, ArrowLeft, Download, Play, Terminal, Lightbulb, CheckSquare, Clock, Plus } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
 
@@ -428,7 +428,7 @@ Perfect foundation for building stateful agents with data management!`
             <div className="p-6 ">
               <SyntaxHighlighter 
                 language="python" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{
                   background: 'transparent',
                   padding: 0,
@@ -473,7 +473,7 @@ Perfect foundation for building stateful agents with data management!`
             <div className="p-6 ">
               <SyntaxHighlighter 
                 language="python" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{
                   background: 'transparent',
                   padding: 0,

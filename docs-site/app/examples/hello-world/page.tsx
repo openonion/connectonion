@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Copy, Check, User, ArrowRight, ArrowLeft, Download, Play, Terminal, Lightbulb, Zap } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
 
@@ -213,7 +213,7 @@ This is your first step into building intelligent agents with ConnectOnion!`
             <div className="p-6">
               <SyntaxHighlighter 
                 language="bash" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{
                   background: 'transparent',
                   padding: 0,
@@ -252,7 +252,7 @@ This is your first step into building intelligent agents with ConnectOnion!`
             <div className="p-6">
               <SyntaxHighlighter 
                 language="python" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{
                   background: 'transparent',
                   padding: 0,
@@ -297,7 +297,7 @@ This is your first step into building intelligent agents with ConnectOnion!`
             <div className="p-6">
               <SyntaxHighlighter 
                 language="python" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{
                   background: 'transparent',
                   padding: 0,

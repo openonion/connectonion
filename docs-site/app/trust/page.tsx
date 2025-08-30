@@ -1,6 +1,5 @@
 'use client'
 
-import { CopyPromptButton } from '../../components/CopyPromptButton'
 import CodeWithResult from '../../components/CodeWithResult'
 import { Shield, Users, Code, Zap, CheckCircle, TrendingUp, AlertCircle, BookOpen } from 'lucide-react'
 import Link from 'next/link'
@@ -23,7 +22,6 @@ export default function TrustPage() {
                 Flexible, bidirectional trust configuration for agent interactions
               </p>
             </div>
-            <CopyPromptButton />
           </div>
 
           {/* Why Trust Blog Link */}

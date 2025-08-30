@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Copy, Check, FileText, ArrowRight, ArrowLeft, Download, Play, Terminal, Lightbulb, Search, FolderOpen, Shield } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
 

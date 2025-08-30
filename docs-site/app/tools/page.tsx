@@ -3,10 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { Copy, Check, Code, Layers, Compass, Monitor } from 'lucide-react'
-import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import CodeWithResult from '../../components/CodeWithResult'
-import { CopyPromptButton } from '../../components/CopyPromptButton'
 
 export default function ToolsDocsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -337,7 +334,6 @@ browser.close()`
             </p>
           </div>
           <div className="flex-shrink-0">
-            <CopyPromptButton />
           </div>
         </div>
       </div>

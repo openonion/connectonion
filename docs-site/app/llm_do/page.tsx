@@ -4,7 +4,6 @@ import { useState } from 'react'
 import Link from 'next/link'
 import CopyButton from '../../components/CopyButton'
 import CodeWithResult from '../../components/CodeWithResult'
-import { CopyPromptButton } from '../../components/CopyPromptButton'
 import { CommandBlock } from '../../components/CommandBlock'
 import { ChevronRight, Zap, Package, Shield, Code, Layers, ArrowRight } from 'lucide-react'
 
@@ -30,7 +29,6 @@ export default function LLMPage() {
               Make direct LLM calls with optional structured output. One function for any LLM task.
             </p>
           </div>
-          <CopyPromptButton />
         </div>
       </div>
 

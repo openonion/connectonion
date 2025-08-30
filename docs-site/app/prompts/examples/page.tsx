@@ -246,17 +246,17 @@ export default function PromptsExamplesPage() {
       {/* Navigation */}
       <nav className="flex justify-between items-center pt-12 mt-12 border-t border-gray-800">
         <Link 
-          href="/prompts/best-practices" 
+          href="/prompts" 
           className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
         >
           <ArrowRight className="w-4 h-4 rotate-180" />
-          Best Practices
+          System Prompts
         </Link>
         <Link 
-          href="/prompts/organization" 
+          href="/prompts/formats" 
           className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
         >
-          File Organization
+          Prompt Formats
           <ArrowRight className="w-4 h-4" />
         </Link>
       </nav>

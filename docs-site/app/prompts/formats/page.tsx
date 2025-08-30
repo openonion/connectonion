@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Copy, Check, FileText, Database, Code, File, FileCode } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 const samePrompt = {
   markdown: `# AI Assistant
@@ -237,7 +237,7 @@ print(response)`
               <div className="p-6">
                 <SyntaxHighlighter 
                   language="python" 
-                  style={vscDarkPlus}
+                  style={monokai}
                   customStyle={{
                     background: 'transparent',
                     padding: 0,
@@ -245,6 +245,7 @@ print(response)`
                     fontSize: '0.875rem',
                     lineHeight: '1.6'
                   }}
+                  showLineNumbers={true}
                 >
                   {getUsageCode(format.key)}
                 </SyntaxHighlighter>
@@ -279,7 +280,7 @@ print(response)`
               <div className="p-6">
                 <SyntaxHighlighter 
                   language={format.lang}
-                  style={vscDarkPlus}
+                  style={monokai}
                   customStyle={{
                     background: 'transparent',
                     padding: 0,
@@ -287,6 +288,7 @@ print(response)`
                     fontSize: '0.8rem',
                     lineHeight: '1.4'
                   }}
+                  showLineNumbers={true}
                 >
                   {samePrompt[format.key as keyof typeof samePrompt]}
                 </SyntaxHighlighter>
@@ -321,7 +323,7 @@ print(response)`
           <div className="p-6">
             <SyntaxHighlighter 
               language="python" 
-              style={vscDarkPlus}
+              style={monokai}
               customStyle={{
                 background: 'transparent',
                 padding: 0,
@@ -329,6 +331,7 @@ print(response)`
                 fontSize: '0.875rem',
                 lineHeight: '1.5'
               }}
+              showLineNumbers={true}
             >
 {`# All of these create identical agents:
 agent = Agent("bot", system_prompt="""You are a helpful...""")  # Direct String

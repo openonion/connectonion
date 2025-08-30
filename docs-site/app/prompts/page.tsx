@@ -3,9 +3,8 @@
 import { useState } from 'react'
 import { Copy, Check, FileText, Play, ArrowRight, Info, AlertTriangle, FolderOpen } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
-import { CopyPromptButton } from '../../components/CopyPromptButton'
 
 export default function PromptsOverviewPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -96,8 +95,6 @@ result = agent.input(
             behavior, and approach to tasks.
           </p>
         </div>
-        
-        <CopyPromptButton />
       </div>
 
       {/* Recommended: Markdown Files */}
@@ -137,8 +134,9 @@ result = agent.input(
             <div className="p-6">
               <SyntaxHighlighter 
                 language="bash" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.875rem', lineHeight: '1.6' }}
+                showLineNumbers={true}
               >
                 {folderTree}
               </SyntaxHighlighter>
@@ -162,8 +160,9 @@ result = agent.input(
             <div className="p-6">
               <SyntaxHighlighter 
                 language="markdown" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.875rem', lineHeight: '1.6' }}
+                showLineNumbers={true}
               >
                 {recommendedMarkdown}
               </SyntaxHighlighter>
@@ -187,8 +186,9 @@ result = agent.input(
             <div className="p-6">
               <SyntaxHighlighter 
                 language="python" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.875rem', lineHeight: '1.6' }}
+                showLineNumbers={true}
               >
                 {loadFromMarkdown}
               </SyntaxHighlighter>
@@ -271,7 +271,7 @@ result = agent.input(
             <div className="p-6">
               <SyntaxHighlighter 
                 language="python" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{
                   background: 'transparent',
                   padding: 0,
@@ -279,6 +279,7 @@ result = agent.input(
                   fontSize: '0.875rem',
                   lineHeight: '1.5'
                 }}
+                showLineNumbers={true}
               >
                 {quickStartCode}
               </SyntaxHighlighter>
@@ -311,8 +312,9 @@ result = agent.input(
           <div className="p-6">
             <SyntaxHighlighter 
               language="python" 
-              style={vscDarkPlus}
+              style={monokai}
               customStyle={{ background: 'transparent', padding: 0, margin: 0, fontSize: '0.875rem', lineHeight: '1.5' }}
+              showLineNumbers={true}
             >
               {iterationCode}
             </SyntaxHighlighter>
@@ -352,17 +354,17 @@ result = agent.input(
         
         <div className="grid md:grid-cols-2 gap-6">
           <Link 
-            href="/prompts/best-practices" 
+            href="/prompts/examples" 
             className="group bg-gray-900 border border-gray-700 rounded-lg p-6 hover:border-blue-500/50 transition-all"
           >
             <div className="flex items-center justify-between mb-3">
-              <h3 className="font-semibold text-white">Best Practices</h3>
+              <h3 className="font-semibold text-white">Prompt Examples</h3>
               <ArrowRight className="w-5 h-5 text-gray-400 group-hover:text-blue-400 transition-colors" />
             </div>
             <p className="text-gray-400 text-sm mb-4">
-              Learn proven patterns for writing effective system prompts that guide agent behavior.
+              Explore real-world prompt examples for different roles and domains.
             </p>
-            <div className="text-xs text-blue-400">Read guide →</div>
+            <div className="text-xs text-blue-400">View examples →</div>
           </Link>
 
           <Link 
@@ -391,10 +393,10 @@ result = agent.input(
           Introduction
         </Link>
         <Link 
-          href="/prompts/best-practices" 
+          href="/tools" 
           className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
         >
-          Best Practices
+          Tools
           <ArrowRight className="w-4 h-4" />
         </Link>
       </nav>

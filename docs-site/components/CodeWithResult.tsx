@@ -3,7 +3,7 @@
 import { useState } from 'react'
 import { Copy, Check, Play, Terminal, FileCode, ChevronRight } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { oneDark } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 
 interface CodeWithResultProps {
   code: string
@@ -161,7 +161,7 @@ export default function CodeWithResult({
           <div className="p-4 overflow-x-auto custom-scrollbar">
             <SyntaxHighlighter 
               language={language} 
-              style={oneDark} 
+              style={monokai} 
               customStyle={{ 
                 background: 'transparent', 
                 padding: 0, 
@@ -171,7 +171,7 @@ export default function CodeWithResult({
                 overflow: 'visible',
                 fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Consolas, "Liberation Mono", Menlo, monospace'
               }}
-              showLineNumbers={false}
+              showLineNumbers={true}
               wrapLines={false}
               wrapLongLines={false}
               PreTag="div"

@@ -2,7 +2,6 @@
 
 import { motion } from 'framer-motion'
 import { Zap, ArrowRight, Activity } from 'lucide-react'
-import { CopyPromptButton } from '../../components/CopyPromptButton'
 import CodeWithResult from '../../components/CodeWithResult'
 import Link from 'next/link'
 // React Icons
@@ -39,7 +38,6 @@ export default function XrayPage() {
                 </p>
               </div>
               <div className="flex-shrink-0 ml-8">
-                <CopyPromptButton />
               </div>
             </div>
             

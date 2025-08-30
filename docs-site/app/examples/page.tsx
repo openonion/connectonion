@@ -3,7 +3,7 @@
 import React, { useState } from 'react'
 import { Copy, Check, Play, Terminal, ArrowRight, Code, Database, User, FileText, Calculator, BookOpen, Shield, Globe, ShoppingCart, ChevronRight, ExternalLink } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
 
@@ -354,7 +354,7 @@ pip install connectonion
                 <div className="p-4">
                   <SyntaxHighlighter 
                     language="python" 
-                    style={vscDarkPlus}
+                    style={monokai}
                     customStyle={{
                       background: 'transparent',
                       padding: 0,

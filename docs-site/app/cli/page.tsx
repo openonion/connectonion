@@ -3,9 +3,8 @@
 import { useState } from 'react'
 import { Copy, Check, Terminal, ArrowRight, FileText, Package, GitBranch, AlertCircle, Zap, Code, Folder } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
-import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism'
+import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
-import { CopyPromptButton } from '../../components/CopyPromptButton'
 import { CommandBlock } from '../../components/CommandBlock'
 import { FileTree } from '../../components/FileTree'
 
@@ -37,8 +36,6 @@ export default function CLIPage() {
             Quickly scaffold and manage ConnectOnion agent projects with the CLI.
           </p>
         </div>
-        
-        <CopyPromptButton />
       </div>
 
       {/* Installation */}
@@ -301,7 +298,7 @@ result = agent.input("Generate a tool for sending emails")`, 'meta-usage')}
             <div className="p-6">
               <SyntaxHighlighter 
                 language="python" 
-                style={vscDarkPlus}
+                style={monokai}
                 customStyle={{
                   background: 'transparent',
                   padding: 0,
@@ -309,6 +306,7 @@ result = agent.input("Generate a tool for sending emails")`, 'meta-usage')}
                   fontSize: '0.875rem',
                   lineHeight: '1.5'
                 }}
+                showLineNumbers={true}
               >
 {`# Learn about ConnectOnion
 result = agent.input("What is ConnectOnion and how do tools work?")

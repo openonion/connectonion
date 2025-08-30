@@ -9,13 +9,16 @@ import {
   Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, 
   Gauge, Copy, Check, Terminal, Rocket, Cloud, MoreHorizontal,
   X, ArrowUp, ArrowDown, Home, BookOpenText, Bug, MessageSquare,
-  Layers, Sparkles, Calculator, Bot, Package, MessageCircle
+  Layers, Sparkles, Calculator, Bot, Package, MessageCircle, Loader2
 } from 'lucide-react'
 import { DifficultyBadge } from './DifficultyBadge'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
 import { SearchHighlight } from './SearchHighlight'
 import { performFullTextSearch, pageContentIndex } from '../utils/searchIndex'
 import { searchPages } from '../utils/enhancedSearch'
+import { searchMarkdownDocuments, getMatchSnippet } from '../utils/markdownLoader'
+import { useCopyMarkdown } from '../hooks/useCopyMarkdown'
+import { hasMarkdownContent } from '../utils/markdownMapping'
 
 type NavItem = {
   title: string
@@ -41,12 +44,12 @@ const navigation: NavigationSection[] = [
   {
     title: 'Core Concepts',
     items: [
-      { title: 'max_iterations', href: '/max-iterations', icon: Gauge, difficulty: 'Start Here', keywords: ['loop', 'limit', 'iteration', 'control'] },
+      { title: 'System Prompts', href: '/prompts', icon: MessageSquare, difficulty: 'Start Here', keywords: ['template', 'prompt', 'system', 'message', 'personality', 'behavior'] },
+      { title: 'Tools', href: '/tools', icon: Code, keywords: ['function', 'utility', 'actions', 'capabilities', 'tools'] },
+      { title: 'max_iterations', href: '/max-iterations', icon: Gauge, keywords: ['loop', 'limit', 'iteration', 'control', 'safety'] },
+      { title: 'LLM Function', href: '/llm_do', icon: Zap, keywords: ['ai', 'model', 'openai', 'language', 'llm_do', 'direct'] },
+      { title: 'Trust Parameter', href: '/trust', icon: Shield, keywords: ['security', 'safety', 'trust', 'permission', 'multi-agent'] },
       { title: '@xray Decorator', href: '/xray', icon: Bug, keywords: ['debug', 'xray', 'decorator', 'trace', 'monitor', 'visibility'] },
-      { title: 'LLM Function', href: '/llm_do', icon: Zap, keywords: ['ai', 'model', 'openai', 'language', 'llm_do'] },
-      { title: 'Tools', href: '/tools', icon: Code, keywords: ['function', 'utility', 'actions', 'capabilities'] },
-      { title: 'System Prompts', href: '/prompts', icon: MessageSquare, keywords: ['template', 'prompt', 'system', 'message'] },
-      { title: 'Trust Parameter', href: '/trust', icon: Shield, keywords: ['security', 'safety', 'trust', 'permission'] },
     ]
   },
   {
@@ -69,7 +72,7 @@ const navigation: NavigationSection[] = [
       { title: 'Hello World', href: '/examples/hello-world', icon: Sparkles, difficulty: 'Beginner', keywords: ['hello', 'basic', 'simple', 'first'] },
       { title: 'Calculator', href: '/examples/calculator', icon: Calculator, difficulty: 'Beginner', keywords: ['calculator', 'math', 'compute', 'arithmetic'] },
       { title: 'Weather Bot', href: '/examples/weather-bot', icon: Cloud, difficulty: 'Intermediate', keywords: ['weather', 'bot', 'api', 'forecast'] },
-      { title: 'More Examples', href: '/examples#advanced', icon: Layers, keywords: ['advanced', 'more', 'complex', 'additional'] },
+      { title: 'More Examples', href: '/examples', icon: Layers, keywords: ['advanced', 'more', 'complex', 'additional'] },
     ]
   },
   {
@@ -104,8 +107,10 @@ export function DocsSidebar() {
   const [openSections, setOpenSections] = useState<string[]>(['Getting Started'])
   const [isClientMounted, setIsClientMounted] = useState(false)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success'>('idle')
+  const [copyPageStatus, setCopyPageStatus] = useState<'idle' | 'copying' | 'success'>('idle')
   const pathname = usePathname()
   const searchInputRef = useRef<HTMLInputElement>(null)
+  const { copyMarkdown, status: itemCopyStatus, copiedPath } = useCopyMarkdown()
 
   // Auto-expand section containing current page
   useEffect(() => {
@@ -158,18 +163,38 @@ export function DocsSidebar() {
   }, [pathname])
 
   // Enhanced full-text search with fuzzy matching and typo tolerance
-  const performSearch = (query: string) => {
+  const performSearch = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([])
       return
     }
 
-    // Use the enhanced search with fuzzy matching
+    // Search markdown documents for comprehensive results
+    const markdownResults = await searchMarkdownDocuments(query)
+    
+    // Use the enhanced search with fuzzy matching  
     const enhancedResults = searchPages(query)
     
     // Map results back to navigation items
     const results: SearchResult[] = []
     const processedHrefs = new Set<string>()
+    
+    // Process markdown search results first (highest priority)
+    markdownResults.forEach(docResult => {
+      // Find the corresponding navigation item
+      navigation.forEach(section => {
+        const navItem = section.items.find(item => item.href === docResult.href)
+        if (navItem && !processedHrefs.has(navItem.href)) {
+          processedHrefs.add(navItem.href)
+          results.push({
+            item: navItem,
+            section: docResult.section || section.title,
+            score: 150, // Highest score for markdown content matches
+            matches: ['documentation']
+          })
+        }
+      })
+    })
     
     // Process enhanced search results
     enhancedResults.forEach(pageResult => {
@@ -224,7 +249,7 @@ export function DocsSidebar() {
 
     // Sort by score (highest first)
     results.sort((a, b) => b.score - a.score)
-    setSearchResults(results)
+    setSearchResults(results.slice(0, 5)) // Show top 5 results
     setSelectedIndex(0)
   }
 
@@ -481,10 +506,10 @@ export function DocsSidebar() {
                   const isInResults = searchResults.some(r => r.item === item)
                   
                   return (
-                    <li key={item.href} role="listitem">
+                    <li key={item.href} role="listitem" className="relative group">
                       <Link
                         href={item.href}
-                        className={`block px-3 py-2.5 text-sm font-normal rounded-lg mx-1 transition-all relative group ${
+                        className={`block px-3 py-2.5 text-sm font-normal rounded-lg mx-1 transition-all relative ${
                           isActive
                             ? 'bg-purple-500/25 text-white font-medium shadow-sm ring-1 ring-purple-400/30'
                             : isInResults && searchQuery
@@ -519,6 +544,31 @@ export function DocsSidebar() {
                           )}
                         </div>
                       </Link>
+                      
+                      {/* Copy button - only shows on hover for desktop, and only if page has markdown */}
+                      {hasMarkdownContent(item.href) && (
+                        <button
+                          onClick={(e) => {
+                            e.preventDefault()
+                            e.stopPropagation()
+                            copyMarkdown(item.href)
+                          }}
+                          className="absolute right-2 top-1/2 -translate-y-1/2
+                                     opacity-0 group-hover:opacity-100
+                                     transition-opacity duration-200
+                                     p-1.5 rounded-md hover:bg-gray-600/50
+                                     hidden lg:block"
+                          title="Copy page as markdown"
+                        >
+                          {itemCopyStatus === 'loading' && copiedPath === item.href ? (
+                            <Loader2 className="w-4 h-4 text-gray-400 animate-spin" />
+                          ) : itemCopyStatus === 'success' && copiedPath === item.href ? (
+                            <Check className="w-4 h-4 text-green-400" />
+                          ) : (
+                            <Copy className="w-4 h-4 text-gray-400 hover:text-white" />
+                          )}
+                        </button>
+                      )}
                     </li>
                   )
                 })}
