@@ -1,11 +1,11 @@
 """ConnectOnion - A simple agent framework with behavior tracking."""
 
-__version__ = "0.0.1b6"
+__version__ = "0.0.1b7"
 
 from .agent import Agent
 from .tools import create_tool_from_function
 from .llm import LLM
-from .llm_function import llm_do
+from .llm_do import llm_do
 from .history import History
 from .decorators import xray, replay, xray_replay
 
