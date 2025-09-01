@@ -1,3 +1,40 @@
+/*
+  @date: 2025-01-01
+  @description: Examples Overview Page
+  
+  DESIGN ISSUES TO FIX:
+  
+  1. **Card Layout Problems** (Priority: HIGH)
+     - Cards have inconsistent heights causing misalignment
+     - Difficulty badges hard to scan - no visual hierarchy
+     - Preview code snippets too small and cut off
+     - Fix: Use CSS grid with equal heights, add difficulty color coding, expand preview area
+  
+  2. **Navigation Flow** (Priority: HIGH)
+     - No clear learning path from beginner to advanced
+     - Missing visual progression indicators
+     - Cards don't show estimated completion time
+     - Fix: Add numbered progression path, visual flow arrows, time estimates
+  
+  3. **Information Overload** (Priority: MEDIUM)
+     - Too many concepts listed per card
+     - Preview code distracts from card selection
+     - No filtering or search functionality
+     - Fix: Show max 3 concepts, move preview to hover/modal, add filter buttons
+  
+  4. **Responsive Issues** (Priority: MEDIUM)
+     - Grid doesn't adapt well to tablet sizes
+     - Code previews unreadable on mobile
+     - Icon sizes too small on touch devices
+     - Fix: Use responsive grid (1-2-3 columns), hide previews on mobile, increase touch targets
+  
+  5. **Visual Hierarchy** (Priority: LOW)
+     - All cards have equal visual weight
+     - No emphasis on recommended starting point
+     - Color coding inconsistent with difficulty
+     - Fix: Highlight "Start Here" card, use consistent color progression, add recommended badges
+*/
+
 'use client'
 
 import React, { useState } from 'react'

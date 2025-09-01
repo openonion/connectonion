@@ -1,3 +1,39 @@
+/*
+  @date: 2025-01-01
+  @description: @xray Debugging Feature Page
+  
+  DESIGN ISSUES TO FIX:
+  
+  1. **Icon Overload** (Priority: HIGH)
+     - Too many different icon libraries imported (lucide, react-icons, etc)
+     - Inconsistent icon styles throughout page
+     - Icons dominate text content
+     - Fix: Standardize on one icon library, reduce icon usage, improve balance
+  
+  2. **Missing Core Elements** (Priority: HIGH)
+     - No copy-all-content button (CLAUDE.md requirement)
+     - Missing breadcrumb navigation
+     - No clear CTA to try the feature
+     - Fix: Add CopyMarkdownButton, breadcrumbs, prominent "Try it now" section
+  
+  3. **Visual Complexity** (Priority: MEDIUM)
+     - Flow diagram unclear without labels
+     - Too many visual metaphors (brain, eye, debug icons)
+     - Gradient backgrounds make text hard to read
+     - Fix: Simplify diagrams, reduce decorative elements, improve contrast
+  
+  4. **Content Organization** (Priority: MEDIUM)
+     - Features list too long without grouping
+     - No comparison with/without @xray
+     - Missing real-world use cases
+     - Fix: Group features by category, add before/after comparison, add case studies
+  
+  5. **Mobile Experience** (Priority: LOW)
+     - Flow diagram breaks on small screens
+     - Icon-heavy design problematic on mobile
+     - Fix: Responsive diagram layout, reduce icon density for mobile
+*/
+
 'use client'
 
 import { motion } from 'framer-motion'

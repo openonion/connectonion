@@ -1,3 +1,40 @@
+/*
+  @date: 2025-01-01
+  @description: Roadmap Page
+  
+  DESIGN ISSUES TO FIX:
+  
+  1. **Timeline Visualization** (Priority: HIGH)
+     - No visual timeline or gantt chart view
+     - Quarters shown as text instead of visual timeline
+     - Progress bars disconnected from time context
+     - Fix: Add horizontal timeline view, show dependencies, visualize time progression
+  
+  2. **Feature Status Clarity** (Priority: HIGH)
+     - Status icons too small and similar colors
+     - Progress percentages arbitrary without context
+     - No indication of blockers or dependencies
+     - Fix: Larger status badges, explain progress metrics, show dependencies
+  
+  3. **Filtering UX** (Priority: MEDIUM)
+     - Category filters reset scroll position
+     - No indication of how many items in each filter
+     - Selected filter state not persistent
+     - Fix: Maintain scroll, show counts, remember filter selection
+  
+  4. **Mobile Experience** (Priority: MEDIUM)
+     - Feature cards too dense on mobile
+     - Progress bars too thin for touch
+     - CTA buttons stack poorly
+     - Fix: Simplify mobile cards, increase touch targets, responsive CTA layout
+  
+  5. **User Engagement** (Priority: LOW)
+     - No voting or feedback mechanism
+     - Missing "notify me" for features
+     - Static content without updates indicator
+     - Fix: Add voting buttons, email notifications, "last updated" timestamp
+*/
+
 'use client'
 
 import { useState } from 'react'

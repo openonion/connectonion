@@ -1,3 +1,39 @@
+/*
+  @date: 2025-01-01
+  @description: Quick Start Guide Page
+  
+  DESIGN ISSUES TO FIX:
+  
+  1. **Navigation & Wayfinding** (Priority: HIGH)
+     - Missing copy-all-content button that other pages should have
+     - Breadcrumb navigation inconsistent with other pages
+     - No previous/next page navigation at bottom
+     - Fix: Add CopyMarkdownButton component, standardize breadcrumbs, add PageNavigation
+  
+  2. **Content Structure** (Priority: HIGH)
+     - Steps numbered manually instead of using consistent step components
+     - Code blocks and results not using consistent CodeWithResult component
+     - FileTree component cut off in preview (line 100)
+     - Fix: Create reusable StepSection component, use CodeWithResult consistently
+  
+  3. **Visual Consistency** (Priority: MEDIUM)
+     - Step numbers use different styling than other numbered content
+     - Time estimate box uses different info box style than other pages
+     - Inconsistent spacing between sections (mb-16 vs mb-12)
+     - Fix: Standardize component styles, create InfoBox component
+  
+  4. **Progressive Disclosure** (Priority: MEDIUM)
+     - All content shown at once - overwhelming for beginners
+     - No indication of optional vs required steps
+     - Missing "what you'll learn" overview
+     - Fix: Add collapsible advanced sections, mark optional content, add learning objectives
+  
+  5. **Mobile Responsiveness** (Priority: LOW)
+     - Horizontal padding too large on mobile (px-8)
+     - CommandBlock components may overflow on small screens
+     - Fix: Use responsive padding (px-4 md:px-8), ensure horizontal scroll for commands
+*/
+
 'use client'
 
 import { useState } from 'react'

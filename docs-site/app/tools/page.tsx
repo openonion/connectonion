@@ -1,3 +1,40 @@
+/*
+  @date: 2025-01-01
+  @description: Tools Documentation Page
+  
+  DESIGN ISSUES TO FIX:
+  
+  1. **Missing Page Structure** (Priority: HIGH)
+     - No breadcrumb navigation like other pages
+     - Missing copy-all-content button (per CLAUDE.md requirement)
+     - No table of contents for long content
+     - Fix: Add navigation components, CopyMarkdownButton, floating TOC sidebar
+  
+  2. **Code Example Presentation** (Priority: HIGH)
+     - Not using CodeWithResult component consistently
+     - Results shown in comments instead of separate result panel
+     - No visual separation between code and output
+     - Fix: Use CodeWithResult for all examples, clear input/output separation
+  
+  3. **Content Organization** (Priority: MEDIUM)
+     - Function tools vs class tools not clearly differentiated
+     - Missing visual indicators for tool types
+     - No quick reference or cheat sheet section
+     - Fix: Add tabs/sections for tool types, add visual type indicators, create quick ref card
+  
+  4. **Learning Path** (Priority: MEDIUM)
+     - Jumps directly into complex examples
+     - No progression from simple to complex (violates CLAUDE.md)
+     - Missing "common patterns" section
+     - Fix: Restructure with beginner → intermediate → advanced flow, add patterns section
+  
+  5. **Interactive Elements** (Priority: LOW)
+     - No try-it-yourself playground
+     - Static code examples only
+     - Missing links to working examples
+     - Fix: Add interactive playground component, link to runnable examples
+*/
+
 'use client'
 
 import { useState } from 'react'

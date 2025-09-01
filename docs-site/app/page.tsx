@@ -1,3 +1,39 @@
+/*
+  @date: 2025-01-01
+  @description: Landing Page
+  
+  DESIGN ISSUES TO FIX:
+  
+  1. **Mobile Experience Issues** (Priority: HIGH)
+     - Hero section min-height too tall on mobile (85vh cuts off content)
+     - Font sizes don't scale smoothly between breakpoints
+     - CTAs stack poorly on mobile with inconsistent spacing
+     - Fix: Use clamp() for fluid typography, reduce mobile hero height to 70vh
+  
+  2. **Visual Hierarchy Problems** (Priority: HIGH)
+     - Too many competing visual elements (gradients, glows, animations)
+     - Multiple gradient overlays create muddy appearance
+     - Inconsistent button styles across sections
+     - Fix: Simplify to 1-2 gradient effects, establish clear button hierarchy
+  
+  3. **Content Accessibility** (Priority: MEDIUM)
+     - Low contrast on gray-400 text (WCAG AA fail)
+     - No focus indicators on interactive elements
+     - Missing aria-labels on icon-only buttons
+     - Fix: Use gray-300 minimum, add focus-visible styles, add proper labels
+  
+  4. **Information Architecture** (Priority: MEDIUM)
+     - "Vibe Coding" section unclear - needs better introduction
+     - Code comparison section hard to scan on mobile
+     - Missing clear value proposition above the fold
+     - Fix: Add explanation text, use tabs for code comparison, strengthen headline
+  
+  5. **Performance Concerns** (Priority: LOW)
+     - Large Prism syntax highlighter loaded for small code snippets
+     - Multiple blur effects may cause rendering issues on low-end devices
+     - Fix: Consider lighter syntax highlighting, reduce blur layers
+*/
+
 'use client'
 
 import { useState } from 'react'
@@ -134,7 +170,28 @@ export default function HomePage() {
         </div>
       </section>
       
-      {/* Section 2: The Equation - Show don't tell */}
+      {/* Section 2: Philosophy - Core Belief */}
+      <section className="min-h-[90vh] md:min-h-screen flex items-center justify-center px-6 bg-gray-900/10 py-12 md:py-16">
+        <div className="max-w-5xl mx-auto text-center">
+          <div className="inline-flex items-center gap-2 mb-4">
+            <div className="h-px w-8 bg-gradient-to-r from-transparent to-purple-500" />
+            <span className="text-xs md:text-sm font-mono uppercase tracking-[0.2em] text-gray-400">ConnectOnion Philosophy</span>
+            <div className="h-px w-8 bg-gradient-to-l from-transparent to-purple-500" />
+          </div>
+          <h2 className="text-4xl sm:text-5xl md:text-6xl font-black tracking-tight leading-tight text-white mb-2">
+            <span className="bg-gradient-to-r from-green-300 via-emerald-300 to-green-400 bg-clip-text text-transparent">
+              Keep simple things simple
+            </span>
+          </h2>
+          <h3 className="text-3xl sm:text-4xl md:text-5xl font-black tracking-tight leading-tight text-white">
+            <span className="bg-gradient-to-r from-purple-300 via-violet-300 to-blue-300 bg-clip-text text-transparent">
+              Make complicated things possible
+            </span>
+          </h3>
+        </div>
+      </section>
+
+      {/* Section 3: The Equation - Show don't tell */}
 
       <section className="py-16 md:py-20 px-6">
         <div className="max-w-4xl mx-auto">
@@ -218,7 +275,7 @@ export default function HomePage() {
         </div>
       </section>
       
-      {/* Section 3: Code Example - Cleaner */}
+      {/* Section 4: Code Example - Cleaner */}
       <section className="py-20 px-6 bg-gray-900/20">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
@@ -247,7 +304,7 @@ print(result)  # "42 * 17 equals 714"`}
         </div>
       </section>
 
-      {/* Section 4: See the Difference - Comparison */}
+      {/* Section 5: See the Difference - Comparison */}
       <section className="py-16 md:py-20 px-6 bg-gray-900/20">
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-8 md:mb-12">
@@ -398,7 +455,7 @@ print(result)`}
         </div>
       </section>
       
-      {/* Section 5: Vibe Coding - Stunning Design */}
+      {/* Section 6: Vibe Coding - Stunning Design */}
       <section id="vibe-coding" className="py-20 px-6 relative overflow-hidden">
         {/* Background gradient effect */}
         <div className="absolute inset-0 bg-gradient-to-br from-purple-900/20 via-transparent to-blue-900/20" />
@@ -523,7 +580,7 @@ print(result)`}
         </div>
       </section>
 
-      {/* Section 5: Start Simple, Ship Production-Ready */}
+      {/* Section 7: Start Simple, Ship Production-Ready */}
       <section className="py-20 px-6 bg-gray-900/20">
         <div className="text-center mb-12">
           <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">Start Simple, Ship Production-Ready</h2>
@@ -608,6 +665,7 @@ print(result)`}
         </div>
       </section>
 
+      {/* Section 8: Join the Community */}
       <section className="py-20 px-6 bg-gray-900/20">
         <div className="max-w-4xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-8">Join the Community</h2>
@@ -638,7 +696,7 @@ print(result)`}
         </div>
       </section>
 
-      {/* Section 7: Final CTA - Simplified */}
+      {/* Section 9: Final CTA - Simplified */}
       <section className="py-16 md:py-20 px-6">
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="text-2xl md:text-3xl font-bold text-white mb-3 md:mb-4">Ready to Start?</h2>

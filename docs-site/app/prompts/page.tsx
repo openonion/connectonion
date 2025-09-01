@@ -1,3 +1,39 @@
+/*
+  @date: 2025-01-01
+  @description: Prompts Overview Page
+  
+  DESIGN ISSUES TO FIX:
+  
+  1. **Content Structure** (Priority: HIGH)
+     - Missing copy-all-content button (CLAUDE.md requirement)
+     - No clear distinction between loading methods
+     - Code examples not using CodeWithResult component
+     - Fix: Add CopyMarkdownButton, use tabs for methods, standardize code display
+  
+  2. **Navigation & Discovery** (Priority: HIGH)
+     - No breadcrumb navigation
+     - Missing links to example prompts
+     - No table of contents for sections
+     - Fix: Add breadcrumb, create prompt gallery links, add TOC
+  
+  3. **Best Practices Presentation** (Priority: MEDIUM)
+     - Recommendations buried in text
+     - No visual do/don't examples
+     - Missing prompt testing playground
+     - Fix: Create best practices cards, add visual examples, prompt tester
+  
+  4. **Code Examples** (Priority: MEDIUM)
+     - Inconsistent syntax highlighting
+     - No line numbers for reference
+     - Missing file path indicators
+     - Fix: Standardize highlighting, add line numbers, show file paths
+  
+  5. **Mobile Optimization** (Priority: LOW)
+     - Code blocks require horizontal scroll
+     - Text too dense on small screens
+     - Fix: Responsive code display, improve spacing
+*/
+
 'use client'
 
 import { useState } from 'react'

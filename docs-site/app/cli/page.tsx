@@ -1,3 +1,39 @@
+/*
+  @date: 2025-01-01
+  @description: CLI Reference Page
+  
+  DESIGN ISSUES TO FIX:
+  
+  1. **Command Documentation Structure** (Priority: HIGH)
+     - Commands shown without clear syntax patterns
+     - Missing required vs optional parameter indicators
+     - No command output examples shown
+     - Fix: Add syntax diagrams, use [optional] notation, show example outputs
+  
+  2. **Missing Copy Button** (Priority: HIGH)
+     - No copy-all-content button as required by CLAUDE.md
+     - Individual command blocks lack context when copied
+     - Fix: Add CopyMarkdownButton, ensure commands copy with descriptions
+  
+  3. **Visual Hierarchy** (Priority: MEDIUM)
+     - All commands look equally important
+     - No quick command reference card
+     - Missing "most used commands" section
+     - Fix: Highlight primary commands, add command cheat sheet, group by frequency
+  
+  4. **Navigation Issues** (Priority: MEDIUM)
+     - Long page with no table of contents
+     - No anchor links to specific commands
+     - Missing search functionality
+     - Fix: Add sticky TOC, implement command search, add deep linking
+  
+  5. **Template Examples** (Priority: LOW)
+     - Template options not visually differentiated
+     - Missing preview of what each template creates
+     - No comparison table of templates
+     - Fix: Add template preview cards, create comparison matrix, show file structure
+*/
+
 'use client'
 
 import { useState } from 'react'
