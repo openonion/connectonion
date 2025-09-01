@@ -99,17 +99,17 @@ export default function HomePage() {
   return (
     <main className="">
       {/* Hero Section - Mobile optimized */}
-      <section className="min-h-[85vh] md:min-h-screen flex items-center justify-center px-4 md:px-6 py-6 md:py-12 relative overflow-hidden">
+      <section className="min-h-[75vh] md:min-h-screen flex items-center justify-center px-4 md:px-6 py-6 md:py-12 relative overflow-hidden">
         {/* Bright gradient background for emotional relief */}
-        <div className="absolute inset-0 bg-gradient-to-b from-purple-900/10 via-blue-900/5 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-tr from-purple-600/10 via-transparent to-blue-600/10" />
+        <div className="absolute inset-0 bg-gradient-to-b from-purple-900/5 via-blue-900/5 to-transparent" />
+        <div className="absolute inset-0 bg-gradient-to-tr from-purple-600/5 via-transparent to-blue-600/5" />
         
         {/* Single subtle glow effect */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[600px] bg-purple-500/10 rounded-full blur-3xl" />
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] bg-purple-500/5 rounded-full blur-2xl" />
         
         <div className="max-w-4xl mx-auto text-center relative z-10">
           {/* Subtle pain point intro - larger on mobile */}
-          <p className="text-base md:text-base text-gray-400 mb-3">
+          <p className="text-sm md:text-base text-gray-500 mb-2">
             AI agents shouldn't need <span className="text-red-400">500 lines of boilerplate</span>
           </p>
           
@@ -119,33 +119,33 @@ export default function HomePage() {
           </span>
           
           {/* Main Title - smaller on mobile */}
-          <h1 className="text-4xl sm:text-5xl md:text-7xl font-bold text-white mb-2">
+          <h1 className="text-3xl sm:text-5xl md:text-7xl font-bold text-white mb-2">
             ConnectOnion
           </h1>
           
           {/* Combined tagline and benefit - better mobile sizing */}
-          <p className="text-lg sm:text-xl md:text-3xl text-gray-300 mb-2">
+          <p className="text-base sm:text-lg md:text-2xl text-gray-300 mb-1">
             The <span className="font-bold bg-gradient-to-r from-purple-300 via-purple-400 to-blue-400 bg-clip-text text-transparent">simplest</span> AI agent framework
           </p>
-          <p className="text-base md:text-xl text-gray-300 mb-4 md:mb-6">
+          <p className="text-sm md:text-lg text-gray-300 mb-4 md:mb-5">
             Ship in <span className="text-white font-semibold">5 minutes</span>, not 5 days
           </p>
           
           {/* Install command - smaller on mobile */}
           <div className="mb-4 md:mb-5 max-w-md mx-auto">
-            <div className="bg-black/60 backdrop-blur border border-gray-700 rounded-lg p-0.5 hover:border-purple-500/50 transition-all">
+            <div className="bg-black/50 backdrop-blur-sm border border-gray-800 rounded-lg p-0.5 hover:border-purple-500/40 transition-all shadow-sm">
               <CommandBlock commands={['pip install connectonion']} />
             </div>
           </div>
           
           {/* CTAs - mobile optimized with full width primary */}
-          <div className="flex flex-col gap-3 w-full max-w-sm mx-auto md:max-w-none md:flex-row md:justify-center md:items-center">
+          <div className="flex flex-col gap-2 w-full max-w-sm mx-auto md:max-w-none md:flex-row md:justify-center md:items-center">
             <a 
               href="#vibe-coding" 
               className="relative group w-full md:w-auto"
             >
-              <div className="absolute inset-0 bg-purple-600 rounded-lg blur-xl group-hover:bg-purple-500 transition-all opacity-50" />
-              <div className="relative px-6 py-3 md:py-2.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-medium rounded-lg transition-all flex items-center justify-center gap-2 shadow-lg">
+              <div className="absolute inset-0 bg-purple-600 rounded-lg blur-xl group-hover:bg-purple-500 transition-all opacity-30" />
+              <div className="relative px-5 py-2.5 md:py-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white font-medium rounded-lg transition-all flex items-center justify-center gap-2 shadow-md">
                 <Copy className="w-4 h-4" />
                 Vibe Coding Now
               </div>
