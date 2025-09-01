@@ -462,66 +462,66 @@ print(result)`}
         
         <div className="max-w-5xl mx-auto relative">
           {/* Header with better typography */}
-          <div className="text-center mb-16">
+          <div className="text-center mb-12">
             <div className="inline-flex items-center gap-2 mb-6">
               <div className="h-px w-12 bg-gradient-to-r from-transparent to-purple-500" />
               <span className="text-purple-400 text-sm font-mono uppercase tracking-wider">AI-Powered Development</span>
               <div className="h-px w-12 bg-gradient-to-l from-transparent to-purple-500" />
             </div>
             
-            <h2 className="text-4xl md:text-6xl font-black text-white mb-4">
+            <h2 className="text-3xl md:text-5xl font-black text-white mb-3">
               Vibe Coding Now
             </h2>
-            <p className="text-xl text-gray-300 mb-8 max-w-2xl mx-auto">
+            <p className="text-base md:text-lg text-gray-400 mb-6 max-w-2xl mx-auto">
               Copy our docs once. Your AI assistant writes perfect ConnectOnion code forever.
             </p>
             
             {/* AI Tools Grid - More Visual */}
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 max-w-3xl mx-auto mb-12">
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 max-w-3xl mx-auto mb-8">
               <div className="group relative">
-                <div className="absolute inset-0 bg-purple-600/20 rounded-xl blur-xl group-hover:bg-purple-600/30 transition-all" />
-                <div className="relative bg-gray-900/60 backdrop-blur border border-purple-500/30 rounded-xl p-4 hover:border-purple-500/50 transition-all">
-                  <div className="text-2xl mb-2">🤖</div>
+                <div className="absolute inset-0 bg-purple-600/10 rounded-xl blur-lg group-hover:bg-purple-600/20 transition-all" />
+                <div className="relative bg-gray-900/40 backdrop-blur-sm border border-purple-500/20 rounded-xl p-3 hover:border-purple-500/40 transition-all">
+                  <div className="text-xl mb-2">🤖</div>
                   <div className="text-sm font-semibold text-purple-300">Claude Code</div>
                 </div>
               </div>
               
               <div className="group relative">
-                <div className="absolute inset-0 bg-blue-600/20 rounded-xl blur-xl group-hover:bg-blue-600/30 transition-all" />
-                <div className="relative bg-gray-900/60 backdrop-blur border border-blue-500/30 rounded-xl p-4 hover:border-blue-500/50 transition-all">
-                  <div className="text-2xl mb-2">💻</div>
+                <div className="absolute inset-0 bg-blue-600/10 rounded-xl blur-lg group-hover:bg-blue-600/20 transition-all" />
+                <div className="relative bg-gray-900/40 backdrop-blur-sm border border-blue-500/20 rounded-xl p-3 hover:border-blue-500/40 transition-all">
+                  <div className="text-xl mb-2">💻</div>
                   <div className="text-sm font-semibold text-blue-300">Cursor</div>
                 </div>
               </div>
               
               <div className="group relative">
-                <div className="absolute inset-0 bg-green-600/20 rounded-xl blur-xl group-hover:bg-green-600/30 transition-all" />
-                <div className="relative bg-gray-900/60 backdrop-blur border border-green-500/30 rounded-xl p-4 hover:border-green-500/50 transition-all">
-                  <div className="text-2xl mb-2">🚀</div>
+                <div className="absolute inset-0 bg-green-600/10 rounded-xl blur-lg group-hover:bg-green-600/20 transition-all" />
+                <div className="relative bg-gray-900/40 backdrop-blur-sm border border-green-500/20 rounded-xl p-3 hover:border-green-500/40 transition-all">
+                  <div className="text-xl mb-2">🚀</div>
                   <div className="text-sm font-semibold text-green-300">GitHub Copilot</div>
                 </div>
               </div>
               
               <div className="group relative">
-                <div className="absolute inset-0 bg-orange-600/20 rounded-xl blur-xl group-hover:bg-orange-600/30 transition-all" />
-                <div className="relative bg-gray-900/60 backdrop-blur border border-orange-500/30 rounded-xl p-4 hover:border-orange-500/50 transition-all">
-                  <div className="text-2xl mb-2">💬</div>
+                <div className="absolute inset-0 bg-orange-600/10 rounded-xl blur-lg group-hover:bg-orange-600/20 transition-all" />
+                <div className="relative bg-gray-900/40 backdrop-blur-sm border border-orange-500/20 rounded-xl p-3 hover:border-orange-500/40 transition-all">
+                  <div className="text-xl mb-2">💬</div>
                   <div className="text-sm font-semibold text-orange-300">ChatGPT</div>
                 </div>
               </div>
             </div>
           </div>
           
-          {/* The Big CTA - Maximum Impact */}
+          {/* The Big CTA - Calmer emphasis */}
           <div className="text-center mb-16">
             <div className="relative inline-block">
-              {/* Glow effect */}
-              <div className="absolute inset-0 bg-purple-600/50 blur-2xl" />
+              {/* Subtle glow */}
+              <div className="absolute inset-0 bg-purple-600/25 blur-xl" />
               
               {/* Button */}
               <button
                 onClick={copyAllDocs}
-                className="relative px-12 py-5 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold text-xl rounded-xl shadow-2xl transition-all transform hover:scale-105 inline-flex items-center gap-3"
+                className="relative px-8 py-4 md:px-10 md:py-4 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700 text-white font-bold text-lg md:text-xl rounded-xl shadow-xl transition-all transform hover:scale-[1.02] inline-flex items-center gap-3"
               >
                 {copyAllStatus === 'done' ? (
                   <>
@@ -545,28 +545,28 @@ print(result)`}
           </div>
           
           {/* Process Steps - Clean and Simple */}
-          <div className="grid md:grid-cols-3 gap-8 max-w-4xl mx-auto">
+          <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto">
             <div className="text-center group">
-              <div className="w-16 h-16 bg-gradient-to-br from-purple-600/20 to-purple-600/10 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                <span className="text-2xl font-bold text-purple-400">1</span>
+              <div className="w-12 h-12 bg-gradient-to-br from-purple-600/20 to-purple-600/10 rounded-2xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                <span className="text-xl font-bold text-purple-400">1</span>
               </div>
-              <h3 className="font-bold text-white mb-2">Copy Documentation</h3>
+              <h3 className="font-bold text-white mb-1 text-sm md:text-base">Copy Documentation</h3>
               <p className="text-sm text-gray-400">Click the button above</p>
             </div>
             
             <div className="text-center group">
-              <div className="w-16 h-16 bg-gradient-to-br from-blue-600/20 to-blue-600/10 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                <span className="text-2xl font-bold text-blue-400">2</span>
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-600/20 to-blue-600/10 rounded-2xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                <span className="text-xl font-bold text-blue-400">2</span>
               </div>
-              <h3 className="font-bold text-white mb-2">Paste to Your AI</h3>
+              <h3 className="font-bold text-white mb-1 text-sm md:text-base">Paste to Your AI</h3>
               <p className="text-sm text-gray-400">Any AI coding assistant</p>
             </div>
             
             <div className="text-center group">
-              <div className="w-16 h-16 bg-gradient-to-br from-green-600/20 to-green-600/10 rounded-2xl flex items-center justify-center mx-auto mb-4 group-hover:scale-110 transition-transform">
-                <span className="text-2xl font-bold text-green-400">3</span>
+              <div className="w-12 h-12 bg-gradient-to-br from-green-600/20 to-green-600/10 rounded-2xl flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform">
+                <span className="text-xl font-bold text-green-400">3</span>
               </div>
-              <h3 className="font-bold text-white mb-2">Start Building</h3>
+              <h3 className="font-bold text-white mb-1 text-sm md:text-base">Start Building</h3>
               <p className="text-sm text-gray-400">AI writes perfect code</p>
             </div>
           </div>
