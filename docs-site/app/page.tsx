@@ -42,7 +42,6 @@ import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { WaitlistSignup } from '../components/WaitlistSignup'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
 import { CommandBlock } from '../components/CommandBlock'
 import CodeWithResult from '../components/CodeWithResult'
@@ -113,9 +112,9 @@ export default function HomePage() {
             AI agents shouldn't need <span className="text-red-400">500 lines of boilerplate</span>
           </p>
           
-          {/* Version badge - moved inline and smaller */}
-          <span className="inline-block px-2 py-0.5 text-xs font-mono bg-purple-500/10 text-purple-400 rounded-full border border-purple-500/20 mb-3">
-            v0.0.1b6 BETA
+          {/* Version badge - production ready */}
+          <span className="inline-block px-2 py-0.5 text-xs font-mono bg-green-500/10 text-green-400 rounded-full border border-green-500/20 mb-3">
+            v0.0.1b8 Production Ready
           </span>
           
           {/* Main Title - smaller on mobile */}
