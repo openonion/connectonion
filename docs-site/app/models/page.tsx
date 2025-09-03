@@ -167,40 +167,40 @@ response = agent.input("Explain quantum computing")`}
 
         {activeProvider === 'openai' && (
           <div className="space-y-4">
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-800 p-6 rounded-lg border border-blue-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Cpu className="mr-2 h-5 w-5 text-blue-500" />
+            <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 flex items-center text-white">
+                <Cpu className="mr-2 h-5 w-5 text-blue-400" />
                 GPT-5 Series
               </h3>
               <div className="space-y-3">
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">gpt-5</code>
-                  <span className="text-gray-600 dark:text-gray-400">Best for coding and agentic tasks across domains</span>
+                  <code className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-sm mr-3 font-mono">gpt-5</code>
+                  <span className="text-gray-300">Best for coding and agentic tasks across domains</span>
                 </div>
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">gpt-5-mini</code>
-                  <span className="text-gray-600 dark:text-gray-400">Faster, cost-efficient version for well-defined tasks</span>
+                  <code className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-sm mr-3 font-mono">gpt-5-mini</code>
+                  <span className="text-gray-300">Faster, cost-efficient version for well-defined tasks</span>
                 </div>
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">gpt-5-nano</code>
-                  <span className="text-gray-600 dark:text-gray-400">Fastest, most cost-efficient version</span>
+                  <code className="bg-blue-500/20 text-blue-300 px-2 py-1 rounded text-sm mr-3 font-mono">gpt-5-nano</code>
+                  <span className="text-gray-300">Fastest, most cost-efficient version</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Brain className="mr-2 h-5 w-5 text-purple-500" />
+            <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 flex items-center text-white">
+                <Brain className="mr-2 h-5 w-5 text-purple-400" />
                 Reasoning Models
               </h3>
               <div className="space-y-3">
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">o1</code>
-                  <span className="text-gray-600 dark:text-gray-400">Advanced reasoning and problem solving</span>
+                  <code className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-sm mr-3 font-mono">o1</code>
+                  <span className="text-gray-300">Advanced reasoning and problem solving</span>
                 </div>
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">o1-mini</code>
-                  <span className="text-gray-600 dark:text-gray-400">Fast reasoning, cost-effective</span>
+                  <code className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-sm mr-3 font-mono">o1-mini</code>
+                  <span className="text-gray-300">Fast reasoning, cost-effective</span>
                 </div>
               </div>
             </div>
@@ -209,32 +209,32 @@ response = agent.input("Explain quantum computing")`}
 
         {activeProvider === 'google' && (
           <div className="space-y-4">
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-800 p-6 rounded-lg border border-blue-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Eye className="mr-2 h-5 w-5 text-blue-500" />
+            <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 flex items-center text-white">
+                <Eye className="mr-2 h-5 w-5 text-green-400" />
                 Gemini 2.5
               </h3>
               <div className="space-y-3">
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">gemini-2.5-pro</code>
-                  <span className="text-gray-600 dark:text-gray-400">Enhanced reasoning, supports audio/video/PDF (2M tokens)</span>
+                  <code className="bg-green-500/20 text-green-300 px-2 py-1 rounded text-sm mr-3 font-mono">gemini-2.5-pro</code>
+                  <span className="text-gray-300">Enhanced reasoning, supports audio/video/PDF (2M tokens)</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Zap className="mr-2 h-5 w-5 text-yellow-500" />
+            <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 flex items-center text-white">
+                <Zap className="mr-2 h-5 w-5 text-yellow-400" />
                 Gemini 1.5
               </h3>
               <div className="space-y-3">
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">gemini-1.5-pro</code>
-                  <span className="text-gray-600 dark:text-gray-400">2M token context window</span>
+                  <code className="bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded text-sm mr-3 font-mono">gemini-1.5-pro</code>
+                  <span className="text-gray-300">2M token context window</span>
                 </div>
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">gemini-1.5-flash</code>
-                  <span className="text-gray-600 dark:text-gray-400">Fast and versatile (1M tokens)</span>
+                  <code className="bg-yellow-500/20 text-yellow-300 px-2 py-1 rounded text-sm mr-3 font-mono">gemini-1.5-flash</code>
+                  <span className="text-gray-300">Fast and versatile (1M tokens)</span>
                 </div>
               </div>
             </div>
@@ -243,36 +243,36 @@ response = agent.input("Explain quantum computing")`}
 
         {activeProvider === 'anthropic' && (
           <div className="space-y-4">
-            <div className="bg-gradient-to-r from-blue-50 to-purple-50 dark:from-gray-800 dark:to-gray-800 p-6 rounded-lg border border-blue-200 dark:border-gray-700">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Layers className="mr-2 h-5 w-5 text-blue-500" />
+            <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 flex items-center text-white">
+                <Layers className="mr-2 h-5 w-5 text-orange-400" />
                 Claude Opus 4 Series
               </h3>
               <div className="space-y-3">
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">claude-opus-4.1</code>
-                  <span className="text-gray-600 dark:text-gray-400">Latest and most capable (200K tokens)</span>
+                  <code className="bg-orange-500/20 text-orange-300 px-2 py-1 rounded text-sm mr-3 font-mono">claude-opus-4.1</code>
+                  <span className="text-gray-300">Latest and most capable (200K tokens)</span>
                 </div>
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">claude-opus-4</code>
-                  <span className="text-gray-600 dark:text-gray-400">Previous flagship model</span>
+                  <code className="bg-orange-500/20 text-orange-300 px-2 py-1 rounded text-sm mr-3 font-mono">claude-opus-4</code>
+                  <span className="text-gray-300">Previous flagship model</span>
                 </div>
               </div>
             </div>
 
-            <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg">
-              <h3 className="text-lg font-semibold mb-4 flex items-center">
-                <Globe className="mr-2 h-5 w-5 text-purple-500" />
+            <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+              <h3 className="text-lg font-semibold mb-4 flex items-center text-white">
+                <Globe className="mr-2 h-5 w-5 text-purple-400" />
                 Claude 3.5 Series
               </h3>
               <div className="space-y-3">
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">claude-3-5-sonnet</code>
-                  <span className="text-gray-600 dark:text-gray-400">Excellent at coding</span>
+                  <code className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-sm mr-3 font-mono">claude-3-5-sonnet</code>
+                  <span className="text-gray-300">Excellent at coding</span>
                 </div>
                 <div className="flex items-start">
-                  <code className="bg-gray-100 dark:bg-gray-700 px-2 py-1 rounded text-sm mr-3">claude-3-5-haiku</code>
-                  <span className="text-gray-600 dark:text-gray-400">Fast and cost-effective</span>
+                  <code className="bg-purple-500/20 text-purple-300 px-2 py-1 rounded text-sm mr-3 font-mono">claude-3-5-haiku</code>
+                  <span className="text-gray-300">Fast and cost-effective</span>
                 </div>
               </div>
             </div>
@@ -285,9 +285,9 @@ response = agent.input("Explain quantum computing")`}
         <h2 className="text-2xl font-semibold mb-6">Model Selection Guide</h2>
         
         <div className="grid md:grid-cols-2 gap-6">
-          <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg">
-            <h3 className="font-semibold mb-3 flex items-center">
-              <Cpu className="mr-2 h-5 w-5 text-blue-500" />
+          <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+            <h3 className="font-semibold mb-3 flex items-center text-white">
+              <Cpu className="mr-2 h-5 w-5 text-blue-400" />
               Best for Coding
             </h3>
             <CodeWithResult
@@ -297,9 +297,9 @@ response = agent.input("Explain quantum computing")`}
             />
           </div>
 
-          <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg">
-            <h3 className="font-semibold mb-3 flex items-center">
-              <Zap className="mr-2 h-5 w-5 text-yellow-500" />
+          <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+            <h3 className="font-semibold mb-3 flex items-center text-white">
+              <Zap className="mr-2 h-5 w-5 text-yellow-400" />
               Fast Responses
             </h3>
             <CodeWithResult
@@ -309,9 +309,9 @@ response = agent.input("Explain quantum computing")`}
             />
           </div>
 
-          <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg">
-            <h3 className="font-semibold mb-3 flex items-center">
-              <DollarSign className="mr-2 h-5 w-5 text-green-500" />
+          <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+            <h3 className="font-semibold mb-3 flex items-center text-white">
+              <DollarSign className="mr-2 h-5 w-5 text-green-400" />
               Cost-Optimized
             </h3>
             <CodeWithResult
@@ -321,9 +321,9 @@ response = agent.input("Explain quantum computing")`}
             />
           </div>
 
-          <div className="bg-gray-50 dark:bg-gray-800 p-6 rounded-lg">
-            <h3 className="font-semibold mb-3 flex items-center">
-              <Eye className="mr-2 h-5 w-5 text-purple-500" />
+          <div className="bg-gray-900 border border-gray-700 p-6 rounded-lg">
+            <h3 className="font-semibold mb-3 flex items-center text-white">
+              <Eye className="mr-2 h-5 w-5 text-purple-400" />
               Multimodal
             </h3>
             <CodeWithResult
