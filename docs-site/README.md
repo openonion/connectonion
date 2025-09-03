@@ -8,7 +8,7 @@
 [![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
 
 **A simple, elegant open-source framework for production-ready AI agents**  
-*Pure Python functions. No classes. No complexity.*
+*Minimal abstractions. Maximum clarity. Production ready.*
 
 [📚 Documentation](http://docs.connectonion.com) • [🚀 Quick Start](#-quick-start) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ GitHub](https://github.com/wu-changxing/connectonion)
 
@@ -21,8 +21,8 @@
 🎉 **Production Ready** - Battle-tested open-source framework with comprehensive documentation, 40+ pages of guides, and active community support.
 
 ### Why ConnectOnion?
-- **🎯 Simple**: Just functions, no classes or complex abstractions
-- **🚀 Elegant**: Clean, intuitive API that gets out of your way
+- **🎯 Simple**: Minimal API surface - just Agent class and functions as tools
+- **🚀 Elegant**: Clean, intuitive design that gets out of your way
 - **🌍 Open Source**: MIT licensed, community-driven development
 - **⚡ Production Ready**: Battle-tested with major LLM providers
 - **🔧 Flexible**: Works with GPT-5, Gemini 2.5, Claude Opus 4.1
@@ -136,7 +136,7 @@ Every feature should be learnable in progressive steps:
 
 **2 Lines - It Works!**
 ```python
-agent = Agent("helper", tools=[greet])
+agent = Agent("helper", tools=[greet])  # One class, functions as tools
 agent.input("Hello")  # Immediate result
 ```
 
