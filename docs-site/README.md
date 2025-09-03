@@ -1,10 +1,31 @@
-# ConnectOnion Documentation Site
+# 🧅 ConnectOnion Documentation Site
 
-Official documentation for ConnectOnion - Production-ready AI agents with Python functions. No classes, no complexity.
+<div align="center">
 
-> **Philosophy**: Keep simple things simple, make complicated things possible.
+![ConnectOnion](https://img.shields.io/badge/ConnectOnion-Production_Ready-success?style=flat-square)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue?style=flat-square&logo=python)](https://python.org)
+[![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
 
-🎉 **Production Ready** - Battle-tested in real applications with comprehensive documentation and examples.
+**A simple, elegant open-source framework for production-ready AI agents**  
+*Pure Python functions. No classes. No complexity.*
+
+[📚 Documentation](http://docs.connectonion.com) • [🚀 Quick Start](#-quick-start) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ GitHub](https://github.com/wu-changxing/connectonion)
+
+</div>
+
+---
+
+> **✨ Philosophy**: Keep simple things simple, make complicated things possible.
+
+🎉 **Production Ready** - Battle-tested open-source framework with comprehensive documentation, 40+ pages of guides, and active community support.
+
+### Why ConnectOnion?
+- **🎯 Simple**: Just functions, no classes or complex abstractions
+- **🚀 Elegant**: Clean, intuitive API that gets out of your way
+- **🌍 Open Source**: MIT licensed, community-driven development
+- **⚡ Production Ready**: Battle-tested with major LLM providers
+- **🔧 Flexible**: Works with GPT-5, Gemini 2.5, Claude Opus 4.1
 
 ## 🚀 Quick Start
 
@@ -40,8 +61,9 @@ Our documentation follows a logical learning path:
 ### 🧠 Core Concepts
 - **[System Prompts](/prompts)** - Define agent behavior (START HERE)
 - **[Tools](/tools)** - Functions as agent capabilities
+- **[Models](/models)** - Choose from GPT-5, Gemini 2.5, Claude Opus 4.1
 - **[max_iterations](/max-iterations)** - Control and safety
-- **[llm_do](/llm_do)** - Direct LLM function calls (OpenAI, Gemini, Anthropic)
+- **[llm_do](/llm_do)** - Direct LLM function calls
 - **[Trust Parameter](/trust)** - Multi-agent communication
 - **[@xray Decorator](/xray)** - Debugging and visualization
 
@@ -81,6 +103,7 @@ docs-site/
 │   ├── prompts/           # System prompts documentation
 │   │   └── examples/      # Prompt example pages
 │   ├── tools/             # Tools documentation
+│   ├── models/            # Model selection guide
 │   ├── max-iterations/    # Iteration control
 │   ├── llm_do/           # LLM function docs
 │   ├── trust/            # Trust parameter
@@ -212,20 +235,22 @@ The site uses a centralized navigation structure in `/lib/navigation.ts`:
 
 ### ✅ Production Ready
 - **Core Framework**: Stable and battle-tested
-- **Documentation**: Comprehensive with 30+ pages
+- **Documentation**: Comprehensive with 40+ pages
 - **Examples**: 16+ working examples covering all use cases
-- **Multi-Provider Support**: OpenAI, Google Gemini, Anthropic
+- **Multi-Provider Support**: Latest models from OpenAI (GPT-5), Google (Gemini 2.5), Anthropic (Claude Opus 4.1)
 - **Testing**: Extensive unit and integration tests
 - **Community**: Active Discord and GitHub community
+- **Model Selection**: Smart model selection with fallback chains
 
 | Component | Status | Maturity |
 |-----------|--------|----------|
 | Core Agent System | ✅ Stable | Production |
 | Tool System | ✅ Stable | Production |
-| LLM Integration | ✅ Stable | Production |
+| Multi-Model Support | ✅ Stable | Production |
 | Documentation | ✅ Complete | Production |
 | Examples | ✅ Complete | Production |
 | CLI Tools | ✅ Stable | Production |
+| API Integration | ✅ Stable | Production |
 
 ## 🚀 Deployment
 
@@ -243,12 +268,28 @@ ConnectOnion is available for production use:
 - **Version**: Stable releases with semantic versioning
 - **Support**: Python 3.8+ with async support
 
-## 🔗 Links
+## 🔗 Connect With Us
 
-- **GitHub**: [wu-changxing/connectonion](https://github.com/wu-changxing/connectonion)
-- **Discord**: [Community](https://discord.gg/4xfD9k8AUF)
-- **PyPI**: [connectonion](https://pypi.org/project/connectonion/)
-- **npm**: [@connectonion/cli](https://www.npmjs.com/package/@connectonion/cli)
+<div align="center">
+
+[![GitHub](https://img.shields.io/badge/GitHub-Repository-black?style=for-the-badge&logo=github)](https://github.com/wu-changxing/connectonion)
+[![Discord](https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord)](https://discord.gg/4xfD9k8AUF)
+[![PyPI](https://img.shields.io/badge/PyPI-Package-3775A9?style=for-the-badge&logo=pypi)](https://pypi.org/project/connectonion/)
+
+</div>
+
+- **📦 Install**: `pip install connectonion`
+- **💬 Chat**: [Discord Community](https://discord.gg/4xfD9k8AUF) - Get help, share ideas
+- **⭐ Star**: [GitHub Repository](https://github.com/wu-changxing/connectonion) - Show your support
+- **📚 Docs**: [docs.connectonion.com](http://docs.connectonion.com) - Full documentation
+
+## 🌟 Open Source
+
+ConnectOnion is proudly open source:
+- **License**: MIT - Use it anywhere, even commercially
+- **Contributors**: Welcome! See [Contributing Guide](/website-maintenance)
+- **Stars**: ⭐ Star us on [GitHub](https://github.com/wu-changxing/connectonion)
+- **Fork**: Build your own features and share with the community
 
 ## 📜 License
 
@@ -257,3 +298,5 @@ MIT License - See [LICENSE](../LICENSE) for details
 ---
 
 > "Keep simple things simple, make complicated things possible"
+> 
+> Built with ❤️ by the open-source community
