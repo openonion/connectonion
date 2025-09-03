@@ -1,15 +1,48 @@
-# ConnectOnion
+# 🧅 ConnectOnion
 
-> **🚧 Private Beta** - ConnectOnion is currently in private beta. [Join our waitlist](https://connectonion.com) to get early access!
+<div align="center">
 
-A simple Python framework for creating AI agents that can use tools and track their behavior.
+[![Production Ready](https://img.shields.io/badge/Status-Production_Ready-success?style=flat-square)](https://connectonion.com)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue?style=flat-square&logo=python)](https://python.org)
+[![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
+[![Documentation](https://img.shields.io/badge/Docs-docs.connectonion.com-blue?style=flat-square)](http://docs.connectonion.com)
 
-## ✨ What's New
+**A simple, elegant open-source framework for production-ready AI agents**
 
-- **🎯 Function-Based Tools**: Just write regular Python functions - no classes needed!
-- **🎭 System Prompts**: Define your agent's personality and role  
-- **🔄 Automatic Conversion**: Functions become OpenAI-compatible tools automatically
-- **📝 Smart Schema Generation**: Type hints become function schemas
+[📚 Documentation](http://docs.connectonion.com) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ Star Us](https://github.com/wu-changxing/connectonion)
+
+</div>
+
+---
+
+> ## 🌟 Philosophy: "Keep simple things simple, make complicated things possible"
+> 
+> This is the core principle that drives every design decision in ConnectOnion.
+
+## 🎯 Living Our Philosophy
+
+```python
+# Simple thing (2 lines) - Just works!
+from connectonion import Agent
+agent = Agent("assistant").input("Hello!")
+
+# Complicated thing (still possible) - Production ready!
+agent = Agent("production",
+              model="gpt-5",                    # Latest models
+              tools=[search, analyze, execute], # Your functions as tools
+              system_prompt=company_prompt,     # Custom behavior
+              max_iterations=10,                # Safety controls
+              trust="prompt")                    # Multi-agent ready
+```
+
+## ✨ What Makes ConnectOnion Special
+
+- **🎯 Simple API**: Just one `Agent` class and your functions as tools
+- **🚀 Production Ready**: Battle-tested with GPT-5, Gemini 2.5, Claude Opus 4.1
+- **🌍 Open Source**: MIT licensed, community-driven development
+- **⚡ No Boilerplate**: Start building in 2 lines, not 200
+- **🔧 Extensible**: Scale from prototypes to production systems
 
 ## 🚀 Quick Start
 
@@ -413,21 +446,46 @@ This is an MVP version with intentional limitations:
 - Web interface for behavior monitoring
 - Plugin system for tools
 
-## 📄 License
+## 🔗 Connect With Us
 
-MIT License - see LICENSE file for details.
+<div align="center">
+
+[![Discord](https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord)](https://discord.gg/4xfD9k8AUF)
+[![GitHub](https://img.shields.io/badge/GitHub-Star_Us-black?style=for-the-badge&logo=github)](https://github.com/wu-changxing/connectonion)
+[![Documentation](https://img.shields.io/badge/Docs-Learn_More-blue?style=for-the-badge)](http://docs.connectonion.com)
+
+</div>
+
+- **💬 Discord**: [Join our community](https://discord.gg/4xfD9k8AUF) - Get help, share ideas, meet other developers
+- **📚 Documentation**: [docs.connectonion.com](http://docs.connectonion.com) - Comprehensive guides and examples
+- **⭐ GitHub**: [Star the repo](https://github.com/wu-changxing/connectonion) - Show your support
+- **🐛 Issues**: [Report bugs](https://github.com/wu-changxing/connectonion/issues) - We respond quickly
 
 ## 🤝 Contributing
 
-This is an MVP. For the full version roadmap:
+We welcome contributions! ConnectOnion is open source and community-driven.
+
 1. Fork the repository
 2. Create a feature branch
 3. Add tests for new functionality
 4. Submit a pull request
 
-## 📞 Support
+See our [Contributing Guide](http://docs.connectonion.com/website-maintenance) for more details.
 
-For issues and questions:
-- Create an issue on GitHub
-- Check the examples/ directory for usage patterns
-- Review the test files for implementation details
+## 📄 License
+
+MIT License - Use it anywhere, even commercially. See [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+
+### 💫 Remember
+
+## **"Keep simple things simple, make complicated things possible"**
+
+*Built with ❤️ by the open-source community*
+
+[⬆ Back to top](#-connectonion)
+
+</div>
