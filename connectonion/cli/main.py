@@ -13,9 +13,10 @@ from .. import address
 
 
 def is_directory_empty(directory: str) -> bool:
-    """Check if a directory is empty."""
+    """Check if a directory is empty (ignoring .git directory)."""
     contents = os.listdir(directory)
-    meaningful_contents = [item for item in contents if item not in ['.', '..']]
+    # Ignore '.', '..', and '.git' directory
+    meaningful_contents = [item for item in contents if item not in ['.', '..', '.git']]
     return len(meaningful_contents) == 0
 
 

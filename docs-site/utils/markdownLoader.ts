@@ -12,6 +12,7 @@ const MARKDOWN_TO_PAGE_MAP: Record<string, { href: string; section: string; titl
   'quickstart.md': { href: '/quickstart', section: 'Getting Started', title: 'Quick Start' },
   'getting-started.md': { href: '/', section: 'Getting Started', title: 'Getting Started' },
   'tools.md': { href: '/tools', section: 'Core Concepts', title: 'Tools' },
+  'models.md': { href: '/models', section: 'Core Concepts', title: 'Models' },
   'max_iterations.md': { href: '/max-iterations', section: 'Core Concepts', title: 'Max Iterations' },
   'max_iterations_guide.md': { href: '/max-iterations', section: 'Core Concepts', title: 'Max Iterations Guide' },
   'llm_do.md': { href: '/llm_do', section: 'Core Concepts', title: 'llm_do()' },
