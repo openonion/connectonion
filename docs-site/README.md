@@ -231,7 +231,8 @@ The site uses a centralized navigation structure in `/lib/navigation.ts`:
 
 ### Production Website
 The documentation site is live and production-ready:
-- **Live Site**: [connectonion.com](https://connectonion.com)
+- **Documentation**: [docs.connectonion.com](http://docs.connectonion.com)
+- **Main Site**: [connectonion.com](https://connectonion.com)
 - **Auto-Deploy**: Push to main branch triggers deployment
 - **Preview URLs**: Every PR gets a preview deployment
 - **Zero-Config**: Vercel handles everything automatically
