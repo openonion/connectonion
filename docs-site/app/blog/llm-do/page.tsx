@@ -1,3 +1,13 @@
+/*
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - NO navigation components at all
+  - Only has "Back to Blog" link with ArrowLeft
+  - No PageNavigation component
+  - No Previous/Next blog post navigation
+  - No breadcrumb navigation
+  - Isolated page with minimal navigation support
+*/
+
 'use client'
 
 import { useState } from 'react'
@@ -283,6 +293,7 @@ Sometimes the best API decisions are the ones that make developers forget they'r
   return (
     <div className="w-full">
       <main className="p-4 lg:p-8 lg:px-16 pb-20">
+        <div>
           <article className="prose prose-invert max-w-none">
             <div className="mb-8 flex justify-between items-start">
               <div>
@@ -435,7 +446,8 @@ Sometimes the best API decisions are the ones that make developers forget they'r
               </div>
             </div>
           </article>
-        </main>
+        </div>
+      </main>
     </div>
   )
 }

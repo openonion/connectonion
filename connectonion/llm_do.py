@@ -1,4 +1,14 @@
-"""One-shot LLM function for simple LLM calls with optional structured output."""
+"""One-shot LLM function for simple LLM calls with optional structured output.
+
+Uses LiteLLM to support 100+ LLM providers including:
+- OpenAI (GPT models)
+- Anthropic (Claude models)  
+- Google (Gemini models)
+- Azure OpenAI
+- AWS Bedrock
+- Ollama (local models)
+- And many more...
+"""
 
 from typing import Union, Type, Optional, TypeVar
 from pathlib import Path
@@ -6,8 +16,33 @@ from pydantic import BaseModel
 import json
 import os
 from .prompts import load_system_prompt
+from .llm import MODEL_REGISTRY
 
 T = TypeVar('T', bound=BaseModel)
+
+
+def _get_litellm_model_name(model: str) -> str:
+    """Convert model name to LiteLLM format.
+    
+    For most models, we use the simple name (e.g., "gpt-4o", "claude-3-5-sonnet").
+    Only special providers need prefixes:
+    - ollama/model_name for local Ollama models
+    - azure/deployment_name for Azure OpenAI
+    - bedrock/model_id for AWS Bedrock
+    """
+    # If already has a provider prefix, return as-is
+    if "/" in model:
+        return model
+    
+    # Check if it's a Gemini model that needs the prefix
+    provider = MODEL_REGISTRY.get(model)
+    if provider == "google" and not model.startswith("gemini/"):
+        # Add gemini/ prefix for Google models in LiteLLM
+        return f"gemini/{model}"
+    
+    # For OpenAI and Anthropic models, use as-is
+    # LiteLLM handles them without prefixes
+    return model
 
 
 def llm_do(
@@ -16,26 +51,47 @@ def llm_do(
     system_prompt: Optional[Union[str, Path]] = None,
     model: str = "gpt-4o-mini",
     temperature: float = 0.1,
-    api_key: Optional[str] = None
+    api_key: Optional[str] = None,
+    **kwargs
 ) -> Union[str, T]:
     """
-    Make a one-shot LLM call with optional structured output.
+    Make a one-shot LLM call with optional structured output using LiteLLM.
+    
+    Supports 100+ LLM providers. Most models work with simple names:
+    - OpenAI: "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"
+    - Anthropic: "claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus"
+    - Google: "gemini-1.5-pro", "gemini-1.5-flash"
+    
+    Special providers need prefixes:
+    - Ollama: "ollama/llama2", "ollama/mistral"
+    - Azure: "azure/<deployment-name>"
+    - Bedrock: "bedrock/anthropic.claude-v2"
     
     Args:
         input: The input text/question to send to the LLM
         output: Optional Pydantic model class for structured output
         system_prompt: Optional system prompt (string or file path)
-        model: OpenAI model to use (default: "gpt-4o-mini")
+        model: Model name (e.g., "gpt-4o", "claude-3-5-sonnet", "ollama/llama2")
         temperature: Sampling temperature (default: 0.1 for consistency)
-        api_key: Optional OpenAI API key (uses environment variable if not provided)
+        api_key: Optional API key (uses environment variable if not provided)
+        **kwargs: Additional parameters to pass to LiteLLM
     
     Returns:
         Either a string response or an instance of the output model
     
     Examples:
-        >>> # Simple string response
+        >>> # Simple string response with OpenAI
         >>> answer = llm_do("What's 2+2?")
         >>> print(answer)  # "4"
+        
+        >>> # With Claude (simple name)
+        >>> answer = llm_do("Explain quantum physics", model="claude-3-5-haiku-20241022")
+        
+        >>> # With Gemini (simple name)
+        >>> answer = llm_do("Write a poem", model="gemini-1.5-flash")
+        
+        >>> # With local Ollama (needs prefix)
+        >>> answer = llm_do("Hello", model="ollama/llama2")
         
         >>> # With structured output
         >>> class Analysis(BaseModel):
@@ -44,12 +100,6 @@ def llm_do(
         >>> 
         >>> result = llm_do("I love this!", output=Analysis)
         >>> print(result.sentiment)  # "positive"
-        
-        >>> # With custom system prompt
-        >>> translation = llm_do(
-        ...     "Hello world",
-        ...     system_prompt="You are a translator. Translate to Spanish."
-        ... )
     """
     # Validate input
     if not input or not input.strip():
@@ -61,17 +111,38 @@ def llm_do(
     else:
         prompt_text = "You are a helpful assistant."
     
-    # Get API key
-    api_key = api_key or os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        raise ValueError("OpenAI API key required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
-    
+    # Import LiteLLM
     try:
-        import openai
+        from litellm import completion
+        import litellm
     except ImportError:
-        raise ImportError("Please install openai: pip install openai>=1.0.0")
+        raise ImportError(
+            "Please install litellm: pip install litellm\n"
+            "This enables support for 100+ LLM providers."
+        )
     
-    client = openai.OpenAI(api_key=api_key)
+    # Convert model name to LiteLLM format
+    litellm_model = _get_litellm_model_name(model)
+    
+    # Set API key if provided
+    if api_key:
+        # Detect provider and set appropriate env var
+        provider = MODEL_REGISTRY.get(model)
+        if not provider and "/" not in model:
+            # Try to infer from model name
+            if model.startswith("gpt") or model.startswith("o"):
+                provider = "openai"
+            elif model.startswith("claude"):
+                provider = "anthropic"
+            elif model.startswith("gemini"):
+                provider = "google"
+        
+        if provider == "openai":
+            os.environ["OPENAI_API_KEY"] = api_key
+        elif provider == "anthropic":
+            os.environ["ANTHROPIC_API_KEY"] = api_key
+        elif provider == "google":
+            os.environ["GEMINI_API_KEY"] = api_key
     
     # Build messages
     messages = [
@@ -79,43 +150,110 @@ def llm_do(
         {"role": "user", "content": input}
     ]
     
+    # Prepare completion kwargs
+    completion_kwargs = {
+        "model": litellm_model,
+        "messages": messages,
+        "temperature": temperature,
+        **kwargs  # Pass through any additional parameters
+    }
+    
     # Make the API call
     try:
         if output:
-            # Use structured outputs with Pydantic model
-            response = client.beta.chat.completions.parse(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                response_format=output
-            )
+            # Check if model supports structured outputs
+            try:
+                from litellm import supports_response_schema
+                
+                # For structured output with Pydantic model
+                if supports_response_schema(model=litellm_model):
+                    # Model supports native structured outputs
+                    completion_kwargs["response_format"] = output
+                else:
+                    # Fallback: Use JSON mode with schema validation
+                    # Enable client-side validation for models that don't support json_schema
+                    litellm.enable_json_schema_validation = True
+                    
+                    # Add JSON instruction to the prompt
+                    schema = output.model_json_schema()
+                    json_instruction = (
+                        f"\n\nPlease respond with a JSON object that matches this schema:\n"
+                        f"{json.dumps(schema, indent=2)}\n"
+                        f"Return ONLY valid JSON, no other text."
+                    )
+                    messages[-1]["content"] += json_instruction
+                    
+                    # Try to use JSON mode if supported
+                    try:
+                        from litellm import get_supported_openai_params
+                        params = get_supported_openai_params(model=litellm_model)
+                        if "response_format" in params:
+                            completion_kwargs["response_format"] = {"type": "json_object"}
+                    except:
+                        pass  # Model doesn't support response_format
+            except ImportError:
+                # Older version of LiteLLM, use JSON instruction approach
+                schema = output.model_json_schema()
+                json_instruction = (
+                    f"\n\nPlease respond with a JSON object that matches this schema:\n"
+                    f"{json.dumps(schema, indent=2)}\n"
+                    f"Return ONLY valid JSON, no other text."
+                )
+                messages[-1]["content"] += json_instruction
             
-            # Get the parsed result
-            parsed = response.choices[0].message.parsed
-            if parsed:
-                return parsed
+            # Make the completion call
+            response = completion(**completion_kwargs)
             
-            # Handle refusal
-            if response.choices[0].message.refusal:
-                raise ValueError(f"Model refused to respond: {response.choices[0].message.refusal}")
+            # Extract the content
+            content = response.choices[0].message.content
             
-            raise ValueError("No parsed output in response")
+            # Parse the response
+            if hasattr(response.choices[0].message, 'parsed') and response.choices[0].message.parsed:
+                # Direct structured output support
+                return response.choices[0].message.parsed
+            else:
+                # Parse JSON from text response
+                import re
+                
+                # Try to extract JSON from the response
+                json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    try:
+                        json_data = json.loads(json_str)
+                        return output.model_validate(json_data)
+                    except (json.JSONDecodeError, Exception) as e:
+                        # Try to clean up common JSON issues
+                        json_str = json_str.replace("'", '"')  # Replace single quotes
+                        json_str = re.sub(r',\s*}', '}', json_str)  # Remove trailing commas
+                        json_str = re.sub(r',\s*]', ']', json_str)  # Remove trailing commas in arrays
+                        
+                        try:
+                            json_data = json.loads(json_str)
+                            return output.model_validate(json_data)
+                        except:
+                            raise ValueError(f"Failed to parse JSON response: {e}\nContent: {content}")
+                else:
+                    # Try parsing the entire content as JSON
+                    try:
+                        json_data = json.loads(content)
+                        return output.model_validate(json_data)
+                    except:
+                        raise ValueError(f"No valid JSON found in response: {content}")
         else:
             # Simple string response
-            response = client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature
-            )
-            
+            response = completion(**completion_kwargs)
             return response.choices[0].message.content or ""
             
-    except openai.APIError as e:
-        raise RuntimeError(f"OpenAI API error: {str(e)}")
     except Exception as e:
-        if "parse" in str(e) and "beta" in str(e):
-            raise RuntimeError(
-                "Structured outputs require openai>=1.40.0. "
-                "Please upgrade: pip install --upgrade openai"
+        if "import litellm" in str(e):
+            raise ImportError(
+                "Please install litellm: pip install litellm\n"
+                "This enables support for 100+ LLM providers."
             )
-        raise RuntimeError(f"Unexpected error: {str(e)}")
+        elif "API" in str(e) or "api" in str(e):
+            raise RuntimeError(f"API error: {str(e)}")
+        elif "Failed to parse" in str(e) or "No valid JSON" in str(e):
+            raise  # Re-raise parsing errors as-is
+        else:
+            raise RuntimeError(f"Unexpected error: {str(e)}")

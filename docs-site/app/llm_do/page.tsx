@@ -1,3 +1,37 @@
+/*
+  DESIGN ISSUES TO FIX:
+  
+  1. **Missing Core Components** (Priority: HIGH)
+     - No CopyMarkdownButton for entire page content
+     - Missing table of contents for navigation
+     - No PageNavigation component at bottom
+     - Fix: Add CopyMarkdownButton, TOC sidebar, PageNavigation
+  
+  2. **Content Structure** (Priority: HIGH)
+     - Examples not progressively complex (violates CLAUDE.md)
+     - Missing comparison between providers
+     - No error handling examples
+     - Fix: Reorder examples simple→complex, add provider comparison, show error cases
+  
+  3. **Visual Hierarchy** (Priority: MEDIUM)
+     - All sections look equally important
+     - Headers inconsistent (text-2xl vs text-xl)
+     - No visual separation between major sections
+     - Fix: Use consistent heading sizes, add section dividers, improve spacing
+  
+  4. **Mobile Experience** (Priority: MEDIUM)
+     - Content too wide on mobile (max-w-5xl)
+     - No responsive padding (px-8 fixed)
+     - Code blocks require horizontal scroll
+     - Fix: Responsive max-width, dynamic padding, better code wrapping
+  
+  5. **Documentation Gaps** (Priority: LOW)
+     - Missing API reference section
+     - No troubleshooting guide
+     - No links to full documentation
+     - Fix: Add API reference table, common issues section, doc links
+*/
+
 'use client'
 /*
   
@@ -8,6 +42,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import CopyButton from '../../components/CopyButton'
 import CodeWithResult from '../../components/CodeWithResult'
+import { ContentNavigation } from '../../components/ContentNavigation'
 import { CommandBlock } from '../../components/CommandBlock'
 import { ChevronRight, Zap, Package, Shield, Code, Layers, ArrowRight } from 'lucide-react'
 
@@ -30,7 +65,7 @@ export default function LLMPage() {
               <Zap className="w-7 h-7 text-blue-400" /> One-shot LLM Calls
             </h1>
             <p className="text-gray-300 max-w-2xl">
-              Make direct LLM calls with optional structured output. One function for any LLM task.
+              Make direct LLM calls with optional structured output. Supports OpenAI, Google Gemini, and Anthropic models through a unified interface.
             </p>
           </div>
         </div>
@@ -43,15 +78,22 @@ export default function LLMPage() {
               <CodeWithResult 
                 code={`from connectonion import llm_do
 
+# OpenAI (default)
 answer = llm_do("What's 2+2?")
-print(answer)`}
+print(answer)
+
+# Google Gemini
+answer = llm_do("What's 2+2?", model="gemini-1.5-flash")
+
+# Anthropic Claude
+answer = llm_do("What's 2+2?", model="claude-3-5-haiku-20241022")`}
                 result={`>>> answer = llm_do("What's 2+2?")
 >>> print(answer)
 4`}
                 className="mb-6"
               />
               
-              <p className="text-gray-300">That's it! One function for any LLM task.</p>
+              <p className="text-gray-300">That's it! One function for any LLM task across multiple providers.</p>
             </section>
 
             {/* With Structured Output */}
@@ -106,15 +148,10 @@ Due: January 15, 2024
 """
 
 invoice = llm_do(invoice_text, output=Invoice)
-print(invoice.invoice_number)
-print(invoice.total_amount)
-print(invoice.due_date)`}
-                    result={`>>> print(invoice.invoice_number)
-'INV-2024-001'
->>> print(invoice.total_amount)
-1234.56
->>> print(invoice.due_date)
-'January 15, 2024'`}
+print(invoice.total_amount)`}
+                    result={`>>> print(invoice.total_amount)
+1234.56`}
+                    className="mb-4"
                   />
                 </div>
 
@@ -122,24 +159,21 @@ print(invoice.due_date)`}
                 <div>
                   <h3 className="text-xl font-semibold text-green-400 mb-3">Use Custom Prompts</h3>
                   <CodeWithResult 
-                    code={`# With inline prompt
+                    code={`# With prompt file
+summary = llm_do(
+    long_article,
+    system_prompt="prompts/summarizer.md"  # Loads from file
+)
+
+# With inline prompt
 translation = llm_do(
     "Hello world",
-    prompt="You are a translator. Translate to Spanish only."
+    system_prompt="You are a translator. Translate to Spanish only."
 )
-print(translation)
-
-# With prompt file
-summary = llm_do(
-    "Long technical article about AI...",
-    prompt="prompts/summarizer.md"  # Loads from file
-)
-print(summary)`}
+print(translation)`}
                     result={`>>> print(translation)
-'Hola mundo'
-
->>> print(summary)
-'AI technology is rapidly advancing with breakthroughs in...'`}
+Hola mundo`}
+                    className="mb-4"
                   />
                 </div>
 
@@ -147,10 +181,7 @@ print(summary)`}
                 <div>
                   <h3 className="text-xl font-semibold text-green-400 mb-3">Quick Analysis Tool</h3>
                   <CodeWithResult 
-                    code={`from connectonion import llm_do, Agent
-from pydantic import BaseModel
-
-def analyze_feedback(text: str) -> str:
+                    code={`def analyze_feedback(text: str) -> str:
     """Analyze customer feedback with structured output."""
     
     class FeedbackAnalysis(BaseModel):
@@ -165,11 +196,8 @@ def analyze_feedback(text: str) -> str:
         return f"🚨 {analysis.priority.upper()}: {analysis.summary}"
     return f"📝 {analysis.category}: {analysis.summary}"
 
-# Test the function
-result = analyze_feedback("The app crashes when I try to upload files!")
-print(result)
-
 # Use in an agent
+from connectonion import Agent
 agent = Agent("support", tools=[analyze_feedback])`}
                     result={`>>> result = analyze_feedback("The app crashes when I try to upload files!")
 >>> print(result)
@@ -177,6 +205,36 @@ agent = Agent("support", tools=[analyze_feedback])`}
                   />
                 </div>
               </div>
+            </section>
+
+            {/* Supported Models */}
+            <section className="mb-12">
+              <h2 className="text-2xl font-bold text-green-400 mb-4">Supported Models</h2>
+              
+              <CodeWithResult 
+                code={`# OpenAI models
+llm_do("Hello", model="gpt-4o")
+llm_do("Hello", model="gpt-4o-mini")
+llm_do("Hello", model="gpt-3.5-turbo")
+
+# Google Gemini models
+llm_do("Hello", model="gemini-1.5-pro")
+llm_do("Hello", model="gemini-1.5-flash")
+
+# Anthropic Claude models
+llm_do("Hello", model="claude-3-5-sonnet-latest")
+llm_do("Hello", model="claude-3-5-haiku-20241022")
+llm_do("Hello", model="claude-3-opus-latest")`}
+                result={`>>> llm_do("Hello", model="gpt-4o")
+'Hello! How can I assist you today?'
+
+>>> llm_do("Hello", model="gemini-1.5-flash")
+'Hello there! How can I help you?'
+
+>>> llm_do("Hello", model="claude-3-5-haiku-20241022")
+'Hello! How may I assist you today?'`}
+                className="mb-6"
+              />
             </section>
 
             {/* Parameters Table */}
@@ -216,7 +274,7 @@ agent = Agent("support", tools=[analyze_feedback])`}
                       <td className="py-3 px-4"><code className="text-purple-400">model</code></td>
                       <td className="py-3 px-4 text-gray-300">str</td>
                       <td className="py-3 px-4 text-gray-400">"gpt-4o-mini"</td>
-                      <td className="py-3 px-4 text-gray-300">OpenAI model to use</td>
+                      <td className="py-3 px-4 text-gray-300">Model to use (supports OpenAI, Gemini, Claude)</td>
                     </tr>
                     <tr className="border-b border-gray-800">
                       <td className="py-3 px-4"><code className="text-purple-400">temperature</code></td>
@@ -275,6 +333,7 @@ Name: John Doe
 Age: 30
 >>> print(f"Job: {person.occupation}")
 Job: software engineer`}
+                    className="mb-4"
                   />
                 </div>
 
@@ -282,20 +341,13 @@ Job: software engineer`}
                 <div>
                   <h3 className="text-lg font-semibold text-green-400 mb-3">Quick Decisions</h3>
                   <CodeWithResult 
-                    code={`def check_urgency(message: str) -> bool:
-    is_urgent = llm_do(f"Is this urgent? Reply yes/no: {message}")
-    return "yes" in is_urgent.lower()
-
-# Test with customer message
-if check_urgency("Customer says: My server is down!"):
-    print("🚨 Escalating to on-call team...")
-else:
-    print("📝 Added to regular queue")`}
-                    result={`>>> if check_urgency("Customer says: My server is down!"):
-...     print("🚨 Escalating to on-call team...")
-... else:
-...     print("📝 Added to regular queue")
-🚨 Escalating to on-call team...`}
+                    code={`is_urgent = llm_do("Customer says: My server is down!")
+if "urgent" in is_urgent.lower():
+    escalate()`}
+                    result={`>>> is_urgent = llm_do("Customer says: My server is down!")
+>>> print(is_urgent)
+This appears to be an urgent issue that requires immediate attention.`}
+                    className="mb-4"
                   />
                 </div>
 
@@ -303,18 +355,14 @@ else:
                 <div>
                   <h3 className="text-lg font-semibold text-green-400 mb-3">Format Conversion</h3>
                   <CodeWithResult 
-                    code={`from pydantic import BaseModel
-
-class JSONData(BaseModel):
+                    code={`class JSONData(BaseModel):
     data: dict
 
-json_result = llm_do(
-    "Convert to JSON: name=John age=30 city=NYC",
-    output=JSONData
-)
+json_result = llm_do("Convert to JSON: name=John age=30", output=JSONData)
 print(json_result.data)`}
                     result={`>>> print(json_result.data)
-{'name': 'John', 'age': 30, 'city': 'NYC'}`}
+{'name': 'John', 'age': 30}`}
+                    className="mb-4"
                   />
                 </div>
 
@@ -322,29 +370,45 @@ print(json_result.data)`}
                 <div>
                   <h3 className="text-lg font-semibold text-green-400 mb-3">Validation</h3>
                   <CodeWithResult 
-                    code={`def validate_sql(query: str) -> bool:
+                    code={`def validate_input(user_text: str) -> bool:
     result = llm_do(
-        f"Is this valid SQL? Reply yes/no only: {query}",
+        f"Is this valid SQL? Reply yes/no only: {user_text}",
         temperature=0  # Maximum consistency
     )
-    return result.strip().lower() == "yes"
-
-# Test queries
-queries = [
-    "SELECT * FROM users WHERE id = 1",
-    "SLECT * FORM users"  # Typo
-]
-
-for q in queries:
-    is_valid = validate_sql(q)
-    print(f"{'✓' if is_valid else '✗'} {q[:30]}...")`}
-                    result={`>>> for q in queries:
-...     is_valid = validate_sql(q)
-...     print(f"{'✓' if is_valid else '✗'} {q[:30]}...")
-✓ SELECT * FROM users WHERE id...
-✗ SLECT * FORM users...`}
+    return result.strip().lower() == "yes"`}
+                    result={`>>> validate_input("SELECT * FROM users WHERE id = 1")
+True
+>>> validate_input("DROP TABLE; DELETE everything")
+False`}
+                    className="mb-4"
                   />
                 </div>
+              </div>
+            </section>
+
+            {/* Tips */}
+            <section className="mb-12">
+              <h2 className="text-2xl font-bold text-green-400 mb-4">Tips</h2>
+              
+              <div className="bg-gray-900 rounded-lg p-6">
+                <ol className="space-y-3">
+                  <li className="flex items-start gap-3">
+                    <span className="text-green-400 font-bold">1.</span>
+                    <span className="text-gray-300"><strong>Use low temperature (0-0.3) for consistent results</strong></span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="text-green-400 font-bold">2.</span>
+                    <span className="text-gray-300"><strong>Provide examples in your prompt for better accuracy</strong></span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="text-green-400 font-bold">3.</span>
+                    <span className="text-gray-300"><strong>Use Pydantic models for anything structured</strong></span>
+                  </li>
+                  <li className="flex items-start gap-3">
+                    <span className="text-green-400 font-bold">4.</span>
+                    <span className="text-gray-300"><strong>Cache prompts in files for reusability</strong></span>
+                  </li>
+                </ol>
               </div>
             </section>
 
@@ -352,8 +416,8 @@ for q in queries:
             <section className="mb-12">
               <h2 className="text-2xl font-bold text-green-400 mb-4">Comparison with Agent</h2>
               
-              <div className="overflow-x-auto mb-6">
-                <table className="w-full border-collapse">
+              <div className="table-wrapper">
+                <table className="min-w-full border-collapse">
                   <thead>
                     <tr className="border-b border-gray-700">
                       <th className="text-left py-3 px-4 text-green-400">Feature</th>
@@ -392,84 +456,67 @@ for q in queries:
               </div>
 
               <CodeWithResult 
-                code={`from connectonion import llm_do, Agent
-
-# Use llm_do() for simple tasks
+                code={`# Use llm_do() for simple tasks
 answer = llm_do("What's the capital of France?")
-print(f"Capital: {answer}")
 
 # Use Agent for multi-step workflows
-def search_population(city: str) -> int:
-    # Simulated search function
-    return 2_161_000 if city == "Paris" else 0
+agent = Agent("assistant", tools=[search, calculate])
+result = agent.input("Find the population and calculate density")`}
+                result={`>>> answer = llm_do("What's the capital of France?")
+>>> print(answer)
+The capital of France is Paris.
 
-def calculate_density(population: int, area_km2: float) -> float:
-    return population / area_km2
-
-agent = Agent("assistant", tools=[search_population, calculate_density])
-result = agent.input("Find Paris population and calculate density (area: 105 km²)")
-print(f"Agent result: {result}")`}
-                result={`>>> print(f"Capital: {answer}")
-Capital: Paris
-
->>> result = agent.input("Find Paris population and calculate density (area: 105 km²)")
->>> print(f"Agent result: {result}")
-Agent result: The population density of Paris is approximately 20,580 people per km²`}
+>>> result = agent.input("Find the population and calculate density")
+>>> print(result)
+I'll help you find the population and calculate the density. Let me search for the current data...`}
+                className="mt-6"
               />
             </section>
 
-            {/* Tips */}
+            {/* Error Handling */}
             <section className="mb-12">
-              <h2 className="text-2xl font-bold text-green-400 mb-4">Tips</h2>
+              <h2 className="text-2xl font-bold text-green-400 mb-4">Error Handling</h2>
               
-              <div className="space-y-3">
-                {[
-                  "Use low temperature (0-0.3) for consistent results",
-                  "Provide examples in your prompt for better accuracy",
-                  "Use Pydantic models for anything structured",
-                  "Cache prompts in files for reusability"
-                ].map((tip, i) => (
-                  <div key={i} className="bg-gray-900 rounded-lg p-4 flex items-start gap-3">
-                    <span className="text-green-400 font-bold">{i + 1}.</span>
-                    <span className="text-gray-300">{tip}</span>
-                  </div>
-                ))}
-              </div>
+              <CodeWithResult 
+                code={`from connectonion import llm_do
+from pydantic import ValidationError
+
+try:
+    result = llm_do("Analyze this", output=ComplexModel)
+except ValidationError as e:
+    print(f"Output didn't match model: {e}")
+except Exception as e:
+    print(f"LLM call failed: {e}")`}
+                result={`>>> try:
+...     result = llm_do("Analyze this", output=ComplexModel)
+... except ValidationError as e:
+...     print(f"Output didn't match model: {e}")
+Output didn't match model: 2 validation errors for ComplexModel...`}
+                className="mb-6"
+              />
             </section>
 
             {/* Next Steps */}
             <section className="mb-12">
-              <h2 className="text-2xl font-bold text-green-400 mb-6">Next Steps</h2>
+              <h2 className="text-2xl font-bold text-green-400 mb-4">Next Steps</h2>
               
               <div className="grid md:grid-cols-3 gap-4">
-                <a href="/tools" className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors group">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Code className="w-5 h-5 text-green-400" />
-                    <h3 className="text-lg font-semibold text-green-400">Tools</h3>
-                  </div>
-                  <p className="text-gray-300 text-sm">Extend agents with custom tools</p>
-                  <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-green-400 mt-2" />
-                </a>
-                
-                <a href="/xray" className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors group">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Zap className="w-5 h-5 text-green-400" />
-                    <h3 className="text-lg font-semibold text-green-400">@xray Decorator</h3>
-                  </div>
-                  <p className="text-gray-300 text-sm">Debug your LLM calls</p>
-                  <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-green-400 mt-2" />
-                </a>
-                
-                <a href="/prompts" className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors group">
-                  <div className="flex items-center gap-3 mb-3">
-                    <Layers className="w-5 h-5 text-green-400" />
-                    <h3 className="text-lg font-semibold text-green-400">System Prompts</h3>
-                  </div>
-                  <p className="text-gray-300 text-sm">Learn about prompt management</p>
-                  <ChevronRight className="w-4 h-4 text-gray-400 group-hover:text-green-400 mt-2" />
-                </a>
+                <Link href="/agents" className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors">
+                  <h3 className="text-lg font-semibold text-white mb-2">Learn about Agents</h3>
+                  <p className="text-sm text-gray-400">For multi-step workflows</p>
+                </Link>
+                <Link href="/tools" className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors">
+                  <h3 className="text-lg font-semibold text-white mb-2">Explore Tools</h3>
+                  <p className="text-sm text-gray-400">For extending agents</p>
+                </Link>
+                <Link href="/xray" className="bg-gray-900 rounded-lg p-6 hover:bg-gray-800 transition-colors">
+                  <h3 className="text-lg font-semibold text-white mb-2">See @xray</h3>
+                  <p className="text-sm text-gray-400">For debugging</p>
+                </Link>
               </div>
             </section>
+
+            <ContentNavigation />
     </div>
   )
 }

@@ -1,7 +1,16 @@
+/*
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Custom navigation with "Previous/Next in series" labels
+  - No consistent breadcrumb navigation
+  - Different from PageNavigation component
+  - Being updated to use UnifiedNavigation
+*/
+
 'use client'
 
 import React, { useState } from 'react'
 import { Copy, Check, FileText, ArrowRight, ArrowLeft, Download, Play, Terminal, Lightbulb, Search, FolderOpen, Shield } from 'lucide-react'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
@@ -462,7 +471,7 @@ This example demonstrates:
 Perfect foundation for building system integration and file management agents!`
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 lg:py-12 pt-16 lg:pt-12">
       {/* Header content similar to previous examples */}
       <nav className="flex items-center gap-2 text-sm text-gray-400 mb-8">
         <Link href="/" className="hover:text-white transition-colors">Home</Link>
@@ -477,7 +486,8 @@ Perfect foundation for building system integration and file management agents!`
           <div className="flex items-center gap-4 mb-4">
             <div className="w-16 h-16 bg-purple-600 rounded-xl flex items-center justify-center">
               <span className="text-2xl font-bold text-white">6</span>
-            </div>
+              
+</div>
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <FileText className="w-8 h-8 text-purple-400" />
@@ -485,20 +495,25 @@ Perfect foundation for building system integration and file management agents!`
                 <span className="px-3 py-1 bg-purple-900/50 text-purple-300 rounded-full text-sm font-medium">
                   Advanced
                 </span>
-              </div>
+                
+</div>
               <p className="text-xl text-gray-300">
                 Learn file system integration and security considerations with a comprehensive file analysis system.
               </p>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
         
         <CopyMarkdownButton 
           content={markdownContent}
           filename="file-analyzer-agent.md"
           className="ml-8 flex-shrink-0"
         />
-      </div>
+        
+</div>
 
       {/* Key concepts and code sections similar to previous examples */}
       <div className="mb-12 p-6 bg-purple-900/20 border border-purple-500/30 rounded-xl">
@@ -537,30 +552,8 @@ Perfect foundation for building system integration and file management agents!`
           </div>
         </div>
       </div>
-
       {/* Navigation */}
-      <nav className="flex justify-between items-center pt-12 mt-12 border-t border-gray-800">
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Previous in series</p>
-          <Link 
-            href="/examples/math-tutor-agent" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            5. Math Tutor Agent
-          </Link>
-        </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Next in series</p>
-          <Link 
-            href="/examples/api-client" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            7. API Client
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </nav>
+      <ContentNavigation />
     </div>
   )
 }

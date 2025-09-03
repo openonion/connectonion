@@ -33,17 +33,28 @@
      - Static code examples only
      - Missing links to working examples
      - Fix: Add interactive playground component, link to runnable examples
+  
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Uses PageNavigation component (line 479)
+  - Has breadcrumb navigation at top with ArrowRight icons
+  - Has CopyMarkdownButton component
+  - Has tab interface for function/class tools
+  - Consistent with main docs pages
+  - Good example of standard navigation implementation
 */
 
 'use client'
 
 import { useState } from 'react'
 import Link from 'next/link'
-import { Copy, Check, Code, Layers, Compass, Monitor } from 'lucide-react'
+import { ContentNavigation } from '../../components/ContentNavigation'
+import { Copy, Check, Code, Layers, Compass, Monitor, ArrowRight, Wrench, Settings, Box } from 'lucide-react'
 import CodeWithResult from '../../components/CodeWithResult'
+import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
 
 export default function ToolsDocsPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'function' | 'class'>('function')
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
@@ -352,26 +363,56 @@ print(browser.list_tabs())
 browser.close()`
 
   return (
-    <div className="max-w-5xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
-      {/* Header */}
+    <div className="px-4 md:px-8 py-8 md:py-12 lg:py-12">
+      <div className="max-w-5xl mx-auto">
+      {/* Header with Breadcrumb and Copy Button */}
       <div className="mb-10">
-        <div className="flex items-center gap-2 text-sm text-gray-400 mb-3">
+        <nav className="flex items-center gap-2 text-sm text-gray-400 mb-4">
           <Link href="/" className="hover:text-white transition-colors">Home</Link>
-          <span>/</span>
+          <ArrowRight className="w-4 h-4" />
           <span className="text-white">Tools</span>
-        </div>
-        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-4 mb-4">
+        </nav>
+        <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-4xl font-bold text-white mb-3 flex items-center gap-3">
-              <Code className="w-7 h-7 text-blue-400" /> Tools
+            <h1 className="text-3xl md:text-4xl font-bold text-white mb-3">
+              Tools Documentation
             </h1>
             <p className="text-gray-300 max-w-2xl">
               Build powerful, reusable function tools and stateful class tools. Typed signatures become
               schemas automatically; docstrings become human-friendly descriptions.
             </p>
           </div>
-          <div className="flex-shrink-0">
-          </div>
+          <CopyMarkdownButton 
+            content={unused_pageContent}
+            filename="tools-documentation.md"
+            className="flex-shrink-0"
+          />
+        </div>
+        
+        {/* Tool Type Tabs */}
+        <div className="flex gap-2 mb-6">
+          <button
+            onClick={() => setActiveTab('function')}
+            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              activeTab === 'function'
+                ? 'bg-blue-600 text-white'
+                : 'bg-gray-800 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Wrench className="w-4 h-4 inline mr-2" />
+            Function Tools
+          </button>
+          <button
+            onClick={() => setActiveTab('class')}
+            className={`px-4 py-2 rounded-lg font-medium transition-all ${
+              activeTab === 'class'
+                ? 'bg-purple-600 text-white'
+                : 'bg-gray-800 text-gray-400 hover:text-white'
+            }`}
+          >
+            <Box className="w-4 h-4 inline mr-2" />
+            Class Tools
+          </button>
         </div>
       </div>
 
@@ -442,6 +483,10 @@ I'll search for the top 3 results about vector databases.
 ['main', 'docs']`}
         />
       </section>
+
+      {/* Unified Navigation */}
+      <ContentNavigation />
+      </div>
     </div>
   )
 }

@@ -1,3 +1,11 @@
+/*
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Custom navigation with "Previous/Next in series" labels
+  - No consistent breadcrumb navigation
+  - Different from PageNavigation component
+  - Being updated to use UnifiedNavigation
+*/
+
 'use client'
 
 import React, { useState } from 'react'
@@ -6,6 +14,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 
 const agentCode = `from connectonion import Agent
 from datetime import datetime
@@ -513,7 +522,7 @@ This example demonstrates:
 Perfect foundation for building complex business and enterprise agents!`
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 lg:py-12 pt-16 lg:pt-12">
       <nav className="flex items-center gap-2 text-sm text-gray-400 mb-8">
         <Link href="/" className="hover:text-white transition-colors">Home</Link>
         <ArrowRight className="w-4 h-4" />
@@ -527,7 +536,8 @@ Perfect foundation for building complex business and enterprise agents!`
           <div className="flex items-center gap-4 mb-4">
             <div className="w-16 h-16 bg-emerald-600 rounded-xl flex items-center justify-center">
               <span className="text-2xl font-bold text-white">8</span>
-            </div>
+              
+</div>
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <ShoppingCart className="w-8 h-8 text-emerald-400" />
@@ -535,20 +545,25 @@ Perfect foundation for building complex business and enterprise agents!`
                 <span className="px-3 py-1 bg-emerald-900/50 text-emerald-300 rounded-full text-sm font-medium">
                   Expert
                 </span>
-              </div>
+                
+</div>
               <p className="text-xl text-gray-300">
                 Learn complex business logic and enterprise-grade workflow automation with a comprehensive e-commerce management system.
               </p>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
         
         <CopyMarkdownButton 
           content={markdownContent}
           filename="ecommerce-manager-agent.md"
           className="ml-8 flex-shrink-0"
         />
-      </div>
+        
+</div>
 
       <div className="mb-12 p-6 bg-emerald-900/20 border border-emerald-500/30 rounded-xl">
         <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-3">
@@ -559,33 +574,43 @@ Perfect foundation for building complex business and enterprise agents!`
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-emerald-600 rounded-lg flex items-center justify-center">
               <Package className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Business Logic</h3>
             <p className="text-emerald-200 text-sm">Complex workflows and calculations</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-emerald-600 rounded-lg flex items-center justify-center">
               <Users className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">CRM Systems</h3>
             <p className="text-emerald-200 text-sm">Customer relationship management</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-emerald-600 rounded-lg flex items-center justify-center">
               <TrendingUp className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Analytics</h3>
             <p className="text-emerald-200 text-sm">Business intelligence and reporting</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-emerald-600 rounded-lg flex items-center justify-center">
               <DollarSign className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Revenue Tracking</h3>
             <p className="text-emerald-200 text-sm">Financial metrics and optimization</p>
-          </div>
-        </div>
-      </div>
+            
+</div>
+          
+</div>
+        
+</div>
 
       <div className="grid lg:grid-cols-2 gap-12">
         {/* Code Examples */}
@@ -610,7 +635,8 @@ Perfect foundation for building complex business and enterprise agents!`
                   </>
                 )}
               </button>
-            </div>
+              
+</div>
             
             <div className="p-6 ">
               <SyntaxHighlighter 
@@ -632,8 +658,10 @@ Perfect foundation for building complex business and enterprise agents!`
               >
                 {agentCode}
               </SyntaxHighlighter>
-            </div>
-          </div>
+              
+</div>
+            
+</div>
 
           {/* Complete Example */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg">
@@ -655,7 +683,8 @@ Perfect foundation for building complex business and enterprise agents!`
                   </>
                 )}
               </button>
-            </div>
+              
+</div>
             
             <div className="p-6 ">
               <SyntaxHighlighter 
@@ -677,9 +706,12 @@ Perfect foundation for building complex business and enterprise agents!`
               >
                 {fullExampleCode}
               </SyntaxHighlighter>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
 
         {/* Right Panel */}
         <div className="space-y-8">
@@ -688,7 +720,8 @@ Perfect foundation for building complex business and enterprise agents!`
             <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-700">
               <Terminal className="w-5 h-5 text-emerald-400" />
               <h3 className="text-xl font-semibold text-white">Expected Output</h3>
-            </div>
+              
+</div>
             
             <div className="p-6">
               <div className="bg-black/50 rounded-lg p-4 font-mono text-sm ">
@@ -738,9 +771,12 @@ Response: 📊 **Business Analytics Dashboard**
 2. laptops: 2 units sold
 3. keyboards: 2 units sold`}
                 </pre>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Enterprise Patterns */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -749,17 +785,22 @@ Response: 📊 **Business Analytics Dashboard**
               <div>
                 <h4 className="font-semibold text-emerald-400 mb-2">🏢 Business Logic</h4>
                 <p className="text-gray-300">Complex workflows with tax calculations, delivery estimates, and multi-system coordination.</p>
-              </div>
+                
+</div>
               <div>
                 <h4 className="font-semibold text-emerald-400 mb-2">🔄 Data Relationships</h4>
                 <p className="text-gray-300">Orders, customers, and inventory working together with referential integrity.</p>
-              </div>
+                
+</div>
               <div>
                 <h4 className="font-semibold text-emerald-400 mb-2">📊 Business Intelligence</h4>
                 <p className="text-gray-300">Real-time analytics, performance metrics, and actionable business insights.</p>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Features */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -768,17 +809,22 @@ Response: 📊 **Business Analytics Dashboard**
               <div className="p-3 bg-emerald-900/20 border border-emerald-500/30 rounded">
                 <p className="text-emerald-300 font-medium mb-1">🛍️ Order Management</p>
                 <p className="text-emerald-200">Complete order lifecycle with tax calculation and delivery tracking</p>
-              </div>
+                
+</div>
               <div className="p-3 bg-emerald-900/20 border border-emerald-500/30 rounded">
                 <p className="text-emerald-300 font-medium mb-1">👥 CRM Integration</p>
                 <p className="text-emerald-200">Customer profiles, purchase history, and lifetime value tracking</p>
-              </div>
+                
+</div>
               <div className="p-3 bg-emerald-900/20 border border-emerald-500/30 rounded">
                 <p className="text-emerald-300 font-medium mb-1">📈 Advanced Analytics</p>
                 <p className="text-emerald-200">Revenue tracking, product performance, and business intelligence reports</p>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Download */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -799,30 +845,8 @@ Response: 📊 **Business Analytics Dashboard**
           </div>
         </div>
       </div>
-
       {/* Navigation */}
-      <nav className="flex justify-between items-center pt-12 mt-12 border-t border-gray-800">
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Previous in series</p>
-          <Link 
-            href="/examples/api-client" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            7. API Client
-          </Link>
-        </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Complete!</p>
-          <Link 
-            href="/examples" 
-            className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
-          >
-            View All Examples
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </nav>
+      <ContentNavigation />
     </div>
   )
 }

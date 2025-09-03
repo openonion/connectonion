@@ -33,6 +33,14 @@
      - No emphasis on recommended starting point
      - Color coding inconsistent with difficulty
      - Fix: Highlight "Start Here" card, use consistent color progression, add recommended badges
+  
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - NO PageNavigation component - just lists examples
+  - Has breadcrumb navigation at top
+  - Has CopyMarkdownButton component
+  - Links to example pages that use custom navigation
+  - Acts as hub page but no prev/next navigation
+  - Child pages have "Previous/Next in series" pattern
 */
 
 'use client'
@@ -252,7 +260,7 @@ pip install connectonion
 *All examples use ConnectOnion v0.0.1b5 with complete working code and realistic outputs.*`
 
   return (
-    <div className="max-w-7xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <div className="max-w-7xl mx-auto px-4 md:px-8 py-8 md:py-12 lg:py-12 pt-16 lg:pt-12">
       {/* Compact Header */}
       <div className="flex flex-col lg:flex-row lg:items-start gap-8 mb-12">
         <div className="flex-1">
@@ -281,7 +289,7 @@ pip install connectonion
         <h2 className="text-xl font-bold text-white mb-4 flex items-center gap-2">
           📚 <span>Progressive Learning Path</span>
         </h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 sm:gap-4">
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-2 bg-green-600 rounded-lg flex items-center justify-center">
               <span className="text-sm font-bold text-white">1-3</span>
@@ -356,15 +364,15 @@ pip install connectonion
                 
                 <Link 
                   href={example.href}
-                  className="flex items-center gap-2 px-4 py-2 bg-gray-800/50 hover:bg-gray-800 border border-gray-600/50 hover:border-gray-500 rounded-md text-gray-300 hover:text-white transition-all text-sm font-medium"
+                  className="flex items-center justify-center gap-2 px-4 py-3 md:py-2 bg-gray-800/50 hover:bg-gray-800 border border-gray-600/50 hover:border-gray-500 rounded-md text-gray-300 hover:text-white transition-all text-sm font-medium min-w-[140px]"
                 >
                   <span>View Tutorial</span>
                   <ExternalLink className="w-4 h-4" />
                 </Link>
               </div>
 
-              {/* Compact Code Preview */}
-              <div className="bg-gray-900/80 border border-gray-700/60 rounded-md overflow-hidden">
+              {/* Compact Code Preview - Hidden on mobile */}
+              <div className="hidden md:block bg-gray-900/80 border border-gray-700/60 rounded-md overflow-hidden">
                 <div className="flex items-center justify-between px-4 py-2 bg-gray-800/60 border-b border-gray-700/60">
                   <div className="flex items-center gap-2">
                     <Code className="w-4 h-4 text-gray-400" />

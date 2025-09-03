@@ -1,7 +1,16 @@
+/*
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Custom navigation with "Previous/Next in series" labels
+  - No consistent breadcrumb navigation
+  - Different from PageNavigation component
+  - Being updated to use UnifiedNavigation
+*/
+
 'use client'
 
 import React, { useState } from 'react'
 import { Copy, Check, Database, ArrowRight, ArrowLeft, Download, Play, Terminal, Lightbulb, Cloud, MapPin } from 'lucide-react'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
@@ -217,15 +226,8 @@ This example demonstrates:
 Perfect foundation for building data-driven agents!`
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-gray-400 mb-8">
-        <Link href="/" className="hover:text-white transition-colors">Home</Link>
-        <ArrowRight className="w-4 h-4" />
-        <Link href="/examples" className="hover:text-white transition-colors">Agent Building</Link>
-        <ArrowRight className="w-4 h-4" />
-        <span className="text-white">Weather Bot</span>
-      </nav>
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 lg:py-12 pt-16 lg:pt-12">
+      {/* Navigation */}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-12">
@@ -233,7 +235,8 @@ Perfect foundation for building data-driven agents!`
           <div className="flex items-center gap-4 mb-4">
             <div className="w-16 h-16 bg-cyan-600 rounded-xl flex items-center justify-center">
               <span className="text-2xl font-bold text-white">3</span>
-            </div>
+              
+</div>
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <Database className="w-8 h-8 text-cyan-400" />
@@ -241,20 +244,25 @@ Perfect foundation for building data-driven agents!`
                 <span className="px-3 py-1 bg-cyan-900/50 text-cyan-300 rounded-full text-sm font-medium">
                   Beginner
                 </span>
-              </div>
+                
+</div>
               <p className="text-xl text-gray-300">
                 Learn data processing, tool coordination, and structured output formatting with a weather information bot.
               </p>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
         
         <CopyMarkdownButton 
           content={markdownContent}
           filename="weather-bot-agent.md"
           className="ml-8 flex-shrink-0"
         />
-      </div>
+        
+</div>
 
       {/* Key Concepts */}
       <div className="mb-12 p-6 bg-cyan-900/20 border border-cyan-500/30 rounded-xl">
@@ -266,33 +274,43 @@ Perfect foundation for building data-driven agents!`
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-cyan-600 rounded-lg flex items-center justify-center">
               <Database className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Data Processing</h3>
             <p className="text-cyan-200 text-sm">Handle structured data and dictionaries</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-cyan-600 rounded-lg flex items-center justify-center">
               <Play className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Tool Coordination</h3>
             <p className="text-cyan-200 text-sm">Multiple tools working together</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-cyan-600 rounded-lg flex items-center justify-center">
               <Cloud className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Output Formatting</h3>
             <p className="text-cyan-200 text-sm">Convert data into readable reports</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-cyan-600 rounded-lg flex items-center justify-center">
               <MapPin className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Error Handling</h3>
             <p className="text-cyan-200 text-sm">Graceful handling of missing data</p>
-          </div>
-        </div>
-      </div>
+            
+</div>
+          
+</div>
+        
+</div>
 
       <div className="grid lg:grid-cols-2 gap-12">
         {/* Code Examples */}
@@ -317,7 +335,8 @@ Perfect foundation for building data-driven agents!`
                   </>
                 )}
               </button>
-            </div>
+              
+</div>
             
             <div className="p-6">
               <SyntaxHighlighter 
@@ -339,8 +358,10 @@ Perfect foundation for building data-driven agents!`
               >
                 {agentCode}
               </SyntaxHighlighter>
-            </div>
-          </div>
+              
+</div>
+            
+</div>
 
           {/* Complete Example */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg">
@@ -362,7 +383,8 @@ Perfect foundation for building data-driven agents!`
                   </>
                 )}
               </button>
-            </div>
+              
+</div>
             
             <div className="p-6 ">
               <SyntaxHighlighter 
@@ -384,9 +406,12 @@ Perfect foundation for building data-driven agents!`
               >
                 {fullExampleCode}
               </SyntaxHighlighter>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
 
         {/* Right Panel */}
         <div className="space-y-8">
@@ -395,7 +420,8 @@ Perfect foundation for building data-driven agents!`
             <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-700">
               <Terminal className="w-5 h-5 text-cyan-400" />
               <h3 className="text-xl font-semibold text-white">Expected Output</h3>
-            </div>
+              
+</div>
             
             <div className="p-6">
               <div className="bg-black/50 rounded-lg p-4 font-mono text-sm">
@@ -423,9 +449,12 @@ Response: 🔄 Weather Comparison: New York vs London
    • New York: Sunny
    • London: Cloudy`}
                 </pre>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Data Flow */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -434,17 +463,22 @@ Response: 🔄 Weather Comparison: New York vs London
               <div>
                 <h4 className="font-semibold text-cyan-400 mb-2">🔄 Data Flow</h4>
                 <p className="text-gray-300">get_weather() → format_weather_report() creates a seamless data pipeline.</p>
-              </div>
+                
+</div>
               <div>
                 <h4 className="font-semibold text-cyan-400 mb-2">🎯 Smart Selection</h4>
                 <p className="text-gray-300">Agent automatically chooses which tools to use based on user questions.</p>
-              </div>
+                
+</div>
               <div>
                 <h4 className="font-semibold text-cyan-400 mb-2">📊 Structured Output</h4>
                 <p className="text-gray-300">Raw data gets transformed into beautiful, readable weather reports.</p>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Features */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -453,17 +487,22 @@ Response: 🔄 Weather Comparison: New York vs London
               <div className="p-3 bg-cyan-900/20 border border-cyan-500/30 rounded">
                 <p className="text-cyan-300 font-medium mb-1">🌍 Multi-City Support</p>
                 <p className="text-cyan-200">New York, London, Tokyo, Paris, Sydney weather data available</p>
-              </div>
+                
+</div>
               <div className="p-3 bg-cyan-900/20 border border-cyan-500/30 rounded">
                 <p className="text-cyan-300 font-medium mb-1">🔄 Weather Comparison</p>
                 <p className="text-cyan-200">Side-by-side comparison between any two cities</p>
-              </div>
+                
+</div>
               <div className="p-3 bg-cyan-900/20 border border-cyan-500/30 rounded">
                 <p className="text-cyan-300 font-medium mb-1">❌ Error Handling</p>
                 <p className="text-cyan-200">Graceful handling of cities not in database</p>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Download */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -480,34 +519,16 @@ Response: 🔄 Weather Comparison: New York vs London
               <p className="text-xs text-gray-400 text-center">
                 Ready-to-run weather bot with multiple cities and comparison features
               </p>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
       </div>
 
       {/* Navigation */}
-      <nav className="flex justify-between items-center pt-12 mt-12 border-t border-gray-800">
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Previous in series</p>
-          <Link 
-            href="/examples/calculator" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            2. Basic Calculator
-          </Link>
-        </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Next in series</p>
-          <Link 
-            href="/examples/task-manager" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            4. Task Manager
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </nav>
+      <ContentNavigation />
     </div>
   )
 }

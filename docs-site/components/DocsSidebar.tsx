@@ -4,12 +4,8 @@ import { useState, useEffect, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { 
-  Search, FileText, Zap, Code, Settings, BookOpen, 
-  ChevronRight, ChevronDown, User, Users, Database, Brain, 
-  Play, Lightbulb, FolderOpen, GitBranch, Shield, TrendingUp, 
-  Gauge, Copy, Check, Terminal, Rocket, Cloud, MoreHorizontal,
-  X, ArrowUp, ArrowDown, Home, BookOpenText, Bug, MessageSquare,
-  Layers, Sparkles, Calculator, Bot, Package, MessageCircle, Loader2
+  Search, ChevronRight, ChevronDown, Copy, Check, X, 
+  Package, MessageCircle, Loader2, GitBranch
 } from 'lucide-react'
 import { DifficultyBadge } from './DifficultyBadge'
 import { copyAllDocsToClipboard } from '../utils/copyAllDocs'
@@ -19,83 +15,10 @@ import { searchPages } from '../utils/enhancedSearch'
 import { searchMarkdownDocuments, getMatchSnippet } from '../utils/markdownLoader'
 import { useCopyMarkdown } from '../hooks/useCopyMarkdown'
 import { hasMarkdownContent } from '../utils/markdownMapping'
-
-type NavItem = {
-  title: string
-  href: string
-  icon?: any
-  difficulty?: string
-  keywords?: string[]
-}
-type NavigationSection = {
-  title: string
-  items: NavItem[]
-}
-
-const navigation: NavigationSection[] = [
-  {
-    title: 'Getting Started',
-    items: [
-      { title: 'Introduction', href: '/', icon: Home, keywords: ['intro', 'overview', 'start', 'begin'] },
-      { title: 'Quick Start', href: '/quickstart', icon: Rocket, keywords: ['setup', 'install', 'begin', 'tutorial'] },
-      { title: 'CLI Reference', href: '/cli', icon: Terminal, keywords: ['command', 'terminal', 'co', 'commands'] },
-    ]
-  },
-  {
-    title: 'Core Concepts',
-    items: [
-      { title: 'System Prompts', href: '/prompts', icon: MessageSquare, difficulty: 'Start Here', keywords: ['template', 'prompt', 'system', 'message', 'personality', 'behavior'] },
-      { title: 'Tools', href: '/tools', icon: Code, keywords: ['function', 'utility', 'actions', 'capabilities', 'tools'] },
-      { title: 'max_iterations', href: '/max-iterations', icon: Gauge, keywords: ['loop', 'limit', 'iteration', 'control', 'safety'] },
-      { title: 'LLM Function', href: '/llm_do', icon: Zap, keywords: ['ai', 'model', 'openai', 'language', 'llm_do', 'direct'] },
-      { title: 'Trust Parameter', href: '/trust', icon: Shield, keywords: ['security', 'safety', 'trust', 'permission', 'multi-agent'] },
-      { title: '@xray Decorator', href: '/xray', icon: Bug, keywords: ['debug', 'xray', 'decorator', 'trace', 'monitor', 'visibility'] },
-    ]
-  },
-  {
-    title: 'Advanced Features',
-    items: [
-      { title: 'trace() Visual Flow', href: '/xray/trace', icon: GitBranch, keywords: ['trace', 'flow', 'visual', 'debug', 'execution'] },
-      { title: 'Prompt Formats', href: '/prompts/formats', icon: FileText, difficulty: 'Interactive Demo', keywords: ['format', 'prompt', 'template', 'syntax'] },
-    ]
-  },
-  {
-    title: 'Security',
-    items: [
-      { title: 'Threat Model', href: '/threat-model', icon: Shield, keywords: ['security', 'threat', 'risk', 'safety', 'vulnerability'] },
-    ]
-  },
-  {
-    title: 'Examples',
-    items: [
-      { title: 'All Examples', href: '/examples', icon: FolderOpen, difficulty: 'Browse', keywords: ['examples', 'samples', 'demos', 'tutorials'] },
-      { title: 'Hello World', href: '/examples/hello-world', icon: Sparkles, difficulty: 'Beginner', keywords: ['hello', 'basic', 'simple', 'first'] },
-      { title: 'Calculator', href: '/examples/calculator', icon: Calculator, difficulty: 'Beginner', keywords: ['calculator', 'math', 'compute', 'arithmetic'] },
-      { title: 'Weather Bot', href: '/examples/weather-bot', icon: Cloud, difficulty: 'Intermediate', keywords: ['weather', 'bot', 'api', 'forecast'] },
-      { title: 'More Examples', href: '/examples', icon: Layers, keywords: ['advanced', 'more', 'complex', 'additional'] },
-    ]
-  },
-  {
-    title: 'Blog',
-    items: [
-      { title: 'All Posts', href: '/blog', icon: BookOpen, keywords: ['blog', 'posts', 'articles', 'news'] },
-      { title: 'Network Protocol Design', href: '/blog/network-protocol-design', icon: GitBranch, difficulty: 'Architecture', keywords: ['network', 'protocol', 'architecture', 'design'] },
-      { title: 'Why We Chose "Trust"', href: '/blog/trust-keyword', icon: Users, difficulty: 'Design Decision', keywords: ['trust', 'design', 'decision', 'authentication'] },
-      { title: 'Why `llm_do()` Over `llm()`', href: '/blog/llm-do', icon: Code, difficulty: 'Design Decision', keywords: ['llm', 'function', 'naming', 'api', 'design'] },
-      { title: 'Why `input()` Over `run()`', href: '/blog/input-method', icon: Terminal, difficulty: 'Design Decision', keywords: ['input', 'run', 'api', 'mental', 'model', 'ux'] },
-    ]
-  },
-  {
-    title: 'Roadmap',
-    items: [
-      { title: 'Coming Soon Features', href: '/roadmap', icon: Rocket, difficulty: 'Preview', keywords: ['roadmap', 'future', 'upcoming', 'features', 'soon'] },
-    ]
-  },
-]
+import { navigation as navData } from '../lib/navigation'
 
 interface SearchResult {
-  item: NavItem
-  section: string
+  item: typeof navData[0]
   score: number
   matches: string[]
 }
@@ -104,25 +27,37 @@ export function DocsSidebar() {
   const [searchQuery, setSearchQuery] = useState('')
   const [searchResults, setSearchResults] = useState<SearchResult[]>([])
   const [selectedIndex, setSelectedIndex] = useState(0)
-  const [openSections, setOpenSections] = useState<string[]>(['Getting Started'])
+  const [openSections, setOpenSections] = useState<string[]>(['Getting Started', 'Core Concepts'])
   const [isClientMounted, setIsClientMounted] = useState(false)
   const [copyStatus, setCopyStatus] = useState<'idle' | 'copying' | 'success'>('idle')
-  const [copyPageStatus, setCopyPageStatus] = useState<'idle' | 'copying' | 'success'>('idle')
   const pathname = usePathname()
   const searchInputRef = useRef<HTMLInputElement>(null)
   const { copyMarkdown, status: itemCopyStatus, copiedPath } = useCopyMarkdown()
 
+  // Group navigation items by section for sidebar display
+  const navigationSections = useMemo(() => {
+    const sections: Record<string, typeof navData> = {}
+    navData.forEach(item => {
+      // Skip admin pages in sidebar
+      if (item.section === 'Admin') return
+      
+      if (!sections[item.section]) {
+        sections[item.section] = []
+      }
+      sections[item.section].push(item)
+    })
+    return sections
+  }, [])
+
   // Auto-expand section containing current page
   useEffect(() => {
-    const currentSection = navigation.find(section => 
-      section.items.some(item => item.href === pathname)
-    )
-    if (currentSection && !openSections.includes(currentSection.title)) {
-      setOpenSections(prev => [...prev, currentSection.title])
+    const currentPage = navData.find(page => page.href === pathname)
+    if (currentPage && !openSections.includes(currentPage.section)) {
+      setOpenSections(prev => [...prev, currentPage.section])
     }
   }, [pathname])
 
-  // Initialize from localStorage after client mount to prevent hydration mismatch
+  // Initialize from localStorage after client mount
   useEffect(() => {
     setIsClientMounted(true)
     const saved = localStorage.getItem('docs-open-sections')
@@ -138,132 +73,91 @@ export function DocsSidebar() {
     }
   }, [])
 
-  // Save to localStorage whenever sections change (only after client mount)
+  // Save to localStorage whenever sections change
   useEffect(() => {
     if (isClientMounted) {
       localStorage.setItem('docs-open-sections', JSON.stringify(openSections))
     }
   }, [openSections, isClientMounted])
 
-  // Auto-expand current section when navigating
-  useEffect(() => {
-    const currentSection = navigation.find(section => 
-      section.items.some(item => item.href === pathname)
-    )
-    if (currentSection && !openSections.includes(currentSection.title)) {
-      setOpenSections(prev => {
-        // Only keep Getting Started and the current section open
-        const newSections = ['Getting Started']
-        if (currentSection.title !== 'Getting Started') {
-          newSections.push(currentSection.title)
-        }
-        return newSections
-      })
-    }
-  }, [pathname])
-
-  // Enhanced full-text search with fuzzy matching and typo tolerance
+  // Enhanced search
   const performSearch = async (query: string) => {
     if (!query.trim()) {
       setSearchResults([])
       return
     }
 
-    // Search markdown documents for comprehensive results
     const markdownResults = await searchMarkdownDocuments(query)
-    
-    // Use the enhanced search with fuzzy matching  
     const enhancedResults = searchPages(query)
     
-    // Map results back to navigation items
     const results: SearchResult[] = []
     const processedHrefs = new Set<string>()
     
-    // Process markdown search results first (highest priority)
+    // Process markdown search results first
     markdownResults.forEach(docResult => {
-      // Find the corresponding navigation item
-      navigation.forEach(section => {
-        const navItem = section.items.find(item => item.href === docResult.href)
-        if (navItem && !processedHrefs.has(navItem.href)) {
-          processedHrefs.add(navItem.href)
-          results.push({
-            item: navItem,
-            section: docResult.section || section.title,
-            score: 150, // Highest score for markdown content matches
-            matches: ['documentation']
-          })
-        }
-      })
+      const navItem = navData.find(item => item.href === docResult.href)
+      if (navItem && !processedHrefs.has(navItem.href)) {
+        processedHrefs.add(navItem.href)
+        results.push({
+          item: navItem,
+          score: 150,
+          matches: ['documentation']
+        })
+      }
     })
     
     // Process enhanced search results
     enhancedResults.forEach(pageResult => {
-      // Find the corresponding navigation item
-      navigation.forEach(section => {
-        const navItem = section.items.find(item => item.href === pageResult.href)
-        if (navItem && !processedHrefs.has(navItem.href)) {
-          processedHrefs.add(navItem.href)
-          results.push({
-            item: navItem,
-            section: section.title,
-            score: 100, // High score for enhanced matches
-            matches: ['content']
-          })
-        }
-      })
+      const navItem = navData.find(item => item.href === pageResult.href)
+      if (navItem && !processedHrefs.has(navItem.href)) {
+        processedHrefs.add(navItem.href)
+        results.push({
+          item: navItem,
+          score: 100,
+          matches: ['content']
+        })
+      }
     })
 
-    // If we have fewer than 5 results, also check navigation items directly
+    // Check navigation items directly
     if (results.length < 5) {
       const q = query.toLowerCase()
-      navigation.forEach(section => {
-        section.items.forEach(item => {
-          if (processedHrefs.has(item.href)) return // Skip if already added
-          
-          let score = 0
-          const matches: string[] = []
+      navData.forEach(item => {
+        if (processedHrefs.has(item.href)) return
+        
+        let score = 0
+        const matches: string[] = []
 
-          // Title match
-          if (item.title.toLowerCase().includes(q)) {
-            score += 10
-            matches.push('title')
-          }
+        if (item.title.toLowerCase().includes(q)) {
+          score += 10
+          matches.push('title')
+        }
 
-          // Keywords match
-          if (item.keywords?.some(k => k.includes(q))) {
-            score += 5
-            matches.push('keywords')
-          }
+        if (item.keywords?.some(k => k.includes(q))) {
+          score += 5
+          matches.push('keywords')
+        }
 
-          if (score > 0 && results.length < 10) { // Limit total results
-            results.push({
-              item,
-              section: section.title,
-              score,
-              matches
-            })
-          }
-        })
+        if (score > 0 && results.length < 10) {
+          results.push({ item, score, matches })
+        }
       })
     }
 
-    // Sort by score (highest first)
     results.sort((a, b) => b.score - a.score)
-    setSearchResults(results.slice(0, 5)) // Show top 5 results
+    setSearchResults(results.slice(0, 5))
     setSelectedIndex(0)
   }
 
-  // Keyboard navigation and shortcuts
+  // Keyboard navigation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      // Cmd+K or Ctrl+K to focus search
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
         searchInputRef.current?.focus()
         return
       }
 
-      // Only handle navigation when search is active
       if (!searchQuery) return
 
       switch(e.key) {
@@ -301,25 +195,13 @@ export function DocsSidebar() {
     return () => clearTimeout(timer)
   }, [searchQuery])
 
-  const toggleSection = (title: string) => {
+  const toggleSection = (section: string) => {
     setOpenSections(prev => 
-      prev.includes(title) 
-        ? prev.filter(t => t !== title)
-        : [...prev, title]
+      prev.includes(section) 
+        ? prev.filter(s => s !== section)
+        : [...prev, section]
     )
   }
-
-  // Filter navigation based on search
-  const filteredNavigation = useMemo(() => {
-    if (!searchQuery.trim()) return navigation
-
-    const resultItems = new Set(searchResults.map(r => r.item))
-    
-    return navigation.map(section => ({
-      ...section,
-      items: section.items.filter(item => resultItems.has(item))
-    })).filter(section => section.items.length > 0)
-  }, [searchResults, searchQuery])
 
   const handleCopyAllDocs = async () => {
     setCopyStatus('copying')
@@ -350,7 +232,7 @@ export function DocsSidebar() {
         </Link>
       </div>
 
-      {/* Enhanced Search */}
+      {/* Search */}
       <div className="p-4 pb-2 bg-gray-800/30">
         <div className="relative group">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 transition-colors group-focus-within:text-purple-400" />
@@ -380,14 +262,12 @@ export function DocsSidebar() {
           )}
         </div>
         
-        {/* Search help text - more informative */}
         {!searchQuery && (
           <div className="mt-1.5 text-[11px] text-gray-500">
             Search everything • Typo-tolerant • Smart matching
           </div>
         )}
         
-        {/* Search Results Summary */}
         {searchQuery && (
           <div className="mt-1.5">
             <div className="text-[11px] text-gray-500">
@@ -426,19 +306,17 @@ export function DocsSidebar() {
         </button>
       </div>
 
-      {/* Navigation with Search Highlighting */}
+      {/* Navigation */}
       <nav className="flex-1 overflow-y-auto py-4 px-2 custom-scrollbar bg-gray-900/50">
         {/* Search Results Preview */}
         {searchQuery && searchResults.length > 0 && (
           <div className="mb-4 mx-1">
             <div className="bg-gradient-to-r from-purple-500/10 to-pink-500/10 rounded-lg p-3 border border-purple-500/20">
-              <div className="text-xs font-medium text-purple-400 mb-2 flex items-center gap-2">
-                <Sparkles className="w-3 h-3" />
-                Top Matches
-                <span className="text-[10px] text-gray-500">({searchResults.length} found)</span>
+              <div className="text-xs font-medium text-purple-400 mb-2">
+                Top Matches ({searchResults.length} found)
               </div>
               <div className="space-y-1">
-                {searchResults.slice(0, 5).map((result, idx) => (
+                {searchResults.map((result, idx) => (
                   <Link
                     key={result.item.href}
                     href={result.item.href}
@@ -456,54 +334,40 @@ export function DocsSidebar() {
                           query={searchQuery}
                         />
                         <div className="flex items-center gap-2 mt-0.5">
-                          <span className="text-xs text-gray-500">{result.section}</span>
-                          {result.matches.includes('content') && (
-                            <span className="text-[9px] px-1 py-0.5 bg-blue-500/20 text-blue-300 rounded">content</span>
-                          )}
+                          <span className="text-xs text-gray-500">{result.item.section}</span>
                         </div>
                       </div>
-                      {idx === 0 && (
-                        <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/20 text-purple-300 rounded-full font-medium">BEST</span>
-                      )}
                     </div>
                   </Link>
                 ))}
               </div>
-              {searchResults.length > 5 && (
-                <div className="text-[10px] text-gray-500 text-center mt-2">
-                  +{searchResults.length - 5} more results
-                </div>
-              )}
             </div>
           </div>
         )}
 
         {/* Regular Navigation */}
-        {filteredNavigation.map((section, sectionIdx) => (
-          <div key={section.title} className={`${sectionIdx > 0 ? 'mt-4' : ''} mb-2`}>
+        {Object.entries(navigationSections).map(([section, items]) => (
+          <div key={section} className="mb-2">
             <button
-              onClick={() => toggleSection(section.title)}
+              onClick={() => toggleSection(section)}
               className="w-full flex items-center justify-between px-3 py-2 mb-2 text-left text-xs font-bold text-gray-400 uppercase tracking-wider hover:text-gray-200 transition-colors"
             >
               <SearchHighlight 
-                text={section.title} 
+                text={section} 
                 query={searchQuery}
               />
-              {openSections.includes(section.title) ? (
+              {openSections.includes(section) ? (
                 <ChevronDown className="w-3 h-3" />
               ) : (
                 <ChevronRight className="w-3 h-3" />
               )}
             </button>
             
-            {openSections.includes(section.title) && (
+            {openSections.includes(section) && (
               <ul className="space-y-0.5" role="list">
-                {section.items.map((item) => {
+                {items.map((item) => {
                   const isActive = pathname === item.href
                   const IconComponent = item.icon
-                  const isPromptExample = item.href.includes('/prompts/examples/') && item.href !== '/prompts/examples'
-                  
-                  const isInResults = searchResults.some(r => r.item === item)
                   
                   return (
                     <li key={item.href} role="listitem" className="relative group">
@@ -512,10 +376,8 @@ export function DocsSidebar() {
                         className={`block px-3 py-2.5 text-sm font-normal rounded-lg mx-1 transition-all relative ${
                           isActive
                             ? 'bg-purple-500/25 text-white font-medium shadow-sm ring-1 ring-purple-400/30'
-                            : isInResults && searchQuery
-                            ? 'bg-purple-500/10 text-purple-100'
                             : 'text-gray-300 hover:text-white hover:bg-gray-700/40'
-                        } ${isPromptExample ? 'ml-3' : ''}`}
+                        }`}
                         aria-current={isActive ? 'page' : undefined}
                       >
                         <div className="flex items-center gap-2.5">
@@ -545,7 +407,7 @@ export function DocsSidebar() {
                         </div>
                       </Link>
                       
-                      {/* Copy button - only shows on hover for desktop, and only if page has markdown */}
+                      {/* Copy button */}
                       {hasMarkdownContent(item.href) && (
                         <button
                           onClick={(e) => {
@@ -588,7 +450,6 @@ export function DocsSidebar() {
 
       {/* Footer */}
       <div className="border-t border-gray-700/50 bg-gray-800/30">
-        {/* Community Links */}
         <div className="flex items-center justify-around py-2 px-2">
           <a
             href="https://github.com/wu-changxing/connectonion"
@@ -619,7 +480,7 @@ export function DocsSidebar() {
           </a>
           <div className="flex items-center gap-2 px-2">
             <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-            <span className="text-xs text-gray-400">v0.0.1b6</span>
+            <span className="text-xs text-gray-400">v0.0.1b8</span>
             <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded-full font-bold">BETA</span>
           </div>
         </div>

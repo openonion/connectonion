@@ -37,77 +37,79 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { Zap, ArrowRight, Activity } from 'lucide-react'
+import { 
+  Zap, ArrowRight, Activity, Bug, Eye, Clock, Code, 
+  FileCode, Network, LineChart, Brain, MessageSquare,
+  History, RefreshCw, Braces, GitBranch, Timer, 
+  Layers, Route, Search, Play, BarChart3, ArrowLeft
+} from 'lucide-react'
 import CodeWithResult from '../../components/CodeWithResult'
 import Link from 'next/link'
-// React Icons
-import { FaPython, FaRobot, FaBug, FaEye, FaClock, FaCode, FaFileCode, FaNetworkWired, FaChartLine, FaBrain } from 'react-icons/fa'
-import { BiBug, BiMessageDetail, BiHistory, BiRefresh, BiCodeBlock } from 'react-icons/bi'
-import { MdOutlineTimeline, MdBugReport, MdOutlineSpeed, MdOutlineVisibility, MdOutlineDataObject } from 'react-icons/md'
-import { RiFlowChart, RiNodeTree, RiBrainLine, RiSearchEyeLine } from 'react-icons/ri'
-import { VscDebugAlt, VscOutput, VscSymbolMethod, VscWatch } from 'react-icons/vsc'
-import { TbBraces, TbChartDots, TbStack, TbRoute } from 'react-icons/tb'
+import { ContentNavigation } from '../../components/ContentNavigation'
 
 export default function XrayPage() {
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white">
+    <div className="px-4 md:px-8 py-8 md:py-12 lg:py-12">
+      <div className="max-w-6xl mx-auto">
       {/* Hero Section */}
-      <section className="relative overflow-hidden py-20">
-        <div className="container mx-auto px-6">
+      <section className="relative overflow-hidden py-12 md:py-20">
+        <div className="container mx-auto px-4 md:px-6">
           <div className="max-w-4xl mx-auto">
-            <div className="flex justify-between items-start mb-8">
-              <div className="text-center flex-1">
-                <div className="inline-flex items-center gap-3 bg-purple-900/20 border border-purple-500/30 rounded-full px-6 py-3 mb-8">
-                  <VscDebugAlt className="w-5 h-5 text-purple-400" />
-                  <span className="text-sm font-medium">Debug with @xray</span>
-                  <RiSearchEyeLine className="w-5 h-5 text-purple-300" />
-                </div>
-                
-                <h1 className="text-4xl md:text-5xl font-bold mb-6 text-gray-100">
-                  <FaBrain className="inline mr-3 text-purple-400" />
-                  See what your AI agent is thinking
-                </h1>
+            {/* Breadcrumb */}
+            <nav className="flex items-center gap-2 text-sm text-gray-400 mb-6">
+              <Link href="/" className="hover:text-white transition-colors">Home</Link>
+              <ArrowRight className="w-4 h-4" />
+              <span className="text-white">@xray Debugging</span>
+            </nav>
+
+            <div className="text-center mb-8">
+              <div className="inline-flex items-center gap-3 bg-purple-900/20 border border-purple-500/30 rounded-full px-4 md:px-6 py-2 md:py-3 mb-6">
+                <Bug className="w-4 h-4 md:w-5 md:h-5 text-purple-400" />
+                <span className="text-xs md:text-sm font-medium">Debug with @xray</span>
+                <Eye className="w-4 h-4 md:w-5 md:h-5 text-purple-300" />
+              </div>
+              
+              <h1 className="text-3xl md:text-5xl font-bold mb-4 text-gray-100">
+                See what your AI agent is thinking
+              </h1>
                 
                 <p className="text-xl text-gray-300 max-w-3xl mx-auto mb-12">
                   Add one decorator and unlock debugging superpowers. No more black box AI.
                 </p>
-              </div>
-              <div className="flex-shrink-0 ml-8">
-              </div>
             </div>
             
-            {/* Visual Flow Diagram */}
-            <div className="bg-gray-900 border border-gray-700 rounded-lg p-8 max-w-2xl mx-auto">
-              <h3 className="text-lg font-semibold mb-6 flex items-center gap-2">
-                <RiFlowChart className="text-blue-400" />
+            {/* Visual Flow Diagram - Mobile Responsive */}
+            <div className="bg-gray-900 border border-gray-700 rounded-lg p-4 md:p-8 max-w-2xl mx-auto">
+              <h3 className="text-base md:text-lg font-semibold mb-4 md:mb-6 flex items-center gap-2">
+                <GitBranch className="text-blue-400 w-4 h-4 md:w-5 md:h-5" />
                 How @xray works
               </h3>
-              <div className="flex items-center justify-between text-sm">
+              <div className="flex flex-col md:flex-row items-center justify-between gap-4 text-xs md:text-sm">
                 <div className="flex flex-col items-center gap-2">
-                  <div className="w-12 h-12 bg-green-900/50 border border-green-500 rounded-lg flex items-center justify-center">
-                    <FaPython className="text-green-400 w-6 h-6" />
+                  <div className="w-10 h-10 md:w-12 md:h-12 bg-green-900/50 border border-green-500 rounded-lg flex items-center justify-center">
+                    <Code className="text-green-400 w-5 h-5 md:w-6 md:h-6" />
                   </div>
                   <span className="text-gray-400">Your Function</span>
                 </div>
                 <ArrowRight className="text-gray-500" />
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 bg-purple-900/50 border border-purple-500 rounded-lg flex items-center justify-center">
-                    <VscDebugAlt className="text-purple-400 w-6 h-6" />
+                    <Bug className="text-purple-400 w-5 h-5 md:w-6 md:h-6" />
                   </div>
                   <span className="text-gray-400">@xray decorator</span>
                 </div>
                 <ArrowRight className="text-gray-500" />
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 bg-blue-900/50 border border-blue-500 rounded-lg flex items-center justify-center">
-                    <FaBrain className="text-blue-400 w-6 h-6" />
+                    <Brain className="text-blue-400 w-5 h-5 md:w-6 md:h-6" />
                   </div>
                   <span className="text-gray-400">Agent Context</span>
                 </div>
                 <ArrowRight className="text-gray-500" />
                 <div className="flex flex-col items-center gap-2">
                   <div className="w-12 h-12 bg-yellow-900/50 border border-yellow-500 rounded-lg flex items-center justify-center">
-                    <MdOutlineVisibility className="text-yellow-400 w-6 h-6" />
+                    <Eye className="text-yellow-400 w-6 h-6" />
                   </div>
                   <span className="text-gray-400">Full Visibility</span>
                 </div>
@@ -129,7 +131,7 @@ export default function XrayPage() {
             {/* Basic Usage */}
             <div>
               <h3 className="text-2xl font-bold mb-4 flex items-center gap-3">
-                <FaEye className="w-6 h-6 text-green-400" />
+                <Eye className="w-6 h-6 text-green-400" />
                 Basic Usage
               </h3>
               <p className="text-gray-300 mb-6">
@@ -160,7 +162,7 @@ Processed: sample data`}
             {/* Execution Trace */}
             <div>
               <h3 className="text-2xl font-bold mb-4 flex items-center gap-3">
-                <MdOutlineTimeline className="w-6 h-6 text-blue-400" />
+                <Timer className="w-5 h-5 md:w-6 md:h-6 text-blue-400" />
                 Execution Trace
               </h3>
               <p className="text-gray-300 mb-6">
@@ -196,7 +198,7 @@ Analysis complete`}
             {/* IDE Debug */}
             <div>
               <h3 className="text-2xl font-bold mb-4 flex items-center gap-3">
-                <VscDebugAlt className="w-6 h-6 text-purple-400" />
+                <Bug className="w-5 h-5 md:w-6 md:h-6 text-purple-400" />
                 IDE Debug
               </h3>
               <p className="text-gray-300 mb-6">
@@ -238,7 +240,7 @@ positive`}
       <section className="container mx-auto px-6 py-16">
         <div className="max-w-4xl mx-auto">
           <h2 className="text-3xl font-bold mb-8 flex items-center gap-3">
-            <MdOutlineDataObject className="w-8 h-8 text-purple-400" />
+            <Braces className="w-8 h-8 text-purple-400" />
             What You Can Access
           </h2>
           
@@ -246,23 +248,23 @@ positive`}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6 mb-8">
             <div className="text-center mb-6">
               <h3 className="text-lg font-semibold flex items-center justify-center gap-2">
-                <TbBraces className="text-blue-400" />
+                <Braces className="text-blue-400" />
                 xray context object
               </h3>
             </div>
             <div className="grid md:grid-cols-3 gap-4 text-sm">
               <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 text-center">
-                <FaRobot className="w-8 h-8 text-blue-400 mx-auto mb-2" />
+                <Brain className="w-6 h-6 md:w-8 md:h-8 text-blue-400 mx-auto mb-2" />
                 <div className="font-mono text-blue-300">xray.agent</div>
                 <div className="text-gray-400 text-xs mt-1">Agent Instance</div>
               </div>
               <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-4 text-center">
-                <BiMessageDetail className="w-8 h-8 text-green-400 mx-auto mb-2" />
+                <MessageSquare className="w-8 h-8 text-green-400 mx-auto mb-2" />
                 <div className="font-mono text-green-300">xray.task</div>
                 <div className="text-gray-400 text-xs mt-1">User Request</div>
               </div>
               <div className="bg-purple-900/20 border border-purple-500/30 rounded-lg p-4 text-center">
-                <BiHistory className="w-8 h-8 text-purple-400 mx-auto mb-2" />
+                <History className="w-8 h-8 text-purple-400 mx-auto mb-2" />
                 <div className="font-mono text-purple-300">xray.messages</div>
                 <div className="text-gray-400 text-xs mt-1">Chat History</div>
               </div>
@@ -271,12 +273,12 @@ positive`}
           
           <div className="grid md:grid-cols-2 gap-6">
             {[
-              { name: 'xray.agent', desc: 'The Agent instance calling this tool', icon: FaRobot, color: 'text-blue-400' },
-              { name: 'xray.task', desc: 'Original request from user', icon: BiMessageDetail, color: 'text-green-400' },
-              { name: 'xray.messages', desc: 'Full conversation history', icon: BiHistory, color: 'text-purple-400' },
-              { name: 'xray.iteration', desc: 'Which round of tool calls (1-10)', icon: BiRefresh, color: 'text-yellow-400' },
-              { name: 'xray.previous_tools', desc: 'Tools called before this one', icon: TbStack, color: 'text-cyan-400' },
-              { name: 'xray.trace()', desc: 'Visual execution trace', icon: TbChartDots, color: 'text-pink-400' }
+              { name: 'xray.agent', desc: 'The Agent instance calling this tool', icon: Brain, color: 'text-blue-400' },
+              { name: 'xray.task', desc: 'Original request from user', icon: MessageSquare, color: 'text-green-400' },
+              { name: 'xray.messages', desc: 'Full conversation history', icon: History, color: 'text-purple-400' },
+              { name: 'xray.iteration', desc: 'Which round of tool calls (1-10)', icon: RefreshCw, color: 'text-yellow-400' },
+              { name: 'xray.previous_tools', desc: 'Tools called before this one', icon: Layers, color: 'text-cyan-400' },
+              { name: 'xray.trace()', desc: 'Visual execution trace', icon: BarChart3, color: 'text-pink-400' }
             ].map((item, i) => {
               const IconComponent = item.icon;
               return (
@@ -286,7 +288,7 @@ positive`}
                 >
                   <div className="flex items-start gap-3">
                     <div className={`p-2 rounded-lg bg-gray-800 ${item.color}`}>
-                      <IconComponent className="w-5 h-5" />
+                      <IconComponent className="w-4 h-4 md:w-5 md:h-5" />
                     </div>
                     <div>
                       <h3 className={`font-mono ${item.color} font-bold mb-2`}>{item.name}</h3>
@@ -430,6 +432,10 @@ Order ABC123 processed`}
           </div>
         </motion.div>
       </section>
+
+      {/* Navigation */}
+      <ContentNavigation />
+      </div>
     </div>
   )
 }

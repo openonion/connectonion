@@ -1,6 +1,7 @@
 import { ArrowLeft, FileText, Code, Search, GitBranch, CheckCircle, AlertCircle } from 'lucide-react'
 import Link from 'next/link'
 import { CommandBlock } from '../../components/CommandBlock'
+import { ContentNavigation } from '../../components/ContentNavigation'
 
 export default function WebsiteMaintenancePage() {
   return (
@@ -254,6 +255,9 @@ export default function YourFeaturePage() {
             </label>
           </div>
         </section>
+
+        {/* Navigation */}
+        <ContentNavigation />
       </div>
     </div>
   )

@@ -255,28 +255,28 @@ export default function RoadmapPage() {
                   {categoryFeatures.map((feature, index) => (
                     <div
                       key={index}
-                      className="p-5 bg-gray-800/50 rounded-xl border border-gray-700 hover:border-purple-500/30 transition-all"
+                      className="p-4 md:p-5 bg-gray-800/50 rounded-xl border border-gray-700 hover:border-purple-500/30 transition-all"
                     >
-                      <div className="flex items-start justify-between mb-3">
+                      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 mb-3">
                         <div className="flex items-start gap-3">
                           {getStatusIcon(feature.status)}
-                          <div className="flex-1">
-                            <h3 className="text-white font-medium mb-1">{feature.title}</h3>
-                            <p className="text-gray-400 text-sm">{feature.description}</p>
+                          <div className="flex-1 min-w-0">
+                            <h3 className="text-white font-medium mb-1 break-words">{feature.title}</h3>
+                            <p className="text-gray-400 text-sm break-words">{feature.description}</p>
                           </div>
                         </div>
-                        <span className="text-xs text-purple-400 font-medium">{feature.targetDate}</span>
+                        <span className="text-xs text-purple-400 font-medium whitespace-nowrap ml-7 sm:ml-0">{feature.targetDate}</span>
                       </div>
 
-                      {/* Progress Bar */}
+                      {/* Progress Bar - Larger touch target on mobile */}
                       <div className="mt-3">
-                        <div className="flex justify-between text-xs mb-1">
+                        <div className="flex justify-between text-xs mb-2">
                           <span className="text-gray-500">Progress</span>
                           <span className="text-gray-400">{feature.progress}%</span>
                         </div>
-                        <div className="w-full bg-gray-700 rounded-full h-1.5">
+                        <div className="w-full bg-gray-700 rounded-full h-2 md:h-1.5">
                           <div
-                            className={`h-1.5 rounded-full transition-all ${getStatusColor(feature.status)}`}
+                            className={`h-2 md:h-1.5 rounded-full transition-all ${getStatusColor(feature.status)}`}
                             style={{ width: `${feature.progress}%` }}
                           />
                         </div>
@@ -290,12 +290,12 @@ export default function RoadmapPage() {
         </div>
 
         {/* Call to Action */}
-        <div className="mt-16 p-8 bg-gray-800/30 rounded-xl border border-gray-700 text-center">
+        <div className="mt-16 p-6 md:p-8 bg-gray-800/30 rounded-xl border border-gray-700 text-center">
           <h2 className="text-lg font-semibold text-white mb-3">Want to Shape Our Roadmap?</h2>
           <p className="text-gray-400 text-sm mb-6 max-w-xl mx-auto">
             We're building ConnectOnion with our community. Your feedback helps prioritize features.
           </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-3">
+          <div className="flex flex-col sm:flex-row justify-center gap-3 max-w-md mx-auto">
             <a
               href="https://github.com/wu-changxing/connectonion/issues"
               target="_blank"

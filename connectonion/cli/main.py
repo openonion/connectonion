@@ -9,6 +9,7 @@ from pathlib import Path
 import click
 
 from .. import __version__
+from .. import address
 
 
 def is_directory_empty(directory: str) -> bool:
@@ -136,6 +137,27 @@ def init(template: str, force: bool):
         shutil.copy2(template_docs, docs_dir / "connectonion.md")
         files_created.append(".co/docs/connectonion.md")
     
+    # Generate agent address silently
+    try:
+        # Try to load existing keys first
+        existing_address = address.load(co_dir)
+        if existing_address:
+            addr_data = existing_address
+            # Don't show any message - completely silent
+        else:
+            # Generate new keys
+            addr_data = address.generate()
+            # Save keys to .co/keys/
+            address.save(addr_data, co_dir)
+            files_created.append(".co/keys/")
+    except ImportError:
+        # If cryptography libraries not installed, generate placeholder
+        addr_data = {
+            "address": "0x" + "0" * 64,
+            "short_address": "0x0000...0000"
+        }
+        # Silent fallback - no message
+    
     # Create config.toml
     config = {
         "project": {
@@ -149,6 +171,10 @@ def init(template: str, force: bool):
             "template": template,
         },
         "agent": {
+            "address": addr_data["address"],
+            "short_address": addr_data["short_address"],
+            "created_at": datetime.now().isoformat(),
+            "algorithm": "ed25519",
             "default_model": "o4-mini" if template == "meta-agent" else "gpt-4o-mini",
             "max_iterations": 15 if template == "meta-agent" else 10,
         },
@@ -165,9 +191,11 @@ def init(template: str, force: bool):
         gitignore_content = """
 # ConnectOnion
 .env
+.co/keys/
 .co/cache/
 .co/logs/
-*.pyc
+.co/history/
+*.py[cod]
 __pycache__/
 todo.md
 """

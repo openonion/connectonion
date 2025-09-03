@@ -54,6 +54,7 @@ export default function HomePage() {
   const [activeExample, setActiveExample] = useState<'basic' | 'real' | 'production'>('basic')
   const [copyAllStatus, setCopyAllStatus] = useState<'idle' | 'copying' | 'done'>('idle')
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [activeComparison, setActiveComparison] = useState<'connectonion' | 'other'>('connectonion')
 
   const runQuickstart = async () => {
     setIsRunning(true)
@@ -100,16 +101,15 @@ export default function HomePage() {
     <main className="">
       {/* Hero Section - Mobile optimized */}
       <section className="min-h-[75vh] md:min-h-screen flex items-center justify-center px-4 md:px-6 py-6 md:py-12 relative overflow-hidden">
-        {/* Bright gradient background for emotional relief */}
-        <div className="absolute inset-0 bg-gradient-to-b from-purple-900/5 via-blue-900/5 to-transparent" />
-        <div className="absolute inset-0 bg-gradient-to-tr from-purple-600/5 via-transparent to-blue-600/5" />
+        {/* Simplified gradient - just one clean background */}
+        <div className="absolute inset-0 bg-gradient-to-b from-purple-900/10 via-transparent to-transparent" />
         
-        {/* Single subtle glow effect */}
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[480px] h-[480px] bg-purple-500/5 rounded-full blur-2xl" />
+        {/* Single subtle glow effect - reduced opacity */}
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[400px] h-[400px] bg-purple-500/5 rounded-full blur-3xl" />
         
         <div className="max-w-4xl mx-auto text-center relative z-10">
           {/* Subtle pain point intro - larger on mobile */}
-          <p className="text-sm md:text-base text-gray-500 mb-2">
+          <p className="text-sm md:text-base text-gray-400 mb-2">
             AI agents shouldn't need <span className="text-red-400">500 lines of boilerplate</span>
           </p>
           
@@ -197,7 +197,7 @@ export default function HomePage() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8 md:mb-12">
             <h2 className="text-2xl md:text-4xl font-bold text-white mb-2 md:mb-3">How It Works</h2>
-            <p className="text-base md:text-lg text-gray-400">It's just this simple:</p>
+            <p className="text-base md:text-lg text-gray-300">It's just this simple:</p>
           </div>
           
           {/* Responsive Equation */}
@@ -280,7 +280,7 @@ export default function HomePage() {
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-8">
             <h2 className="text-3xl md:text-4xl font-bold text-white mb-3">Complete Example</h2>
-            <p className="text-lg text-gray-400">This is all the code you need:</p>
+            <p className="text-lg text-gray-300">This is all the code you need:</p>
           </div>
           
           <CodeWithResult 
@@ -309,11 +309,155 @@ print(result)  # "42 * 17 equals 714"`}
         <div className="max-w-6xl mx-auto">
           <div className="text-center mb-8 md:mb-12">
             <h2 className="text-2xl md:text-4xl font-bold text-white mb-2 md:mb-3">See the Difference</h2>
-            <p className="text-base md:text-lg text-gray-400">Same AI agent, different approach</p>
+            <p className="text-base md:text-lg text-gray-300">Same AI agent, different approach</p>
           </div>
           
-          {/* Comparison Grid */}
-          <div className="grid md:grid-cols-2 gap-6 md:gap-8">
+          {/* Mobile: Tab Interface */}
+          <div className="md:hidden">
+            {/* Tab Buttons */}
+            <div className="flex gap-2 mb-4">
+              <button
+                onClick={() => setActiveComparison('connectonion')}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
+                  activeComparison === 'connectonion'
+                    ? 'bg-green-600 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                }`}
+              >
+                ConnectOnion
+                <span className="block text-xs mt-1">8 lines ✨</span>
+              </button>
+              <button
+                onClick={() => setActiveComparison('other')}
+                className={`flex-1 py-2 px-4 rounded-lg font-medium transition-all ${
+                  activeComparison === 'other'
+                    ? 'bg-gray-700 text-white'
+                    : 'bg-gray-800 text-gray-400 hover:text-white'
+                }`}
+              >
+                Other Frameworks
+                <span className="block text-xs mt-1">~50 lines</span>
+              </button>
+            </div>
+            
+            {/* Tab Content */}
+            {activeComparison === 'connectonion' ? (
+              <div className="bg-gray-900/50 rounded-lg border border-green-500/30 overflow-hidden">
+                <div className="p-3">
+                  <SyntaxHighlighter 
+                    language="python" 
+                    style={monokai}
+                    customStyle={{
+                      background: 'transparent',
+                      padding: 0,
+                      margin: 0,
+                      fontSize: '0.75rem',
+                      lineHeight: '1.6'
+                    }}
+                    showLineNumbers={true}
+                  >
+{`from connectonion import Agent
+
+def calculate(expression: str) -> str:
+    return str(eval(expression))
+
+agent = Agent("You are a helpful assistant", 
+              tools=[calculate])
+
+result = agent.input("What's 42 * 17?")
+print(result)`}
+                  </SyntaxHighlighter>
+                </div>
+              </div>
+            ) : (
+              <div className="bg-gray-900/50 rounded-lg border border-gray-700 overflow-hidden">
+                <div className="p-3">
+                  <SyntaxHighlighter 
+                    language="python" 
+                    style={monokai}
+                    customStyle={{
+                      background: 'transparent',
+                      padding: 0,
+                      margin: 0,
+                      fontSize: '0.7rem',
+                      lineHeight: '1.4'
+                    }}
+                    showLineNumbers={true}
+                  >
+{`from langchain.agents import Tool, AgentExecutor
+from langchain.agents import create_react_agent
+from langchain.llms import OpenAI
+from langchain.prompts import PromptTemplate
+from langchain.memory import ConversationBufferMemory
+from langchain.schema import SystemMessage
+import json
+
+# Define the calculation tool
+def calculate_tool(expression: str) -> str:
+    try:
+        result = eval(expression)
+        return json.dumps({"result": result})
+    except Exception as e:
+        return json.dumps({"error": str(e)})
+
+# Create tool wrapper
+tools = [
+    Tool(
+        name="Calculator",
+        func=calculate_tool,
+        description="Useful for mathematical calculations"
+    )
+]
+
+# Setup prompt template
+template = """You are a helpful assistant.
+
+{history}
+Human: {input}
+{agent_scratchpad}
+"""
+
+prompt = PromptTemplate(
+    input_variables=["history", "input", "agent_scratchpad"],
+    template=template
+)
+
+# Initialize LLM
+llm = OpenAI(temperature=0)
+
+# Setup memory
+memory = ConversationBufferMemory(
+    memory_key="history",
+    return_messages=True
+)
+
+# Create agent
+agent = create_react_agent(
+    llm=llm,
+    tools=tools,
+    prompt=prompt
+)
+
+# Create executor
+agent_executor = AgentExecutor(
+    agent=agent,
+    tools=tools,
+    memory=memory,
+    verbose=True,
+    handle_parsing_errors=True
+)
+
+# Finally use it
+result = agent_executor.invoke({"input": "What's 42 * 17?"})
+print(result["output"])`}
+                  </SyntaxHighlighter>
+                </div>
+              </div>
+            )}
+          </div>
+          
+          {/* Desktop: Grid Layout (unchanged) */}
+          <div className="hidden md:grid grid-cols-2 gap-6 md:gap-8">
             {/* Other Frameworks */}
             <div className="order-2 md:order-1">
               <div className="mb-4 flex items-center justify-between">

@@ -33,16 +33,24 @@
      - Missing "modify this example" challenges
      - No links to more complex examples
      - Fix: Add exercise variations, challenges, related examples
+  
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Custom navigation with "All Examples" link and "Next: Calculator" button
+  - Shows progress dots (1 of 8 highlighted)
+  - Different from PageNavigation component used in main docs
+  - Has both top progress indicator and bottom navigation
+  - Inconsistent with other documentation pages
 */
 
 'use client'
 
 import React, { useState } from 'react'
-import { Copy, Check, User, ArrowRight, ArrowLeft, Download, Play, Terminal, Lightbulb, Zap } from 'lucide-react'
+import { Copy, Check, User, Download, Play, Terminal, Lightbulb, Zap } from 'lucide-react'
+import CodeWithResult from '../../../components/CodeWithResult'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import Link from 'next/link'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 
 const agentCode = `from connectonion import Agent
 
@@ -145,15 +153,8 @@ ${fullExampleCode}
 This is your first step into building intelligent agents with ConnectOnion!`
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-gray-400 mb-8">
-        <Link href="/" className="hover:text-white transition-colors">Home</Link>
-        <ArrowRight className="w-4 h-4" />
-        <Link href="/examples" className="hover:text-white transition-colors">Agent Building</Link>
-        <ArrowRight className="w-4 h-4" />
-        <span className="text-white">Hello World Agent</span>
-      </nav>
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 lg:py-12 pt-16 lg:pt-12">
+      {/* Navigation - removed old complex navigation */}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-12">
@@ -265,93 +266,30 @@ This is your first step into building intelligent agents with ConnectOnion!`
           </div>
 
           {/* Basic Example */}
-          <div className="bg-gray-900 border border-gray-700 rounded-lg">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-              <h3 className="text-xl font-semibold text-white">2. Basic Agent</h3>
-              <button
-                onClick={() => copyToClipboard(agentCode, 'basic')}
-                className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-800 flex items-center gap-2"
-              >
-                {copiedId === 'basic' ? (
-                  <>
-                    <Check className="w-4 h-4 text-green-400" />
-                    <span className="text-green-400 text-sm">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    <span className="text-sm">Copy</span>
-                  </>
-                )}
-              </button>
-            </div>
-            
-            <div className="p-6">
-              <SyntaxHighlighter 
-                language="python" 
-                style={monokai}
-                customStyle={{
-                  background: 'transparent',
-                  padding: 0,
-                  margin: 0,
-                  fontSize: '0.875rem',
-                  lineHeight: '1.6'
-                }}
-                showLineNumbers={true}
-                lineNumberStyle={{ 
-                  color: '#6b7280', 
-                  paddingRight: '1rem',
-                  userSelect: 'none'
-                }}
-              >
-                {agentCode}
-              </SyntaxHighlighter>
-            </div>
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-4">2. Basic Agent</h3>
+            <CodeWithResult 
+              code={agentCode}
+              result={`>>> response = agent.input("Say hello to Alice")
+>>> print(response)
+
+I'll greet Alice for you.
+
+Hello, Alice! Nice to meet you!`}
+              className="mb-4"
+            />
           </div>
 
           {/* Complete Example */}
-          <div className="bg-gray-900 border border-gray-700 rounded-lg">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-gray-700">
-              <h3 className="text-xl font-semibold text-white">3. Complete Example</h3>
-              <button
-                onClick={() => copyToClipboard(fullExampleCode, 'complete')}
-                className="text-gray-400 hover:text-white transition-colors p-2 rounded-lg hover:bg-gray-800 flex items-center gap-2"
-              >
-                {copiedId === 'complete' ? (
-                  <>
-                    <Check className="w-4 h-4 text-green-400" />
-                    <span className="text-green-400 text-sm">Copied!</span>
-                  </>
-                ) : (
-                  <>
-                    <Copy className="w-4 h-4" />
-                    <span className="text-sm">Copy</span>
-                  </>
-                )}
-              </button>
-            </div>
-            
-            <div className="p-6">
-              <SyntaxHighlighter 
-                language="python" 
-                style={monokai}
-                customStyle={{
-                  background: 'transparent',
-                  padding: 0,
-                  margin: 0,
-                  fontSize: '0.875rem',
-                  lineHeight: '1.6'
-                }}
-                showLineNumbers={true}
-                lineNumberStyle={{ 
-                  color: '#6b7280', 
-                  paddingRight: '1rem',
-                  userSelect: 'none'
-                }}
-              >
-                {fullExampleCode}
-              </SyntaxHighlighter>
-            </div>
+          <div>
+            <h3 className="text-xl font-semibold text-white mb-4">3. Complete Example</h3>
+            <CodeWithResult 
+              code={fullExampleCode}
+              result={`=== Hello World Agent ===
+Response 1: Hello, Alice! Nice to meet you!
+Response 2: Goodbye, Bob! It was great talking with you!
+Response 3: Hello, John! Nice to meet you! Goodbye, John! It was great talking with you!`}
+            />
           </div>
         </div>
 
@@ -433,26 +371,96 @@ Response 3: Hello, John! Nice to meet you! Goodbye, John! It was great talking w
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex justify-between items-center pt-12 mt-12 border-t border-gray-800">
-        <Link 
-          href="/examples" 
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-        >
-          <ArrowLeft className="w-4 h-4" />
-          All Examples
-        </Link>
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Next in series</p>
-          <Link 
-            href="/examples/calculator" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            2. Basic Calculator
-            <ArrowRight className="w-4 h-4" />
-          </Link>
+      {/* What You Learned Summary */}
+      <div className="mt-12 p-8 bg-gradient-to-br from-green-900/20 to-blue-900/20 border border-green-500/30 rounded-xl">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <Lightbulb className="w-6 h-6 text-yellow-400" />
+          What You Learned
+        </h2>
+        <div className="grid md:grid-cols-2 gap-8">
+          <div>
+            <h3 className="text-lg font-semibold text-green-300 mb-3">Key Concepts Mastered:</h3>
+            <ul className="space-y-2 text-gray-300">
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                <span>How to convert Python functions into AI-powered tools</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                <span>Creating agents with natural language understanding</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                <span>Agent-to-tool communication patterns</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Check className="w-5 h-5 text-green-400 mt-0.5 flex-shrink-0" />
+                <span>Managing agent iterations and responses</span>
+              </li>
+            </ul>
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-blue-300 mb-3">Skills Developed:</h3>
+            <ul className="space-y-2 text-gray-300">
+              <li className="flex items-start gap-2">
+                <Zap className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                <span>Writing clear tool functions with descriptive docstrings</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Zap className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                <span>Structuring agent interactions for reliability</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <Zap className="w-5 h-5 text-blue-400 mt-0.5 flex-shrink-0" />
+                <span>Testing and debugging agent behaviors</span>
+              </li>
+            </ul>
+          </div>
         </div>
-      </nav>
+      </div>
+
+      {/* Challenge Exercises */}
+      <div className="mt-8 p-8 bg-purple-900/20 border border-purple-500/30 rounded-xl">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <Zap className="w-6 h-6 text-purple-400" />
+          Challenge Exercises
+        </h2>
+        <div className="space-y-6">
+          <div className="p-4 bg-gray-800/50 rounded-lg">
+            <h3 className="text-lg font-semibold text-purple-300 mb-2">🏆 Beginner Challenge</h3>
+            <p className="text-gray-300 mb-3">Extend the greeting agent to support multiple languages:</p>
+            <div className="bg-black/30 rounded p-3 font-mono text-sm text-gray-400">
+              <p>{`def greet_spanish(name: str) -> str:`}</p>
+              <p className="ml-4">"""Greet someone in Spanish."""</p>
+              <p className="ml-4">return f"¡Hola, {'{name}'}! ¡Encantado de conocerte!"</p>
+            </div>
+          </div>
+          
+          <div className="p-4 bg-gray-800/50 rounded-lg">
+            <h3 className="text-lg font-semibold text-purple-300 mb-2">🚀 Intermediate Challenge</h3>
+            <p className="text-gray-300 mb-3">Add a tool that can greet multiple people at once:</p>
+            <div className="bg-black/30 rounded p-3 font-mono text-sm text-gray-400">
+              <p>{`def greet_group(names: List[str]) -> str:`}</p>
+              <p className="ml-4">"""Greet a group of people."""</p>
+              <p className="ml-4"># Your implementation here</p>
+            </div>
+          </div>
+          
+          <div className="p-4 bg-gray-800/50 rounded-lg">
+            <h3 className="text-lg font-semibold text-purple-300 mb-2">💎 Advanced Challenge</h3>
+            <p className="text-gray-300 mb-3">Create a conversation memory system that remembers who was greeted:</p>
+            <div className="bg-black/30 rounded p-3 font-mono text-sm text-gray-400">
+              <p>class GreeterWithMemory:</p>
+              <p className="ml-4">def __init__(self):</p>
+              <p className="ml-8">self.greeted_people = set()</p>
+              <p className="ml-4"># Implement greeting with memory</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Navigation */}
+      <ContentNavigation />
     </div>
   )
 }

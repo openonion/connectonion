@@ -1,3 +1,11 @@
+/*
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Custom navigation with "Previous/Next in series" labels
+  - No consistent breadcrumb navigation
+  - Different from PageNavigation component
+  - Being updated to use UnifiedNavigation
+*/
+
 'use client'
 
 import React, { useState } from 'react'
@@ -6,6 +14,7 @@ import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 
 const agentCode = `from connectonion import Agent
 import requests
@@ -380,7 +389,7 @@ This example demonstrates:
 Perfect foundation for building agents that integrate with external services!`
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 lg:py-12 pt-16 lg:pt-12">
       <nav className="flex items-center gap-2 text-sm text-gray-400 mb-8">
         <Link href="/" className="hover:text-white transition-colors">Home</Link>
         <ArrowRight className="w-4 h-4" />
@@ -454,28 +463,8 @@ Perfect foundation for building agents that integrate with external services!`
         </div>
       </div>
 
-      <nav className="flex justify-between items-center pt-12 mt-12 border-t border-gray-800">
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Previous in series</p>
-          <Link 
-            href="/examples/file-analyzer" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            6. File Analyzer
-          </Link>
-        </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Next in series</p>
-          <Link 
-            href="/examples/ecommerce-manager" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            8. E-commerce Manager
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </nav>
+      {/* Navigation */}
+      <ContentNavigation />
     </div>
   )
 }

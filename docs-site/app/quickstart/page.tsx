@@ -10,6 +10,12 @@
      - No previous/next page navigation at bottom
      - Fix: Add CopyMarkdownButton component, standardize breadcrumbs, add PageNavigation
   
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - This page uses PageNavigation component (imported line 47)
+  - Shows automatic Previous/Next based on pageNavigation.ts config
+  - Other pages like examples/* use custom navigation with "Previous/Next in series"
+  - Inconsistent navigation patterns across the site
+  
   2. **Content Structure** (Priority: HIGH)
      - Steps numbered manually instead of using consistent step components
      - Code blocks and results not using consistent CodeWithResult component
@@ -44,7 +50,7 @@ import Link from 'next/link'
 import { CommandBlock } from '../../components/CommandBlock'
 import CodeWithResult from '../../components/CodeWithResult'
 import { FileTree } from '../../components/FileTree'
-import { PageNavigation } from '../../components/PageNavigation'
+import { ContentNavigation } from '../../components/ContentNavigation'
 
 export default function QuickStartPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -74,7 +80,8 @@ pip install connectonion
   }
 
   return (
-    <div className="max-w-4xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <div className="px-4 md:px-8 py-8 md:py-12 lg:py-12">
+      <div className="max-w-4xl mx-auto">
       {/* Header with Copy Button */}
       <div className="flex items-start justify-between mb-8">
         <div className="flex-1">
@@ -567,26 +574,9 @@ The result is 80.`}
         </div>
       </section>
 
-      {/* Navigation */}
-      <nav className="flex justify-between items-center pt-8 border-t border-gray-800">
-        <Link 
-          href="/" 
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-        >
-          <ArrowRight className="w-4 h-4 rotate-180" />
-          Introduction
-        </Link>
-        <Link 
-          href="/prompts" 
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-        >
-          System Prompts
-          <ArrowRight className="w-4 h-4" />
-        </Link>
-      </nav>
-
-      {/* Navigation */}
-      <PageNavigation />
+      {/* Unified Navigation */}
+      <ContentNavigation />
+      </div>
     </div>
   )
 }

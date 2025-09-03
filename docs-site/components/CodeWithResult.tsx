@@ -1,3 +1,37 @@
+/*
+  DESIGN ISSUES TO FIX:
+  
+  1. **Mobile Responsiveness** (Priority: HIGH)
+     - Grid layout breaks on mobile - code and result stack poorly
+     - Font size too small on mobile (0.875rem)
+     - Horizontal scrolling difficult on touch devices
+     - Fix: Stack vertically on mobile, increase font size, add scroll indicators
+  
+  2. **Visual Hierarchy** (Priority: MEDIUM)
+     - Header bars too complex with gradients
+     - Language icons inconsistent (SVG vs text badges)
+     - Interactive indicator (green pulse) too subtle
+     - Fix: Simplify headers, standardize icon approach, make status more prominent
+  
+  3. **Code Readability** (Priority: MEDIUM)
+     - Line numbers color too similar to code
+     - Syntax highlighting colors not WCAG compliant
+     - Long lines wrap poorly
+     - Fix: Improve contrast, adjust color scheme, better line wrapping
+  
+  4. **Result Display** (Priority: LOW)
+     - REPL output parsing is fragile and incomplete
+     - No support for error highlighting
+     - Can't handle multi-line strings well
+     - Fix: Robust parser, error state styling, better string handling
+  
+  5. **Interaction Design** (Priority: LOW)
+     - Copy button feedback minimal
+     - No fullscreen/expand option for long code
+     - Can't copy just the result
+     - Fix: Toast notification, expand button, separate result copy
+*/
+
 'use client'
 
 import { useState } from 'react'

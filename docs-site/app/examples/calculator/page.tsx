@@ -1,10 +1,19 @@
+/*
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Custom navigation with "Previous/Next in series" labels
+  - Shows example numbers (1. Hello World, 3. Weather Bot)
+  - No breadcrumb navigation at top of page
+  - Different from PageNavigation component used in main docs
+  - Inconsistent with main documentation pages
+*/
+
 'use client'
 
 import React, { useState } from 'react'
-import { Copy, Check, Code, ArrowRight, ArrowLeft, Download, Play, Terminal, Lightbulb, Shield, AlertTriangle } from 'lucide-react'
+import { Copy, Check, Code, Download, Play, Terminal, Lightbulb, Shield, AlertTriangle } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import Link from 'next/link'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
 
 const agentCode = `from connectonion import Agent
@@ -180,15 +189,8 @@ This example demonstrates important security practices:
 Build on this foundation for more complex agents that need to handle user input safely!`
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
-      {/* Breadcrumb */}
-      <nav className="flex items-center gap-2 text-sm text-gray-400 mb-8">
-        <Link href="/" className="hover:text-white transition-colors">Home</Link>
-        <ArrowRight className="w-4 h-4" />
-        <Link href="/examples" className="hover:text-white transition-colors">Agent Building</Link>
-        <ArrowRight className="w-4 h-4" />
-        <span className="text-white">Basic Calculator</span>
-      </nav>
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 lg:py-12 pt-16 lg:pt-12">
+      {/* Navigation */}
 
       {/* Header */}
       <div className="flex items-start justify-between mb-12">
@@ -447,29 +449,6 @@ Response: Calculation: (100 - 25) / 5 + 10 = 25.0`}
         </div>
       </div>
 
-      {/* Navigation */}
-      <nav className="flex justify-between items-center pt-12 mt-12 border-t border-gray-800">
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Previous in series</p>
-          <Link 
-            href="/examples/hello-world" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            1. Hello World Agent
-          </Link>
-        </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Next in series</p>
-          <Link 
-            href="/examples/weather-bot" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            3. Weather Bot
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </nav>
     </div>
   )
 }

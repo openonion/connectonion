@@ -32,18 +32,26 @@
      - Missing preview of what each template creates
      - No comparison table of templates
      - Fix: Add template preview cards, create comparison matrix, show file structure
+  
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Uses PageNavigation component (line 46) for automatic Previous/Next
+  - Has breadcrumb navigation at top
+  - Has CopyMarkdownButton component
+  - Consistent with main docs but different from examples/* pages
+  - Shows proper integration of standard navigation components
 */
 
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, Terminal, ArrowRight, FileText, Package, GitBranch, AlertCircle, Zap, Code, Folder } from 'lucide-react'
+import { Copy, Check, Terminal, ArrowRight, FileText, Package, GitBranch, AlertCircle, Zap, Code, Folder, BookOpen, ChevronRight } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
 import { CommandBlock } from '../../components/CommandBlock'
 import { FileTree } from '../../components/FileTree'
-import { PageNavigation } from '../../components/PageNavigation'
+import { ContentNavigation } from '../../components/ContentNavigation'
+import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
 
 export default function CLIPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -54,12 +62,58 @@ export default function CLIPage() {
     setTimeout(() => setCopiedId(null), 2000)
   }
 
+  const pageContent = `# ConnectOnion CLI Reference
+
+Quick reference for the ConnectOnion command-line interface.
+
+## Installation
+\`\`\`bash
+pip install connectonion
+\`\`\`
+
+## Commands
+
+### co init [options]
+Initialize a new ConnectOnion agent project.
+
+**Options:**
+- \`--template, -t <name>\` - Choose template: meta-agent (default), playwright
+- \`--force\` - Overwrite existing files
+
+**Examples:**
+\`\`\`bash
+# Create default meta-agent
+co init
+
+# Create playwright agent
+co init --template playwright
+\`\`\`
+
+## Templates
+
+### Meta-Agent (Default)
+A development assistant with built-in ConnectOnion knowledge and code generation tools.
+
+### Playwright Template  
+Web automation agent with browser control capabilities.
+
+## Quick Command Reference
+
+| Command | Description |
+|---------|-------------|
+| \`co init\` | Initialize new project |
+| \`co init -t playwright\` | Create playwright agent |
+| \`co --version\` | Show version |
+| \`co --help\` | Show help |
+`
+
 
 
   return (
-    <div className="max-w-4xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <div className="px-4 md:px-8 py-8 md:py-12 lg:py-12">
+      <div className="max-w-4xl mx-auto">
       {/* Header with Copy Button */}
-      <div className="flex items-start justify-between mb-8">
+      <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4 mb-8">
         <div className="flex-1">
           {/* Breadcrumb */}
           <nav className="flex items-center gap-2 text-sm text-gray-400 mb-4">
@@ -68,10 +122,29 @@ export default function CLIPage() {
             <span className="text-white">CLI Reference</span>
           </nav>
           
-          <h1 className="text-4xl font-bold text-white mb-4">CLI Reference</h1>
-          <p className="text-xl text-gray-300">
+          <h1 className="text-3xl md:text-4xl font-bold text-white mb-4">CLI Reference</h1>
+          <p className="text-lg md:text-xl text-gray-300">
             Quickly scaffold and manage ConnectOnion agent projects with the CLI.
           </p>
+        </div>
+        <CopyMarkdownButton 
+          content={pageContent}
+          filename="cli-reference.md"
+          className="flex-shrink-0"
+        />
+      </div>
+      
+      {/* Quick Command Cheat Sheet */}
+      <div className="mb-12 p-4 bg-gradient-to-r from-blue-900/20 to-purple-900/20 border border-blue-500/30 rounded-lg">
+        <h2 className="text-base font-semibold text-white mb-3 flex items-center gap-2">
+          <BookOpen className="w-4 h-4 text-blue-400" />
+          Quick Reference
+        </h2>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+          <div className="font-mono text-blue-300">co init <span className="text-gray-400">→ Create project</span></div>
+          <div className="font-mono text-blue-300">co init -t playwright <span className="text-gray-400">→ Web agent</span></div>
+          <div className="font-mono text-blue-300">co --version <span className="text-gray-400">→ Show version</span></div>
+          <div className="font-mono text-blue-300">co --help <span className="text-gray-400">→ Get help</span></div>
         </div>
       </div>
 
@@ -547,25 +620,9 @@ result = agent.input("Generate a tool for sending emails")`}
       </section>
 
       {/* Navigation */}
-      <nav className="flex justify-between items-center pt-8 border-t border-gray-800">
-        <Link 
-          href="/quickstart" 
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-        >
-          <ArrowRight className="w-4 h-4 rotate-180" />
-          Quick Start
-        </Link>
-        <Link 
-          href="/tools" 
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-        >
-          Tools
-          <ArrowRight className="w-4 h-4" />
-        </Link>
-      </nav>
+      <ContentNavigation />
 
-      {/* Navigation */}
-      <PageNavigation />
+      </div>
     </div>
   )
 }

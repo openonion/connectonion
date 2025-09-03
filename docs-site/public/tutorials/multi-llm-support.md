@@ -3,9 +3,15 @@
 **One line. Any model. That's it.**
 
 ```python
-agent = Agent("assistant", model="gpt-5")        # OpenAI
-agent = Agent("assistant", model="gemini-2.5-pro") # Google  
-agent = Agent("assistant", model="claude-opus-4.1") # Anthropic
+# With Agent
+agent = Agent("assistant", model="gpt-4o")        # OpenAI
+agent = Agent("assistant", model="gemini-1.5-pro") # Google  
+agent = Agent("assistant", model="claude-3-5-sonnet-latest") # Anthropic
+
+# With llm_do
+llm_do("Hello", model="gpt-4o")        # OpenAI
+llm_do("Hello", model="gemini-1.5-flash")  # Google
+llm_do("Hello", model="claude-3-5-haiku-20241022") # Anthropic
 ```
 
 No configuration files. No provider setup. No complexity. Just change the model name.

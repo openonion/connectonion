@@ -3,7 +3,7 @@
 import time
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
-from .llm import LLM, OpenAILLM
+from .llm import LLM, create_llm
 from .history import History
 from .tools import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .prompts import load_system_prompt
@@ -81,8 +81,8 @@ class Agent:
         if llm:
             self.llm = llm
         else:
-            # Default to OpenAI if no LLM provided
-            self.llm = OpenAILLM(api_key=api_key, model=model)
+            # Use factory function to create appropriate LLM based on model
+            self.llm = create_llm(model=model, api_key=api_key)
         
         # Create tool mapping for quick lookup
         self.tool_map = {tool.name: tool for tool in self.tools}
@@ -129,12 +129,13 @@ class Agent:
             # Add assistant message with ALL tool calls first
             assistant_tool_calls = []
             for tool_call in response.tool_calls:
+                import json
                 assistant_tool_calls.append({
                     "id": tool_call.id,
                     "type": "function",
                     "function": {
                         "name": tool_call.name,
-                        "arguments": str(tool_call.arguments)
+                        "arguments": json.dumps(tool_call.arguments)
                     }
                 })
             

@@ -1,7 +1,16 @@
+/*
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Custom navigation with "Previous/Next in series" labels
+  - No consistent breadcrumb navigation
+  - Different from PageNavigation component
+  - Being updated to use UnifiedNavigation
+*/
+
 'use client'
 
 import React, { useState } from 'react'
 import { Copy, Check, FileText, ArrowRight, ArrowLeft, Download, Play, Terminal, Lightbulb, CheckSquare, Clock, Plus } from 'lucide-react'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
@@ -323,7 +332,7 @@ This example demonstrates:
 Perfect foundation for building stateful agents with data management!`
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 lg:py-12 pt-16 lg:pt-12">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-gray-400 mb-8">
         <Link href="/" className="hover:text-white transition-colors">Home</Link>
@@ -339,7 +348,8 @@ Perfect foundation for building stateful agents with data management!`
           <div className="flex items-center gap-4 mb-4">
             <div className="w-16 h-16 bg-yellow-600 rounded-xl flex items-center justify-center">
               <span className="text-2xl font-bold text-white">4</span>
-            </div>
+              
+</div>
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <FileText className="w-8 h-8 text-yellow-400" />
@@ -347,20 +357,25 @@ Perfect foundation for building stateful agents with data management!`
                 <span className="px-3 py-1 bg-yellow-900/50 text-yellow-300 rounded-full text-sm font-medium">
                   Intermediate
                 </span>
-              </div>
+                
+</div>
               <p className="text-xl text-gray-300">
                 Learn state management, CRUD operations, and data persistence with a full-featured task management system.
               </p>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
         
         <CopyMarkdownButton 
           content={markdownContent}
           filename="task-manager-agent.md"
           className="ml-8 flex-shrink-0"
         />
-      </div>
+        
+</div>
 
       {/* Key Concepts */}
       <div className="mb-12 p-6 bg-yellow-900/20 border border-yellow-500/30 rounded-xl">
@@ -372,33 +387,43 @@ Perfect foundation for building stateful agents with data management!`
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-yellow-600 rounded-lg flex items-center justify-center">
               <Plus className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">CRUD Operations</h3>
             <p className="text-yellow-200 text-sm">Create, Read, Update, Delete data</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-yellow-600 rounded-lg flex items-center justify-center">
               <CheckSquare className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">State Management</h3>
             <p className="text-yellow-200 text-sm">Persistent data across interactions</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-yellow-600 rounded-lg flex items-center justify-center">
               <FileText className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Data Filtering</h3>
             <p className="text-yellow-200 text-sm">Multiple view modes and sorting</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-yellow-600 rounded-lg flex items-center justify-center">
               <Clock className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Analytics</h3>
             <p className="text-yellow-200 text-sm">Progress tracking and statistics</p>
-          </div>
-        </div>
-      </div>
+            
+</div>
+          
+</div>
+        
+</div>
 
       <div className="grid lg:grid-cols-2 gap-12">
         {/* Code Examples */}
@@ -423,7 +448,8 @@ Perfect foundation for building stateful agents with data management!`
                   </>
                 )}
               </button>
-            </div>
+              
+</div>
             
             <div className="p-6 ">
               <SyntaxHighlighter 
@@ -445,8 +471,10 @@ Perfect foundation for building stateful agents with data management!`
               >
                 {agentCode}
               </SyntaxHighlighter>
-            </div>
-          </div>
+              
+</div>
+            
+</div>
 
           {/* Complete Example */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg">
@@ -468,7 +496,8 @@ Perfect foundation for building stateful agents with data management!`
                   </>
                 )}
               </button>
-            </div>
+              
+</div>
             
             <div className="p-6 ">
               <SyntaxHighlighter 
@@ -490,9 +519,12 @@ Perfect foundation for building stateful agents with data management!`
               >
                 {fullExampleCode}
               </SyntaxHighlighter>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
 
         {/* Right Panel */}
         <div className="space-y-8">
@@ -501,7 +533,8 @@ Perfect foundation for building stateful agents with data management!`
             <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-700">
               <Terminal className="w-5 h-5 text-yellow-400" />
               <h3 className="text-xl font-semibold text-white">Expected Output</h3>
-            </div>
+              
+</div>
             
             <div className="p-6">
               <div className="bg-black/50 rounded-lg p-4 font-mono text-sm ">
@@ -535,9 +568,12 @@ Response: 📊 Task Statistics
    • 🟡 Medium: 0  
    • 🟢 Low: 1`}
                 </pre>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* State Management */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -546,17 +582,22 @@ Response: 📊 Task Statistics
               <div>
                 <h4 className="font-semibold text-yellow-400 mb-2">📦 Persistent Data</h4>
                 <p className="text-gray-300">Tasks remain in memory across agent interactions, simulating database persistence.</p>
-              </div>
+                
+</div>
               <div>
                 <h4 className="font-semibold text-yellow-400 mb-2">🔄 CRUD Operations</h4>
                 <p className="text-gray-300">Complete Create, Read, Update, Delete lifecycle for task management.</p>
-              </div>
+                
+</div>
               <div>
                 <h4 className="font-semibold text-yellow-400 mb-2">📊 Analytics</h4>
                 <p className="text-gray-300">Real-time statistics and progress tracking with completion rates.</p>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Features */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -565,17 +606,22 @@ Response: 📊 Task Statistics
               <div className="p-3 bg-yellow-900/20 border border-yellow-500/30 rounded">
                 <p className="text-yellow-300 font-medium mb-1">🎯 Priority Management</p>
                 <p className="text-yellow-200">Four priority levels: Low, Medium, High, Urgent with visual indicators</p>
-              </div>
+                
+</div>
               <div className="p-3 bg-yellow-900/20 border border-yellow-500/30 rounded">
                 <p className="text-yellow-300 font-medium mb-1">📅 Due Date Tracking</p>
                 <p className="text-yellow-200">Due dates with overdue detection and alerts</p>
-              </div>
+                
+</div>
               <div className="p-3 bg-yellow-900/20 border border-yellow-500/30 rounded">
                 <p className="text-yellow-300 font-medium mb-1">🔍 Smart Filtering</p>
                 <p className="text-yellow-200">Filter by status, priority, or due date for focused task management</p>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Download */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -592,34 +638,17 @@ Response: 📊 Task Statistics
               <p className="text-xs text-gray-400 text-center">
                 Full-featured task manager with priorities, due dates, and analytics
               </p>
-            </div>
-          </div>
-        </div>
-      </div>
+              
+</div>
+            
+</div>
+          
+</div>
+        
+</div>
 
       {/* Navigation */}
-      <nav className="flex justify-between items-center pt-12 mt-12 border-t border-gray-800">
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Previous in series</p>
-          <Link 
-            href="/examples/weather-bot" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            3. Weather Bot
-          </Link>
-        </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Next in series</p>
-          <Link 
-            href="/examples/math-tutor-agent" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            5. Math Tutor Agent
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </nav>
+      <ContentNavigation />
     </div>
   )
 }

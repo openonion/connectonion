@@ -1,3 +1,37 @@
+/*
+  DESIGN ISSUES TO FIX:
+  
+  1. **Accessibility Issues** (Priority: HIGH)
+     - Missing keyboard navigation support
+     - No visual focus indicators on copy button
+     - aria-label changes but screen readers won't announce it
+     - Fix: Add focus-visible styles, announce copy success to screen readers
+  
+  2. **Visual Feedback** (Priority: MEDIUM)
+     - Copy feedback only shown in button - easy to miss
+     - No hover state on individual commands
+     - Button hover state inconsistent with site design
+     - Fix: Add toast notification, improve hover states, standardize button styles
+  
+  3. **Code Maintainability** (Priority: MEDIUM)
+     - Command colorization logic is repetitive
+     - Hard-coded color values instead of theme variables
+     - No extensibility for new command types
+     - Fix: Create command pattern registry, use CSS variables, modular structure
+  
+  4. **Mobile Experience** (Priority: LOW)
+     - Horizontal scroll on long commands not smooth
+     - Copy button too small for touch targets (32px)
+     - Terminal padding too large on mobile
+     - Fix: Add scroll indicators, increase touch target to 44px, responsive padding
+  
+  5. **Feature Gaps** (Priority: LOW)
+     - No support for command output preview
+     - Can't copy individual commands
+     - No syntax for comments or explanations
+     - Fix: Add output support, per-line copy buttons, comment syntax
+*/
+
 'use client'
 
 import { useState } from 'react'

@@ -286,17 +286,23 @@ class TestCliInit:
         
         assert result.exit_code == 0
         
-        # Check .co/config.yaml exists
+        # Check .co/config.yaml exists (note: might be config.toml now)
         config_file = os.path.join(temp_dir, ".co", "config.yaml")
+        if not os.path.exists(config_file):
+            config_file = os.path.join(temp_dir, ".co", "config.toml")
         assert os.path.exists(config_file)
         
         # Check config content
-        with open(config_file, "r") as f:
-            config = yaml.safe_load(f)
+        if config_file.endswith('.yaml'):
+            with open(config_file, "r") as f:
+                config = yaml.safe_load(f)
+        else:
+            import toml
+            with open(config_file, "r") as f:
+                config = toml.load(f)
         
-        assert "version" in config
-        assert "created" in config
-        assert config["version"] is not None
+        assert "version" in config or "project" in config
+        assert config.get("version") is not None or config.get("project", {}).get("framework_version") is not None
     
     def test_init_handles_permission_errors(self):
         """Test graceful handling of permission errors."""
@@ -338,6 +344,236 @@ class TestCliInit:
         assert "Created" in result.output or "Initialized" in result.output
         assert "agent.py" in result.output
         assert ".env.example" in result.output
+    
+    def test_init_silently_generates_keys(self):
+        """Test that co init silently generates agent keys without showing them."""
+        temp_dir = self.create_temp_dir(empty=True)
+        
+        with patch('os.getcwd', return_value=temp_dir):
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['init'])
+        
+        assert result.exit_code == 0
+        
+        # Should NOT show address or keys in output
+        assert "0x" not in result.output or result.output.count("0x") == 0
+        assert "address" not in result.output.lower()
+        assert "recovery" not in result.output.lower()
+        assert "seed" not in result.output.lower()
+        assert "phrase" not in result.output.lower()
+        
+        # Should only show simple success message
+        assert "✅" in result.output or "Initialized" in result.output
+        assert "Next steps:" in result.output
+    
+    def test_keys_saved_in_co_directory(self):
+        """Test that keys are saved in .co/keys/ directory."""
+        temp_dir = self.create_temp_dir(empty=True)
+        
+        with patch('os.getcwd', return_value=temp_dir):
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['init'])
+        
+        assert result.exit_code == 0
+        
+        # Check .co/keys directory exists
+        co_keys_dir = os.path.join(temp_dir, ".co", "keys")
+        assert os.path.exists(co_keys_dir)
+        assert os.path.isdir(co_keys_dir)
+        
+        # Check key files exist
+        assert os.path.exists(os.path.join(co_keys_dir, "agent.key"))
+        assert os.path.exists(os.path.join(co_keys_dir, "recovery.txt"))
+    
+    def test_address_saved_in_config_toml(self):
+        """Test that agent address is saved in config.toml."""
+        temp_dir = self.create_temp_dir(empty=True)
+        
+        with patch('os.getcwd', return_value=temp_dir):
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['init'])
+        
+        assert result.exit_code == 0
+        
+        # Load config.toml
+        config_file = os.path.join(temp_dir, ".co", "config.toml")
+        assert os.path.exists(config_file)
+        
+        import toml
+        with open(config_file, "r") as f:
+            config = toml.load(f)
+        
+        # Check agent section exists
+        assert "agent" in config
+        assert "address" in config["agent"]
+        
+        # Check address format (0x + 64 hex chars)
+        address = config["agent"]["address"]
+        assert address.startswith("0x")
+        assert len(address) == 66
+        
+        # Check it's valid hex
+        hex_part = address[2:]
+        assert all(c in '0123456789abcdef' for c in hex_part.lower())
+    
+    def test_short_address_in_config(self):
+        """Test that short address (0x3d40...660c format) is saved."""
+        temp_dir = self.create_temp_dir(empty=True)
+        
+        with patch('os.getcwd', return_value=temp_dir):
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['init'])
+        
+        assert result.exit_code == 0
+        
+        # Load config.toml
+        config_file = os.path.join(temp_dir, ".co", "config.toml")
+        import toml
+        with open(config_file, "r") as f:
+            config = toml.load(f)
+        
+        # Check short_address exists
+        assert "short_address" in config["agent"]
+        
+        short = config["agent"]["short_address"]
+        # Should be format: 0x1234...5678
+        assert short.startswith("0x")
+        assert "..." in short
+        assert len(short) == 13
+        
+        # Should match full address
+        full = config["agent"]["address"]
+        assert short[:6] == full[:6]  # First part matches
+        assert short[-4:] == full[-4:]  # Last part matches
+    
+    def test_recovery_phrase_saved_locally(self):
+        """Test that recovery phrase is saved for pragmatic recovery."""
+        temp_dir = self.create_temp_dir(empty=True)
+        
+        with patch('os.getcwd', return_value=temp_dir):
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['init'])
+        
+        assert result.exit_code == 0
+        
+        # Read recovery phrase
+        recovery_path = os.path.join(temp_dir, ".co", "keys", "recovery.txt")
+        assert os.path.exists(recovery_path)
+        
+        with open(recovery_path, "r") as f:
+            seed_phrase = f.read().strip()
+        
+        # Check it's 12 words
+        words = seed_phrase.split()
+        assert len(words) == 12
+        
+        # Check each word is lowercase and non-empty
+        for word in words:
+            assert word == word.lower()
+            assert len(word) > 0
+    
+    def test_gitignore_includes_keys_directory(self):
+        """Test that .gitignore includes .co/keys/ to protect private keys."""
+        temp_dir = self.create_temp_dir(empty=True)
+        
+        # Create .git directory to simulate git repo
+        git_dir = os.path.join(temp_dir, ".git")
+        os.makedirs(git_dir)
+        
+        with patch('os.getcwd', return_value=temp_dir):
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['init'])
+        
+        assert result.exit_code == 0
+        
+        # Check .gitignore exists and contains keys directory
+        gitignore_file = os.path.join(temp_dir, ".gitignore")
+        assert os.path.exists(gitignore_file)
+        
+        with open(gitignore_file, "r") as f:
+            gitignore_content = f.read()
+        
+        assert ".co/keys/" in gitignore_content
+        assert ".env" in gitignore_content
+    
+    def test_warning_file_in_keys_directory(self):
+        """Test that a warning file is created in keys directory."""
+        temp_dir = self.create_temp_dir(empty=True)
+        
+        with patch('os.getcwd', return_value=temp_dir):
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['init'])
+        
+        assert result.exit_code == 0
+        
+        # Check for warning file
+        warning_path = os.path.join(temp_dir, ".co", "keys", "DO_NOT_SHARE")
+        assert os.path.exists(warning_path)
+        
+        # Check content warns about private keys
+        with open(warning_path, "r") as f:
+            content = f.read()
+        
+        assert "private" in content.lower() or "secret" in content.lower()
+        assert "never" in content.lower() or "do not" in content.lower()
+    
+    def test_existing_keys_not_regenerated(self):
+        """Test that existing keys are preserved on subsequent inits."""
+        temp_dir = self.create_temp_dir(empty=True)
+        
+        with patch('os.getcwd', return_value=temp_dir):
+            from connectonion.cli.main import cli
+            
+            # First init
+            result1 = self.runner.invoke(cli, ['init'])
+            assert result1.exit_code == 0
+            
+            # Read the generated address
+            config_file = os.path.join(temp_dir, ".co", "config.toml")
+            import toml
+            with open(config_file, "r") as f:
+                config1 = toml.load(f)
+            address1 = config1["agent"]["address"]
+            
+            # Read recovery phrase
+            recovery_path = os.path.join(temp_dir, ".co", "keys", "recovery.txt")
+            with open(recovery_path, "r") as f:
+                phrase1 = f.read()
+            
+            # Second init with --force
+            result2 = self.runner.invoke(cli, ['init', '--force'])
+            assert result2.exit_code == 0
+            
+            # Check address hasn't changed
+            with open(config_file, "r") as f:
+                config2 = toml.load(f)
+            address2 = config2["agent"]["address"]
+            
+            # Check recovery phrase hasn't changed
+            with open(recovery_path, "r") as f:
+                phrase2 = f.read()
+            
+            assert address1 == address2
+            assert phrase1 == phrase2
+    
+    def test_algorithm_field_in_config(self):
+        """Test that algorithm field is set to ed25519 in config."""
+        temp_dir = self.create_temp_dir(empty=True)
+        
+        with patch('os.getcwd', return_value=temp_dir):
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['init'])
+        
+        assert result.exit_code == 0
+        
+        # Check config
+        config_file = os.path.join(temp_dir, ".co", "config.toml")
+        import toml
+        with open(config_file, "r") as f:
+            config = toml.load(f)
+        
+        assert "algorithm" in config["agent"]
+        assert config["agent"]["algorithm"] == "ed25519"
 
 
 # Test fixtures and helpers would go in separate files

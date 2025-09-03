@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { Copy, Check, Zap, Settings, Brain, Gauge, Lightbulb, ChevronLeft } from 'lucide-react';
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
-import { PageNavigation } from '../../components/PageNavigation'
+import { ContentNavigation } from '../../components/ContentNavigation'
 
 export default function MaxIterationsPage() {
   const [copiedSection, setCopiedSection] = useState<string | null>(null);
@@ -549,7 +549,7 @@ result = smart_input(agent, "Complex task")  # Auto-adjusts!`,
         </section>
 
         {/* Navigation */}
-        <PageNavigation />
+        <ContentNavigation />
       </main>
     </div>
   );

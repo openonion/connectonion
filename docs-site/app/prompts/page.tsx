@@ -32,18 +32,29 @@
      - Code blocks require horizontal scroll
      - Text too dense on small screens
      - Fix: Responsive code display, improve spacing
+  
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Uses PageNavigation component 
+  - Has breadcrumb navigation at top
+  - Has CopyMarkdownButton component
+  - Lists prompt examples that link to pages with different nav
+  - Child pages use custom "Previous/Next in series" navigation
+  - Creates inconsistent navigation experience
 */
 
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, FileText, Play, ArrowRight, Info, AlertTriangle, FolderOpen } from 'lucide-react'
+import { Copy, Check, FileText, Play, ArrowRight, Info, AlertTriangle, FolderOpen, BookOpen, Lightbulb, Target } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
+import { ContentNavigation } from '../../components/ContentNavigation'
+import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
 
 export default function PromptsOverviewPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<'loading' | 'formats' | 'best-practices'>('loading')
 
   const copyToClipboard = (text: string, id: string) => {
     navigator.clipboard.writeText(text)
@@ -114,17 +125,11 @@ result = agent.input(
 
 
   return (
-    <div className="max-w-4xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <div className="px-4 md:px-8 py-8 md:py-12 lg:py-12">
+      <div className="max-w-4xl mx-auto">
       {/* Header with Copy Button */}
       <div className="flex items-start justify-between mb-8">
         <div className="flex-1">
-          {/* Breadcrumb */}
-          <nav className="flex items-center gap-2 text-sm text-gray-400 mb-4">
-            <Link href="/" className="hover:text-white transition-colors">Home</Link>
-            <ArrowRight className="w-4 h-4" />
-            <span className="text-white">System Prompts</span>
-          </nav>
-
           <h1 className="text-4xl font-bold text-white mb-4">System Prompts</h1>
           <p className="text-xl text-gray-300 max-w-3xl">
             Learn how to craft effective system prompts that define your agent's personality, 
@@ -419,23 +424,9 @@ result = agent.input(
         </div>
       </section>
 
-      {/* Navigation */}
-      <nav className="flex justify-between items-center pt-8 border-t border-gray-800">
-        <Link 
-          href="/" 
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-        >
-          <ArrowRight className="w-4 h-4 rotate-180" />
-          Introduction
-        </Link>
-        <Link 
-          href="/tools" 
-          className="flex items-center gap-2 text-gray-400 hover:text-white transition-colors"
-        >
-          Tools
-          <ArrowRight className="w-4 h-4" />
-        </Link>
-      </nav>
+      {/* Unified Navigation */}
+      <ContentNavigation />
+      </div>
     </div>
   )
 }

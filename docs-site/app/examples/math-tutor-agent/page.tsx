@@ -1,7 +1,16 @@
+/*
+  NAVIGATION INCONSISTENCY FOUND (2025-01-02):
+  - Custom navigation with "Previous/Next in series" labels
+  - No consistent breadcrumb navigation
+  - Different from PageNavigation component
+  - Being updated to use UnifiedNavigation
+*/
+
 'use client'
 
 import React, { useState } from 'react'
 import { Copy, Check, Code, ArrowRight, ArrowLeft, Download, Play, Terminal, Lightbulb, BookOpen, Calculator, Target } from 'lucide-react'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
@@ -372,7 +381,7 @@ This example demonstrates:
 Perfect foundation for building educational and tutorial agents!`
 
   return (
-    <div className="max-w-6xl mx-auto px-8 py-12 lg:py-12 pt-16 lg:pt-12">
+    <div className="max-w-6xl mx-auto px-4 md:px-8 py-8 md:py-12 lg:py-12 pt-16 lg:pt-12">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-sm text-gray-400 mb-8">
         <Link href="/" className="hover:text-white transition-colors">Home</Link>
@@ -388,7 +397,8 @@ Perfect foundation for building educational and tutorial agents!`
           <div className="flex items-center gap-4 mb-4">
             <div className="w-16 h-16 bg-orange-600 rounded-xl flex items-center justify-center">
               <span className="text-2xl font-bold text-white">5</span>
-            </div>
+              
+</div>
             <div>
               <div className="flex items-center gap-3 mb-2">
                 <Code className="w-8 h-8 text-orange-400" />
@@ -396,20 +406,25 @@ Perfect foundation for building educational and tutorial agents!`
                 <span className="px-3 py-1 bg-orange-900/50 text-orange-300 rounded-full text-sm font-medium">
                   Intermediate
                 </span>
-              </div>
+                
+</div>
               <p className="text-xl text-gray-300">
                 Learn educational AI patterns and step-by-step explanation generation with a comprehensive math tutoring system.
               </p>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
         
         <CopyMarkdownButton 
           content={markdownContent}
           filename="math-tutor-agent.md"
           className="ml-8 flex-shrink-0"
         />
-      </div>
+        
+</div>
 
       {/* Key Concepts */}
       <div className="mb-12 p-6 bg-orange-900/20 border border-orange-500/30 rounded-xl">
@@ -421,33 +436,43 @@ Perfect foundation for building educational and tutorial agents!`
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-orange-600 rounded-lg flex items-center justify-center">
               <BookOpen className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Educational Patterns</h3>
             <p className="text-orange-200 text-sm">Pedagogy and teaching methodologies</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-orange-600 rounded-lg flex items-center justify-center">
               <Target className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Step-by-Step</h3>
             <p className="text-orange-200 text-sm">Breaking down complex problems</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-orange-600 rounded-lg flex items-center justify-center">
               <Calculator className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Answer Validation</h3>
             <p className="text-orange-200 text-sm">Checking and feedback systems</p>
-          </div>
+            
+</div>
           <div className="text-center">
             <div className="w-12 h-12 mx-auto mb-3 bg-orange-600 rounded-lg flex items-center justify-center">
               <Play className="w-6 h-6 text-white" />
-            </div>
+              
+</div>
             <h3 className="text-white font-semibold mb-1">Encouragement</h3>
             <p className="text-orange-200 text-sm">Motivation and confidence building</p>
-          </div>
-        </div>
-      </div>
+            
+</div>
+          
+</div>
+        
+</div>
 
       <div className="grid lg:grid-cols-2 gap-12">
         {/* Code Examples */}
@@ -472,7 +497,8 @@ Perfect foundation for building educational and tutorial agents!`
                   </>
                 )}
               </button>
-            </div>
+              
+</div>
             
             <div className="p-6">
               <SyntaxHighlighter 
@@ -494,8 +520,10 @@ Perfect foundation for building educational and tutorial agents!`
               >
                 {agentCode}
               </SyntaxHighlighter>
-            </div>
-          </div>
+              
+</div>
+            
+</div>
 
           {/* Complete Example */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg">
@@ -517,7 +545,8 @@ Perfect foundation for building educational and tutorial agents!`
                   </>
                 )}
               </button>
-            </div>
+              
+</div>
             
             <div className="p-6 ">
               <SyntaxHighlighter 
@@ -539,9 +568,12 @@ Perfect foundation for building educational and tutorial agents!`
               >
                 {fullExampleCode}
               </SyntaxHighlighter>
-            </div>
-          </div>
-        </div>
+              
+</div>
+            
+</div>
+          
+</div>
 
         {/* Right Panel */}
         <div className="space-y-8">
@@ -550,7 +582,8 @@ Perfect foundation for building educational and tutorial agents!`
             <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-700">
               <Terminal className="w-5 h-5 text-orange-400" />
               <h3 className="text-xl font-semibold text-white">Expected Output</h3>
-            </div>
+              
+</div>
             
             <div className="p-6">
               <div className="bg-black/50 rounded-lg p-4 font-mono text-sm ">
@@ -594,9 +627,12 @@ Tutor Response: 📚 Let's solve 2x + 5 = 15 step by step:
 
 🎉 Great job! The key is to undo operations in reverse order of PEMDAS.`}
                 </pre>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Educational Patterns */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -605,17 +641,22 @@ Tutor Response: 📚 Let's solve 2x + 5 = 15 step by step:
               <div>
                 <h4 className="font-semibold text-orange-400 mb-2">🎯 Scaffolded Learning</h4>
                 <p className="text-gray-300">Break complex problems into manageable steps students can follow.</p>
-              </div>
+                
+</div>
               <div>
                 <h4 className="font-semibold text-orange-400 mb-2">🧠 Analogies & Examples</h4>
                 <p className="text-gray-300">Use real-world examples (pizza for fractions) to make abstract concepts concrete.</p>
-              </div>
+                
+</div>
               <div>
                 <h4 className="font-semibold text-orange-400 mb-2">✅ Immediate Feedback</h4>
                 <p className="text-gray-300">Check answers and provide constructive feedback to guide learning.</p>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Features */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -624,17 +665,22 @@ Tutor Response: 📚 Let's solve 2x + 5 = 15 step by step:
               <div className="p-3 bg-orange-900/20 border border-orange-500/30 rounded">
                 <p className="text-orange-300 font-medium mb-1">📚 Concept Library</p>
                 <p className="text-orange-200">Fractions, percentages, algebra, and linear equations with examples</p>
-              </div>
+                
+</div>
               <div className="p-3 bg-orange-900/20 border border-orange-500/30 rounded">
                 <p className="text-orange-300 font-medium mb-1">🔍 Step-by-Step Solutions</p>
                 <p className="text-orange-200">Detailed equation solving with verification steps</p>
-              </div>
+                
+</div>
               <div className="p-3 bg-orange-900/20 border border-orange-500/30 rounded">
                 <p className="text-orange-300 font-medium mb-1">💪 Encouragement System</p>
                 <p className="text-orange-200">Motivational feedback and confidence-building responses</p>
-              </div>
-            </div>
-          </div>
+                
+</div>
+              
+</div>
+            
+</div>
 
           {/* Download */}
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
@@ -655,30 +701,8 @@ Tutor Response: 📚 Let's solve 2x + 5 = 15 step by step:
           </div>
         </div>
       </div>
-
       {/* Navigation */}
-      <nav className="flex justify-between items-center pt-12 mt-12 border-t border-gray-800">
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Previous in series</p>
-          <Link 
-            href="/examples/task-manager" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            <ArrowLeft className="w-4 h-4" />
-            4. Task Manager
-          </Link>
-        </div>
-        <div className="text-center">
-          <p className="text-sm text-gray-400 mb-1">Next in series</p>
-          <Link 
-            href="/examples/file-analyzer" 
-            className="flex items-center gap-2 text-white hover:text-gray-300 transition-colors font-medium"
-          >
-            6. File Analyzer
-            <ArrowRight className="w-4 h-4" />
-          </Link>
-        </div>
-      </nav>
+      <ContentNavigation />
     </div>
   )
 }
