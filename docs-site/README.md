@@ -16,7 +16,14 @@
 
 ---
 
-> **✨ Philosophy**: Keep simple things simple, make complicated things possible.
+## 🌟 Our Philosophy
+
+> ### **"Keep simple things simple, make complicated things possible"**
+> 
+> This isn't just a tagline—it's the core principle that drives every design decision in ConnectOnion.
+> 
+> - **Simple things stay simple**: Create an agent in 2 lines. No boilerplate, no configuration hell.
+> - **Complicated things are possible**: Scale to multi-agent systems, complex workflows, and production deployments.
 
 🎉 **Production Ready** - Battle-tested open-source framework with comprehensive documentation, 40+ pages of guides, and active community support.
 
@@ -29,13 +36,25 @@
 
 ## 🚀 Quick Start
 
-### Use ConnectOnion (Production Ready)
-```bash
-# Install from PyPI
-pip install connectonion
+### Living Our Philosophy: Simple Things Simple
 
-# Create your first agent in seconds
-python -c "from connectonion import Agent; agent = Agent('assistant'); print(agent.input('Hello!'))"
+```python
+# Simple thing (2 lines) - Basic agent
+from connectonion import Agent
+agent = Agent("assistant").input("Hello!")  # That's it!
+
+# Complicated thing (still possible) - Production system
+agent = Agent("production",
+              model="gpt-5",              # Choose any model
+              tools=[search, analyze],    # Add capabilities
+              max_iterations=10,          # Control execution
+              system_prompt=company_prompt,  # Custom behavior
+              trust="prompt")             # Multi-agent ready
+```
+
+### Install ConnectOnion
+```bash
+pip install connectonion
 ```
 
 ### Run Documentation Site
@@ -297,6 +316,14 @@ MIT License - See [LICENSE](../LICENSE) for details
 
 ---
 
-> "Keep simple things simple, make complicated things possible"
-> 
-> Built with ❤️ by the open-source community
+<div align="center">
+
+### 💫 Remember Our Philosophy
+
+## **"Keep simple things simple, make complicated things possible"**
+
+*This is the ConnectOnion way.*
+
+Built with ❤️ by the open-source community
+
+</div>
