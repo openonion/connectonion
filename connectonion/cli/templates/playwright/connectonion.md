@@ -418,6 +418,10 @@ Best practices for descriptions:
 
 ## Stateful Tools with Playwright (Shared Context via Classes)
 
+**✅ RECOMMENDED: Pass the class instance directly to ConnectOnion!**
+
+ConnectOnion automatically discovers all public methods with type hints when you pass a class instance. This is much cleaner than listing methods individually.
+
 Use a class instance when tools need to share state (browser, cache, DB handles). You can also mix class methods with regular function tools.
 
 Prerequisites:

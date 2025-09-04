@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { ArrowLeft, ArrowRight, Terminal, Brain, Users, Code2 } from 'lucide-react'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
 import CopyButton from '../../../components/CopyButton'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 
 export default function InputMethodBlogPost() {
 
@@ -397,6 +398,9 @@ Sometimes the best API design decision is the one that makes developers forget t
                   Next time you design an API, ask yourself: am I naming this from the system's perspective or the user's perspective? The answer might transform your user experience.
                 </p>
               </div>
+              
+              {/* Navigation */}
+              <ContentNavigation />
             </div>
           </article>
         </main>

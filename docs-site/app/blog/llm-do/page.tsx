@@ -15,6 +15,7 @@ import Link from 'next/link'
 import { ArrowLeft, Sparkles, Code2, Zap, GitBranch } from 'lucide-react'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
 import CopyButton from '../../../components/CopyButton'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 
 export default function LLMDoBlogPost() {
 
@@ -444,6 +445,9 @@ Sometimes the best API decisions are the ones that make developers forget they'r
                   Remember: If your function name doesn't include a verb, you're naming it wrong. And when in doubt, "do" will do.
                 </p>
               </div>
+              
+              {/* Navigation */}
+              <ContentNavigation />
             </div>
           </article>
         </div>

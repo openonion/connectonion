@@ -1,6 +1,6 @@
 # Design Decision: Why We Chose `input()` Over `run()`
 
-*Date: August 2024*  
+*Date: 2025-08-11*  
 *Decision: Use `agent.input()` as the primary method for agent interaction*  
 *Status: Implemented in v0.0.1b3*
 

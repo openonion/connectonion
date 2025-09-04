@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
 import { ArrowLeft, CheckCircle, XCircle, TrendingUp, Users, Shield, Code, MessageSquare, Lightbulb } from 'lucide-react'
 import Link from 'next/link'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 export default function TrustKeywordBlogPost() {
 
   const blogContent = `# Why We Chose "Trust" - The Story Behind ConnectOnion's Authentication Keyword
@@ -314,6 +315,9 @@ agent = Agent(
                   Sometimes the best technical decisions are the least technical ones.
                 </p>
               </div>
+              
+              {/* Navigation */}
+              <ContentNavigation />
             </div>
           </article>
         </main>

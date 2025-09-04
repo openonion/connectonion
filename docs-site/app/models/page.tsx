@@ -1,3 +1,45 @@
+/*
+  DESIGN INCONSISTENCY ISSUES FOUND (2025-01-02):
+  
+  1. **Navigation System Chaos** (Priority: CRITICAL)
+     - Uses ContentNavigation component for automatic Previous/Next
+     - Has breadcrumb but with "Back to Home" instead of standard breadcrumb
+     - Has CopyMarkdownButton component
+     - Consistent with main docs pages
+     - BUT: Many pages have custom navigation implementations
+     - Examples use custom "Previous/Next in series" navigation
+     - Blog has simple "Back to Docs" link
+     - Roadmap has no page navigation at all
+     - FIX: Standardize on ContentNavigation component across ALL pages
+  
+  2. **Copy Button Implementation** (Priority: HIGH)
+     - Some pages have CopyMarkdownButton component (good)
+     - Some pages have custom copy implementations
+     - Some pages missing copy functionality entirely
+     - Different icons and placements
+     - FIX: Use CopyMarkdownButton consistently on every documentation page
+  
+  3. **Code Display Patterns** (Priority: HIGH)  
+     - CodeWithResult component used inconsistently
+     - Some pages use raw SyntaxHighlighter
+     - Line numbers sometimes present, sometimes not
+     - Different font sizes and padding across pages
+     - FIX: Always use CodeWithResult for code examples with output
+  
+  4. **Breadcrumb Navigation** (Priority: MEDIUM)
+     - Some pages have breadcrumb navigation (Home > Page)
+     - Some have "Back to Docs" or "Back to Home" link
+     - Format inconsistent across site
+     - Icon usage varies (ArrowRight vs ArrowLeft)
+     - FIX: Implement consistent breadcrumb component
+  
+  5. **Page Header Structure** (Priority: MEDIUM)
+     - Different layouts for page titles
+     - Icon placement varies (left, right, inline)
+     - Description text size inconsistent
+     - FIX: Create standardized PageHeader component
+*/
+
 'use client'
 
 import React, { useState } from 'react'

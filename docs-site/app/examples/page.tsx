@@ -46,7 +46,8 @@
 'use client'
 
 import React, { useState } from 'react'
-import { Copy, Check, Play, Terminal, ArrowRight, Code, Database, User, FileText, Calculator, BookOpen, Shield, Globe, ShoppingCart, ChevronRight, ExternalLink } from 'lucide-react'
+import { Copy, Check, Play, Terminal, ArrowRight, Code, Database, User, FileText, Calculator, BookOpen, Shield, Globe, ShoppingCart, ChevronRight, ExternalLink, Chrome } from 'lucide-react'
+import { ContentNavigation } from '../../components/ContentNavigation'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
@@ -175,8 +176,26 @@ agent = Agent(name="greeter", tools=[greet])`
             return f"✅ Success: {response.text[:1000]}"`
   },
   {
+    id: 'browser-automation',
+    title: '8. Browser Automation',
+    description: 'Web automation with Playwright - navigate, screenshot, and extract content',
+    icon: Chrome,
+    color: 'text-purple-400',
+    bgColor: 'bg-purple-900/20',
+    borderColor: 'border-purple-500/30',
+    difficulty: 'Advanced',
+    concepts: ['Stateful tools', 'Browser control', 'Content extraction'],
+    href: '/examples/browser-automation',
+    preview: `class BrowserAutomation:
+    def navigate(self, url: str) -> str:
+        self._page.goto(url)
+        return f"Navigated to: {url}"
+
+agent = Agent(tools=[browser])`
+  },
+  {
     id: 'ecommerce-manager',
-    title: '8. E-commerce Manager',
+    title: '9. E-commerce Manager',
     description: 'Enterprise-grade business logic with inventory, orders, customers, and analytics',
     icon: ShoppingCart,
     color: 'text-emerald-400',
@@ -204,7 +223,7 @@ export default function ExamplesPage() {
 
   const markdownContent = `# ConnectOnion Agent Building Examples
 
-A comprehensive collection of 8 progressive examples, from simple "Hello World" to enterprise-grade business applications. Each example builds on previous concepts with complete working code, realistic outputs, and detailed explanations.
+A comprehensive collection of 9 progressive examples, from simple "Hello World" to enterprise-grade business applications. Each example builds on previous concepts with complete working code, realistic outputs, and detailed explanations.
 
 ## 📚 Complete Learning Path
 
@@ -217,11 +236,12 @@ A comprehensive collection of 8 progressive examples, from simple "Hello World" 
 - **Task Manager**: State management, CRUD operations, and data persistence
 - **Math Tutor Agent**: Educational AI patterns and step-by-step explanations
 
-### 🔴 Advanced Level (Examples 6-7)
+### 🔴 Advanced Level (Examples 6-8)
 - **File Analyzer**: System integration, security considerations, and file operations
 - **API Client**: HTTP requests, external API integration, and network error handling
+- **Browser Automation**: Web control with Playwright, screenshots, and content extraction
 
-### 🏆 Expert Level (Example 8)
+### 🏆 Expert Level (Example 9)
 - **E-commerce Manager**: Enterprise business logic, multi-system coordination, and analytics
 
 ## 🎯 Key Learning Concepts
@@ -485,6 +505,9 @@ pip install connectonion
           <ArrowRight className="w-4 h-4" />
         </Link>
       </nav>
+      
+      {/* Navigation */}
+      <ContentNavigation />
     </div>
   )
 }

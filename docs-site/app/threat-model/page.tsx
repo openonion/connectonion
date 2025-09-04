@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { ShieldAlert, AlertTriangle, Link as LinkIcon, Zap, Scale, Layers, CheckCircle2, Shield, Database, DollarSign, Users, Bug, Gauge, IdCard, PackageSearch, Eye, PlugZap, ArrowRight, Filter, AlertCircle, Lock, Activity, TrendingUp, ChevronDown, ChevronUp, Menu, X, ArrowUp } from 'lucide-react'
+import { ContentNavigation } from '../../components/ContentNavigation'
 
 function Section({ id, title, children, icon }: { id: string; title: string; children: React.ReactNode; icon?: React.ReactNode }) {
   return (
@@ -896,6 +897,9 @@ export default function ThreatModelPage() {
         <LinkIcon className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> 
         <span>Anchor links are available on section headings.</span>
       </div>
+      
+      {/* Navigation */}
+      <ContentNavigation />
     </div>
   )
 }

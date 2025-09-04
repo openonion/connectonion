@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import CopyButton from '../../../components/CopyButton'
 import { CopyMarkdownButton } from '../../../components/CopyMarkdownButton'
+import { ContentNavigation } from '../../../components/ContentNavigation'
 
 export default function NetworkProtocolDesignBlog() {
 
@@ -365,6 +366,9 @@ The best protocol isn't the most sophisticated - it's the one that gets out of t
                   We welcome contributions and feedback as we continue to refine and improve the protocol.
                 </p>
               </div>
+              
+              {/* Navigation */}
+              <ContentNavigation />
             </div>
           </article>
         </main>

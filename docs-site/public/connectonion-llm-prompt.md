@@ -7,6 +7,7 @@ You are helping a developer who wants to use ConnectOnion, a Python framework fo
 **Key Principles:**
 - Keep simple things simple, make hard things possible
 - Function-based tools are preferred over classes
+- **For class-based tools: Pass instances directly (not individual methods)**
 - All agent behavior is automatically tracked
 - Default settings work for most use cases
 
@@ -419,6 +420,10 @@ Best practices for descriptions:
 
 ## Stateful Tools with Playwright (Shared Context via Classes)
 
+**✅ RECOMMENDED: Pass the class instance directly to ConnectOnion!**
+
+ConnectOnion automatically discovers all public methods with type hints when you pass a class instance. This is much cleaner than listing methods individually.
+
 Use a class instance when tools need to share state (browser, cache, DB handles). You can also mix class methods with regular function tools.
 
 Prerequisites:
@@ -489,11 +494,12 @@ def format_title(title: str) -> str:
     return f"[PAGE] {title}"
 
 
-# Mix class instance (stateful tools) and regular functions
+# ✅ BEST PRACTICE: Pass class instances directly!
+# ConnectOnion automatically extracts all public methods as tools
 browser = BrowserAutomation()
 agent = Agent(
     name="web_assistant",
-    tools=[browser, format_title],
+    tools=[browser, format_title],  # Mix class instance + functions
     system_prompt="You are a web automation assistant. Be explicit about each step."
 )
 
@@ -1249,5 +1255,32 @@ When helping users with ConnectOnion:
 4. **Iteration Limits**: Help users choose appropriate max_iterations based on task complexity
 5. **Debugging**: Suggest @xray decorator when users have issues
 6. **Best Practices**: Guide users toward function-based tools over complex classes
+7. **Class Instance Tools**: Always recommend passing class instances directly rather than individual methods
+
+## Class Instance vs Individual Methods - Key Teaching Point
+
+**✅ ALWAYS RECOMMEND THIS (Clean & Automatic):**
+```python
+browser = BrowserAutomation()
+agent = Agent("browser_agent", tools=[browser])  # Auto-discovers all methods!
+```
+
+**❌ AVOID RECOMMENDING THIS (Verbose & Error-prone):**
+```python
+browser = BrowserAutomation()
+agent = Agent("browser_agent", tools=[
+    browser.start_browser,
+    browser.navigate, 
+    browser.take_screenshot,
+    # ... listing every method manually
+])
+```
+
+**Why Class Instances Are Better:**
+- Much cleaner code - one line instead of many
+- Automatic method discovery - no manual listing required  
+- Less maintenance - add methods to class, they're auto-available
+- No forgotten methods - everything gets included automatically
+- This is how ConnectOnion was designed to be used
 
 Remember: ConnectOnion is designed to make simple things simple and hard things possible. Start with the basics and build up complexity gradually.

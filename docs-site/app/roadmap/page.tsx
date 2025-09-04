@@ -40,6 +40,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import { ArrowLeft, Rocket, Package, Network, Shield, Brain, CheckCircle2, Clock, AlertCircle } from 'lucide-react'
+import { ContentNavigation } from '../../components/ContentNavigation'
 
 export default function RoadmapPage() {
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null)
@@ -314,6 +315,9 @@ export default function RoadmapPage() {
             </a>
           </div>
         </div>
+        
+        {/* Navigation */}
+        <ContentNavigation />
       </div>
     </div>
   )

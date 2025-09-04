@@ -48,7 +48,7 @@ class TestCliInit:
         
         # Check required files were created
         assert os.path.exists(os.path.join(temp_dir, "agent.py"))
-        assert os.path.exists(os.path.join(temp_dir, ".env.example"))
+        assert os.path.exists(os.path.join(temp_dir, ".env"))
         assert os.path.exists(os.path.join(temp_dir, ".co"))
         assert os.path.isdir(os.path.join(temp_dir, ".co"))
         
@@ -83,7 +83,7 @@ class TestCliInit:
         compile(content, agent_file, 'exec')
     
     def test_init_creates_proper_env_example(self):
-        """Test that .env.example has correct content."""
+        """Test that .env has correct content."""
         temp_dir = self.create_temp_dir(empty=True)
         
         with patch('os.getcwd', return_value=temp_dir):
@@ -92,8 +92,8 @@ class TestCliInit:
         
         assert result.exit_code == 0
         
-        # Check .env.example content
-        env_file = os.path.join(temp_dir, ".env.example")
+        # Check .env content
+        env_file = os.path.join(temp_dir, ".env")
         with open(env_file, "r") as f:
             content = f.read()
         
@@ -128,7 +128,7 @@ class TestCliInit:
         # Should create files
         assert result.exit_code == 0
         assert os.path.exists(os.path.join(temp_dir, "agent.py"))
-        assert os.path.exists(os.path.join(temp_dir, ".env.example"))
+        assert os.path.exists(os.path.join(temp_dir, ".env"))
         
         # Should preserve existing files
         assert os.path.exists(os.path.join(temp_dir, "existing_file.txt"))
@@ -343,7 +343,7 @@ class TestCliInit:
         # Should show what was created
         assert "Created" in result.output or "Initialized" in result.output
         assert "agent.py" in result.output
-        assert ".env.example" in result.output
+        assert ".env" in result.output
     
     def test_init_silently_generates_keys(self):
         """Test that co init silently generates agent keys without showing them."""

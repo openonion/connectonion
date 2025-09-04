@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { ArrowLeft, ArrowRight, BookOpen, Calendar, Clock, Users, Terminal, Code2, Network } from 'lucide-react'
+import { ContentNavigation } from '../../components/ContentNavigation'
 
 const blogPosts = [
   {
@@ -150,6 +151,9 @@ export default function BlogPage() {
             We're documenting our journey. Stay tuned for more insights.
           </p>
         </div>
+
+        {/* Navigation */}
+        <ContentNavigation />
       </div>
     </div>
   )

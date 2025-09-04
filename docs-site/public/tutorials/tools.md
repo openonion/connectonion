@@ -117,6 +117,10 @@ def embed(text: str) -> list[float]:
 
 ## Stateful Tools (class-based tools)
 
+**✅ RECOMMENDED: Pass the class instance directly to ConnectOnion!**
+
+ConnectOnion automatically discovers all public methods with type hints when you pass a class instance. This is much cleaner than listing methods individually.
+
 Use class instances when tools need shared state, caching, or resources.
 
 ### Browser automation with Playwright (navigate, screenshot, tabs)
@@ -214,9 +218,12 @@ class Browser:
 
 
 browser = Browser()
+
+# ✅ BEST PRACTICE: Pass the class instance directly!
+# ConnectOnion automatically extracts all public methods as tools
 agent = Agent(
     "helper", 
-    tools=browser,
+    tools=[browser],  # Just pass the instance - ConnectOnion does the rest!
     max_iterations=15  # Browser automation often needs more steps
 )
 
@@ -245,11 +252,13 @@ class TodoList:
         return self._items
 
 todos = TodoList()
-agent = Agent(
-    "helper", 
-    tools=[todos.add, todos.list],
-    max_iterations=10  # Task management needs moderate iterations
-)
+
+# ✅ Two approaches - class instance is cleaner:
+# Option 1: Pass individual methods (more verbose)
+agent_verbose = Agent("helper", tools=[todos.add, todos.list], max_iterations=10)
+
+# Option 2: Pass class instance (recommended - cleaner!)  
+agent = Agent("helper", tools=[todos], max_iterations=10)
 ```
 
 **Real session**
@@ -402,7 +411,29 @@ agent = Agent(
 ## FAQ: How tools are discovered and used
 
 - The agent inspects function signatures and docstrings to build schemas automatically.
-- For class-based tools, pass an instance (not the class). Public methods with type hints become tools.
+- **✅ For class-based tools: Pass the instance directly (not individual methods)!** ConnectOnion automatically extracts all public methods with type hints.
 - The first docstring line is used as the one-liner description in UIs.
 - Prefer explicit types on parameters and returns so tools are eligible and discoverable.
 - You can always call `agent.tool_map["tool_name"](**kwargs)` to run tools without an LLM.
+
+## Class Instance vs Individual Methods
+
+**✅ RECOMMENDED (Clean & Automatic):**
+```python
+browser = BrowserAutomation()
+agent = Agent("browser_agent", tools=[browser])  # Auto-discovers all methods!
+```
+
+**❌ VERBOSE (Works but not recommended):**
+```python
+browser = BrowserAutomation()
+agent = Agent("browser_agent", tools=[
+    browser.start_browser,
+    browser.navigate, 
+    browser.take_screenshot,
+    browser.scrape_content,
+    # ... list every method manually
+])
+```
+
+ConnectOnion's class instance support makes your code much cleaner and more maintainable!

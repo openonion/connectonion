@@ -449,6 +449,8 @@ Response: Calculation: (100 - 25) / 5 + 10 = 25.0`}
         </div>
       </div>
 
+      {/* Navigation */}
+      <ContentNavigation />
     </div>
   )
 }

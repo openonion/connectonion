@@ -217,7 +217,7 @@ class Browser:
             self._p.stop()
 
 browser = Browser()
-agent = Agent("helper", tools=browser, max_iterations=15)
+agent = Agent("helper", tools=[browser], max_iterations=15)  # Pass instance directly!
 
 # Try tools directly
 print(browser.start())
@@ -350,7 +350,7 @@ class Browser:
             self._p.stop()
 
 browser = Browser()
-agent = Agent("helper", tools=browser, max_iterations=15)
+agent = Agent("helper", tools=[browser], max_iterations=15)  # Pass instance directly!
 
 # Try tools directly
 print(browser.start())
@@ -381,6 +381,12 @@ browser.close()`
               Build powerful, reusable function tools and stateful class tools. Typed signatures become
               schemas automatically; docstrings become human-friendly descriptions.
             </p>
+            <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mt-4">
+              <p className="text-blue-300 text-sm">
+                <strong>💡 Pro Tip:</strong> For class-based tools, pass the instance directly! 
+                ConnectOnion automatically discovers all public methods with type hints.
+              </p>
+            </div>
           </div>
           <CopyMarkdownButton 
             content={unused_pageContent}
@@ -482,6 +488,59 @@ I'll search for the top 3 results about vector databases.
 >>> browser.list_tabs()
 ['main', 'docs']`}
         />
+      </section>
+
+      {/* Class Instance vs Individual Methods */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2"><Settings className="w-5 h-5 text-amber-400"/>Class Instance vs Individual Methods</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-green-900/20 border border-green-500/30 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-green-400 mb-3">✅ Recommended: Class Instance</h3>
+            <CodeWithResult 
+              code={`browser = BrowserAutomation()
+
+# Clean & automatic - ConnectOnion discovers all methods!
+agent = Agent("browser_agent", tools=[browser])`}
+              result={`✅ Auto-discovers all public methods:
+- start_browser()
+- navigate()
+- take_screenshot()
+- scrape_content()
+- extract_links()
+- close_browser()`}
+              className="text-sm"
+            />
+          </div>
+          <div className="bg-red-900/20 border border-red-500/30 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-red-400 mb-3">❌ Verbose: Individual Methods</h3>
+            <CodeWithResult 
+              code={`browser = BrowserAutomation()
+
+# Verbose - must list every method manually
+agent = Agent("browser_agent", tools=[
+    browser.start_browser,
+    browser.navigate,
+    browser.take_screenshot,
+    browser.scrape_content,
+    browser.extract_links,
+    browser.close_browser
+    # Easy to forget methods!
+])`}
+              result={`❌ Problems:
+- Verbose and error-prone
+- Easy to forget methods
+- Hard to maintain
+- Must update when adding methods`}
+              className="text-sm"
+            />
+          </div>
+        </div>
+        <div className="bg-blue-900/30 border border-blue-500/50 rounded-lg p-4 mt-4">
+          <p className="text-blue-300 text-sm">
+            <strong>💡 ConnectOnion's Smart Discovery:</strong> When you pass a class instance, ConnectOnion automatically 
+            finds all public methods with proper type hints and makes them available as tools. Much cleaner code!
+          </p>
+        </div>
       </section>
 
       {/* Unified Navigation */}

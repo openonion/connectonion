@@ -1,7 +1,7 @@
 import { 
   Home, Rocket, Terminal, MessageSquare, Code, Gauge, Zap, Shield, Bug, 
   GitBranch, FileText, FolderOpen, Sparkles, Calculator, Cloud, BookOpen,
-  Users, Settings, Layers, Brain, MessageCircle, Database, Package, Cpu
+  Users, Settings, Layers, Brain, MessageCircle, Database, Package, Cpu, Chrome
 } from 'lucide-react'
 
 // Simple, flat navigation structure with all metadata in one place
@@ -236,7 +236,7 @@ export const navigation = [
     totalExamples: 8
   },
 
-  // Blog
+  // Blog - Design Decisions in chronological order
   {
     title: 'All Posts',
     href: '/blog',
@@ -244,36 +244,6 @@ export const navigation = [
     section: 'Blog',
     keywords: ['blog', 'posts', 'articles', 'news'],
     prev: { href: '/examples/ecommerce-manager', title: 'E-commerce Manager' },
-    next: { href: '/blog/network-protocol-design', title: 'Network Protocol Design' }
-  },
-  {
-    title: 'Network Protocol Design',
-    href: '/blog/network-protocol-design',
-    icon: GitBranch,
-    section: 'Blog',
-    difficulty: 'Architecture',
-    keywords: ['network', 'protocol', 'architecture', 'design'],
-    prev: { href: '/blog', title: 'All Posts' },
-    next: { href: '/blog/trust-keyword', title: 'Why We Chose "Trust"' }
-  },
-  {
-    title: 'Why We Chose "Trust"',
-    href: '/blog/trust-keyword',
-    icon: Users,
-    section: 'Blog',
-    difficulty: 'Design Decision',
-    keywords: ['trust', 'design', 'decision', 'authentication'],
-    prev: { href: '/blog/network-protocol-design', title: 'Network Protocol Design' },
-    next: { href: '/blog/llm-do', title: 'Why `llm_do()` Over `llm()`' }
-  },
-  {
-    title: 'Why `llm_do()` Over `llm()`',
-    href: '/blog/llm-do',
-    icon: Code,
-    section: 'Blog',
-    difficulty: 'Design Decision',
-    keywords: ['llm', 'function', 'naming', 'api', 'design'],
-    prev: { href: '/blog/trust-keyword', title: 'Why We Chose "Trust"' },
     next: { href: '/blog/input-method', title: 'Why `input()` Over `run()`' }
   },
   {
@@ -283,7 +253,77 @@ export const navigation = [
     section: 'Blog',
     difficulty: 'Design Decision',
     keywords: ['input', 'run', 'api', 'mental', 'model', 'ux'],
+    prev: { href: '/blog', title: 'All Posts' },
+    next: { href: '/blog/llm-do', title: 'Why `llm_do()` Over `llm()`' }
+  },
+  {
+    title: 'Why `llm_do()` Over `llm()`',
+    href: '/blog/llm-do',
+    icon: Code,
+    section: 'Blog',
+    difficulty: 'Design Decision',
+    keywords: ['llm', 'function', 'naming', 'api', 'design'],
+    prev: { href: '/blog/input-method', title: 'Why `input()` Over `run()`' },
+    next: { href: '/blog/trust-keyword', title: 'Why We Chose "Trust"' }
+  },
+  {
+    title: 'Why We Chose "Trust"',
+    href: '/blog/trust-keyword',
+    icon: Users,
+    section: 'Blog',
+    difficulty: 'Design Decision',
+    keywords: ['trust', 'design', 'decision', 'authentication'],
     prev: { href: '/blog/llm-do', title: 'Why `llm_do()` Over `llm()`' },
+    next: { href: '/blog/network-protocol-design', title: 'Network Protocol Design' }
+  },
+  {
+    title: 'Network Protocol Design',
+    href: '/blog/network-protocol-design',
+    icon: GitBranch,
+    section: 'Blog',
+    difficulty: 'Architecture',
+    keywords: ['network', 'protocol', 'architecture', 'design'],
+    prev: { href: '/blog/trust-keyword', title: 'Why We Chose "Trust"' },
+    next: { href: '/blog/agent-address-format', title: 'Agent Address Format' }
+  },
+  {
+    title: 'Agent Address Format',
+    href: '/blog/agent-address-format',
+    icon: Shield,
+    section: 'Blog',
+    difficulty: 'Design Decision',
+    keywords: ['address', 'public', 'key', 'ed25519', 'identity', 'hex'],
+    prev: { href: '/blog/network-protocol-design', title: 'Network Protocol Design' },
+    next: { href: '/blog/naming-is-hard', title: 'Why "Address" Over "Identity"' }
+  },
+  {
+    title: 'Why "Address" Over "Identity"',
+    href: '/blog/naming-is-hard',
+    icon: MessageCircle,
+    section: 'Blog',
+    difficulty: 'Design Decision',
+    keywords: ['naming', 'identity', 'address', 'terminology', 'ux'],
+    prev: { href: '/blog/agent-address-format', title: 'Agent Address Format' },
+    next: { href: '/blog/cli-ux-progressive-disclosure', title: 'Progressive Disclosure CLI' }
+  },
+  {
+    title: 'Progressive Disclosure CLI',
+    href: '/blog/cli-ux-progressive-disclosure',
+    icon: Terminal,
+    section: 'Blog',
+    difficulty: 'Design Decision',
+    keywords: ['cli', 'ux', 'progressive', 'disclosure', 'initialization'],
+    prev: { href: '/blog/naming-is-hard', title: 'Why "Address" Over "Identity"' },
+    next: { href: '/blog/message-based-architecture', title: 'Message-Based Architecture' }
+  },
+  {
+    title: 'Message-Based Architecture',
+    href: '/blog/message-based-architecture',
+    icon: Layers,
+    section: 'Blog',
+    difficulty: 'Architecture',
+    keywords: ['message', 'protocol', 'async', 'stateless', 'network'],
+    prev: { href: '/blog/cli-ux-progressive-disclosure', title: 'Progressive Disclosure CLI' },
     next: { href: '/roadmap', title: 'Coming Soon Features' }
   },
 

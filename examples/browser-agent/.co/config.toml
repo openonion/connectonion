@@ -1,0 +1,17 @@
+[project]
+name = "browser-agent"
+created = "2025-09-03T16:04:41.692660"
+framework_version = "0.0.1b8"
+
+[cli]
+version = "1.0.0"
+command = "co init --template meta-agent"
+template = "meta-agent"
+
+[agent]
+address = "0x04e1c4ae3c57d716383153479dae869e51e86d43d88db8dfa22fba7533f3968d"
+short_address = "0x04e1...968d"
+created_at = "2025-09-03T16:04:41.692671"
+algorithm = "ed25519"
+default_model = "o4-mini"
+max_iterations = 15
