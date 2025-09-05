@@ -1094,6 +1094,21 @@ smart.input("Research and analyze market trends")  # Uses 30 iterations
 
 ## Best Practices
 
+### Principles: Avoid over‑engineering with agents
+
+- **Delegate interpretation to the agent**: Don’t hard‑code parsing rules or use regex to extract parameters; let the agent interpret requests and decide tool arguments.
+- **Prompt‑driven clarification**: Put concise follow‑up behavior in the system prompt so the agent asks for missing details (URL, viewport, full‑page, save path) before acting.
+- **Thin integration layer**: Keep wrappers like `execute_*` minimal—construct the agent, call `agent.input(...)`, and return a simple success/error result.
+- **No heuristic fallbacks**: If AI is unavailable (e.g., missing API key), return a clear error instead of attempting clever fallback logic.
+- **Fail fast and clearly**: Only catch exceptions when you can improve user feedback; otherwise surface the error with a short, actionable message.
+- **Sane defaults, minimal knobs**: Tools should have sensible defaults; the agent overrides them via tool arguments as needed.
+- **Single source of truth in prompts**: Centralize behavior (clarification rules, parameter choices) in markdown prompts, not scattered in code.
+- **Test at the seam**: Mock `Agent.input` in tests and validate outcomes; avoid baking tests around internal parsing/branches that shouldn’t exist.
+- **Extract helpers sparingly**: Factor out helpers only when reused across multiple places; otherwise inline to reduce cognitive load.
+- **Prefer clarity over cleverness**: Favor descriptive, actionable errors over complex branches trying to “guess” behavior.
+- **Give the agent interaction budget**: Set `max_iterations` high enough to allow clarification turns rather than coding preemptive guesswork.
+- **Keep demos separate**: Place advanced flows in examples; keep the core CLI path straightforward and predictable.
+
 ### Tool Design
 
 ✅ **Good:**

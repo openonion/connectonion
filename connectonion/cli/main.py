@@ -275,11 +275,24 @@ def get_special_directory_warning(directory: str) -> str:
     return ""
 
 
-@click.group()
+@click.group(invoke_without_command=True)
 @click.version_option(version=__version__)
-def cli():
+@click.option('-b', '--browser', help='Browser screenshot command (e.g., "screenshot localhost:3000")')
+@click.pass_context
+def cli(ctx, browser):
     """ConnectOnion - A simple Python framework for creating AI agents."""
-    pass
+    if browser:
+        # Handle browser command immediately
+        from .browser_utils import execute_browser_command
+        result = execute_browser_command(browser)
+        if result['success']:
+            click.echo(f"{Colors.GREEN}✅ Screenshot saved: {result['path']}{Colors.END}")
+        else:
+            click.echo(f"{Colors.RED}❌ {result['error']}{Colors.END}")
+        ctx.exit(0 if result['success'] else 1)
+    elif ctx.invoked_subcommand is None:
+        # No subcommand and no browser flag, show help
+        click.echo(ctx.get_help())
 
 
 @cli.command()

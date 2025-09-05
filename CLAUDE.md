@@ -139,11 +139,10 @@ Uses OpenAI's function calling with proper message formatting:
 
 ## Version Numbering Strategy
 
-**IMPORTANT: We use beta versions until agent-to-agent protocol is complete**
-- Current version progression: 0.0.1b6 → 0.0.1b7 → 0.0.1b8 → 0.0.1b9 → 0.0.1b10
-- Only move to 0.0.2 AFTER completing agent-to-agent network protocol features
-- We remain in beta (0.0.1bX) because core networking features are still in development
-- Do NOT jump directly to 0.0.2 from beta versions
+**Version Strategy: Now in Production (0.0.2)**
+- Moved from beta (0.0.1b8) to production (0.0.2)
+- Follow semantic versioning: increment PATCH by 1 until 10, then roll to MINOR
+- See VERSIONING.md for detailed versioning rules and update checklist
 
 ### Command Block UI Pattern
 

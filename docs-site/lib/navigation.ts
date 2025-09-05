@@ -1,7 +1,7 @@
 import { 
   Home, Rocket, Terminal, MessageSquare, Code, Gauge, Zap, Shield, Bug, 
   GitBranch, FileText, FolderOpen, Sparkles, Calculator, Cloud, BookOpen,
-  Users, Settings, Layers, Brain, MessageCircle, Database, Package, Cpu, Chrome
+  Users, Settings, Layers, Brain, MessageCircle, Database, Package, Cpu, Chrome, Camera, Link
 } from 'lucide-react'
 
 // Simple, flat navigation structure with all metadata in one place
@@ -53,15 +53,27 @@ export const navigation = [
     section: 'Core Concepts',
     keywords: ['function', 'utility', 'actions', 'capabilities', 'tools'],
     prev: { href: '/prompts', title: 'System Prompts' },
+    next: { href: '/tools/browser', title: 'Browser Screenshots' }
+  },
+  
+  // Debugging Tools
+  {
+    title: 'Browser Screenshots',
+    href: '/tools/browser',
+    icon: Camera,
+    section: 'Debugging',
+    keywords: ['browser', 'screenshot', 'debug', 'capture', 'viewport', 'playwright', 'test', 'responsive'],
+    prev: { href: '/tools', title: 'Tools' },
     next: { href: '/models', title: 'Models' }
   },
+  
   {
     title: 'Models',
     href: '/models',
     icon: Cpu,
     section: 'Core Concepts',
     keywords: ['model', 'gpt', 'gemini', 'claude', 'anthropic', 'openai', 'google', 'llm', 'ai'],
-    prev: { href: '/tools', title: 'Tools' },
+    prev: { href: '/tools/browser', title: 'Browser Screenshots' },
     next: { href: '/max-iterations', title: 'max_iterations' }
   },
   {
@@ -336,6 +348,17 @@ export const navigation = [
     difficulty: 'Preview',
     keywords: ['roadmap', 'future', 'upcoming', 'features', 'soon'],
     prev: { href: '/blog/input-method', title: 'Why `input()` Over `run()`' },
+    next: { href: '/links', title: 'All Links' }
+  },
+  
+  // Links
+  {
+    title: 'All Links',
+    href: '/links',
+    icon: Link,
+    section: 'Connect',
+    keywords: ['links', 'social', 'media', 'discord', 'github', 'twitter', 'instagram', 'tiktok', 'youtube', 'contact'],
+    prev: { href: '/roadmap', title: 'Coming Soon Features' },
     next: null
   },
 

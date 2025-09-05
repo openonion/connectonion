@@ -1,8 +1,10 @@
 """Core Agent implementation for ConnectOnion."""
 
+import os
 import time
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
+from dotenv import load_dotenv
 from .llm import LLM, create_llm
 from .history import History
 from .tools import create_tool_from_function, extract_methods_from_instance, is_class_instance
@@ -13,6 +15,9 @@ from .decorators import (
     _is_xray_enabled,
     _is_replay_enabled
 )
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class Agent:
@@ -25,7 +30,7 @@ class Agent:
         tools: Optional[Union[List[Callable], Callable, Any]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "gpt-5-mini",
+        model: str = "gpt-4o-mini",
         max_iterations: int = 10,
         trust: Optional[Union[str, Path, 'Agent']] = None
     ):

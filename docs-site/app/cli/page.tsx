@@ -44,7 +44,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Copy, Check, Terminal, ArrowRight, FileText, Package, GitBranch, AlertCircle, Zap, Code, Folder, BookOpen, ChevronRight } from 'lucide-react'
+import { Copy, Check, Terminal, ArrowRight, FileText, Package, GitBranch, AlertCircle, Zap, Code, Folder, BookOpen, ChevronRight, Key, Sparkles, Shield } from 'lucide-react'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
@@ -64,50 +64,219 @@ export default function CLIPage() {
 
   const pageContent = `# ConnectOnion CLI Reference
 
-Quick reference for the ConnectOnion command-line interface.
+The ConnectOnion CLI provides commands to quickly scaffold and manage AI agent projects.
 
 ## Installation
+
 \`\`\`bash
 pip install connectonion
 \`\`\`
 
+This provides two equivalent commands:
+- \`co\` (short form)
+- \`connectonion\` (full form)
+
+## Commands Overview
+
+ConnectOnion provides two main commands for project creation:
+
+- **\`co create [name]\`** - Creates a new project directory
+- **\`co init\`** - Initializes the current directory
+
+Both commands share the same interactive flow:
+1. AI feature toggle (Yes/No)
+2. API key input (with auto-detection)
+3. Template selection
+
 ## Commands
 
-### co init [options]
-Initialize a new ConnectOnion agent project.
+### co create [name]
 
-**Options:**
-- \`--template, -t <name>\` - Choose template: meta-agent (default), playwright
-- \`--force\` - Overwrite existing files
+Create a new ConnectOnion project in a new directory.
 
-**Examples:**
+#### Basic Usage
+
 \`\`\`bash
-# Create default meta-agent
+# Interactive mode (prompts for project name)
+co create
+
+# With project name (skips name prompt)
+co create my-agent
+
+# With all options (no interaction)
+co create my-agent --ai --key sk-proj-xxx --template minimal
+\`\`\`
+
+#### Options
+
+- \`[name]\`: Optional project name (creates directory)
+- \`--ai/--no-ai\`: Enable or disable AI features
+- \`--key\`: API key for AI provider (auto-detects provider)
+- \`--template\`: Choose template (\`minimal\`, \`web-research\`, \`custom\`)
+- \`--description\`: Description for custom template (requires AI)
+- \`--yes, -y\`: Skip all prompts, use defaults
+
+### co init
+
+Initialize a ConnectOnion project in the current directory.
+
+#### Basic Usage
+
+\`\`\`bash
+# Initialize current directory interactively
 co init
 
-# Create playwright agent
-co init --template playwright
+# Skip prompts with options
+co init --no-ai --template minimal
 \`\`\`
+
+#### Options
+
+Same as \`co create\`, except no \`[name]\` parameter (uses current directory name).
 
 ## Templates
 
-### Meta-Agent (Default)
-A development assistant with built-in ConnectOnion knowledge and code generation tools.
+### Minimal
+Basic agent structure with essential components:
+- Simple agent.py with basic tools
+- Minimal dependencies
+- Quick start configuration
 
-### Playwright Template  
-Web automation agent with browser control capabilities.
+### Web Research
+Advanced template for data analysis and web scraping:
+- Web scraping tools
+- Data extraction utilities
+- Browser automation support
+- API integration examples
+
+### Custom (AI-only)
+Only available when AI is enabled. Generates a complete custom template based on your description.
+
+## API Key Detection
+
+The CLI automatically detects your API provider from the key format:
+
+| Provider | Key Format | Example |
+|----------|------------|---------|
+| OpenAI | \`sk-...\` or \`sk-proj-...\` | \`sk-proj-abc123...\` |
+| Anthropic | \`sk-ant-...\` | \`sk-ant-api03-xyz...\` |
+| Google | \`AIza...\` | \`AIzaSyAbc123...\` |
+| Groq | \`gsk_...\` | \`gsk_abc123...\` |
+
+## What Gets Created
+
+### Project Structure
+
+\`\`\`
+my-agent/
+├── agent.py           # Main agent implementation
+├── tools/             # Custom tools directory (if applicable)
+├── prompts/           # System prompts (for AI-enabled projects)
+├── .env               # Environment configuration (API keys)
+├── .co/               # ConnectOnion metadata
+│   ├── config.toml    # Project configuration
+│   ├── keys/          # Agent cryptographic keys
+│   │   ├── agent.key  # Private signing key
+│   │   ├── recovery.txt # 12-word recovery phrase
+│   │   └── DO_NOT_SHARE # Security warning
+│   └── docs/
+│       └── co-vibe-coding-all-in-one.md # Complete framework docs
+├── README.md          # Project documentation
+└── .gitignore        # Git ignore rules (if in git repo)
+\`\`\`
+
+### Agent Identity
+
+Every project automatically gets:
+- **Ed25519 cryptographic keys** for agent identity
+- **Unique address** (hex-encoded public key)
+- **12-word recovery phrase** for key restoration
+- Keys are stored in \`.co/keys/\` and auto-added to \`.gitignore\`
 
 ## Quick Command Reference
 
 | Command | Description |
 |---------|-------------|
-| \`co init\` | Initialize new project |
-| \`co init -t playwright\` | Create playwright agent |
+| \`co create\` | Create new project (interactive) |
+| \`co create my-agent\` | Create with name |
+| \`co init\` | Initialize current directory |
+| \`co create --no-ai\` | Create without AI features |
+| \`co create --ai --template custom\` | Create custom AI template |
 | \`co --version\` | Show version |
 | \`co --help\` | Show help |
+
+## Browser Features
+
+### Browser Commands
+
+Use the \`-b\` flag for browser automation with natural language:
+
+\`\`\`bash
+# Take a screenshot
+co -b "screenshot example.com save to screenshot.png"
+
+# Screenshot with device preset
+co -b "screenshot example.com save to mobile.png size iPhone"
+\`\`\`
+
+### Device Presets
+
+- iPhone: 390x844
+- iPad: 768x1024
+- Desktop: 1920x1080 (default)
+
+## Best Practices
+
+1. **Choose the right command**:
+   - Use \`co create\` when starting a new project
+   - Use \`co init\` when adding to an existing directory
+
+2. **API Key Security**:
+   - Never commit \`.env\` files
+   - Store API keys securely
+   - Use environment variables in production
+
+3. **Template Selection**:
+   - Start with Minimal for learning
+   - Use Web Research for data projects
+   - Choose Custom (with AI) for specific needs
+
+4. **Agent Keys**:
+   - Never share \`.co/keys/\` directory
+   - Backup your recovery phrase
+   - Keys are automatically generated and protected
+
+## Troubleshooting
+
+### Command Not Found
+
+If \`co\` command is not found after installation:
+\`\`\`bash
+# Use full command
+python -m connectonion.cli.main create
+
+# Or reinstall
+pip uninstall connectonion
+pip install connectonion
+\`\`\`
+
+### Permission Denied
+
+Ensure you have write permissions in the target directory.
+
+### API Key Issues
+
+- Check key format matches your provider
+- Ensure key is active and has credits
+- Try pasting without quotes or spaces
+
+### Python Version
+
+ConnectOnion requires Python 3.8+:
+\`\`\`bash
+python --version
+\`\`\`
 `
-
-
 
   return (
     <div className="px-4 md:px-8 py-8 md:py-12 lg:py-12">
@@ -141,10 +310,10 @@ Web automation agent with browser control capabilities.
           Quick Reference
         </h2>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
-          <div className="font-mono text-blue-300">co init <span className="text-gray-400">→ Create project</span></div>
-          <div className="font-mono text-blue-300">co init -t playwright <span className="text-gray-400">→ Web agent</span></div>
-          <div className="font-mono text-blue-300">co --version <span className="text-gray-400">→ Show version</span></div>
-          <div className="font-mono text-blue-300">co --help <span className="text-gray-400">→ Get help</span></div>
+          <div className="font-mono text-blue-300">co create <span className="text-gray-400">→ New project</span></div>
+          <div className="font-mono text-blue-300">co init <span className="text-gray-400">→ Current directory</span></div>
+          <div className="font-mono text-blue-300">co create --ai <span className="text-gray-400">→ With AI features</span></div>
+          <div className="font-mono text-blue-300">co -b "screenshot..." <span className="text-gray-400">→ Browser commands</span></div>
         </div>
       </div>
 
@@ -171,15 +340,67 @@ Web automation agent with browser control capabilities.
         </div>
       </section>
 
-      {/* co init Command */}
+      {/* Commands Overview */}
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
           <Terminal className="w-6 h-6 text-green-400" />
-          co init
+          Commands Overview
+        </h2>
+
+        <p className="text-gray-300 mb-6">
+          ConnectOnion provides two main commands for project creation:
+        </p>
+
+        <div className="grid md:grid-cols-2 gap-4 mb-8">
+          <div className="bg-gradient-to-b from-green-900/20 to-green-800/10 border border-green-500/30 rounded-lg p-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Sparkles className="w-5 h-5 text-green-400" />
+              <h3 className="text-lg font-semibold text-white">co create [name]</h3>
+            </div>
+            <p className="text-gray-300 text-sm">
+              Creates a new project directory with all necessary files
+            </p>
+          </div>
+
+          <div className="bg-gradient-to-b from-purple-900/20 to-purple-800/10 border border-purple-500/30 rounded-lg p-6">
+            <div className="flex items-center gap-2 mb-3">
+              <Folder className="w-5 h-5 text-purple-400" />
+              <h3 className="text-lg font-semibold text-white">co init</h3>
+            </div>
+            <p className="text-gray-300 text-sm">
+              Initializes the current directory as a ConnectOnion project
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
+          <p className="text-gray-300 mb-4">Both commands share the same interactive flow:</p>
+          <ol className="space-y-2 text-gray-300">
+            <li className="flex items-center gap-3">
+              <span className="flex-shrink-0 w-6 h-6 bg-blue-500/20 border border-blue-500/50 rounded-full flex items-center justify-center text-xs text-blue-300">1</span>
+              <span>AI feature toggle (Yes/No)</span>
+            </li>
+            <li className="flex items-center gap-3">
+              <span className="flex-shrink-0 w-6 h-6 bg-blue-500/20 border border-blue-500/50 rounded-full flex items-center justify-center text-xs text-blue-300">2</span>
+              <span>API key input (with auto-detection)</span>
+            </li>
+            <li className="flex items-center gap-3">
+              <span className="flex-shrink-0 w-6 h-6 bg-blue-500/20 border border-blue-500/50 rounded-full flex items-center justify-center text-xs text-blue-300">3</span>
+              <span>Template selection</span>
+            </li>
+          </ol>
+        </div>
+      </section>
+
+      {/* co create Command */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <Sparkles className="w-6 h-6 text-green-400" />
+          co create [name]
         </h2>
         
         <p className="text-gray-300 mb-6">
-          Initialize a new ConnectOnion agent project in the current directory.
+          Create a new ConnectOnion project in a new directory.
         </p>
 
         {/* Basic Usage */}
@@ -187,29 +408,24 @@ Web automation agent with browser control capabilities.
           <h3 className="text-lg font-semibold text-white mb-4">Basic Usage</h3>
           
           <div className="space-y-4">
-            {/* Meta-agent */}
             <CommandBlock 
-              title="Create meta-agent (default)"
-              commands={[
-                'mkdir meta-agent',
-                'cd meta-agent',
-                'co init'
-              ]}
+              title="Interactive mode (prompts for project name)"
+              commands={['co create']}
             />
 
-            {/* Playwright */}
             <CommandBlock 
-              title="Create web automation agent"
-              commands={[
-                'mkdir playwright-agent',
-                'cd playwright-agent',
-                'co init --template playwright'
-              ]}
+              title="With project name (skips name prompt)"
+              commands={['co create my-agent']}
+            />
+
+            <CommandBlock 
+              title="With all options (no interaction)"
+              commands={['co create my-agent --ai --key sk-proj-xxx --template minimal']}
             />
           </div>
         </div>
 
-        {/* Options */}
+        {/* Options Table */}
         <div className="mb-8">
           <h3 className="text-lg font-semibold text-white mb-4">Options</h3>
           
@@ -223,86 +439,144 @@ Web automation agent with browser control capabilities.
               </thead>
               <tbody className="divide-y divide-gray-700">
                 <tr>
-                  <td className="px-4 py-3 font-mono text-sm text-blue-300">--template, -t</td>
+                  <td className="px-4 py-3 font-mono text-sm text-blue-300">[name]</td>
+                  <td className="px-4 py-3 text-gray-300">Optional project name (creates directory)</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-mono text-sm text-blue-300">--ai/--no-ai</td>
+                  <td className="px-4 py-3 text-gray-300">Enable or disable AI features</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-mono text-sm text-blue-300">--key</td>
+                  <td className="px-4 py-3 text-gray-300">API key for AI provider (auto-detects provider)</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-mono text-sm text-blue-300">--template</td>
                   <td className="px-4 py-3 text-gray-300">
-                    Choose a template: <code className="bg-gray-800 px-2 py-1 rounded text-xs">meta-agent</code> (default), 
-                    <code className="bg-gray-800 px-2 py-1 rounded text-xs ml-2">playwright</code>
+                    Choose template: <code className="bg-gray-800 px-2 py-1 rounded text-xs">minimal</code>, 
+                    <code className="bg-gray-800 px-2 py-1 rounded text-xs ml-2">web-research</code>, 
+                    <code className="bg-gray-800 px-2 py-1 rounded text-xs ml-2">custom</code>
                   </td>
                 </tr>
                 <tr>
-                  <td className="px-4 py-3 font-mono text-sm text-blue-300">--force</td>
-                  <td className="px-4 py-3 text-gray-300">Overwrite existing files</td>
+                  <td className="px-4 py-3 font-mono text-sm text-blue-300">--description</td>
+                  <td className="px-4 py-3 text-gray-300">Description for custom template (requires AI)</td>
+                </tr>
+                <tr>
+                  <td className="px-4 py-3 font-mono text-sm text-blue-300">--yes, -y</td>
+                  <td className="px-4 py-3 text-gray-300">Skip all prompts, use defaults</td>
                 </tr>
               </tbody>
             </table>
           </div>
         </div>
 
-        {/* What Gets Created */}
+        {/* Interactive Flow Example */}
         <div className="mb-8">
-          <h3 className="text-lg font-semibold text-white mb-4">What Gets Created</h3>
+          <h3 className="text-lg font-semibold text-white mb-4">Interactive Flow Example</h3>
           
-          <div className="grid md:grid-cols-2 gap-4">
-            {/* Meta-Agent Structure */}
-            <div>
-              <h4 className="text-sm font-semibold text-blue-300 mb-3">Meta-Agent (default)</h4>
-              <FileTree 
-                structure={[
-                  {
-                    name: 'my-project',
-                    type: 'folder',
-                    children: [
-                      { name: 'agent.py', type: 'file', icon: 'python' },
-                      { 
-                        name: 'prompts',
-                        type: 'folder',
-                        children: [
-                          { name: 'metagent.md', type: 'file', icon: 'markdown' },
-                          { name: 'docs_retrieve_prompt.md', type: 'file', icon: 'markdown' },
-                          { name: 'answer_prompt.md', type: 'file', icon: 'markdown' },
-                          { name: 'think_prompt.md', type: 'file', icon: 'markdown' }
-                        ]
-                      },
-                      { name: 'README.md', type: 'file', icon: 'markdown' },
-                      { name: '.env.example', type: 'file', icon: 'env' },
-                      { name: '.co', type: 'folder' }
-                    ]
-                  }
-                ]}
-              />
+          <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
+            <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
+              <span className="text-sm text-gray-300 font-mono">Terminal Output</span>
             </div>
+            <div className="p-6">
+              <pre className="text-sm text-gray-300 font-mono">
+{`$ co create
 
-            {/* Playwright Structure */}
+✔ Project name: … my-agent
+✔ Enable AI features? (Y/n) … Y
+✔ Paste your API key (or Enter to skip): … sk-proj-abc123
+  ✓ Detected OpenAI API key
+✔ Choose a template:
+  ❯ Minimal - Simple starting point
+    Web Research - Data analysis & web scraping
+    Custom - AI generates based on your needs
+
+✅ Created 'my-agent' with Minimal template
+
+Next steps:
+  cd my-agent
+  python agent.py`}
+              </pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* co init Command */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <Folder className="w-6 h-6 text-purple-400" />
+          co init
+        </h2>
+        
+        <p className="text-gray-300 mb-6">
+          Initialize a ConnectOnion project in the current directory.
+        </p>
+
+        {/* Basic Usage */}
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold text-white mb-4">Basic Usage</h3>
+          
+          <div className="space-y-4">
+            <CommandBlock 
+              title="Initialize current directory interactively"
+              commands={['co init']}
+            />
+
+            <CommandBlock 
+              title="Skip prompts with options"
+              commands={['co init --no-ai --template minimal']}
+            />
+          </div>
+        </div>
+
+        <div className="bg-gradient-to-b from-purple-900/30 to-purple-800/10 border border-purple-500/30 rounded-lg p-4">
+          <p className="text-purple-200">
+            <strong>Note:</strong> Options are the same as <code className="bg-black/30 px-2 py-1 rounded">co create</code>, 
+            except no <code className="bg-black/30 px-2 py-1 rounded">[name]</code> parameter (uses current directory name).
+          </p>
+        </div>
+      </section>
+
+      {/* Browser Features */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <Zap className="w-6 h-6 text-yellow-400" />
+          Browser Features
+        </h2>
+
+        <p className="text-gray-300 mb-6">
+          Use the <code className="bg-gray-800 px-2 py-1 rounded">-b</code> flag for browser automation with natural language:
+        </p>
+
+        <div className="space-y-4 mb-8">
+          <CommandBlock 
+            title="Take a screenshot"
+            commands={['co -b "screenshot example.com save to screenshot.png"']}
+          />
+
+          <CommandBlock 
+            title="Screenshot with device preset"
+            commands={['co -b "screenshot example.com save to mobile.png size iPhone"']}
+          />
+        </div>
+
+        {/* Device Presets */}
+        <div className="bg-gradient-to-b from-yellow-900/30 to-yellow-800/10 border border-yellow-500/30 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-white mb-4">Device Presets</h3>
+          <div className="grid grid-cols-3 gap-4 text-sm">
             <div>
-              <h4 className="text-sm font-semibold text-purple-300 mb-3">Playwright Template</h4>
-              <FileTree 
-                structure={[
-                  {
-                    name: 'my-project',
-                    type: 'folder',
-                    children: [
-                      { name: 'agent.py', type: 'file', icon: 'python' },
-                      { name: 'prompt.md', type: 'file', icon: 'markdown' },
-                      { name: '.env.example', type: 'file', icon: 'env' },
-                      {
-                        name: '.co',
-                        type: 'folder',
-                        children: [
-                          { name: 'config.toml', type: 'file', icon: 'config' },
-                          {
-                            name: 'docs',
-                            type: 'folder',
-                            children: [
-                              { name: 'connectonion.md', type: 'file', icon: 'markdown' }
-                            ]
-                          }
-                        ]
-                      },
-                      { name: '.gitignore', type: 'file', icon: 'git' }
-                    ]
-                  }
-                ]}
-              />
+              <span className="font-semibold text-yellow-200">iPhone</span>
+              <p className="text-gray-400">390×844</p>
+            </div>
+            <div>
+              <span className="font-semibold text-yellow-200">iPad</span>
+              <p className="text-gray-400">768×1024</p>
+            </div>
+            <div>
+              <span className="font-semibold text-yellow-200">Desktop</span>
+              <p className="text-gray-400">1920×1080 (default)</p>
             </div>
           </div>
         </div>
@@ -315,237 +589,266 @@ Web automation agent with browser control capabilities.
           Templates
         </h2>
 
-        {/* Meta-Agent Template */}
-        <div className="mb-12">
-          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-            <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
-            Meta-Agent (Default)
-          </h3>
-          
-          <p className="text-gray-300 mb-6">
-            A ConnectOnion development assistant powered by <code className="bg-gray-800 px-2 py-1 rounded text-xs">llm_do()</code> for intelligent operations:
-          </p>
-
-          <div className="bg-gradient-to-b from-blue-900/30 to-blue-800/10 border border-blue-500/30 rounded-lg p-6 mb-6">
-            <div className="grid md:grid-cols-2 gap-4 text-sm">
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-blue-200">answer_connectonion_question()</span>
-                    <p className="text-gray-400 text-xs">Uses llm_do() for intelligent doc retrieval</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-blue-200">think()</span>
-                    <p className="text-gray-400 text-xs">AI reflection on task progress</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-blue-200">add_todo() / delete_todo()</span>
-                    <p className="text-gray-400 text-xs">Task management functions</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-blue-200">run_shell()</span>
-                    <p className="text-gray-400 text-xs">Generate pytest test suites</p>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-blue-200">think()</span>
-                    <p className="text-gray-400 text-xs">Self-reflection on tasks</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-blue-200">generate_todo_list()</span>
-                    <p className="text-gray-400 text-xs">Create structured plans (GPT-4o-mini)</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-blue-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-blue-200">suggest_project_structure()</span>
-                    <p className="text-gray-400 text-xs">Architecture recommendations</p>
-                  </div>
-                </div>
-              </div>
-            </div>
+        <div className="space-y-6">
+          {/* Minimal Template */}
+          <div className="bg-gradient-to-b from-blue-900/20 to-blue-800/10 border border-blue-500/30 rounded-lg p-6">
+            <h3 className="text-xl font-semibold text-white mb-3 flex items-center gap-2">
+              <div className="w-2 h-2 bg-blue-400 rounded-full"></div>
+              Minimal
+            </h3>
+            <p className="text-gray-300 mb-4">
+              Basic agent structure with essential components:
+            </p>
+            <ul className="space-y-2 text-gray-300 text-sm">
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-blue-400" />
+                Simple agent.py with basic tools
+              </li>
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-blue-400" />
+                Minimal dependencies
+              </li>
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-blue-400" />
+                Quick start configuration
+              </li>
+            </ul>
           </div>
 
-          <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
-            <div className="flex items-center justify-between bg-gray-800 px-4 py-3 border-b border-gray-700">
-              <span className="text-sm text-gray-300 font-mono">Example usage</span>
-              <button
-                onClick={() => copyToClipboard(`# Learn about ConnectOnion
-result = agent.input("What is ConnectOnion and how do tools work?")
-
-# Generate agent code
-result = agent.input("Create a web scraper agent")
-
-# Create tool functions
-result = agent.input("Generate a tool for sending emails")`, 'meta-usage')}
-                className="text-gray-400 hover:text-white transition-colors p-1.5 rounded hover:bg-gray-700"
-              >
-                {copiedId === 'meta-usage' ? (
-                  <Check className="w-4 h-4 text-green-400" />
-                ) : (
-                  <Copy className="w-4 h-4" />
-                )}
-              </button>
-            </div>
-            <div className="p-6">
-              <SyntaxHighlighter 
-                language="python" 
-                style={monokai}
-                customStyle={{
-                  background: 'transparent',
-                  padding: 0,
-                  margin: 0,
-                  fontSize: '0.875rem',
-                  lineHeight: '1.5'
-                }}
-                showLineNumbers={true}
-              >
-{`# Learn about ConnectOnion
-result = agent.input("What is ConnectOnion and how do tools work?")
-
-# Generate agent code
-result = agent.input("Create a web scraper agent")
-
-# Create tool functions
-result = agent.input("Generate a tool for sending emails")`}
-              </SyntaxHighlighter>
-            </div>
+          {/* Web Research Template */}
+          <div className="bg-gradient-to-b from-green-900/20 to-green-800/10 border border-green-500/30 rounded-lg p-6">
+            <h3 className="text-xl font-semibold text-white mb-3 flex items-center gap-2">
+              <div className="w-2 h-2 bg-green-400 rounded-full"></div>
+              Web Research
+            </h3>
+            <p className="text-gray-300 mb-4">
+              Advanced template for data analysis and web scraping:
+            </p>
+            <ul className="space-y-2 text-gray-300 text-sm">
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-green-400" />
+                Web scraping tools
+              </li>
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-green-400" />
+                Data extraction utilities
+              </li>
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-green-400" />
+                Browser automation support
+              </li>
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-green-400" />
+                API integration examples
+              </li>
+            </ul>
           </div>
-        </div>
 
-        {/* Playwright Template */}
-        <div>
-          <h3 className="text-xl font-semibold text-white mb-4 flex items-center gap-2">
-            <div className="w-2 h-2 bg-yellow-400 rounded-full"></div>
-            Playwright Template
-          </h3>
-          
-          <p className="text-gray-300 mb-6">
-            Web automation agent with stateful browser control:
-          </p>
+          {/* Custom Template */}
+          <div className="bg-gradient-to-b from-purple-900/20 to-purple-800/10 border border-purple-500/30 rounded-lg p-6">
+            <h3 className="text-xl font-semibold text-white mb-3 flex items-center gap-2">
+              <div className="w-2 h-2 bg-purple-400 rounded-full"></div>
+              Custom (AI-only)
+            </h3>
+            <p className="text-gray-300 mb-4">
+              Only available when AI is enabled. Generates a complete custom template based on your description:
+            </p>
+            <div className="bg-black/30 rounded-lg p-4">
+              <pre className="text-sm text-gray-300 font-mono">
+{`✔ Choose template: Custom
+✔ Describe what you want to build: … 
+  I need an agent that monitors GitHub repos and 
+  sends notifications for new issues
 
-          <div className="bg-gradient-to-b from-yellow-900/30 to-yellow-800/10 border border-yellow-500/30 rounded-lg p-6 mb-6">
-            <div className="grid md:grid-cols-2 gap-4 text-sm">
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-yellow-200">start_browser()</span>
-                    <p className="text-gray-400 text-xs">Launch browser instance</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-yellow-200">navigate()</span>
-                    <p className="text-gray-400 text-xs">Go to URLs</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-yellow-200">scrape_content()</span>
-                    <p className="text-gray-400 text-xs">Extract page content</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-yellow-200">fill_form()</span>
-                    <p className="text-gray-400 text-xs">Fill and submit forms</p>
-                  </div>
-                </div>
-              </div>
-              <div className="space-y-2">
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-yellow-200">take_screenshot()</span>
-                    <p className="text-gray-400 text-xs">Capture pages</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-yellow-200">extract_links()</span>
-                    <p className="text-gray-400 text-xs">Get all links</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-yellow-200">execute_javascript()</span>
-                    <p className="text-gray-400 text-xs">Run JS code</p>
-                  </div>
-                </div>
-                <div className="flex items-start gap-2">
-                  <Zap className="w-4 h-4 text-yellow-400 mt-0.5" />
-                  <div>
-                    <span className="font-semibold text-yellow-200">close_browser()</span>
-                    <p className="text-gray-400 text-xs">Clean up resources</p>
-                  </div>
-                </div>
-              </div>
+⚡ Generating custom template with AI...
+✅ Created custom GitHub monitoring agent`}
+              </pre>
             </div>
-            
-            <div className="mt-4 p-3 bg-black/30 rounded-lg flex items-center gap-2">
-              <AlertCircle className="w-4 h-4 text-yellow-400" />
-              <p className="text-yellow-200 text-sm">
-                Note: Requires running the following command first:
-              </p>
-            </div>
-            <CommandBlock 
-              commands={['pip install playwright && playwright install']}
-            />
           </div>
         </div>
       </section>
 
-      {/* Interactive Features */}
+      {/* API Key Detection */}
       <section className="mb-16">
         <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
-          <Zap className="w-6 h-6 text-yellow-400" />
-          Interactive Features
+          <Key className="w-6 h-6 text-orange-400" />
+          API Key Detection
         </h2>
 
-        <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
-          <p className="text-gray-300 mb-4">The CLI will:</p>
-          <ul className="space-y-3 text-gray-300">
-            <li className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-orange-400 mt-0.5" />
-              <span>Warn if you're in a special directory (home, root, system)</span>
+        <p className="text-gray-300 mb-6">
+          The CLI automatically detects your API provider from the key format:
+        </p>
+
+        <div className="bg-gray-900 border border-gray-700 rounded-lg overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="bg-gray-800 border-b border-gray-700">
+                <th className="text-left px-4 py-3 text-gray-300 font-medium">Provider</th>
+                <th className="text-left px-4 py-3 text-gray-300 font-medium">Key Format</th>
+                <th className="text-left px-4 py-3 text-gray-300 font-medium">Example</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-700">
+              <tr>
+                <td className="px-4 py-3 text-white font-medium">OpenAI</td>
+                <td className="px-4 py-3 font-mono text-sm text-blue-300">sk-... or sk-proj-...</td>
+                <td className="px-4 py-3 font-mono text-xs text-gray-400">sk-proj-abc123...</td>
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-white font-medium">Anthropic</td>
+                <td className="px-4 py-3 font-mono text-sm text-blue-300">sk-ant-...</td>
+                <td className="px-4 py-3 font-mono text-xs text-gray-400">sk-ant-api03-xyz...</td>
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-white font-medium">Google</td>
+                <td className="px-4 py-3 font-mono text-sm text-blue-300">AIza...</td>
+                <td className="px-4 py-3 font-mono text-xs text-gray-400">AIzaSyAbc123...</td>
+              </tr>
+              <tr>
+                <td className="px-4 py-3 text-white font-medium">Groq</td>
+                <td className="px-4 py-3 font-mono text-sm text-blue-300">gsk_...</td>
+                <td className="px-4 py-3 font-mono text-xs text-gray-400">gsk_abc123...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div className="bg-gradient-to-b from-orange-900/30 to-orange-800/10 border border-orange-500/30 rounded-lg p-4 mt-6">
+          <p className="text-orange-200 text-sm">
+            The appropriate environment variables and model configurations are set automatically.
+          </p>
+        </div>
+      </section>
+
+      {/* What Gets Created */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6 flex items-center gap-3">
+          <FileText className="w-6 h-6 text-blue-400" />
+          What Gets Created
+        </h2>
+
+        {/* Project Structure */}
+        <div className="mb-8">
+          <h3 className="text-lg font-semibold text-white mb-4">Project Structure</h3>
+          
+          <FileTree 
+            structure={[
+              {
+                name: 'my-agent',
+                type: 'folder',
+                children: [
+                  { name: 'agent.py', type: 'file', icon: 'python', description: 'Main agent implementation' },
+                  { 
+                    name: 'tools',
+                    type: 'folder',
+                    description: 'Custom tools directory',
+                    children: []
+                  },
+                  { 
+                    name: 'prompts',
+                    type: 'folder',
+                    description: 'System prompts (AI-enabled)',
+                    children: []
+                  },
+                  { name: '.env', type: 'file', icon: 'env', description: 'Environment configuration' },
+                  { 
+                    name: '.co',
+                    type: 'folder',
+                    description: 'ConnectOnion metadata',
+                    children: [
+                      { name: 'config.toml', type: 'file', icon: 'config', description: 'Project configuration' },
+                      {
+                        name: 'keys',
+                        type: 'folder',
+                        description: 'Agent cryptographic keys',
+                        children: [
+                          { name: 'agent.key', type: 'file', icon: 'key', description: 'Private signing key' },
+                          { name: 'recovery.txt', type: 'file', icon: 'shield', description: '12-word recovery phrase' },
+                          { name: 'DO_NOT_SHARE', type: 'file', icon: 'alert', description: 'Security warning' }
+                        ]
+                      },
+                      {
+                        name: 'docs',
+                        type: 'folder',
+                        children: [
+                          { name: 'co-vibe-coding-all-in-one.md', type: 'file', icon: 'markdown', description: 'Complete framework docs' }
+                        ]
+                      }
+                    ]
+                  },
+                  { name: 'README.md', type: 'file', icon: 'markdown', description: 'Project documentation' },
+                  { name: '.gitignore', type: 'file', icon: 'git', description: 'Git ignore rules' }
+                ]
+              }
+            ]}
+          />
+        </div>
+
+        {/* Agent Identity */}
+        <div className="bg-gradient-to-b from-purple-900/20 to-purple-800/10 border border-purple-500/30 rounded-lg p-6">
+          <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+            <Shield className="w-5 h-5 text-purple-400" />
+            Agent Identity
+          </h3>
+          <p className="text-gray-300 mb-4">
+            Every project automatically gets:
+          </p>
+          <ul className="space-y-2 text-gray-300">
+            <li className="flex items-start gap-2">
+              <Key className="w-4 h-4 text-purple-400 mt-0.5" />
+              <div>
+                <strong className="text-purple-200">Ed25519 cryptographic keys</strong> for agent identity
+              </div>
             </li>
-            <li className="flex items-start gap-3">
-              <AlertCircle className="w-5 h-5 text-orange-400 mt-0.5" />
-              <span>Ask for confirmation if the directory is not empty</span>
+            <li className="flex items-start gap-2">
+              <Key className="w-4 h-4 text-purple-400 mt-0.5" />
+              <div>
+                <strong className="text-purple-200">Unique address</strong> (hex-encoded public key)
+              </div>
             </li>
-            <li className="flex items-start gap-3">
-              <GitBranch className="w-5 h-5 text-green-400 mt-0.5" />
-              <span>Automatically detect git repositories and update <code className="bg-gray-800 px-2 py-1 rounded text-sm">.gitignore</code></span>
-            </li>
-            <li className="flex items-start gap-3">
-              <Check className="w-5 h-5 text-green-400 mt-0.5" />
-              <span>Provide clear next steps after initialization</span>
+            <li className="flex items-start gap-2">
+              <Key className="w-4 h-4 text-purple-400 mt-0.5" />
+              <div>
+                <strong className="text-purple-200">12-word recovery phrase</strong> for key restoration
+              </div>
             </li>
           </ul>
+          <div className="mt-4 p-3 bg-black/30 rounded-lg flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 text-yellow-400" />
+            <p className="text-yellow-200 text-sm">
+              Keys are stored in <code className="bg-black/30 px-2 py-1 rounded">.co/keys/</code> and auto-added to <code className="bg-black/30 px-2 py-1 rounded">.gitignore</code>
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* Examples */}
+      <section className="mb-16">
+        <h2 className="text-2xl font-bold text-white mb-6">Examples</h2>
+
+        <div className="space-y-4">
+          <CommandBlock 
+            title="Minimal project without AI"
+            commands={['co create simple-bot --no-ai --template minimal']}
+          />
+
+          <CommandBlock 
+            title="Web research project with AI"
+            commands={['co create research-agent --ai --template web-research']}
+          />
+
+          <CommandBlock 
+            title="Custom AI agent with description"
+            commands={['co create slack-bot --ai --template custom --description "Slack bot that answers questions"']}
+          />
+
+          <CommandBlock 
+            title="Initialize existing directory"
+            commands={[
+              'cd my-existing-project',
+              'co init --ai --template minimal'
+            ]}
+          />
         </div>
       </section>
 
@@ -555,34 +858,35 @@ result = agent.input("Generate a tool for sending emails")`}
 
         <div className="grid md:grid-cols-2 gap-6">
           <div className="bg-gradient-to-b from-purple-900/20 to-purple-800/10 border border-purple-500/30 rounded-lg p-6">
-            <FileText className="w-8 h-8 text-purple-400 mb-3" />
-            <h3 className="text-lg font-semibold text-white mb-2">Use Markdown for Prompts</h3>
+            <Terminal className="w-8 h-8 text-purple-400 mb-3" />
+            <h3 className="text-lg font-semibold text-white mb-2">Choose the Right Command</h3>
             <p className="text-gray-300 text-sm">
-              Always store system prompts in <code className="bg-black/30 px-2 py-1 rounded">prompt.md</code> files for better formatting and readability.
+              Use <code className="bg-black/30 px-2 py-1 rounded">co create</code> for new projects, 
+              <code className="bg-black/30 px-2 py-1 rounded ml-1">co init</code> for existing directories.
             </p>
           </div>
 
           <div className="bg-gradient-to-b from-green-900/20 to-green-800/10 border border-green-500/30 rounded-lg p-6">
-            <AlertCircle className="w-8 h-8 text-green-400 mb-3" />
-            <h3 className="text-lg font-semibold text-white mb-2">Environment Variables</h3>
+            <Key className="w-8 h-8 text-green-400 mb-3" />
+            <h3 className="text-lg font-semibold text-white mb-2">API Key Security</h3>
             <p className="text-gray-300 text-sm">
-              Never commit <code className="bg-black/30 px-2 py-1 rounded">.env</code> files. Use <code className="bg-black/30 px-2 py-1 rounded">.env.example</code> as a template.
+              Never commit <code className="bg-black/30 px-2 py-1 rounded">.env</code> files. Store API keys securely.
             </p>
           </div>
 
           <div className="bg-gradient-to-b from-orange-900/20 to-orange-800/10 border border-orange-500/30 rounded-lg p-6">
-            <GitBranch className="w-8 h-8 text-orange-400 mb-3" />
-            <h3 className="text-lg font-semibold text-white mb-2">Git Integration</h3>
+            <Code className="w-8 h-8 text-orange-400 mb-3" />
+            <h3 className="text-lg font-semibold text-white mb-2">Template Selection</h3>
             <p className="text-gray-300 text-sm">
-              The CLI automatically handles <code className="bg-black/30 px-2 py-1 rounded">.gitignore</code> for git repositories.
+              Start with Minimal for learning. Use Custom (with AI) for specific needs.
             </p>
           </div>
 
           <div className="bg-gradient-to-b from-blue-900/20 to-blue-800/10 border border-blue-500/30 rounded-lg p-6">
-            <Folder className="w-8 h-8 text-blue-400 mb-3" />
-            <h3 className="text-lg font-semibold text-white mb-2">Embedded Documentation</h3>
+            <Shield className="w-8 h-8 text-blue-400 mb-3" />
+            <h3 className="text-lg font-semibold text-white mb-2">Agent Keys</h3>
             <p className="text-gray-300 text-sm">
-              The docs in <code className="bg-black/30 px-2 py-1 rounded">.co/docs/</code> allow agents to work offline.
+              Never share <code className="bg-black/30 px-2 py-1 rounded">.co/keys/</code> directory. Backup your recovery phrase.
             </p>
           </div>
         </div>
@@ -594,6 +898,23 @@ result = agent.input("Generate a tool for sending emails")`}
 
         <div className="space-y-6">
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
+            <h3 className="text-lg font-semibold text-white mb-3">Command Not Found</h3>
+            <p className="text-gray-300 mb-4">
+              If <code className="bg-gray-800 px-2 py-1 rounded">co</code> command is not found after installation:
+            </p>
+            <CommandBlock 
+              commands={[
+                '# Use full command',
+                'python -m connectonion.cli.main create',
+                '',
+                '# Or reinstall',
+                'pip uninstall connectonion',
+                'pip install connectonion'
+              ]}
+            />
+          </div>
+
+          <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
             <h3 className="text-lg font-semibold text-white mb-3">Python Version</h3>
             <p className="text-gray-300 mb-4">
               ConnectOnion requires Python 3.8 or higher. Check your version:
@@ -604,17 +925,21 @@ result = agent.input("Generate a tool for sending emails")`}
           </div>
 
           <div className="bg-gray-900 border border-gray-700 rounded-lg p-6">
-            <h3 className="text-lg font-semibold text-white mb-3">API Keys Setup</h3>
-            <p className="text-gray-300 mb-4">
-              After running <code className="bg-gray-800 px-2 py-1 rounded">co init</code>, set up your API keys:
-            </p>
-            <CommandBlock 
-              commands={[
-                'cp .env.example .env',
-                '# Edit .env and add your actual API keys',
-                'nano .env  # or use your preferred editor'
-              ]}
-            />
+            <h3 className="text-lg font-semibold text-white mb-3">API Key Issues</h3>
+            <ul className="space-y-2 text-gray-300">
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+                Check key format matches your provider
+              </li>
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+                Ensure key is active and has credits
+              </li>
+              <li className="flex items-center gap-2">
+                <ChevronRight className="w-4 h-4 text-gray-400" />
+                Try pasting without quotes or spaces
+              </li>
+            </ul>
           </div>
         </div>
       </section>

@@ -26,7 +26,7 @@ The `config.toml` file contains all project and agent configuration:
 [project]
 name = "my-agent"                           # Project name (defaults to directory name)
 created = "2025-01-03T10:00:00Z"           # ISO 8601 creation timestamp
-framework_version = "0.0.1b8"               # ConnectOnion version used
+framework_version = "0.0.2"               # ConnectOnion version used
 
 # CLI information
 [cli]
@@ -165,7 +165,7 @@ $ co recover --phrase "your twelve word recovery phrase here"
 ### Check Framework Version
 ```bash
 $ cat .co/config.toml | grep framework_version
-framework_version = "0.0.1b8"
+framework_version = "0.0.2"
 ```
 
 ## FAQ

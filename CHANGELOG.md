@@ -2,6 +2,65 @@
 
 All notable changes to ConnectOnion will be documented in this file.
 
+## [0.0.4] - 2025-09-05
+
+### 🎉 New Features
+
+#### CLI Browser Integration  
+- **NEW**: Browser automation commands via `-b` flag with natural language support
+- **Screenshot Command**: Use `co -b "screenshot example.com save to screenshot.png"` for quick captures
+- **Device Presets**: Built-in viewport sizes for iPhone, iPad, desktop testing
+- **AI-Powered**: Natural language processing for intuitive command interpretation
+
+#### Automatic Environment Loading
+- **Auto .env Loading**: Agent class now automatically loads environment variables on initialization
+- **Seamless Setup**: API keys from `co init` are automatically available to Agents
+- **No Manual Loading**: Removed need for manual `load_dotenv()` calls in user code
+
+### 🐛 Bug Fixes
+
+#### Model Configuration
+- **Fixed**: Corrected default model from invalid "gpt-5-mini" to "gpt-4o-mini"
+- **Impact**: Prevents 404 errors when using default Agent configuration
+
+### 📚 Documentation & Examples
+
+#### New Documentation
+- Browser CLI feature documentation in `/docs/cli-browser.md`
+- Browser agent example with natural language processing
+- Updated CLI documentation with browser commands
+
+#### New Examples
+- `examples/browser-agent/` - Browser automation with AI agent
+- Simplified implementation removing over-engineering
+
+### 🔧 Technical Improvements
+
+#### Code Quality
+- **Reduced Complexity**: Removed excessive try-catch blocks and if-else chains
+- **AI-First Design**: Delegated command interpretation to AI instead of hard-coded logic
+- **Cleaner Architecture**: Simplified browser_utils.py using Agent pattern
+
+#### Testing
+- Comprehensive test suite for CLI browser feature (28 tests)
+- Updated test mocks for new Agent-based implementation
+
+### 📁 File Changes
+
+```
+New Files:
+├── connectonion/cli/browser_utils.py
+├── connectonion/cli/prompts/browser_agent.md
+├── docs/cli-browser.md
+├── tests/test_cli_browser.py
+└── examples/browser-agent/
+
+Modified Files:
+├── connectonion/agent.py (auto .env loading, model fix)
+├── connectonion/cli/main.py (added -b flag)
+└── setup.py (version bump)
+```
+
 ## [0.2.0] - 2025-07-28
 
 ### 🎉 Major Features Added
