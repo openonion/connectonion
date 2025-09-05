@@ -81,12 +81,12 @@ export default function LinksPage() {
         {
           title: 'Documentation',
           description: 'Complete guides and API reference',
-          url: '/',
+          url: 'https://docs.connectonion.com',
           icon: BookOpen,
           color: 'text-purple-400',
           bgColor: 'bg-gradient-to-br from-purple-600 to-purple-800',
           borderColor: 'border-purple-500',
-          external: false,
+          external: true,
           available: true
         }
       ]
@@ -187,34 +187,34 @@ export default function LinksPage() {
         {
           title: 'Blog',
           description: 'Design decisions and insights',
-          url: '/blog',
+          url: 'https://docs.connectonion.com/blog',
           icon: Newspaper,
           color: 'text-orange-400',
           bgColor: 'bg-gradient-to-br from-orange-600 to-orange-800',
           borderColor: 'border-orange-500',
-          external: false,
+          external: true,
           available: true
         },
         {
           title: 'Examples',
           description: 'Sample projects and tutorials',
-          url: '/examples',
+          url: 'https://docs.connectonion.com/examples',
           icon: Code,
           color: 'text-yellow-400',
           bgColor: 'bg-gradient-to-br from-yellow-600 to-yellow-800',
           borderColor: 'border-yellow-500',
-          external: false,
+          external: true,
           available: true
         },
         {
           title: 'API Reference',
           description: 'Technical documentation',
-          url: '/tools',
+          url: 'https://docs.connectonion.com/tools',
           icon: FileText,
           color: 'text-teal-400',
           bgColor: 'bg-gradient-to-br from-teal-600 to-teal-800',
           borderColor: 'border-teal-500',
-          external: false,
+          external: true,
           available: true
         }
       ]
