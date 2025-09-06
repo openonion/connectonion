@@ -547,13 +547,24 @@ Next steps:
         </h2>
 
         <p className="text-gray-300 mb-6">
-          Use the <code className="bg-gray-800 px-2 py-1 rounded">-b</code> flag for browser automation with natural language:
+          Guide the browser to do something using natural language commands. Use <code className="bg-gray-800 px-2 py-1 rounded">-b</code> (short for browser) or the full <code className="bg-gray-800 px-2 py-1 rounded">browser</code> subcommand:
         </p>
+
+        <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-6">
+          <p className="text-sm text-blue-300">
+            <span className="font-semibold">💡 Tip:</span> <code className="bg-blue-900/50 px-1 rounded">co -b</code> is short for <code className="bg-blue-900/50 px-1 rounded">co browser</code>. Both syntaxes work the same way!
+          </p>
+        </div>
 
         <div className="space-y-4 mb-8">
           <CommandBlock 
-            title="Take a screenshot"
+            title="Take a screenshot (using -b shorthand)"
             commands={['co -b "screenshot example.com save to screenshot.png"']}
+          />
+
+          <CommandBlock 
+            title="Same command using full syntax"
+            commands={['co browser "screenshot example.com save to screenshot.png"']}
           />
 
           <CommandBlock 

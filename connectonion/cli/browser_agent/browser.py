@@ -7,8 +7,9 @@ requests for taking screenshots and other browser operations via the ConnectOnio
 import os
 from pathlib import Path
 from datetime import datetime
-from connectonion import Agent
+from connectonion import Agent, llm_do
 from dotenv import load_dotenv
+from pydantic import BaseModel
 
 # Load environment variables
 load_dotenv()
@@ -28,10 +29,12 @@ PROMPT_PATH = Path(__file__).parent / "prompt.md"
 
 
 class BrowserAutomation:
-    """Browser automation for screenshots."""
+    """Browser automation for screenshots and interactions."""
     
     def __init__(self):
         self._screenshots = []
+        self._current_page = None
+        self._browser = None
     
     def take_screenshot(self, url: str, path: str = "", 
                        width: int = 1920, height: int = 1080,
@@ -97,6 +100,66 @@ class BrowserAutomation:
     def screenshot_with_desktop_viewport(self, url: str, path: str = "") -> str:
         """Take a screenshot with desktop viewport (1920x1080)."""
         return self.take_screenshot(url, path, width=1920, height=1080)
+    
+    def get_page_html(self, url: str) -> str:
+        """Get the HTML content of a webpage.
+        
+        Args:
+            url: The URL to get HTML from
+            
+        Returns:
+            The HTML content of the page
+        """
+        if not url.startswith(('http://', 'https://')):
+            url = f'https://{url}' if '.' in url else f'http://{url}'
+        
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, wait_until='networkidle', timeout=30000)
+            html_content = page.content()
+            browser.close()
+        
+        return html_content
+    
+    def click_element(self, url: str, description: str) -> str:
+        """Click an element on a webpage based on natural language description.
+        
+        Args:
+            url: The URL of the page
+            description: Natural language description of what to click
+            
+        Returns:
+            Result message
+        """
+        if not url.startswith(('http://', 'https://')):
+            url = f'https://{url}' if '.' in url else f'http://{url}'
+        
+        with sync_playwright() as playwright:
+            browser = playwright.chromium.launch(headless=True)
+            page = browser.new_page()
+            page.goto(url, wait_until='networkidle', timeout=30000)
+            html_content = page.content()
+            
+            # Use llm_do to determine the selector
+            class ElementSelector(BaseModel):
+                selector: str
+                method: str  # "text" or "css"
+            
+            result = llm_do(
+                f"Find selector for: {description}\n\nHTML:\n{html_content[:5000]}",
+                output=ElementSelector,
+                system_prompt="Return the best selector to click the element. Use method='text' for button text, method='css' for CSS selectors."
+            )
+            
+            if result.method == "text":
+                page.get_by_text(result.selector).click()
+            else:
+                page.locator(result.selector).click()
+            
+            page.wait_for_timeout(1000)
+            browser.close()
+            return f"Clicked: {result.selector}"
 
 
 # Removed create_browser_agent to reduce indirection; agent is constructed inline

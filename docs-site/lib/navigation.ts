@@ -154,19 +154,7 @@ export const navigation = [
     difficulty: 'Browse',
     keywords: ['examples', 'samples', 'demos', 'tutorials'],
     prev: { href: '/threat-model', title: 'Threat Model' },
-    next: { href: '/examples/hello-world', title: 'Hello World' }
-  },
-  {
-    title: 'Hello World',
-    href: '/examples/hello-world',
-    icon: Sparkles,
-    section: 'Examples',
-    difficulty: 'Beginner',
-    keywords: ['hello', 'basic', 'simple', 'first'],
-    prev: { href: '/examples', title: 'All Examples' },
-    next: { href: '/examples/calculator', title: 'Calculator' },
-    exampleIndex: 0,
-    totalExamples: 8
+    next: { href: '/examples/calculator', title: 'Calculator' }
   },
   {
     title: 'Calculator',
@@ -174,78 +162,23 @@ export const navigation = [
     icon: Calculator,
     section: 'Examples',
     difficulty: 'Beginner',
-    keywords: ['calculator', 'math', 'compute', 'arithmetic'],
-    prev: { href: '/examples/hello-world', title: 'Hello World' },
-    next: { href: '/examples/weather-bot', title: 'Weather Bot' },
-    exampleIndex: 1,
-    totalExamples: 8
+    keywords: ['calculator', 'math', 'compute', 'arithmetic', 'tools', 'functions'],
+    prev: { href: '/examples', title: 'All Examples' },
+    next: { href: '/examples/browser', title: 'Browser Automation' },
+    exampleIndex: 0,
+    totalExamples: 2
   },
   {
-    title: 'Weather Bot',
-    href: '/examples/weather-bot',
-    icon: Cloud,
+    title: 'Browser Automation',
+    href: '/examples/browser',
+    icon: Chrome,
     section: 'Examples',
     difficulty: 'Intermediate',
-    keywords: ['weather', 'bot', 'api', 'forecast'],
+    keywords: ['browser', 'automation', 'screenshot', 'playwright', 'web', 'scraping'],
     prev: { href: '/examples/calculator', title: 'Calculator' },
-    next: { href: '/examples/task-manager', title: 'Task Manager' },
-    exampleIndex: 2,
-    totalExamples: 8
-  },
-  {
-    title: 'Task Manager',
-    href: '/examples/task-manager',
-    icon: Code,
-    section: 'Examples',
-    keywords: ['task', 'manager', 'todo', 'list'],
-    prev: { href: '/examples/weather-bot', title: 'Weather Bot' },
-    next: { href: '/examples/file-analyzer', title: 'File Analyzer' },
-    exampleIndex: 3,
-    totalExamples: 8
-  },
-  {
-    title: 'File Analyzer',
-    href: '/examples/file-analyzer',
-    icon: FileText,
-    section: 'Examples',
-    keywords: ['file', 'analyzer', 'document', 'parse'],
-    prev: { href: '/examples/task-manager', title: 'Task Manager' },
-    next: { href: '/examples/api-client', title: 'API Client' },
-    exampleIndex: 4,
-    totalExamples: 8
-  },
-  {
-    title: 'API Client',
-    href: '/examples/api-client',
-    icon: Code,
-    section: 'Examples',
-    keywords: ['api', 'client', 'rest', 'http'],
-    prev: { href: '/examples/file-analyzer', title: 'File Analyzer' },
-    next: { href: '/examples/math-tutor-agent', title: 'Math Tutor Agent' },
-    exampleIndex: 5,
-    totalExamples: 8
-  },
-  {
-    title: 'Math Tutor Agent',
-    href: '/examples/math-tutor-agent',
-    icon: Brain,
-    section: 'Examples',
-    keywords: ['math', 'tutor', 'education', 'agent'],
-    prev: { href: '/examples/api-client', title: 'API Client' },
-    next: { href: '/examples/ecommerce-manager', title: 'E-commerce Manager' },
-    exampleIndex: 6,
-    totalExamples: 8
-  },
-  {
-    title: 'E-commerce Manager',
-    href: '/examples/ecommerce-manager',
-    icon: Package,
-    section: 'Examples',
-    keywords: ['ecommerce', 'shop', 'store', 'manager'],
-    prev: { href: '/examples/math-tutor-agent', title: 'Math Tutor Agent' },
     next: { href: '/blog', title: 'All Posts' },
-    exampleIndex: 7,
-    totalExamples: 8
+    exampleIndex: 1,
+    totalExamples: 2
   },
 
   // Blog - Design Decisions in chronological order

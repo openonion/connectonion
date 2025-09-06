@@ -277,7 +277,7 @@ def get_special_directory_warning(directory: str) -> str:
 
 @click.group(invoke_without_command=True)
 @click.version_option(version=__version__)
-@click.option('-b', '--browser', help='Browser screenshot command (e.g., "screenshot localhost:3000")')
+@click.option('-b', '--browser', help='Browser command - guide browser to do something (e.g., "screenshot localhost:3000")')
 @click.pass_context
 def cli(ctx, browser):
     """ConnectOnion - A simple Python framework for creating AI agents."""
@@ -1013,6 +1013,18 @@ todo.md
     click.echo(f"   Documentation: {Colors.UNDERLINE}https://github.com/wu-changxing/connectonion{Colors.END}")
     click.echo(f"   Discord: {Colors.UNDERLINE}https://discord.gg/4xfD9k8AUF{Colors.END}")
     click.echo()
+
+
+@cli.command()
+@click.argument('command')
+def browser(command):
+    """Execute browser automation commands - guide browser to do something.
+    
+    This is an alternative to the -b flag. Both 'co -b' and 'co browser' are supported.
+    """
+    from .browser_agent.browser import execute_browser_command
+    result = execute_browser_command(command)
+    click.echo(result)
 
 
 # Entry points for both 'co' and 'connectonion' commands
