@@ -33,8 +33,26 @@ class BrowserAutomation:
     
     def __init__(self):
         self._screenshots = []
-        self._current_page = None
+        self._playwright = None
         self._browser = None
+        self._page = None
+        self._initialize_browser()
+    
+    def _initialize_browser(self):
+        """Initialize the browser instance."""
+        if not PLAYWRIGHT_AVAILABLE:
+            return
+        from playwright.sync_api import sync_playwright
+        self._playwright = sync_playwright().start()
+        self._browser = self._playwright.chromium.launch(headless=True)
+        self._page = self._browser.new_page()
+    
+    def navigate_to(self, url: str) -> str:
+        """Navigate to a URL."""
+        if not url.startswith(('http://', 'https://')):
+            url = f'https://{url}' if '.' in url else f'http://{url}'
+        self._page.goto(url, wait_until='networkidle', timeout=30000)
+        return f"Navigated to {url}"
     
     def take_screenshot(self, url: str, path: str = "", 
                        width: int = 1920, height: int = 1080,
@@ -54,9 +72,11 @@ class BrowserAutomation:
         if not PLAYWRIGHT_AVAILABLE:
             return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
         
-        # Normalize URL
-        if not url.startswith(('http://', 'https://')):
-            url = f'https://{url}' if '.' in url else f'http://{url}'
+        # Navigate to URL
+        self.navigate_to(url)
+        
+        # Set viewport size
+        self._page.set_viewport_size({"width": width, "height": height})
         
         # Generate filename if needed
         if not path:
@@ -78,13 +98,7 @@ class BrowserAutomation:
         Path(path).parent.mkdir(parents=True, exist_ok=True)
         
         # Take screenshot
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.set_viewport_size({"width": width, "height": height})
-            page.goto(url, wait_until='networkidle', timeout=30000)
-            page.screenshot(path=path, full_page=full_page)
-            browser.close()
+        self._page.screenshot(path=path, full_page=full_page)
         
         self._screenshots.append(path)
         return f'Screenshot saved: {path}'
@@ -101,65 +115,48 @@ class BrowserAutomation:
         """Take a screenshot with desktop viewport (1920x1080)."""
         return self.take_screenshot(url, path, width=1920, height=1080)
     
-    def get_page_html(self, url: str) -> str:
-        """Get the HTML content of a webpage.
+    def get_current_page_html(self) -> str:
+        """Get the HTML content of the current page.
         
-        Args:
-            url: The URL to get HTML from
-            
         Returns:
-            The HTML content of the page
+            The HTML content of the current page
         """
-        if not url.startswith(('http://', 'https://')):
-            url = f'https://{url}' if '.' in url else f'http://{url}'
-        
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(url, wait_until='networkidle', timeout=30000)
-            html_content = page.content()
-            browser.close()
-        
-        return html_content
+        if not PLAYWRIGHT_AVAILABLE:
+            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
+        return self._page.content()
     
-    def click_element(self, url: str, description: str) -> str:
-        """Click an element on a webpage based on natural language description.
+    def click_element_by_description(self, description: str) -> str:
+        """Click an element on the current page based on natural language description.
         
         Args:
-            url: The URL of the page
             description: Natural language description of what to click
             
         Returns:
             Result message
         """
-        if not url.startswith(('http://', 'https://')):
-            url = f'https://{url}' if '.' in url else f'http://{url}'
+        if not PLAYWRIGHT_AVAILABLE:
+            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
         
-        with sync_playwright() as playwright:
-            browser = playwright.chromium.launch(headless=True)
-            page = browser.new_page()
-            page.goto(url, wait_until='networkidle', timeout=30000)
-            html_content = page.content()
-            
-            # Use llm_do to determine the selector
-            class ElementSelector(BaseModel):
-                selector: str
-                method: str  # "text" or "css"
-            
-            result = llm_do(
-                f"Find selector for: {description}\n\nHTML:\n{html_content[:5000]}",
-                output=ElementSelector,
-                system_prompt="Return the best selector to click the element. Use method='text' for button text, method='css' for CSS selectors."
-            )
-            
-            if result.method == "text":
-                page.get_by_text(result.selector).click()
-            else:
-                page.locator(result.selector).click()
-            
-            page.wait_for_timeout(1000)
-            browser.close()
-            return f"Clicked: {result.selector}"
+        html_content = self._page.content()
+        
+        # Use llm_do to determine the selector
+        class ElementSelector(BaseModel):
+            selector: str
+            method: str  # "text" or "css"
+        
+        result = llm_do(
+            f"Find selector for: {description}\n\nHTML:\n{html_content[:5000]}",
+            output=ElementSelector,
+            system_prompt="Return the best selector to click the element. Use method='text' for button text, method='css' for CSS selectors."
+        )
+        
+        if result.method == "text":
+            self._page.get_by_text(result.selector).click()
+        else:
+            self._page.locator(result.selector).click()
+        
+        self._page.wait_for_timeout(1000)
+        return f"Clicked: {result.selector}"
 
 
 # Removed create_browser_agent to reduce indirection; agent is constructed inline
