@@ -358,6 +358,19 @@ The best protocol isn't the most sophisticated - it's the one that gets out of t
               <p className="mt-6">The best protocol isn't the most sophisticated - it's the one that gets out of the way and lets agents do their work.</p>
 
               <div className="border-t border-gray-800 mt-16 pt-8">
+                <div className="bg-gradient-to-r from-purple-900/10 to-pink-900/10 border border-purple-500/20 rounded-lg p-6 mb-6">
+                  <h3 className="text-lg font-bold text-purple-300 mb-3">📖 Complete Technical Specification</h3>
+                  <p className="text-gray-300 mb-3">
+                    This article covers the design philosophy and evolution of our network protocol. For the complete technical specification including message formats, data structures, and implementation details, see:
+                  </p>
+                  <a href="https://github.com/connectonion/connectonion/blob/main/docs/design-decisions/004-designing-agent-network-protocol.md" 
+                     className="inline-flex items-center gap-2 text-purple-400 hover:text-purple-300 font-medium transition-colors">
+                    <span>Full Network Protocol Documentation</span>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" />
+                    </svg>
+                  </a>
+                </div>
                 <p className="text-sm text-gray-400 italic">
                   The ConnectOnion network protocol is open source and available at{' '}
                   <a href="https://github.com/wu-changxing/connectonion" className="text-purple-400 hover:text-purple-300 hover:underline transition-colors">

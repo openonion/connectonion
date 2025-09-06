@@ -7,13 +7,14 @@ requests for taking screenshots and other browser operations via the ConnectOnio
 import os
 from pathlib import Path
 from datetime import datetime
-from typing import Dict
-import re
 from connectonion import Agent
 from dotenv import load_dotenv
 
 # Load environment variables
 load_dotenv()
+
+# Default screenshots directory in current working directory
+SCREENSHOTS_DIR = Path.cwd() / ".tmp"
 
 # Check Playwright availability
 try:
@@ -23,7 +24,7 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
 # Path to the browser agent system prompt
-PROMPT_PATH = Path(__file__).parent / "prompts" / "browser_agent.md"
+PROMPT_PATH = Path(__file__).parent / "prompt.md"
 
 
 class BrowserAutomation:
@@ -56,9 +57,18 @@ class BrowserAutomation:
         
         # Generate filename if needed
         if not path:
+            # Ensure screenshots directory exists
+            SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            path = f'screenshot_{timestamp}.png'
+            path = str(SCREENSHOTS_DIR / f'screenshot_{timestamp}.png')
+        elif not path.startswith('/'):  # Relative path
+            # If relative path given, save to screenshots dir
+            SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
+            if not path.endswith(('.png', '.jpg', '.jpeg')):
+                path += '.png'
+            path = str(SCREENSHOTS_DIR / path)
         elif not path.endswith(('.png', '.jpg', '.jpeg')):
+            # Absolute path without extension
             path += '.png'
         
         # Ensure directory exists
@@ -95,17 +105,14 @@ class BrowserAutomation:
 # Removed thin wrapper to reduce indirection
 
 
-def execute_browser_command(command: str) -> Dict:
-    """Execute a browser command using natural language if possible, otherwise fall back.
+def execute_browser_command(command: str) -> str:
+    """Execute a browser command using natural language.
 
-    Returns dict with keys: success, and path or error.
+    Returns the agent's natural language response directly.
     """
     api_key = os.getenv('OPENAI_API_KEY')
     if not api_key or api_key == 'sk-your-key-here':
-        return {
-            'success': False,
-            'error': 'Natural language browser agent unavailable. Set OPENAI_API_KEY and try again.'
-        }
+        return '❌ Natural language browser agent unavailable. Set OPENAI_API_KEY and try again.'
 
     browser = BrowserAutomation()
     agent = Agent(
@@ -114,12 +121,5 @@ def execute_browser_command(command: str) -> Dict:
         tools=[browser],
         max_iterations=10
     )
-    response = agent.input(command)
-    if 'saved' in response.lower():
-        path_match = re.search(r'([^\s]+\.(?:png|jpg|jpeg))', response, re.IGNORECASE)
-        path = path_match.group(1) if path_match else 'screenshot.png'
-        return {'success': True, 'path': path}
-    return {'success': False, 'error': response}
+    return agent.input(command)
 
-
-# Legacy test helpers removed to simplify API; agent now handles parameter prompting

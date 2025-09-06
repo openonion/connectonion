@@ -169,7 +169,7 @@ my-agent/
 │   │   ├── recovery.txt # 12-word recovery phrase
 │   │   └── DO_NOT_SHARE # Security warning
 │   └── docs/
-│       └── co-vibe-coding-all-in-one.md # Complete framework docs
+│       └── co-vibecoding-principles-docs-contexts-all-in-one.md # Complete VibeCoding & framework docs
 ├── README.md          # Project documentation
 └── .gitignore        # Git ignore rules (if in git repo)
 ```
@@ -241,11 +241,11 @@ Next steps:
 
 ## Using with AI Coding Assistants
 
-The `.co/docs/co-vibe-coding-all-in-one.md` file contains complete ConnectOnion documentation. Use it with AI coding assistants like Cursor, Claude Code, or GitHub Copilot:
+The `.co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md` file contains complete VibeCoding principles and ConnectOnion framework documentation. Use it with AI coding assistants like Cursor, Claude Code, or GitHub Copilot:
 
 ```
-Please read .co/docs/co-vibe-coding-all-in-one.md to understand 
-ConnectOnion framework, then help me create [your task]
+Please read .co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md to understand 
+the ConnectOnion framework and VibeCoding principles, then help me create [your task]
 ```
 
 ## Best Practices

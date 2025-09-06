@@ -180,7 +180,7 @@ my-agent/
 │   │   ├── recovery.txt # 12-word recovery phrase
 │   │   └── DO_NOT_SHARE # Security warning
 │   └── docs/
-│       └── co-vibe-coding-all-in-one.md # Complete framework docs
+│       └── co-vibecoding-principles-docs-contexts-all-in-one.md # Complete VibeCoding & framework docs
 ├── README.md          # Project documentation
 └── .gitignore        # Git ignore rules (if in git repo)
 \`\`\`
@@ -771,7 +771,7 @@ Next steps:
                         name: 'docs',
                         type: 'folder',
                         children: [
-                          { name: 'co-vibe-coding-all-in-one.md', type: 'file', icon: 'markdown', comment: 'Complete framework docs' }
+                          { name: 'co-vibecoding-principles-docs-contexts-all-in-one.md', type: 'file', icon: 'markdown', comment: 'Complete VibeCoding & framework docs' }
                         ]
                       }
                     ]

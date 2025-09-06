@@ -1096,9 +1096,10 @@ smart.input("Research and analyze market trends")  # Uses 30 iterations
 
 ### Principles: Avoid over‑engineering with agents
 
-- **Delegate interpretation to the agent**: Don’t hard‑code parsing rules or use regex to extract parameters; let the agent interpret requests and decide tool arguments.
+- **Delegate interpretation to the agent**: Don't hard‑code parsing rules or use regex to extract parameters; let the agent interpret requests and decide tool arguments.
+- **Natural language output, not regex parsing**: Let the agent format its own responses naturally. Don't use regex to parse agent output - simply pass through the agent's natural language response. The AI knows how to communicate effectively with users.
 - **Prompt‑driven clarification**: Put concise follow‑up behavior in the system prompt so the agent asks for missing details (URL, viewport, full‑page, save path) before acting.
-- **Thin integration layer**: Keep wrappers like `execute_*` minimal—construct the agent, call `agent.input(...)`, and return a simple success/error result.
+- **Thin integration layer**: Keep wrappers like `execute_*` minimal—construct the agent, call `agent.input(...)`, and return the natural language response directly.
 - **No heuristic fallbacks**: If AI is unavailable (e.g., missing API key), return a clear error instead of attempting clever fallback logic.
 - **Fail fast and clearly**: Only catch exceptions when you can improve user feedback; otherwise surface the error with a short, actionable message.
 - **Sane defaults, minimal knobs**: Tools should have sensible defaults; the agent overrides them via tool arguments as needed.

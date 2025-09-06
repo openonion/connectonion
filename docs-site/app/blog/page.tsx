@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { ArrowLeft, ArrowRight, BookOpen, Calendar, Clock, Users, Terminal, Code2, Network } from 'lucide-react'
+import { ArrowLeft, ArrowRight, BookOpen, Calendar, Clock, Users, Terminal, Code2, Network, Shield, MessageCircle, Layers } from 'lucide-react'
 import { ContentNavigation } from '../../components/ContentNavigation'
 
 const blogPosts = [
@@ -44,6 +44,36 @@ const blogPosts = [
     icon: Terminal,
     tags: ['Design Decision', 'API Design', 'UX'],
     excerpt: '40% of users naturally tried `input()` first. Learn how aligning with user mental models increased our first-time success rate from 67% to 89%.'
+  },
+  {
+    title: 'Agent Address Format',
+    subtitle: 'Why Hex-Encoded Public Keys',
+    date: 'December 2024',
+    readTime: '10 min read',
+    href: '/blog/agent-address-format',
+    icon: Shield,
+    tags: ['Design Decision', 'Security', 'Identity'],
+    excerpt: 'How we designed agent addresses using Ed25519 public keys, why we chose hex encoding over Base58, and how this enables secure, decentralized agent communication.'
+  },
+  {
+    title: 'Why "Address" Over "Identity"',
+    subtitle: 'The Power of Precise Naming',
+    date: 'December 2024',
+    readTime: '6 min read',
+    href: '/blog/naming-is-hard',
+    icon: MessageCircle,
+    tags: ['Design Decision', 'Naming', 'UX'],
+    excerpt: 'Words shape thinking. Learn why we chose "address" over "identity" for agent public keys, and how this single word change simplified our entire mental model.'
+  },
+  {
+    title: 'Progressive Disclosure in CLI Design',
+    subtitle: 'Simplicity First, Power When Needed',
+    date: 'December 2024',
+    readTime: '7 min read',
+    href: '/blog/cli-ux-progressive-disclosure',
+    icon: Layers,
+    tags: ['Design Decision', 'CLI', 'UX'],
+    excerpt: 'How we designed the ConnectOnion CLI to be approachable for beginners while maintaining power for experts through progressive disclosure and smart defaults.'
   }
 ]
 

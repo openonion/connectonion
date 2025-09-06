@@ -283,13 +283,11 @@ def cli(ctx, browser):
     """ConnectOnion - A simple Python framework for creating AI agents."""
     if browser:
         # Handle browser command immediately
-        from .browser_utils import execute_browser_command
+        from .browser_agent.browser import execute_browser_command
         result = execute_browser_command(browser)
-        if result['success']:
-            click.echo(f"{Colors.GREEN}✅ Screenshot saved: {result['path']}{Colors.END}")
-        else:
-            click.echo(f"{Colors.RED}❌ {result['error']}{Colors.END}")
-        ctx.exit(0 if result['success'] else 1)
+        # Simply output the agent's natural language response as-is
+        click.echo(result)
+        ctx.exit(0)
     elif ctx.invoked_subcommand is None:
         # No subcommand and no browser flag, show help
         click.echo(ctx.get_help())
@@ -530,11 +528,18 @@ OPENAI_API_KEY=sk-your-api-key-here
     docs_dir = co_dir / "docs"
     docs_dir.mkdir(exist_ok=True)
     
-    # Copy ConnectOnion documentation if it exists in template
-    template_docs = template_dir / "connectonion.md"
-    if template_docs.exists():
-        shutil.copy2(template_docs, docs_dir / "co-vibe-coding-all-in-one.md")
-        files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
+    # Copy VibeCoding principles, docs and contexts all-in-one documentation
+    # First try new filename, then fall back to old
+    template_docs_new = template_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+    template_docs_old = template_dir / "connectonion.md"
+    
+    if template_docs_new.exists():
+        shutil.copy2(template_docs_new, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
+        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
+    elif template_docs_old.exists():
+        # Fall back to old file for backward compatibility
+        shutil.copy2(template_docs_old, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
+        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
     
     # Generate agent address silently
     try:
@@ -882,12 +887,19 @@ def create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     docs_dir = co_dir / "docs"
     docs_dir.mkdir(exist_ok=True)
     
-    # Copy documentation
+    # Copy VibeCoding principles, docs and contexts all-in-one documentation
     if template_dir and template_dir.exists():
-        template_docs = template_dir / "connectonion.md"
-        if template_docs.exists():
-            shutil.copy2(template_docs, docs_dir / "co-vibe-coding-all-in-one.md")
-            files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
+        # First try new filename, then fall back to old
+        template_docs_new = template_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+        template_docs_old = template_dir / "connectonion.md"
+        
+        if template_docs_new.exists():
+            shutil.copy2(template_docs_new, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
+            files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
+        elif template_docs_old.exists():
+            # Fall back to old file for backward compatibility
+            shutil.copy2(template_docs_old, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
+            files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
     
     # Generate agent keys
     try:

@@ -26,8 +26,8 @@ For complete documentation, visit: https://connectonion.com
 
 export async function getAllDocsContent(): Promise<string> {
   try {
-    // Fetch the comprehensive LLM prompt markdown file
-    const response = await fetch('/connectonion-llm-prompt.md');
+    // Fetch the comprehensive VibeCoding principles, docs and contexts all-in-one markdown file
+    const response = await fetch('/co-vibecoding-principles-docs-contexts-all-in-one.md');
     
     if (!response.ok) {
       console.warn('Failed to fetch documentation file, using default content');

@@ -37,7 +37,7 @@ your-project/
 │   ├── config.toml           # Project configuration
 │   ├── keys/                 # Agent cryptographic keys (git-ignored)
 │   └── docs/
-│       └── co-vibe-coding-all-in-one.md  # Complete Vibe Coding documentation
+│       └── co-vibecoding-principles-docs-contexts-all-in-one.md  # Complete VibeCoding & framework docs
 ├── todo.md                    # To-do list (created by agent)
 └── README.md                  # This file
 ```
@@ -125,9 +125,9 @@ todos = agent.input("List all todos")
 print(todos)
 ```
 
-## 📖 Vibe Coding Documentation
+## 📖 VibeCoding Documentation
 
-The `.co/docs/co-vibe-coding-all-in-one.md` file contains the complete ConnectOnion Vibe Coding documentation. This comprehensive guide includes:
+The `.co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md` file contains complete VibeCoding principles and ConnectOnion framework documentation. This comprehensive guide includes:
 
 - **Framework Overview**: Core concepts and architecture
 - **Agent Development**: Building intelligent agents with tools
@@ -140,14 +140,14 @@ The `.co/docs/co-vibe-coding-all-in-one.md` file contains the complete ConnectOn
 
 If you're using AI-powered coding assistants like **Cursor**, **Claude Code**, or **GitHub Copilot**, you can leverage the Vibe Coding documentation for better assistance:
 
-1. **Point your AI assistant to the doc**: Reference `.co/docs/co-vibe-coding-all-in-one.md` when asking questions about ConnectOnion
+1. **Point your AI assistant to the doc**: Reference `.co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md` when asking questions about ConnectOnion
 2. **Get framework-specific help**: The documentation helps AI assistants understand ConnectOnion's patterns and best practices
 3. **Consistent coding style**: AI assistants will follow the framework's conventions when generating code
 
 Example prompt for your AI assistant:
 ```
-Please read .co/docs/co-vibe-coding-all-in-one.md to understand 
-ConnectOnion framework, then help me create a custom tool for [your task]
+Please read .co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md to understand 
+the ConnectOnion framework and VibeCoding principles, then help me create a custom tool for [your task]
 ```
 
 This documentation is embedded locally in your project for offline access. The Meta-Agent can also answer questions about ConnectOnion by referencing this documentation.
@@ -237,7 +237,7 @@ agent = Agent(
 ## 📖 Documentation Access
 
 The embedded ConnectOnion documentation is available at:
-`.co/docs/connectonion.md`
+`.co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md`
 
 This comprehensive reference includes:
 - Framework overview and concepts

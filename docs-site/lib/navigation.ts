@@ -326,16 +326,6 @@ export const navigation = [
     difficulty: 'Design Decision',
     keywords: ['cli', 'ux', 'progressive', 'disclosure', 'initialization'],
     prev: { href: '/blog/naming-is-hard', title: 'Why "Address" Over "Identity"' },
-    next: { href: '/blog/message-based-architecture', title: 'Message-Based Architecture' }
-  },
-  {
-    title: 'Message-Based Architecture',
-    href: '/blog/message-based-architecture',
-    icon: Layers,
-    section: 'Blog',
-    difficulty: 'Architecture',
-    keywords: ['message', 'protocol', 'async', 'stateless', 'network'],
-    prev: { href: '/blog/cli-ux-progressive-disclosure', title: 'Progressive Disclosure CLI' },
     next: { href: '/roadmap', title: 'Coming Soon Features' }
   },
 

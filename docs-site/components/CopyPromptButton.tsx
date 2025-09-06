@@ -30,7 +30,7 @@ export function CopyPromptButton() {
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = 'connectonion-llm-prompt.md'
+    a.download = 'co-vibecoding-principles-docs-contexts-all-in-one.md'
     document.body.appendChild(a)
     a.click()
     document.body.removeChild(a)
