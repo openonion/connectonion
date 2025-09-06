@@ -19,7 +19,7 @@ setup(
     # - Now in production: 0.0.2 (moved from beta 0.0.1b8)
     # - Follow semantic versioning: increment PATCH until 10, then roll to MINOR
     # - See VERSIONING.md for detailed versioning rules
-    version="0.0.4",
+    version="0.0.5",
     author="ConnectOnion Team",
     author_email="pypi@connectonion.com",
     description="A simple Python framework for creating AI agents with behavior tracking",
