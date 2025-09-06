@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 from datetime import datetime
 from connectonion import Agent, llm_do
+from connectonion.decorators import xray
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
@@ -150,6 +151,31 @@ class BrowserAutomation:
             return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
         return self._page.url
     
+    def wait(self, seconds: float) -> str:
+        """Wait for a specified number of seconds.
+        
+        Args:
+            seconds: Number of seconds to wait
+            
+        Returns:
+            Success message
+        """
+        if not PLAYWRIGHT_AVAILABLE:
+            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
+        self._page.wait_for_timeout(seconds * 1000)  # Convert to milliseconds
+        return f"Waited for {seconds} seconds"
+    
+    @xray
+    def get_debug_trace(self) -> str:
+        """Get execution trace for debugging.
+        
+        Returns:
+            Execution trace showing what happened
+        """
+        if hasattr(xray, 'trace'):
+            return xray.trace()
+        return "No trace available"
+    
     def click_element_by_description(self, description: str) -> str:
         """Click an element on the current page based on natural language description.
         
@@ -202,6 +228,7 @@ def execute_browser_command(command: str) -> str:
     browser = BrowserAutomation()
     agent = Agent(
         name="browser_cli",
+        model="o4-mini",
         system_prompt=PROMPT_PATH,
         tools=[browser],
         max_iterations=10
