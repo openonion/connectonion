@@ -737,47 +737,47 @@ Next steps:
                 name: 'my-agent',
                 type: 'folder',
                 children: [
-                  { name: 'agent.py', type: 'file', icon: 'python', description: 'Main agent implementation' },
+                  { name: 'agent.py', type: 'file', icon: 'python', comment: 'Main agent implementation' },
                   { 
                     name: 'tools',
                     type: 'folder',
-                    description: 'Custom tools directory',
+                    comment: 'Custom tools directory',
                     children: []
                   },
                   { 
                     name: 'prompts',
                     type: 'folder',
-                    description: 'System prompts (AI-enabled)',
+                    comment: 'System prompts (AI-enabled)',
                     children: []
                   },
-                  { name: '.env', type: 'file', icon: 'env', description: 'Environment configuration' },
+                  { name: '.env', type: 'file', icon: 'env', comment: 'Environment configuration' },
                   { 
                     name: '.co',
                     type: 'folder',
-                    description: 'ConnectOnion metadata',
+                    comment: 'ConnectOnion metadata',
                     children: [
-                      { name: 'config.toml', type: 'file', icon: 'config', description: 'Project configuration' },
+                      { name: 'config.toml', type: 'file', icon: 'config', comment: 'Project configuration' },
                       {
                         name: 'keys',
                         type: 'folder',
-                        description: 'Agent cryptographic keys',
+                        comment: 'Agent cryptographic keys',
                         children: [
-                          { name: 'agent.key', type: 'file', icon: 'key', description: 'Private signing key' },
-                          { name: 'recovery.txt', type: 'file', icon: 'shield', description: '12-word recovery phrase' },
-                          { name: 'DO_NOT_SHARE', type: 'file', icon: 'alert', description: 'Security warning' }
+                          { name: 'agent.key', type: 'file', comment: 'Private signing key' },
+                          { name: 'recovery.txt', type: 'file', comment: '12-word recovery phrase' },
+                          { name: 'DO_NOT_SHARE', type: 'file', comment: 'Security warning' }
                         ]
                       },
                       {
                         name: 'docs',
                         type: 'folder',
                         children: [
-                          { name: 'co-vibe-coding-all-in-one.md', type: 'file', icon: 'markdown', description: 'Complete framework docs' }
+                          { name: 'co-vibe-coding-all-in-one.md', type: 'file', icon: 'markdown', comment: 'Complete framework docs' }
                         ]
                       }
                     ]
                   },
-                  { name: 'README.md', type: 'file', icon: 'markdown', description: 'Project documentation' },
-                  { name: '.gitignore', type: 'file', icon: 'git', description: 'Git ignore rules' }
+                  { name: 'README.md', type: 'file', icon: 'markdown', comment: 'Project documentation' },
+                  { name: '.gitignore', type: 'file', icon: 'git', comment: 'Git ignore rules' }
                 ]
               }
             ]}
