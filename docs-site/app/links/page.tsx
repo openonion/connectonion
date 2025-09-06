@@ -137,46 +137,46 @@ export default function LinksPage() {
         {
           title: 'YouTube',
           description: 'Video tutorials and demos',
-          url: '#',
+          url: 'https://www.youtube.com/@openonionai',
           icon: Youtube,
           color: 'text-red-400',
           bgColor: 'bg-gradient-to-br from-red-600 to-red-800',
           borderColor: 'border-red-500',
           external: true,
-          available: false
+          available: true
         },
         {
           title: 'LinkedIn',
           description: 'Professional updates',
-          url: '#',
+          url: 'https://www.linkedin.com/company/openonion/',
           icon: Linkedin,
           color: 'text-blue-400',
           bgColor: 'bg-gradient-to-br from-blue-700 to-blue-900',
           borderColor: 'border-blue-600',
           external: true,
-          available: false
+          available: true
         },
         {
           title: 'Instagram',
           description: 'Behind the scenes',
-          url: '#',
+          url: 'https://www.instagram.com/openonionai/',
           icon: Instagram,
           color: 'text-pink-400',
           bgColor: 'bg-gradient-to-br from-pink-600 to-purple-700',
           borderColor: 'border-pink-500',
           external: true,
-          available: false
+          available: true
         },
         {
           title: 'TikTok',
           description: 'Quick tips and demos',
-          url: '#',
+          url: 'https://www.tiktok.com/@closeonion',
           icon: Video,
           color: 'text-pink-400',
           bgColor: 'bg-gradient-to-br from-gray-900 to-pink-900',
           borderColor: 'border-pink-600',
           external: true,
-          available: false
+          available: true
         }
       ]
     },

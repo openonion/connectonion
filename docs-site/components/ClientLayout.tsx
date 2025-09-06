@@ -12,11 +12,8 @@ export default function ClientLayout({
 }) {
   const pathname = usePathname()
   
-  // Don't show sidebar on blog, examples, roadmap, or threat-model pages
-  const showSidebar = !pathname.startsWith('/blog') && 
-                      !pathname.startsWith('/examples') && 
-                      !pathname.startsWith('/roadmap') &&
-                      !pathname.startsWith('/threat-model')
+  // Always show sidebar for better navigation
+  const showSidebar = true
   
   return (
     <>
@@ -24,7 +21,7 @@ export default function ClientLayout({
       <MobileDocsNav />
       
       <div className="flex min-h-screen">
-        {/* Desktop Sidebar - only show on documentation pages */}
+        {/* Desktop Sidebar - always visible for navigation */}
         {showSidebar && (
           <div className="hidden lg:block">
             <DocsSidebar />
