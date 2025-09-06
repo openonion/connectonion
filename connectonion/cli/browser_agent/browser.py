@@ -54,6 +54,21 @@ class BrowserAutomation:
         self._page.goto(url, wait_until='networkidle', timeout=30000)
         return f"Navigated to {url}"
     
+    def set_viewport(self, width: int, height: int) -> str:
+        """Set the browser viewport size.
+        
+        Args:
+            width: Viewport width in pixels
+            height: Viewport height in pixels
+            
+        Returns:
+            Success message
+        """
+        if not PLAYWRIGHT_AVAILABLE:
+            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
+        self._page.set_viewport_size({"width": width, "height": height})
+        return f"Viewport set to {width}x{height}"
+    
     def take_screenshot(self, url: str, path: str = "", 
                        width: int = 1920, height: int = 1080,
                        full_page: bool = False) -> str:
@@ -124,6 +139,16 @@ class BrowserAutomation:
         if not PLAYWRIGHT_AVAILABLE:
             return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
         return self._page.content()
+    
+    def get_current_url(self) -> str:
+        """Get the current page URL.
+        
+        Returns:
+            The current URL
+        """
+        if not PLAYWRIGHT_AVAILABLE:
+            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
+        return self._page.url
     
     def click_element_by_description(self, description: str) -> str:
         """Click an element on the current page based on natural language description.

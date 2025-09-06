@@ -480,8 +480,7 @@ export function DocsSidebar() {
           </a>
           <div className="flex items-center gap-2 px-2">
             <div className="w-1.5 h-1.5 bg-green-500 rounded-full" />
-            <span className="text-xs text-gray-400">v0.0.1b8</span>
-            <span className="text-[9px] px-1.5 py-0.5 bg-purple-500/20 text-purple-400 rounded-full font-bold">BETA</span>
+            <span className="text-xs text-gray-400">v0.0.4</span>
           </div>
         </div>
       </div>

@@ -139,8 +139,8 @@ Uses OpenAI's function calling with proper message formatting:
 
 ## Version Numbering Strategy
 
-**Version Strategy: Now in Production (0.0.2)**
-- Moved from beta (0.0.1b8) to production (0.0.2)
+**Version Strategy: Now in Production (0.0.4)**
+- Current production version: 0.0.4
 - Follow semantic versioning: increment PATCH by 1 until 10, then roll to MINOR
 - See VERSIONING.md for detailed versioning rules and update checklist
 
