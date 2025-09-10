@@ -40,12 +40,13 @@ export default function LinksPage() {
       try {
         const url = 'https://docs.connectonion.com/links'
         const dataUrl = await QRCode.toDataURL(url, {
-          width: 200,
-          margin: 2,
+          width: 256,
+          margin: 1,
           color: {
-            dark: '#000000',
+            dark: '#6B46C1', // Purple color matching the theme
             light: '#FFFFFF'
-          }
+          },
+          errorCorrectionLevel: 'H', // High error correction for logo overlay
         })
         setQrCodeDataUrl(dataUrl)
       } catch (err) {
@@ -399,13 +400,65 @@ export default function LinksPage() {
           
           {/* QR Code Display */}
           {showQR && qrCodeDataUrl && (
-            <div className="mt-6 inline-block p-4 bg-white rounded-lg shadow-xl">
-              <img 
-                src={qrCodeDataUrl}
-                alt="QR Code for ConnectOnion Links" 
-                className="w-48 h-48 rounded"
-              />
-              <p className="text-sm text-gray-600 mt-2">Scan to visit this page</p>
+            <div className="mt-8 inline-block animate-fadeIn">
+              {/* Outer glow container */}
+              <div className="relative">
+                {/* Animated gradient background */}
+                <div className="absolute inset-0 bg-gradient-to-r from-purple-600 via-pink-600 to-blue-600 rounded-3xl blur-xl opacity-60 animate-pulse"></div>
+                
+                {/* Main QR code container */}
+                <div className="relative bg-gradient-to-br from-gray-900 via-purple-900/20 to-gray-900 p-1 rounded-3xl shadow-2xl">
+                  <div className="bg-white rounded-2xl p-6">
+                    {/* QR Code with logo overlay */}
+                    <div className="relative">
+                      <img 
+                        src={qrCodeDataUrl}
+                        alt="QR Code for ConnectOnion Links" 
+                        className="w-64 h-64 rounded-lg"
+                      />
+                      
+                      {/* Center logo overlay */}
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <div className="bg-white rounded-xl p-2 shadow-lg">
+                          <img 
+                            src="https://raw.githubusercontent.com/wu-changxing/openonion-assets/master/imgs/Onion.png" 
+                            alt="ConnectOnion Logo" 
+                            className="w-12 h-12 rounded-lg"
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    
+                    {/* Text and icons */}
+                    <div className="mt-4 text-center">
+                      <div className="flex items-center justify-center gap-2 mb-2">
+                        <QrCode className="w-5 h-5 text-purple-600" />
+                        <p className="text-lg font-semibold text-gray-800">Scan to Connect</p>
+                      </div>
+                      <p className="text-sm text-gray-600">
+                        docs.connectonion.com/links
+                      </p>
+                      <div className="mt-3 flex items-center justify-center gap-3">
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <Sparkles className="w-3 h-3" />
+                          <span>Quick Access</span>
+                        </div>
+                        <div className="text-gray-300">•</div>
+                        <div className="flex items-center gap-1 text-xs text-gray-500">
+                          <LinkIcon className="w-3 h-3" />
+                          <span>All Links</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                {/* Decorative corners */}
+                <div className="absolute -top-2 -left-2 w-6 h-6 border-t-2 border-l-2 border-purple-400 rounded-tl-lg"></div>
+                <div className="absolute -top-2 -right-2 w-6 h-6 border-t-2 border-r-2 border-purple-400 rounded-tr-lg"></div>
+                <div className="absolute -bottom-2 -left-2 w-6 h-6 border-b-2 border-l-2 border-purple-400 rounded-bl-lg"></div>
+                <div className="absolute -bottom-2 -right-2 w-6 h-6 border-b-2 border-r-2 border-purple-400 rounded-br-lg"></div>
+              </div>
             </div>
           )}
         </div>
