@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { 
   Github, MessageCircle, Package, BookOpen, Newspaper, Mail,
   Twitter, Instagram, Youtube, Linkedin, Globe, ExternalLink,
@@ -9,6 +9,7 @@ import {
 } from 'lucide-react'
 import Link from 'next/link'
 import { ContentNavigation } from '../../components/ContentNavigation'
+import QRCode from 'qrcode'
 
 interface LinkItem {
   title: string
@@ -31,6 +32,29 @@ interface LinkSection {
 export default function LinksPage() {
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null)
   const [showQR, setShowQR] = useState(false)
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>('')
+
+  useEffect(() => {
+    // Generate QR code for the links page URL
+    const generateQRCode = async () => {
+      try {
+        const url = 'https://docs.connectonion.com/links'
+        const dataUrl = await QRCode.toDataURL(url, {
+          width: 200,
+          margin: 2,
+          color: {
+            dark: '#000000',
+            light: '#FFFFFF'
+          }
+        })
+        setQrCodeDataUrl(dataUrl)
+      } catch (err) {
+        console.error('Error generating QR code:', err)
+      }
+    }
+    
+    generateQRCode()
+  }, [])
 
   const handleCopyLink = (url: string, title: string) => {
     navigator.clipboard.writeText(url)
@@ -374,11 +398,13 @@ export default function LinksPage() {
           </div>
           
           {/* QR Code Display */}
-          {showQR && (
+          {showQR && qrCodeDataUrl && (
             <div className="mt-6 inline-block p-4 bg-white rounded-lg shadow-xl">
-              <div className="w-48 h-48 bg-gray-200 flex items-center justify-center rounded">
-                <span className="text-gray-500 text-sm">QR Code Placeholder</span>
-              </div>
+              <img 
+                src={qrCodeDataUrl}
+                alt="QR Code for ConnectOnion Links" 
+                className="w-48 h-48 rounded"
+              />
               <p className="text-sm text-gray-600 mt-2">Scan to visit this page</p>
             </div>
           )}

@@ -12,17 +12,19 @@
     "@types/react-syntax-highlighter": "^15.5.13",
     "framer-motion": "^12.23.12",
     "lucide-react": "^0.536.0",
+    "marked": "^15.0.12",
     "next": "15.4.5",
+    "qrcode": "^1.5.4",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-icons": "^5.5.0",
     "react-intersection-observer": "^9.16.0",
-    "react-syntax-highlighter": "^15.6.1",
-    "marked": "^15.0.12"
+    "react-syntax-highlighter": "^15.6.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "autoprefixer": "^10.4.21",
