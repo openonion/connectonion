@@ -146,16 +146,20 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
         
         choices = [
             questionary.Choice(
-                title="🔑 Use my own API key (OpenAI, Anthropic, Google, Groq)",
+                title="🔑 Enter my API key (OpenAI, Anthropic, Gemini)",
                 value="own_key"
             ),
             questionary.Choice(
-                title="🧅 Use ConnectOnion managed keys (same price as providers)",
+                title="⭐ Star for 100k free tokens",
+                value="star"
+            ),
+            questionary.Choice(
+                title="🧅 ConnectOnion credits (same price as OpenAI)",
                 value="managed"
             ),
             questionary.Choice(
-                title="⭐ Star us on GitHub for 100k free tokens",
-                value="star"
+                title="⏭️  Skip (add to .env later)",
+                value="skip"
             ),
         ]
         
@@ -322,17 +326,24 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
             
             return "star", "connectonion", None  # Should not reach here
             
+        elif result == "skip":
+            # User chose to skip API setup
+            console.print("\n[yellow]⏭️  Skipping API setup[/yellow]")
+            console.print("[dim]You can add your API key later in the .env file[/dim]")
+            return "skip", "", None  # Return "skip" as api_key to indicate skip choice
+            
         else:
             raise KeyboardInterrupt()
             
     except ImportError:
         # Fallback to simple menu
         click.echo(f"\n{Colors.CYAN}🔑 API Key Setup{Colors.END}")
-        click.echo("1. Use my own API key")
-        click.echo("2. Use ConnectOnion managed keys")
-        click.echo("3. Star us for 100k free tokens")
+        click.echo("1. Enter my API key (OpenAI, Anthropic, Gemini)")
+        click.echo("2. Star for 100k free tokens")
+        click.echo("3. ConnectOnion credits (same price as OpenAI)")
+        click.echo("4. Skip (add to .env later)")
         
-        choice = click.prompt("Select option", type=click.IntRange(1, 3), default=1)
+        choice = click.prompt("Select option", type=click.IntRange(1, 4), default=1)
         
         if choice == 1:
             api_key = click.prompt("API key", default="", hide_input=True, show_default=False)
@@ -342,21 +353,6 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                 return api_key, provider, False  # No auth needed for own keys
             return "", "", False
         elif choice == 2:
-            import webbrowser
-            
-            click.echo(f"\n{Colors.CYAN}🧅 ConnectOnion Managed Keys{Colors.END}")
-            click.echo("• Same pricing as OpenAI/Anthropic")
-            click.echo("• No API key management needed")
-            click.echo("• Pay as you go with tokens")
-            
-            if click.confirm("\nWould you like to open the purchase page?", default=True):
-                click.echo("\nOpening ConnectOnion in your browser...")
-                webbrowser.open("https://o.openonion.ai")
-            
-            click.echo(f"\n{Colors.YELLOW}Authentication will happen after project setup{Colors.END}")
-            
-            return "managed", "connectonion", True  # Needs auth after project creation
-        else:
             import webbrowser
             from .auth_commands import do_auth_flow
             
@@ -401,7 +397,33 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                     click.echo(f"\n{Colors.DIM}We'll wait for you to star the repository...{Colors.END}")
                     # Loop will continue to ask again
             
-            return "star", "connectonion"
+            return "star", "connectonion", None
+            
+        elif choice == 3:
+            # ConnectOnion managed keys
+            import webbrowser
+            
+            click.echo(f"\n{Colors.CYAN}🧅 ConnectOnion Credits{Colors.END}")
+            click.echo("• Same price as OpenAI")
+            click.echo("• No API key management needed")
+            click.echo("• Pay as you go with tokens")
+            
+            if click.confirm("\nWould you like to open the purchase page?", default=True):
+                click.echo("\nOpening ConnectOnion in your browser...")
+                webbrowser.open("https://o.openonion.ai")
+            
+            click.echo(f"\n{Colors.YELLOW}Authentication will happen after project setup{Colors.END}")
+            
+            return "managed", "connectonion", None
+            
+        elif choice == 4:
+            # Skip
+            click.echo(f"\n{Colors.YELLOW}⏭️  Skipping API setup{Colors.END}")
+            click.echo(f"{Colors.DIM}You can add your API key later in the .env file{Colors.END}")
+            return "skip", "", None
+            
+        else:
+            return "", "", None
 
 
 def interactive_menu(options: List[Tuple[str, str, str]], prompt: str = "Choose an option:") -> str:
@@ -1157,6 +1179,16 @@ todo.md
         for file in files_skipped:
             click.echo(f"  • {file}")
     
+    # Show .env reminder based on API key setup
+    click.echo("")
+    if api_key and provider:
+        if provider == "connectonion":
+            click.echo(f"💡 {Colors.CYAN}Using ConnectOnion credits - add your own key to .env if needed{Colors.END}")
+        else:
+            click.echo(f"💡 {Colors.CYAN}API key saved to .env - edit anytime to change providers{Colors.END}")
+    else:
+        click.echo(f"💡 {Colors.YELLOW}Add your API key to .env file to enable AI features{Colors.END}")
+    
     # Next steps with color coding
     click.echo(f"\n{Colors.CYAN}🚀 Next steps:{Colors.END}")
     click.echo(f"{Colors.CYAN}{'─' * 40}{Colors.END}")
@@ -1239,10 +1271,14 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # API key setup (temp_project_dir already declared above for signal handler)
     if ai and not api_key and not yes:
         api_key, provider, temp_project_dir = api_key_setup_menu()
-        if not api_key and not provider:
-            # User cancelled
+        if api_key == "skip":
+            # User chose to skip
+            api_key = None
+            ai = False  # Disable AI features since no API key
+        elif not api_key and not provider:
+            # User cancelled (Ctrl+C or similar)
             click.echo(f"{Colors.YELLOW}API key setup cancelled.{Colors.END}")
-            ai = False
+            return
     elif ai and api_key:
         provider, key_type = detect_api_provider(api_key)
     
@@ -1250,6 +1286,11 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     custom_code = None
     ai_suggested_name = None
     if template == 'custom':
+        # Custom template requires AI
+        if not ai or not api_key:
+            click.echo(f"{Colors.RED}❌ Custom template requires an API key for AI generation{Colors.END}")
+            click.echo(f"{Colors.YELLOW}Please run 'co create' again and provide an API key{Colors.END}")
+            return
         if not description and not yes:
             click.echo(f"\n{Colors.CYAN}🤖 Describe your agent:{Colors.END}")
             description = click.prompt("  What should your agent do?")
@@ -1550,6 +1591,16 @@ todo.md
             email_status = "" if addr_data.get('email_active', False) else " (inactive)"
             status_color = Colors.GREEN if addr_data.get('email_active', False) else Colors.YELLOW
             click.echo(f"📧 Agent email: {Colors.CYAN}{addr_data['email']}{Colors.END}{status_color}{email_status}{Colors.END}")
+    
+    # Show .env reminder based on API key setup
+    click.echo("")
+    if api_key and api_key != "skip":
+        if provider == "connectonion":
+            click.echo(f"💡 {Colors.CYAN}Using ConnectOnion credits - add your own key to .env if needed{Colors.END}")
+        else:
+            click.echo(f"💡 {Colors.CYAN}API key saved to .env - edit anytime to change providers{Colors.END}")
+    else:
+        click.echo(f"💡 {Colors.YELLOW}Add your API key to .env file to enable AI features{Colors.END}")
     
     # Next steps with color coding
     click.echo(f"\n{Colors.CYAN}🚀 Next steps:{Colors.END}")
