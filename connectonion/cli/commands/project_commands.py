@@ -1127,22 +1127,18 @@ todo.md
     if 'addr_data' in locals() and addr_data.get('short_address'):
         click.echo(f"\n🔑 Agent address: {Colors.CYAN}{addr_data['short_address']}{Colors.END}")
         if addr_data.get('email'):
-            email_status = " (inactive)" if not addr_data.get('email_active', False) else " (active)"
-            click.echo(f"📧 Agent email: {Colors.CYAN}{addr_data['email']}{Colors.END}{Colors.YELLOW}{email_status}{Colors.END}")
+            # Automatically activate email for the agent
+            if not addr_data.get('email_active', False):
+                # Silently activate email in the background
+                from .auth_commands import do_direct_registration
+                if do_direct_registration(co_dir, registration_type="email"):
+                    # Email is now activated
+                    addr_data['email_active'] = True
             
-            # Ask if user wants to activate email now
-            if not addr_data.get('email_active', False) and not yes:
-                click.echo(f"\n{Colors.CYAN}💌 Your agent can send emails!{Colors.END}")
-                click.echo(f"   Email address: {Colors.BOLD}{addr_data['email']}{Colors.END}")
-                if click.confirm(f"\n{Colors.YELLOW}Would you like to activate your agent's email now?{Colors.END}"):
-                    click.echo(f"\n{Colors.CYAN}Activating email directly...{Colors.END}")
-                    # Use direct registration for email activation (no browser needed)
-                    from .auth_commands import do_direct_registration
-                    if do_direct_registration(co_dir, registration_type="email"):
-                        # Email is now activated
-                        click.echo(f"{Colors.GREEN}✨ Email activated! Your agent can now send emails.{Colors.END}")
-                    else:
-                        click.echo(f"{Colors.YELLOW}You can activate later with 'co auth'{Colors.END}")
+            # Show email status after activation attempt
+            email_status = "" if addr_data.get('email_active', False) else " (inactive)"
+            status_color = Colors.GREEN if addr_data.get('email_active', False) else Colors.YELLOW
+            click.echo(f"📧 Agent email: {Colors.CYAN}{addr_data['email']}{Colors.END}{status_color}{email_status}{Colors.END}")
     
     if files_created:
         click.echo(f"\n{Colors.CYAN}📂 Files created:{Colors.END}")
@@ -1548,22 +1544,18 @@ todo.md
     if 'addr_data' in locals() and addr_data.get('short_address'):
         click.echo(f"\n🔑 Agent address: {Colors.CYAN}{addr_data['short_address']}{Colors.END}")
         if addr_data.get('email'):
-            email_status = " (inactive)" if not addr_data.get('email_active', False) else " (active)"
-            click.echo(f"📧 Agent email: {Colors.CYAN}{addr_data['email']}{Colors.END}{Colors.YELLOW}{email_status}{Colors.END}")
+            # Automatically activate email for the agent
+            if not addr_data.get('email_active', False):
+                # Silently activate email in the background
+                from .auth_commands import do_direct_registration
+                if do_direct_registration(co_dir, registration_type="email"):
+                    # Email is now activated
+                    addr_data['email_active'] = True
             
-            # Ask if user wants to activate email now
-            if not addr_data.get('email_active', False) and not yes:
-                click.echo(f"\n{Colors.CYAN}💌 Your agent can send emails!{Colors.END}")
-                click.echo(f"   Email address: {Colors.BOLD}{addr_data['email']}{Colors.END}")
-                if click.confirm(f"\n{Colors.YELLOW}Would you like to activate your agent's email now?{Colors.END}"):
-                    click.echo(f"\n{Colors.CYAN}Activating email directly...{Colors.END}")
-                    # Use direct registration for email activation (no browser needed)
-                    from .auth_commands import do_direct_registration
-                    if do_direct_registration(co_dir, registration_type="email"):
-                        # Email is now activated
-                        click.echo(f"{Colors.GREEN}✨ Email activated! Your agent can now send emails.{Colors.END}")
-                    else:
-                        click.echo(f"{Colors.YELLOW}You can activate later with 'co auth'{Colors.END}")
+            # Show email status after activation attempt
+            email_status = "" if addr_data.get('email_active', False) else " (inactive)"
+            status_color = Colors.GREEN if addr_data.get('email_active', False) else Colors.YELLOW
+            click.echo(f"📧 Agent email: {Colors.CYAN}{addr_data['email']}{Colors.END}{status_color}{email_status}{Colors.END}")
     
     # Next steps with color coding
     click.echo(f"\n{Colors.CYAN}🚀 Next steps:{Colors.END}")
