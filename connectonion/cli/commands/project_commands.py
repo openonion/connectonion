@@ -1135,8 +1135,10 @@ todo.md
                 click.echo(f"\n{Colors.CYAN}💌 Your agent can send emails!{Colors.END}")
                 click.echo(f"   Email address: {Colors.BOLD}{addr_data['email']}{Colors.END}")
                 if click.confirm(f"\n{Colors.YELLOW}Would you like to activate your agent's email now?{Colors.END}"):
-                    click.echo(f"\n{Colors.CYAN}Launching authentication...{Colors.END}")
-                    if do_auth_flow(co_dir):
+                    click.echo(f"\n{Colors.CYAN}Activating email directly...{Colors.END}")
+                    # Use direct registration for email activation (no browser needed)
+                    from .auth_commands import do_direct_registration
+                    if do_direct_registration(co_dir, registration_type="email"):
                         # Email is now activated
                         click.echo(f"{Colors.GREEN}✨ Email activated! Your agent can now send emails.{Colors.END}")
                     else:
@@ -1554,8 +1556,10 @@ todo.md
                 click.echo(f"\n{Colors.CYAN}💌 Your agent can send emails!{Colors.END}")
                 click.echo(f"   Email address: {Colors.BOLD}{addr_data['email']}{Colors.END}")
                 if click.confirm(f"\n{Colors.YELLOW}Would you like to activate your agent's email now?{Colors.END}"):
-                    click.echo(f"\n{Colors.CYAN}Launching authentication...{Colors.END}")
-                    if do_auth_flow(co_dir):
+                    click.echo(f"\n{Colors.CYAN}Activating email directly...{Colors.END}")
+                    # Use direct registration for email activation (no browser needed)
+                    from .auth_commands import do_direct_registration
+                    if do_direct_registration(co_dir, registration_type="email"):
                         # Email is now activated
                         click.echo(f"{Colors.GREEN}✨ Email activated! Your agent can now send emails.{Colors.END}")
                     else:
