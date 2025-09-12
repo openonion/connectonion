@@ -8,6 +8,9 @@ import os
 import openai
 import anthropic
 import google.generativeai as genai
+import requests
+from pathlib import Path
+import toml
 
 
 @dataclass
@@ -593,6 +596,95 @@ MODEL_REGISTRY = {
 }
 
 
+class OpenOnionLLM(LLM):
+    """OpenOnion managed keys LLM implementation."""
+    
+    def __init__(self, api_key: Optional[str] = None, model: str = "co/gpt-4o-mini", **kwargs):
+        # For co/ models, api_key is actually the auth token
+        self.auth_token = api_key or self._get_auth_token()
+        if not self.auth_token:
+            raise ValueError(
+                "No authentication token found for co/ models.\n"
+                "Run 'co auth' to authenticate first."
+            )
+        
+        self.model = model
+        
+        # Determine API URL
+        if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
+            self.api_url = "http://localhost:8000/api/llm/completions"
+        else:
+            self.api_url = "https://oo.openonion.ai/api/llm/completions"
+    
+    def _get_auth_token(self) -> Optional[str]:
+        """Get authentication token from local config."""
+        # Try current directory first
+        config_paths = [
+            Path.cwd() / ".co" / "config.toml",
+            Path.home() / ".connectonion" / ".co" / "config.toml"
+        ]
+        
+        for config_path in config_paths:
+            if config_path.exists():
+                try:
+                    config = toml.load(config_path)
+                    if "auth" in config and "token" in config["auth"]:
+                        return config["auth"]["token"]
+                except Exception:
+                    continue
+        
+        return None
+    
+    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> LLMResponse:
+        """Complete a conversation with optional tool support."""
+        headers = {
+            "Authorization": f"Bearer {self.auth_token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": self.model,
+            "messages": messages
+        }
+        
+        # Add tools if provided
+        if tools:
+            payload["tools"] = [{"type": "function", "function": tool} for tool in tools]
+            payload["tool_choice"] = "auto"
+        
+        try:
+            response = requests.post(self.api_url, json=payload, headers=headers, timeout=30)
+            response.raise_for_status()
+            data = response.json()
+            
+            # Parse the response
+            choice = data["choices"][0]
+            message = choice["message"]
+            
+            # Parse tool calls if present
+            tool_calls = []
+            if message.get("tool_calls"):
+                for tc in message["tool_calls"]:
+                    tool_calls.append(ToolCall(
+                        name=tc["function"]["name"],
+                        arguments=json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"],
+                        id=tc["id"]
+                    ))
+            
+            return LLMResponse(
+                content=message.get("content"),
+                tool_calls=tool_calls,
+                raw_response=data
+            )
+            
+        except requests.exceptions.RequestException as e:
+            if hasattr(e, 'response') and e.response:
+                error_msg = f"OpenOnion API error: {e.response.status_code} - {e.response.text}"
+            else:
+                error_msg = f"Network error: {str(e)}"
+            raise ValueError(error_msg)
+
+
 def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     """Factory function to create the appropriate LLM based on model name.
     
@@ -607,6 +699,10 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     Raises:
         ValueError: If the model is not recognized
     """
+    # Check if it's a co/ model (OpenOnion managed keys)
+    if model.startswith("co/"):
+        return OpenOnionLLM(api_key=api_key, model=model, **kwargs)
+    
     # Get provider from registry
     provider = MODEL_REGISTRY.get(model)
     

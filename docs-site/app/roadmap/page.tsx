@@ -55,93 +55,135 @@ export default function RoadmapPage() {
   const features = {
     core: [
       {
-        title: 'Share & Find Functions',
+        title: 'Basic Agent Framework',
+        status: 'completed',
+        description: 'Simple Python framework with tool system',
+        targetDate: 'Jan 2025',
+        progress: 100,
+      },
+      {
+        title: 'CLI Tool (co)',
+        status: 'completed',
+        description: 'Initialize and manage agent projects',
+        targetDate: 'Feb 2025',
+        progress: 100,
+      },
+      {
+        title: 'Browser Agent',
+        status: 'completed',
+        description: 'Stateful web navigation and scraping',
+        targetDate: 'Aug 2025',
+        progress: 100,
+      },
+      {
+        title: 'Advanced Tool System',
         status: 'in-progress',
-        description: 'One-line sharing, natural language discovery',
-        targetDate: 'Q1 2025',
-        progress: 65,
+        description: 'Enhanced tool composition and chaining',
+        targetDate: 'Oct 2025',
+        progress: 35,
       },
       {
         title: 'Agent-to-Agent Protocol',
         status: 'planned',
-        description: 'Seamless agent communication and collaboration',
-        targetDate: 'Q2 2025',
-        progress: 10,
-      },
-      {
-        title: 'Visual Agent Builder',
-        status: 'planned',
-        description: 'Drag-and-drop workflow creation',
-        targetDate: 'Q3 2025',
+        description: 'Enable agents to collaborate seamlessly',
+        targetDate: 'Dec 2025',
         progress: 0,
       }
     ],
     trust: [
       {
-        title: 'Test Before Trust',
+        title: 'Behavior Tracking',
+        status: 'completed',
+        description: 'Automatic recording of all agent actions',
+        targetDate: 'Mar 2025',
+        progress: 100,
+      },
+      {
+        title: 'Function Validation',
         status: 'in-progress',
-        description: 'Sandbox testing with automatic rollback',
-        targetDate: 'Q1 2025',
-        progress: 40,
+        description: 'Type checking and parameter validation',
+        targetDate: 'Sep 2025',
+        progress: 70,
       },
       {
-        title: 'Agent Authentication',
+        title: 'Sandbox Mode',
         status: 'planned',
-        description: 'Cryptographic identity verification',
-        targetDate: 'Q2 2025',
-        progress: 5,
+        description: 'Test agents safely before deployment',
+        targetDate: 'Nov 2025',
+        progress: 15,
       },
       {
-        title: 'End-to-End Encryption',
+        title: 'Audit Logs',
         status: 'planned',
-        description: 'Secure agent communications',
-        targetDate: 'Q3 2025',
+        description: 'Comprehensive action history and rollback',
+        targetDate: 'Jan 2026',
         progress: 0,
       }
     ],
     intelligence: [
       {
-        title: 'Memory System',
-        status: 'in-progress',
-        description: 'Learn from past interactions',
-        targetDate: 'Q1 2025',
-        progress: 30,
+        title: 'OpenAI Integration',
+        status: 'completed',
+        description: 'Full GPT-4 function calling support',
+        targetDate: 'Jan 2025',
+        progress: 100,
       },
       {
         title: 'Multi-Model Support',
-        status: 'planned',
-        description: 'Claude, Gemini, and local models',
-        targetDate: 'Q2 2025',
-        progress: 15,
+        status: 'in-progress',
+        description: 'Claude, Gemini, and Mistral integration',
+        targetDate: 'Oct 2025',
+        progress: 25,
       },
       {
-        title: 'Smart Routing',
+        title: 'Context Management',
         status: 'planned',
-        description: 'Optimize for cost and latency',
-        targetDate: 'Q3 2025',
+        description: 'Smart conversation memory and retrieval',
+        targetDate: 'Nov 2025',
+        progress: 10,
+      },
+      {
+        title: 'Local Model Support',
+        status: 'planned',
+        description: 'Run Llama, Mistral locally via Ollama',
+        targetDate: 'Feb 2026',
         progress: 0,
       }
     ],
     platform: [
       {
-        title: 'Cloud Hosting',
-        status: 'planned',
-        description: 'One-click agent deployment',
-        targetDate: 'Q2 2025',
-        progress: 20,
+        title: 'PyPI Package',
+        status: 'completed',
+        description: 'pip install connectonion',
+        targetDate: 'Feb 2025',
+        progress: 100,
       },
       {
-        title: 'Agent Marketplace',
-        status: 'planned',
-        description: 'Share and monetize components',
-        targetDate: 'Q3 2025',
-        progress: 0,
+        title: 'Documentation Site',
+        status: 'completed',
+        description: 'Comprehensive docs at docs.connectonion.com',
+        targetDate: 'Jul 2025',
+        progress: 100,
       },
       {
-        title: 'Enterprise Features',
+        title: 'Example Library',
+        status: 'in-progress',
+        description: 'Real-world agent examples and templates',
+        targetDate: 'Sep 2025',
+        progress: 60,
+      },
+      {
+        title: 'VS Code Extension',
         status: 'planned',
-        description: 'SSO, RBAC, and compliance',
-        targetDate: 'Q4 2025',
+        description: 'Agent development and debugging tools',
+        targetDate: 'Dec 2025',
+        progress: 5,
+      },
+      {
+        title: 'Agent Registry',
+        status: 'planned',
+        description: 'Share and discover community agents',
+        targetDate: 'Mar 2026',
         progress: 0,
       }
     ]
@@ -195,12 +237,12 @@ export default function RoadmapPage() {
             <h1 className="text-3xl font-bold text-white">
               Roadmap
             </h1>
-            <span className="px-2 py-1 bg-gradient-to-r from-purple-600 to-pink-600 text-white text-xs font-semibold rounded-full">
-              PREVIEW
+            <span className="px-2 py-1 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-xs font-semibold rounded-full">
+              v0.0.5
             </span>
           </div>
           <p className="text-gray-400">
-            Our vision for the future of ConnectOnion
+            Track our progress from v0.0.1 to v1.0 and beyond
           </p>
         </div>
 
@@ -290,8 +332,30 @@ export default function RoadmapPage() {
           })}
         </div>
 
+        {/* Progress Summary */}
+        <div className="mt-12 p-4 bg-gray-800/50 rounded-xl border border-gray-700">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div>
+              <div className="text-2xl font-bold text-green-400">8</div>
+              <div className="text-xs text-gray-400">Completed</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-yellow-400">5</div>
+              <div className="text-xs text-gray-400">In Progress</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-gray-400">7</div>
+              <div className="text-xs text-gray-400">Planned</div>
+            </div>
+            <div>
+              <div className="text-2xl font-bold text-purple-400">Sep 2025</div>
+              <div className="text-xs text-gray-400">Current Month</div>
+            </div>
+          </div>
+        </div>
+
         {/* Call to Action */}
-        <div className="mt-16 p-6 md:p-8 bg-gray-800/30 rounded-xl border border-gray-700 text-center">
+        <div className="mt-8 p-6 md:p-8 bg-gray-800/30 rounded-xl border border-gray-700 text-center">
           <h2 className="text-lg font-semibold text-white mb-3">Want to Shape Our Roadmap?</h2>
           <p className="text-gray-400 text-sm mb-6 max-w-xl mx-auto">
             We're building ConnectOnion with our community. Your feedback helps prioritize features.

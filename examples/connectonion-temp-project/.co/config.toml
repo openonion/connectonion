@@ -1,0 +1,6 @@
+[auth]
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdWJsaWNfa2V5IjoiMHg2MDYzZDE0MzI0MWEwOWYzNTIxZjM0MzFiNWE4NDBiZWRjNTliNjlmZTc4YWQ2ZDU4MDUxMzJiZjJiMGMwNGZlIiwiZXhwIjoxNzU3NzY2OTkxLCJpYXQiOjE3NTc2ODA1OTF9.yXDTYBR5v_ZGTC6YCdfl-6GWoQbsmwA_odpmctsP6zE"
+
+[agent]
+email = "0x6063d143@mail.openonion.ai"
+email_active = true

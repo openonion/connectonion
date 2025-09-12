@@ -87,6 +87,7 @@ class Agent:
             self.llm = llm
         else:
             # Use factory function to create appropriate LLM based on model
+            # For co/ models, the JWT token from 'co auth' is used automatically
             self.llm = create_llm(model=model, api_key=api_key)
         
         # Create tool mapping for quick lookup

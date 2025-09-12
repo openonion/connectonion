@@ -1,7 +1,7 @@
 import { 
   Home, Rocket, Terminal, MessageSquare, Code, Gauge, Zap, Shield, Bug, 
   GitBranch, FileText, FolderOpen, Sparkles, Calculator, Cloud, BookOpen,
-  Users, Settings, Layers, Brain, MessageCircle, Database, Package, Cpu, Chrome, Camera, Link, Mail
+  Users, Settings, Layers, Brain, MessageCircle, Database, Package, Cpu, Chrome, Camera, Link, Mail, FileCode2
 } from 'lucide-react'
 
 // Simple, flat navigation structure with all metadata in one place
@@ -23,6 +23,15 @@ export const navigation = [
     section: 'Getting Started',
     keywords: ['setup', 'install', 'begin', 'tutorial'],
     prev: { href: '/', title: 'Introduction' },
+    next: { href: '/vibe-coding', title: 'Vibe Coding Guide' }
+  },
+  {
+    title: 'Vibe Coding Guide',
+    href: '/vibe-coding',
+    icon: FileCode2,
+    section: 'Getting Started',
+    keywords: ['cursor', 'ai', 'vibe', 'coding', 'drag', 'drop', 'docs'],
+    prev: { href: '/quickstart', title: 'Quick Start' },
     next: { href: '/cli', title: 'CLI Reference' }
   },
   {
@@ -31,7 +40,7 @@ export const navigation = [
     icon: Terminal,
     section: 'Getting Started',
     keywords: ['command', 'terminal', 'co', 'commands'],
-    prev: { href: '/quickstart', title: 'Quick Start' },
+    prev: { href: '/vibe-coding', title: 'Vibe Coding Guide' },
     next: { href: '/prompts', title: 'System Prompts' }
   },
 

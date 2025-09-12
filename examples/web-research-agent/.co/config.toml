@@ -1,0 +1,19 @@
+[project]
+name = "web-research-agent"
+created = "2025-09-12T23:17:18.844071"
+framework_version = "0.0.5"
+
+[cli]
+version = "1.0.0"
+command = "co create web-research-agent"
+template = "web-research"
+
+[agent]
+address = "0x143dcc972695c7c49bf982c7dedc6e7d8e9a64cbc305b569ba02d53fc2cb1ce7"
+short_address = "0x143d...1ce7"
+email = "0x143dcc97@mail.openonion.ai"
+email_active = false
+created_at = "2025-09-12T23:17:18.844086"
+algorithm = "ed25519"
+default_model = "gpt-4o-mini"
+max_iterations = 10

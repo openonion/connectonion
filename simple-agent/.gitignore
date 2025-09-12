@@ -1,0 +1,9 @@
+# ConnectOnion
+.env
+.co/keys/
+.co/cache/
+.co/logs/
+.co/history/
+*.py[cod]
+__pycache__/
+todo.md

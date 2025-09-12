@@ -22,6 +22,7 @@ def generate() -> Dict[str, Any]:
         Dictionary containing:
         - address: Hex-encoded public key with 0x prefix (66 chars)
         - short_address: Truncated display format (0x3d40...660c)
+        - email: Agent's email address (0x3d4017c3@mail.openonion.ai)
         - seed_phrase: 12-word recovery phrase
         - signing_key: Ed25519 signing key for signatures
         
@@ -29,6 +30,8 @@ def generate() -> Dict[str, Any]:
         >>> addr = generate()
         >>> print(addr['address'])
         0x3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c
+        >>> print(addr['email'])
+        0x3d4017c3@mail.openonion.ai
     """
     if SigningKey is None or Mnemonic is None:
         raise ImportError(
@@ -53,9 +56,14 @@ def generate() -> Dict[str, Any]:
     # Create short display format
     short_address = f"{address[:6]}...{address[-4:]}"
     
+    # Create email address (first 10 chars of address)
+    email = f"{address[:10]}@mail.openonion.ai"
+    
     return {
         "address": address,
         "short_address": short_address,
+        "email": email,
+        "email_active": False,  # Email inactive until authenticated
         "seed_phrase": seed_phrase,
         "signing_key": signing_key
     }
@@ -102,9 +110,14 @@ def recover(seed_phrase: str) -> Dict[str, Any]:
     address = "0x" + public_key_bytes.hex()
     short_address = f"{address[:6]}...{address[-4:]}"
     
+    # Create email address (first 10 chars of address)
+    email = f"{address[:10]}@mail.openonion.ai"
+    
     return {
         "address": address,
         "short_address": short_address,
+        "email": email,
+        "email_active": False,  # Email inactive until authenticated
         "signing_key": signing_key
     }
 
@@ -195,9 +208,26 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
         if recovery_file.exists():
             seed_phrase = recovery_file.read_text().strip()
         
+        # Try to load email and activation status from config.toml
+        email = f"{address[:10]}@mail.openonion.ai"  # Default
+        email_active = False  # Default to inactive
+        
+        config_path = co_dir / "config.toml"
+        if config_path.exists():
+            try:
+                import toml
+                config = toml.load(config_path)
+                if "agent" in config:
+                    email = config["agent"].get("email", email)
+                    email_active = config["agent"].get("email_active", False)
+            except Exception:
+                pass  # Use defaults if config reading fails
+        
         result = {
             "address": address,
             "short_address": short_address,
+            "email": email,
+            "email_active": email_active,
             "signing_key": signing_key
         }
         

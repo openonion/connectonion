@@ -54,7 +54,7 @@ class TestCliCreate:
             from connectonion.cli.main import cli
             
             # Mock AI generation
-            with patch('connectonion.cli.main.generate_custom_template') as mock_gen:
+            with patch('connectonion.cli.commands.project_commands.generate_custom_template') as mock_gen:
                 mock_gen.return_value = "# Generated agent code"
                 
                 result = self.runner.invoke(cli, ['create', 'ai-agent'],
@@ -77,7 +77,7 @@ class TestCliCreate:
             
     def test_api_key_detection_openai(self):
         """Test API key detection for OpenAI."""
-        from connectonion.cli.main import detect_api_provider
+        from connectonion.cli.commands.project_commands import detect_api_provider
         
         # Test OpenAI formats
         provider, key_type = detect_api_provider('sk-1234567890abcdef')
@@ -89,21 +89,21 @@ class TestCliCreate:
         
     def test_api_key_detection_anthropic(self):
         """Test API key detection for Anthropic."""
-        from connectonion.cli.main import detect_api_provider
+        from connectonion.cli.commands.project_commands import detect_api_provider
         
         provider, _ = detect_api_provider('sk-ant-api03-xxx')
         assert provider == 'anthropic'
         
     def test_api_key_detection_google(self):
         """Test API key detection for Google."""
-        from connectonion.cli.main import detect_api_provider
+        from connectonion.cli.commands.project_commands import detect_api_provider
         
         provider, _ = detect_api_provider('AIzaSyAbc123def456')
         assert provider == 'google'
         
     def test_api_key_detection_groq(self):
         """Test API key detection for Groq."""
-        from connectonion.cli.main import detect_api_provider
+        from connectonion.cli.commands.project_commands import detect_api_provider
         
         provider, _ = detect_api_provider('gsk_abc123def456')
         assert provider == 'groq'
@@ -288,7 +288,7 @@ class TestAPIKeyIntegration:
     
     def test_environment_variable_detection(self):
         """Test environment variable detection for API keys."""
-        from connectonion.cli.main import check_environment_for_api_keys
+        from connectonion.cli.commands.project_commands import check_environment_for_api_keys
         import os
         
         # Save current env
@@ -324,7 +324,7 @@ class TestAPIKeyIntegration:
     
     def test_api_key_patterns(self):
         """Test all API key pattern detection."""
-        from connectonion.cli.main import detect_api_provider
+        from connectonion.cli.commands.project_commands import detect_api_provider
         
         test_cases = [
             ('sk-1234567890abcdef', 'openai'),
@@ -342,7 +342,7 @@ class TestAPIKeyIntegration:
     def test_env_file_generation_per_provider(self):
         """Test that .env file is correctly generated for each provider."""
         with CliRunner().isolated_filesystem():
-            from connectonion.cli.main import configure_env_for_provider
+            from connectonion.cli.commands.project_commands import configure_env_for_provider
             
             # Test OpenAI
             env_content = configure_env_for_provider('openai', 'sk-test123')

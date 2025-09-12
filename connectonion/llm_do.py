@@ -15,6 +15,8 @@ from pathlib import Path
 from pydantic import BaseModel
 import json
 import os
+import toml
+import requests
 from .prompts import load_system_prompt
 from .llm import MODEL_REGISTRY
 
@@ -25,11 +27,17 @@ def _get_litellm_model_name(model: str) -> str:
     """Convert model name to LiteLLM format.
     
     For most models, we use the simple name (e.g., "gpt-4o", "claude-3-5-sonnet").
-    Only special providers need prefixes:
+    Special prefixes:
+    - co/model_name for ConnectOnion managed keys (stripped for actual API call)
     - ollama/model_name for local Ollama models
     - azure/deployment_name for Azure OpenAI
     - bedrock/model_id for AWS Bedrock
     """
+    # Handle ConnectOnion managed keys prefix
+    if model.startswith("co/"):
+        # Strip the co/ prefix for the actual model name
+        model = model[3:]
+    
     # If already has a provider prefix, return as-is
     if "/" in model:
         return model
@@ -43,6 +51,20 @@ def _get_litellm_model_name(model: str) -> str:
     # For OpenAI and Anthropic models, use as-is
     # LiteLLM handles them without prefixes
     return model
+
+
+def _get_auth_token() -> Optional[str]:
+    """Get authentication token from .co/config.toml if available."""
+    try:
+        co_dir = Path(".co")
+        if co_dir.exists():
+            config_path = co_dir / "config.toml"
+            if config_path.exists():
+                config = toml.load(config_path)
+                return config.get("auth", {}).get("token")
+    except Exception:
+        pass
+    return None
 
 
 def llm_do(
@@ -63,6 +85,7 @@ def llm_do(
     - Google: "gemini-1.5-pro", "gemini-1.5-flash"
     
     Special providers need prefixes:
+    - ConnectOnion Managed: "co/gpt-4o", "co/claude-3-5-sonnet" (no API keys needed!)
     - Ollama: "ollama/llama2", "ollama/mistral"
     - Azure: "azure/<deployment-name>"
     - Bedrock: "bedrock/anthropic.claude-v2"
@@ -71,7 +94,7 @@ def llm_do(
         input: The input text/question to send to the LLM
         output: Optional Pydantic model class for structured output
         system_prompt: Optional system prompt (string or file path)
-        model: Model name (e.g., "gpt-4o", "claude-3-5-sonnet", "ollama/llama2")
+        model: Model name (e.g., "gpt-4o", "co/gpt-4o", "claude-3-5-sonnet")
         temperature: Sampling temperature (default: 0.1 for consistency)
         api_key: Optional API key (uses environment variable if not provided)
         **kwargs: Additional parameters to pass to LiteLLM
@@ -83,6 +106,9 @@ def llm_do(
         >>> # Simple string response with OpenAI
         >>> answer = llm_do("What's 2+2?")
         >>> print(answer)  # "4"
+        
+        >>> # With ConnectOnion managed keys (no API key needed!)
+        >>> answer = llm_do("What's 2+2?", model="co/gpt-4o-mini")
         
         >>> # With Claude (simple name)
         >>> answer = llm_do("Explain quantum physics", model="claude-3-5-haiku-20241022")
@@ -105,13 +131,93 @@ def llm_do(
     if not input or not input.strip():
         raise ValueError("Input cannot be empty")
     
+    # Check if using ConnectOnion managed keys
+    is_managed_model = model.startswith("co/")
+    
     # Load system prompt
     if system_prompt:
         prompt_text = load_system_prompt(system_prompt)
     else:
         prompt_text = "You are a helpful assistant."
     
-    # Import LiteLLM
+    # Handle co/ models through our backend
+    if is_managed_model:
+        import requests
+        
+        # Get auth token
+        auth_token = _get_auth_token()
+        if not auth_token:
+            raise ValueError(
+                "No authentication token found for co/ models.\n"
+                "Run 'co auth' to authenticate first."
+            )
+        
+        # Build messages
+        messages = [
+            {"role": "system", "content": prompt_text},
+            {"role": "user", "content": input}
+        ]
+        
+        # Prepare request - use production URL unless explicitly in dev mode
+        if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
+            api_url = "http://localhost:8000/api/llm/completions"
+        else:
+            api_url = "https://oo.openonion.ai/api/llm/completions"
+        
+        headers = {
+            "Authorization": f"Bearer {auth_token}",
+            "Content-Type": "application/json"
+        }
+        
+        payload = {
+            "model": model,  # Keep the full model name with co/ prefix
+            "messages": messages,
+            "temperature": temperature,
+            **kwargs
+        }
+        
+        # Handle structured output
+        if output:
+            schema = output.model_json_schema()
+            json_instruction = (
+                f"\n\nPlease respond with a JSON object that matches this schema:\n"
+                f"{json.dumps(schema, indent=2)}\n"
+                f"Return ONLY valid JSON, no other text."
+            )
+            messages[-1]["content"] += json_instruction
+            payload["messages"] = messages
+        
+        try:
+            response = requests.post(api_url, json=payload, headers=headers)
+            response.raise_for_status()
+            data = response.json()
+            
+            content = data["choices"][0]["message"]["content"]
+            
+            if output:
+                # Parse structured output
+                import re
+                json_match = re.search(r'\{.*\}', content, re.DOTALL)
+                if json_match:
+                    json_str = json_match.group(0)
+                    json_data = json.loads(json_str)
+                    return output.model_validate(json_data)
+                else:
+                    # Try parsing entire content
+                    json_data = json.loads(content)
+                    return output.model_validate(json_data)
+            else:
+                return content
+                
+        except requests.exceptions.HTTPError as e:
+            if e.response.status_code == 401:
+                raise ValueError("Authentication expired. Run 'co auth' again.")
+            else:
+                raise ValueError(f"API error: {e.response.text}")
+        except Exception as e:
+            raise ValueError(f"Failed to call managed model: {e}")
+    
+    # Import LiteLLM for non-managed models
     try:
         from litellm import completion
         import litellm

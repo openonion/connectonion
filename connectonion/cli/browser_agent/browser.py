@@ -53,6 +53,8 @@ class BrowserAutomation:
         if not url.startswith(('http://', 'https://')):
             url = f'https://{url}' if '.' in url else f'http://{url}'
         self._page.goto(url, wait_until='networkidle', timeout=30000)
+        # Sleep for 2 seconds to ensure page is fully loaded
+        self._page.wait_for_timeout(2000)
         return f"Navigated to {url}"
     
     def set_viewport(self, width: int, height: int) -> str:

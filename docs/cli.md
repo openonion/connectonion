@@ -26,6 +26,8 @@ Both commands share the same interactive flow:
 2. API key input (with auto-detection)
 3. Template selection
 
+Note: The CLI now uses Rich for spinners/progress, improving readability without changing commands or flags.
+
 ## Commands
 
 ### `co create [name]`
