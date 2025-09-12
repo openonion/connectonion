@@ -238,7 +238,7 @@ export default function RoadmapPage() {
               Roadmap
             </h1>
             <span className="px-2 py-1 bg-gradient-to-r from-green-600 to-emerald-600 text-white text-xs font-semibold rounded-full">
-              v0.0.5
+              v0.0.6
             </span>
           </div>
           <p className="text-gray-400">
