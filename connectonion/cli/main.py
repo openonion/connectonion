@@ -28,7 +28,7 @@ def cli(ctx, browser):
               help='Enable or disable AI features')
 @click.option('--key', help='API key for AI provider')
 @click.option('--template', '-t',
-              type=click.Choice(['minimal', 'web-research', 'email-agent', 'custom', 'meta-agent', 'playwright']),
+              type=click.Choice(['minimal', 'playwright', 'custom']),
               help='Template to use')
 @click.option('--description', help='Description for custom template (requires AI)')
 @click.option('--yes', '-y', is_flag=True, help='Skip all prompts, use defaults')
@@ -47,7 +47,7 @@ def init(ai: Optional[bool], key: Optional[str], template: Optional[str],
               help='Enable or disable AI features')
 @click.option('--key', help='API key for AI provider')
 @click.option('--template', '-t',
-              type=click.Choice(['minimal', 'web-research', 'email-agent', 'custom', 'meta-agent', 'playwright']),
+              type=click.Choice(['minimal', 'playwright', 'custom']),
               help='Template to use')
 @click.option('--description', help='Description for custom template (requires AI)')
 @click.option('--yes', '-y', is_flag=True, help='Skip all prompts, use defaults')
