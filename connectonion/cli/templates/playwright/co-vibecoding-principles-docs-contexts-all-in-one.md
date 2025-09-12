@@ -1092,6 +1092,137 @@ smart.input("Research and analyze market trends")  # Uses 30 iterations
 
 ---
 
+## Send Email - Built-in Email Capability
+
+ConnectOnion includes built-in email functionality that allows agents to send emails with a single line of code. No configuration, no complexity.
+
+### Quick Start
+
+```python
+from connectonion import send_email
+
+# Send an email with one line
+send_email("alice@example.com", "Welcome!", "Thanks for joining us!")
+```
+
+**Result:**
+```python
+{'success': True, 'message_id': 'msg_123', 'from': '0x1234abcd@mail.openonion.ai'}
+```
+
+### Core Concept
+
+The `send_email` function provides:
+- Simple three-parameter interface: `send_email(to, subject, message)`
+- No API keys to manage (already configured)
+- Automatic email address for every agent
+- Professional delivery with good reputation
+
+### Your Agent's Email Address
+
+Every agent automatically gets an email address:
+```
+0x1234abcd@mail.openonion.ai
+```
+
+- Based on your public key (first 10 characters)
+- Generated during `co init` or `co create`
+- Activated with `co auth`
+
+### Email Configuration
+
+Your email is stored in `.co/config.toml`:
+```toml
+[agent]
+address = "0x04e1c4ae3c57d716383153479dae869e51e86d43d88db8dfa22fba7533f3968d"
+short_address = "0x04e1c4ae"
+email = "0x04e1c4ae@mail.openonion.ai"
+email_active = false  # Becomes true after 'co auth'
+```
+
+### Using with an Agent
+
+Give your agent email capability:
+
+```python
+from connectonion import Agent, send_email
+
+# Create an agent with email capability
+agent = Agent(
+    "customer_support",
+    tools=[send_email],
+    instructions="You help users and send them email confirmations"
+)
+
+# The agent can now send emails autonomously
+response = agent("Send a welcome email to alice@example.com")
+# Agent sends: send_email("alice@example.com", "Welcome!", "Thanks for joining...")
+```
+
+### Real-World Monitoring Example
+
+```python
+from connectonion import Agent, send_email
+
+def check_system_status() -> dict:
+    """Check if the system is running properly."""
+    cpu_usage = 95  # Simulated high CPU
+    return {"status": "warning", "cpu": cpu_usage}
+
+# Create monitoring agent
+monitor = Agent(
+    "system_monitor",
+    tools=[check_system_status, send_email],
+    instructions="Monitor system health and alert admin@example.com if issues"
+)
+
+# Agent checks system and sends alerts
+monitor("Check the system and alert if there are problems")
+# Agent will:
+# 1. Call check_system_status() 
+# 2. See high CPU (95%)
+# 3. Call send_email("admin@example.com", "Alert: High CPU", "CPU at 95%...")
+```
+
+### Return Values
+
+**Success:**
+```python
+{
+    'success': True,
+    'message_id': 'msg_123',
+    'from': '0x1234abcd@mail.openonion.ai'
+}
+```
+
+**Failure:**
+```python
+{
+    'success': False,
+    'error': 'Rate limit exceeded'
+}
+```
+
+Common errors:
+- `"Rate limit exceeded"` - Hit your quota
+- `"Invalid email address"` - Check the recipient
+- `"Authentication failed"` - Token issue
+
+### Content Types
+
+- **Plain text**: Just send a string
+- **HTML**: Include HTML tags, automatically detected
+- **Mixed**: HTML with plain text fallback
+
+### Quotas & Limits
+
+- **Free tier**: 100 emails/month
+- **Plus tier**: 1,000 emails/month
+- **Pro tier**: 10,000 emails/month
+- Automatic rate limiting with monthly reset
+
+---
+
 ## Best Practices
 
 ### Principles: Avoid over‑engineering with agents

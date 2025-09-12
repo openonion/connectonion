@@ -15,6 +15,9 @@ const routeToMarkdownMap: Record<string, string> = {
   '/trust': '/tutorials/trust.md',
   '/xray': '/tutorials/xray.md',
   
+  // Useful Tools
+  '/send-email': '/tutorials/send-email.md',
+  
   // Advanced Features
   '/xray/trace': '/tutorials/xray.md', // Uses same xray.md for now
   '/prompts/formats': '/tutorials/prompts.md', // Uses prompts.md for now

@@ -1,7 +1,7 @@
 import { 
   Home, Rocket, Terminal, MessageSquare, Code, Gauge, Zap, Shield, Bug, 
   GitBranch, FileText, FolderOpen, Sparkles, Calculator, Cloud, BookOpen,
-  Users, Settings, Layers, Brain, MessageCircle, Database, Package, Cpu, Chrome, Camera, Link
+  Users, Settings, Layers, Brain, MessageCircle, Database, Package, Cpu, Chrome, Camera, Link, Mail
 } from 'lucide-react'
 
 // Simple, flat navigation structure with all metadata in one place
@@ -53,6 +53,17 @@ export const navigation = [
     section: 'Core Concepts',
     keywords: ['function', 'utility', 'actions', 'capabilities', 'tools'],
     prev: { href: '/prompts', title: 'System Prompts' },
+    next: { href: '/send-email', title: 'Send Email' }
+  },
+  
+  // Useful Tools
+  {
+    title: 'Send Email',
+    href: '/send-email',
+    icon: Mail,
+    section: 'Useful Tools',
+    keywords: ['email', 'send', 'mail', 'notification', 'alert', 'message', 'smtp'],
+    prev: { href: '/tools', title: 'Tools' },
     next: { href: '/tools/browser', title: 'Browser Screenshots' }
   },
   
@@ -63,7 +74,7 @@ export const navigation = [
     icon: Camera,
     section: 'Debugging',
     keywords: ['browser', 'screenshot', 'debug', 'capture', 'viewport', 'playwright', 'test', 'responsive'],
-    prev: { href: '/tools', title: 'Tools' },
+    prev: { href: '/send-email', title: 'Send Email' },
     next: { href: '/models', title: 'Models' }
   },
   
