@@ -1,0 +1,19 @@
+[project]
+name = "email-agent"
+created = "2025-09-13T10:42:30.888412"
+framework_version = "0.0.7"
+
+[cli]
+version = "1.0.0"
+command = "co init"
+template = "none"
+
+[agent]
+address = "0x9d2f1f2e80f5fb1a3a0342a074906bfa4c9d7fe2f4e0351d7b620336e4e84b65"
+short_address = "0x9d2f...4b65"
+email = "0x9d2f1f2e@mail.openonion.ai"
+email_active = true
+created_at = "2025-09-13T10:42:30.888425"
+algorithm = "ed25519"
+default_model = "gpt-4o-mini"
+max_iterations = 10

@@ -1,6 +1,0 @@
-[auth]
-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdWJsaWNfa2V5IjoiMHgzZDU1OGQwNzY5ZmNhNmU2OWZkYTQxOTYwY2M1OWQ5NWY1ZjgwNTZmMzkyNzYzOTVlYTc5ZWYzOTQ2NDI1NWI1IiwiZXhwIjoxNzU3NzY3MjQxLCJpYXQiOjE3NTc2ODA4NDF9.HDGIuNsrEHf1K31XII_drXC2NYQmNtztooDNQVnSw9A"
-
-[agent]
-email = "0x3d558d07@mail.openonion.ai"
-email_active = true

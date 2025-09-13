@@ -951,14 +951,29 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     
     # Template selection
     if not template and not yes:
-        template_info = get_template_info()
-        # Filter out custom if AI is disabled
-        if not ai:
-            template_info = [t for t in template_info if t[0] != 'custom']
+        # Check if directory has existing files
+        has_existing_files = not is_directory_empty(current_dir)
+        
+        if has_existing_files:
+            # For existing projects, offer option to just add ConnectOnion config
+            template_info = [
+                ('none', '⚙️  Just add ConnectOnion config', 'Add .co folder and .env without any template files'),
+                ('minimal', '📦 Minimal', 'Basic agent structure'),
+                ('playwright', '🎭 Playwright', 'Browser automation agent'),
+            ]
+            if ai:
+                template_info.append(('custom', '✨ Custom', 'AI-generated agent'))
+        else:
+            # For empty directories, use normal template options
+            template_info = get_template_info()
+            # Filter out custom if AI is disabled
+            if not ai:
+                template_info = [t for t in template_info if t[0] != 'custom']
         
         template = interactive_menu(template_info, "Choose a template:")
     elif not template:
-        template = 'minimal'
+        # Default to 'none' for existing projects, 'minimal' for new
+        template = 'none' if not is_directory_empty(current_dir) else 'minimal'
     
     # Handle custom template
     custom_code = None
@@ -981,9 +996,9 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     
     # Get template directory
     cli_dir = Path(__file__).parent.parent
-    template_dir = cli_dir / "templates" / template
+    template_dir = cli_dir / "templates" / template if template != 'none' else None
     
-    if not template_dir.exists() and template != 'custom':
+    if template_dir and not template_dir.exists() and template not in ['custom', 'none']:
         click.echo(f"{Colors.RED}❌ Template '{template}' not found!{Colors.END}")
         return
     
@@ -991,7 +1006,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     files_created = []
     files_skipped = []
     
-    if template != 'custom' and template_dir.exists():
+    if template not in ['custom', 'none'] and template_dir and template_dir.exists():
         for item in template_dir.iterdir():
             # Skip hidden files except .env.example
             if item.name.startswith('.') and item.name != '.env.example':
@@ -1133,7 +1148,10 @@ todo.md
     click.echo(f"\n{Colors.GREEN}✅ ConnectOnion project initialized!{Colors.END}")
     
     click.echo(f"\n📁 Project: {Colors.BOLD}{project_name}{Colors.END}")
-    click.echo(f"📦 Template: {Colors.BOLD}{template.title()}{Colors.END}")
+    if template == 'none':
+        click.echo(f"⚙️  Configuration: {Colors.BOLD}ConnectOnion config added{Colors.END}")
+    else:
+        click.echo(f"📦 Template: {Colors.BOLD}{template.title()}{Colors.END}")
     
     if custom_code and description:
         click.echo(f"\n✨ {Colors.CYAN}Custom agent generated from:{Colors.END}")
