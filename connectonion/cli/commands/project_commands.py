@@ -1065,12 +1065,12 @@ OPENAI_API_KEY=sk-your-api-key-here
     docs_dir = co_dir / "docs"
     docs_dir.mkdir(exist_ok=True)
     
-    # Copy ConnectOnion documentation if it exists in template
-    if template_dir and template_dir.exists():
-        template_docs = template_dir / "connectonion.md"
-        if template_docs.exists():
-            shutil.copy2(template_docs, docs_dir / "co-vibe-coding-all-in-one.md")
-            files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
+    # Copy ConnectOnion documentation - always include the master doc
+    cli_dir = Path(__file__).parent.parent
+    master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+    if master_doc.exists():
+        shutil.copy2(master_doc, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
+        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
     
     # Generate agent address
     try:
@@ -1499,12 +1499,12 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     docs_dir = co_dir / "docs"
     docs_dir.mkdir(exist_ok=True)
     
-    # Copy documentation
-    if template_dir and template_dir.exists():
-        template_docs = template_dir / "connectonion.md"
-        if template_docs.exists():
-            shutil.copy2(template_docs, docs_dir / "co-vibe-coding-all-in-one.md")
-            files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
+    # Copy ConnectOnion documentation - always include the master doc
+    cli_dir = Path(__file__).parent.parent
+    master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+    if master_doc.exists():
+        shutil.copy2(master_doc, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
+        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
     
     # Generate agent keys (skip if already exists from temp project)
     try:

@@ -13,13 +13,18 @@ This agent can:
 import os
 import sys
 import re
-from datetime import datetime
 from typing import List, Dict, Optional
 
 # Ensure the repository root is on sys.path so `import connectonion` works
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from connectonion import Agent, send_email, get_emails, mark_read
+
+
+def prompt_path() -> str:
+    """Return path to the markdown prompt used by the agent."""
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base_dir, "prompts", "email_assistant.md")
 
 
 class EmailManager:
@@ -309,26 +314,7 @@ def main():
             get_emails,
             mark_read
         ],
-        system_prompt="""You are a professional email assistant that helps manage emails efficiently.
-
-Your capabilities include:
-- Checking and summarizing the inbox
-- Sending emails and replies
-- Auto-responding to specific types of emails
-- Marking emails as read
-- Searching for specific emails
-- Providing email statistics
-
-Guidelines:
-1. Be professional and courteous in all communications
-2. Prioritize urgent and important emails
-3. Keep responses concise and clear
-4. Always confirm before sending emails
-5. Protect user privacy - never share email contents unnecessarily
-
-When asked about emails, start by checking the inbox to see what's available.
-When composing emails, ensure proper formatting and professional tone.
-"""
+        system_prompt=prompt_path()
     )
     
     # Example: Check inbox on startup

@@ -20,6 +20,10 @@ python agent.py
 
 If running from a different CWD, ensure the repo root is on `PYTHONPATH` or use the provided `sys.path` injection in `agent.py`.
 
+## Customize the Prompt
+
+Edit `prompts/email_assistant.md` to change the agent's behavior and guidelines. The agent loads this markdown at startup.
+
 ## Example Commands
 
 - "Check my emails"
