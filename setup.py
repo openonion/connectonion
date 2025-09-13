@@ -13,7 +13,8 @@ requirements = [
     "python-dotenv>=1.0.0",
     "click>=8.0.0",
     "toml>=0.10.2",
-    "requests>=2.25.0"
+    "requests>=2.25.0",
+    "rich>=13.0.0"
 ]
 
 setup(
@@ -22,7 +23,7 @@ setup(
     # - Now in production: 0.0.6
     # - Follow semantic versioning: increment PATCH until 10, then roll to MINOR
     # - See VERSIONING.md for detailed versioning rules
-    version="0.0.7",
+    version="0.0.8",
     author="ConnectOnion Team",
     author_email="pypi@connectonion.com",
     description="A simple Python framework for creating AI agents with behavior tracking",

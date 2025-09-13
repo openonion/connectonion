@@ -95,16 +95,14 @@ def send_email(to: str, subject: str, message: str) -> Dict:
     
     # Prepare email payload
     payload = {
-        "from": from_email,
         "to": to,
         "subject": subject,
-        "message": message,
-        "content_type": "html" if is_html else "text"
+        "body": message  # Simple direct body
     }
     
     # Send email via backend API
     backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/email/send"
+    endpoint = f"{backend_url}/api/email/send"
     
     headers = {
         "Authorization": f"Bearer {token}",
