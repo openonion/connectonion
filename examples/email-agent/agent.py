@@ -21,10 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 from connectonion import Agent, send_email, get_emails, mark_read
 
 
-def prompt_path() -> str:
-    """Return path to the markdown prompt used by the agent."""
-    base_dir = os.path.dirname(os.path.abspath(__file__))
-    return os.path.join(base_dir, "prompts", "email_assistant.md")
+ 
 
 
 class EmailManager:
@@ -314,7 +311,7 @@ def main():
             get_emails,
             mark_read
         ],
-        system_prompt=prompt_path()
+        system_prompt="prompts/email_assistant.md"
     )
     
     # Example: Check inbox on startup

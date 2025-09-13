@@ -1,15 +1,40 @@
-# ConnectOnion Framework - Complete Reference for AI Assistants
+# ConnectOnion Agent Framework - Comprehensive Guide
 
-## Context for AI Assistants
+## 📚 Purpose of This Document
 
-You are helping a developer who wants to use ConnectOnion, a Python framework for creating AI agents with behavior tracking. This document contains everything you need to help them write effective ConnectOnion code.
+This document serves as the **complete reference guide for the ConnectOnion agent framework**. It is designed to help both AI assistants and human developers understand how to effectively use ConnectOnion to build AI agents with tools and behavior tracking.
 
-**Key Principles:**
-- Keep simple things simple, make hard things possible
+### Who Should Read This
+- **AI Assistants**: When helping users write ConnectOnion code, this document provides all necessary context, patterns, and best practices
+- **Developers**: Learning ConnectOnion's philosophy, architecture, and implementation patterns
+- **Teams**: Understanding the framework's design principles for consistent development
+
+### What's Included
+1. **Framework Documentation**: Complete API reference and usage patterns
+2. **Design Principles**: Core philosophy of "keep simple things simple, make hard things possible"
+3. **Best Practices**: Proven patterns for building effective agents
+4. **Code Examples**: Real-world implementations with explanations
+5. **Architecture Guidelines**: How ConnectOnion works under the hood
+
+## 🎯 Core Philosophy
+
+**"Keep simple things simple, make complicated things possible"**
+
+This fundamental principle drives every design decision in ConnectOnion:
+- **Simple by default**: Basic agents work in 2 lines of code
+- **Progressive complexity**: Add features only when needed
+- **Function-first design**: Regular Python functions become agent tools
+- **Automatic behavior tracking**: All actions persist without configuration
+- **Convention over configuration**: Sensible defaults that just work
+
+## 🚀 Quick Context for AI Assistants
+
+When helping a developer with ConnectOnion code, remember these key points:
 - Function-based tools are preferred over classes
 - **For class-based tools: Pass instances directly (not individual methods)**
-- All agent behavior is automatically tracked
+- All agent behavior is automatically tracked to `~/.connectonion/`
 - Default settings work for most use cases
+- The framework handles tool calling, iteration limits, and error recovery
 
 ---
 
