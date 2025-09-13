@@ -1,1 +1,0 @@
-"""Prompts module for ConnectOnion CLI."""
