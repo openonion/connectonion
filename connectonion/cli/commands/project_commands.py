@@ -296,7 +296,7 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                             console.print("\n[green]✓ We verified your star. Thanks for supporting us![/green]")
                             console.print("[green]You now have 100k free tokens![/green]")
                             console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
-                            console.print("  • co/gpt-4o-mini")
+                            console.print("  • co/o4-mini")
                             console.print("  • co/gpt-4o")
                             console.print("  • co/o4-mini")
                             console.print("  • co/gpt-5")
@@ -379,7 +379,7 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                         click.echo(f"\n{Colors.GREEN}✓ We verified your star. Thanks for supporting us!{Colors.END}")
                         click.echo(f"{Colors.GREEN}You now have 100k free tokens!{Colors.END}")
                         click.echo(f"\n{Colors.CYAN}You can use ConnectOnion models with the 'co/' prefix:{Colors.END}")
-                        click.echo("  • co/gpt-4o-mini")
+                        click.echo("  • co/o4-mini")
                         click.echo("  • co/gpt-4o")
                         click.echo("  • co/o4-mini")
                         click.echo("  • co/gpt-5")
@@ -618,7 +618,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
     configs = {
         'openai': {
             'var': 'OPENAI_API_KEY',
-            'model': 'gpt-4o-mini'
+            'model': 'o4-mini'
         },
         'anthropic': {
             'var': 'ANTHROPIC_API_KEY', 
@@ -634,7 +634,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
-            'model': 'co/gpt-4o-mini'  # Prefixed models for managed keys
+            'model': 'co/o4-mini'  # Prefixed models for managed keys
         }
     }
     
@@ -649,8 +649,8 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
 # Same pricing as OpenAI/Anthropic
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gpt-4o-mini
-# Available models: co/gpt-4o-mini, co/gpt-4o, co/claude-3-haiku, co/claude-3-sonnet
+MODEL=co/o4-mini
+# Available models: co/o4-mini, co/gpt-4o, co/claude-3-haiku, co/claude-3-sonnet
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -665,7 +665,7 @@ MODEL=co/gpt-4o-mini
 # 3. Your GitHub star will be verified automatically
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gpt-4o-mini
+MODEL=co/o4-mini
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 

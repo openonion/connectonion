@@ -23,7 +23,7 @@ def main():
     agent = Agent(
         name="minimal-agent",
         tools=[hello_world],
-        model=os.getenv("MODEL", "gpt-4o-mini")
+        model=os.getenv("MODEL", "o4-mini")
     )
     
     # Example interaction

@@ -30,7 +30,7 @@ class Agent:
         tools: Optional[Union[List[Callable], Callable, Any]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "gpt-4o-mini",
+        model: str = "o4-mini",
         max_iterations: int = 10,
         trust: Optional[Union[str, Path, 'Agent']] = None
     ):

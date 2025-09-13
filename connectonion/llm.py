@@ -41,7 +41,7 @@ class LLM(ABC):
 class OpenAILLM(LLM):
     """OpenAI LLM implementation."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini", **kwargs):
+    def __init__(self, api_key: Optional[str] = None, model: str = "o4-mini", **kwargs):
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI API key required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
@@ -599,7 +599,7 @@ MODEL_REGISTRY = {
 class OpenOnionLLM(LLM):
     """OpenOnion managed keys LLM implementation."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "co/gpt-4o-mini", **kwargs):
+    def __init__(self, api_key: Optional[str] = None, model: str = "co/o4-mini", **kwargs):
         # For co/ models, api_key is actually the auth token
         self.auth_token = api_key or self._get_auth_token()
         if not self.auth_token:

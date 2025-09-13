@@ -98,7 +98,7 @@ def main():
     agent = Agent(
         name="web-research-agent",
         tools=[search_web, extract_data, analyze_data, save_research],
-        model=os.getenv("MODEL", "gpt-4o-mini")
+        model=os.getenv("MODEL", "o4-mini")
     )
     
     # Example research task

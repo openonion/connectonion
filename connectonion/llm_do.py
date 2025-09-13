@@ -71,7 +71,7 @@ def llm_do(
     input: str,
     output: Optional[Type[T]] = None,
     system_prompt: Optional[Union[str, Path]] = None,
-    model: str = "gpt-4o-mini",
+    model: str = "o4-mini",
     temperature: float = 0.1,
     api_key: Optional[str] = None,
     **kwargs
@@ -80,7 +80,7 @@ def llm_do(
     Make a one-shot LLM call with optional structured output using LiteLLM.
     
     Supports 100+ LLM providers. Most models work with simple names:
-    - OpenAI: "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo"
+    - OpenAI: "gpt-4o", "o4-mini", "gpt-3.5-turbo"
     - Anthropic: "claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus"
     - Google: "gemini-1.5-pro", "gemini-1.5-flash"
     
@@ -108,7 +108,7 @@ def llm_do(
         >>> print(answer)  # "4"
         
         >>> # With ConnectOnion managed keys (no API key needed!)
-        >>> answer = llm_do("What's 2+2?", model="co/gpt-4o-mini")
+        >>> answer = llm_do("What's 2+2?", model="co/o4-mini")
         
         >>> # With Claude (simple name)
         >>> answer = llm_do("Explain quantum physics", model="claude-3-5-haiku-20241022")
