@@ -7,10 +7,13 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 requirements = [
     "openai>=1.0.0",
-    "pydantic>=2.0.0", 
+    "anthropic>=0.18.0",
+    "google-generativeai>=0.3.0",
+    "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
     "click>=8.0.0",
-    "toml>=0.10.2"
+    "toml>=0.10.2",
+    "requests>=2.25.0"
 ]
 
 setup(
