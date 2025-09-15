@@ -6,6 +6,17 @@ import {
 
 // Simple, flat navigation structure with all metadata in one place
 export const navigation = [
+  // Tutorials
+  {
+    title: '001: AI Agent = Prompt + Function',
+    href: '/tutorials/001-ai-agent-is-just-prompt-plus-function',
+    icon: BookOpen,
+    section: 'Tutorials',
+    keywords: ['tutorial', 'beginner', 'first', 'prompt', 'function', 'langchain', 'simple'],
+    prev: null,
+    next: { href: '/', title: 'Introduction' }
+  },
+
   // Getting Started
   {
     title: 'Introduction',
@@ -13,7 +24,7 @@ export const navigation = [
     icon: Home,
     section: 'Getting Started',
     keywords: ['intro', 'overview', 'start', 'begin'],
-    prev: null,
+    prev: { href: '/tutorials/001-ai-agent-is-just-prompt-plus-function', title: 'Tutorial 001' },
     next: { href: '/quickstart', title: 'Quick Start' }
   },
   {

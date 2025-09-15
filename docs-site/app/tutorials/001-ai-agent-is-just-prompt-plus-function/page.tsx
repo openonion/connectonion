@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { CommandBlock } from '../../../components/CommandBlock'
 import { PageCopyButton } from '../../../components/PageCopyButton'
+import CodeWithResult from '../../../components/CodeWithResult'
 import { Globe } from 'lucide-react'
 
 const translations = {
@@ -256,78 +257,7 @@ ${t.entireCourse}
 
 [... rest of content in selected language ...]`
 
-  return (
-    <div className="min-h-screen bg-gray-950 text-gray-200">
-      <div className="max-w-[52rem] mx-auto px-4 sm:px-6 py-4 sm:py-8 md:py-12">
-        {/* Language Switcher */}
-        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
-            <Globe className="w-4 h-4" />
-            <span>Language:</span>
-          </div>
-          <div className="flex gap-1 sm:gap-2">
-            {(['en', 'zh', 'ja'] as const).map((langCode) => (
-              <button
-                key={langCode}
-                onClick={() => setLang(langCode)}
-                className={`px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm transition-all ${
-                  lang === langCode
-                    ? 'bg-purple-600 text-white'
-                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
-                }`}
-              >
-                {translations[langCode].langName}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className="prose prose-sm sm:prose-base prose-invert prose-purple max-w-none">
-          <PageCopyButton content={pageContent} />
-
-          <h1 className="gradient-text text-2xl sm:text-3xl md:text-4xl lg:text-5xl">{t.title}</h1>
-
-          <p className="text-sm sm:text-base md:text-lg text-gray-300">
-            <strong>{t.readTime}</strong>
-          </p>
-
-          <h2>{t.truthAboutCourses}</h2>
-
-          <p>{t.coursesIntro}</p>
-          <ul>
-            <li><strong>{t.course1}</strong></li>
-            <li><strong>{t.course2}</strong></li>
-            <li><strong>{t.course3}</strong></li>
-          </ul>
-
-          <p>{t.secretReveal}</p>
-
-          <p className="text-lg sm:text-xl md:text-2xl font-bold text-purple-400 text-center my-6 sm:my-8 px-2">
-            {t.formula}
-          </p>
-
-          <p>{t.entireCourse}</p>
-
-          <h2>{t.whyBuilt}</h2>
-
-          <p>{t.langchainPain}</p>
-          <ul>
-            <li>{t.pain1}</li>
-            <li>{t.pain2}</li>
-            <li>{t.pain3}</li>
-            <li>{t.pain4}</li>
-          </ul>
-
-          <p><strong>{t.thought}</strong></p>
-
-          <p>{t.builtSolution}</p>
-
-          <h2>{t.seeDifference}</h2>
-
-          <h3>{t.langchainHell}</h3>
-
-          <pre className="bg-gray-900 border border-gray-800 rounded-lg p-2 sm:p-3 md:p-4 overflow-x-auto text-xs sm:text-sm">
-            <code className="text-sm">{`from langchain.agents import Tool, AgentExecutor, LLMSingleActionAgent
+  const langchainCode = `from langchain.agents import Tool, AgentExecutor, LLMSingleActionAgent
 from langchain.prompts import StringPromptTemplate
 from langchain.chains import LLMChain
 from langchain.schema import AgentAction, AgentFinish, OutputParserException
@@ -422,20 +352,123 @@ agent = LLMSingleActionAgent(
 agent_executor = AgentExecutor.from_agent_and_tools(agent=agent, tools=tools, verbose=True)
 
 # Use it (after 67 lines of setup)
-agent_executor.run("What's the weather in Tokyo?")`}</code>
-          </pre>
+agent_executor.run("What's the weather in Tokyo?")`
 
-          <h3>{t.myConnectonion}</h3>
-
-          <pre className="bg-gray-900 border border-gray-800 rounded-lg p-2 sm:p-3 md:p-4 overflow-x-auto text-xs sm:text-sm">
-            <code className="text-sm">{`from connectonion import Agent
+  const connectonionCode = `from connectonion import Agent
 
 def get_weather(city: str) -> str:
     return f"Sunny in {city}, 22°C"
 
 agent = Agent("weather_bot", tools=[get_weather])
-agent.input("What's the weather in Tokyo?")`}</code>
-          </pre>
+agent.input("What's the weather in Tokyo?")`
+
+  const calculatorCode = `from connectonion import Agent
+
+# 1. ${lang === 'en' ? 'Write a function - You already know how (10 seconds)' : lang === 'zh' ? '写个函数 - 你已经会了（10秒）' : '関数を書く - もう知っています（10秒）'}
+def calculate(expression: str) -> str:
+    """${lang === 'en' ? 'Calculate math expression' : lang === 'zh' ? '计算数学表达式' : '数式を計算'}"""
+    return str(eval(expression))
+
+# 2. ${lang === 'en' ? 'Create agent - Just prompt + function (10 seconds)' : lang === 'zh' ? '创建Agent - 就是提示词+函数（10秒）' : 'エージェント作成 - プロンプト+関数だけ（10秒）'}
+agent = Agent(
+    "calculator",
+    system_prompt="${lang === 'en' ? "You're a math tutor, explain your steps" : lang === 'zh' ? '你是数学老师，解释你的步骤' : '数学の家庭教師です、手順を説明してください'}",
+    tools=[calculate]
+)
+
+# 3. ${lang === 'en' ? 'Use it (10 seconds)' : lang === 'zh' ? '使用它（10秒）' : '使う（10秒）'}
+print(agent.input("${lang === 'en' ? "What's 42 times 17?" : lang === 'zh' ? '42乘以17等于多少？' : '42×17は？'}"))`;
+
+  const calculatorResult = lang === 'en'
+    ? '42 times 17 equals 714. Here\'s how: 40×17=680, 2×17=34, 680+34=714'
+    : lang === 'zh'
+    ? '42乘以17等于714。计算方法：40×17=680，2×17=34，680+34=714'
+    : '42×17は714です。計算方法：40×17=680、2×17=34、680+34=714';
+
+  return (
+    <div className="min-h-screen bg-gray-950 text-gray-200">
+      <div className="max-w-[52rem] mx-auto px-4 sm:px-6 py-4 sm:py-8 md:py-12">
+        {/* Language Switcher */}
+        <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-6">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-gray-400">
+            <Globe className="w-4 h-4" />
+            <span>Language:</span>
+          </div>
+          <div className="flex gap-1 sm:gap-2">
+            {(['en', 'zh', 'ja'] as const).map((langCode) => (
+              <button
+                key={langCode}
+                onClick={() => setLang(langCode)}
+                className={`px-2 sm:px-3 py-1 rounded-md text-xs sm:text-sm transition-all ${
+                  lang === langCode
+                    ? 'bg-purple-600 text-white'
+                    : 'bg-gray-800 text-gray-300 hover:bg-gray-700'
+                }`}
+              >
+                {translations[langCode].langName}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <div className="prose prose-sm sm:prose-base prose-invert prose-purple max-w-none">
+          <PageCopyButton content={pageContent} />
+
+          <h1 className="gradient-text text-2xl sm:text-3xl md:text-4xl lg:text-5xl">{t.title}</h1>
+
+          <p className="text-sm sm:text-base md:text-lg text-gray-300">
+            <strong>{t.readTime}</strong>
+          </p>
+
+          <h2>{t.truthAboutCourses}</h2>
+
+          <p>{t.coursesIntro}</p>
+          <ul>
+            <li><strong>{t.course1}</strong></li>
+            <li><strong>{t.course2}</strong></li>
+            <li><strong>{t.course3}</strong></li>
+          </ul>
+
+          <p>{t.secretReveal}</p>
+
+          <p className="text-lg sm:text-xl md:text-2xl font-bold text-purple-400 text-center my-6 sm:my-8 px-2">
+            {t.formula}
+          </p>
+
+          <p>{t.entireCourse}</p>
+
+          <h2>{t.whyBuilt}</h2>
+
+          <p>{t.langchainPain}</p>
+          <ul>
+            <li>{t.pain1}</li>
+            <li>{t.pain2}</li>
+            <li>{t.pain3}</li>
+            <li>{t.pain4}</li>
+          </ul>
+
+          <p><strong>{t.thought}</strong></p>
+
+          <p>{t.builtSolution}</p>
+
+          <h2>{t.seeDifference}</h2>
+
+          <h3>{t.langchainHell}</h3>
+
+          <CodeWithResult
+            code={langchainCode}
+            language="python"
+            fileName="langchain_agent.py"
+          />
+
+          <h3>{t.myConnectonion}</h3>
+
+          <CodeWithResult
+            code={connectonionCode}
+            result="The weather in Tokyo is sunny with a temperature of 22°C. It's a beautiful day!"
+            language="python"
+            fileName="connectonion_agent.py"
+          />
 
           <p className="text-base sm:text-lg md:text-xl font-bold text-center my-4 sm:my-6 md:my-8">{t.sameResult}</p>
 
@@ -456,25 +489,12 @@ agent.input("What's the weather in Tokyo?")`}</code>
 
           <h2>{t.thirtySeconds}</h2>
 
-          <pre className="bg-gray-900 border border-gray-800 rounded-lg p-2 sm:p-3 md:p-4 overflow-x-auto text-xs sm:text-sm">
-            <code className="text-sm">{`from connectonion import Agent
-
-# 1. ${lang === 'en' ? 'Write a function - You already know how (10 seconds)' : lang === 'zh' ? '写个函数 - 你已经会了（10秒）' : '関数を書く - もう知っています（10秒）'}
-def calculate(expression: str) -> str:
-    """${lang === 'en' ? 'Calculate math expression' : lang === 'zh' ? '计算数学表达式' : '数式を計算'}"""
-    return str(eval(expression))
-
-# 2. ${lang === 'en' ? 'Create agent - Just prompt + function (10 seconds)' : lang === 'zh' ? '创建Agent - 就是提示词+函数（10秒）' : 'エージェント作成 - プロンプト+関数だけ（10秒）'}
-agent = Agent(
-    "calculator",
-    system_prompt="${lang === 'en' ? "You're a math tutor, explain your steps" : lang === 'zh' ? '你是数学老师，解释你的步骤' : '数学の家庭教師です、手順を説明してください'}",
-    tools=[calculate]
-)
-
-# 3. ${lang === 'en' ? 'Use it (10 seconds)' : lang === 'zh' ? '使用它（10秒）' : '使う（10秒）'}
-print(agent.input("${lang === 'en' ? "What's 42 times 17?" : lang === 'zh' ? '42乘以17等于多少？' : '42×17は？'}"))
-# Output: ${lang === 'en' ? '42 times 17 equals 714. Here\'s how: 40×17=680, 2×17=34, 680+34=714' : lang === 'zh' ? '42乘以17等于714。计算方法：40×17=680，2×17=34，680+34=714' : '42×17は714です。計算方法：40×17=680、2×17=34、680+34=714'}`}</code>
-          </pre>
+          <CodeWithResult
+            code={calculatorCode}
+            result={calculatorResult}
+            language="python"
+            showRunButton={true}
+          />
 
           <p><strong>{t.done}</strong></p>
 
