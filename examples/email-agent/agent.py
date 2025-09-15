@@ -9,6 +9,7 @@ This example shows how to create an AI agent that uses email tools to:
 - Create drafts using AI
 - Check unread emails
 - Mark emails as read
+- Get the agent's own email address
 
 The key: Users speak naturally, AI translates to tool calls.
 """
@@ -18,11 +19,13 @@ import sys
 from typing import Optional
 import time
 from pydantic import BaseModel
+from pathlib import Path
 
 # Ensure the repository root is on sys.path so `import connectonion` works
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from connectonion import Agent, send_email, get_emails, mark_read, llm_do
+from connectonion import address
 
 
 class EmailManager:
@@ -196,6 +199,42 @@ class EmailManager:
         else:
             return f"Could not mark email {email_id} as read"
 
+    def get_my_email_address(self) -> str:
+        """Get the agent's own email address.
+
+        Returns the email address configured for this agent.
+        Users often ask "What's my email address?" or "What email can people reach me at?"
+        """
+        # Try to find .co directory
+        co_dir = Path(".co")
+        if not co_dir.exists():
+            co_dir = Path("../.co")
+
+        if not co_dir.exists():
+            return "❌ Email address not found. Please run 'co init' to set up your agent."
+
+        # Load address data
+        address_data = address.load(co_dir)
+
+        if not address_data:
+            return "❌ Could not load agent configuration. Please run 'co init' to set up your agent."
+
+        email_addr = address_data.get("email")
+        email_active = address_data.get("email_active", False)
+
+        if not email_addr:
+            return "❌ Email address not configured."
+
+        # Format the response
+        result = f"📧 Your email address is: {email_addr}\n"
+
+        if email_active:
+            result += "✅ Email is active and ready to use"
+        else:
+            result += "⚠️ Email is not activated yet. Run 'co auth' to activate"
+
+        return result
+
 
 def main():
     """Create and run the email assistant agent."""
@@ -214,6 +253,7 @@ def main():
     print("🤖 Email Assistant (AI-Powered)")
     print("=" * 50)
     print("\nI can help you:")
+    print("  📧 Tell you your email address")
     print("  📬 Check your emails")
     print("  🔍 Search for specific emails")
     print("  ✉️ Send new emails")
@@ -222,6 +262,7 @@ def main():
     print("  ✓ Mark emails as read")
 
     print("\n💡 Just tell me what you need:")
+    print('  "What\'s my email address?"')
     print('  "Check my emails"')
     print('  "Find emails from John about the project"')
     print('  "Send an email to alice@example.com"')
