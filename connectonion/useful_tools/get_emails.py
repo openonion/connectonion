@@ -60,7 +60,7 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
     
     # Fetch emails from backend API
     backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/emails"
+    endpoint = f"{backend_url}/api/email/received"
     
     headers = {
         "Authorization": f"Bearer {token}",
@@ -148,29 +148,28 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
     
     # Mark emails as read via backend API
     backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/emails/mark-read"
-    
+    endpoint = f"{backend_url}/api/email/s/mark-read"
+
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-    
-    payload = {
-        "email_ids": email_ids
-    }
-    
-    try:
-        response = requests.post(
-            endpoint,
-            json=payload,
-            headers=headers,
-            timeout=10
-        )
-        
-        return response.status_code == 200
-        
-    except Exception:
-        return False
+
+    # Mark each email as read individually
+    all_success = True
+    for email_id in email_ids:
+        try:
+            response = requests.post(
+                f"{endpoint}?email_id={email_id}",
+                headers=headers,
+                timeout=10
+            )
+            if response.status_code != 200:
+                all_success = False
+        except Exception:
+            all_success = False
+
+    return all_success
 
 
 def mark_unread(email_ids: Union[str, List[str]]) -> bool:
@@ -215,26 +214,25 @@ def mark_unread(email_ids: Union[str, List[str]]) -> bool:
     
     # Mark emails as unread via backend API
     backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/emails/mark-unread"
-    
+    endpoint = f"{backend_url}/api/email/s/mark-unread"
+
     headers = {
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json"
     }
-    
-    payload = {
-        "email_ids": email_ids
-    }
-    
-    try:
-        response = requests.post(
-            endpoint,
-            json=payload,
-            headers=headers,
-            timeout=10
-        )
-        
-        return response.status_code == 200
-        
-    except Exception:
-        return False
+
+    # Mark each email as unread individually
+    all_success = True
+    for email_id in email_ids:
+        try:
+            response = requests.post(
+                f"{endpoint}?email_id={email_id}",
+                headers=headers,
+                timeout=10
+            )
+            if response.status_code != 200:
+                all_success = False
+        except Exception:
+            all_success = False
+
+    return all_success

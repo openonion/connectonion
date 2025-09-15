@@ -1065,12 +1065,50 @@ OPENAI_API_KEY=sk-your-api-key-here
     docs_dir = co_dir / "docs"
     docs_dir.mkdir(exist_ok=True)
     
-    # Copy ConnectOnion documentation - always include the master doc
+    # Copy ConnectOnion documentation
     cli_dir = Path(__file__).parent.parent
-    master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-    if master_doc.exists():
-        shutil.copy2(master_doc, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
-        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
+
+    # Track which docs we've copied
+    vibe_doc_copied = False
+    connectonion_doc_copied = False
+
+    # First try to copy from the template directory if using a template
+    if template != 'none' and template != 'custom':
+        # Try to copy co-vibe doc from template
+        template_doc = cli_dir / "templates" / template / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+        if template_doc.exists():
+            shutil.copy2(template_doc, docs_dir / "co-vibe-coding-all-in-one.md")
+            files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
+            vibe_doc_copied = True
+
+        # Try to copy connectonion.md from template
+        template_connectonion_doc = cli_dir / "templates" / template / "connectonion.md"
+        if template_connectonion_doc.exists():
+            shutil.copy2(template_connectonion_doc, docs_dir / "connectonion.md")
+            files_created.append(".co/docs/connectonion.md")
+            connectonion_doc_copied = True
+
+    # Always ensure we have the master docs as fallback
+    # Copy co-vibe doc from master if not already copied
+    if not vibe_doc_copied:
+        master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+        if master_doc.exists():
+            shutil.copy2(master_doc, docs_dir / "co-vibe-coding-all-in-one.md")
+            files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
+            vibe_doc_copied = True
+
+    # Copy connectonion.md from master if not already copied
+    if not connectonion_doc_copied:
+        master_connectonion_doc = cli_dir / "docs" / "connectonion.md"
+        if master_connectonion_doc.exists():
+            shutil.copy2(master_connectonion_doc, docs_dir / "connectonion.md")
+            files_created.append(".co/docs/connectonion.md")
+            connectonion_doc_copied = True
+
+    # Final check - at least one doc should be present
+    if not vibe_doc_copied and not connectonion_doc_copied:
+        # This shouldn't happen if cli/docs is properly set up
+        print(f"Warning: No documentation files found to copy to .co/docs/")
     
     # Generate agent address
     try:
@@ -1499,12 +1537,50 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     docs_dir = co_dir / "docs"
     docs_dir.mkdir(exist_ok=True)
     
-    # Copy ConnectOnion documentation - always include the master doc
+    # Copy ConnectOnion documentation
     cli_dir = Path(__file__).parent.parent
-    master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-    if master_doc.exists():
-        shutil.copy2(master_doc, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
-        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
+
+    # Track which docs we've copied
+    vibe_doc_copied = False
+    connectonion_doc_copied = False
+
+    # First try to copy from the template directory if using a template
+    if template != 'none' and template != 'custom':
+        # Try to copy co-vibe doc from template
+        template_doc = cli_dir / "templates" / template / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+        if template_doc.exists():
+            shutil.copy2(template_doc, docs_dir / "co-vibe-coding-all-in-one.md")
+            files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
+            vibe_doc_copied = True
+
+        # Try to copy connectonion.md from template
+        template_connectonion_doc = cli_dir / "templates" / template / "connectonion.md"
+        if template_connectonion_doc.exists():
+            shutil.copy2(template_connectonion_doc, docs_dir / "connectonion.md")
+            files_created.append(".co/docs/connectonion.md")
+            connectonion_doc_copied = True
+
+    # Always ensure we have the master docs as fallback
+    # Copy co-vibe doc from master if not already copied
+    if not vibe_doc_copied:
+        master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+        if master_doc.exists():
+            shutil.copy2(master_doc, docs_dir / "co-vibe-coding-all-in-one.md")
+            files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
+            vibe_doc_copied = True
+
+    # Copy connectonion.md from master if not already copied
+    if not connectonion_doc_copied:
+        master_connectonion_doc = cli_dir / "docs" / "connectonion.md"
+        if master_connectonion_doc.exists():
+            shutil.copy2(master_connectonion_doc, docs_dir / "connectonion.md")
+            files_created.append(".co/docs/connectonion.md")
+            connectonion_doc_copied = True
+
+    # Final check - at least one doc should be present
+    if not vibe_doc_copied and not connectonion_doc_copied:
+        # This shouldn't happen if cli/docs is properly set up
+        print(f"Warning: No documentation files found to copy to .co/docs/")
     
     # Generate agent keys (skip if already exists from temp project)
     try:

@@ -5,25 +5,50 @@ from setuptools import setup, find_packages
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+# Core dependencies that are always required
 requirements = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
     "google-generativeai>=0.3.0",
+    "litellm>=1.0.0",  # For llm_do function supporting 100+ providers
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
     "click>=8.0.0",
     "toml>=0.10.2",
     "requests>=2.25.0",
-    "rich>=13.0.0"
+    "rich>=13.0.0",  # For CLI formatting
 ]
+
+# Optional dependencies for specific features
+# These are handled gracefully with try/except in the code
+optional_deps = {
+    "auth": [
+        "PyNaCl>=1.5.0",  # For Ed25519 key generation
+        "mnemonic>=0.20",  # For seed phrase generation
+    ],
+    "cli": [
+        "questionary>=2.0.0",  # For interactive CLI prompts
+    ],
+    "browser": [
+        "playwright>=1.40.0",  # For browser automation
+    ],
+    "all": [
+        "PyNaCl>=1.5.0",
+        "mnemonic>=0.20",
+        "questionary>=2.0.0",
+        "playwright>=1.40.0",
+    ],
+}
 
 setup(
     name="connectonion",
     # Version numbering strategy:
-    # - Now in production: 0.0.6
-    # - Follow semantic versioning: increment PATCH until 10, then roll to MINOR
-    # - See VERSIONING.md for detailed versioning rules
-    version="0.0.9",
+    # - Current: 0.1.1
+    # - Increment PATCH for bug fixes: 0.1.1, 0.1.2, ..., 0.1.9
+    # - At 0.1.10, roll to MINOR: 0.2.0
+    # - At 0.10.0, roll to MAJOR: 1.0.0
+    # - Example progression: 0.1.0 -> 0.1.1 -> ... -> 0.1.9 -> 0.1.10 -> 0.2.0
+    version="0.1.1",
     author="ConnectOnion Team",
     author_email="pypi@connectonion.com",
     description="A simple Python framework for creating AI agents with behavior tracking",
@@ -54,6 +79,7 @@ setup(
     ],
     python_requires=">=3.8",
     install_requires=requirements,
+    extras_require=optional_deps,
     keywords="ai, agent, llm, tools, openai, automation",
     project_urls={
         "Bug Reports": "https://github.com/connectonion/connectonion/issues",

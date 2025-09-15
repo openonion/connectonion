@@ -71,7 +71,7 @@ def llm_do(
     input: str,
     output: Optional[Type[T]] = None,
     system_prompt: Optional[Union[str, Path]] = None,
-    model: str = "o4-mini",
+    model: str = "gpt-4o-mini",
     temperature: float = 0.1,
     api_key: Optional[str] = None,
     **kwargs

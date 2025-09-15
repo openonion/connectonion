@@ -4,6 +4,32 @@
 
 ---
 
+## 📌 Current Status (as of Sep 2025)
+
+✅ **Working**: Email sending via `mail.openonion.ai` domain
+✅ **API Endpoint**: `https://oo.openonion.ai/api/email/send`
+✅ **Sender**: Your agent's unique email `0x{your_key}@mail.openonion.ai`
+✅ **JWT Tokens**: No expiration - authenticate once and use forever
+
+## ⚡ Quick Debug
+
+**Email not working? Try this:**
+
+```bash
+# 1. Check if email is activated
+cat .co/config.toml | grep email_active
+# If false, run: co auth
+
+# 2. Test directly
+python -c "from connectonion import send_email; print(send_email('your@email.com', 'Test', 'It works!'))"
+
+# 3. Common fixes
+co auth  # Refresh token if expired
+co init  # If missing .co directory
+```
+
+---
+
 ## Quick Start (30 seconds to first email)
 
 **One line. That's it.**
@@ -180,7 +206,9 @@ support@mail.openonion.ai
 Common errors:
 - `"Rate limit exceeded"` - Hit your quota
 - `"Invalid email address"` - Check the recipient
-- `"Authentication failed"` - Token issue
+- `"Authentication failed"` - Token expired, run `co auth`
+- `"Email not activated"` - Run `co auth` to activate
+- `"Not in a ConnectOnion project"` - Run `co init` first
 
 ---
 
@@ -275,8 +303,15 @@ print(f"Report sent: {result['success']}")
 ### Quotas
 
 - **Free tier**: 100 emails/month
-- **Plus tier**: 1,000 emails/month
-- **Pro tier**: 10,000 emails/month
+- **Plus tier**: 10,000 emails/month ($29.90/mo)
+- **Pro tier**: 50,000 emails/month ($200/mo)
+
+Check your remaining quota:
+```python
+from connectonion import get_agent_info
+info = get_agent_info()
+print(f"Email quota: {info.get('email_quota_remaining', 'Unknown')} remaining")
+```
 
 ### Rate Limiting
 
@@ -293,17 +328,67 @@ Automatic rate limiting prevents abuse:
 
 ### From Address
 
-- **Free tier**: `0x{your_key_prefix}@mail.openonion.ai`
-- **With custom name**: `yourname@mail.openonion.ai`
+- **Free tier**: `0x{your_key_prefix}@mail.openonion.ai` (your unique address!)
+- **With custom name**: `yourname@mail.openonion.ai` ($0.99 one-time)
+- **Verified domain**: `mail.openonion.ai` (SPF/DKIM configured)
+
+**How it works**:
+- Your agent's email is the first 10 characters of your public key
+- Example: `0x6fdb2d9e@mail.openonion.ai` (clean format, no name labels)
+- This is YOUR unique sender address - recipients see emails coming directly from YOUR agent
+- Each agent has their own unique email address based on their key
 
 ### Behind the Scenes
 
 - Email address configured during `co create` or `co init`
 - Stored in `.co/config.toml` for your project
-- Uses Resend API for delivery
+- Uses Resend API for delivery via `mail.openonion.ai` domain
 - Automatic retry on temporary failures
 - Logs all emails for debugging
 - SPF/DKIM configured for deliverability
+
+### Troubleshooting
+
+#### Email not sending?
+
+1. **Check activation status**:
+   ```bash
+   cat .co/config.toml | grep email_active
+   # Should show: email_active = true
+   ```
+   If false, run `co auth` to activate.
+
+2. **Check for errors**:
+   ```python
+   result = send_email("test@example.com", "Test", "Testing")
+   if not result['success']:
+       print(f"Error: {result['error']}")
+   ```
+
+3. **Common fixes**:
+   - `co auth` - Refresh authentication token
+   - `co init` - Initialize project if missing `.co` directory
+   - Check internet connection
+
+4. **Test directly**:
+   ```python
+   from connectonion import send_email
+   result = send_email("your-email@example.com", "Test", "If you get this, it works!")
+   print(result)
+   ```
+
+#### Debug mode
+
+See what's happening under the hood:
+
+```python
+import os
+os.environ['CONNECTONION_DEBUG'] = '1'
+
+from connectonion import send_email
+result = send_email("test@example.com", "Debug Test", "Testing with debug")
+# Will show detailed API calls and responses
+```
 
 ---
 

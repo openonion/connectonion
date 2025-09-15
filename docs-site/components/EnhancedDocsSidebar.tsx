@@ -23,6 +23,12 @@ const navigation = [
     ]
   },
   {
+    title: 'Tutorials',
+    items: [
+      { title: '001: AI Agent = Prompt + Function', href: '/tutorials/001-ai-agent-is-just-prompt-plus-function', icon: BookOpen, keywords: ['tutorial', 'beginner', 'first', 'prompt', 'function'] },
+    ]
+  },
+  {
     title: 'Core Concepts',
     items: [
       { title: 'max_iterations', href: '/max-iterations', icon: Gauge, difficulty: 'Start Here', keywords: ['loop', 'limit'] },

@@ -11,7 +11,12 @@ from connectonion.llm import LLMResponse, ToolCall
 import pytest
 
 # Load environment variables from .env file
-load_dotenv()
+from pathlib import Path
+env_path = Path(__file__).parent / ".env"
+if env_path.exists():
+    load_dotenv(env_path)
+else:
+    load_dotenv()
 
 # 1. Define simple functions to be used as tools
 def calculator(expression: str) -> str:
