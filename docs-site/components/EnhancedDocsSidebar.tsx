@@ -23,12 +23,6 @@ const navigation = [
     ]
   },
   {
-    title: 'Tutorials',
-    items: [
-      { title: '001: AI Agent = Prompt + Function', href: '/tutorials/001-ai-agent-is-just-prompt-plus-function', icon: BookOpen, keywords: ['tutorial', 'beginner', 'first', 'prompt', 'function'] },
-    ]
-  },
-  {
     title: 'Core Concepts',
     items: [
       { title: 'max_iterations', href: '/max-iterations', icon: Gauge, difficulty: 'Start Here', keywords: ['loop', 'limit'] },
@@ -36,6 +30,12 @@ const navigation = [
       { title: 'Tools', href: '/tools', icon: Code, keywords: ['function', 'utility'] },
       { title: 'System Prompts', href: '/prompts', icon: FileText, keywords: ['template', 'prompt'] },
       { title: 'Trust Parameter', href: '/trust', icon: Shield, keywords: ['security', 'safety'] },
+    ]
+  },
+  {
+    title: 'Tutorials',
+    items: [
+      { title: '001: AI Agent = Prompt + Function', href: '/tutorials/001-ai-agent-is-just-prompt-plus-function', icon: BookOpen, keywords: ['tutorial', 'beginner', 'first', 'prompt', 'function'] },
     ]
   },
   // ... rest of navigation

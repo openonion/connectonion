@@ -1,356 +1,283 @@
 #!/usr/bin/env python3
 """
-Email Assistant Agent - AI-powered email management with send & receive.
+Email Manager Agent - Tools designed specifically for AI agents to handle email tasks.
 
-This example shows how to create an AI agent that can:
-- Check and read incoming emails
-- Send new emails and replies
-- Auto-respond to urgent messages
-- Process and categorize emails
-- Track email statistics
+This example shows how to create an AI agent that uses email tools to:
+- Search for specific emails
+- Send new emails
+- Reply to emails
+- Create drafts using AI
+- Check unread emails
+- Mark emails as read
 
-The agent uses ConnectOnion's email tools integrated into a single EmailManager class.
+The key: Users speak naturally, AI translates to tool calls.
 """
 
 import os
 import sys
-from typing import List, Dict, Optional
-from datetime import datetime
+from typing import Optional
+import time
+from pydantic import BaseModel
 
 # Ensure the repository root is on sys.path so `import connectonion` works
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
-from connectonion import Agent, send_email, get_emails, mark_read
+from connectonion import Agent, send_email, get_emails, mark_read, llm_do
 
 
 class EmailManager:
-    """Complete email management system with send and receive capabilities."""
+    """Email tools designed for AI agent use.
 
-    def __init__(self):
-        self.processed_count = 0
-        self.sent_count = 0
-        self.received_count = 0
-        self.auto_replies_sent = 0
+    Each method is a tool the AI can use to complete email tasks.
+    The AI receives this entire class instance and can call any method.
+    """
 
-    def check_inbox(self, show_all: bool = False, limit: int = 10) -> str:
-        """Check inbox and summarize received emails.
+    def search_emails(self, query: str) -> str:
+        """Search emails and return formatted results for AI processing.
 
-        Args:
-            show_all: If True, show all emails. If False, show only unread.
-            limit: Maximum number of emails to show.
+        The AI provides natural language queries like "from John" or "about budget".
+        Returns a formatted list the AI can parse for follow-up actions.
         """
-        if show_all:
-            emails = get_emails(last=limit)
-            title = f"all emails (last {limit})"
-        else:
-            emails = get_emails(unread=True)
-            title = "unread emails"
+        emails = get_emails(last=100)  # Search recent emails
+        matches = []
 
-        if not emails:
-            return f"📭 No {title}"
+        query_lower = query.lower()
+        for email in emails:
+            # Simple matching - AI provides natural language
+            if (query_lower in email['from'].lower() or
+                query_lower in email['subject'].lower() or
+                query_lower in email.get('message', '').lower()):
+                matches.append(email)
 
-        self.received_count = len(emails)
-        summary = f"📬 You have {len(emails)} {title}:\n\n"
+        if not matches:
+            return f"No emails found matching '{query}'"
 
-        for i, email in enumerate(emails, 1):
-            status = "✓" if email.get('read') else "•"
-            timestamp = email.get('timestamp', 'Unknown time')
-            summary += f"{status} [{i}] From: {email['from']}\n"
-            summary += f"    Subject: {email['subject']}\n"
-            summary += f"    Time: {timestamp}\n"
-
-            # Show message preview
+        # Format for AI to parse and use
+        result = f"Found {len(matches)} emails matching '{query}':\n\n"
+        for i, email in enumerate(matches[:10], 1):
+            # Include ID for follow-up actions
+            result += f"[{email['id']}] From: {email['from']}\n"
+            result += f"     Subject: {email['subject']}\n"
+            # Add preview if available
             message = email.get('message', '')
             if message:
-                preview = message[:80].replace('\n', ' ')
-                summary += f"    Preview: {preview}...\n"
-            summary += "\n"
-
-        return summary
-
-    def read_email(self, email_index: int) -> str:
-        """Read a specific email by index and mark it as read.
-
-        Args:
-            email_index: The index of the email to read (1-based).
-        """
-        emails = get_emails(last=20)
-
-        if email_index < 1 or email_index > len(emails):
-            return f"❌ Invalid email index. You have {len(emails)} emails."
-
-        email = emails[email_index - 1]
-
-        # Mark as read
-        mark_read(str(email['id']))
-        self.processed_count += 1
-
-        # Format the full email
-        result = f"📧 Email Details:\n"
-        result += f"From: {email['from']}\n"
-        result += f"Subject: {email['subject']}\n"
-        result += f"Time: {email.get('timestamp', 'Unknown')}\n"
-        result += f"{'=' * 40}\n"
-        result += f"{email.get('message', 'No message content')}\n"
-        result += f"{'=' * 40}\n"
-        result += f"✓ Marked as read"
+                preview = message[:60].replace('\n', ' ')
+                result += f"     Preview: {preview}...\n"
+            result += "\n"
 
         return result
-    
-    def reply_to_email(self, email_index: int, message: str) -> str:
-        """Reply to a specific email by index.
 
-        Args:
-            email_index: The index of the email to reply to (1-based).
-            message: The reply message to send.
+    def send_email(self, to: str, subject: str, body: str) -> str:
+        """Send email and return status for AI.
+
+        The AI composes the email content based on user instructions.
+        Returns confirmation with message ID or error details.
         """
-        emails = get_emails(last=20)
+        result = send_email(to, subject, body)
 
-        if email_index < 1 or email_index > len(emails):
-            return f"❌ Invalid email index. You have {len(emails)} emails."
+        if result.get('success'):
+            return f"✓ Email sent successfully to {to}\n  Message ID: {result.get('message_id', 'N/A')}"
+        else:
+            return f"Failed to send email: {result.get('error', 'Unknown error')}"
 
-        email = emails[email_index - 1]
+    def reply_to_email(self, email_id: int, message: str) -> str:
+        """Reply to a specific email and mark it as read.
+
+        The AI provides the email ID (from previous searches) and composes the reply.
+        Automatically marks the original email as read after replying.
+        """
+        # Get emails to find the original
+        emails = get_emails(last=50)
+        original = None
+
+        for email in emails:
+            if email.get('id') == email_id:
+                original = email
+                break
+
+        if not original:
+            return f"Email with ID {email_id} not found"
 
         # Send the reply
         result = send_email(
-            email['from'],
-            f"Re: {email['subject']}",
+            original['from'],
+            f"Re: {original['subject']}",
             message
         )
 
         if result.get('success'):
             # Mark original as read
-            mark_read(str(email['id']))
-            self.processed_count += 1
-            self.sent_count += 1
-            return f"✅ Replied to {email['from']} and marked as read"
+            mark_read(str(email_id))
+            return f"✓ Reply sent to {original['from']} and marked as read"
         else:
-            return f"❌ Failed to send reply: {result.get('error', 'Unknown error')}"
+            return f"Failed to send reply: {result.get('error', 'Unknown error')}"
 
-    def send_new_email(self, to: str, subject: str, message: str) -> str:
-        """Send a new email.
+    def draft_email(self, to: str, subject: str, context: str) -> str:
+        """Create a draft email using AI for professional composition.
 
-        Args:
-            to: Recipient email address.
-            subject: Email subject.
-            message: Email body content.
+        The AI uses llm_do to compose a professional email based on context.
+        Returns a preview for the user to confirm before sending.
         """
-        result = send_email(to, subject, message)
-        if result.get('success'):
-            self.sent_count += 1
-            return f"✅ Email sent to {to}\n  Message ID: {result.get('message_id', 'N/A')}"
-        return f"❌ Failed to send email: {result.get('error', 'Unknown error')}"
-    
-    def auto_respond(self, keywords: List[str] = None) -> str:
-        """Auto-respond to emails matching keywords.
+        # Define structured output for the draft
+        class EmailDraft(BaseModel):
+            subject: str
+            body: str
+            tone: str  # professional, casual, formal, friendly
 
-        Args:
-            keywords: List of keywords to match. Defaults to ["urgent", "asap", "important"].
-        """
-        if keywords is None:
-            keywords = ["urgent", "asap", "important"]
+        # Use llm_do to compose the email
+        prompt = f"""Compose a professional email to {to}.
 
-        emails = get_emails(unread=True)
-        responded = []
+Context: {context}
+Suggested subject: {subject}
 
-        for email in emails:
-            # Check if any keyword matches
-            message_content = email.get('message', '')
-            if any(kw.lower() in email['subject'].lower() or
-                   kw.lower() in message_content.lower()
-                   for kw in keywords):
+Write a clear, concise email that:
+- Gets to the point quickly
+- Is professional but friendly
+- Includes appropriate greeting and closing
+- Is ready to send without editing"""
 
-                # Send auto-response
-                result = send_email(
-                    email['from'],
-                    f"Auto-Reply: {email['subject']}",
-                    f"Thank you for your message marked as important. "
-                    f"I've received it and will respond within 24 hours.\n\n"
-                    f"Original message received: {email.get('timestamp', 'Recently')}"
-                )
+        draft = llm_do(
+            prompt,
+            output=EmailDraft,
+            temperature=0.7  # Some creativity for natural writing
+        )
 
-                if result.get('success'):
-                    mark_read(str(email['id']))
-                    responded.append(email['from'])
-                    self.auto_replies_sent += 1
-                    self.sent_count += 1
+        # Create draft ID
+        draft_id = f"draft_{int(time.time())}"
 
-        if responded:
-            return f"🤖 Auto-responded to {len(responded)} emails from: {', '.join(responded)}"
-        return "No emails matched auto-response criteria"
-    
-    def process_inbox(self, action: str = "categorize") -> str:
-        """Process inbox emails with different actions.
-
-        Args:
-            action: What to do - "categorize", "prioritize", or "clean".
-        """
-        emails = get_emails(unread=True)
-        if not emails:
-            return "📭 No unread emails to process"
-
-        if action == "categorize":
-            categories = {
-                'support': [],
-                'urgent': [],
-                'newsletter': [],
-                'personal': [],
-                'other': []
-            }
-
-            for email in emails:
-                subject_lower = email['subject'].lower()
-                from_lower = email['from'].lower()
-
-                if any(word in subject_lower for word in ['support', 'help', 'issue', 'problem']):
-                    categories['support'].append(email)
-                elif any(word in subject_lower for word in ['urgent', 'asap', 'important']):
-                    categories['urgent'].append(email)
-                elif 'newsletter' in from_lower or 'noreply' in from_lower:
-                    categories['newsletter'].append(email)
-                elif any(domain in from_lower for domain in ['gmail.com', 'yahoo.com', 'outlook.com']):
-                    categories['personal'].append(email)
-                else:
-                    categories['other'].append(email)
-
-            result = "📂 Email Categories:\n"
-            for cat, emails_list in categories.items():
-                if emails_list:
-                    result += f"  {cat.title()}: {len(emails_list)} emails\n"
-            return result
-
-        elif action == "prioritize":
-            high_priority = []
-            normal_priority = []
-
-            for email in emails:
-                if any(word in email['subject'].lower() or word in email.get('message', '').lower()
-                       for word in ['urgent', 'asap', 'deadline', 'critical']):
-                    high_priority.append(email)
-                else:
-                    normal_priority.append(email)
-
-            result = "🎯 Email Priority:\n"
-            result += f"  High Priority: {len(high_priority)} emails\n"
-            if high_priority:
-                for email in high_priority[:3]:  # Show top 3
-                    result += f"    - {email['subject']} from {email['from']}\n"
-            result += f"  Normal Priority: {len(normal_priority)} emails\n"
-            return result
-
-        return "Unknown action. Use: categorize, prioritize, or clean"
-
-    def get_statistics(self) -> str:
-        """Get comprehensive email statistics."""
-        all_emails = get_emails(last=100)
-        unread_emails = get_emails(unread=True)
-
-        # Calculate response rate
-        domains = {}
-        for email in all_emails:
-            domain = email['from'].split('@')[-1] if '@' in email['from'] else 'unknown'
-            domains[domain] = domains.get(domain, 0) + 1
-
-        result = f"📊 Email Statistics:\n"
+        # Format the preview
+        result = f"📝 Draft created (ID: {draft_id}):\n"
         result += f"{'=' * 40}\n"
-        result += f"📥 Inbox Status:\n"
-        result += f"  • Total emails: {len(all_emails)}\n"
-        result += f"  • Unread: {len(unread_emails)}\n"
-        result += f"  • Read: {len(all_emails) - len(unread_emails)}\n\n"
-
-        result += f"📤 Session Activity:\n"
-        result += f"  • Emails sent: {self.sent_count}\n"
-        result += f"  • Emails processed: {self.processed_count}\n"
-        result += f"  • Auto-replies: {self.auto_replies_sent}\n\n"
-
-        result += f"🌐 Top Domains:\n"
-        for domain, count in sorted(domains.items(), key=lambda x: x[1], reverse=True)[:3]:
-            result += f"  • {domain}: {count} emails\n"
+        result += f"To: {to}\n"
+        result += f"Subject: {draft.subject}\n"
+        result += f"Tone: {draft.tone}\n"
+        result += f"{'=' * 40}\n"
+        result += f"{draft.body}\n"
+        result += f"{'=' * 40}\n"
+        result += f"\nTo send: call send_email('{to}', '{draft.subject}', ...)"
 
         return result
+
+    def get_unread_emails(self) -> str:
+        """Get unread emails formatted for AI processing.
+
+        Returns a list of unread emails with IDs for follow-up actions.
+        The AI uses this to check what needs attention.
+        """
+        emails = get_emails(unread=True)
+
+        if not emails:
+            return "📭 No unread emails"
+
+        result = f"📬 You have {len(emails)} unread emails:\n\n"
+        for i, email in enumerate(emails[:20], 1):  # Limit to 20 for readability
+            # Include email ID for follow-up actions
+            result += f"[{email.get('id', i)}] From: {email['from']}\n"
+            result += f"     Subject: {email['subject']}\n"
+
+            # Add timestamp if available
+            timestamp = email.get('timestamp', '')
+            if timestamp:
+                result += f"     Time: {timestamp}\n"
+
+            # Add preview
+            message = email.get('message', '')
+            if message:
+                preview = message[:60].replace('\n', ' ')
+                result += f"     Preview: {preview}...\n"
+            result += "\n"
+
+        return result
+
+    def mark_email_read(self, email_id: int) -> str:
+        """Mark an email as read and confirm to AI.
+
+        The AI uses this after processing an email to keep the inbox organized.
+        Returns confirmation of the action.
+        """
+        success = mark_read(str(email_id))
+
+        if success:
+            return f"✓ Email {email_id} marked as read"
+        else:
+            return f"Could not mark email {email_id} as read"
 
 
 def main():
     """Create and run the email assistant agent."""
 
-    # Create stateful email manager
+    # Create the email manager with all tools
     email_manager = EmailManager()
 
-    # Create AI agent with email capabilities
+    # Create AI agent with email tools
     agent = Agent(
         name="email_assistant",
-        tools=[email_manager],  # Just pass the class instance - all methods become tools!
-        system_prompt="""You are a professional email assistant that can both send and receive emails.
+        tools=[email_manager],  # Pass the entire class instance - AI gets all methods as tools
+        system_prompt="""You are an email assistant that helps users manage their emails.
 
-Your capabilities:
-📥 RECEIVING & READING:
-- check_inbox() - See all unread emails or show all with show_all=True
-- read_email(index) - Read a specific email by number and mark it as read
-- process_inbox("categorize") - Categorize emails by type
-- process_inbox("prioritize") - Sort by priority
-
-📤 SENDING & REPLYING:
-- send_new_email(to, subject, message) - Send a new email
-- reply_to_email(index, message) - Reply to a specific email
-- auto_respond() - Auto-reply to urgent emails
-
-📊 MANAGEMENT:
-- get_statistics() - Show email statistics and activity
+You have access to these email tools:
+- search_emails(query) - Find emails by keyword, sender, or content
+- send_email(to, subject, body) - Send a new email
+- reply_to_email(email_id, message) - Reply to a specific email
+- draft_email(to, subject, context) - Create an AI-composed draft for review
+- get_unread_emails() - Check unread emails
+- mark_email_read(email_id) - Mark emails as read
 
 Guidelines:
-1. Always check inbox first to see available emails
-2. Use email index numbers (1, 2, 3...) to refer to specific emails
-3. Confirm before sending any emails
-4. Be professional and concise
-5. Mark emails as read after processing
+1. When users ask about emails, start with get_unread_emails() or search_emails()
+2. Always use email IDs (numbers in brackets) for replies and marking as read
+3. For drafts, provide context about what the email should say
+4. Confirm before sending important emails
+5. After reading or replying to emails, mark them as read
 
-Start by checking the inbox to see what emails are available."""
+Remember: Users speak naturally. Translate their requests into appropriate tool calls.
+Examples:
+- "Check my emails" → get_unread_emails()
+- "Find emails from John" → search_emails("John")
+- "Reply to email 2 saying yes" → reply_to_email(2, "Yes, I agree")
+- "Draft an email thanking the team" → draft_email("team@company.com", "Thank You", "thanking team for hard work on project")
+"""
     )
 
-    print("🤖 Email Assistant Agent (Send & Receive)")
+    print("🤖 Email Assistant (AI-Powered)")
     print("=" * 50)
-    print("\n📥 RECEIVING Commands:")
-    print('  "Check my inbox" - See unread emails')
-    print('  "Show all emails" - See all emails')
-    print('  "Read email 1" - Read specific email')
-    print('  "Categorize my emails" - Sort by type')
+    print("\nI can help you:")
+    print("  📬 Check your emails")
+    print("  🔍 Search for specific emails")
+    print("  ✉️ Send new emails")
+    print("  💬 Reply to emails")
+    print("  📝 Draft emails for review")
+    print("  ✓ Mark emails as read")
 
-    print("\n📤 SENDING Commands:")
-    print('  "Send email to alice@example.com about the meeting"')
-    print('  "Reply to email 1 saying I agree"')
-    print('  "Auto-respond to urgent emails"')
-
-    print("\n📊 MANAGEMENT Commands:")
-    print('  "Show statistics" - Email activity summary')
-    print('  "Process my inbox" - Organize emails')
-
-    print("\n💡 Tips:")
-    print("  • Start with 'check inbox' to see available emails")
-    print("  • Use email numbers (1, 2, 3) to refer to specific emails")
-    print("  • Type 'quit' to exit\n")
+    print("\n💡 Just tell me what you need:")
+    print('  "Check my emails"')
+    print('  "Find emails from John about the project"')
+    print('  "Send an email to alice@example.com"')
+    print('  "Reply to email 2 saying I agree"')
+    print('  "Draft an email to the team"')
+    print("\nType 'quit' to exit\n")
 
     # Interactive loop
     while True:
         try:
-            task = input("\n💌 What would you like to do? ")
-            if task.lower() in ['quit', 'exit', 'bye', 'q']:
-                print("\n👋 Goodbye! Your email stats:")
-                print(email_manager.get_statistics())
+            user_input = input("\n💌 What would you like to do? ")
+
+            if user_input.lower() in ['quit', 'exit', 'bye', 'q']:
+                print("\n👋 Goodbye!")
                 break
 
-            # Let the AI agent handle the task
-            response = agent.input(task)
+            # Let the AI agent handle the natural language request
+            response = agent.input(user_input)
             print(f"\n{response}")
 
         except KeyboardInterrupt:
             print("\n\n👋 Email assistant stopped.")
-            print(email_manager.get_statistics())
             break
-        except Exception as e:
-            print(f"\n❌ Error: {e}")
+        except EOFError:
+            # Handle non-interactive mode gracefully
+            print("\n👋 Email assistant stopped.")
+            break
 
 
 if __name__ == "__main__":
     main()
-
-
