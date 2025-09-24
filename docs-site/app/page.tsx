@@ -63,7 +63,7 @@ export default function HomePage() {
     const steps = [
       '$ pip install connectonion',
       'Collecting connectonion...',
-      'Successfully installed connectonion-0.0.4',
+      'Successfully installed connectonion-0.1.2',
       '$ python quickstart.py',
       'Agent: "assistant" initialized with 1 tool',
       'User: "What is 42 * 17?"',
@@ -115,7 +115,7 @@ export default function HomePage() {
           
           {/* Version badge - production ready */}
           <span className="inline-block px-2 py-0.5 text-xs font-mono bg-green-500/10 text-green-400 rounded-full border border-green-500/20 mb-3">
-            v0.0.4 Production Ready
+            v0.1.2 Production Ready
           </span>
           
           {/* Main Title - smaller on mobile */}
