@@ -45,6 +45,7 @@ import CodeWithResult from '../../components/CodeWithResult'
 import { ContentNavigation } from '../../components/ContentNavigation'
 import { CommandBlock } from '../../components/CommandBlock'
 import { ChevronRight, Zap, Package, Shield, Code, Layers, ArrowRight } from 'lucide-react'
+import { FaEdit, FaCheckCircle, FaTimes } from 'react-icons/fa'
 
 export default function LLMPage() {
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -293,11 +294,11 @@ llm_do("Hello", model="claude-3-opus-latest")`}
               
               <div className="grid md:grid-cols-2 gap-4">
                 {[
-                  { text: "One-shot execution - Single LLM round, no loops", icon: "✅" },
-                  { text: "Type safety - Full IDE autocomplete with Pydantic", icon: "✅" },
-                  { text: "Flexible prompts - Inline strings or external files", icon: "✅" },
-                  { text: "Smart defaults - Fast model, low temperature", icon: "✅" },
-                  { text: "Clean errors - Clear messages when things go wrong", icon: "✅" }
+                  { text: "One-shot execution - Single LLM round, no loops", icon: <FaCheckCircle className="text-green-400" /> },
+                  { text: "Type safety - Full IDE autocomplete with Pydantic", icon: <FaCheckCircle className="text-green-400" /> },
+                  { text: "Flexible prompts - Inline strings or external files", icon: <FaCheckCircle className="text-green-400" /> },
+                  { text: "Smart defaults - Fast model, low temperature", icon: <FaCheckCircle className="text-green-400" /> },
+                  { text: "Clean errors - Clear messages when things go wrong", icon: <FaCheckCircle className="text-green-400" /> }
                 ].map((item, i) => (
                   <div key={i} className="bg-gray-900 rounded-lg p-4 flex items-start gap-3">
                     <span className="text-2xl">{item.icon}</span>

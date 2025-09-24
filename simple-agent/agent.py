@@ -2,6 +2,7 @@
 """Minimal ConnectOnion agent example."""
 
 import os
+import sys
 from connectonion import Agent, llm_do
 
 
@@ -19,21 +20,54 @@ def hello_world(name: str = "World") -> str:
 
 def main():
     """Run the minimal agent."""
-    # Create agent with a simple tool
-    agent = Agent(
-        name="minimal-agent",
-        tools=[hello_world],
-        model=os.getenv("MODEL", "gpt-4o-mini")
-    )
-    
-    # Example interaction
-    response = agent.run("Say hello to the user")
-    print(response)
-    
-    # You can also use llm_do directly for simple queries
-    simple_response = llm_do("What is ConnectOnion?")
-    print(simple_response)
+    # Use co/o4-mini by default, can override with MODEL env var
+    model = "co/o4-mini"
+    print(f"🚀 ConnectOnion Simple Agent")
+    print(f"📦 Using model: {model}")
+    print("-" * 50)
+
+    try:
+        # Create agent with a simple tool
+        agent = Agent(
+            name="minimal-agent",
+            tools=[hello_world],
+            model=model
+        )
+
+        # Example interaction (use input method instead of run)
+        print("🤖 Agent: Processing your request...")
+        response = agent.input("Say hello to the user using the hello_world tool")
+        print(f"✅ Response: {response}")
+
+        # You can also use llm_do directly for simple queries
+        print("\n📝 Direct LLM query...")
+        simple_response = llm_do("What is ConnectOnion in one sentence?", model=model)
+        print(f"✅ Response: {simple_response}")
+
+    except ValueError as e:
+        if "Internal Server Error" in str(e):
+            print(f"❌ Error: The API returned an internal server error.")
+            print(f"   This often means the authentication token has expired.")
+            print(f"   Please run 'co auth' to refresh your authentication.")
+        elif "No authentication token found" in str(e):
+            print(f"❌ Error: No authentication token found.")
+            print(f"   Please run 'co auth' to authenticate first.")
+        else:
+            print(f"❌ Error: {e}")
+
+        print("\n💡 Tip: You can also use your own API key:")
+        print("   export OPENAI_API_KEY='sk-...'")
+        print("   MODEL='gpt-4o-mini' python agent.py")
+        return 1
+
+    except Exception as e:
+        print(f"❌ Unexpected error: {e}")
+        return 1
+
+    print("\n" + "-" * 50)
+    print("✅ Agent completed successfully!")
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

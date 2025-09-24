@@ -54,7 +54,13 @@ def _get_litellm_model_name(model: str) -> str:
 
 
 def _get_auth_token() -> Optional[str]:
-    """Get authentication token from .co/config.toml if available."""
+    """Get authentication token from environment or .co/config.toml."""
+    # First check environment variable (from .env file)
+    token = os.getenv("OPENONION_API_KEY")
+    if token:
+        return token
+
+    # Then check .co/config.toml
     try:
         co_dir = Path(".co")
         if co_dir.exists():
@@ -158,23 +164,35 @@ def llm_do(
             {"role": "user", "content": input}
         ]
         
-        # Prepare request - use production URL unless explicitly in dev mode
+        # Prepare request - use OpenAI-compatible endpoint
         if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
-            api_url = "http://localhost:8000/api/llm/completions"
+            api_url = "http://localhost:8000/v1/chat/completions"
         else:
-            api_url = "https://oo.openonion.ai/api/llm/completions"
+            api_url = "https://oo.openonion.ai/v1/chat/completions"
         
         headers = {
             "Authorization": f"Bearer {auth_token}",
             "Content-Type": "application/json"
         }
         
+        # Build payload with proper parameters for different models
         payload = {
             "model": model,  # Keep the full model name with co/ prefix
             "messages": messages,
-            "temperature": temperature,
-            **kwargs
         }
+
+        # Handle o4-mini special requirements
+        if "o4-mini" in model:
+            payload["max_completion_tokens"] = kwargs.get("max_completion_tokens", 16384)
+            payload["temperature"] = 1  # o4-mini requires temperature=1
+        else:
+            payload["max_tokens"] = kwargs.get("max_tokens", 16384)
+            payload["temperature"] = temperature
+
+        # Add any other kwargs that aren't already set
+        for key, value in kwargs.items():
+            if key not in payload and key not in ["max_completion_tokens", "max_tokens", "temperature"]:
+                payload[key] = value
         
         # Handle structured output
         if output:

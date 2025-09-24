@@ -1,22 +1,22 @@
 [project]
 name = "simple-agent"
-created = "2025-09-10T15:34:36.756997"
-framework_version = "0.0.5"
+created = "2025-09-16T17:37:46.978317"
+framework_version = "0.0.7"
 
 [cli]
 version = "1.0.0"
-command = "co create simple-agent"
-template = "minimal"
+command = "co init"
+template = "none"
 
 [agent]
-address = "0x833a63b24d398da90a146b539d764acd38a944f303bbe53a9b6b2cb411706dda"
-short_address = "0x833a...6dda"
-email = "0x833a63b2@mail.openonion.ai"
-email_active = false
-created_at = "2025-09-10T15:34:36.757019"
+address = "0x0745818023115fb7e32c741e6861650fc503d0dac02b1706d6d54b32192af137"
+short_address = "0x0745...f137"
+email = "0x07458180@openonion.ai"
+email_active = true
+created_at = "2025-09-16T17:37:46.978330"
 algorithm = "ed25519"
 default_model = "gpt-4o-mini"
 max_iterations = 10
 
 [auth]
-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdWJsaWNfa2V5IjoiMHg4MzNhNjNiMjRkMzk4ZGE5MGExNDZiNTM5ZDc2NGFjZDM4YTk0NGYzMDNiYmU1M2E5YjZiMmNiNDExNzA2ZGRhIiwiZXhwIjoxNzU3NzYxNDk0LCJpYXQiOjE3NTc2NzUwOTR9.E2q9f8tWSEi4mqml0eFWGsTS4-Q0fBHvNGr8WoXV2RE"
+token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdWJsaWNfa2V5IjoiMHgwNzQ1ODE4MDIzMTE1ZmI3ZTMyYzc0MWU2ODYxNjUwZmM1MDNkMGRhYzAyYjE3MDZkNmQ1NGIzMjE5MmFmMTM3IiwiZXhwIjoyMDczMzY4MjcwLCJpYXQiOjE3NTgwMDgyNzB9.wdmNldj8AnMMjzI8c88Q-iDUWwQb8maV0uFnKAR5rLg"

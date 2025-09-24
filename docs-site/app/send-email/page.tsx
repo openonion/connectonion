@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Mail, Send, Check, Copy, AlertCircle, Zap, Shield, Globe, Clock, ArrowRight } from 'lucide-react'
+import { FaStar, FaCheckCircle, FaEnvelope } from 'react-icons/fa'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { CommandBlock } from '../../components/CommandBlock'
@@ -108,7 +109,10 @@ send_email("alice@example.com", "Welcome!", "Thanks for joining us!")`}
               id="quickstart-run"
             />
             <div className="text-center">
-              <p className="text-green-400 font-semibold text-xl">✨ Email sent. Done.</p>
+              <p className="text-green-400 font-semibold text-xl flex items-center justify-center gap-2">
+                <FaStar className="text-yellow-400" />
+                Email sent. Done.
+              </p>
             </div>
           </div>
         </section>
@@ -197,7 +201,7 @@ send_email("alice@example.com", "Welcome!", "Thanks for joining us!")`}
                 Status update
               </h3>
               <CodeWithResult
-                code={`send_email("team@example.com", "Build passed", "All tests green ✅")`}
+                code={`send_email("team@example.com", "Build passed", "All tests green")`}
                 result={`{'success': True, 'message_id': 'msg_126'}`}
                 id="example-status"
               />
@@ -300,12 +304,13 @@ email_active = false  # Becomes true after 'co auth'`}
                 <div className="bg-gray-900/50 rounded-lg p-6 border border-gray-700">
                   <p className="font-semibold text-purple-400 mb-3">Option 1: Immediate activation (recommended)</p>
                   <CommandBlock commands={['co init']} />
-                  <pre className="text-xs text-gray-400 mt-4 font-mono bg-gray-900 p-3 rounded">
-📧 Agent email: 0x1234abcd@mail.openonion.ai (inactive)
+                  <pre className="text-xs text-gray-400 mt-4 font-mono bg-gray-900 p-3 rounded flex items-start gap-2">
+<FaEnvelope className="text-purple-400 mt-1 flex-shrink-0" />
+<span>Agent email: 0x1234abcd@mail.openonion.ai (inactive)
 
-💌 Your agent can send emails!
+Your agent can send emails!
 Would you like to activate your agent's email now? [Y/n]: y
-✨ Email activated! Your agent can now send emails.
+Email activated! Your agent can now send emails.</span>
                   </pre>
                 </div>
 

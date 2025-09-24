@@ -227,10 +227,11 @@ class TestCliInitUpdated:
             assert result.exit_code == 0
             assert os.path.exists('agent.py')
             
-            # .env should still exist but without API key
+            # .env should exist with commented placeholders (no fake keys)
             with open('.env') as f:
                 content = f.read()
-                assert 'sk-your-api-key-here' in content
+                assert '# OPENAI_API_KEY=' in content
+                assert '# Optional: Override default model' in content
                 
     def test_init_creates_agent_keys(self):
         """Test that init creates agent cryptographic keys."""

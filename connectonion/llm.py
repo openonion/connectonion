@@ -55,11 +55,17 @@ class OpenAILLM(LLM):
             "model": self.model,
             "messages": messages
         }
-        
+
+        # Set appropriate max tokens for different models
+        if self.model in ["o1", "o1-mini", "o1-preview", "o4-mini"]:
+            kwargs["max_completion_tokens"] = 16384
+        else:
+            kwargs["max_tokens"] = 16384
+
         if tools:
             kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             kwargs["tool_choice"] = "auto"
-        
+
         response = self.client.chat.completions.create(**kwargs)
         message = response.choices[0].message
         
@@ -98,7 +104,7 @@ class AnthropicLLM(LLM):
         
         kwargs = {
             "model": self.model,
-            "max_tokens": 4096,
+            "max_tokens": 16384,
             "messages": anthropic_messages
         }
         
@@ -271,7 +277,7 @@ class GeminiLLM(LLM):
         
         # Configure generation with tools if provided
         generation_config = genai.GenerationConfig(
-            max_output_tokens=4096,
+            max_output_tokens=16384,
         )
         
         # If we have tools, use the GenerativeModel with tools directly
@@ -597,8 +603,8 @@ MODEL_REGISTRY = {
 
 
 class OpenOnionLLM(LLM):
-    """OpenOnion managed keys LLM implementation."""
-    
+    """OpenOnion managed keys LLM implementation using OpenAI-compatible API."""
+
     def __init__(self, api_key: Optional[str] = None, model: str = "co/o4-mini", **kwargs):
         # For co/ models, api_key is actually the auth token
         self.auth_token = api_key or self._get_auth_token()
@@ -607,23 +613,43 @@ class OpenOnionLLM(LLM):
                 "No authentication token found for co/ models.\n"
                 "Run 'co auth' to authenticate first."
             )
-        
+
         self.model = model
-        
-        # Determine API URL
+
+        # Determine base URL for OpenAI-compatible endpoint
         if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
-            self.api_url = "http://localhost:8000/api/llm/completions"
+            base_url = "http://localhost:8000/v1"
         else:
-            self.api_url = "https://oo.openonion.ai/api/llm/completions"
+            base_url = "https://oo.openonion.ai/v1"
+
+        # Use OpenAI client with OpenOnion endpoint
+        self.client = openai.OpenAI(
+            base_url=base_url,
+            api_key=self.auth_token
+        )
     
     def _get_auth_token(self) -> Optional[str]:
-        """Get authentication token from local config."""
-        # Try current directory first
+        """Get authentication token from environment or local config."""
+        # First check environment variable (from .env file)
+        token = os.getenv("OPENONION_API_KEY")
+        if token:
+            return token
+
+        # Try current directory first, then parent directories, then home
         config_paths = [
             Path.cwd() / ".co" / "config.toml",
+            Path.cwd().parent / ".co" / "config.toml",
+            Path.cwd().parent.parent / ".co" / "config.toml",
             Path.home() / ".connectonion" / ".co" / "config.toml"
         ]
-        
+
+        # Also check if we're running from a subdirectory
+        # Look for .co in the same directory as the script being run
+        import sys
+        if sys.argv[0]:
+            script_dir = Path(sys.argv[0]).parent.absolute()
+            config_paths.insert(0, script_dir / ".co" / "config.toml")
+
         for config_path in config_paths:
             if config_path.exists():
                 try:
@@ -632,56 +658,51 @@ class OpenOnionLLM(LLM):
                         return config["auth"]["token"]
                 except Exception:
                     continue
-        
+
         return None
     
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> LLMResponse:
-        """Complete a conversation with optional tool support."""
-        headers = {
-            "Authorization": f"Bearer {self.auth_token}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
+        """Complete a conversation with optional tool support using OpenAI-compatible API."""
+        kwargs = {
             "model": self.model,
             "messages": messages
         }
-        
+
+        # Handle special requirements for o4-mini
+        if "o4-mini" in self.model:
+            # o4-mini requires max_completion_tokens instead of max_tokens
+            kwargs["max_completion_tokens"] = 16384
+            kwargs["temperature"] = 1
+        else:
+            kwargs["max_tokens"] = 16384
+
         # Add tools if provided
         if tools:
-            payload["tools"] = [{"type": "function", "function": tool} for tool in tools]
-            payload["tool_choice"] = "auto"
-        
+            kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
+            kwargs["tool_choice"] = "auto"
+
         try:
-            response = requests.post(self.api_url, json=payload, headers=headers, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            
-            # Parse the response
-            choice = data["choices"][0]
-            message = choice["message"]
-            
+            response = self.client.chat.completions.create(**kwargs)
+            message = response.choices[0].message
+
             # Parse tool calls if present
             tool_calls = []
-            if message.get("tool_calls"):
-                for tc in message["tool_calls"]:
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                for tc in message.tool_calls:
                     tool_calls.append(ToolCall(
-                        name=tc["function"]["name"],
-                        arguments=json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"],
-                        id=tc["id"]
+                        name=tc.function.name,
+                        arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                        id=tc.id
                     ))
-            
+
             return LLMResponse(
-                content=message.get("content"),
+                content=message.content,
                 tool_calls=tool_calls,
-                raw_response=data
+                raw_response=response
             )
-            
-        except requests.exceptions.RequestException as e:
-            if hasattr(e, 'response') and e.response:
-                error_msg = f"OpenOnion API error: {e.response.status_code} - {e.response.text}"
-            else:
-                error_msg = f"Network error: {str(e)}"
+
+        except Exception as e:
+            error_msg = f"OpenOnion API error: {str(e)}"
             raise ValueError(error_msg)
 
 

@@ -5,7 +5,7 @@ from setuptools import setup, find_packages
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-# Core dependencies that are always required
+# Core dependencies - we install everything by default for simplicity
 requirements = [
     "openai>=1.0.0",
     "anthropic>=0.18.0",
@@ -17,26 +17,16 @@ requirements = [
     "toml>=0.10.2",
     "requests>=2.25.0",
     "rich>=13.0.0",  # For CLI formatting
+    "PyNaCl>=1.5.0",  # For Ed25519 key generation (needed for global config)
+    "mnemonic>=0.20",  # For recovery phrase generation (needed for global config)
+    "questionary>=2.0.0",  # For interactive CLI prompts (arrow key navigation)
 ]
 
-# Optional dependencies for specific features
-# These are handled gracefully with try/except in the code
+# Note: playwright is the only one we keep optional since it's large and requires browser binaries
+# Users who need browser automation can install it separately: pip install playwright
 optional_deps = {
-    "auth": [
-        "PyNaCl>=1.5.0",  # For Ed25519 key generation
-        "mnemonic>=0.20",  # For seed phrase generation
-    ],
-    "cli": [
-        "questionary>=2.0.0",  # For interactive CLI prompts
-    ],
     "browser": [
-        "playwright>=1.40.0",  # For browser automation
-    ],
-    "all": [
-        "PyNaCl>=1.5.0",
-        "mnemonic>=0.20",
-        "questionary>=2.0.0",
-        "playwright>=1.40.0",
+        "playwright>=1.40.0",  # For browser automation (large, requires browser binaries)
     ],
 }
 

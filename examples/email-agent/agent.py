@@ -20,6 +20,7 @@ from typing import Optional
 import time
 from pydantic import BaseModel
 from pathlib import Path
+from connectonion import xray
 
 # Ensure the repository root is on sys.path so `import connectonion` works
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -154,7 +155,7 @@ class EmailManager:
         result += f"\nTo send: call send_email('{to}', '{draft.subject}', ...)"
 
         return result
-
+    @xray
     def get_unread_emails(self) -> str:
         """Get unread emails formatted for AI processing.
 
@@ -247,7 +248,7 @@ def main():
         name="email_assistant",
         tools=[email_manager],  # Pass the entire class instance - AI gets all methods as tools
         system_prompt="prompts/email_assistant.md",  # Load prompt from file (>3 lines principle)
-        model="o4-mini"  # Use o4-mini for agents
+        model="co/o4-mini"  # Use o4-mini for agents
     )
 
     print("🤖 Email Assistant (AI-Powered)")

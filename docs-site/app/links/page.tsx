@@ -1,12 +1,13 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { 
+import {
   Github, MessageCircle, Package, BookOpen, Newspaper, Mail,
   Twitter, Instagram, Youtube, Linkedin, Globe, ExternalLink,
   Copy, Check, Share2, QrCode, Link as LinkIcon, Heart,
   Sparkles, Users, Code, FileText, HelpCircle, Video
 } from 'lucide-react'
+import { FaRocket, FaComments, FaBook, FaMobile, FaHandshake } from 'react-icons/fa'
 import Link from 'next/link'
 import { ContentNavigation } from '../../components/ContentNavigation'
 import QRCode from 'qrcode'
@@ -24,7 +25,7 @@ interface LinkItem {
 }
 
 interface LinkSection {
-  title: string
+  title: string | React.ReactElement
   description?: string
   links: LinkItem[]
 }
@@ -78,7 +79,12 @@ export default function LinksPage() {
 
   const linkSections: LinkSection[] = [
     {
-      title: '🚀 Core Platform',
+      title: (
+        <span className="flex items-center gap-2">
+          <FaRocket className="inline-flex w-5 h-5 text-blue-400" />
+          Core Platform
+        </span>
+      ),
       description: 'Essential ConnectOnion resources',
       links: [
         {
@@ -117,7 +123,12 @@ export default function LinksPage() {
       ]
     },
     {
-      title: '💬 Community',
+      title: (
+        <span className="flex items-center gap-2">
+          <FaComments className="inline-flex w-5 h-5 text-green-400" />
+          Community
+        </span>
+      ),
       description: 'Join our growing community',
       links: [
         {
@@ -145,7 +156,12 @@ export default function LinksPage() {
       ]
     },
     {
-      title: '📱 Social Media',
+      title: (
+        <span className="flex items-center gap-2">
+          <FaMobile className="inline-flex w-5 h-5 text-pink-400" />
+          Social Media
+        </span>
+      ),
       description: 'Follow us for updates and content',
       links: [
         {
@@ -206,7 +222,12 @@ export default function LinksPage() {
       ]
     },
     {
-      title: '📚 Resources',
+      title: (
+        <span className="flex items-center gap-2">
+          <FaBook className="inline-flex w-5 h-5 text-orange-400" />
+          Resources
+        </span>
+      ),
       description: 'Learn and explore',
       links: [
         {
@@ -245,7 +266,12 @@ export default function LinksPage() {
       ]
     },
     {
-      title: '🤝 Support',
+      title: (
+        <span className="flex items-center gap-2">
+          <FaHandshake className="inline-flex w-5 h-5 text-amber-400" />
+          Support
+        </span>
+      ),
       description: 'Get help and contribute',
       links: [
         {

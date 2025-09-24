@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { FileCode2, Copy, Check, Sparkles, ArrowRight, Zap, BookOpen, Mouse, Rocket, Code, Terminal, Download, ChevronRight, Target } from 'lucide-react'
+import { FaBullseye, FaRocket, FaEnvelope, FaLightbulb, FaGift } from 'react-icons/fa'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { CopyMarkdownButton } from '../../components/CopyMarkdownButton'
@@ -281,7 +282,10 @@ print(result)  # Output: "5 plus 3 equals 8"`}
           <div className="bg-gradient-to-br from-green-500/5 to-transparent rounded-lg p-6 border border-green-500/20">
             <div className="flex items-center gap-3 mb-4">
               <Sparkles className="w-5 h-5 text-green-400" />
-              <h3 className="text-lg font-semibold text-green-300">✨ The Magic Happens</h3>
+              <h3 className="text-lg font-semibold text-green-300 flex items-center gap-2">
+                <Sparkles className="w-5 h-5" />
+                <span>The Magic Happens</span>
+              </h3>
             </div>
             <p className="text-gray-400 mb-4">Your agent automatically:</p>
             <div className="grid md:grid-cols-3 gap-4">
@@ -319,7 +323,10 @@ print(result)  # Output: "5 plus 3 equals 8"`}
             <div className="group bg-gradient-to-r from-purple-500/5 to-transparent rounded-xl p-6 border border-gray-700 hover:border-purple-500/30 transition-all">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="text-lg font-semibold mb-1">🎯 Basic Agent</h3>
+                  <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
+                    <FaBullseye className="text-gray-400" />
+                    <span>Basic Agent</span>
+                  </h3>
                   <p className="text-sm text-gray-500">Perfect for getting started</p>
                 </div>
                 <button 
@@ -343,7 +350,10 @@ print(result)  # Output: "5 plus 3 equals 8"`}
             <div className="group bg-gradient-to-r from-pink-500/5 to-transparent rounded-xl p-6 border border-gray-700 hover:border-pink-500/30 transition-all">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="text-lg font-semibold mb-1">🚀 Web Scraper</h3>
+                  <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
+                    <FaRocket className="text-gray-400" />
+                    <span>Web Scraper</span>
+                  </h3>
                   <p className="text-sm text-gray-500">Extract data from websites</p>
                 </div>
                 <button 
@@ -367,7 +377,10 @@ print(result)  # Output: "5 plus 3 equals 8"`}
             <div className="group bg-gradient-to-r from-green-500/5 to-transparent rounded-xl p-6 border border-gray-700 hover:border-green-500/30 transition-all">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="text-lg font-semibold mb-1">📧 Email Assistant</h3>
+                  <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
+                    <FaEnvelope className="text-gray-400" />
+                    <span>Email Assistant</span>
+                  </h3>
                   <p className="text-sm text-gray-500">Send automated emails</p>
                 </div>
                 <button 
@@ -391,7 +404,10 @@ print(result)  # Output: "5 plus 3 equals 8"`}
             <div className="group bg-gradient-to-r from-blue-500/5 to-transparent rounded-xl p-6 border border-gray-700 hover:border-blue-500/30 transition-all">
               <div className="flex items-start justify-between mb-3">
                 <div>
-                  <h3 className="text-lg font-semibold mb-1">💡 Custom Idea</h3>
+                  <h3 className="text-lg font-semibold mb-1 flex items-center gap-2">
+                    <FaLightbulb className="text-gray-400" />
+                    <span>Custom Idea</span>
+                  </h3>
                   <p className="text-sm text-gray-500">Describe your own agent</p>
                 </div>
               </div>
@@ -554,7 +570,10 @@ print(result)  # Output: "5 plus 3 equals 8"`}
                     <span className="text-gray-500 select-none">$ </span>
                     <span className="text-green-400">python agent.py</span>
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">🎉 Congratulations! Your agent is live!</p>
+                  <p className="text-xs text-gray-500 mt-2 flex items-center gap-1">
+                    <FaGift className="text-gray-400" />
+                    <span>Congratulations! Your agent is live!</span>
+                  </p>
                 </div>
               </div>
             </div>

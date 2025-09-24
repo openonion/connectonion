@@ -45,6 +45,7 @@
 
 import { useState } from 'react'
 import { Copy, Check, Terminal, ArrowRight, FileText, Package, GitBranch, AlertCircle, Zap, Code, Folder, BookOpen, ChevronRight, Key, Sparkles, Shield } from 'lucide-react'
+import { FaLightbulb, FaBolt } from 'react-icons/fa'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
@@ -552,7 +553,10 @@ Next steps:
 
         <div className="bg-blue-900/20 border border-blue-500/30 rounded-lg p-4 mb-6">
           <p className="text-sm text-blue-300">
-            <span className="font-semibold">💡 Tip:</span> <code className="bg-blue-900/50 px-1 rounded">co -b</code> is short for <code className="bg-blue-900/50 px-1 rounded">co browser</code>. Both syntaxes work the same way!
+            <span className="font-semibold inline-flex items-center gap-1">
+              <FaLightbulb className="text-yellow-400 text-sm" />
+              <span>Tip:</span>
+            </span> <code className="bg-blue-900/50 px-1 rounded">co -b</code> is short for <code className="bg-blue-900/50 px-1 rounded">co browser</code>. Both syntaxes work the same way!
           </p>
         </div>
 
@@ -671,7 +675,7 @@ Next steps:
   I need an agent that monitors GitHub repos and 
   sends notifications for new issues
 
-⚡ Generating custom template with AI...
+Generating custom template with AI...
 ✅ Created custom GitHub monitoring agent`}
               </pre>
             </div>

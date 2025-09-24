@@ -11,6 +11,7 @@
 
 import React, { useState } from 'react'
 import { Copy, Check, Code, Download, Play, Terminal, Lightbulb, Shield, AlertTriangle } from 'lucide-react'
+import { FaShieldAlt, FaBolt, FaWrench, FaBullseye } from 'react-icons/fa'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import { ContentNavigation } from '../../../components/ContentNavigation'
@@ -396,11 +397,17 @@ Response: Calculation: (100 - 25) / 5 + 10 = 25.0`}
             <h3 className="text-xl font-semibold text-white mb-4">Security Features</h3>
             <div className="space-y-4 text-sm">
               <div>
-                <h4 className="font-semibold text-blue-400 mb-2">🛡️ Input Validation</h4>
+                <h4 className="font-semibold text-blue-400 mb-2 flex items-center gap-2">
+                  <FaShieldAlt className="w-4 h-4" />
+                  <span>Input Validation</span>
+                </h4>
                 <p className="text-gray-300">Only allows safe mathematical characters (0-9, +, -, *, /, (, ), ., space).</p>
               </div>
               <div>
-                <h4 className="font-semibold text-blue-400 mb-2">⚡ Safe Evaluation</h4>
+                <h4 className="font-semibold text-blue-400 mb-2 flex items-center gap-2">
+                  <FaBolt className="w-4 h-4" />
+                  <span>Safe Evaluation</span>
+                </h4>
                 <p className="text-gray-300">Pre-filters input before using eval() to prevent code injection.</p>
               </div>
               <div>
@@ -415,7 +422,10 @@ Response: Calculation: (100 - 25) / 5 + 10 = 25.0`}
             <h3 className="text-lg font-semibold text-white mb-4">Advanced Features</h3>
             <div className="space-y-3 text-sm">
               <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded">
-                <p className="text-blue-300 font-medium mb-1">🔧 Multiple Tools</p>
+                <p className="text-blue-300 font-medium mb-1 flex items-center gap-2">
+                  <FaWrench className="w-4 h-4" />
+                  <span>Multiple Tools</span>
+                </p>
                 <ul className="text-blue-200 space-y-1">
                   <li>• <code>calculate()</code> - Core math operations</li>
                   <li>• <code>get_help()</code> - User assistance</li>
@@ -423,7 +433,10 @@ Response: Calculation: (100 - 25) / 5 + 10 = 25.0`}
                 </ul>
               </div>
               <div className="p-3 bg-blue-900/20 border border-blue-500/30 rounded">
-                <p className="text-blue-300 font-medium mb-1">🎯 System Prompt</p>
+                <p className="text-blue-300 font-medium mb-1 flex items-center gap-2">
+                  <FaBullseye className="w-4 h-4" />
+                  <span>System Prompt</span>
+                </p>
                 <p className="text-blue-200">Guides the agent on when to use which tool based on user needs.</p>
               </div>
             </div>

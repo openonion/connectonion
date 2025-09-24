@@ -38,6 +38,7 @@
 
 import { useState } from 'react'
 import { Terminal, Play, ArrowRight, BookOpen, Code, Zap, Clock, Users, Activity, CheckCircle, AlertCircle, Github, Copy, Check, Sparkles, Rocket, FileCode, Package, GitBranch, MessageCircle } from 'lucide-react'
+import { FaEdit, FaWrench, FaRobot, FaLaptop, FaRocket, FaComments, FaBullseye, FaSearch, FaChartBar, FaStar } from 'react-icons/fa'
 import { motion } from 'framer-motion'
 import Link from 'next/link'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
@@ -213,7 +214,7 @@ export default function HomePage() {
             <div className="md:hidden space-y-4">
               <div className="flex items-center justify-between bg-gray-900/30 rounded-lg p-4">
                 <div className="flex items-center gap-3">
-                  <div className="text-2xl">📝</div>
+                  <FaEdit className="text-2xl text-gray-400" />
                   <div>
                     <div className="font-semibold text-white">Markdown</div>
                     <div className="text-xs text-gray-500">your prompt</div>
@@ -225,7 +226,7 @@ export default function HomePage() {
               
               <div className="flex items-center justify-between bg-gray-900/30 rounded-lg p-4">
                 <div className="flex items-center gap-3">
-                  <div className="text-2xl">🔧</div>
+                  <FaWrench className="text-2xl text-gray-400" />
                   <div>
                     <div className="font-semibold text-white">Functions</div>
                     <div className="text-xs text-gray-500">your tools</div>
@@ -237,7 +238,7 @@ export default function HomePage() {
               
               <div className="bg-purple-900/20 rounded-lg p-4 border border-purple-500/30">
                 <div className="flex items-center justify-center gap-3">
-                  <div className="text-2xl">🤖</div>
+                  <FaRobot className="text-2xl text-gray-400" />
                   <div>
                     <div className="font-semibold text-white">Agent</div>
                     <div className="text-xs text-purple-400">AI assistant</div>
@@ -249,7 +250,7 @@ export default function HomePage() {
             {/* Desktop: Horizontal flow */}
             <div className="hidden md:grid grid-cols-5 gap-2 items-center">
               <div className="text-center">
-                <div className="text-4xl mb-2">📝</div>
+                <FaEdit className="text-4xl mb-2 text-gray-400" />
                 <div className="font-semibold text-white">Markdown</div>
                 <div className="text-xs text-gray-500">prompt</div>
               </div>
@@ -257,7 +258,7 @@ export default function HomePage() {
               <div className="text-center text-2xl text-gray-600">+</div>
               
               <div className="text-center">
-                <div className="text-4xl mb-2">🔧</div>
+                <FaWrench className="text-4xl mb-2 text-gray-400" />
                 <div className="font-semibold text-white">Functions</div>
                 <div className="text-xs text-gray-500">tools</div>
               </div>
@@ -265,7 +266,7 @@ export default function HomePage() {
               <div className="text-center text-2xl text-gray-600">=</div>
               
               <div className="text-center p-4 bg-purple-900/20 rounded-lg border border-purple-500/30">
-                <div className="text-4xl mb-2">🤖</div>
+                <FaRobot className="text-4xl mb-2 text-gray-400" />
                 <div className="font-semibold text-white">Agent</div>
                 <div className="text-xs text-purple-400">AI</div>
               </div>
@@ -324,7 +325,9 @@ print(result)  # "42 * 17 equals 714"`}
                 }`}
               >
                 ConnectOnion
-                <span className="block text-xs mt-1">8 lines ✨</span>
+                <span className="block text-xs mt-1 flex items-center gap-1">
+                  8 lines <FaStar className="text-xs" />
+                </span>
               </button>
               <button
                 onClick={() => setActiveComparison('other')}
@@ -552,7 +555,9 @@ print(result["output"])`}
             <div className="order-1 md:order-2">
               <div className="mb-4 flex items-center justify-between">
                 <h3 className="text-lg font-semibold text-green-400">ConnectOnion</h3>
-                <span className="text-sm text-green-400 font-mono">8 lines ✨</span>
+                <span className="text-sm text-green-400 font-mono flex items-center gap-1">
+                  8 lines <FaStar className="text-xs" />
+                </span>
               </div>
               <div className="bg-gray-900/50 rounded-lg border border-green-500/30 overflow-hidden">
                 <div className="p-4 overflow-x-auto">
@@ -624,7 +629,7 @@ print(result)`}
               <div className="group relative">
                 <div className="absolute inset-0 bg-purple-600/10 rounded-xl blur-lg group-hover:bg-purple-600/20 transition-all" />
                 <div className="relative bg-gray-900/40 backdrop-blur-sm border border-purple-500/20 rounded-xl p-3 hover:border-purple-500/40 transition-all">
-                  <div className="text-xl mb-2">🤖</div>
+                  <FaRobot className="text-xl mb-2 text-gray-400" />
                   <div className="text-sm font-semibold text-purple-300">Claude Code</div>
                 </div>
               </div>
@@ -632,7 +637,7 @@ print(result)`}
               <div className="group relative">
                 <div className="absolute inset-0 bg-blue-600/10 rounded-xl blur-lg group-hover:bg-blue-600/20 transition-all" />
                 <div className="relative bg-gray-900/40 backdrop-blur-sm border border-blue-500/20 rounded-xl p-3 hover:border-blue-500/40 transition-all">
-                  <div className="text-xl mb-2">💻</div>
+                  <FaLaptop className="text-xl mb-2 text-gray-400" />
                   <div className="text-sm font-semibold text-blue-300">Cursor</div>
                 </div>
               </div>
@@ -640,7 +645,7 @@ print(result)`}
               <div className="group relative">
                 <div className="absolute inset-0 bg-green-600/10 rounded-xl blur-lg group-hover:bg-green-600/20 transition-all" />
                 <div className="relative bg-gray-900/40 backdrop-blur-sm border border-green-500/20 rounded-xl p-3 hover:border-green-500/40 transition-all">
-                  <div className="text-xl mb-2">🚀</div>
+                  <FaRocket className="text-xl mb-2 text-gray-400" />
                   <div className="text-sm font-semibold text-green-300">GitHub Copilot</div>
                 </div>
               </div>
@@ -648,7 +653,7 @@ print(result)`}
               <div className="group relative">
                 <div className="absolute inset-0 bg-orange-600/10 rounded-xl blur-lg group-hover:bg-orange-600/20 transition-all" />
                 <div className="relative bg-gray-900/40 backdrop-blur-sm border border-orange-500/20 rounded-xl p-3 hover:border-orange-500/40 transition-all">
-                  <div className="text-xl mb-2">💬</div>
+                  <FaComments className="text-xl mb-2 text-gray-400" />
                   <div className="text-sm font-semibold text-orange-300">ChatGPT</div>
                 </div>
               </div>
@@ -733,19 +738,19 @@ print(result)`}
         {/* Key features in clean grid */}
         <div className="grid md:grid-cols-3 gap-6 max-w-4xl mx-auto mb-12">
           <div className="p-5 bg-gray-800/30 rounded-lg border border-gray-700">
-            <div className="text-2xl mb-2">🎯</div>
+            <FaBullseye className="text-2xl mb-2 text-gray-400" />
             <h3 className="font-semibold text-white mb-1">Zero Setup</h3>
             <p className="text-sm text-gray-400">Functions become tools instantly</p>
           </div>
           
           <div className="p-5 bg-gray-800/30 rounded-lg border border-gray-700">
-            <div className="text-2xl mb-2">🔍</div>
+            <FaSearch className="text-2xl mb-2 text-gray-400" />
             <h3 className="font-semibold text-white mb-1">Debug Mode</h3>
             <p className="text-sm text-gray-400">@xray shows everything</p>
           </div>
           
           <div className="p-5 bg-gray-800/30 rounded-lg border border-gray-700">
-            <div className="text-2xl mb-2">📊</div>
+            <FaChartBar className="text-2xl mb-2 text-gray-400" />
             <h3 className="font-semibold text-white mb-1">Auto History</h3>
             <p className="text-sm text-gray-400">Every interaction saved</p>
           </div>
@@ -788,7 +793,10 @@ print(result)`}
             <div className="bg-black/50 rounded-lg p-4 mb-4 font-mono text-sm">
               <span className="text-purple-400">@xray</span>
               <div className="text-blue-400">def process(data):</div>
-              <div className="text-gray-500 mt-1">🔍 See everything</div>
+              <div className="text-gray-500 mt-1 flex items-center gap-1">
+                <FaSearch className="text-sm" />
+                <span>See everything</span>
+              </div>
             </div>
             <ul className="space-y-2 text-sm">
               <li className="flex items-center gap-2 text-gray-300">

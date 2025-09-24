@@ -37,12 +37,13 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { 
-  Zap, ArrowRight, Activity, Bug, Eye, Clock, Code, 
+import {
+  Zap, ArrowRight, Activity, Bug, Eye, Clock, Code,
   FileCode, Network, LineChart, Brain, MessageSquare,
-  History, RefreshCw, Braces, GitBranch, Timer, 
+  History, RefreshCw, Braces, GitBranch, Timer,
   Layers, Route, Search, Play, BarChart3, ArrowLeft
 } from 'lucide-react'
+import { FaBullseye, FaRocket, FaSearch, FaChartBar, FaShieldAlt } from 'react-icons/fa'
 import CodeWithResult from '../../components/CodeWithResult'
 import Link from 'next/link'
 import { ContentNavigation } from '../../components/ContentNavigation'
@@ -207,7 +208,7 @@ Analysis complete`}
               <CodeWithResult 
                 code={`@xray
 def analyze_sentiment(text: str) -> str:
-    # 🎯 Set breakpoint on next line
+    # Set breakpoint on next line
     sentiment = "positive"  # When stopped here in debugger:
                            # >>> xray
                            # <XrayContext active>
@@ -384,10 +385,10 @@ Order ABC123 processed`}
           
           <div className="space-y-4">
             {[
-              { icon: '🚀', tip: 'Development Only', detail: 'Remove @xray in production for best performance' },
-              { icon: '🔍', tip: 'Combine with IDE', detail: 'Set breakpoints for interactive debugging' },
-              { icon: '📊', tip: 'Use trace()', detail: 'Call xray.trace() after runs to see full flow' },
-              { icon: '🛡️', tip: 'Check context', detail: 'Always verify xray.agent exists before using' }
+              { icon: <FaRocket className="text-blue-400" />, tip: 'Development Only', detail: 'Remove @xray in production for best performance' },
+              { icon: <FaSearch className="text-green-400" />, tip: 'Combine with IDE', detail: 'Set breakpoints for interactive debugging' },
+              { icon: <FaChartBar className="text-purple-400" />, tip: 'Use trace()', detail: 'Call xray.trace() after runs to see full flow' },
+              { icon: <FaShieldAlt className="text-yellow-400" />, tip: 'Check context', detail: 'Always verify xray.agent exists before using' }
             ].map((tip, i) => (
               <motion.div
                 key={i}

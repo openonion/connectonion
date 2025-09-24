@@ -44,6 +44,7 @@
 
 import { useState } from 'react'
 import { Play, Terminal, ArrowRight, Zap, FileText, Clock, Code, Wrench, Copy, Check } from 'lucide-react'
+import { FaSearch, FaBullseye } from 'react-icons/fa'
 import { Prism as SyntaxHighlighter } from 'react-syntax-highlighter'
 import { okaidia as monokai } from 'react-syntax-highlighter/dist/esm/styles/prism'
 import Link from 'next/link'
@@ -483,9 +484,9 @@ from connectonion.decorators import xray
 @xray
 def calculate(expression: str) -> str:
     """Math tool with debugging enabled."""
-    print(f"🔍 Agent '{xray.agent.name}' is calculating: {expression}")
-    print(f"🔍 User's original request: {xray.task}")
-    print(f"🔍 This is iteration #{xray.iteration}")
+    print(f"[SEARCH] Agent '{xray.agent.name}' is calculating: {expression}")
+    print(f"[SEARCH] User's original request: {xray.task}")
+    print(f"[SEARCH] This is iteration #{xray.iteration}"
     
     result = eval(expression)
     return f"Result: {result}"
@@ -493,9 +494,9 @@ def calculate(expression: str) -> str:
 agent = Agent("debug_calc", tools=[calculate], max_iterations=5)
 response = agent.input("What's 50 + 30?")
 print(response)`}
-          result={`🔍 Agent 'debug_calc' is calculating: 50 + 30
-🔍 User's original request: What's 50 + 30?
-🔍 This is iteration #1
+          result={`[SEARCH] Agent 'debug_calc' is calculating: 50 + 30
+[SEARCH] User's original request: What's 50 + 30?
+[SEARCH] This is iteration #1
 Result: 80
 
 The result is 80.`}
@@ -505,7 +506,10 @@ The result is 80.`}
 
       {/* Next Steps */}
       <section className="mb-16">
-        <h2 className="text-2xl font-bold text-white mb-8">🎯 What's Next?</h2>
+        <h2 className="text-2xl font-bold text-white mb-8 flex items-center gap-2">
+          <FaBullseye className="text-blue-400" />
+          <span>What's Next?</span>
+        </h2>
         
         <div className="grid sm:grid-cols-2 gap-4 sm:gap-6">
           <Link 

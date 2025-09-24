@@ -1,3 +1,6 @@
+import { FaCircle, FaStar, FaExclamation, FaLightbulb, FaEye, FaBook } from 'react-icons/fa'
+import { ReactElement } from 'react'
+
 interface DifficultyBadgeProps {
   level: 'Beginner' | 'Intermediate' | 'Advanced' | 'Expert' | 'Start Here' | 'Important' | 'Design Decision' | 'Preview' | 'Browse'
   size?: 'sm' | 'md' | 'lg'
@@ -5,68 +8,68 @@ interface DifficultyBadgeProps {
   className?: string
 }
 
-const difficultyConfig = {
-  'Beginner': { 
-    bg: 'bg-green-900/50', 
-    text: 'text-green-400', 
+const difficultyConfig: Record<string, { bg: string; text: string; border: string; icon: ReactElement; description: string }> = {
+  'Beginner': {
+    bg: 'bg-green-900/50',
+    text: 'text-green-400',
     border: 'border-green-500/30',
-    icon: '🟢',
+    icon: <FaCircle />,
     description: 'Basic concepts, single tools, simple interactions'
   },
-  'Intermediate': { 
-    bg: 'bg-yellow-900/50', 
-    text: 'text-yellow-400', 
+  'Intermediate': {
+    bg: 'bg-yellow-900/50',
+    text: 'text-yellow-400',
     border: 'border-yellow-500/30',
-    icon: '🟡',
+    icon: <FaCircle />,
     description: 'Multiple tools, state management, workflows'
   },
-  'Advanced': { 
-    bg: 'bg-orange-900/50', 
-    text: 'text-orange-400', 
+  'Advanced': {
+    bg: 'bg-orange-900/50',
+    text: 'text-orange-400',
     border: 'border-orange-500/30',
-    icon: '🟠',
+    icon: <FaCircle />,
     description: 'System integration, security, API handling'
   },
-  'Expert': { 
-    bg: 'bg-red-900/50', 
-    text: 'text-red-400', 
+  'Expert': {
+    bg: 'bg-red-900/50',
+    text: 'text-red-400',
     border: 'border-red-500/30',
-    icon: '🔴',
+    icon: <FaCircle />,
     description: 'Enterprise business logic, multi-system coordination'
   },
   'Start Here': {
     bg: 'bg-purple-900/50',
     text: 'text-purple-400',
     border: 'border-purple-500/30',
-    icon: '⭐',
+    icon: <FaStar />,
     description: 'Recommended starting point'
   },
   'Important': {
     bg: 'bg-blue-900/50',
     text: 'text-blue-400',
     border: 'border-blue-500/30',
-    icon: '❗',
+    icon: <FaExclamation />,
     description: 'Critical information'
   },
   'Design Decision': {
     bg: 'bg-indigo-900/50',
     text: 'text-indigo-400',
     border: 'border-indigo-500/30',
-    icon: '💡',
+    icon: <FaLightbulb />,
     description: 'Architectural and design insights'
   },
   'Preview': {
     bg: 'bg-pink-900/50',
     text: 'text-pink-400',
     border: 'border-pink-500/30',
-    icon: '👀',
+    icon: <FaEye />,
     description: 'Preview of upcoming features'
   },
   'Browse': {
     bg: 'bg-gray-800/50',
     text: 'text-gray-400',
     border: 'border-gray-600/30',
-    icon: '📚',
+    icon: <FaBook />,
     description: 'Browse all examples'
   }
 }
@@ -110,7 +113,7 @@ export function DifficultyBadge({
       title={`${level} level - ${description}`}
     >
       {showIcon && (
-        <span className={`${iconSize} leading-none`} aria-hidden="true">
+        <span className={`${iconSize} ${text} leading-none inline-flex`} aria-hidden="true">
           {icon}
         </span>
       )}
