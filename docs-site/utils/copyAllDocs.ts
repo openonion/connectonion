@@ -1,4 +1,9 @@
-// Utility to fetch and copy all documentation content for LLMs
+/**
+ * @purpose Fetches and copies comprehensive ConnectOnion documentation to clipboard for AI assistants
+ * @context Used by HomePage vibe coding section to provide one-click documentation copying
+ * @llm-note Fetches co-vibecoding-principles-docs-contexts-all-in-one.md from public folder,
+ *           falls back to DEFAULT_CONTENT if fetch fails, enables AI-assisted development workflow
+ */
 
 // Default content in case fetch fails
 const DEFAULT_CONTENT = `# ConnectOnion Framework - Quick Reference

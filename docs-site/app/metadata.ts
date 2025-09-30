@@ -1,3 +1,9 @@
+/**
+ * @purpose Shared SEO metadata configuration for ConnectOnion documentation site
+ * @context Exported metadata object used across pages for consistent SEO settings
+ * @llm-note Provides OpenGraph, Twitter cards, canonical URLs, and structured data for search engines,
+ *           includes comprehensive keyword optimization for "ConnectOnion" and "Connect Onion" branding
+ */
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {

@@ -1,25 +1,26 @@
 """Core Agent implementation for ConnectOnion."""
 
 import os
+import sys
 import time
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
 from dotenv import load_dotenv
 from .llm import LLM, create_llm
 from .history import History
-from .tools import create_tool_from_function, extract_methods_from_instance, is_class_instance
+from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .prompts import load_system_prompt
 from .decorators import (
-    _inject_context_for_tool, 
-    _clear_context_after_tool,
-    _is_xray_enabled,
-    _is_replay_enabled
+    _is_replay_enabled  # Only need this for replay check
 )
+from .console import Console
+from .tool_executor import execute_and_record_tools, execute_single_tool
 
 # Load environment variables from .env file
 load_dotenv()
 
-
+        # Handle trust parameter - convert to trust agent
+from .trust import create_trust_agent, get_default_trust_level
 class Agent:
     """Agent that can use tools to complete tasks."""
     
@@ -27,19 +28,36 @@ class Agent:
         self,
         name: str,
         llm: Optional[LLM] = None,
-        tools: Optional[Union[List[Callable], Callable, Any]] = None,
-        system_prompt: Union[str, Path, None] = None,
+        tools: Optional[Union[List[Callable], Callable, Any]] = None, system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
         model: str = "o4-mini",
         max_iterations: int = 10,
-        trust: Optional[Union[str, Path, 'Agent']] = None
+        trust: Optional[Union[str, Path, 'Agent']] = None,
+        log: Optional[Union[bool, str, Path]] = None
     ):
         self.name = name
         self.system_prompt = load_system_prompt(system_prompt)
         self.max_iterations = max_iterations
+
+        # Current session context (runtime only)
+        self.current_session = None
+
+        # Setup optional file logging
+        log_file = None
+        if log is True:
+            # Default log file: {name}.log in current directory
+            log_file = Path(f"{name}.log")
+        elif log:
+            # Custom log file path
+            log_file = Path(log)
+        elif os.getenv('CONNECTONION_LOG'):
+            # Environment variable override
+            log_file = Path(os.getenv('CONNECTONION_LOG'))
+
+        # Initialize console (always shows output, optional file logging)
+        self.console = Console(log_file=log_file)
         
-        # Handle trust parameter - convert to trust agent
-        from .trust import create_trust_agent, get_default_trust_level
+
         
         # If trust is None, check for environment default
         if trust is None:
@@ -95,180 +113,183 @@ class Agent:
     
     def input(self, prompt: str, max_iterations: Optional[int] = None) -> str:
         """Provide input to the agent and get response.
-        
+
         Args:
             prompt: The input prompt or data to process
             max_iterations: Override agent's max_iterations for this request
-            
+
         Returns:
             The agent's response after processing the input
         """
         start_time = time.time()
-        messages = [
+        self.console.print(f"[bold]INPUT:[/bold] {prompt[:100]}...")
+
+        # Initialize session on first input, or continue existing conversation
+        if self.current_session is None:
+            self.current_session = {
+                'messages': [{"role": "system", "content": self.system_prompt}],
+                'trace': [],
+                'turn': 0  # Track conversation turns
+            }
+
+        # Add user message to conversation
+        self.current_session['messages'].append({
+            "role": "user",
+            "content": prompt
+        })
+
+        # Track this turn
+        self.current_session['turn'] += 1
+        turn_start = time.time()
+
+        # Add trace entry for this input
+        self.current_session['trace'].append({
+            'type': 'user_input',
+            'turn': self.current_session['turn'],
+            'prompt': prompt,
+            'timestamp': turn_start
+        })
+
+        # Process
+        self.current_session['iteration'] = 0  # Reset iteration for this turn
+        result = self._run_iteration_loop(
+            max_iterations or self.max_iterations
+        )
+
+        # Save this interaction to history (per turn, not per session)
+        duration = time.time() - turn_start
+        self._save_interaction_history(prompt, result, duration)
+
+        self.console.print(f"[green]✓ Complete[/green] ({duration:.1f}s)")
+        return result
+
+    def reset_conversation(self):
+        """Reset the conversation session. Start fresh."""
+        self.current_session = None
+
+    def execute_tool(self, tool_name: str, arguments: Optional[Dict] = None) -> Dict[str, Any]:
+        """Execute a single tool by name. Useful for testing and debugging.
+
+        Args:
+            tool_name: Name of the tool to execute
+            arguments: Tool arguments (default: {})
+
+        Returns:
+            Dict with: result, status, timing, name, arguments
+        """
+        arguments = arguments or {}
+
+        # Create temporary session if needed
+        if self.current_session is None:
+            self.current_session = {
+                'messages': [{"role": "system", "content": self.system_prompt}],
+                'trace': [],
+                'turn': 0,
+                'iteration': 1,
+                'prompt': 'Manual tool execution'
+            }
+
+        # Execute using the tool_executor
+        trace_entry = execute_single_tool(
+            tool_name=tool_name,
+            tool_args=arguments,
+            tool_id=f"manual_{tool_name}_{time.time()}",
+            tool_map=self.tool_map,
+            agent=self,
+            console=self.console
+        )
+
+        # Note: trace_entry already added to session in execute_single_tool
+
+        # Return simplified result (omit internal fields)
+        return {
+            "name": trace_entry["tool_name"],
+            "arguments": trace_entry["arguments"],
+            "result": trace_entry["result"],
+            "status": trace_entry["status"],
+            "timing": trace_entry["timing"]
+        }
+
+    def _create_initial_messages(self, prompt: str) -> List[Dict[str, Any]]:
+        """Create initial conversation messages."""
+        return [
             {"role": "system", "content": self.system_prompt},
             {"role": "user", "content": prompt}
         ]
-        
-        # Get tool schemas for LLM
-        tool_schemas = [tool.to_function_schema() for tool in self.tools] if self.tools else None
-        
-        # Track all tool calls for this input
-        all_tool_calls = []  # Persisted in History for behavior tracking
-        execution_history = []  # Used by xray.trace() with timing data
-        effective_max_iterations = max_iterations or self.max_iterations  # Use override or agent default
-        iteration = 0
-        
-        while iteration < effective_max_iterations:
-            iteration += 1
-            
-            # Call LLM
-            response = self.llm.complete(messages, tools=tool_schemas)
-            
+
+    def _run_iteration_loop(self, max_iterations: int) -> str:
+        """Run the main LLM/tool iteration loop until complete or max iterations."""
+        while self.current_session['iteration'] < max_iterations:
+            self.current_session['iteration'] += 1
+            iteration = self.current_session['iteration']
+
+            self.console.print(f"[dim]Iteration {iteration}/{max_iterations}[/dim]")
+
+            # Get LLM response
+            response = self._get_llm_decision()
+
             # If no tool calls, we're done
             if not response.tool_calls:
-                if response.content:
-                    result = response.content
-                else:
-                    result = "Task completed."
-                break
-            
-            # Add assistant message with ALL tool calls first
-            assistant_tool_calls = []
-            for tool_call in response.tool_calls:
-                import json
-                assistant_tool_calls.append({
-                    "id": tool_call.id,
-                    "type": "function",
-                    "function": {
-                        "name": tool_call.name,
-                        "arguments": json.dumps(tool_call.arguments)
-                    }
-                })
-            
-            messages.append({
-                "role": "assistant",
-                "content": None,
-                "tool_calls": assistant_tool_calls
-            })
-            
-            # Execute tool calls and add individual tool responses
-            for tool_call in response.tool_calls:
-                tool_name = tool_call.name
-                tool_args = tool_call.arguments
-                
-                # Record tool call
-                tool_record = {
-                    "name": tool_name,
-                    "arguments": tool_args,
-                    "call_id": tool_call.id,
-                    "timing": 0  # Will be updated after execution
-                }
-                
-                # Execute tool
-                if tool_name in self.tool_map:
-                    try:
-                        # Prepare context data for debugging decorators
-                        previous_tools = [tc["name"] for tc in all_tool_calls]
-                        
-                        # Track execution for xray.trace() functionality
-                        # This builds a parallel structure to tool_calls but with timing data
-                        exec_entry = {
-                            "tool_name": tool_name,
-                            "parameters": tool_args,
-                            "status": "pending"  # Will be updated after execution
-                        }
-                        execution_history.append(exec_entry)
-                        
-                        # Check if tool has @xray decorator and inject context
-                        tool_func = self.tool_map[tool_name]
-                        if _is_xray_enabled(tool_func):
-                            _inject_context_for_tool(
-                                agent=self,
-                                user_prompt=prompt,
-                                messages=messages.copy(),  # Provide copy to avoid modifications
-                                iteration=iteration,
-                                previous_tools=previous_tools,
-                                execution_history=execution_history  # Pass execution history
-                            )
-                        
-                        # Time the execution
-                        tool_start = time.time()
-                        # Execute the tool (call the function directly to preserve decorators)
-                        tool_result = tool_func(**tool_args)
-                        tool_duration = (time.time() - tool_start) * 1000  # Convert to milliseconds
-                        
-                        # Update execution entry with timing and result
-                        # This data is used by xray.trace() to show execution flow
-                        exec_entry["timing"] = tool_duration
-                        exec_entry["result"] = tool_result
-                        exec_entry["status"] = "success"
-                        
-                        # Clear context after execution
-                        if _is_xray_enabled(tool_func):
-                            _clear_context_after_tool()
-                            
-                        tool_record["result"] = str(tool_result)  # Ensure string for JSON serialization
-                        tool_record["status"] = "success"
-                        tool_record["timing"] = tool_duration  # Add timing for xray.trace() to use later
-                        
-                        messages.append({
-                            "role": "tool",
-                            "content": str(tool_result),  # Ensure result is string
-                            "tool_call_id": tool_call.id
-                        })
-                        
-                    except Exception as e:
-                        # Update execution entry for error case
-                        # Calculate timing if execution started
-                        if 'tool_start' in locals():
-                            tool_duration = (time.time() - tool_start) * 1000
-                            exec_entry["timing"] = tool_duration
-                        exec_entry["status"] = "error"
-                        exec_entry["error"] = str(e)
-                        
-                        # Make sure to clear context even if there's an error
-                        tool_func = self.tool_map[tool_name]
-                        if _is_xray_enabled(tool_func):
-                            _clear_context_after_tool()
-                            
-                        tool_result = f"Error executing tool: {str(e)}"
-                        tool_record["result"] = tool_result
-                        tool_record["status"] = "error"
-                        if 'tool_duration' in locals():
-                            tool_record["timing"] = tool_duration
-                        
-                        messages.append({
-                            "role": "tool",
-                            "content": str(tool_result),  # Ensure result is string
-                            "tool_call_id": tool_call.id
-                        })
-                else:
-                    tool_result = f"Tool '{tool_name}' not found"
-                    tool_record["result"] = tool_result
-                    tool_record["status"] = "not_found"
-                    
-                    messages.append({
-                        "role": "tool",
-                        "content": tool_result,
-                        "tool_call_id": tool_call.id
-                    })
-                
-                all_tool_calls.append(tool_record)
-        
-        # If we hit max iterations, set appropriate result
-        if iteration >= effective_max_iterations:
-            result = f"Task incomplete: Maximum iterations ({effective_max_iterations}) reached."
-        
-        # Record behavior
-        duration = time.time() - start_time
+                return response.content if response.content else "Task completed."
+
+            # Process tool calls
+            self._execute_and_record_tools(response.tool_calls)
+
+        # Hit max iterations
+        return f"Task incomplete: Maximum iterations ({max_iterations}) reached."
+
+    def _get_llm_decision(self):
+        """Get the next action/decision from the LLM."""
+        self.console.print(f"[yellow]→[/yellow] LLM Request ({self.llm.model})")
+
+        # Get tool schemas
+        tool_schemas = [tool.to_function_schema() for tool in self.tools] if self.tools else None
+
+        start = time.time()
+        response = self.llm.complete(self.current_session['messages'], tools=tool_schemas)
+        duration = (time.time() - start) * 1000  # milliseconds
+
+        # Add to trace
+        self.current_session['trace'].append({
+            'type': 'llm_call',
+            'model': self.llm.model,
+            'timestamp': start,
+            'duration_ms': duration,
+            'tool_calls_count': len(response.tool_calls) if response.tool_calls else 0,
+            'iteration': self.current_session['iteration']
+        })
+
+        if response.tool_calls:
+            self.console.print(f"[green]←[/green] LLM Response ({duration:.0f}ms): {len(response.tool_calls)} tool calls")
+        else:
+            self.console.print(f"[green]←[/green] LLM Response ({duration:.0f}ms)")
+
+        return response
+
+    def _execute_and_record_tools(self, tool_calls):
+        """Execute requested tools and update conversation messages."""
+        # Delegate to tool_executor module
+        execute_and_record_tools(
+            tool_calls=tool_calls,
+            tool_map=self.tool_map,
+            agent=self,  # Agent has current_session with messages and trace
+            console=self.console
+        )
+
+    def _save_interaction_history(self, prompt: str, result: str, duration: float):
+        """Save the interaction to history for behavior tracking."""
+        # Extract tool calls from trace for backward compatibility
+        tool_calls = [
+            entry for entry in self.current_session['trace']
+            if entry.get('type') == 'tool_execution'
+        ]
+
         self.history.record(
             user_prompt=prompt,
-            tool_calls=all_tool_calls,
+            tool_calls=tool_calls,
             result=result,
             duration=duration
         )
-        
-        return result
     
     def add_tool(self, tool: Callable):
         """Add a new tool to the agent."""

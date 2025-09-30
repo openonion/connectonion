@@ -1,4 +1,9 @@
-// Script to replace all emojis with react-icons imports and usage
+/**
+ * @purpose Node.js script to analyze and prepare emoji-to-icon replacements in React components
+ * @context Utility for migrating from Unicode emojis to react-icons for better performance
+ * @llm-note Maps emojis to react-icons (FaIcons/SiIcons), adds necessary imports to files,
+ *           requires manual JSX updates after running, improves rendering consistency
+ */
 const fs = require('fs');
 const path = require('path');
 

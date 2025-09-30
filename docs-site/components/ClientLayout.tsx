@@ -1,3 +1,9 @@
+/**
+ * @purpose Client-side layout wrapper managing responsive sidebar navigation and footer placement
+ * @context Consumed by app/layout.tsx, orchestrates DocsSidebar, MobileDocsNav, and Footer components
+ * @llm-note Always shows sidebar on desktop, handles mobile navigation separately,
+ *           provides flex layout structure for main content and footer positioning
+ */
 'use client'
 
 import { usePathname } from 'next/navigation'

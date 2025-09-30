@@ -1,3 +1,9 @@
+/**
+ * @purpose Quick Start guide page showing how to get started with ConnectOnion in 60 seconds
+ * @context Main onboarding page for new users, linked from homepage and navigation
+ * @llm-note Uses CommandBlock for terminal commands, CodeWithResult for examples,
+ *           FileTree for project structure, includes navigation and copy functionality
+ */
 /*
   @date: 2025-01-01
   @description: Quick Start Guide Page

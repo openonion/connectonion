@@ -1,3 +1,9 @@
+/**
+ * @purpose Terminal-style component for displaying shell commands with syntax highlighting
+ * @context Used throughout docs to show CLI commands with copy functionality
+ * @llm-note Colorizes common commands (pip, cd, python, npm, co), provides one-click copy,
+ *           shows $ prompt visually but excludes from copy text, hover effects per command
+ */
 /*
   DESIGN ISSUES TO FIX:
   

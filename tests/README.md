@@ -1,33 +1,25 @@
 # ConnectOnion Tests
 
-> Comprehensive testing suite for ConnectOnion email functionality
+> Comprehensive testing suite for the ConnectOnion agent framework
 
 ---
 
-## 📁 Test Structure
+## 📁 Test Organization
+
+Tests are organized into 4 clear categories following the principles in [TEST_ORGANIZATION.md](./TEST_ORGANIZATION.md):
 
 ```
 tests/
+├── TEST_ORGANIZATION.md    # Test organization principles
+├── README.md               # This file
+├── conftest.py            # Shared pytest fixtures
 ├── .env.test              # Test credentials (DO NOT use in production)
-├── test_config.py         # Fixed test account configuration
-├── test_email_functions.py # Unit tests for email functions
-├── test_email_integration.py # Integration tests
-├── test_email_live.py     # Live backend tests
-├── test_curl_emails.sh    # curl-based API tests
-└── README.md             # This file
+│
+├── test_*.py              # Unit tests (one per source file)
+├── test_real_*.py         # Real API tests (requires API keys)
+├── test_cli_*.py          # CLI command tests
+└── test_example_agent.py  # Complete working agent example
 ```
-
----
-
-## 🔑 Test Account
-
-All tests use a **fixed test account** for consistency:
-
-- **Email**: `0x04e1c4ae@mail.openonion.ai`
-- **Public Key**: `04e1c4ae3c57d716383153479dae869e51e86d43d88db8dfa22fba7533f3968d`
-- **Short Address**: `0x04e1c4ae`
-
-This account is configured in `test_config.py` and used across all tests.
 
 ---
 
@@ -36,64 +28,66 @@ This account is configured in `test_config.py` and used across all tests.
 ### 1. Set Up Environment
 
 ```bash
-# Copy test environment file
-cp .env.test .env
+# Install dependencies
+pip install -r requirements.txt
 
-# Add your real API keys (never commit these!)
-export OPENAI_API_KEY=your-real-key-here
+# Tests automatically load from tests/.env file
+# The .env file already contains the necessary API keys
+# DO NOT copy or overwrite this file - it has real keys configured
 ```
 
-### 2. Run Tests
+### 2. Run Tests by Category
 
 ```bash
-# Run all tests
-python -m pytest tests/ -v
+# Run unit tests only (fast, no API keys needed)
+pytest test_*.py --ignore=test_real_* --ignore=test_cli_* --ignore=test_example_*
 
-# Run specific test file
-python -m pytest tests/test_email_functions.py -v
+# Run real API tests (requires API keys)
+pytest test_real_*.py
 
-# Run with coverage
-python -m pytest tests/ --cov=connectonion --cov-report=html
-```
+# Run CLI tests
+pytest test_cli_*.py
 
-### 3. Test with Live Backend
+# Run the complete example agent
+pytest test_example_agent.py
 
-```bash
-# Test with deployed backend
-python tests/test_email_live.py --confirm
-
-# Test with local backend
-CONNECTONION_BACKEND_URL=http://localhost:8000 python tests/test_email_live.py --confirm
+# Run everything except real API tests (for CI)
+pytest -m "not real_api"
 ```
 
 ---
 
 ## 📊 Test Categories
 
-### Unit Tests (`test_email_functions.py`)
-Tests individual functions in isolation using mocks:
-- `send_email()` - 5 tests
-- `get_emails()` - 5 tests  
-- `mark_read()` - 5 tests
-- Helper functions - 4 tests
+### 1. Unit Tests (`test_*.py`)
+One test file for each source file, all dependencies mocked:
+- `test_agent.py` - Agent class logic
+- `test_llm.py` - LLM interface
+- `test_tool_factory.py` - Tool creation
+- `test_console.py` - Debug/logging output
+- `test_decorators.py` - xray/replay decorators
 
-**Run**: `python -m pytest tests/test_email_functions.py`
+**Characteristics**: Fast (<1s), no external dependencies, can run without API keys
 
-### Integration Tests (`test_email_integration.py`)
-Tests with a simulated ConnectOnion project:
-- Project setup with test account
-- Email flow simulation
-- Configuration handling
+### 2. Real API Tests (`test_real_*.py`)
+Tests that make actual API calls:
+- `test_real_openai.py` - Real OpenAI API
+- `test_real_anthropic.py` - Real Anthropic API
+- `test_real_gemini.py` - Real Google Gemini API
+- `test_real_email.py` - Actually send/receive emails
 
-**Run**: `python -m pytest tests/test_email_integration.py`
+**Characteristics**: Slow (5-30s), requires API keys, costs real money
 
-### Live Backend Tests (`test_email_live.py`)
-Tests against the deployed backend:
-- Real email sending
-- Inbox retrieval
-- Mark as read functionality
+### 3. CLI Tests (`test_cli_*.py`)
+Test command-line interface:
+- `test_cli_init.py` - Project initialization
+- `test_cli_auth.py` - Authentication commands
+- `test_cli_browser.py` - Browser automation
 
-**Run**: `python tests/test_email_live.py --confirm`
+**Characteristics**: Medium speed (1-5s), file system operations
+
+### 4. Example Agent (`test_example_agent.py`)
+A complete working agent that serves as both test and documentation, demonstrating all features in real use
 
 ---
 

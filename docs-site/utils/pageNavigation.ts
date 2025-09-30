@@ -1,5 +1,9 @@
-// Page navigation utility based on sidebar order
-// This ensures consistent previous/next navigation across all pages
+/**
+ * @purpose Page navigation utilities for previous/next links based on site hierarchy
+ * @context Ensures consistent navigation flow across documentation pages
+ * @llm-note Defines navigationOrder array matching sidebar structure, provides getPageNavigation
+ *           for prev/next links, used by page components for bottom navigation
+ */
 
 interface PageNavigation {
   previous?: {

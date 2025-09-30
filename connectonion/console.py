@@ -1,0 +1,148 @@
+"""Console output and logging for ConnectOnion."""
+
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Optional, Dict, Any
+from rich.console import Console as RichConsole
+from rich.panel import Panel
+from rich.text import Text
+
+# Use stderr so console output doesn't mix with agent results
+_rich_console = RichConsole(stderr=True)
+
+
+class Console:
+    """Console for agent output and optional file logging.
+
+    Always shows output to help users understand what's happening.
+    Similar to FastAPI, npm, cargo - always visible by default.
+    """
+
+    def __init__(self, log_file: Optional[Path] = None):
+        """Initialize console.
+
+        Args:
+            log_file: Optional path to write logs (plain text)
+        """
+        self.log_file = log_file
+
+        if self.log_file:
+            self._init_log_file()
+
+    def _init_log_file(self):
+        """Initialize log file with session header."""
+        # Create parent dirs if needed
+        if self.log_file.parent != Path('.'):
+            self.log_file.parent.mkdir(parents=True, exist_ok=True)
+
+        # Add session separator
+        with open(self.log_file, 'a') as f:
+            f.write(f"\n{'='*60}\n")
+            f.write(f"Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+            f.write(f"{'='*60}\n\n")
+
+    def print(self, message: str, style: str = None):
+        """Print message to console and/or log file.
+
+        Always shows output to terminal. Optionally logs to file.
+
+        Args:
+            message: The message (can include Rich markup for console)
+            style: Additional Rich style for console only
+        """
+        timestamp = datetime.now().strftime("%H:%M:%S")
+
+        # Always show terminal output with Rich formatting
+        formatted = f"[dim]{timestamp}[/dim] {message}"
+        if style:
+            _rich_console.print(formatted, style=style)
+        else:
+            _rich_console.print(formatted)
+
+        # Log file output (plain text) if enabled
+        if self.log_file:
+            plain = self._to_plain_text(message)
+            with open(self.log_file, 'a') as f:
+                f.write(f"[{timestamp}] {plain}\n")
+
+    def print_xray_table(
+        self,
+        tool_name: str,
+        tool_args: Dict[str, Any],
+        result: Any,
+        timing: float,
+        agent: Any
+    ) -> None:
+        """Print Rich table for @xray decorated tools.
+
+        Shows current tool execution details in a beautiful table format.
+
+        Args:
+            tool_name: Name of the tool that was executed
+            tool_args: Arguments passed to the tool
+            result: Result returned by the tool
+            timing: Execution time in milliseconds
+            agent: Agent instance with current_session
+        """
+        from rich.table import Table
+        from rich.panel import Panel
+
+        # Always print - console is always active
+        table = Table(show_header=False, box=None, padding=(0, 1))
+        table.add_column("Key", style="dim")
+        table.add_column("Value")
+
+        # Context information
+        table.add_row("agent", agent.name)
+        prompt = agent.current_session.get('prompt', '')
+        prompt_preview = prompt[:50] + "..." if len(prompt) > 50 else prompt
+        table.add_row("task", prompt_preview)
+        table.add_row("iteration", str(agent.current_session['iteration']))
+
+        # Separator
+        table.add_row("─" * 20, "─" * 40)
+
+        # Tool arguments
+        for k, v in tool_args.items():
+            val_str = str(v)
+            if len(val_str) > 60:
+                val_str = val_str[:60] + "..."
+            table.add_row(k, val_str)
+
+        # Result
+        result_str = str(result)
+        if len(result_str) > 60:
+            result_str = result_str[:60] + "..."
+        table.add_row("result", result_str)
+        table.add_row("timing", f"{timing:.1f}ms")
+
+        panel = Panel(table, title=f"[cyan]@xray: {tool_name}[/cyan]", border_style="cyan")
+        _rich_console.print(panel)
+
+        # Log to file if enabled (plain text version)
+        if self.log_file:
+            with open(self.log_file, 'a') as f:
+                f.write(f"\n@xray: {tool_name}\n")
+                f.write(f"  agent: {agent.name}\n")
+                f.write(f"  task: {prompt_preview}\n")
+                f.write(f"  iteration: {agent.current_session['iteration']}\n")
+                for k, v in tool_args.items():
+                    val_str = str(v)[:60]
+                    f.write(f"  {k}: {val_str}\n")
+                f.write(f"  result: {result_str}\n")
+                f.write(f"  timing: {timing:.1f}ms\n\n")
+
+    def _to_plain_text(self, message: str) -> str:
+        """Convert Rich markup to plain text for log file."""
+        # Remove Rich markup tags
+        import re
+        text = re.sub(r'\[/?\w+\]', '', message)
+
+        # Convert common symbols
+        text = text.replace('→', '->')
+        text = text.replace('←', '<-')
+        text = text.replace('✓', '[OK]')
+        text = text.replace('✗', '[ERROR]')
+
+        return text

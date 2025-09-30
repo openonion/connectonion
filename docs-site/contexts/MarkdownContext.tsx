@@ -1,3 +1,9 @@
+/**
+ * @purpose React context for managing markdown content state across the documentation site
+ * @context Provides global state for markdown content, path, and filename across components
+ * @llm-note Used to share markdown content between pages and components, enables content persistence,
+ *           consumed via useMarkdown hook, typically for dynamic documentation rendering
+ */
 'use client'
 
 import { createContext, useContext, useState, ReactNode } from 'react'

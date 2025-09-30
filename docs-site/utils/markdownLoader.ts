@@ -1,3 +1,9 @@
+/**
+ * @purpose Loads and searches markdown documentation files for the site's search functionality
+ * @context Maps markdown files to their page routes, enables full-text search across docs
+ * @llm-note Caches markdown content from /tutorials/, provides search with relevance scoring,
+ *           extracts plain text from markdown for searching, generates match snippets
+ */
 interface MarkdownDocument {
   filename: string
   content: string

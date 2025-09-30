@@ -1,3 +1,9 @@
+/**
+ * @purpose Side-by-side code and output display component for interactive examples
+ * @context Used throughout docs to show Python/JavaScript code with expected results
+ * @llm-note Supports syntax highlighting via Prism, copy functionality per pane,
+ *           REPL output formatting, responsive grid layout (stacks on mobile)
+ */
 /*
   DESIGN ISSUES TO FIX:
   

@@ -1,3 +1,9 @@
+/**
+ * @purpose Root layout component providing Next.js metadata, SEO optimization, and global app structure
+ * @context Main entry point for Next.js app, configures fonts, SEO, and wraps all pages with ClientLayout
+ * @llm-note Integrates with ClientLayout.tsx for sidebar/navigation, uses Inter/JetBrains Mono fonts,
+ *           provides extensive SEO metadata and structured data for search engines
+ */
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import "./globals.css";

@@ -1,4 +1,9 @@
-// Enhanced search with fuzzy matching, typo tolerance, and comprehensive indexing
+/**
+ * @purpose Advanced search engine with fuzzy matching, typo tolerance, and synonym support
+ * @context Powers site-wide search functionality with intelligent matching algorithms
+ * @llm-note Uses pageContentIndex from searchIndex.ts, implements Levenshtein distance for typos,
+ *           provides synonym expansion, stem matching, and relevance scoring for search results
+ */
 
 import { pageContentIndex, PageContent } from './searchIndex'
 

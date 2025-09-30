@@ -1,6 +1,7 @@
 """Tool conversion utilities for ConnectOnion."""
 
 import inspect
+import functools
 from typing import Callable, Dict, Any, get_type_hints, List
 
 # Map Python types to JSON Schema types
@@ -53,8 +54,23 @@ def create_tool_from_function(func: Callable) -> Callable:
     
     # For bound methods, create a wrapper function that preserves the method
     if inspect.ismethod(func):
+        base_func = getattr(func, "__func__", func)
+
+        @functools.wraps(base_func)
         def wrapper(*args, **kwargs):
             return func(*args, **kwargs)
+
+        # Preserve decorator flags from the underlying function (for backward compatibility)
+        # Note: xray context is now injected for ALL tools automatically,
+        # so @xray decorator is optional
+        for attr in ("__xray_enabled__", "__replay_enabled__"):
+            if hasattr(base_func, attr):
+                try:
+                    setattr(wrapper, attr, getattr(base_func, attr))
+                except Exception:
+                    pass
+
+        # Ensure tool naming/docs are consistent for the Agent
         wrapper.__name__ = name
         wrapper.__doc__ = description
         tool_func = wrapper

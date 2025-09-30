@@ -1,3 +1,9 @@
+/**
+ * @purpose Main sidebar navigation component with search, collapsible sections, and copy features
+ * @context Primary navigation for desktop users, always visible on lg+ screens
+ * @llm-note Integrates full-text search from searchIndex, markdown search from markdownLoader,
+ *           manages section collapse state, highlights active page, provides copy-all-docs button
+ */
 'use client'
 
 import { useState, useEffect, useRef, useMemo } from 'react'
