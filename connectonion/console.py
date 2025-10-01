@@ -95,9 +95,9 @@ class Console:
 
         # Context information
         table.add_row("agent", agent.name)
-        prompt = agent.current_session.get('prompt', '')
-        prompt_preview = prompt[:50] + "..." if len(prompt) > 50 else prompt
-        table.add_row("task", prompt_preview)
+        user_prompt = agent.current_session.get('user_prompt', '')
+        prompt_preview = user_prompt[:50] + "..." if len(user_prompt) > 50 else user_prompt
+        table.add_row("user_prompt", prompt_preview)
         table.add_row("iteration", str(agent.current_session['iteration']))
 
         # Separator

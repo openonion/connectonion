@@ -124,7 +124,7 @@ def execute_single_tool(
     # Inject xray context before tool execution
     inject_xray_context(
         agent=agent,
-        user_prompt=agent.current_session.get('prompt', ''),
+        user_prompt=agent.current_session.get('user_prompt', ''),
         messages=agent.current_session['messages'].copy(),
         iteration=agent.current_session['iteration'],
         previous_tools=previous_tools

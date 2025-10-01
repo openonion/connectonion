@@ -140,13 +140,14 @@ class Agent:
 
         # Track this turn
         self.current_session['turn'] += 1
+        self.current_session['user_prompt'] = prompt  # Store user prompt for xray/debugging
         turn_start = time.time()
 
         # Add trace entry for this input
         self.current_session['trace'].append({
             'type': 'user_input',
             'turn': self.current_session['turn'],
-            'prompt': prompt,
+            'prompt': prompt,  # Keep 'prompt' in trace for backward compatibility
             'timestamp': turn_start
         })
 
@@ -186,7 +187,7 @@ class Agent:
                 'trace': [],
                 'turn': 0,
                 'iteration': 1,
-                'prompt': 'Manual tool execution'
+                'user_prompt': 'Manual tool execution'
             }
 
         # Execute using the tool_executor

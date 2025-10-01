@@ -222,7 +222,7 @@ class XrayDecorator:
             entry for entry in target_agent.current_session.get('trace', [])
             if entry.get('type') == 'tool_execution'
         ]
-        user_prompt = target_agent.current_session.get('prompt', '')
+        user_prompt = target_agent.current_session.get('user_prompt', '')
 
         if not execution_history:
             print("No tool execution history available.")
