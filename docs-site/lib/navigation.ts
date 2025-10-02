@@ -73,17 +73,26 @@ export const navigation = [
     section: 'Useful Tools',
     keywords: ['email', 'send', 'mail', 'notification', 'alert', 'message', 'smtp'],
     prev: { href: '/tools', title: 'Tools' },
+    next: { href: '/auto-debug-exception', title: 'Auto Debug Exception' }
+  },
+
+  // Debugging Tools
+  {
+    title: 'Auto Debug Exception',
+    href: '/auto-debug-exception',
+    icon: Bug,
+    section: 'Debugging',
+    keywords: ['debug', 'exception', 'crash', 'error', 'ai', 'runtime', 'inspection', 'traceback', 'fix'],
+    prev: { href: '/send-email', title: 'Send Email' },
     next: { href: '/tools/browser', title: 'Browser Screenshots' }
   },
-  
-  // Debugging Tools
   {
     title: 'Browser Screenshots',
     href: '/tools/browser',
     icon: Camera,
     section: 'Debugging',
     keywords: ['browser', 'screenshot', 'debug', 'capture', 'viewport', 'playwright', 'test', 'responsive'],
-    prev: { href: '/send-email', title: 'Send Email' },
+    prev: { href: '/auto-debug-exception', title: 'Auto Debug Exception' },
     next: { href: '/models', title: 'Models' }
   },
   

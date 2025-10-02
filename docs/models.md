@@ -444,8 +444,57 @@ agent = Agent("assistant", model="claude-opus-4.1")
 response = agent.input(prompt)
 ```
 
+## Optional: Managed Keys Service
+
+Don't want to manage API keys? ConnectOnion also offers a managed keys service where we handle the API keys for you.
+
+### Get Started with Free Credits
+
+```bash
+# Authenticate once
+co auth
+```
+
+You'll receive **100K tokens** to start using any model immediately.
+
+### Using Managed Models
+
+Just add the `co/` prefix to any model name:
+
+```python
+from connectonion import Agent
+
+# Instead of managing your own keys
+agent = Agent("assistant", model="co/gpt-5")
+agent = Agent("assistant", model="co/gemini-2.5-pro")
+agent = Agent("assistant", model="co/claude-opus-4.1")
+
+# Works the same way, no API key setup needed
+response = agent.input("Hello!")
+```
+
+### Bonus Credits
+
+⭐ **Star our GitHub repo** to get an additional **100K tokens**!
+
+Visit [github.com/wu-changxing/connectonion](https://github.com/wu-changxing/connectonion) and click the Star button.
+
+### When to Use Managed Keys
+
+- **Getting started** - No API key setup required
+- **Prototyping** - Quickly test different models
+- **Learning** - Explore all providers with one account
+- **Small projects** - Pay-as-you-go after free credits
+
+For production or high-volume usage, we recommend using your own API keys for direct billing.
+
+See [Authentication docs](auth.md) for more details on managed keys.
+
+---
+
 ## See Also
 
 - [Quick Start](quickstart.md) - Get started with ConnectOnion
+- [Authentication](auth.md) - Using managed keys
 - [Tools](tools.md) - Using tools with models
-- [API Setup](setup.md) - Configuring API keys
+- [API Setup](setup.md) - Configuring your own API keys

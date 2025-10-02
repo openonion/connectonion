@@ -33,12 +33,12 @@ optional_deps = {
 setup(
     name="connectonion",
     # Version numbering strategy:
-    # - Current: 0.1.1
+    # - Current: 0.1.3
     # - Increment PATCH for bug fixes: 0.1.1, 0.1.2, ..., 0.1.9
     # - At 0.1.10, roll to MINOR: 0.2.0
     # - At 0.10.0, roll to MAJOR: 1.0.0
     # - Example progression: 0.1.0 -> 0.1.1 -> ... -> 0.1.9 -> 0.1.10 -> 0.2.0
-    version="0.1.2",
+    version="0.1.3",
     author="ConnectOnion Team",
     author_email="pypi@connectonion.com",
     description="A simple Python framework for creating AI agents with behavior tracking",
@@ -51,6 +51,9 @@ setup(
             'docs.md',  # Include docs.md in the package
             'templates/**/*',  # Include all files in template folders recursively
             'templates/**/.env.example',  # Include hidden files like .env.example
+        ],
+        'connectonion.debug_agent': [
+            'prompts/*.md',  # Include debug assistant prompts
         ],
     },
     include_package_data=True,
