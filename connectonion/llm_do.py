@@ -13,12 +13,16 @@ Uses LiteLLM to support 100+ LLM providers including:
 from typing import Union, Type, Optional, TypeVar
 from pathlib import Path
 from pydantic import BaseModel
+from dotenv import load_dotenv
 import json
 import os
 import toml
 import requests
 from .prompts import load_system_prompt
 from .llm import MODEL_REGISTRY
+
+# Load environment variables from .env file
+load_dotenv()
 
 T = TypeVar('T', bound=BaseModel)
 

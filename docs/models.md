@@ -162,12 +162,15 @@ agent_claude = Agent("assistant", model="claude-opus-4.1", tools=tools)
 # OpenAI
 export OPENAI_API_KEY="sk-..."
 
-# Google  
-export GOOGLE_API_KEY="AIza..."
+# Google Gemini (recommended - matches Google's official SDK)
+export GEMINI_API_KEY="AIza..."
+# Note: GOOGLE_API_KEY also works but GEMINI_API_KEY is preferred
 
 # Anthropic
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
+
+**Important:** For Gemini models, use `GEMINI_API_KEY` as recommended by [Google's official documentation](https://ai.google.dev/gemini-api/docs/api-key). While `GOOGLE_API_KEY` is supported for backward compatibility, `GEMINI_API_KEY` is the standard used by Google's Python SDK and most tools in the ecosystem.
 
 ## Model Selection Guide
 
@@ -305,7 +308,7 @@ def create_agent_with_fallback(name: str):
                 continue
             if model.startswith("claude") and not os.getenv("ANTHROPIC_API_KEY"):
                 continue
-            if model.startswith("gemini") and not os.getenv("GOOGLE_API_KEY"):
+            if model.startswith("gemini") and not os.getenv("GEMINI_API_KEY"):
                 continue
                 
             return Agent(name, model=model)

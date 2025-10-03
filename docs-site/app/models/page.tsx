@@ -124,12 +124,15 @@ agent = Agent("reader", model="gemini-1.5-pro")     # 2M tokens
 # OpenAI
 export OPENAI_API_KEY="sk-..."
 
-# Google  
-export GOOGLE_API_KEY="AIza..."
+# Google Gemini (recommended - matches Google's official SDK)
+export GEMINI_API_KEY="AIza..."
+# Note: GOOGLE_API_KEY also works but GEMINI_API_KEY is preferred
 
 # Anthropic
 export ANTHROPIC_API_KEY="sk-ant-..."
-\`\`\``
+\`\`\`
+
+**Important:** For Gemini models, use \`GEMINI_API_KEY\` as recommended by [Google's official documentation](https://ai.google.dev/gemini-api/docs/api-key). While \`GOOGLE_API_KEY\` is supported for backward compatibility, \`GEMINI_API_KEY\` is the standard used by Google's Python SDK and most tools in the ecosystem.`
 
   return (
     <div className="max-w-4xl mx-auto px-4 py-8">

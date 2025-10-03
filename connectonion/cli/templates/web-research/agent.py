@@ -5,7 +5,11 @@ import os
 import json
 import requests
 from typing import Dict, List, Any
+from dotenv import load_dotenv
 from connectonion import Agent, llm_do
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def search_web(query: str) -> str:

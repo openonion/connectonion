@@ -14,7 +14,11 @@ import os
 import re
 from datetime import datetime
 from typing import List, Dict, Optional
+from dotenv import load_dotenv
 from connectonion import Agent, send_email, get_emails, mark_read
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class EmailManager:

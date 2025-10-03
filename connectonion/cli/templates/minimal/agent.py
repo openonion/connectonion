@@ -2,7 +2,11 @@
 """Minimal ConnectOnion agent example."""
 
 import os
+from dotenv import load_dotenv
 from connectonion import Agent, llm_do
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def hello_world(name: str = "World") -> str:
