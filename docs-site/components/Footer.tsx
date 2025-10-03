@@ -81,7 +81,7 @@ export default function Footer() {
               >
                 <MessageCircle className="w-5 h-5" />
               </a>
-              <span className="text-xs text-gray-600 ml-2">v0.1.2</span>
+              <span className="text-xs text-gray-600 ml-2">v0.1.7</span>
             </div>
           </div>
         </div>
