@@ -386,10 +386,10 @@ response = agent.input("Explain quantum computing")`}
         <p className="text-gray-600 dark:text-gray-400 mb-4">
           Set environment variables for the providers you want to use:
         </p>
-        <CommandBlock 
+        <CommandBlock
           commands={[
             'export OPENAI_API_KEY="sk-..."',
-            'export GOOGLE_API_KEY="AIza..."',
+            'export GEMINI_API_KEY="AIza..."',
             'export ANTHROPIC_API_KEY="sk-ant-..."'
           ]}
         />

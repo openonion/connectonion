@@ -49,7 +49,7 @@ class TestLLMDo(unittest.TestCase):
         """Check for API keys."""
         cls.has_openai = bool(os.getenv("OPENAI_API_KEY"))
         cls.has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
-        cls.has_gemini = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
+        cls.has_gemini = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     
     def test_import_litellm(self):
         """Test that LiteLLM is properly installed and importable."""
@@ -222,7 +222,7 @@ class TestLLMDoGemini(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         """Check for Gemini API key."""
-        cls.has_gemini = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
+        cls.has_gemini = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     
     def setUp(self):
         """Skip if no Gemini key."""
@@ -333,7 +333,7 @@ class TestLLMDoIntegration(unittest.TestCase):
         """Check for all API keys."""
         cls.has_openai = bool(os.getenv("OPENAI_API_KEY"))
         cls.has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
-        cls.has_gemini = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
+        cls.has_gemini = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     
     def test_cross_provider_consistency(self):
         """Test that all providers can handle the same basic prompt."""

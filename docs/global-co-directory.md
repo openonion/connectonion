@@ -52,7 +52,7 @@ Store your API keys once, use in all projects.
 # ~/.co/keys.env
 OPENAI_API_KEY=sk-proj-xxx
 ANTHROPIC_API_KEY=sk-ant-xxx
-GOOGLE_API_KEY=AIzaSyxxx
+GEMINI_API_KEY=AIzaSyxxx
 GROQ_API_KEY=gsk_xxx
 ```
 

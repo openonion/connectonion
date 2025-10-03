@@ -21,7 +21,7 @@ No configuration files. No provider setup. No complexity. Just change the model 
 ```bash
 pip install connectonion
 export OPENAI_API_KEY="sk-..."      # For GPT models
-export GOOGLE_API_KEY="AIza..."     # For Gemini models  
+export GEMINI_API_KEY="AIza..."     # For Gemini models
 export ANTHROPIC_API_KEY="sk-ant-..." # For Claude models
 ```
 
@@ -407,7 +407,7 @@ import os
 # Check which providers are available
 providers = {
     "OpenAI": os.getenv("OPENAI_API_KEY"),
-    "Google": os.getenv("GOOGLE_API_KEY"),
+    "Google": os.getenv("GEMINI_API_KEY"),
     "Anthropic": os.getenv("ANTHROPIC_API_KEY")
 }
 

@@ -388,7 +388,7 @@ class TestMultiLLMSupport(unittest.TestCase):
         """Set up test fixtures."""
         self.has_openai = bool(os.getenv("OPENAI_API_KEY"))
         self.has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
-        self.has_google = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
+        self.has_google = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     
     @pytest.mark.real_api
     def test_openai_model(self):
@@ -523,7 +523,7 @@ class TestGeminiTools(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures."""
-        self.has_google = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
+        self.has_google = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
     
     @pytest.mark.real_api
     def test_gemini_simple_tool_call(self):

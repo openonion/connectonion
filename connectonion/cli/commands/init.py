@@ -288,7 +288,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         provider_to_env = {
             "openai": "OPENAI_API_KEY",
             "anthropic": "ANTHROPIC_API_KEY",
-            "google": "GOOGLE_API_KEY",
+            "google": "GEMINI_API_KEY",
             "groq": "GROQ_API_KEY",
         }
         env_var = provider_to_env.get(provider, f"{provider.upper()}_API_KEY")
@@ -306,7 +306,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
             env_content = """# Add your LLM API key(s) below (uncomment one and set value)
 # OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
-# GOOGLE_API_KEY=
+# GEMINI_API_KEY=
 # GROQ_API_KEY=
 
 # Optional: Override default model

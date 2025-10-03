@@ -262,9 +262,9 @@ class GeminiLLM(LLM):
     """Google Gemini LLM implementation."""
     
     def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-flash", **kwargs):
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
-            raise ValueError("Google API key required. Set GOOGLE_API_KEY or GEMINI_API_KEY environment variable or pass api_key parameter.")
+            raise ValueError("Gemini API key required. Set GEMINI_API_KEY environment variable or pass api_key parameter. (GOOGLE_API_KEY is also supported for backward compatibility)")
         
         genai.configure(api_key=self.api_key)
         self.model = model

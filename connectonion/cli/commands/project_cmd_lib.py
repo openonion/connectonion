@@ -22,18 +22,18 @@ from ... import address
 console = Console()
 
 
-# ANSI color codes for better output
+# Rich markup colors for better output (compatible with Rich Console)
 class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    YELLOW = '\033[93m'
-    RED = '\033[91m'
-    BOLD = '\033[1m'
-    UNDERLINE = '\033[4m'
-    DIM = '\033[2m'
-    END = '\033[0m'
+    HEADER = '[magenta]'
+    BLUE = '[blue]'
+    CYAN = '[cyan]'
+    GREEN = '[green]'
+    YELLOW = '[yellow]'
+    RED = '[red]'
+    BOLD = '[bold]'
+    UNDERLINE = '[underline]'
+    DIM = '[dim]'
+    END = '[/]'
 
 
 def validate_project_name(name: str) -> Tuple[bool, str]:
@@ -564,8 +564,8 @@ def check_environment_for_api_keys() -> Optional[Tuple[str, str]]:
     checks = [
         ('OPENAI_API_KEY', 'openai'),
         ('ANTHROPIC_API_KEY', 'anthropic'),
-        ('GOOGLE_API_KEY', 'google'),
         ('GEMINI_API_KEY', 'google'),
+        ('GOOGLE_API_KEY', 'google'),
         ('GROQ_API_KEY', 'groq'),
     ]
 
@@ -625,7 +625,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
             'model': 'claude-3-haiku-20240307'
         },
         'google': {
-            'var': 'GOOGLE_API_KEY',
+            'var': 'GEMINI_API_KEY',
             'model': 'gemini-pro'
         },
         'groq': {

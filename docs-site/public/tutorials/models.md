@@ -162,8 +162,8 @@ agent_claude = Agent("assistant", model="claude-opus-4.1", tools=tools)
 # OpenAI
 export OPENAI_API_KEY="sk-..."
 
-# Google  
-export GOOGLE_API_KEY="AIza..."
+# Google Gemini
+export GEMINI_API_KEY="AIza..."
 
 # Anthropic
 export ANTHROPIC_API_KEY="sk-ant-..."
@@ -305,7 +305,7 @@ def create_agent_with_fallback(name: str):
                 continue
             if model.startswith("claude") and not os.getenv("ANTHROPIC_API_KEY"):
                 continue
-            if model.startswith("gemini") and not os.getenv("GOOGLE_API_KEY"):
+            if model.startswith("gemini") and not os.getenv("GEMINI_API_KEY"):
                 continue
                 
             return Agent(name, model=model)

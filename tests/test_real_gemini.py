@@ -4,7 +4,7 @@ Real Google Gemini API tests.
 These tests make actual API calls to Google Gemini and cost real money.
 Run with: pytest test_real_gemini.py -v
 
-Requires: GOOGLE_API_KEY or GEMINI_API_KEY environment variable
+Requires: GEMINI_API_KEY environment variable (GOOGLE_API_KEY also supported for backward compatibility)
 """
 
 import os
@@ -28,15 +28,15 @@ def word_counter(text: str) -> str:
 
 @pytest.mark.real_api
 @pytest.mark.skipif(
-    not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"),
-    reason="No Google/Gemini API key"
+    not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"),
+    reason="No Gemini API key"
 )
 class TestRealGemini:
     """Test real Google Gemini API integration."""
 
     def test_gemini_basic_completion(self):
         """Test basic completion with Gemini."""
-        api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         llm = GeminiLLM(api_key=api_key, model="gemini-pro")
         agent = Agent(name="gemini_test", llm=llm)
 
@@ -80,7 +80,7 @@ class TestRealGemini:
             if "1.5-pro" in model and not os.getenv("TEST_EXPENSIVE_MODELS"):
                 continue  # Skip expensive models unless explicitly enabled
 
-            api_key = os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+            api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
             agent = Agent(
                 name=f"gemini_{model.replace('.', '_').replace('-', '_')}",
                 llm=GeminiLLM(api_key=api_key, model=model)

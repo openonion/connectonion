@@ -147,7 +147,7 @@ OPENAI_API_KEY=sk-proj-old
 
 # ConnectOnion API Keys
 ANTHROPIC_API_KEY=sk-ant-xxx  # Added
-GOOGLE_API_KEY=AIza...         # Added
+GEMINI_API_KEY=AIza...         # Added
 ```
 
 ### Case 4: .env Has All Keys
@@ -421,7 +421,7 @@ co init -t custom --description "Monitor a site and alert me"
 
 Notes:
 - Keeps `.env` intact; only appends missing keys
-- Provider mapping: OpenAI → `OPENAI_API_KEY`, Anthropic → `ANTHROPIC_API_KEY`, Google → `GOOGLE_API_KEY`, Groq → `GROQ_API_KEY`
+- Provider mapping: OpenAI → `OPENAI_API_KEY`, Anthropic → `ANTHROPIC_API_KEY`, Google → `GEMINI_API_KEY`, Groq → `GROQ_API_KEY`
 - Attempts managed-key authentication on success (or run `co auth` later)
 
 ## Next Steps

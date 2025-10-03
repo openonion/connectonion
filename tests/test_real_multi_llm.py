@@ -42,7 +42,7 @@ class TestMultiLLMSupport(unittest.TestCase):
         
         if os.getenv("OPENAI_API_KEY"):
             cls.available_providers.append("openai")
-        if os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"):
+        if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
             cls.available_providers.append("google")
         if os.getenv("ANTHROPIC_API_KEY"):
             cls.available_providers.append("anthropic")
@@ -295,8 +295,8 @@ class TestMultiLLMSupport(unittest.TestCase):
                 raise
     
     @pytest.mark.real_api
-    @pytest.mark.skipif(not os.getenv("GOOGLE_API_KEY") and not os.getenv("GEMINI_API_KEY"), 
-                        reason="Requires Google API key")
+    @pytest.mark.skipif(not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"),
+                        reason="Requires Gemini API key")
     def test_google_gemini_real_call(self):
         """Test actual API call with Gemini model."""
         # Try Gemini 2.5 Pro first, fallback to 1.5 if not available

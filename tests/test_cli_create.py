@@ -297,7 +297,7 @@ class TestAPIKeyIntegration:
         
         try:
             # Test no keys found
-            for key in ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GOOGLE_API_KEY', 'GROQ_API_KEY']:
+            for key in ['OPENAI_API_KEY', 'ANTHROPIC_API_KEY', 'GEMINI_API_KEY', 'GOOGLE_API_KEY', 'GROQ_API_KEY']:
                 os.environ.pop(key, None)
             result = check_environment_for_api_keys()
             assert result is None
@@ -357,5 +357,5 @@ class TestAPIKeyIntegration:
             
             # Test Google
             env_content = configure_env_for_provider('google', 'AIza-test')
-            assert 'GOOGLE_API_KEY=AIza-test' in env_content
+            assert 'GEMINI_API_KEY=AIza-test' in env_content
             assert 'MODEL=gemini-pro' in env_content
