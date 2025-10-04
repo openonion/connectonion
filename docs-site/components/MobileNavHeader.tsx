@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { Menu, X, Copy, Check } from 'lucide-react'
+import { FaDiscord, FaGithub } from 'react-icons/fa'
 import Link from 'next/link'
 
 interface MobileNavHeaderProps {
@@ -91,22 +92,24 @@ export default function MobileNavHeader({ onCopyMarkdown, hasCopyContent = false
               >
                 CLI
               </Link>
-              <a 
-                href="https://github.com/wu-changxing/connectonion" 
+              <a
+                href="https://github.com/wu-changxing/connectonion"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setIsMenuOpen(false)}
-                className="block py-2 text-gray-300 hover:text-white transition-colors"
+                className="flex items-center gap-2 py-2 text-gray-300 hover:text-white transition-colors"
               >
+                <FaGithub className="w-4 h-4" />
                 GitHub
               </a>
-              <a 
-                href="https://discord.gg/4xfD9k8AUF" 
+              <a
+                href="https://discord.gg/4xfD9k8AUF"
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setIsMenuOpen(false)}
-                className="block py-2 text-gray-300 hover:text-white transition-colors"
+                className="flex items-center gap-2 py-2 text-gray-300 hover:text-white transition-colors"
               >
+                <FaDiscord className="w-4 h-4" />
                 Discord
               </a>
             </div>

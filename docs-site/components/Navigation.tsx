@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { useState, useEffect } from 'react'
 import { Menu, X, Github, ExternalLink, Zap, FileText, Terminal, Copy, Check, Download } from 'lucide-react'
+import { FaDiscord } from 'react-icons/fa'
 import { motion, AnimatePresence } from 'framer-motion'
 
 interface NavigationProps {
@@ -105,7 +106,7 @@ export default function Navigation({ markdownContent, markdownPath, filename = '
             <NavLink href="https://pypi.org/project/connectonion/" icon={<ExternalLink className="w-4 h-4" />} external>
               PyPI
             </NavLink>
-            <NavLink href="https://discord.gg/4xfD9k8AUF" icon={<ExternalLink className="w-4 h-4" />} external>
+            <NavLink href="https://discord.gg/4xfD9k8AUF" icon={<FaDiscord className="w-4 h-4" />} external>
               Discord
             </NavLink>
             

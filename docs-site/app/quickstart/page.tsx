@@ -269,14 +269,14 @@ result = agent.input("What is ConnectOnion and how do tools work?")
 print(result)`}
             result={`>>> result = agent.input("What is ConnectOnion and how do tools work?")
 >>> print(result)
-ConnectOnion is a Python framework for building AI agents with a focus on simplicity. 
+ConnectOnion is a Python framework for building AI agents with a focus on simplicity.
 Here's how it works:
 
 1. **Agent Creation**: Create agents with a name, tools, and optional system prompt
 2. **Tools**: Functions that agents can call. Any Python function can be a tool!
 3. **Automatic Schema Generation**: Type hints are converted to OpenAI function schemas
 4. **Iteration Control**: Use max_iterations to prevent infinite loops
-5. **Built-in Logging**: All agent interactions are automatically logged to `.co/logs/`
+5. **Built-in Logging**: All agent interactions are automatically logged to \`.co/logs/\`
 
 Tools work by:
 - Converting Python functions to OpenAI-compatible schemas
