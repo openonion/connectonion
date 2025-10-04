@@ -6,6 +6,7 @@ import toml
 import requests
 from pathlib import Path
 from typing import Dict, Optional
+from dotenv import load_dotenv
 
 
 def send_email(to: str, subject: str, message: str) -> Dict:
@@ -73,10 +74,12 @@ def send_email(to: str, subject: str, message: str) -> Dict:
                 "error": "Agent email address not configured."
             }
     
-    # Get authentication token
-    auth_config = config.get("auth", {})
-    token = auth_config.get("token")
-    
+    # Load environment variables from .env file
+    load_dotenv()
+
+    # Get authentication token from environment
+    token = os.getenv("OPENONION_API_KEY")
+
     if not token:
         return {
             "success": False,
