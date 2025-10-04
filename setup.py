@@ -33,12 +33,12 @@ optional_deps = {
 setup(
     name="connectonion",
     # Version numbering strategy:
-    # - Current: 0.1.7
+    # - Current: 0.1.8
     # - Increment PATCH for bug fixes: 0.1.1, 0.1.2, ..., 0.1.9
     # - At 0.1.10, roll to MINOR: 0.2.0
     # - At 0.10.0, roll to MAJOR: 1.0.0
     # - Example progression: 0.1.0 -> 0.1.1 -> ... -> 0.1.9 -> 0.1.10 -> 0.2.0
-    version="0.1.7",
+    version="0.1.8",
     author="ConnectOnion Team",
     author_email="pypi@connectonion.com",
     description="A simple Python framework for creating AI agents with behavior tracking",
