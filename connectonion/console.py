@@ -1,4 +1,13 @@
-"""Console output and logging for ConnectOnion."""
+"""
+Purpose: Handle agent terminal output with Rich formatting and optional file logging
+LLM-Note:
+  Dependencies: imports from [sys, datetime, pathlib, typing, rich.console, rich.panel, rich.text] | imported by [agent.py, tool_executor.py, auto_debug_exception.py] | tested by [tests/test_console.py]
+  Data flow: receives from Agent/tool_executor → .print(message, style) → formats with timestamp → prints to stderr via RichConsole → optionally appends to log_file as plain text
+  State/Effects: writes to stderr (not stdout, to avoid mixing with agent results) | writes to log_file if provided (plain text with timestamps) | creates log file parent directories if needed | appends session separator on init
+  Integration: exposes Console(log_file), .print(message, style), .print_xray_table(tool_name, tool_args, result, timing, agent) | used by Agent to show LLM/tool execution progress | tool_executor calls print_xray_table for @xray decorated tools
+  Performance: direct stderr writes (no buffering delays) | Rich formatting uses stderr (separate from stdout results) | regex-based markup removal for log files
+  Errors: no error handling (let I/O errors bubble up) | assumes log_file parent can be created | assumes stderr is available
+"""
 
 import sys
 from datetime import datetime

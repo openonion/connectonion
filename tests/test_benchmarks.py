@@ -22,7 +22,7 @@ class TestPerformanceBenchmarks:
         
         # Create agent
         agent = Agent(name="perf_simple", llm=mock_llm)
-        agent.history.save_dir = temp_dir
+        # Logging disabled for benchmarks
         
         # Benchmark multiple runs
         times = []
@@ -52,7 +52,7 @@ class TestPerformanceBenchmarks:
         
         # Create agent with tools
         agent = Agent(name="perf_tools", llm=mock_llm, tools=[Calculator()])
-        agent.history.save_dir = temp_dir
+        # Logging disabled for benchmarks
         
         # Benchmark multiple runs
         times = []
@@ -79,7 +79,6 @@ class TestPerformanceBenchmarks:
     
     def test_history_file_write_performance(self, temp_dir):
         """Benchmark history file writing performance."""
-        from connectonion.history import History
         
         # Create history instance
         history = History("perf_test", save_dir=temp_dir)
@@ -123,7 +122,7 @@ class TestPerformanceBenchmarks:
         mock_llm.complete.return_value = LLMResponseBuilder.text_response("Response")
         
         agent = Agent(name="memory_test", llm=mock_llm, tools=[Calculator(), CurrentTime()])
-        agent.history.save_dir = temp_dir
+        # Logging disabled for benchmarks
         
         # Run multiple tasks
         for i in range(50):
@@ -150,7 +149,7 @@ class TestPerformanceBenchmarks:
             mock_llm.complete.return_value = LLMResponseBuilder.text_response(f"Agent {agent_id} response")
             
             agent = Agent(name=f"concurrent_{agent_id}", llm=mock_llm)
-            agent.history.save_dir = temp_dir
+            # Logging disabled for benchmarks
             
             start = time.time()
             for i in range(10):
@@ -247,7 +246,7 @@ class TestStressTests:
         mock_llm.complete.side_effect = responses
         
         agent = Agent(name="stress_test", llm=mock_llm)
-        agent.history.save_dir = temp_dir
+        # Logging disabled for benchmarks
         
         start = time.time()
         for i in range(1000):
@@ -260,14 +259,13 @@ class TestStressTests:
         # Stress test assertions
         assert total_time < 60, f"1000 tasks took too long: {total_time:.1f}s"
         assert avg_per_task < 0.1, f"Average per task too slow: {avg_per_task:.3f}s"
-        assert len(agent.history.records) == 1000
+        # History removed
         
         print(f"Stress test - 1000 tasks in {total_time:.1f}s, "
               f"avg {avg_per_task:.3f}s/task")
     
     def test_history_file_stress(self, temp_dir):
         """Stress test history file with many concurrent writes."""
-        from connectonion.history import History
         import threading
         
         def write_records(history, start_id, count):

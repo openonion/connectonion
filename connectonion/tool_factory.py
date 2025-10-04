@@ -1,4 +1,13 @@
-"""Tool conversion utilities for ConnectOnion."""
+"""
+Purpose: Convert Python functions and class methods into agent-compatible tool schemas
+LLM-Note:
+  Dependencies: imports from [inspect, functools, typing] | imported by [agent.py, __init__.py] | tested by [tests/test_tool_factory.py]
+  Data flow: receives func: Callable → inspects signature with inspect.signature() → extracts type hints with get_type_hints() → maps Python types to JSON Schema via TYPE_MAP → creates tool with .name, .description, .to_function_schema(), .run() attributes → returns wrapped Callable
+  State/Effects: no side effects | pure function transformations | preserves @xray and @replay decorator flags via hasattr checks | creates wrapper functions for bound methods to maintain self reference
+  Integration: exposes create_tool_from_function(func), extract_methods_from_instance(obj), is_class_instance(obj) | used by Agent.__init__ to auto-convert tools | supports both standalone functions and bound methods | skips private methods (starting with _)
+  Performance: uses inspect module (relatively fast) | TYPE_MAP provides O(1) type lookups | caches nothing (recreates on each call)
+  Errors: skips methods without type annotations | skips methods without return type hint | handles inspection failures gracefully | wraps functions with functools.wraps to preserve metadata
+"""
 
 import inspect
 import functools

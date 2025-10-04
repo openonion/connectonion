@@ -170,12 +170,12 @@ You are a senior customer support specialist with expertise in:
 - Provide clear, actionable solutions
 ```
 
-### History
-Automatic tracking of all agent behaviors including:
-- Tasks executed
-- Tools called with parameters and results
-- Agent responses and execution time
-- Persistent storage in `~/.connectonion/agents/{name}/behavior.json`
+### Logging
+Automatic logging of all agent activities including:
+- User inputs and agent responses
+- LLM calls with timing
+- Tool executions with parameters and results
+- Default storage in `.co/logs/{name}.log` (human-readable format)
 
 ## 🎯 Example Tools
 
@@ -286,7 +286,7 @@ connectonion/
 │   ├── agent.py            # Agent class
 │   ├── tools.py            # Tool interface and built-ins
 │   ├── llm.py              # LLM interface and OpenAI implementation
-│   ├── history.py          # Behavior tracking
+│   ├── console.py          # Terminal output and logging
 │   └── cli/                # CLI module
 │       ├── main.py         # CLI commands
 │       ├── docs.md         # Embedded documentation
@@ -319,32 +319,33 @@ Or run individual test files:
 python -m unittest tests.test_agent
 ```
 
-## 📊 Behavior Tracking
+## 📊 Automatic Logging
 
-All agent behaviors are automatically tracked and saved to:
+All agent activities are automatically logged to:
 ```
-~/.connectonion/agents/{agent_name}/behavior.json
+.co/logs/{agent_name}.log  # Default location
 ```
 
-Each record includes:
+Each log entry includes:
 - Timestamp
-- Task description
-- Tool calls with parameters and results
-- Final result
-- Execution duration
+- User input
+- LLM calls with timing
+- Tool executions with parameters and results
+- Final responses
 
-View behavior summary:
+Control logging behavior:
 ```python
-print(agent.history.summary())
-# Agent: my_assistant
-# Total tasks completed: 5
-# Total tool calls: 8
-# Total execution time: 12.34 seconds
-# History file: ~/.connectonion/agents/my_assistant/behavior.json
-# 
-# Tool usage:
-#   calculator: 5 calls
-#   current_time: 3 calls
+# Default: logs to .co/logs/assistant.log
+agent = Agent("assistant")
+
+# Log to current directory
+agent = Agent("assistant", log=True)  # → assistant.log
+
+# Disable logging
+agent = Agent("assistant", log=False)
+
+# Custom log file
+agent = Agent("assistant", log="my_logs/custom.log")
 ```
 
 ## 🔑 Configuration

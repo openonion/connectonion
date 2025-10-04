@@ -1,4 +1,13 @@
-"""System prompt utilities for ConnectOnion."""
+"""
+Purpose: Load and validate system prompts from files or strings with intelligent path detection
+LLM-Note:
+  Dependencies: imports from [os, warnings, pathlib, typing] | imported by [agent.py] | no dedicated tests found
+  Data flow: receives system_prompt: Union[str, Path, None] from Agent.__init__ → checks if None (returns DEFAULT_PROMPT) → checks if Path object (reads file) → checks if str exists as file (reads) → warns if looks like file but doesn't exist → returns literal string
+  State/Effects: reads text files if path provided | emits UserWarning if path looks like file but doesn't exist | no writes or global state
+  Integration: exposes load_system_prompt(prompt), DEFAULT_PROMPT constant | used by Agent to load system prompts from various sources | supports .md, .txt, .prompt file extensions | Path objects enforce file must exist
+  Performance: file I/O only when path provided | heuristic checks (file extension, path separators) are fast string operations
+  Errors: raises FileNotFoundError if Path doesn't exist | raises ValueError if Path is not a file or file is empty | raises ValueError if file not UTF-8 | warns (doesn't fail) for str that looks like missing file
+"""
 
 import os
 import warnings

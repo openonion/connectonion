@@ -276,7 +276,7 @@ Here's how it works:
 2. **Tools**: Functions that agents can call. Any Python function can be a tool!
 3. **Automatic Schema Generation**: Type hints are converted to OpenAI function schemas
 4. **Iteration Control**: Use max_iterations to prevent infinite loops
-5. **Built-in History**: All agent interactions are automatically saved
+5. **Built-in Logging**: All agent interactions are automatically logged to `.co/logs/`
 
 Tools work by:
 - Converting Python functions to OpenAI-compatible schemas

@@ -504,9 +504,9 @@ Perfect for understanding complex agent workflows with multiple tool calls and i
 ## Integration
 
 Works seamlessly with:
-- ConnectOnion History system
+- ConnectOnion logging system
 - Other @xray context features
-- Agent behavior tracking
+- Agent activity tracking
 - Multi-agent debugging
 
 ## Troubleshooting

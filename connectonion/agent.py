@@ -1,4 +1,13 @@
-"""Core Agent implementation for ConnectOnion."""
+"""
+Purpose: Orchestrate AI agent execution with LLM calls, tool execution, and automatic logging
+LLM-Note:
+  Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, console.py, tool_executor.py, trust.py] | imported by [__init__.py, trust.py, debug_agent/__init__.py] | tested by [tests/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py]
+  Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → console logs to .co/logs/{name}.log → returns final response: str
+  State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log via console.py (default) or custom log path | initializes trust agent if trust parameter provided
+  Integration: exposes Agent(name, tools, system_prompt, model, trust, log), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools auto-converted via tool_factory.create_tool_from_function() | tool execution delegates to tool_executor module | trust system via trust.create_trust_agent() | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path
+  Performance: max_iterations=10 default (configurable per-input) | session state persists across turns for multi-turn conversations | tool_map provides O(1) tool lookup by name
+  Errors: LLM errors bubble up | tool execution errors captured in trace and returned to LLM for retry | trust agent creation can fail if invalid trust parameter
+"""
 
 import os
 import sys
@@ -7,7 +16,6 @@ from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
 from dotenv import load_dotenv
 from .llm import LLM, create_llm
-from .history import History
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .prompts import load_system_prompt
 from .decorators import (
@@ -42,16 +50,23 @@ class Agent:
         # Current session context (runtime only)
         self.current_session = None
 
-        # Setup optional file logging
+        # Setup file logging (default to .co/logs/)
         log_file = None
-        if log is True:
-            # Default log file: {name}.log in current directory
+        if log is None:
+            # NEW: Default to .co/logs/ for automatic audit trail
+            log_file = Path.cwd() / '.co' / 'logs' / f'{name}.log'
+        elif log is True:
+            # Explicit True: {name}.log in current directory
             log_file = Path(f"{name}.log")
+        elif log is False:
+            # Explicit opt-out: no logging
+            log_file = None
         elif log:
             # Custom log file path
             log_file = Path(log)
-        elif os.getenv('CONNECTONION_LOG'):
-            # Environment variable override
+
+        # Environment variable override (highest priority)
+        if os.getenv('CONNECTONION_LOG'):
             log_file = Path(os.getenv('CONNECTONION_LOG'))
 
         # Initialize console (always shows output, optional file logging)
@@ -98,8 +113,6 @@ class Agent:
         
         self.tools = processed_tools
 
-        self.history = History(name)
-        
         # Initialize LLM
         if llm:
             self.llm = llm
@@ -157,9 +170,8 @@ class Agent:
             max_iterations or self.max_iterations
         )
 
-        # Save this interaction to history (per turn, not per session)
+        # Calculate duration (console already logged everything)
         duration = time.time() - turn_start
-        self._save_interaction_history(prompt, result, duration)
 
         self.console.print(f"[green]✓ Complete[/green] ({duration:.1f}s)")
         return result
@@ -277,21 +289,6 @@ class Agent:
             console=self.console
         )
 
-    def _save_interaction_history(self, prompt: str, result: str, duration: float):
-        """Save the interaction to history for behavior tracking."""
-        # Extract tool calls from trace for backward compatibility
-        tool_calls = [
-            entry for entry in self.current_session['trace']
-            if entry.get('type') == 'tool_execution'
-        ]
-
-        self.history.record(
-            user_prompt=prompt,
-            tool_calls=tool_calls,
-            result=result,
-            duration=duration
-        )
-    
     def add_tool(self, tool: Callable):
         """Add a new tool to the agent."""
         # Process the tool before adding it

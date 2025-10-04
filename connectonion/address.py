@@ -1,4 +1,13 @@
-"""Agent address generation and management for ConnectOnion."""
+"""
+Purpose: Generate and manage Ed25519 cryptographic agent identities with seed phrase recovery
+LLM-Note:
+  Dependencies: imports from [os, pathlib, typing, nacl.signing, mnemonic] | imported by [cli/commands/auth_commands.py] | tested by [tests/test_address.py]
+  Data flow: generate() → creates 12-word seed phrase via Mnemonic → derives SigningKey from seed → creates address (0x + hex public key) → returns {address, short_address, email, seed_phrase, signing_key} | recover(seed_phrase) → validates phrase → recreates SigningKey → recreates address
+  State/Effects: save() writes to .co/keys/ directory: agent.key (binary signing key), recovery.txt (seed phrase), DO_NOT_SHARE (warning) | sets file permissions to 0o600 | load() reads from .co/keys/ and .co/config.toml | no global state
+  Integration: exposes generate(), recover(seed_phrase), save(address_data, co_dir), load(co_dir), verify(address, message, signature), sign(address_data, message) | address format: 0x + 64 hex chars (32 bytes public key) | email format: first 10 chars + @mail.openonion.ai
+  Performance: Ed25519 signing is fast (sub-millisecond) | mnemonic generation and validation are fast | file I/O minimal (only on save/load)
+  Errors: raises ImportError if pynacl or mnemonic not installed | raises ValueError for invalid recovery phrase | returns None for missing keys (graceful) | verify() returns False for invalid signatures
+"""
 
 import os
 from pathlib import Path

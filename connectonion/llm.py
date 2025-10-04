@@ -1,4 +1,13 @@
-"""LLM interface for ConnectOnion."""
+"""
+Purpose: Provide unified interface for multiple LLM providers (OpenAI, Anthropic, Google, OpenOnion)
+LLM-Note:
+  Dependencies: imports from [openai, anthropic, google.generativeai, requests] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/test_llm.py, tests/test_openonion_llm.py, tests/test_real_openai.py, tests/test_real_anthropic.py, tests/test_real_gemini.py, tests/test_real_multi_llm.py]
+  Data flow: receives messages: List[Dict[str, str]] from Agent → converts to provider-specific format → calls provider API (OpenAI/Anthropic/Gemini/OpenOnion) → parses response into LLMResponse(content, tool_calls, raw_response) → returns to Agent
+  State/Effects: calls external APIs (OpenAI/Anthropic/Google/OpenOnion) | reads API keys from environment (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, GOOGLE_API_KEY) | reads OpenOnion token from .co/config.toml or OPENONION_API_KEY | configures genai.configure() for Google
+  Integration: exposes LLM ABC with .complete() method | OpenAILLM, AnthropicLLM, GeminiLLM, OpenOnionLLM implementations | create_llm(model, api_key) factory function | MODEL_REGISTRY maps model names to providers | ToolCall and LLMResponse dataclasses for type safety
+  Performance: max_tokens/max_completion_tokens set to 16384 | supports streaming (future) | OpenOnion checks localhost vs production URL via OPENONION_DEV env
+  Errors: raises ValueError if API key missing | raises ValueError for unknown models | API errors bubble up from provider SDKs | OpenOnionLLM wraps errors with helpful messages
+"""
 
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional

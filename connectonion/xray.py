@@ -1,4 +1,13 @@
 """
+Purpose: Provide runtime debugging context and visual trace for AI agent tool execution
+LLM-Note:
+  Dependencies: imports from [inspect, builtins, typing] | imported by [tool_executor.py, __init__.py] | tested by [tests/test_xray_class.py, tests/test_xray_without_decorator.py, tests/test_xray_auto_trace.py]
+  Data flow: receives from tool_executor → inject_xray_context(agent, user_prompt, messages, iteration, previous_tools) → stores in builtins.xray global → tool accesses xray.agent, xray.task, etc. → tool calls xray.trace() to display formatted execution history → clear_xray_context() after execution
+  State/Effects: modifies builtins namespace by injecting global 'xray' object | stores thread-local context in XrayDecorator instance (_agent, _user_prompt, _messages, _iteration, _previous_tools) | clears context after tool execution | no file I/O or persistence
+  Integration: exposes @xray decorator, xray global object with .agent, .task, .user_prompt, .messages, .iteration, .previous_tools properties, .trace() method | inject_xray_context(), clear_xray_context(), is_xray_enabled() helper functions | tool_executor checks __xray_enabled__ attribute to auto-print Rich tables
+  Performance: lightweight context storage | trace() uses stack inspection to find agent instance | smart value formatting with truncation for strings (400 chars), lists, dicts, DataFrames, Images
+  Errors: trace() handles missing agent gracefully with helpful messages | handles missing current_session | handles empty execution history
+
 ConnectOnion XRay Debugging Tool
 
 This module provides the @xray decorator and xray context for debugging AI agent tools.

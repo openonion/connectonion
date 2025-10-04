@@ -751,8 +751,8 @@ print(result)`}
           
           <div className="p-5 bg-gray-800/30 rounded-lg border border-gray-700">
             <FaChartBar className="text-2xl mb-2 text-gray-400" />
-            <h3 className="font-semibold text-white mb-1">Auto History</h3>
-            <p className="text-sm text-gray-400">Every interaction saved</p>
+            <h3 className="font-semibold text-white mb-1">Auto Logging</h3>
+            <p className="text-sm text-gray-400">Every interaction logged to .co/logs/</p>
           </div>
         </div>
 

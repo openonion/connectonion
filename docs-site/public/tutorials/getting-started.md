@@ -134,7 +134,7 @@ print(agent.history.summary())
 Agent: assistant
 Total tasks: 3
 Tools used: calculate (2), search (1), get_time (1)
-History saved to: ~/.connectonion/agents/assistant/behavior.json
+Activity logged to: .co/logs/assistant.log
 ```
 
 ## Real Example
@@ -215,7 +215,7 @@ Ready for more?
 1. **Functions = Tools** (no classes needed!)
 2. **Docstrings = Descriptions** (agent reads these)
 3. **Type hints = Better results** (helps agent understand)
-4. **History = Free** (automatic tracking)
+4. **Logging = Free** (automatic activity tracking to `.co/logs/`)
 
 ---
 

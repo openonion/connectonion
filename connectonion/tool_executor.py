@@ -1,4 +1,13 @@
-"""Tool execution logic for ConnectOnion agents."""
+"""
+Purpose: Execute agent tools with xray context injection, timing, error handling, and trace recording
+LLM-Note:
+  Dependencies: imports from [time, json, typing, console.py, xray.py] | imported by [agent.py] | tested by [tests/test_tool_executor.py]
+  Data flow: receives from Agent → tool_calls: List[ToolCall], tool_map: Dict[str, Callable], agent: Agent, console: Console → for each tool: injects xray context via inject_xray_context() → executes tool_func(**tool_args) → records timing and result → appends to agent.current_session['trace'] → clears xray context → adds tool result to messages
+  State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_execution entries | calls console.print() for user feedback | calls console.print_xray_table() if @xray enabled | injects/clears xray context via thread-local storage
+  Integration: exposes execute_and_record_tools(tool_calls, tool_map, agent, console), execute_single_tool(...) | checks is_xray_enabled() on tool functions | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp | status values: success, error, not_found
+  Performance: times each tool execution in milliseconds | executes tools sequentially (not parallel) | trace entry added BEFORE auto-trace so xray.trace() sees it
+  Errors: catches all tool execution exceptions | wraps errors in trace_entry with error, error_type fields | returns error message to LLM for retry | prints error to console with red ✗
+"""
 
 import time
 import json

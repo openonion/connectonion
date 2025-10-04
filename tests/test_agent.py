@@ -88,19 +88,16 @@ class TestAgentWithFunctionalTools(unittest.TestCase):
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             self.skipTest("OPENAI_API_KEY not found in environment")
-        
-        agent = Agent(name="test_no_tools", model="gpt-4o-mini")
-        # Override history path to use temp dir
-        agent.history.history_file = os.path.join(self.temp_dir, "history.json")
+
+        agent = Agent(name="test_no_tools", model="gpt-4o-mini", log=False)
 
         result = agent.input("Simply say 'Hello test'")
 
         self.assertIsNotNone(result)
         self.assertIsInstance(result, str)
-        # Verify history was recorded
-        self.assertEqual(len(agent.history.records), 1)
-        self.assertEqual(agent.history.records[0].user_prompt, "Simply say 'Hello test'")
-        # Tool calls might be 0 or more depending on model behavior
+        # Verify session was created
+        self.assertIsNotNone(agent.current_session)
+        self.assertEqual(agent.current_session.get('user_prompt'), "Simply say 'Hello test'")
 
     @pytest.mark.real_api
     def test_agent_run_with_single_tool_call(self):
@@ -108,27 +105,24 @@ class TestAgentWithFunctionalTools(unittest.TestCase):
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             self.skipTest("OPENAI_API_KEY not found in environment")
-        
+
         agent = Agent(
-            name="test_single_tool", 
+            name="test_single_tool",
             tools=[calculator],
             model="gpt-4o-mini",
-            system_prompt="You are a calculator assistant. When asked to calculate, use the calculator tool."
+            system_prompt="You are a calculator assistant. When asked to calculate, use the calculator tool.",
+            log=False
         )
-        agent.history.history_file = os.path.join(self.temp_dir, "history.json")
 
         result = agent.input("What is 40 + 2?")
 
         self.assertIsNotNone(result)
         self.assertIsInstance(result, str)
-        self.assertEqual(len(agent.history.records), 1)
-        # Verify the tool call was recorded in history
-        tool_calls = agent.history.records[0].tool_calls
-        if tool_calls:  # Tool might be called depending on model behavior
-            # Check for both possible key names (tool or name)
-            tool_name = tool_calls[0].get('name') or tool_calls[0].get('tool')
-            self.assertEqual(tool_name, 'calculator')
-            self.assertIn('42', str(tool_calls[0].get('result', '')))
+        # Verify tool was called via trace
+        tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
+        if tool_executions:  # Tool might be called depending on model behavior
+            self.assertEqual(tool_executions[0].get('tool_name'), 'calculator')
+            self.assertIn('42', str(tool_executions[0].get('result', '')))
 
     @pytest.mark.real_api
     def test_agent_run_with_multiple_tool_calls(self):
@@ -136,25 +130,23 @@ class TestAgentWithFunctionalTools(unittest.TestCase):
         api_key = os.getenv("OPENAI_API_KEY")
         if not api_key:
             self.skipTest("OPENAI_API_KEY not found in environment")
-        
+
         agent = Agent(
             name="test_multi_tool",
             tools=[calculator, get_current_time],
             model="gpt-4o-mini",
-            system_prompt="You have calculator and time tools. Use them when asked."
+            system_prompt="You have calculator and time tools. Use them when asked.",
+            log=False
         )
-        agent.history.history_file = os.path.join(self.temp_dir, "history.json")
 
         result = agent.input("Calculate 10*5 and tell me the current time.")
 
         self.assertIsNotNone(result)
         self.assertIsInstance(result, str)
-        self.assertEqual(len(agent.history.records), 1)
-        # Verify tool calls were recorded - may vary based on model behavior
-        tool_calls = agent.history.records[0].tool_calls
-        if tool_calls:
-            # Check for both possible key names (tool or name)
-            tool_names = [tc.get('name') or tc.get('tool') for tc in tool_calls]
+        # Verify tool calls via trace - may vary based on model behavior
+        tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
+        if tool_executions:
+            tool_names = [e.get('tool_name') for e in tool_executions]
             # At least one of the tools should have been called
             self.assertTrue('calculator' in tool_names or 'get_current_time' in tool_names)
 

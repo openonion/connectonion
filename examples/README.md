@@ -203,7 +203,7 @@ Every agent interaction is automatically recorded:
 - **Duration**: How long everything took
 - **Timestamp**: When it happened
 
-All saved to: `~/.connectonion/agents/{agent_name}/behavior.json`
+All logged to: `.co/logs/{agent_name}.log`
 
 ## 🔧 Tips for Success
 

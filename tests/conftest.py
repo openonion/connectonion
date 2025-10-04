@@ -9,7 +9,6 @@ from unittest.mock import Mock, MagicMock
 from connectonion import Agent
 # No need to import tools - they're just functions
 from connectonion.llm import LLMResponse, ToolCall, OpenAILLM
-from connectonion.history import History
 
 
 @pytest.fixture
@@ -79,10 +78,10 @@ def sample_tools():
 
 @pytest.fixture
 def test_agent(temp_dir, mock_llm, sample_tools):
-    """Create a test agent with isolated history."""
-    agent = Agent(name="test_agent", llm=mock_llm, tools=sample_tools)
-    # Use temp directory for history
-    agent.history = History("test_agent", save_dir=temp_dir)
+    """Create a test agent with logging to temp directory."""
+    # Use temp directory for logging instead of default .co/logs/
+    log_file = Path(temp_dir) / "test_agent.log"
+    agent = Agent(name="test_agent", llm=mock_llm, tools=sample_tools, log=log_file)
     return agent
 
 

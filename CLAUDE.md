@@ -13,13 +13,13 @@ ConnectOnion is a Python framework for creating AI agents with behavior tracking
 - **Agent** (`connectonion/agent.py:10`): Main orchestrator that combines LLM calls with tool execution
 - **Tool** (`connectonion/tools.py:9`): Abstract base class for all agent tools with built-in implementations
 - **LLM** (`connectonion/llm.py:31`): Abstract interface with OpenAI implementation
-- **History** (`connectonion/history.py:24`): Automatic behavior tracking and persistence
+- **Console** (`connectonion/console.py:15`): Terminal output and file logging
 
 ### Key Design Patterns
 
 - **Tool Function Schema**: Tools automatically convert to OpenAI function calling format via `to_function_schema()`
 - **Message Flow**: Agent maintains conversation history with tool results for multi-turn interactions
-- **Automatic Persistence**: All agent behaviors save to `~/.connectonion/agents/{name}/behavior.json`
+- **Automatic Logging**: All agent activities log to `.co/logs/{name}.log` by default (customizable)
 - **Tool Mapping**: Agents maintain internal `tool_map` for O(1) tool lookup during execution
 
 ## Development Commands
@@ -87,12 +87,12 @@ The `create_tool_from_function()` utility:
 - Generates OpenAI-compatible function schemas
 - Attaches `.name`, `.description`, `.run()`, and `.to_function_schema()` attributes
 
-### Tool Call Recording (`connectonion/history.py:43`)
-Every tool execution is tracked with:
-- Parameters passed to the tool
+### Tool Call Logging (`connectonion/console.py:45`)
+Every tool execution is logged with:
+- Timestamp and parameters passed to the tool
 - Results (success/error/not_found status)
-- Call ID for correlation
-- Complete behavior history in `~/.connectonion/agents/{name}/behavior.json`
+- Execution timing
+- Complete activity log in `.co/logs/{name}.log` (default) or custom location
 
 ### Error Handling
 Tool errors are captured and passed back to the LLM as tool responses, allowing the agent to adapt or retry. Missing tools return "not_found" status.
