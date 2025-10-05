@@ -1,110 +1,156 @@
 # Models
 
-ConnectOnion supports the latest models from OpenAI, Google Gemini, and Anthropic Claude. Simply specify the model name when creating an agent.
+ConnectOnion supports the latest models from OpenAI, Google Gemini, and Anthropic Claude. Get started in 60 seconds with managed keys, or bring your own API keys.
 
-## Quick Start
+## Quick Start (60 Seconds)
+
+**Easiest Way: Use Managed Keys** - No API key setup required!
+
+```bash
+# Authenticate once (includes 100K free tokens)
+co auth
+```
 
 ```python
 from connectonion import Agent
 
-# Just change the model name
-agent = Agent("assistant", model="gpt-5")              # OpenAI
-agent = Agent("assistant", model="gemini-2.5-pro")     # Google
-agent = Agent("assistant", model="claude-opus-4.1")    # Anthropic
+# Add co/ prefix - that's it!
+agent = Agent("assistant", model="co/gpt-5")
+response = agent.input("Hello!")
 ```
 
-## OpenAI Models
+⭐ **Bonus**: [Star our repo](https://github.com/wu-changxing/connectonion) for +100K tokens!
 
-### GPT-5 Series
+**Alternative: Bring Your Own Keys**
+
+```bash
+# Set your API key
+export OPENAI_API_KEY="sk-..."
+```
+
+```python
+from connectonion import Agent
+
+# Use model names directly
+agent = Agent("assistant", model="gpt-5")
+response = agent.input("Hello!")
+```
+
+## Available Models
+
+All models below work with both managed keys (`co/` prefix) and your own API keys.
+
+### OpenAI Models
+
+#### GPT-5 Series
 ```python
 # Best model for coding and agentic tasks across domains
-agent = Agent("assistant", model="gpt-5")
+agent = Agent("assistant", model="co/gpt-5")        # Managed
+agent = Agent("assistant", model="gpt-5")           # Your key
 
 # Faster, cost-efficient version for well-defined tasks
-agent = Agent("assistant", model="gpt-5-mini")
+agent = Agent("assistant", model="co/gpt-5-mini")   # Managed
+agent = Agent("assistant", model="gpt-5-mini")      # Your key
 
 # Fastest, most cost-efficient version
-agent = Agent("assistant", model="gpt-5-nano")
+agent = Agent("assistant", model="co/gpt-5-nano")   # Managed
+agent = Agent("assistant", model="gpt-5-nano")      # Your key
 ```
 
-### GPT-4.1
+#### GPT-4.1
 ```python
 # Smartest non-reasoning model
-agent = Agent("assistant", model="gpt-4.1")
+agent = Agent("assistant", model="co/gpt-4.1")      # Managed
+agent = Agent("assistant", model="gpt-4.1")         # Your key
 ```
 
-### GPT-4o Series (Previous Generation)
+#### GPT-4o Series (Previous Generation)
 ```python
 # Multimodal model with vision capabilities
-agent = Agent("assistant", model="gpt-4o")
+agent = Agent("assistant", model="co/gpt-4o")       # Managed
+agent = Agent("assistant", model="gpt-4o")          # Your key
 
 # Affordable small model
-agent = Agent("assistant", model="gpt-4o-mini")
+agent = Agent("assistant", model="co/gpt-4o-mini")  # Managed
+agent = Agent("assistant", model="gpt-4o-mini")     # Your key
 ```
 
-### o1 Reasoning Models
+#### o1 Reasoning Models
 ```python
 # Advanced reasoning and problem solving
-agent = Agent("assistant", model="o1")
+agent = Agent("assistant", model="co/o1")           # Managed
+agent = Agent("assistant", model="o1")              # Your key
 
 # Fast reasoning, cost-effective
-agent = Agent("assistant", model="o1-mini")
+agent = Agent("assistant", model="co/o1-mini")      # Managed
+agent = Agent("assistant", model="o1-mini")         # Your key
 ```
 
-## Google Gemini Models
+### Google Gemini Models
 
-### Gemini 2.5
+#### Gemini 2.5
 ```python
 # Enhanced thinking and reasoning, multimodal understanding, advanced coding
 # Supports: Audio, images, videos, text, and PDF
-agent = Agent("assistant", model="gemini-2.5-pro")
+agent = Agent("assistant", model="co/gemini-2.5-pro")  # Managed
+agent = Agent("assistant", model="gemini-2.5-pro")     # Your key
 ```
 
-### Gemini 2.0
+#### Gemini 2.0
 ```python
 # Experimental multimodal model with native tool use
-agent = Agent("assistant", model="gemini-2.0-flash-exp")
+agent = Agent("assistant", model="co/gemini-2.0-flash-exp")  # Managed
+agent = Agent("assistant", model="gemini-2.0-flash-exp")     # Your key
 
 # With thinking/reasoning capabilities
-agent = Agent("assistant", model="gemini-2.0-flash-thinking-exp")
+agent = Agent("assistant", model="co/gemini-2.0-flash-thinking-exp")  # Managed
+agent = Agent("assistant", model="gemini-2.0-flash-thinking-exp")     # Your key
 ```
 
-### Gemini 1.5
+#### Gemini 1.5
 ```python
 # 2M token context window
-agent = Agent("assistant", model="gemini-1.5-pro")
+agent = Agent("assistant", model="co/gemini-1.5-pro")    # Managed
+agent = Agent("assistant", model="gemini-1.5-pro")       # Your key
 
 # Fast and versatile, 1M token context
-agent = Agent("assistant", model="gemini-1.5-flash")
+agent = Agent("assistant", model="co/gemini-1.5-flash")  # Managed
+agent = Agent("assistant", model="gemini-1.5-flash")     # Your key
 
 # High-volume tasks, lower cost
-agent = Agent("assistant", model="gemini-1.5-flash-8b")
+agent = Agent("assistant", model="co/gemini-1.5-flash-8b")  # Managed
+agent = Agent("assistant", model="gemini-1.5-flash-8b")     # Your key
 ```
 
-## Anthropic Claude Models
+### Anthropic Claude Models
 
-### Claude Opus 4 Series
+#### Claude Opus 4 Series
 ```python
 # Claude Opus 4.1 - Latest and most capable
-agent = Agent("assistant", model="claude-opus-4.1")
+agent = Agent("assistant", model="co/claude-opus-4.1")  # Managed
+agent = Agent("assistant", model="claude-opus-4.1")     # Your key
 
 # Claude Opus 4 - Previous version
-agent = Agent("assistant", model="claude-opus-4")
+agent = Agent("assistant", model="co/claude-opus-4")    # Managed
+agent = Agent("assistant", model="claude-opus-4")       # Your key
 ```
 
-### Claude Sonnet 4
+#### Claude Sonnet 4
 ```python
 # Balanced performance model
-agent = Agent("assistant", model="claude-sonnet-4")
+agent = Agent("assistant", model="co/claude-sonnet-4")  # Managed
+agent = Agent("assistant", model="claude-sonnet-4")     # Your key
 ```
 
-### Claude 3.5 Series (Previous Generation)
+#### Claude 3.5 Series (Previous Generation)
 ```python
 # Excellent at coding
-agent = Agent("assistant", model="claude-3-5-sonnet")
+agent = Agent("assistant", model="co/claude-3-5-sonnet")  # Managed
+agent = Agent("assistant", model="claude-3-5-sonnet")     # Your key
 
 # Fast and cost-effective
-agent = Agent("assistant", model="claude-3-5-haiku")
+agent = Agent("assistant", model="co/claude-3-5-haiku")   # Managed
+agent = Agent("assistant", model="claude-3-5-haiku")      # Your key
 ```
 
 ## Model Capabilities Comparison
@@ -156,7 +202,43 @@ agent_google = Agent("assistant", model="gemini-2.5-pro", tools=tools)
 agent_claude = Agent("assistant", model="claude-opus-4.1", tools=tools)
 ```
 
-## Setting Up API Keys
+## Two Ways to Use Models
+
+### Option 1: Managed Keys (Recommended for Getting Started)
+
+No API key setup required - authenticate once and start using all models:
+
+```bash
+# One-time authentication
+co auth
+```
+
+```python
+from connectonion import Agent
+
+# Use any model with co/ prefix
+agent = Agent("assistant", model="co/gpt-5")
+agent = Agent("assistant", model="co/gemini-2.5-pro")
+agent = Agent("assistant", model="co/claude-opus-4.1")
+```
+
+**Includes:**
+- 100K free tokens to start
+- Access to all providers (OpenAI, Google, Anthropic)
+- No API key management needed
+- ⭐ Bonus: [Star our repo](https://github.com/wu-changxing/connectonion) for +100K tokens
+
+**When to use:**
+- Getting started with ConnectOnion
+- Prototyping and testing different models
+- Learning AI agent development
+- Small projects and experiments
+
+See [Authentication docs](auth.md) for more details.
+
+### Option 2: Bring Your Own API Keys
+
+For production use or high-volume applications, use your own API keys for direct billing:
 
 ```bash
 # OpenAI
@@ -170,7 +252,22 @@ export GEMINI_API_KEY="AIza..."
 export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
+```python
+from connectonion import Agent
+
+# Use models without co/ prefix
+agent = Agent("assistant", model="gpt-5")
+agent = Agent("assistant", model="gemini-2.5-pro")
+agent = Agent("assistant", model="claude-opus-4.1")
+```
+
 **Important:** For Gemini models, use `GEMINI_API_KEY` as recommended by [Google's official documentation](https://ai.google.dev/gemini-api/docs/api-key). While `GOOGLE_API_KEY` is supported for backward compatibility, `GEMINI_API_KEY` is the standard used by Google's Python SDK and most tools in the ecosystem.
+
+**When to use:**
+- Production deployments
+- High-volume usage
+- Direct billing relationships with providers
+- Existing API key infrastructure
 
 ## Model Selection Guide
 
@@ -232,7 +329,12 @@ agent = Agent("multimodal", model="claude-opus-4.1") # Images, text
 ```python
 from connectonion import Agent
 
-# Create agents with different models
+# With managed keys (easiest)
+agent_openai = Agent("assistant", model="co/gpt-5")
+agent_google = Agent("assistant", model="co/gemini-2.5-pro")
+agent_claude = Agent("assistant", model="co/claude-opus-4.1")
+
+# OR with your own API keys
 agent_openai = Agent("assistant", model="gpt-5")
 agent_google = Agent("assistant", model="gemini-2.5-pro")
 agent_claude = Agent("assistant", model="claude-opus-4.1")
@@ -246,8 +348,8 @@ response = agent_claude.input("Explain quantum computing")
 ### Model Comparison
 
 ```python
-# Compare responses from top models
-models = ["gpt-5", "gemini-2.5-pro", "claude-opus-4.1"]
+# Compare responses from top models (using managed keys)
+models = ["co/gpt-5", "co/gemini-2.5-pro", "co/claude-opus-4.1"]
 prompt = "Write a Python implementation of binary search"
 
 for model in models:
@@ -447,53 +549,6 @@ agent = Agent("assistant", model="claude-opus-4.1")
 response = agent.input(prompt)
 ```
 
-## Optional: Managed Keys Service
-
-Don't want to manage API keys? ConnectOnion also offers a managed keys service where we handle the API keys for you.
-
-### Get Started with Free Credits
-
-```bash
-# Authenticate once
-co auth
-```
-
-You'll receive **100K tokens** to start using any model immediately.
-
-### Using Managed Models
-
-Just add the `co/` prefix to any model name:
-
-```python
-from connectonion import Agent
-
-# Instead of managing your own keys
-agent = Agent("assistant", model="co/gpt-5")
-agent = Agent("assistant", model="co/gemini-2.5-pro")
-agent = Agent("assistant", model="co/claude-opus-4.1")
-
-# Works the same way, no API key setup needed
-response = agent.input("Hello!")
-```
-
-### Bonus Credits
-
-⭐ **Star our GitHub repo** to get an additional **100K tokens**!
-
-Visit [github.com/wu-changxing/connectonion](https://github.com/wu-changxing/connectonion) and click the Star button.
-
-### When to Use Managed Keys
-
-- **Getting started** - No API key setup required
-- **Prototyping** - Quickly test different models
-- **Learning** - Explore all providers with one account
-- **Small projects** - Pay-as-you-go after free credits
-
-For production or high-volume usage, we recommend using your own API keys for direct billing.
-
-See [Authentication docs](auth.md) for more details on managed keys.
-
----
 
 ## See Also
 
