@@ -96,6 +96,7 @@ logs/
 .#*
 #*#
 .tmp/
+tmp/
 
 # Distribution / packaging
 .Python
