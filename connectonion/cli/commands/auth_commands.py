@@ -220,8 +220,11 @@ def handle_auth():
         use_global = True
 
         if not co_dir.exists() or not (co_dir / "keys" / "agent.key").exists():
-            console.print("❌ No agent keys found!", style="red")
-            console.print("Run 'co init' to create project keys, or 'co create' to set up global keys.", style="yellow")
+            console.print("\n❌ [bold red]No agent keys found[/bold red]")
+            console.print("\n[cyan]Initialize ConnectOnion first:[/cyan]")
+            console.print("  [bold]co init[/bold]     Add to current directory")
+            console.print("  [bold]co create[/bold]   Create new project folder")
+            console.print("\n[dim]Both set up ~/.co/ with your keys[/dim]\n")
             return
         else:
             console.print("📂 Using global ConnectOnion keys (~/.co)", style="cyan")

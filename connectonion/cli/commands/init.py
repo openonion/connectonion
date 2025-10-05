@@ -255,6 +255,14 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         agent_file.write_text(custom_code)
         files_created.append("agent.py")
 
+    # AUTHENTICATE FIRST - so we have OPENONION_API_KEY to add to .env
+    global_co_dir = Path.home() / ".co"
+    if not global_co_dir.exists():
+        ensure_global_config()
+
+    # Authenticate to get OPENONION_API_KEY (always, for everyone)
+    auth_success = authenticate(global_co_dir, save_to_project=False)
+
     # Handle .env file - append API keys from global config
     env_path = Path(current_dir) / ".env"
     global_dir = Path.home() / ".co"
@@ -272,7 +280,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
                     key = line.split('=')[0].strip()
                     existing_keys.add(key)
 
-    # Read global keys
+    # Read global keys (now includes OPENONION_API_KEY from auth)
     keys_to_add = []
     if global_keys_env.exists():
         with open(global_keys_env, 'r') as f:
@@ -300,9 +308,9 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         # Create new .env
         if keys_to_add:
             env_path.write_text('\n'.join(keys_to_add) + '\n')
-            console.print(f"{Colors.GREEN}✓ Created .env with API keys from ~/.co/keys.env{Colors.END}")
+            console.print(f"{Colors.GREEN}✓ Created .env with API keys{Colors.END}")
         else:
-            # Create with comments-only template (no fake keys)
+            # Fallback - should not happen now that we always auth
             env_content = """# Add your LLM API key(s) below (uncomment one and set value)
 # OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
@@ -319,9 +327,9 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         with open(env_path, 'a') as f:
             if not existing_env_content.endswith('\n'):
                 f.write('\n')
-            f.write('\n# ConnectOnion API Keys\n')
+            f.write('\n# API Keys\n')
             f.write('\n'.join(keys_to_add) + '\n')
-        console.print(f"{Colors.GREEN}✓ Appended missing API keys to .env{Colors.END}")
+        console.print(f"{Colors.GREEN}✓ Updated .env with API keys{Colors.END}")
         files_created.append(".env (updated)")
     else:
         console.print(f"{Colors.GREEN}✓ .env already contains all necessary keys{Colors.END}")
@@ -480,33 +488,18 @@ todo.md
         for file in files_skipped:
             console.print(f"  • {file}")
 
-    # Automatically authenticate with OpenOnion to get JWT token for co/ models
-    # Use the GLOBAL ~/.co directory for authentication, not the project directory
-    global_co_dir = Path.home() / ".co"
-
-    # If global folder doesn't exist, create it and set up keys
-    if not global_co_dir.exists():
-        console.print(f"\n{Colors.CYAN}🔧 Setting up global ConnectOnion configuration...{Colors.END}")
-        ensure_global_config()
-
-    # Now authenticate with the global directory
-    console.print(f"\n{Colors.CYAN}🔐 Authenticating with OpenOnion for managed models...{Colors.END}")
-    auth_success = authenticate(global_co_dir)  # Pass the global dir where keys are
-
-    if auth_success:
-        console.print(f"{Colors.GREEN}✅ Authentication successful! You can now use co/ models.{Colors.END}")
-    else:
-        console.print(f"{Colors.YELLOW}⚠️  Authentication skipped. Run 'co auth' later to use co/ models.{Colors.END}")
-
-    # Show .env reminder based on API key setup
+    # Show .env info
     console.print("")
-    if api_key and provider:
-        if provider == "connectonion":
-            console.print(f"💡 {Colors.CYAN}Using ConnectOnion credits - add your own key to .env if needed{Colors.END}")
-        else:
-            console.print(f"💡 {Colors.CYAN}API key saved to .env - edit anytime to change providers{Colors.END}")
+    if auth_success:
+        console.print(f"💡 {Colors.CYAN}Your .env is ready with API keys{Colors.END}")
+        if api_key and provider:
+            console.print(f"   • Using your {provider.title()} key")
+        console.print(f"   • OPENONION_API_KEY also available (use 'co/' model prefix)")
     else:
-        console.print(f"💡 {Colors.YELLOW}Add your API key to .env file to enable AI features{Colors.END}")
+        if api_key and provider:
+            console.print(f"💡 {Colors.CYAN}API key saved to .env{Colors.END}")
+        else:
+            console.print(f"💡 {Colors.YELLOW}Add your API key to .env to enable AI features{Colors.END}")
 
     # Next steps with color coding
     console.print(f"\n{Colors.CYAN}🚀 Next steps:{Colors.END}")

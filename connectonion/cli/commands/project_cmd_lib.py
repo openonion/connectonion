@@ -147,19 +147,15 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
 
         choices = [
             questionary.Choice(
-                title="🔑 Enter my API key (OpenAI, Anthropic, Gemini)",
+                title="🔑 BYO API key (OpenAI, Anthropic, Gemini)",
                 value="own_key"
             ),
             questionary.Choice(
-                title="⭐ Star for 100k free tokens",
+                title="⭐ Star for $1 OpenOnion credit (100k free tokens)",
                 value="star"
             ),
             questionary.Choice(
-                title="🧅 ConnectOnion credits (same price as OpenAI)",
-                value="managed"
-            ),
-            questionary.Choice(
-                title="⏭️  Skip (add to .env later)",
+                title="⏭️  Skip (get $0.1 OpenOnion credit 10k free tokens)",
                 value="skip"
             ),
         ]
@@ -180,66 +176,6 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                 console.print(f"[green]✓ {provider.title()} API key configured[/green]")
                 return api_key, provider, None  # No temp dir for own keys
             return "", "", None
-
-        elif result == "managed":
-            # Use ConnectOnion managed keys - create temp project and authenticate
-            import webbrowser
-            import shutil
-            from pathlib import Path
-
-            console.print("\n[cyan]🧅 ConnectOnion Managed Keys[/cyan]")
-            console.print("• Same pricing as OpenAI/Anthropic")
-            console.print("• No API key management needed")
-            console.print("• Pay as you go with tokens")
-
-            open_browser = questionary.confirm(
-                "\nWould you like to open the purchase page?",
-                default=True
-            ).ask()
-
-            if open_browser:
-                console.print("\nOpening ConnectOnion in your browser...")
-                webbrowser.open("https://o.openonion.ai")
-
-            # Create temporary project directory
-            temp_name = "connectonion-temp-project"
-            temp_dir = Path(temp_name)
-            counter = 1
-            while temp_dir.exists():
-                temp_dir = Path(f"{temp_name}-{counter}")
-                counter += 1
-
-            console.print(f"\n[yellow]Setting up temporary project for authentication...[/yellow]")
-            temp_dir.mkdir(parents=True)
-
-            # Create .co directory and generate keys
-            co_dir = temp_dir / ".co"
-            co_dir.mkdir()
-
-            try:
-                # Generate keys for this project
-                addr_data = address.generate()
-                address.save(addr_data, co_dir)
-
-                # For managed keys, use the browser flow since they need to purchase
-                console.print("\n[yellow]Authenticating with ConnectOnion...[/yellow]\n")
-
-                # Use browser flow for purchase
-                from .auth_commands import authenticate
-                if authenticate(co_dir):
-                    console.print("\n[green]✓ Authentication successful! You can now use ConnectOnion managed keys.[/green]")
-                    return "managed", "connectonion", temp_dir  # Return the temp directory
-                else:
-                    # Auth failed, clean up
-                    shutil.rmtree(temp_dir)
-                    console.print("[yellow]Authentication failed. Please try again.[/yellow]")
-                    return "", "", None
-            except Exception as e:
-                # Clean up on error
-                if temp_dir.exists():
-                    shutil.rmtree(temp_dir)
-                console.print(f"[red]Error: {e}[/red]")
-                return "", "", None
 
         elif result == "star":
             # Star for free credits - create temp project and authenticate immediately
@@ -337,12 +273,11 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
     except ImportError:
         # Fallback to simple menu
         console.print("\n[cyan]🔑 API Key Setup[/cyan]")
-        console.print("1. Enter my API key (OpenAI, Anthropic, Gemini)")
-        console.print("2. Star for 100k free tokens")
-        console.print("3. ConnectOnion credits (same price as OpenAI)")
-        console.print("4. Skip (add to .env later)")
+        console.print("1. BYO API key (OpenAI, Anthropic, Gemini)")
+        console.print("2. Star for $1 OpenOnion credit (100k free tokens)")
+        console.print("3. Skip (get $0.1 OpenOnion credit 10k free tokens)")
 
-        choice = IntPrompt.ask("Select option", choices=["1", "2", "3", "4"], default="1")
+        choice = IntPrompt.ask("Select option", choices=["1", "2", "3"], default="3")
         choice = int(choice)
 
         if choice == 1:
@@ -400,26 +335,10 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
             return "star", "connectonion", None
 
         elif choice == 3:
-            # ConnectOnion managed keys
-            import webbrowser
-
-            console.print("\n[cyan]🧅 ConnectOnion Credits[/cyan]")
-            console.print("• Same price as OpenAI")
-            console.print("• No API key management needed")
-            console.print("• Pay as you go with tokens")
-
-            if Confirm.ask("\nWould you like to open the purchase page?", default=True):
-                console.print("\nOpening ConnectOnion in your browser...")
-                webbrowser.open("https://o.openonion.ai")
-
-            console.print("\n[yellow]Authentication will happen after project setup[/yellow]")
-
-            return "managed", "connectonion", None
-
-        elif choice == 4:
-            # Skip
+            # Skip - user will get free tokens
             console.print("\n[yellow]⏭️  Skipping API setup[/yellow]")
-            console.print("[dim]You can add your API key later in the .env file[/dim]")
+            console.print("[dim]You'll get $0.1 OpenOnion credit (10k tokens) to get started[/dim]")
+            console.print("[dim]Add your own API key to .env later for unlimited usage[/dim]")
             return "skip", "", None
 
         else:
