@@ -25,6 +25,7 @@ const navigation = [
   {
     title: 'Core Concepts',
     items: [
+      { title: 'Agent', href: '/agent', icon: Users, difficulty: 'Essential', keywords: ['agent', 'create', 'orchestrator', 'core'] },
       { title: 'max_iterations', href: '/max-iterations', icon: Gauge, difficulty: 'Start Here', keywords: ['loop', 'limit'] },
       { title: 'LLM Function', href: '/llm_do', icon: Zap, keywords: ['ai', 'model', 'llm_do'] },
       { title: 'Tools', href: '/tools', icon: Code, keywords: ['function', 'utility'] },
