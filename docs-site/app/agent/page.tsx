@@ -288,34 +288,45 @@ agent.current_session     # dict | None: Runtime state`}</code></pre>
           </div>
         </section>
 
-        {/* Table of Contents */}
+        {/* Full Documentation Note */}
         <section className="mb-16">
-          <h2 className="text-2xl font-bold text-white mb-6">Table of Contents</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {[
-              { title: 'Creating Agents', href: '#creating-agents' },
-              { title: 'Using Your Agent', href: '#using-your-agent' },
-              { title: 'Managing Tools', href: '#managing-tools' },
-              { title: 'Conversations & Multi-Turn', href: '#conversations' },
-              { title: 'Iteration Control', href: '#iteration-control' },
-              { title: 'Models & LLMs', href: '#models' },
-              { title: 'Logging & Debugging', href: '#logging' },
-              { title: 'Trust & Security', href: '#trust' },
-              { title: 'Common Patterns', href: '#patterns' },
-              { title: 'Testing', href: '#testing' },
-              { title: 'Architecture', href: '#architecture' }
-            ].map((item) => (
-              <a
-                key={item.href}
-                href={item.href}
-                className="flex items-center gap-2 p-3 bg-gray-900 hover:bg-gray-800 rounded-lg border border-gray-800 hover:border-purple-500/50 transition-all group"
-              >
-                <ArrowRight className="w-4 h-4 text-gray-500 group-hover:text-purple-400 transition-colors" />
-                <span className="text-gray-300 group-hover:text-white transition-colors">
-                  {item.title}
-                </span>
-              </a>
-            ))}
+          <div className="p-6 bg-gradient-to-br from-purple-900/20 to-blue-900/20 rounded-xl border border-purple-500/30">
+            <h2 className="text-2xl font-bold text-white mb-4 flex items-center gap-2">
+              <Code className="w-6 h-6 text-purple-400" />
+              Complete Documentation
+            </h2>
+            <p className="text-gray-300 mb-4">
+              This page provides a quick overview of the Agent class. For comprehensive documentation including:
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-4 text-sm">
+              <div className="flex items-center gap-2 text-gray-400">
+                <div className="w-1.5 h-1.5 bg-purple-400 rounded-full"></div>
+                Creating Agents
+              </div>
+              <div className="flex items-center gap-2 text-gray-400">
+                <div className="w-1.5 h-1.5 bg-purple-400 rounded-full"></div>
+                Managing Tools
+              </div>
+              <div className="flex items-center gap-2 text-gray-400">
+                <div className="w-1.5 h-1.5 bg-purple-400 rounded-full"></div>
+                Multi-Turn Conversations
+              </div>
+              <div className="flex items-center gap-2 text-gray-400">
+                <div className="w-1.5 h-1.5 bg-purple-400 rounded-full"></div>
+                Iteration Control
+              </div>
+              <div className="flex items-center gap-2 text-gray-400">
+                <div className="w-1.5 h-1.5 bg-purple-400 rounded-full"></div>
+                Common Patterns
+              </div>
+              <div className="flex items-center gap-2 text-gray-400">
+                <div className="w-1.5 h-1.5 bg-purple-400 rounded-full"></div>
+                Testing Strategies
+              </div>
+            </div>
+            <p className="text-purple-300 font-semibold">
+              Use the "Copy" button above to get the full markdown documentation with all details, examples, and patterns.
+            </p>
           </div>
         </section>
 
