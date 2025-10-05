@@ -132,3 +132,22 @@ dmypy.json
 
 # pytype static type analyzer
 .pytype/
+
+# Ruff
+.ruff_cache/
+
+# UV package manager
+uv.lock
+
+# Rye
+.rye/
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+
+# Backup and merge files
+*.bak
+*.orig
+*.rej
