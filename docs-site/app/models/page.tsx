@@ -55,17 +55,40 @@ export default function ModelsPage() {
 
   const markdownContent = `# Models
 
-ConnectOnion supports the latest models from OpenAI, Google Gemini, and Anthropic Claude. Simply specify the model name when creating an agent.
+ConnectOnion supports the latest models from OpenAI, Google Gemini, and Anthropic Claude. Get started in 60 seconds with managed keys, or bring your own API keys.
 
-## Quick Start
+## Quick Start (60 Seconds)
+
+**Easiest Way: Use Managed Keys** - No API key setup required!
+
+\`\`\`bash
+# Authenticate once (includes 100K free tokens)
+co auth
+\`\`\`
 
 \`\`\`python
 from connectonion import Agent
 
-# Just change the model name
-agent = Agent("assistant", model="gpt-5")              # OpenAI
-agent = Agent("assistant", model="gemini-2.5-pro")     # Google
-agent = Agent("assistant", model="claude-opus-4.1")    # Anthropic
+# Add co/ prefix - that's it!
+agent = Agent("assistant", model="co/gpt-5")
+response = agent.input("Hello!")
+\`\`\`
+
+⭐ **Bonus**: Star our repo for +100K tokens!
+
+**Alternative: Bring Your Own Keys**
+
+\`\`\`bash
+# Set your API key
+export OPENAI_API_KEY="sk-..."
+\`\`\`
+
+\`\`\`python
+from connectonion import Agent
+
+# Use model names directly
+agent = Agent("assistant", model="gpt-5")
+response = agent.input("Hello!")
 \`\`\`
 
 ## Supported Models
@@ -155,22 +178,61 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 
       {/* Quick Start */}
       <section className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4">Quick Start</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-4">
-          Simply specify the model name when creating an agent:
-        </p>
-        <CodeWithResult
-          code={`from connectonion import Agent
+        <h2 className="text-2xl font-semibold mb-6">Quick Start (60 Seconds)</h2>
 
-# Just change the model name
-agent = Agent("assistant", model="gpt-5")              # OpenAI
-agent = Agent("assistant", model="gemini-2.5-pro")     # Google  
-agent = Agent("assistant", model="claude-opus-4.1")    # Anthropic
+        {/* Managed Keys Path */}
+        <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 p-6 rounded-xl border border-purple-500/30 mb-6">
+          <h3 className="text-xl font-semibold mb-3 flex items-center text-white">
+            <Zap className="mr-2 h-5 w-5 text-purple-400" />
+            Easiest Way: Use Managed Keys
+          </h3>
+          <p className="text-gray-300 mb-4">
+            No API key setup required! Authenticate once and get 100K free tokens to start.
+          </p>
 
-# Same interface for all
+          <div className="mb-4">
+            <CommandBlock commands={['co auth']} />
+          </div>
+
+          <CodeWithResult
+            code={`from connectonion import Agent
+
+# Add co/ prefix - that's it!
+agent = Agent("assistant", model="co/gpt-5")
 response = agent.input("Explain quantum computing")`}
-          result={`Quantum computing harnesses quantum mechanical phenomena...`}
-        />
+            result={`Quantum computing harnesses quantum mechanical phenomena...`}
+          />
+
+          <div className="mt-4 p-3 bg-purple-500/10 rounded border border-purple-500/20">
+            <p className="text-sm text-purple-300">
+              ⭐ <strong>Bonus:</strong> <a href="https://github.com/wu-changxing/connectonion" target="_blank" rel="noopener" className="underline hover:text-purple-200">Star our repo</a> for an additional 100K tokens!
+            </p>
+          </div>
+        </div>
+
+        {/* Own Keys Path */}
+        <div className="bg-gray-900 border border-gray-700 p-6 rounded-xl">
+          <h3 className="text-xl font-semibold mb-3 flex items-center text-white">
+            <Globe className="mr-2 h-5 w-5 text-blue-400" />
+            Alternative: Bring Your Own Keys
+          </h3>
+          <p className="text-gray-300 mb-4">
+            For production or high-volume usage, use your own API keys for direct billing.
+          </p>
+
+          <div className="mb-4">
+            <CommandBlock commands={['export OPENAI_API_KEY="sk-..."']} />
+          </div>
+
+          <CodeWithResult
+            code={`from connectonion import Agent
+
+# Use model names directly
+agent = Agent("assistant", model="gpt-5")
+response = agent.input("Explain quantum computing")`}
+            result={`Quantum computing harnesses quantum mechanical phenomena...`}
+          />
+        </div>
       </section>
 
       {/* Provider Tabs */}
@@ -380,19 +442,69 @@ response = agent.input("Explain quantum computing")`}
         </div>
       </section>
 
-      {/* API Keys Setup */}
+      {/* Two Ways to Use Models */}
       <section className="mb-12">
-        <h2 className="text-2xl font-semibold mb-4">Setting Up API Keys</h2>
-        <p className="text-gray-600 dark:text-gray-400 mb-4">
-          Set environment variables for the providers you want to use:
-        </p>
-        <CommandBlock
-          commands={[
-            'export OPENAI_API_KEY="sk-..."',
-            'export GEMINI_API_KEY="AIza..."',
-            'export ANTHROPIC_API_KEY="sk-ant-..."'
-          ]}
-        />
+        <h2 className="text-2xl font-semibold mb-6">Two Ways to Use Models</h2>
+
+        <div className="grid md:grid-cols-2 gap-6">
+          {/* Managed Keys */}
+          <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 p-6 rounded-xl border border-purple-500/30">
+            <h3 className="text-lg font-semibold mb-3 flex items-center text-white">
+              <Zap className="mr-2 h-5 w-5 text-purple-400" />
+              Option 1: Managed Keys
+            </h3>
+            <p className="text-sm text-gray-300 mb-3">
+              Recommended for getting started
+            </p>
+            <div className="mb-3">
+              <CommandBlock commands={['co auth']} />
+            </div>
+            <CodeWithResult
+              code={`# Use any model with co/ prefix
+agent = Agent("assistant", model="co/gpt-5")
+agent = Agent("assistant", model="co/gemini-2.5-pro")
+agent = Agent("assistant", model="co/claude-opus-4.1")`}
+              result=""
+            />
+            <div className="mt-4 space-y-2 text-sm text-gray-300">
+              <p>✓ 100K free tokens to start</p>
+              <p>✓ Access to all providers</p>
+              <p>✓ No API key management</p>
+            </div>
+          </div>
+
+          {/* Own Keys */}
+          <div className="bg-gray-900 border border-gray-700 p-6 rounded-xl">
+            <h3 className="text-lg font-semibold mb-3 flex items-center text-white">
+              <Globe className="mr-2 h-5 w-5 text-blue-400" />
+              Option 2: Your Own Keys
+            </h3>
+            <p className="text-sm text-gray-300 mb-3">
+              For production or high-volume usage
+            </p>
+            <div className="mb-3">
+              <CommandBlock
+                commands={[
+                  'export OPENAI_API_KEY="sk-..."',
+                  'export GEMINI_API_KEY="AIza..."',
+                  'export ANTHROPIC_API_KEY="sk-ant-..."'
+                ]}
+              />
+            </div>
+            <CodeWithResult
+              code={`# Use models without co/ prefix
+agent = Agent("assistant", model="gpt-5")
+agent = Agent("assistant", model="gemini-2.5-pro")
+agent = Agent("assistant", model="claude-opus-4.1")`}
+              result=""
+            />
+            <div className="mt-4 space-y-2 text-sm text-gray-300">
+              <p>✓ Production deployments</p>
+              <p>✓ Direct billing</p>
+              <p>✓ Existing infrastructure</p>
+            </div>
+          </div>
+        </div>
       </section>
 
       {/* Smart Model Selection */}
@@ -495,17 +607,18 @@ agent = create_agent_with_fallback("assistant")`}
         </div>
       </section>
 
-      {/* Warning Box */}
-      <div className="bg-yellow-50 dark:bg-yellow-900/20 p-6 rounded-lg border border-yellow-200 dark:border-yellow-800 mb-12">
-        <h3 className="font-semibold mb-2 flex items-center">
-          <AlertTriangle className="mr-2 h-5 w-5 text-yellow-600" />
-          Important Notes
+      {/* Info Box */}
+      <div className="bg-gradient-to-br from-purple-900/20 to-blue-900/20 p-6 rounded-lg border border-purple-500/30 mb-12">
+        <h3 className="font-semibold mb-2 flex items-center text-white">
+          <Zap className="mr-2 h-5 w-5 text-purple-400" />
+          Key Benefits
         </h3>
-        <ul className="space-y-2 text-sm text-gray-600 dark:text-gray-400">
-          <li>• You need an API key from at least one provider to use ConnectOnion</li>
-          <li>• Tool support works identically across all models</li>
-          <li>• The same agent code works with any model - just change the model name</li>
-          <li>• Some models may have different pricing and rate limits</li>
+        <ul className="space-y-2 text-sm text-gray-300">
+          <li>• <strong>Get started in 60 seconds</strong> with managed keys (co auth)</li>
+          <li>• <strong>100K free tokens</strong> + bonus credits for starring our repo</li>
+          <li>• <strong>Same code works everywhere</strong> - just change the model name or add/remove co/ prefix</li>
+          <li>• <strong>Tool support identical</strong> across all models and providers</li>
+          <li>• <strong>Easy transition</strong> from managed keys to your own keys when ready for production</li>
         </ul>
       </div>
 
