@@ -106,6 +106,9 @@ pip-wheel-metadata/
 docs/_build/
 site/
 
+# Wiki (separate Git repository)
+wiki/
+
 # pyenv
 .python-version
 

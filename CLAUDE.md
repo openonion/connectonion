@@ -52,6 +52,68 @@ python -m pytest --cov=connectonion --cov-report=term-missing
 pip install -e .
 ```
 
+## Documentation Architecture
+
+### GitHub Wiki (SEO Strategy)
+
+ConnectOnion uses a **nested Git repository** for the GitHub Wiki to gain SEO benefits from GitHub's high domain authority (DA ~95).
+
+**Structure:**
+```
+connectonion/                    # Main repo
+├── .git/                        # Main repo Git
+├── .gitignore                   # Contains: wiki/
+├── src/
+├── docs/
+└── wiki/                        # ← Ignored by main repo
+    ├── .git/                    # ← Wiki repo Git (separate!)
+    ├── Home.md
+    ├── Quick-Start.md
+    ├── Tutorials/
+    ├── How-To/
+    ├── Examples/
+    ├── FAQ.md
+    ├── Troubleshooting.md
+    └── _Sidebar.md
+```
+
+**How It Works:**
+- `wiki/` folder is added to `.gitignore` in main repo
+- Wiki content is a completely separate Git repository cloned inside `wiki/`
+- Each repo has independent history, remotes, and commits
+- No sync scripts needed - each folder IS its own Git repo
+
+**Editing Wiki Content:**
+```bash
+cd connectonion/wiki/
+# Edit any wiki page
+vim Quick-Start.md
+# Commit to wiki repo
+git add .
+git commit -m "Update quick start guide"
+git push origin master
+```
+
+**Working on Main Repo:**
+```bash
+cd connectonion/
+# Edit code
+vim connectonion/agent.py
+# Commit to main repo (wiki/ is ignored!)
+git add .
+git commit -m "Add new feature"
+git push
+```
+
+**SEO Benefits:**
+- Multiple SERP entries: main repo + wiki + docs site (https://docs.connectonion.com)
+- Fast indexing (hours vs weeks for new domains)
+- High domain authority from github.com
+- Cross-linking power between wiki and docs site
+- Keyword coverage: 13 pages targeting different search intents
+
+**Wiki URL:** https://github.com/wu-changxing/connectonion/wiki
+
 ## Tool System Architecture
 
 ### Function-Based Tools (Recommended)
