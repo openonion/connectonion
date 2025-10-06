@@ -114,6 +114,62 @@ git push
 
 **Wiki URL:** https://github.com/wu-changxing/connectonion/wiki
 
+### Docs Site (Private Repository)
+
+ConnectOnion uses a **nested Git repository** for the documentation website to keep it private during development while maintaining convenience.
+
+**Structure:**
+```
+connectonion/                    # Main repo (public)
+├── .git/                        # Main repo Git
+├── .gitignore                   # Contains: wiki/, docs-site/
+├── src/
+├── docs/
+├── wiki/                        # ← Public wiki (nested repo)
+└── docs-site/                   # ← Private docs site (nested repo)
+    ├── .git/                    # ← Docs site repo Git (separate, private!)
+    ├── app/
+    ├── components/
+    ├── public/
+    ├── package.json
+    └── next.config.ts
+```
+
+**How It Works:**
+- `docs-site/` folder is added to `.gitignore` in main repo
+- Docs site is a completely separate **private** Git repository
+- Each repo has independent history, remotes, and commits
+- No sync scripts needed - each folder IS its own Git repo
+
+**Editing Docs Site:**
+```bash
+cd connectonion/docs-site/
+# Edit any page
+vim app/agent/page.tsx
+# Commit to private docs-site repo
+git add .
+git commit -m "Update agent documentation"
+git push origin main
+```
+
+**Working on Main Repo:**
+```bash
+cd connectonion/
+# Edit code (docs-site/ is ignored!)
+vim connectonion/agent.py
+git add .
+git commit -m "Add new feature"
+git push
+```
+
+**Nested Repos Summary:**
+- Main repo: `connectonion` (public) - Framework code
+- Wiki repo: `connectonion.wiki` (public) - SEO-focused tutorials
+- Docs site repo: `connectonion-docs-site` (private) - Full documentation website
+
+**Docs site URL:** https://docs.connectonion.com
+**Docs site repo:** https://github.com/wu-changxing/connectonion-docs-site (private)
+
 ## Tool System Architecture
 
 ### Function-Based Tools (Recommended)
