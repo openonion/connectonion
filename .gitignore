@@ -109,6 +109,9 @@ site/
 # Wiki (separate Git repository)
 wiki/
 
+# Docs site (separate private Git repository)
+docs-site/
+
 # pyenv
 .python-version
 
