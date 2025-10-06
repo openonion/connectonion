@@ -31,7 +31,7 @@ def main():
     )
     
     # Example interaction
-    response = agent.run("Say hello to the user")
+    response = agent.input("Say hello to the user")
     print(response)
     
     # You can also use llm_do directly for simple queries
