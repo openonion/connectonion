@@ -49,6 +49,7 @@ setup(
     package_data={
         'connectonion.cli': [
             'docs.md',  # Include docs.md in the package
+            'docs/*.md',  # Include all markdown files in docs directory
             'templates/**/*',  # Include all files in template folders recursively
             'templates/**/.env.example',  # Include hidden files like .env.example
         ],
