@@ -338,52 +338,25 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     co_dir = Path(current_dir) / ".co"
     co_dir.mkdir(exist_ok=True)
 
-    # Decide documentation placement
-    # For 'playwright' (browser-agent) template, we place a single doc at project root
-    # For others, we keep docs under .co/docs
+    # Create docs directory and copy documentation (always overwrite for latest version)
     docs_dir = co_dir / "docs"
-    place_single_root_doc = (template == 'playwright')
-    if not place_single_root_doc:
-        # Create docs directory and copy documentation (always overwrite for latest version)
-        if docs_dir.exists():
-            shutil.rmtree(docs_dir)
-        docs_dir.mkdir(exist_ok=True)
+    if docs_dir.exists():
+        shutil.rmtree(docs_dir)
+    docs_dir.mkdir(exist_ok=True)
 
     # Copy ConnectOnion documentation
     cli_dir = Path(__file__).parent.parent
 
-    # Always copy the vibe coding doc for all templates - it's the only doc we need
-    vibe_doc_copied = False
+    # Always copy the vibe coding doc for all templates - it's the master reference doc
+    master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
 
-    # First try to find the vibe doc from template directory
-    if template != 'none' and template != 'custom':
-        template_doc = cli_dir / "templates" / template / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-        if template_doc.exists():
-            if place_single_root_doc:
-                target_path = Path(current_dir) / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-                shutil.copy2(template_doc, target_path)
-                files_created.append("co-vibecoding-principles-docs-contexts-all-in-one.md")
-            else:
-                shutil.copy2(template_doc, docs_dir / "co-vibe-coding-all-in-one.md")
-                files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
-            vibe_doc_copied = True
-
-    # If not found in template, copy from master docs
-    if not vibe_doc_copied:
-        master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-        if master_doc.exists():
-            if place_single_root_doc:
-                target_path = Path(current_dir) / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-                shutil.copy2(master_doc, target_path)
-                files_created.append("co-vibecoding-principles-docs-contexts-all-in-one.md")
-            else:
-                shutil.copy2(master_doc, docs_dir / "co-vibe-coding-all-in-one.md")
-                files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
-            vibe_doc_copied = True
-
-    # Final check - vibe doc should be present
-    if not vibe_doc_copied:
-        print(f"Warning: Vibe coding documentation not found to copy to .co/docs/")
+    if master_doc.exists():
+        # Always copy to .co/docs/ with the same filename
+        target_doc = docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+        shutil.copy2(master_doc, target_doc)
+        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
+    else:
+        console.print(f"[yellow]⚠️  Warning: Vibe coding documentation not found at {master_doc}[/yellow]")
 
     # Use global identity instead of generating project keys
     # NO PROJECT KEYS - we use global address/email

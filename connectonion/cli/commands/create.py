@@ -402,21 +402,13 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # Copy ConnectOnion documentation from single master source
     cli_dir = Path(__file__).parent.parent
 
-    # Copy the main vibe-coding documentation
+    # Copy the main vibe-coding documentation - keep original filename
     master_vibe_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
     if master_vibe_doc.exists():
-        shutil.copy2(master_vibe_doc, docs_dir / "co-vibe-coding-all-in-one.md")
-        files_created.append(".co/docs/co-vibe-coding-all-in-one.md")
+        shutil.copy2(master_vibe_doc, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
+        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
     else:
-        console.print(f"Warning: Master vibe-coding doc not found at {master_vibe_doc}")
-
-    # Copy the connectonion.md documentation
-    master_connectonion_doc = cli_dir / "docs" / "connectonion.md"
-    if master_connectonion_doc.exists():
-        shutil.copy2(master_connectonion_doc, docs_dir / "connectonion.md")
-        files_created.append(".co/docs/connectonion.md")
-    else:
-        console.print(f"Warning: Master connectonion.md not found at {master_connectonion_doc}")
+        console.print(f"[yellow]⚠️  Warning: Vibe coding documentation not found at {master_vibe_doc}[/yellow]")
 
     # Use global identity instead of generating project keys
     # NO PROJECT KEYS - we use global address/email
