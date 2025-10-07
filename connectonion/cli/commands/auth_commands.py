@@ -13,16 +13,18 @@ from ... import address
 console = Console()
 
 
-def _save_api_key_to_env(co_dir: Path, api_key: str) -> None:
-    """Save OPENONION_API_KEY to .env file.
+def _save_api_key_to_env(co_dir: Path, api_key: str, agent_email: str = None) -> None:
+    """Save OPENONION_API_KEY and AGENT_EMAIL to .env file.
 
     Args:
         co_dir: Path to .co directory
         api_key: The API key/token to save
+        agent_email: The agent email address to save (optional)
     """
     env_file = co_dir.parent / ".env"
     env_lines = []
     key_found = False
+    email_found = False
 
     # Read existing .env if it exists
     if env_file.exists():
@@ -31,6 +33,9 @@ def _save_api_key_to_env(co_dir: Path, api_key: str) -> None:
                 if line.strip().startswith("OPENONION_API_KEY="):
                     env_lines.append(f"OPENONION_API_KEY={api_key}\n")
                     key_found = True
+                elif line.strip().startswith("AGENT_EMAIL=") and agent_email:
+                    env_lines.append(f"AGENT_EMAIL={agent_email}\n")
+                    email_found = True
                 else:
                     env_lines.append(line)
 
@@ -39,6 +44,10 @@ def _save_api_key_to_env(co_dir: Path, api_key: str) -> None:
         if env_lines and not env_lines[-1].endswith("\n"):
             env_lines.append("\n")
         env_lines.append(f"OPENONION_API_KEY={api_key}\n")
+
+    # Add email if not found and provided
+    if agent_email and not email_found:
+        env_lines.append(f"AGENT_EMAIL={agent_email}\n")
 
     # Write .env file
     with open(env_file, "w") as f:
@@ -87,6 +96,16 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
         data = response.json()
         token = data.get("token")
 
+        # Extract agent email from server response FIRST (before saving to .env)
+        user = data.get("user", {})
+        email_info = user.get("email") if user else None
+
+        # Get the agent email from the server response
+        if email_info:
+            agent_email = email_info.get("address", f"{public_key[:10]}@mail.openonion.ai")
+        else:
+            agent_email = f"{public_key[:10]}@mail.openonion.ai"
+
         # Save token to appropriate .env file(s)
         is_global = co_dir == Path.home() / ".co"
 
@@ -95,6 +114,7 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
             global_keys_env = co_dir / "keys.env"
             env_lines = []
             key_found = False
+            email_found = False
 
             # Read existing keys.env if it exists
             if global_keys_env.exists():
@@ -103,6 +123,9 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
                         if line.strip().startswith("OPENONION_API_KEY="):
                             env_lines.append(f"OPENONION_API_KEY={token}\n")
                             key_found = True
+                        elif line.strip().startswith("AGENT_EMAIL="):
+                            env_lines.append(f"AGENT_EMAIL={agent_email}\n")
+                            email_found = True
                         else:
                             env_lines.append(line)
 
@@ -112,31 +135,24 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
                     env_lines.append("\n")
                 env_lines.append(f"OPENONION_API_KEY={token}\n")
 
+            # Add email if not found
+            if not email_found:
+                env_lines.append(f"AGENT_EMAIL={agent_email}\n")
+
             # Write global keys.env file
             with open(global_keys_env, "w") as f:
                 f.writelines(env_lines)
             global_keys_env.chmod(0o600)
 
-            console.print("✅ Saved token to ~/.co/keys.env", style="green")
+            console.print("✅ Saved token and email to ~/.co/keys.env", style="green")
 
-            # Also save to current directory's .env if it exists
-            local_env = Path(".env")
-            if local_env.exists() and save_to_project:
-                _save_api_key_to_env(Path(".co") if Path(".co").exists() else co_dir, token)
-                console.print("✅ Also updated local .env file", style="green")
+            # Also save to current directory's .env (always create if using global keys and save_to_project=True)
+            if save_to_project:
+                _save_api_key_to_env(Path(".co") if Path(".co").exists() else co_dir, token, agent_email)
+                console.print("✅ Also saved to local .env file", style="green")
         else:
             # Save to local project .env
-            _save_api_key_to_env(co_dir, token)
-
-        # Extract comprehensive user info from new response format
-        user = data.get("user", {})
-        email_info = user.get("email") if user else None
-
-        # Get the agent email from the server response
-        if email_info:
-            agent_email = email_info.get("address", f"{public_key[:10]}@mail.openonion.ai")
-        else:
-            agent_email = f"{public_key[:10]}@mail.openonion.ai"
+            _save_api_key_to_env(co_dir, token, agent_email)
 
         # Save email and activation status to config
         config_path = co_dir / "config.toml"

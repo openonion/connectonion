@@ -1,0 +1,24 @@
+#!/bin/bash
+# ConnectOnion AWS Test Server Configuration
+#
+# SETUP INSTRUCTIONS:
+# 1. Copy this file: cp config.sh.example config.sh
+# 2. Fill in your AWS Lightsail server details
+# 3. Make sure your SSH key is in this directory
+#
+# NOTE: config.sh is gitignored for security
+
+# Test server IP address (get from AWS Lightsail console)
+TEST_SERVER_IP="your.lightsail.ip.here"
+
+# SSH key file path (relative to this directory or absolute)
+TEST_KEY_FILE="connectonion-test-key.pem"
+
+# SSH user (default: ubuntu for Ubuntu instances)
+TEST_USER="ubuntu"
+
+# Python command on server
+TEST_PYTHON="python3"
+
+# Test directory on server
+TEST_DIR="/home/ubuntu/connectonion-test"

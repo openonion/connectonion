@@ -387,7 +387,9 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 
     # Use global identity instead of generating project keys
     # NO PROJECT KEYS - we use global address/email
-    addr_data = global_identity  # Use the global identity we loaded earlier
+    # Reload global config to get updated email_active after authentication
+    global_config = toml.load(global_co_dir / "config.toml") if (global_co_dir / "config.toml").exists() else global_config
+    addr_data = global_config.get("agent", global_identity)  # Use updated global identity
 
     # Note: We're NOT creating project-specific keys anymore
     # If user wants project-specific keys, they'll use 'co address' command

@@ -11,12 +11,12 @@ from dotenv import load_dotenv
 
 def send_email(to: str, subject: str, message: str) -> Dict:
     """Send an email using the agent's email address.
-    
+
     Args:
         to: Recipient email address
         subject: Email subject line
         message: Email body (plain text or HTML)
-        
+
     Returns:
         dict: Success status and details
             - success (bool): Whether email was sent
@@ -24,66 +24,49 @@ def send_email(to: str, subject: str, message: str) -> Dict:
             - from (str): Sender email address
             - error (str): Error message if failed
     """
-    # Find .co directory in current or parent directories
-    co_dir = Path(".co")
-    if not co_dir.exists():
-        # Try parent directory
-        co_dir = Path("../.co")
-        if not co_dir.exists():
-            return {
-                "success": False,
-                "error": "Not in a ConnectOnion project. Run 'co init' first."
-            }
-    
-    # Load configuration
-    config_path = co_dir / "config.toml"
-    if not config_path.exists():
-        return {
-            "success": False,
-            "error": "Configuration not found. Run 'co init' first."
-        }
-    
-    try:
-        config = toml.load(config_path)
-    except Exception as e:
-        return {
-            "success": False,
-            "error": f"Failed to load configuration: {str(e)}"
-        }
-    
-    # Check if email is activated
-    agent_config = config.get("agent", {})
-    email_active = agent_config.get("email_active", False)
-    
-    if not email_active:
-        return {
-            "success": False,
-            "error": "Email not activated. Run 'co auth' to activate."
-        }
-    
-    # Get agent's email address
-    from_email = agent_config.get("email")
-    if not from_email:
-        # Generate from address if not present
-        address = agent_config.get("address", "")
-        if address and address.startswith("0x"):
-            from_email = f"{address[:10]}@mail.openonion.ai"
-        else:
-            return {
-                "success": False,
-                "error": "Agent email address not configured."
-            }
-    
-    # Load environment variables from .env file
-    load_dotenv()
+    # Find .env file by searching up the directory tree
+    env_file = None
+    current_dir = Path.cwd()
 
-    # Get authentication token from environment
+    # Search up to 5 levels for .env
+    for _ in range(5):
+        potential_env = current_dir / ".env"
+        if potential_env.exists():
+            env_file = potential_env
+            break
+        if current_dir == current_dir.parent:  # Reached root
+            break
+        current_dir = current_dir.parent
+
+    # If no local .env found, try global keys.env
+    if not env_file:
+        global_keys_env = Path.home() / ".co" / "keys.env"
+        if global_keys_env.exists():
+            env_file = global_keys_env
+
+    if not env_file:
+        return {
+            "success": False,
+            "error": "No .env file found. Run 'co init' or 'co auth' first."
+        }
+
+    # Load environment variables from the found .env file
+    load_dotenv(env_file)
+
+    # Get authentication token and agent email from environment
     token = os.getenv("OPENONION_API_KEY")
+    from_email = os.getenv("AGENT_EMAIL")
 
     if not token:
         return {
             "success": False,
-            "error": "Authentication token not found. Run 'co auth' to authenticate."
+            "error": "OPENONION_API_KEY not found in .env. Run 'co auth' to authenticate."
+        }
+
+    if not from_email:
+        return {
+            "success": False,
+            "error": "AGENT_EMAIL not found in .env. Run 'co auth' to set up email."
         }
     
     # Validate recipient email

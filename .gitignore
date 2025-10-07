@@ -157,3 +157,14 @@ uv.lock
 *.bak
 *.orig
 *.rej
+
+# AWS test infrastructure - private files
+tests/cli/aws/config.sh
+tests/cli/aws/*.pem
+tests/cli/aws/*.key
+tests/cli/aws/.server-ip
+
+# Test artifacts and results
+tests/cli/results/
+tests/cli/logs/
+test-package-*.tar.gz
