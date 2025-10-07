@@ -1,0 +1,3 @@
+connectonion
+playwright
+python-dotenv
