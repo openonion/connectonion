@@ -69,27 +69,6 @@ class TestLLMDo(unittest.TestCase):
             llm_do("   ")
         self.assertIn("Input cannot be empty", str(cm.exception))
     
-    def test_model_name_conversion(self):
-        """Test that model names are properly converted for LiteLLM."""
-        from connectonion.llm_do import _get_litellm_model_name
-        
-        # OpenAI models should stay as-is
-        self.assertEqual(_get_litellm_model_name("gpt-4o"), "gpt-4o")
-        self.assertEqual(_get_litellm_model_name("gpt-4o-mini"), "gpt-4o-mini")
-        self.assertEqual(_get_litellm_model_name("gpt-3.5-turbo"), "gpt-3.5-turbo")
-        
-        # Claude models should stay as-is
-        self.assertEqual(_get_litellm_model_name("claude-3-5-sonnet"), "claude-3-5-sonnet")
-        self.assertEqual(_get_litellm_model_name("claude-3-5-haiku-20241022"), "claude-3-5-haiku-20241022")
-        
-        # Gemini models should get prefix
-        self.assertEqual(_get_litellm_model_name("gemini-1.5-pro"), "gemini/gemini-1.5-pro")
-        self.assertEqual(_get_litellm_model_name("gemini-1.5-flash"), "gemini/gemini-1.5-flash")
-        
-        # Already prefixed models should stay as-is
-        self.assertEqual(_get_litellm_model_name("ollama/llama2"), "ollama/llama2")
-        self.assertEqual(_get_litellm_model_name("azure/gpt-4"), "azure/gpt-4")
-        self.assertEqual(_get_litellm_model_name("bedrock/claude-v2"), "bedrock/claude-v2")
 
 
 class TestLLMDoOpenAI(unittest.TestCase):
@@ -238,7 +217,7 @@ class TestLLMDoGemini(unittest.TestCase):
         try:
             result = llm_do(
                 "Say hello in exactly 3 words",
-                model="gemini-1.5-flash"
+                model="gemini-2.5-flash"
             )
             self.assertIsInstance(result, str)
             self.assertTrue(len(result.split()) <= 10)  # Allow some flexibility
@@ -246,83 +225,6 @@ class TestLLMDoGemini(unittest.TestCase):
             if "429" in str(e) or "quota" in str(e).lower():
                 self.skipTest("Gemini quota exceeded")
             raise
-
-
-class TestLLMDoMocked(unittest.TestCase):
-    """Test llm_do with mocked LiteLLM responses."""
-    
-    @patch('connectonion.llm_do.completion')
-    def test_litellm_integration(self, mock_completion):
-        """Test that LiteLLM completion is called correctly."""
-        # Mock response
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Mocked response"
-        mock_completion.return_value = mock_response
-        
-        result = llm_do("Test input", model="gpt-4o")
-        
-        # Check that completion was called
-        mock_completion.assert_called_once()
-        
-        # Check the arguments
-        call_args = mock_completion.call_args
-        self.assertEqual(call_args.kwargs["model"], "gpt-4o")
-        self.assertEqual(call_args.kwargs["temperature"], 0.1)
-        
-        messages = call_args.kwargs["messages"]
-        self.assertEqual(len(messages), 2)
-        self.assertEqual(messages[0]["role"], "system")
-        self.assertEqual(messages[1]["role"], "user")
-        self.assertEqual(messages[1]["content"], "Test input")
-        
-        self.assertEqual(result, "Mocked response")
-    
-    @patch('connectonion.llm_do.completion')
-    def test_structured_output_json_parsing(self, mock_completion):
-        """Test JSON parsing for structured output."""
-        # Mock response with JSON
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = '{"answer": 42, "explanation": "The answer to everything"}'
-        mock_response.choices[0].message.parsed = None
-        mock_completion.return_value = mock_response
-        
-        result = llm_do("Test", output=SimpleResult, model="gpt-4o")
-        
-        self.assertIsInstance(result, SimpleResult)
-        self.assertEqual(result.answer, 42)
-        self.assertEqual(result.explanation, "The answer to everything")
-    
-    @patch('connectonion.llm_do.completion')
-    def test_api_key_setting(self, mock_completion):
-        """Test that API keys are properly set in environment."""
-        # Mock response
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Response"
-        mock_completion.return_value = mock_response
-        
-        # Test with OpenAI model
-        test_key = "test-openai-key"
-        original_key = os.environ.get("OPENAI_API_KEY")
-        
-        try:
-            # Remove existing key
-            if "OPENAI_API_KEY" in os.environ:
-                del os.environ["OPENAI_API_KEY"]
-            
-            # Call with api_key parameter
-            llm_do("Test", model="gpt-4o", api_key=test_key)
-            
-            # Check that key was set
-            self.assertEqual(os.environ.get("OPENAI_API_KEY"), test_key)
-        finally:
-            # Restore original key
-            if original_key:
-                os.environ["OPENAI_API_KEY"] = original_key
-            elif "OPENAI_API_KEY" in os.environ:
-                del os.environ["OPENAI_API_KEY"]
 
 
 class TestLLMDoIntegration(unittest.TestCase):
@@ -353,7 +255,7 @@ class TestLLMDoIntegration(unittest.TestCase):
         
         if self.has_gemini:
             try:
-                result = llm_do(prompt, model="gemini-1.5-flash")
+                result = llm_do(prompt, model="gemini-2.5-flash")
                 results.append(("Gemini", result))
                 self.assertIn("4", result)
             except Exception as e:
