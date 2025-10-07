@@ -26,9 +26,13 @@ Example: `0.0.2`
 - Reset MINOR and PATCH to 0
 - Reserved for major breaking changes or stable releases
 
-## Current Version History
-- 0.0.1b1 → 0.0.1b2 → ... → 0.0.1b8 (Beta releases)
-- 0.0.2 (First post-beta release, production ready)
+## Current Version: 0.2.1
+
+### Version History
+- 0.0.1b1 → 0.0.1b8 (Beta releases)
+- 0.0.2 → 0.0.9 (Early production releases)
+- 0.1.0 → 0.1.9 (Added multi-model support, CLI improvements)
+- 0.2.0 → 0.2.1 (Documentation improvements, LLM refactoring)
 
 ## Files to Update When Versioning
 
@@ -49,13 +53,55 @@ When updating version, these files must be changed:
 
 ## Version Update Checklist
 
+When releasing a new version:
+
 - [ ] Update `__version__` in `/connectonion/__init__.py`
 - [ ] Update `version` in `/setup.py`
-- [ ] Update version badge in `/docs-site/app/page.tsx`
+- [ ] Update version badge in `/docs-site/app/page.tsx` (if exists)
 - [ ] Update any version references in README files
-- [ ] Create git tag: `git tag v0.0.2`
-- [ ] Push tag: `git push origin v0.0.2`
-- [ ] Update PyPI package: `python setup.py sdist bdist_wheel && twine upload dist/*`
+- [ ] Commit changes: `git commit -m "Release vX.Y.Z: Description"`
+- [ ] Create git tag: `git tag vX.Y.Z`
+- [ ] Push commits: `git push`
+- [ ] Push tag: `git push origin vX.Y.Z`
+- [ ] Build package: `python setup.py sdist bdist_wheel`
+- [ ] Upload to PyPI: `twine upload dist/*`
+
+## What Triggers Each Version Type
+
+### PATCH (0.2.X)
+Increment PATCH for:
+- Bug fixes
+- Documentation updates
+- Small refactorings
+- Test improvements
+- Performance improvements (no API changes)
+
+**Examples:**
+- Fix authentication bug → 0.2.0 → 0.2.1
+- Update wiki documentation → 0.2.1 → 0.2.2
+- Refactor internal LLM code → 0.2.2 → 0.2.3
+
+### MINOR (0.X.0)
+Increment MINOR when:
+- PATCH reaches 10 (automatic rollover)
+- OR adding new features (backward compatible)
+- OR significant improvements
+
+**Examples:**
+- 0.2.9 → 0.3.0 (automatic rollover)
+- Add new model provider → 0.2.5 → 0.3.0 (new feature)
+- New CLI commands → 0.2.3 → 0.3.0 (new feature)
+
+### MAJOR (X.0.0)
+Increment MAJOR when:
+- MINOR reaches 10 (automatic rollover)
+- OR breaking API changes
+- OR major architecture changes
+
+**Examples:**
+- 0.9.9 → 1.0.0 (automatic rollover or stable release)
+- Remove deprecated functions → 0.5.0 → 1.0.0 (breaking change)
+- Complete API redesign → 0.7.0 → 1.0.0 (breaking change)
 
 ## Example Version Progression
 
