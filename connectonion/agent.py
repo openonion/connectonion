@@ -38,7 +38,7 @@ class Agent:
         llm: Optional[LLM] = None,
         tools: Optional[Union[List[Callable], Callable, Any]] = None, system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "o4-mini",
+        model: str = "co/o4-mini",
         max_iterations: int = 10,
         trust: Optional[Union[str, Path, 'Agent']] = None,
         log: Optional[Union[bool, str, Path]] = None
