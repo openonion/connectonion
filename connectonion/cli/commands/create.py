@@ -405,8 +405,14 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # Copy the main vibe-coding documentation - keep original filename
     master_vibe_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
     if master_vibe_doc.exists():
+        # Copy to .co/docs/ (project metadata)
         shutil.copy2(master_vibe_doc, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
         files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
+
+        # ALSO copy to project root (always visible, easier to find)
+        root_doc = project_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+        shutil.copy2(master_vibe_doc, root_doc)
+        files_created.append("co-vibecoding-principles-docs-contexts-all-in-one.md")
     else:
         console.print(f"[yellow]⚠️  Warning: Vibe coding documentation not found at {master_vibe_doc}[/yellow]")
 

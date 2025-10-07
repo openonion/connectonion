@@ -351,10 +351,15 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
 
     if master_doc.exists():
-        # Always copy to .co/docs/ with the same filename
+        # Copy to .co/docs/ (project metadata)
         target_doc = docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md"
         shutil.copy2(master_doc, target_doc)
         files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
+
+        # ALSO copy to project root (always visible, easier to find)
+        root_doc = Path(current_dir) / "co-vibecoding-principles-docs-contexts-all-in-one.md"
+        shutil.copy2(master_doc, root_doc)
+        files_created.append("co-vibecoding-principles-docs-contexts-all-in-one.md")
     else:
         console.print(f"[yellow]⚠️  Warning: Vibe coding documentation not found at {master_doc}[/yellow]")
 
@@ -406,6 +411,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 .co/cache/
 .co/logs/
 .co/history/
+co-vibecoding-principles-docs-contexts-all-in-one.md
 *.py[cod]
 __pycache__/
 todo.md
