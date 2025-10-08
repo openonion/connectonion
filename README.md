@@ -4,13 +4,13 @@
 
 [![Production Ready](https://img.shields.io/badge/Status-Production_Ready-success?style=flat-square)](https://connectonion.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue?style=flat-square&logo=python)](https://python.org)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue?style=flat-square&logo=python)](https://python.org)
 [![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
 [![Documentation](https://img.shields.io/badge/Docs-docs.connectonion.com-blue?style=flat-square)](http://docs.connectonion.com)
 
 **A simple, elegant open-source framework for production-ready AI agents**
 
-[📚 Documentation](http://docs.connectonion.com) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ Star Us](https://github.com/wu-changxing/connectonion)
+[📚 Documentation](http://docs.connectonion.com) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ Star Us](https://github.com/openonion/connectonion)
 
 </div>
 
@@ -452,15 +452,15 @@ This is an MVP version with intentional limitations:
 <div align="center">
 
 [![Discord](https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord)](https://discord.gg/4xfD9k8AUF)
-[![GitHub](https://img.shields.io/badge/GitHub-Star_Us-black?style=for-the-badge&logo=github)](https://github.com/wu-changxing/connectonion)
+[![GitHub](https://img.shields.io/badge/GitHub-Star_Us-black?style=for-the-badge&logo=github)](https://github.com/openonion/connectonion)
 [![Documentation](https://img.shields.io/badge/Docs-Learn_More-blue?style=for-the-badge)](http://docs.connectonion.com)
 
 </div>
 
 - **💬 Discord**: [Join our community](https://discord.gg/4xfD9k8AUF) - Get help, share ideas, meet other developers
 - **📚 Documentation**: [docs.connectonion.com](http://docs.connectonion.com) - Comprehensive guides and examples
-- **⭐ GitHub**: [Star the repo](https://github.com/wu-changxing/connectonion) - Show your support
-- **🐛 Issues**: [Report bugs](https://github.com/wu-changxing/connectonion/issues) - We respond quickly
+- **⭐ GitHub**: [Star the repo](https://github.com/openonion/connectonion) - Show your support
+- **🐛 Issues**: [Report bugs](https://github.com/openonion/connectonion/issues) - We respond quickly
 
 ## 🤝 Contributing
 
