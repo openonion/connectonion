@@ -32,7 +32,7 @@ The function is a thin wrapper around the LLM provider abstraction:
 Key Design Decisions
 -------------------
 - **Stateless**: No conversation history, each call is independent
-- **Simple API**: Minimal parameters, sensible defaults (temperature=0.1 for consistency)
+- **Simple API**: Minimal parameters, sensible defaults
 - **Default Model**: Uses "co/gpt-4o" (ConnectOnion managed keys) for zero-setup
 - **Structured Output**: Native Pydantic support via provider-specific APIs
 - **Flexible Parameters**: **kwargs pass through to underlying LLM (temperature, max_tokens, etc.)
@@ -226,7 +226,6 @@ def llm_do(
     output: Optional[Type[T]] = None,
     system_prompt: Optional[Union[str, Path]] = None,
     model: str = "co/gpt-4o",
-    temperature: float = 0.1,
     api_key: Optional[str] = None,
     **kwargs
 ) -> Union[str, T]:
@@ -244,9 +243,8 @@ def llm_do(
         output: Optional Pydantic model class for structured output
         system_prompt: Optional system prompt (string or file path)
         model: Model name (default: "co/gpt-4o")
-        temperature: Sampling temperature (default: 0.1 for consistency)
         api_key: Optional API key (uses environment variable if not provided)
-        **kwargs: Additional parameters to pass to the LLM
+        **kwargs: Additional parameters (temperature, max_tokens, etc.)
 
     Returns:
         Either a string response or an instance of the output model
@@ -295,9 +293,9 @@ def llm_do(
     # Get response
     if output:
         # Structured output - use structured_complete()
-        return llm.structured_complete(messages, output, temperature=temperature, **kwargs)
+        return llm.structured_complete(messages, output, **kwargs)
     else:
         # Plain text - use complete()
         # Pass through kwargs (max_tokens, temperature, etc.)
-        response = llm.complete(messages, tools=None, temperature=temperature, **kwargs)
+        response = llm.complete(messages, tools=None, **kwargs)
         return response.content
