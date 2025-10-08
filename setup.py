@@ -70,7 +70,7 @@ setup(
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    python_requires=">=3.8",
+    python_requires=">=3.9",
     install_requires=requirements,
     extras_require=optional_deps,
     keywords="ai, agent, llm, tools, openai, automation",

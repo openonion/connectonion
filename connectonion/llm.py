@@ -853,7 +853,8 @@ class OpenOnionLLM(LLM):
                 "Run 'co auth' to authenticate first."
             )
 
-        self.model = model
+        # Strip co/ prefix - it's only for client-side routing
+        self.model = model.removeprefix("co/")
 
         # Determine base URL for OpenAI-compatible endpoint
         if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
