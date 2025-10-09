@@ -52,5 +52,5 @@ The `.env` file is created automatically during `co init`. It includes:
 ## Learn More
 
 - [Documentation](https://docs.connectonion.com)
-- [Examples](https://github.com/wu-changxing/connectonion/tree/main/examples)
+- [Examples](https://github.com/openonion/connectonion/tree/main/examples)
 - [Discord Community](https://discord.gg/4xfD9k8AUF)

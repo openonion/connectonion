@@ -19,7 +19,7 @@ agent = Agent("assistant", model="co/gpt-5")
 response = agent.input("Hello!")
 ```
 
-⭐ **Bonus**: [Star our repo](https://github.com/wu-changxing/connectonion) for +100K tokens!
+⭐ **Bonus**: [Star our repo](https://github.com/openonion/connectonion) for +100K tokens!
 
 **Alternative: Bring Your Own Keys**
 
@@ -226,7 +226,7 @@ agent = Agent("assistant", model="co/claude-opus-4.1")
 - 100K free tokens to start
 - Access to all providers (OpenAI, Google, Anthropic)
 - No API key management needed
-- ⭐ Bonus: [Star our repo](https://github.com/wu-changxing/connectonion) for +100K tokens
+- ⭐ Bonus: [Star our repo](https://github.com/openonion/connectonion) for +100K tokens
 
 **When to use:**
 - Getting started with ConnectOnion

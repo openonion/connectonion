@@ -112,7 +112,7 @@ git push
 - Cross-linking power between wiki and docs site
 - Keyword coverage: 13 pages targeting different search intents
 
-**Wiki URL:** https://github.com/wu-changxing/connectonion/wiki
+**Wiki URL:** https://github.com/openonion/connectonion/wiki
 
 ### Docs Site (Private Repository)
 
@@ -168,7 +168,7 @@ git push
 - Docs site repo: `connectonion-docs-site` (private) - Full documentation website
 
 **Docs site URL:** https://docs.connectonion.com
-**Docs site repo:** https://github.com/wu-changxing/connectonion-docs-site (private)
+**Docs site repo:** https://github.com/openonion/connectonion-docs-site (private)
 
 ## Tool System Architecture
 

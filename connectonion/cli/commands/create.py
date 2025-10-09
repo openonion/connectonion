@@ -572,7 +572,7 @@ todo.md
         if gh_check.returncode == 0:
             # Check if already starred
             star_check = subprocess.run(
-                ["gh", "api", "user/starred/wu-changxing/connectonion"],
+                ["gh", "api", "user/starred/openonion/connectonion"],
                 capture_output=True,
                 text=True
             )
@@ -581,7 +581,7 @@ todo.md
                 # Not starred yet, star it
                 console.print(f"   {Colors.YELLOW}Starring the ConnectOnion repo...{Colors.END}")
                 star_result = subprocess.run(
-                    ["gh", "api", "--method", "PUT", "user/starred/wu-changxing/connectonion"],
+                    ["gh", "api", "--method", "PUT", "user/starred/openonion/connectonion"],
                     capture_output=True,
                     text=True
                 )
@@ -590,14 +590,14 @@ todo.md
                     console.print(f"   {Colors.GREEN}🎁 Your 100K tokens will be credited shortly.{Colors.END}")
                 else:
                     console.print(f"   {Colors.YELLOW}⚠️  Couldn't star automatically. Please star manually:{Colors.END}")
-                    console.print(f"   {Colors.UNDERLINE}https://github.com/wu-changxing/connectonion{Colors.END}")
+                    console.print(f"   {Colors.UNDERLINE}https://github.com/openonion/connectonion{Colors.END}")
             else:
                 console.print(f"   {Colors.GREEN}✅ You've already starred ConnectOnion. Thank you!{Colors.END}")
         else:
             # gh CLI not installed
-            console.print(f"   {Colors.YELLOW}Star us on GitHub:{Colors.END} {Colors.UNDERLINE}https://github.com/wu-changxing/connectonion{Colors.END}")
+            console.print(f"   {Colors.YELLOW}Star us on GitHub:{Colors.END} {Colors.UNDERLINE}https://github.com/openonion/connectonion{Colors.END}")
     except Exception:
         # Fallback if any error occurs
-        console.print(f"   {Colors.YELLOW}Star us on GitHub:{Colors.END} {Colors.UNDERLINE}https://github.com/wu-changxing/connectonion{Colors.END}")
+        console.print(f"   {Colors.YELLOW}Star us on GitHub:{Colors.END} {Colors.UNDERLINE}https://github.com/openonion/connectonion{Colors.END}")
 
     console.print()

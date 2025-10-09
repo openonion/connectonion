@@ -342,5 +342,5 @@ aws lightsail create-instance-snapshot \
 
 For issues with:
 - **AWS Lightsail:** Check [AWS Lightsail Documentation](https://lightsail.aws.amazon.com/ls/docs)
-- **ConnectOnion:** Open issue at https://github.com/wu-changxing/connectonion/issues
+- **ConnectOnion:** Open issue at https://github.com/openonion/connectonion/issues
 - **Discord:** https://discord.gg/4xfD9k8AUF

@@ -109,7 +109,7 @@ A simple Python framework for creating AI agents.
   co -b "screenshot localhost:3000"
 
 [bold cyan]Learn more:[/bold cyan]
-  Docs: https://github.com/wu-changxing/connectonion
+  Docs: https://github.com/openonion/connectonion
   Discord: https://discord.gg/4xfD9k8AUF
 """
 

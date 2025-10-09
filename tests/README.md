@@ -288,7 +288,7 @@ See `.github/workflows/test.yml` for CI configuration.
 
 ## 📚 Resources
 
-- [ConnectOnion Documentation](https://github.com/wu-changxing/connectonion)
+- [ConnectOnion Documentation](https://github.com/openonion/connectonion)
 - [Email API Documentation](../docs/get_emails.md)
 - [Backend API Reference](../../oo-api/README.md)
 

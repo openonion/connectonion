@@ -235,6 +235,6 @@ Top Senders:
 
 ## Resources
 
-- [ConnectOnion Documentation](https://github.com/wu-changxing/connectonion)
+- [ConnectOnion Documentation](https://github.com/openonion/connectonion)
 - [Email API Guide](../../docs/get_emails.md)
 - [Send Email Guide](../../docs/send_email.md)

@@ -187,7 +187,7 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
             console.print("\nOpening GitHub in your browser...")
 
             # Try to open the GitHub repo for starring
-            github_url = "https://github.com/wu-changxing/connectonion"
+            github_url = "https://github.com/openonion/connectonion"
             try:
                 webbrowser.open(github_url)
             except:
@@ -294,7 +294,7 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
             console.print("\nOpening GitHub in your browser...")
 
             # Try to open the GitHub repo for starring
-            github_url = "https://github.com/wu-changxing/connectonion"
+            github_url = "https://github.com/openonion/connectonion"
             try:
                 webbrowser.open(github_url)
             except:
@@ -579,7 +579,7 @@ MODEL=co/o4-mini
 """
         elif api_key == 'star':
             return f"""# ConnectOnion Free Credits (100k tokens)
-# 1. Star us: https://github.com/wu-changxing/connectonion
+# 1. Star us: https://github.com/openonion/connectonion
 # 2. Authenticate with: co auth
 # 3. Your GitHub star will be verified automatically
 

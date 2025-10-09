@@ -2,10 +2,10 @@
 
 *Keep simple things simple, make complicated things possible*
 
-## Test Structure: 4 Clear Categories
+## Test Structure: Folder Categories
 
-### 1. Unit Tests (`test_*.py`)
-**One test file for each source file** - Test individual components in isolation with all dependencies mocked.
+### 1. Unit Tests (`tests/unit/test_*.py`)
+**One test file for each source file** - Test individual components in isolation with all dependencies mocked. Kept fast and deterministic.
 
 **File Mapping Rule**: Each source file gets a corresponding test file
 - `connectonion/agent.py` → `tests/test_agent.py`
@@ -19,7 +19,7 @@
 - Fast execution (<1s per test)
 - Can run without API keys
 
-### 2. Real API Tests (`test_real_*.py`)
+### 2. Real API Tests (`tests/real_api/test_real_*.py` and `tests/real_api/test_*.py`)
 **Tests that make actual API calls** - Verify integration with external services.
 
 **Examples**:
@@ -35,7 +35,7 @@
 - Slower execution (5-30s per test)
 - Costs real money (API usage)
 
-### 3. CLI Tests (`test_cli_*.py`)
+### 3. CLI Tests (`tests/cli/test_cli_*.py`)
 **Test command-line interface** - Verify CLI commands work correctly.
 
 **Examples**:
@@ -50,8 +50,11 @@
 - Medium speed (1-5s per test)
 - Tests user-facing interface
 
-### 4. Example Agent Test (`test_example_agent.py`)
+### 4. Example Agent Test (`tests/e2e/test_example_agent.py`)
 **A complete, working agent** - Living documentation that tests everything end-to-end.
+
+### 5. Integration Tests (`tests/integration/test_*.py`)
+Cross-component tests that exercise multiple modules using mocks or local resources (no real external APIs).
 
 This is a special test that:
 - Creates a real agent with multiple tools
@@ -78,16 +81,19 @@ Is it testing a single source file's logic?
 
 ```bash
 # Run unit tests only (fast, no API keys needed)
-pytest test_*.py --ignore=test_real_* --ignore=test_cli_* --ignore=test_example_*
+pytest tests/unit
 
 # Run real API tests (requires API keys)
-pytest test_real_*.py
+pytest tests/real_api -m real_api
 
 # Run CLI tests
-pytest test_cli_*.py
+pytest tests/cli -m cli
 
 # Run the complete example agent
-pytest test_example_agent.py
+pytest tests/e2e/test_example_agent.py
+
+# Run integration + unit + CLI (skip real API)
+pytest -m "not real_api"
 
 # Run everything except real API tests (for CI without secrets)
 pytest -m "not real_api"
@@ -168,21 +174,17 @@ def test_command():
 
 ## File Naming Rules
 
-- `test_*.py` - Unit tests (one per source file)
-- `test_real_*.py` - Real API tests
-- `test_cli_*.py` - CLI tests
-- `test_example_agent.py` - The one complete example
+- `tests/unit/test_*.py` - Unit tests (one per source file)
+- `tests/integration/test_*.py` - Integration tests (no external APIs)
+- `tests/real_api/test_real_*.py` and `tests/real_api/test_*.py` - Real API tests
+- `tests/cli/test_cli_*.py` - CLI tests
+- `tests/e2e/test_example_agent.py` - The one complete example
 
-No exceptions. No special cases. Simple and consistent.
+Use folders for clarity; names still indicate intent.
 
 ## Current Test Migration
 
-Existing tests should be renamed to follow this pattern:
-- `test_agent.py` → Keep as is (already correct)
-- `test_e2e_auth.py` → `test_real_auth.py`
-- `test_deployed_api.py` → `test_real_api.py`
-- `test_llm_co_models.py` → `test_real_managed.py`
-- `integration/test_agent_workflows.py` → `test_example_agent.py`
+Files were organized into folders (unit, real_api, cli, e2e). Non-pytest, print-based helper scripts have been parked under `tests/real_api/manual/` and excluded from pytest discovery.
 
 ## Notes
 
@@ -242,4 +244,4 @@ Temporary/obsolete tests removed during organization:
 - `test_email_live.py` → renamed to `test_real_email.py`
 - `test_multi_llm.py` → renamed to `test_real_multi_llm.py`
 
-**Organization Complete!** All tests now follow the 4-category system.
+**Organization Complete!** All tests now follow the folder system.

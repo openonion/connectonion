@@ -97,5 +97,5 @@ ConnectOnion automatically:
 ## 🔗 Resources
 
 - [ConnectOnion Documentation](https://docs.connectonion.com)
-- [GitHub Repository](https://github.com/wu-changxing/connectonion)
+- [GitHub Repository](https://github.com/openonion/connectonion)
 - [Discord Community](https://discord.gg/4xfD9k8AUF)

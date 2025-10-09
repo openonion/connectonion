@@ -56,7 +56,7 @@ self.auto_responses = {
 
 ## Resources
 
-- ConnectOnion Docs: `https://github.com/wu-changxing/connectonion`
+- ConnectOnion Docs: `https://github.com/openonion/connectonion`
 - Email API: `../../docs/get_emails.md`
 - Send Email: `../../docs/send_email.md`
 

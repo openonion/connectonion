@@ -1,43 +1,30 @@
 """Unit tests for connectonion/console.py"""
 
 import unittest
-from unittest.mock import patch, Mock
-from connectonion.console import log, error, success, warning
+from unittest.mock import patch
+import connectonion.console as console_mod
 
 
 class TestConsole(unittest.TestCase):
     """Test console output functions."""
 
-    @patch('builtins.print')
-    def test_log_basic(self, mock_print):
-        """Test basic log function."""
-        log("Test message")
-        mock_print.assert_called_once()
+    @patch('connectonion.console._rich_console.print')
+    def test_print_basic(self, mock_rich_print):
+        """Test basic Console.print output path."""
+        c = console_mod.Console()
+        c.print("Test message")
+        mock_rich_print.assert_called_once()
+        args, kwargs = mock_rich_print.call_args
+        self.assertIn("Test message", args[0])
 
-    @patch('builtins.print')
-    def test_error_message(self, mock_print):
-        """Test error message output."""
-        error("Error occurred")
-        mock_print.assert_called_once()
-        # Check if error formatting is applied
-        call_args = str(mock_print.call_args)
-        self.assertIn("Error occurred", call_args)
-
-    @patch('builtins.print')
-    def test_success_message(self, mock_print):
-        """Test success message output."""
-        success("Operation successful")
-        mock_print.assert_called_once()
-        call_args = str(mock_print.call_args)
-        self.assertIn("Operation successful", call_args)
-
-    @patch('builtins.print')
-    def test_warning_message(self, mock_print):
-        """Test warning message output."""
-        warning("Warning: proceed with caution")
-        mock_print.assert_called_once()
-        call_args = str(mock_print.call_args)
-        self.assertIn("Warning", call_args)
+    @patch('connectonion.console._rich_console.print')
+    def test_print_with_style(self, mock_rich_print):
+        """Test Console.print with style parameter."""
+        c = console_mod.Console()
+        c.print("Error occurred", style="red")
+        mock_rich_print.assert_called_once()
+        args, kwargs = mock_rich_print.call_args
+        self.assertIn("Error occurred", args[0])
 
 
 if __name__ == '__main__':

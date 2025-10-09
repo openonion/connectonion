@@ -237,8 +237,8 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         # Should have only the properly annotated methods
         self.assertEqual(len(agent.tools), 2)
 
-    @patch('connectonion.agent.OpenAILLM')
-    def test_methods_share_state_through_self(self, mock_llm_class):
+    @patch('connectonion.agent.create_llm')
+    def test_methods_share_state_through_self(self, mock_create_llm):
         """Test that methods called as tools share state through self."""
         
         class WebScraper:
@@ -288,10 +288,9 @@ class TestAgentWithStatefulTools(unittest.TestCase):
                 raw_response={}
             )
         ]
-        mock_llm_class.return_value = mock_llm
+        mock_create_llm.return_value = mock_llm
         
         agent = Agent(name="web_agent", api_key="fake_key", tools=scraper)
-        agent.history.history_file = os.path.join(self.temp_dir, "history.json")
         
         result = agent.input("Navigate to example.com and scrape the title")
         
