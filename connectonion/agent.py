@@ -312,3 +312,27 @@ class Agent:
     def list_tools(self) -> List[str]:
         """List all available tool names."""
         return [tool.name for tool in self.tools]
+
+    def auto_debug(self, prompt: Optional[str] = None):
+        """Start a debugging session for the agent.
+
+        Args:
+            prompt: Optional prompt to debug. If provided, runs single debug session.
+                   If None, starts interactive debug mode.
+
+        This MVP version provides:
+        - Breakpoints at @xray decorated tools
+        - Display of tool execution context
+        - Interactive menu to continue or edit values
+
+        Examples:
+            # Interactive mode
+            agent = Agent("my_agent", tools=[search, analyze])
+            agent.auto_debug()
+
+            # Single prompt mode
+            agent.auto_debug("Find information about Python")
+        """
+        from .interactive_debugger import InteractiveDebugger
+        debugger = InteractiveDebugger(self)
+        debugger.start_debug_session(prompt)

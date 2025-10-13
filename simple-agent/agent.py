@@ -4,14 +4,16 @@
 import os
 import sys
 from connectonion import Agent, llm_do
+from connectonion.xray import xray
 
 
+@xray  # Add @xray to see debugging in action
 def hello_world(name: str = "World") -> str:
-    """Simple greeting function.
-    
+    """Simple greeting function with @xray for debugging.
+
     Args:
         name: Name to greet
-        
+
     Returns:
         A greeting message
     """
@@ -43,6 +45,11 @@ def main():
         print("\n📝 Direct LLM query...")
         simple_response = llm_do("What is ConnectOnion in one sentence?", model=model)
         print(f"✅ Response: {simple_response}")
+
+        # Optional: Try debug mode (comment out the above and uncomment below)
+        # print("\n🔍 Debug Mode: Run with agent.auto_debug() for interactive debugging")
+        # print("   Uncomment the line below to try it:")
+        # # agent.auto_debug()  # Interactive debugging with breakpoints at @xray tools
 
     except ValueError as e:
         if "Internal Server Error" in str(e):
