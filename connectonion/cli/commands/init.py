@@ -9,6 +9,8 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
+from rich.syntax import Syntax
+from rich.text import Text
 
 from ... import __version__
 from ... import address
@@ -106,12 +108,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Track temp directory for cleanup
     temp_project_dir = None
 
-    # Header with color
-    if not yes:
-        console.print("\n[bold cyan]🧅 ConnectOnion Project Initializer[/bold cyan]")
-        console.print("[cyan]" + "=" * 40 + "[/cyan]")
-        console.print(f"\n📁 Initializing: [bold]{project_name}[/bold]")
-        console.print(f"📍 Location: [bold]{current_dir}[/bold]\n")
+    # Header removed for cleaner output
 
     # Check for special directories
     warning = get_special_directory_warning(current_dir)
@@ -164,31 +161,13 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         # Detect provider from the provided key
         provider, key_type = detect_api_provider(api_key)
 
-    # Template selection
-    if not template and not yes:
-        # Check if directory has existing files
-        has_existing_files = not is_directory_empty(current_dir)
-
-        if has_existing_files:
-            # For existing projects, offer option to just add ConnectOnion config
-            template_info = [
-                ('none', '⚙️  Just add ConnectOnion config', 'Add .co folder and .env without any template files'),
-                ('minimal', '📦 Minimal', 'Basic agent structure'),
-                ('playwright', '🎭 Playwright', 'Browser automation agent'),
-            ]
-            if ai:
-                template_info.append(('custom', '✨ Custom', 'AI-generated agent'))
-        else:
-            # For empty directories, use normal template options
-            template_info = get_template_info()
-            # Filter out custom if AI is disabled
-            if not ai:
-                template_info = [t for t in template_info if t[0] != 'custom']
-
-        template = interactive_menu(template_info, "Choose a template:")
-    elif not template:
-        # Default to 'none' for existing projects, 'minimal' for new
-        template = 'none' if not is_directory_empty(current_dir) else 'minimal'
+    # Template selection - default to 'none' (just add .co folder) unless --template provided
+    if not template:
+        # No --template flag provided, just add ConnectOnion config
+        template = 'none'
+        if not yes:
+            console.print(f"\n{Colors.GREEN}✓ Adding ConnectOnion config (.co folder){Colors.END} (use --template <name> for full templates)")
+    # else: template has a specific value from --template <name>
 
     # Handle custom template
     custom_code = None
@@ -425,128 +404,40 @@ todo.md
             gitignore_path.write_text(gitignore_content.lstrip())
             files_created.append(".gitignore")
 
-    # Success message
-    console.print(f"\n{Colors.GREEN}✅ ConnectOnion project initialized!{Colors.END}")
+    # Success message with Rich formatting
+    console.print()
+    console.print(f"[bold green]✅ Initialized ConnectOnion in {project_name}[/bold green]")
+    console.print()
 
-    console.print(f"\n📁 Project: {Colors.BOLD}{project_name}{Colors.END}")
-    if template == 'none':
-        console.print(f"⚙️  Configuration: {Colors.BOLD}ConnectOnion config added{Colors.END}")
+    # Show different message based on whether agent.py exists
+    if template != 'none' and (Path(current_dir) / "agent.py").exists():
+        # Command with syntax highlighting - compact design
+        command = "python agent.py"
+        syntax = Syntax(
+            command,
+            "bash",
+            theme="monokai",
+            background_color="#272822",  # Monokai background color
+            padding=(0, 1)  # Minimal padding for tight fit
+        )
+        console.print(syntax)
+        console.print()
+
+        # Vibe Coding hint - clean formatting with proper spacing
+        console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
+        console.print(f"   [cyan]co-vibecoding-principles-docs-contexts-all-in-one.md[/cyan]")
     else:
-        console.print(f"📦 Template: {Colors.BOLD}{template.title()}{Colors.END}")
+        # Vibe Coding hint for building from scratch
+        console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
+        console.print(f"   [cyan]co-vibecoding-principles-docs-contexts-all-in-one.md[/cyan]")
+        console.print("   to build your agent")
 
-    if custom_code and description:
-        console.print(f"\n✨ {Colors.CYAN}Custom agent generated from:{Colors.END}")
-        console.print(f"   {description[:60]}...")
-
-    # Show agent address and email (using global)
-    if 'addr_data' in locals() and addr_data.get('address'):
-        console.print(f"\n🔑 Agent address: {Colors.CYAN}{addr_data['address']}{Colors.END} (global)")
-        if addr_data.get('email'):
-            console.print(f"📧 Agent email: {Colors.CYAN}{addr_data['email']}{Colors.END} (global)")
-
-        console.print(f"\n💡 {Colors.CYAN}Using global identity. Run 'co address' to create project-specific identity.{Colors.END}")
-
-    if files_created:
-        console.print(f"\n{Colors.CYAN}📂 Files created:{Colors.END}")
-        for file in files_created:
-            if file == "agent.py":
-                console.print(f"  • {Colors.GREEN}{file}{Colors.END} - Main agent implementation")
-            elif file == "prompts/":
-                console.print(f"  • {Colors.GREEN}{file}{Colors.END} - System prompts directory")
-            elif file == ".env":
-                console.print(f"  • {Colors.GREEN}{file}{Colors.END} - Environment configuration (add your API key)")
-            elif file == "README.md":
-                console.print(f"  • {Colors.GREEN}{file}{Colors.END} - Project documentation")
-            elif file == ".co/":
-                console.print(f"  • {Colors.GREEN}{file}{Colors.END} - ConnectOnion metadata")
-            elif file == ".co/keys/":
-                console.print(f"  • {Colors.GREEN}{file}{Colors.END} - Agent cryptographic keys")
-            else:
-                console.print(f"  • {Colors.GREEN}{file}{Colors.END}")
-
-    if files_skipped:
-        console.print(f"\n{Colors.YELLOW}⚠️  Skipped (already exist):{Colors.END}")
-        for file in files_skipped:
-            console.print(f"  • {file}")
-
-    # Show .env info
-    console.print("")
-    if auth_success:
-        console.print(f"💡 {Colors.CYAN}Your .env is ready with API keys{Colors.END}")
-        if api_key and provider:
-            console.print(f"   • Using your {provider.title()} key")
-        console.print(f"   • OPENONION_API_KEY also available (use 'co/' model prefix)")
-    else:
-        if api_key and provider:
-            console.print(f"💡 {Colors.CYAN}API key saved to .env{Colors.END}")
-        else:
-            console.print(f"💡 {Colors.YELLOW}Add your API key to .env to enable AI features{Colors.END}")
-
-    # Next steps with color coding
-    console.print(f"\n{Colors.CYAN}🚀 Next steps:{Colors.END}")
-    console.print(f"{Colors.CYAN}{'─' * 40}{Colors.END}")
-
-    step = 1
-    if not api_key:
-        console.print(f"\n{step}️⃣  Add your API key to .env:")
-        console.print(f"    Open {Colors.BOLD}.env{Colors.END} and replace 'sk-your-api-key-here'")
-        step += 1
-
-    console.print(f"\n{step}️⃣  Install dependencies:")
-    console.print(f"    {Colors.BOLD}pip install python-dotenv{Colors.END}")
-    step += 1
-
-    if template == "playwright":
-        console.print(f"    {Colors.BOLD}pip install playwright{Colors.END}")
-        console.print(f"    {Colors.BOLD}playwright install{Colors.END}")
-        step += 1
-
-    console.print(f"\n{step}️⃣  Run your agent:")
-    console.print(f"    {Colors.BOLD}python agent.py{Colors.END}")
-
-    console.print(f"\n{Colors.CYAN}📚 Resources:{Colors.END}")
-    console.print(f"   Documentation: {Colors.UNDERLINE}https://docs.connectonion.com{Colors.END}")
-    console.print(f"   Discord: {Colors.UNDERLINE}https://discord.gg/4xfD9k8AUF{Colors.END}")
-
-    # GitHub star request
-    console.print(f"\n{Colors.CYAN}⭐ Support ConnectOnion:{Colors.END}")
-    console.print(f"   Get 100K free tokens by starring our GitHub repo!")
-
-    # Check if gh CLI is installed and star the repo
-    try:
-        # Check if gh is installed
-        gh_check = subprocess.run(["which", "gh"], capture_output=True, text=True)
-        if gh_check.returncode == 0:
-            # Check if already starred
-            star_check = subprocess.run(
-                ["gh", "api", "user/starred/openonion/connectonion"],
-                capture_output=True,
-                text=True
-            )
-
-            if star_check.returncode != 0:
-                # Not starred yet, star it
-                console.print(f"   {Colors.YELLOW}Starring the ConnectOnion repo...{Colors.END}")
-                star_result = subprocess.run(
-                    ["gh", "api", "--method", "PUT", "user/starred/openonion/connectonion"],
-                    capture_output=True,
-                    text=True
-                )
-                if star_result.returncode == 0:
-                    console.print(f"   {Colors.GREEN}✅ Thank you for starring ConnectOnion!{Colors.END}")
-                    console.print(f"   {Colors.GREEN}🎁 Your 100K tokens will be credited shortly.{Colors.END}")
-                else:
-                    console.print(f"   {Colors.YELLOW}⚠️  Couldn't star automatically. Please star manually:{Colors.END}")
-                    console.print(f"   {Colors.UNDERLINE}https://github.com/openonion/connectonion{Colors.END}")
-            else:
-                console.print(f"   {Colors.GREEN}✅ You've already starred ConnectOnion. Thank you!{Colors.END}")
-        else:
-            # gh CLI not installed
-            console.print(f"   {Colors.YELLOW}Star us on GitHub:{Colors.END} {Colors.UNDERLINE}https://github.com/openonion/connectonion{Colors.END}")
-    except Exception:
-        # Fallback if any error occurs
-        console.print(f"   {Colors.YELLOW}Star us on GitHub:{Colors.END} {Colors.UNDERLINE}https://github.com/openonion/connectonion{Colors.END}")
-
+    # Resources - clean format with arrows for better alignment
+    console.print()
+    console.print("[bold cyan]📚 Resources:[/bold cyan]")
+    console.print(f"   Docs    [dim]→[/dim] [link=https://docs.connectonion.com][blue]https://docs.connectonion.com[/blue][/link]")
+    console.print(f"   Discord [dim]→[/dim] [link=https://discord.gg/4xfD9k8AUF][blue]https://discord.gg/4xfD9k8AUF[/blue][/link]")
+    console.print(f"   GitHub  [dim]→[/dim] [link=https://github.com/openonion/connectonion][blue]https://github.com/openonion/connectonion[/blue][/link] [dim](⭐ star us!)[/dim]")
     console.print()
 
     # Clean up temporary project directory if created for authentication

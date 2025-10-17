@@ -10,6 +10,9 @@ from pathlib import Path
 from typing import Optional, Dict, Any
 from rich.console import Console
 from rich.prompt import Prompt, Confirm, IntPrompt
+from rich.panel import Panel
+from rich.syntax import Syntax
+from rich.text import Text
 
 from ... import __version__
 from ... import address
@@ -119,17 +122,12 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # Register signal handler for Ctrl+C
     signal.signal(signal.SIGINT, cleanup_on_exit)
 
-    # Show header
-    if not yes:
-        console.print(f"\n{Colors.CYAN}{Colors.BOLD}🧅 ConnectOnion Project Creator{Colors.END}")
-        console.print(f"{Colors.CYAN}{'=' * 40}{Colors.END}\n")
+    # Header removed for cleaner output
 
-    # Template selection FIRST
-    if not template and not yes:
-        template_info = get_template_info()
-        template = interactive_menu(template_info, "Choose a template:")
-    elif not template:
+    # Template selection - default to minimal unless --template provided
+    if not template:
         template = 'minimal'
+    # Silent - no verbose messages
 
     # ALL templates need AI to function (agents need LLMs!)
     provider = None
@@ -309,7 +307,6 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         else:
             # For non-custom templates, use template name directly
             name = f"{template}-agent"
-            console.print(f"\n{Colors.GREEN}✓ Using template name:{Colors.END} {name}")
 
         # Validate project name
         is_valid, error_msg = validate_project_name(name)
@@ -336,25 +333,24 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # Handle temp directory or create new project directory
     project_dir = Path(name)
 
-    if temp_project_dir:
-        # We have a temp directory from authentication, rename it
-        if project_dir.exists():
-            console.print(f"{Colors.RED}❌ Directory '{name}' already exists!{Colors.END}")
-            # Clean up temp directory
-            shutil.rmtree(temp_project_dir)
-            return
+    # Check if directory exists and suggest alternative
+    if project_dir.exists():
+        base_name = name
+        counter = 2
+        suggested_name = f"{base_name}-{counter}"
+        while Path(suggested_name).exists():
+            counter += 1
+            suggested_name = f"{base_name}-{counter}"
 
+        # Show error with suggestion
+        console.print(f"\n[red]❌ '{base_name}' exists. Try: [bold]co create {suggested_name}[/bold][/red]\n")
+        return
+
+    if temp_project_dir:
         # Rename temp directory to final project name
-        show_progress(f"Finalizing project '{name}'...", 1.0)
         temp_project_dir.rename(project_dir)
     else:
-        # Normal flow - check if directory exists and create
-        if project_dir.exists():
-            console.print(f"{Colors.RED}❌ Directory '{name}' already exists!{Colors.END}")
-            return
-
         # Create project directory
-        show_progress(f"Creating project '{name}'...", 1.0)
         project_dir.mkdir(parents=True, exist_ok=True)
 
     # Get template files
@@ -499,105 +495,31 @@ todo.md
         gitignore_path.write_text(gitignore_content.lstrip())
         files_created.append(".gitignore")
 
-    # Success message
-    console.print(f"\n{Colors.GREEN}✅ Project created successfully!{Colors.END}")
+    # Success message with Rich formatting
+    console.print()
+    console.print(f"[bold green]✅ Created {name}[/bold green]")
+    console.print()
 
-    console.print(f"\n📁 Created: {Colors.BOLD}{name}{Colors.END}")
-    console.print(f"📦 Template: {Colors.BOLD}{template.title()}{Colors.END}")
+    # Command with syntax highlighting - compact design
+    command = f"cd {name} && python agent.py"
+    syntax = Syntax(
+        command,
+        "bash",
+        theme="monokai",
+        background_color="#272822",  # Monokai background color
+        padding=(0, 1)  # Minimal padding for tight fit
+    )
+    console.print(syntax)
+    console.print()
 
-    if custom_code and description:
-        console.print(f"\n✨ {Colors.CYAN}Custom agent generated from:{Colors.END}")
-        console.print(f"   {description[:60]}...")
+    # Vibe Coding hint - clean formatting with proper spacing
+    console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
+    console.print(f"   [cyan]co-vibecoding-principles-docs-contexts-all-in-one.md[/cyan]")
+    console.print()
 
-    # Show agent address and email (using global)
-    if 'addr_data' in locals() and addr_data.get('address'):
-        console.print(f"\n🔑 Agent address: {Colors.CYAN}{addr_data['address']}{Colors.END} (global)")
-        if addr_data.get('email'):
-            console.print(f"📧 Agent email: {Colors.CYAN}{addr_data['email']}{Colors.END} (global)")
-
-        console.print(f"\n💡 {Colors.CYAN}Using global identity. Run 'co address' to create project-specific identity.{Colors.END}")
-    
-    # Prompt user to add API key if none present
-    if not env_has_keys:
-        console.print(f"\n💡 {Colors.YELLOW}Add your API key to .env to enable AI features{Colors.END}")
-
-    # Show .env reminder based on API key setup
-    console.print("")
-    if api_key and api_key != "skip":
-        if provider == "connectonion":
-            console.print(f"💡 {Colors.CYAN}Using ConnectOnion credits - add your own key to .env if needed{Colors.END}")
-        else:
-            console.print(f"💡 {Colors.CYAN}API key saved to .env - edit anytime to change providers{Colors.END}")
-    else:
-        console.print(f"💡 {Colors.YELLOW}Add your API key to .env file to enable AI features{Colors.END}")
-
-    # Next steps with color coding
-    console.print(f"\n{Colors.CYAN}🚀 Next steps:{Colors.END}")
-    console.print(f"{Colors.CYAN}{'─' * 40}{Colors.END}")
-
-    console.print(f"\n1️⃣  Enter project directory:")
-    console.print(f"    {Colors.BOLD}cd {name}{Colors.END}")
-
-    step = 2
-    if not api_key:
-        console.print(f"\n{step}️⃣  Add your API key to .env:")
-        console.print(f"    Open {Colors.BOLD}.env{Colors.END} and replace 'sk-your-api-key-here'")
-        step += 1
-
-    console.print(f"\n{step}️⃣  Install dependencies:")
-    console.print(f"    {Colors.BOLD}pip install python-dotenv{Colors.END}")
-    step += 1
-
-    if template == "playwright":
-        console.print(f"    {Colors.BOLD}pip install playwright{Colors.END}")
-        console.print(f"    {Colors.BOLD}playwright install{Colors.END}")
-        step += 1
-
-    console.print(f"\n{step}️⃣  Run your agent:")
-    console.print(f"    {Colors.BOLD}python agent.py{Colors.END}")
-
-    console.print(f"\n{Colors.CYAN}📚 Resources:{Colors.END}")
-    console.print(f"   Documentation: {Colors.UNDERLINE}https://docs.connectonion.com{Colors.END}")
-    console.print(f"   Discord: {Colors.UNDERLINE}https://discord.gg/4xfD9k8AUF{Colors.END}")
-
-    # GitHub star request
-    console.print(f"\n{Colors.CYAN}⭐ Support ConnectOnion:{Colors.END}")
-    console.print(f"   Get 100K free tokens by starring our GitHub repo!")
-
-    # Check if gh CLI is installed and star the repo
-    try:
-        import subprocess
-        # Check if gh is installed
-        gh_check = subprocess.run(["which", "gh"], capture_output=True, text=True)
-        if gh_check.returncode == 0:
-            # Check if already starred
-            star_check = subprocess.run(
-                ["gh", "api", "user/starred/openonion/connectonion"],
-                capture_output=True,
-                text=True
-            )
-
-            if star_check.returncode != 0:
-                # Not starred yet, star it
-                console.print(f"   {Colors.YELLOW}Starring the ConnectOnion repo...{Colors.END}")
-                star_result = subprocess.run(
-                    ["gh", "api", "--method", "PUT", "user/starred/openonion/connectonion"],
-                    capture_output=True,
-                    text=True
-                )
-                if star_result.returncode == 0:
-                    console.print(f"   {Colors.GREEN}✅ Thank you for starring ConnectOnion!{Colors.END}")
-                    console.print(f"   {Colors.GREEN}🎁 Your 100K tokens will be credited shortly.{Colors.END}")
-                else:
-                    console.print(f"   {Colors.YELLOW}⚠️  Couldn't star automatically. Please star manually:{Colors.END}")
-                    console.print(f"   {Colors.UNDERLINE}https://github.com/openonion/connectonion{Colors.END}")
-            else:
-                console.print(f"   {Colors.GREEN}✅ You've already starred ConnectOnion. Thank you!{Colors.END}")
-        else:
-            # gh CLI not installed
-            console.print(f"   {Colors.YELLOW}Star us on GitHub:{Colors.END} {Colors.UNDERLINE}https://github.com/openonion/connectonion{Colors.END}")
-    except Exception:
-        # Fallback if any error occurs
-        console.print(f"   {Colors.YELLOW}Star us on GitHub:{Colors.END} {Colors.UNDERLINE}https://github.com/openonion/connectonion{Colors.END}")
-
+    # Resources - clean format with arrows for better alignment
+    console.print("[bold cyan]📚 Resources:[/bold cyan]")
+    console.print(f"   Docs    [dim]→[/dim] [link=https://docs.connectonion.com][blue]https://docs.connectonion.com[/blue][/link]")
+    console.print(f"   Discord [dim]→[/dim] [link=https://discord.gg/4xfD9k8AUF][blue]https://discord.gg/4xfD9k8AUF[/blue][/link]")
+    console.print(f"   GitHub  [dim]→[/dim] [link=https://github.com/openonion/connectonion][blue]https://github.com/openonion/connectonion[/blue][/link] [dim](⭐ star us!)[/dim]")
     console.print()

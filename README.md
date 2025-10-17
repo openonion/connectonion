@@ -56,12 +56,14 @@ pip install connectonion
 
 ```bash
 # Create a new agent project with one command
-co init
+co create my-agent
 
-# Follow the prompts to set up your API key and run
-cp .env.example .env  # Add your OpenAI API key
+# Navigate and run
+cd my-agent
 python agent.py
 ```
+
+*The CLI guides you through API key setup automatically. No manual `.env` editing needed!*
 
 ### Manual Usage
 
@@ -215,24 +217,26 @@ The function-based approach is simpler, more Pythonic, and easier to test!
 ConnectOnion CLI provides templates to get you started quickly:
 
 ```bash
-# Basic agent with ConnectOnion knowledge
-co init
+# Create a minimal agent (default)
+co create my-agent
 
-# Conversational chat agent
-co init --template chat
+# Create with specific template
+co create my-playwright-bot --template playwright
 
-# Data analysis agent
-co init --template data
-
-# Web automation with Playwright
-co init --template playwright
+# Initialize in existing directory
+co init  # Adds .co folder only
+co init --template playwright  # Adds full template
 ```
 
+**Available Templates:**
+- `minimal` (default) - Simple agent starter
+- `playwright` - Web automation with browser tools
+
 Each template includes:
-- Pre-configured agent with relevant tools
-- Customizable system prompt in `prompt.md`
-- Environment configuration template
+- Pre-configured agent ready to run
+- Automatic API key setup
 - Embedded ConnectOnion documentation
+- Git-ready `.gitignore`
 
 Learn more in the [CLI Documentation](docs/cli.md) and [Templates Guide](docs/templates.md).
 
