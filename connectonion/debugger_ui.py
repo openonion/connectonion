@@ -132,16 +132,13 @@ class DebuggerUI:
         """
         self._display_current_value(current_value)
 
-        if not self._confirm_edit():
-            self.console.print("[green]Result unchanged[/green]")
-            return False, current_value
-
+        # User already chose "Edit" from menu, so go directly to input
         new_value = self._get_new_value()
         if new_value is not None:
             self._display_updated_value(new_value)
             return True, new_value
         else:
-            self.console.print("[yellow]No changes made[/yellow]")
+            self.console.print("[yellow]No changes made (empty input)[/yellow]")
             return False, current_value
 
     # Private helper methods for cleaner code
@@ -346,19 +343,69 @@ def search_info(query: str) -> str:
 
     def _show_action_menu(self) -> BreakpointAction:
         """Show the action menu and get user's choice."""
+        # Try to use simple-term-menu (no asyncio conflicts, works with Playwright)
+        try:
+            from simple_term_menu import TerminalMenu
+
+            menu_entries = [
+                "[c] Continue execution 🚀",
+                "[e] Edit values 🔍",
+                "[q] Quit debugging 🚫"
+            ]
+
+            terminal_menu = TerminalMenu(
+                menu_entries,
+                title="\nAction:",
+                menu_cursor="→ ",
+                menu_cursor_style=("fg_green", "bold"),
+                menu_highlight_style=("fg_green", "bold"),
+                cycle_cursor=True,
+                clear_screen=False,
+            )
+
+            menu_index = terminal_menu.show()
+
+            # Handle Ctrl+C or None
+            if menu_index is None:
+                self.console.print("[yellow]→ Quitting debug session...[/yellow]")
+                return BreakpointAction.QUIT
+
+            # Map index to action
+            actions = [BreakpointAction.CONTINUE, BreakpointAction.EDIT, BreakpointAction.QUIT]
+            action = actions[menu_index]
+
+            if action == BreakpointAction.CONTINUE:
+                self.console.print("[green]→ Continuing execution...[/green]")
+            elif action == BreakpointAction.QUIT:
+                self.console.print("[yellow]→ Quitting debug session...[/yellow]")
+
+            return action
+
+        except (ImportError, OSError):
+            # simple-term-menu not installed, not supported (Windows), or no TTY available
+            # Fall back to questionary or simple input
+            pass
+
+        # Fallback: Use questionary (may have asyncio conflicts with Playwright)
         choices = [
             questionary.Choice("[c] Continue execution 🚀", value=BreakpointAction.CONTINUE, shortcut_key='c'),
             questionary.Choice("[e] Edit values 🔍", value=BreakpointAction.EDIT, shortcut_key='e'),
             questionary.Choice("[q] Quit debugging 🚫", value=BreakpointAction.QUIT, shortcut_key='q'),
         ]
 
-        action = questionary.select(
-            "\nAction:",
-            choices=choices,
-            style=self.style,
-            instruction="(Use ↑/↓ arrows or press c/e/q + Enter)",
-            use_shortcuts=True
-        ).unsafe_ask()
+        try:
+            action = questionary.select(
+                "\nAction:",
+                choices=choices,
+                style=self.style,
+                instruction="(Press c/e/q)",
+                use_shortcuts=True,
+                use_indicator=False,
+                use_arrow_keys=True
+            ).ask()
+        except RuntimeError:
+            # Event loop conflict - use simple input fallback
+            return self._simple_input_fallback()
 
         # Handle Ctrl+C
         if action is None:
@@ -371,6 +418,30 @@ def search_info(query: str) -> str:
             self.console.print("[yellow]→ Quitting debug session...[/yellow]")
 
         return action
+
+    def _simple_input_fallback(self) -> BreakpointAction:
+        """Simple text input fallback when event loop conflicts occur."""
+        self.console.print("\n[cyan bold]Action:[/cyan bold]")
+        self.console.print("  [c] Continue execution 🚀")
+        self.console.print("  [e] Edit values 🔍")
+        self.console.print("  [q] Quit debugging 🚫")
+
+        while True:
+            try:
+                choice = input("\nYour choice (c/e/q): ").strip().lower()
+                if choice == 'c':
+                    self.console.print("[green]→ Continuing execution...[/green]")
+                    return BreakpointAction.CONTINUE
+                elif choice == 'e':
+                    return BreakpointAction.EDIT
+                elif choice == 'q':
+                    self.console.print("[yellow]→ Quitting debug session...[/yellow]")
+                    return BreakpointAction.QUIT
+                else:
+                    self.console.print("[yellow]Invalid choice. Please enter c, e, or q.[/yellow]")
+            except (KeyboardInterrupt, EOFError):
+                self.console.print("\n[yellow]→ Quitting debug session...[/yellow]")
+                return BreakpointAction.QUIT
 
     def _display_current_value(self, value: Any) -> None:
         """Display the current value nicely formatted."""
@@ -406,13 +477,6 @@ def search_info(query: str) -> str:
             padding=(1, 2)
         )
         self.console.print(panel)
-
-    def _confirm_edit(self) -> bool:
-        """Ask if user wants to edit the value."""
-        return questionary.confirm(
-            "Do you want to edit the result?",
-            default=False
-        ).ask()
 
     def _get_new_value(self) -> Optional[Any]:
         """Get new value from user."""

@@ -248,6 +248,9 @@ class Agent:
             # Process tool calls
             self._execute_and_record_tools(response.tool_calls)
 
+            # After executing tools, continue the loop to let LLM decide next action
+            # The LLM will see the tool results and decide if task is complete
+
         # Hit max iterations
         return f"Task incomplete: Maximum iterations ({max_iterations}) reached."
 
