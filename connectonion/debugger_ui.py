@@ -10,6 +10,7 @@ from enum import Enum
 import json
 import ast
 import inspect
+from pprint import pformat
 
 import questionary
 from questionary import Style
@@ -121,25 +122,104 @@ class DebuggerUI:
         self._display_breakpoint_info(context)
         return self._show_action_menu()
 
-    def edit_value(self, current_value: Any) -> Tuple[bool, Any]:
-        """Let user edit a value.
+    def edit_value(self, context: BreakpointContext, agent: Any = None) -> Dict[str, Any]:
+        """Start Python REPL to inspect and modify execution state.
 
         Args:
-            current_value: The current value to potentially edit
+            context: Full breakpoint context with all execution data
+            agent: Optional agent instance for accessing agent context
 
         Returns:
-            Tuple of (was_changed, new_value)
+            Dict of modified values (e.g., {'result': new_value, 'tool_args': {...}})
         """
-        self._display_current_value(current_value)
+        import code
 
-        # User already chose "Edit" from menu, so go directly to input
-        new_value = self._get_new_value()
-        if new_value is not None:
-            self._display_updated_value(new_value)
-            return True, new_value
+        # Build namespace with all debuggable variables
+        result = context.trace_entry.get('result')
+        namespace = {
+            # Primary execution
+            'result': result,
+            'tool_name': context.tool_name,
+            'tool_args': context.tool_args.copy(),  # Make it mutable
+
+            # Flow control
+            'iteration': context.iteration,
+            'max_iterations': context.max_iterations,
+
+            # Context
+            'user_prompt': context.user_prompt,
+            'next_actions': context.next_actions,
+
+            # Advanced
+            'trace_entry': context.trace_entry,
+            'previous_tools': context.previous_tools,
+        }
+
+        # Add agent context if available
+        if agent:
+            namespace.update({
+                'agent_name': agent.name,
+                'model': agent.llm.model if hasattr(agent.llm, 'model') else 'unknown',
+                'tools_available': [tool.name for tool in agent.tools] if agent.tools else [],
+                'turn': agent.current_session.get('turn', 0) if agent.current_session else 0,
+                'messages': agent.current_session.get('messages', []) if agent.current_session else [],
+            })
+
+        # Add helper function for pretty printing in REPL
+        def pp(obj):
+            """Pretty print helper for explicit use"""
+            from rich.pretty import pprint
+            pprint(obj, expand_all=True)
+
+        namespace['pp'] = pp  # Add to namespace
+
+        # Display REPL header
+        self._display_repl_header(context, namespace)
+
+        # Customize REPL display hook to auto pretty-print
+        import sys
+        from rich.pretty import pprint
+
+        original_displayhook = sys.displayhook
+
+        def rich_displayhook(value):
+            """Custom display hook that uses Rich pretty printing"""
+            if value is not None:
+                pprint(value, expand_all=True)
+                # Also store in _ for REPL access
+                import builtins
+                builtins._ = value
+
+        sys.displayhook = rich_displayhook
+
+        # Start interactive Python REPL
+        banner = ""  # Empty banner since we show our own header
+        try:
+            code.interact(banner=banner, local=namespace, exitmsg="")
+        except SystemExit:
+            pass  # Normal REPL exit
+        finally:
+            # Restore original displayhook
+            sys.displayhook = original_displayhook
+
+        # Extract modifications from namespace
+        modifications = {}
+        if namespace['result'] != result:
+            modifications['result'] = namespace['result']
+        if namespace['tool_args'] != context.tool_args:
+            modifications['tool_args'] = namespace['tool_args']
+        if namespace['iteration'] != context.iteration:
+            modifications['iteration'] = namespace['iteration']
+        if namespace['max_iterations'] != context.max_iterations:
+            modifications['max_iterations'] = namespace['max_iterations']
+
+        # Show what was modified
+        if modifications:
+            self._display_modifications(modifications)
         else:
-            self.console.print("[yellow]No changes made (empty input)[/yellow]")
-            return False, current_value
+            self.console.print("\n[dim]No modifications made[/dim]")
+
+        return modifications
 
     # Private helper methods for cleaner code
 
@@ -529,3 +609,187 @@ def search_info(query: str) -> str:
             padding=(1, 2)
         )
         self.console.print(panel)
+    def _display_repl_header(self, context: BreakpointContext, namespace: Dict[str, Any]) -> None:
+        """Display Python REPL header with available variables."""
+        self.console.print("\n")
+        self.console.print(Panel(
+            "[bold white]Python REPL - Interactive Debugging[/bold white]\n"
+            "[dim]Modify any variable and exit() to apply changes[/dim]",
+            title="🐍 Debug Console",
+            border_style="green"
+        ))
+
+        # Create clean two-column table
+        table = Table(
+            show_header=True,
+            header_style="bold cyan",
+            border_style="dim",
+            box=box.SIMPLE_HEAD,  # Only header has border
+            padding=(0, 2),  # 0 vertical, 2 horizontal
+            show_lines=False
+        )
+
+        # Two columns: Variable (fixed) and Value (flexible)
+        table.add_column("Variable", style="yellow", width=18, no_wrap=True)
+        table.add_column("Value", style="white", overflow="fold")
+
+        # Priority ordering for smart grouping
+        priority_order = [
+            'result', 'tool_name', 'tool_args',               # Group 1: Execution
+            'iteration', 'max_iterations',                     # Group 2: Control
+            'user_prompt', 'next_actions',                     # Group 3: Context
+            'agent_name', 'model', 'turn', 'tools_available',  # Group 4: Agent
+            'messages', 'trace_entry', 'previous_tools',       # Group 5: Advanced
+            'pp',                                              # Group 6: Helper (show last)
+        ]
+
+        # Sort variables by priority
+        sorted_items = []
+        for key in priority_order:
+            if key in namespace:
+                sorted_items.append((key, namespace[key]))
+
+        # Add any remaining variables not in priority list
+        for key, value in namespace.items():
+            if key not in priority_order:
+                sorted_items.append((key, value))
+
+        # Add rows with automatic grouping
+        group_breaks = [2, 4, 6, 10]  # Add empty row after these indices (Execution, Control, Context, Agent, Advanced)
+
+        for i, (var_name, var_value) in enumerate(sorted_items):
+            # Add empty row for visual grouping
+            if i in group_breaks:
+                table.add_row("", "")
+
+            # Format value with smart formatting
+            formatted_value = self._format_value_for_repl(var_value)
+            table.add_row(var_name, formatted_value)
+
+        self.console.print(table)
+        self.console.print()
+
+    def _format_value_for_repl(self, value: Any) -> str:
+        """Format value with smart, consistent formatting for REPL display."""
+
+        # None
+        if value is None:
+            return "[dim]None[/dim]"
+
+        # Booleans
+        elif isinstance(value, bool):
+            return f"[cyan]{value}[/cyan]"
+
+        # Numbers
+        elif isinstance(value, (int, float)):
+            return f"[cyan]{value}[/cyan]"
+
+        # Strings
+        elif isinstance(value, str):
+            return self._format_string_value(value)
+
+        # Dictionaries
+        elif isinstance(value, dict):
+            return self._format_dict_value(value)
+
+        # Lists
+        elif isinstance(value, list):
+            return self._format_list_value(value)
+
+        # Functions (like pp helper)
+        elif callable(value):
+            return f"[dim]<function>[/dim] [dim italic]- helper for pretty printing[/dim italic]"
+
+        # Other types - just show string representation
+        else:
+            str_repr = str(value)
+            if len(str_repr) <= 100:
+                return f"[white]{str_repr}[/white]"
+            else:
+                return f"[white]{str_repr[:100]}...[/white] [dim]({len(str_repr)} chars)[/dim]"
+
+    def _format_string_value(self, s: str) -> str:
+        """Format string values with truncation and char count."""
+        # Short strings - show as-is
+        if len(s) <= 80:
+            return f"[green]{repr(s)}[/green]"
+
+        # Long strings - truncate and show char count
+        truncated = repr(s[:80])[:-1] + "...'"  # Remove closing quote, add ellipsis
+        return f"[green]{truncated}[/green]\n                    [dim]({len(s)} chars)[/dim]"
+
+    def _format_dict_value(self, d: dict) -> str:
+        """Format dict values using pprint for clean output."""
+        if not d:
+            return "[dim]{{}}[/dim]"
+
+        # Use pprint for nice formatting
+        pp = pformat(d, width=60, depth=2, compact=True)
+        lines = pp.split('\n')
+
+        # Small dict - show inline
+        if len(d) <= 3 and len(lines) == 1 and len(pp) <= 60:
+            return f"[cyan]{pp}[/cyan]"
+
+        # Medium dict - show with indentation
+        if len(lines) <= 5:
+            formatted_lines = [lines[0]]
+            for line in lines[1:]:
+                formatted_lines.append(f"                    {line}")
+            return f"[cyan]{chr(10).join(formatted_lines)}[/cyan]"
+
+        # Large dict - collapse with summary
+        return f"[dim cyan]{{... {len(d)} keys}}[/dim cyan] [dim]- type: pp(var_name)[/dim]"
+
+    def _format_list_value(self, lst: list) -> str:
+        """Format list values using pprint for clean output."""
+        if not lst:
+            return "[dim][][/dim]"
+
+        # Simple list of strings - show inline
+        if all(isinstance(item, str) for item in lst) and len(lst) <= 5:
+            compact = "[" + ", ".join(f'"{s}"' for s in lst) + "]"
+            if len(compact) <= 60:
+                return f"[cyan]{compact}[/cyan]"
+
+        # Use pprint for nice formatting
+        pp = pformat(lst, width=60, depth=2, compact=True)
+        lines = pp.split('\n')
+
+        # If fits in a few lines, show it
+        if len(lines) <= 5:
+            formatted_lines = [lines[0]]
+            for line in lines[1:]:
+                formatted_lines.append(f"                    {line}")
+            result = chr(10).join(formatted_lines)
+            return f"[cyan]{result}[/cyan]"
+
+        # Large - show summary with hint
+        return f"[dim cyan][... {len(lst)} items][/dim cyan] [dim]- type: pp(var_name)[/dim]"
+
+    def _format_value_preview(self, value: Any) -> str:
+        """Format a value for compact preview display."""
+        if isinstance(value, str):
+            return f"'{value[:30]}...'" if len(value) > 30 else f"'{value}'"
+        elif isinstance(value, (dict, list)):
+            val_str = str(value)
+            return f"{val_str[:30]}..." if len(val_str) > 30 else val_str
+        else:
+            return str(value)
+
+    def _display_modifications(self, modifications: Dict[str, Any]) -> None:
+        """Display what was modified during REPL session."""
+        self.console.print("\n[bold green]✅ Modifications Applied:[/bold green]\n")
+        
+        for key, value in modifications.items():
+            # Format the value for display
+            if isinstance(value, str):
+                formatted = f"'{value}'" if len(value) <= 50 else f"'{value[:50]}...'"
+            elif isinstance(value, dict):
+                formatted = json.dumps(value, indent=2)[:100]
+            else:
+                formatted = str(value)
+            
+            self.console.print(f"  [yellow]{key}[/yellow] = [cyan]{formatted}[/cyan]")
+        
+        self.console.print()

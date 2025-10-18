@@ -143,7 +143,7 @@ class InteractiveDebugger:
             tool_args: Arguments passed to the tool
             trace_entry: Trace entry with execution result (can be modified)
         """
-        # Get session context
+        # Get session context and agent info
         session = self.agent.current_session or {}
 
         # Gather previous tools from trace
@@ -156,7 +156,7 @@ class InteractiveDebugger:
         # Get preview of next LLM action
         next_actions = self._get_llm_next_action_preview(tool_name, trace_entry)
 
-        # Create context for UI
+        # Create context for UI with extended debugging info
         context = BreakpointContext(
             tool_name=tool_name,
             tool_args=tool_args,
@@ -175,13 +175,30 @@ class InteractiveDebugger:
             if action == BreakpointAction.CONTINUE:
                 break  # Exit the breakpoint
             elif action == BreakpointAction.EDIT:
-                # Let user edit the value
-                changed, new_value = self.ui.edit_value(trace_entry.get('result'))
-                if changed:
-                    trace_entry['result'] = new_value
+                # Let user edit values in Python REPL
+                modifications = self.ui.edit_value(context, agent=self.agent)
+
+                # Apply modifications
+                if 'result' in modifications:
+                    trace_entry['result'] = modifications['result']
                     # Re-generate preview with edited value
                     next_actions = self._get_llm_next_action_preview(tool_name, trace_entry)
                     context.next_actions = next_actions
+
+                if 'tool_args' in modifications:
+                    # Update tool_args in context (for display purposes)
+                    context.tool_args.update(modifications['tool_args'])
+
+                if 'iteration' in modifications:
+                    # Update iteration in session
+                    if self.agent.current_session:
+                        self.agent.current_session['iteration'] = modifications['iteration']
+                        context.iteration = modifications['iteration']
+
+                if 'max_iterations' in modifications:
+                    # Update max_iterations on agent
+                    self.agent.max_iterations = modifications['max_iterations']
+                    context.max_iterations = modifications['max_iterations']
             elif action == BreakpointAction.QUIT:
                 # User wants to quit debugging
                 raise KeyboardInterrupt("User quit debugging session")
