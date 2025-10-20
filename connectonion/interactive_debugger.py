@@ -156,6 +156,10 @@ class InteractiveDebugger:
         # Get preview of next LLM action
         next_actions = self._get_llm_next_action_preview(tool_name, trace_entry)
 
+        # Get the actual tool function for source inspection
+        tool = self.agent.tool_map.get(tool_name)
+        tool_function = tool.run if tool and hasattr(tool, 'run') else None
+
         # Create context for UI with extended debugging info
         context = BreakpointContext(
             tool_name=tool_name,
@@ -165,7 +169,8 @@ class InteractiveDebugger:
             iteration=session.get('iteration', 0),
             max_iterations=self.agent.max_iterations,
             previous_tools=previous_tools,
-            next_actions=next_actions  # Add the preview
+            next_actions=next_actions,
+            tool_function=tool_function  # Pass the actual function
         )
 
         # Keep showing menu until user chooses to continue
@@ -209,9 +214,26 @@ class InteractiveDebugger:
         This simulates the next iteration by calling the LLM with the current
         tool result, but doesn't actually execute the planned tools.
 
+        CRITICAL TIMING NOTE:
+        =====================
+        The debugger pauses DURING tool execution (inside execute_single_tool),
+        which means the current tool's result hasn't been added to messages yet.
+
+        Timeline:
+        1. tool_executor.py:41 → Adds assistant message with tool_calls
+        2. tool_executor.py:46-53 → Executes tool → **DEBUGGER PAUSES HERE**
+        3. tool_executor.py:56-60 → Adds tool result message (NOT REACHED YET!)
+
+        So agent.current_session['messages'] contains:
+        - ✅ Assistant message with ALL tool_calls
+        - ✅ Results from PREVIOUS tools (if parallel execution)
+        - ❌ Result from CURRENT tool (not added yet - we're paused!)
+
+        Therefore, we must manually append the current tool's result to get
+        a complete message history for the LLM preview.
+
         Args:
             tool_name: Name of the tool that just executed
-            tool_args: Arguments of the tool that just executed
             trace_entry: The execution result
 
         Returns:
@@ -219,41 +241,24 @@ class InteractiveDebugger:
             or None if no tools planned or error occurred
         """
         try:
-            # Build a temporary message list that includes the current tool result
-            # We need to properly reconstruct the conversation including all tool results
-            temp_messages = []
+            # Start with current messages (has assistant message + previous tool results)
+            temp_messages = self.agent.current_session['messages'].copy()
 
-            # Copy all messages up to the current point
-            for msg in self.agent.current_session['messages']:
-                # Skip tool messages as we'll add them correctly
-                if msg.get('role') != 'tool':
-                    temp_messages.append(dict(msg))
-
-            # Now we need to add the tool result for the current execution
-            # The agent's current session should have the assistant message with tool_calls
-            # that includes our current tool
-
-            # Look for the most recent assistant message with tool calls
-            assistant_msg_with_tools = None
+            # Add the current tool's result to complete the message history
+            # (See docstring above for why this is necessary - we're paused mid-execution)
             for msg in reversed(temp_messages):
                 if msg.get('role') == 'assistant' and msg.get('tool_calls'):
-                    assistant_msg_with_tools = msg
+                    # Find the tool_call_id matching our current tool
+                    for tool_call in msg.get('tool_calls', []):
+                        if tool_call.get('function', {}).get('name') == tool_name:
+                            # Add missing tool result message for preview
+                            temp_messages.append({
+                                "role": "tool",
+                                "tool_call_id": tool_call['id'],
+                                "content": str(trace_entry.get('result', ''))
+                            })
+                            break
                     break
-
-            if assistant_msg_with_tools:
-                # Add tool result messages for all tools that have been executed
-                # This includes the current tool we're previewing
-                for tool_call in assistant_msg_with_tools.get('tool_calls', []):
-                    if tool_call['function']['name'] == tool_name:
-                        # This is the current tool - add its result
-                        tool_result_message = {
-                            "role": "tool",
-                            "tool_call_id": tool_call['id'],
-                            "content": str(trace_entry.get('result', ''))
-                        }
-                        temp_messages.append(tool_result_message)
-                        # We found and added our tool result, can break
-                        break
 
             # Call LLM to get its next planned action
             # Use the agent's LLM and tools configuration
@@ -278,7 +283,6 @@ class InteractiveDebugger:
         except Exception as e:
             # If preview fails, return None to indicate unavailable
             # This is non-critical, so we don't want to break the debugger
-            # Only show abbreviated error to avoid cluttering the UI
-            if "preview unavailable" not in str(e).lower():
-                print(f"[dim]Preview temporarily unavailable[/dim]")
+            # Show the actual error for debugging (remove this later)
+            print(f"[dim]Preview error: {type(e).__name__}: {str(e)}[/dim]")
             return None

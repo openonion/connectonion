@@ -42,6 +42,7 @@ class BreakpointContext:
     max_iterations: int
     previous_tools: List[str]
     next_actions: Optional[List[Dict]] = None  # Preview of next planned tools
+    tool_function: Optional[Any] = None  # The actual tool function for source inspection
 
 
 class DebuggerUI:
@@ -224,7 +225,17 @@ class DebuggerUI:
     # Private helper methods for cleaner code
 
     def _display_breakpoint_info(self, context: BreakpointContext) -> None:
-        """Display complete debugging context from user prompt to execution result."""
+        """Display complete debugging context from user prompt to execution result.
+
+        Shows a comprehensive panel with:
+        - User prompt and iteration context
+        - Execution flow tree (previous → current → next tools)
+        - Current execution details (function call, result, source code)
+        - Next planned action preview
+
+        Args:
+            context: All breakpoint data including tool info, execution state, and previews
+        """
         # Clear some space
         self.console.print("\n")
 
@@ -327,22 +338,21 @@ class DebuggerUI:
         sections.append(Text(""))  # Spacing
 
         # Source code section
-        sections.append(Text(f"Source (@xray at agent_debug.py:21)", style="dim italic"))
+        source_code, file_info, start_line = self._get_tool_source(context)
+        sections.append(Text(f"Source ({file_info})", style="dim italic"))
 
-        source_code = self._get_tool_source(context.tool_name)
         if source_code:
-            syntax = Syntax(source_code, "python", theme="monokai", line_numbers=True, line_range=(1, 10))
+            # Use start_line_number to show actual file line numbers
+            syntax = Syntax(
+                source_code,
+                "python",
+                theme="monokai",
+                line_numbers=True,
+                start_line=start_line
+            )
+            sections.append(syntax)
         else:
-            # Fallback example
-            fallback_code = """@xray
-def search_info(query: str) -> str:
-    \"\"\"Search for information.\"\"\"
-    if "hello" in query.lower():
-        return "Information about hello found..."
-    return f"Information about '{query}' found in database.\""""
-            syntax = Syntax(fallback_code, "python", theme="monokai", line_numbers=True)
-
-        sections.append(syntax)
+            sections.append(Text("  Source code unavailable", style="dim"))
         sections.append(Text("─" * 60, style="dim"))  # Visual separator
         sections.append(Text(""))  # Spacing
 
@@ -414,15 +424,51 @@ def search_info(query: str) -> str:
 
         self.console.print(main_panel)
 
-    def _get_tool_source(self, tool_name: str) -> Optional[str]:
-        """Try to get the source code of a tool (simplified version)."""
-        # This is a simplified version - in real implementation,
-        # we'd need access to the actual tool object
-        # For now, return None to use the example
-        return None
+    def _get_tool_source(self, context: BreakpointContext) -> Tuple[Optional[str], str, int]:
+        """Get the source code of the actual tool function.
+
+        Unwraps decorators to get the original function and extracts:
+        - Source code using inspect.getsource()
+        - File location and starting line number
+        - File info formatted as "filename:line"
+
+        Args:
+            context: Breakpoint context containing tool_function
+
+        Returns:
+            Tuple of (source_code, file_info, start_line_number)
+            Returns (None, "source unavailable", 1) if function not available
+        """
+        if not context.tool_function:
+            return None, "source unavailable", 1
+
+        # Unwrap to get the original function (not the wrapper)
+        func = context.tool_function
+        while hasattr(func, '__wrapped__'):
+            func = func.__wrapped__
+
+        source = inspect.getsource(func)
+        file_path = inspect.getfile(func)
+        start_line = inspect.getsourcelines(func)[1]
+
+        # Show just filename:line
+        import os
+        file_name = os.path.basename(file_path)
+        file_info = f"{file_name}:{start_line}"
+
+        return source, file_info, start_line
 
     def _show_action_menu(self) -> BreakpointAction:
-        """Show the action menu and get user's choice."""
+        """Show the action menu and get user's choice.
+
+        Tries multiple UI libraries in order of preference:
+        1. simple-term-menu (best compatibility, no asyncio conflicts)
+        2. questionary (may conflict with Playwright/asyncio)
+        3. simple input fallback (when no TTY or event loop conflicts)
+
+        Returns:
+            User's chosen action (CONTINUE, EDIT, or QUIT)
+        """
         # Try to use simple-term-menu (no asyncio conflicts, works with Playwright)
         try:
             from simple_term_menu import TerminalMenu
@@ -500,7 +546,16 @@ def search_info(query: str) -> str:
         return action
 
     def _simple_input_fallback(self) -> BreakpointAction:
-        """Simple text input fallback when event loop conflicts occur."""
+        """Simple text input fallback when event loop conflicts occur.
+
+        Used when:
+        - Asyncio event loop is already running (Playwright, Jupyter)
+        - No TTY available
+        - Menu libraries not installed or not supported
+
+        Returns:
+            User's chosen action based on keyboard input (c/e/q)
+        """
         self.console.print("\n[cyan bold]Action:[/cyan bold]")
         self.console.print("  [c] Continue execution 🚀")
         self.console.print("  [e] Edit values 🔍")
@@ -524,7 +579,14 @@ def search_info(query: str) -> str:
                 return BreakpointAction.QUIT
 
     def _display_current_value(self, value: Any) -> None:
-        """Display the current value nicely formatted."""
+        """Display the current value nicely formatted.
+
+        Uses Rich syntax highlighting for JSON and appropriate
+        formatting for strings, dicts, lists, and other types.
+
+        Args:
+            value: The value to display (any type)
+        """
         self.console.print("\n")
 
         # Create a table for the value display
@@ -559,7 +621,15 @@ def search_info(query: str) -> str:
         self.console.print(panel)
 
     def _get_new_value(self) -> Optional[Any]:
-        """Get new value from user."""
+        """Get new value from user via text input.
+
+        Prompts user to enter a Python expression and attempts to
+        parse it using ast.literal_eval(). Falls back to treating
+        as string if parsing fails.
+
+        Returns:
+            Parsed Python value (str, dict, list, etc.) or None if empty
+        """
         self.console.print("\n[cyan]Enter new result value:[/cyan]")
         self.console.print("[dim]Tip: Enter valid Python expression (string, dict, list, etc.)[/dim]")
         self.console.print("[dim]Examples: 'new text', {'key': 'value'}, [1, 2, 3][/dim]\n")
@@ -577,7 +647,14 @@ def search_info(query: str) -> str:
             return new_value_str
 
     def _display_updated_value(self, value: Any) -> None:
-        """Display the updated value."""
+        """Display the updated value after successful modification.
+
+        Shows success message and formatted value in yellow panel
+        to distinguish from the original value display.
+
+        Args:
+            value: The newly updated value to display
+        """
         self.console.print(f"\n[green]✅ Result updated successfully![/green]\n")
 
         # Create a table for the updated value
@@ -610,7 +687,21 @@ def search_info(query: str) -> str:
         )
         self.console.print(panel)
     def _display_repl_header(self, context: BreakpointContext, namespace: Dict[str, Any]) -> None:
-        """Display Python REPL header with available variables."""
+        """Display Python REPL header with available variables.
+
+        Shows a clean table of all variables available in the REPL namespace,
+        organized by priority groups:
+        1. Execution: result, tool_name, tool_args
+        2. Control: iteration, max_iterations
+        3. Context: user_prompt, next_actions
+        4. Agent: agent_name, model, turn, tools_available
+        5. Advanced: messages, trace_entry, previous_tools
+        6. Helpers: pp (pretty print function)
+
+        Args:
+            context: Breakpoint context for reference
+            namespace: Dict of all variables available in REPL
+        """
         self.console.print("\n")
         self.console.print(Panel(
             "[bold white]Python REPL - Interactive Debugging[/bold white]\n"
@@ -670,7 +761,21 @@ def search_info(query: str) -> str:
         self.console.print()
 
     def _format_value_for_repl(self, value: Any) -> str:
-        """Format value with smart, consistent formatting for REPL display."""
+        """Format value with smart, consistent formatting for REPL display.
+
+        Handles different types intelligently:
+        - None/bools/numbers: Compact cyan format
+        - Strings: Truncate with char count if > 80 chars
+        - Dicts: Inline if small, indented if medium, collapsed if large
+        - Lists: Inline if simple, indented if fits, collapsed if large
+        - Functions: Show as helper description
+
+        Args:
+            value: Any Python value to format
+
+        Returns:
+            Rich-formatted string for display in REPL table
+        """
 
         # None
         if value is None:
@@ -709,7 +814,15 @@ def search_info(query: str) -> str:
                 return f"[white]{str_repr[:100]}...[/white] [dim]({len(str_repr)} chars)[/dim]"
 
     def _format_string_value(self, s: str) -> str:
-        """Format string values with truncation and char count."""
+        """Format string values with truncation and char count.
+
+        Args:
+            s: String to format
+
+        Returns:
+            Short strings (≤80 chars): repr() with green color
+            Long strings (>80 chars): Truncated with "..." and char count
+        """
         # Short strings - show as-is
         if len(s) <= 80:
             return f"[green]{repr(s)}[/green]"
@@ -719,7 +832,17 @@ def search_info(query: str) -> str:
         return f"[green]{truncated}[/green]\n                    [dim]({len(s)} chars)[/dim]"
 
     def _format_dict_value(self, d: dict) -> str:
-        """Format dict values using pprint for clean output."""
+        """Format dict values using pprint for clean output.
+
+        Args:
+            d: Dictionary to format
+
+        Returns:
+            Empty dict: "{{}}" in dim
+            Small dict (≤3 keys, fits inline): Compact cyan format
+            Medium dict (≤5 lines): Multi-line with indentation
+            Large dict: Collapsed summary with key count and pp() hint
+        """
         if not d:
             return "[dim]{{}}[/dim]"
 
@@ -742,7 +865,17 @@ def search_info(query: str) -> str:
         return f"[dim cyan]{{... {len(d)} keys}}[/dim cyan] [dim]- type: pp(var_name)[/dim]"
 
     def _format_list_value(self, lst: list) -> str:
-        """Format list values using pprint for clean output."""
+        """Format list values using pprint for clean output.
+
+        Args:
+            lst: List to format
+
+        Returns:
+            Empty list: "[]" in dim
+            Simple string list (≤5 items, fits inline): Compact format
+            Medium list (≤5 lines): Multi-line with indentation
+            Large list: Collapsed summary with item count and pp() hint
+        """
         if not lst:
             return "[dim][][/dim]"
 
@@ -768,7 +901,16 @@ def search_info(query: str) -> str:
         return f"[dim cyan][... {len(lst)} items][/dim cyan] [dim]- type: pp(var_name)[/dim]"
 
     def _format_value_preview(self, value: Any) -> str:
-        """Format a value for compact preview display."""
+        """Format a value for compact preview display.
+
+        Used for showing values in constrained spaces like next action previews.
+
+        Args:
+            value: Any value to format
+
+        Returns:
+            Truncated string representation (max 30 chars)
+        """
         if isinstance(value, str):
             return f"'{value[:30]}...'" if len(value) > 30 else f"'{value}'"
         elif isinstance(value, (dict, list)):
@@ -778,7 +920,14 @@ def search_info(query: str) -> str:
             return str(value)
 
     def _display_modifications(self, modifications: Dict[str, Any]) -> None:
-        """Display what was modified during REPL session."""
+        """Display what was modified during REPL session.
+
+        Shows each modified variable with its new value,
+        formatted appropriately for display.
+
+        Args:
+            modifications: Dict of variable_name -> new_value pairs
+        """
         self.console.print("\n[bold green]✅ Modifications Applied:[/bold green]\n")
         
         for key, value in modifications.items():
