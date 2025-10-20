@@ -4,6 +4,23 @@
 
 > **Most Important:** Use arrow keys to navigate menus, or press `c` to continue. That's all you need to know to start!
 
+## Feature Status (Updated Oct 20, 2025)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| Continue execution | ✅ Available (v0.3.2) | Press `c` or Enter |
+| Edit variables (Python REPL) | ✅ Available (v0.3.2) | Press `e` for full Python shell |
+| Stop debugging | ✅ Available (v0.3.2) | Press `q` to exit |
+| Source code display | ✅ Available (v0.3.2) | Shows actual function with line numbers |
+| Next action preview | ✅ Available (v0.3.2) | See what LLM plans next |
+| **Ask AI for help** | 🚧 Coming by Nov 2 | Context-aware debugging assistance |
+| **View execution trace** | 🚧 Coming by Nov 2 | Full timeline visualization |
+| **Toggle step mode** | 🚧 Coming by Nov 2 | Pause at every tool |
+| **Universal commands** | 🚧 Coming by Nov 2 | `/menu`, `/continue`, `?` |
+
+**Current version:** v0.3.2
+**Next release:** v0.4.0 (targeting Nov 2, 2025)
+
 ## Quick Start
 
 ```python
@@ -64,14 +81,11 @@ Context:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 What do you want to do?
-  → Continue execution
-    Ask AI for help
-    Edit variables (Python)
-    View execution trace
-    Toggle step mode
-    Stop debugging
+  → Continue execution 🚀       [c or Enter]
+    Edit values 🔍             [e]
+    Quit debugging 🚫          [q]
 
-💡 Use ↑↓ arrows and Enter, or shortcuts: [c] [a] [e] [v] [s] [q]
+💡 Coming soon (by Nov 2): Ask AI [a], View trace [v], Step mode [s]
 >
 ```
 
@@ -107,14 +121,11 @@ At every `@xray` breakpoint, you see this menu:
 
 ```
 What do you want to do?
-  → Continue execution       [Enter or c]
-    Ask AI for help          [a]
-    Edit variables (Python)  [e]
-    View execution trace     [v]
-    Toggle step mode        [s]
-    Stop debugging          [q]
+  → Continue execution 🚀       [c or Enter]
+    Edit values 🔍             [e]
+    Quit debugging 🚫          [q]
 
-💡 Use ↑↓ arrows and Enter, or type shortcuts
+💡 Coming soon (by Nov 2): Ask AI [a], View trace [v], Step mode [s]
 >
 ```
 
@@ -124,19 +135,21 @@ What do you want to do?
 - Use `↑` and `↓` to highlight option
 - Press `Enter` to select
 
-**Method 2: Shortcuts** (Power user)
+**Method 2: Shortcuts** (Power user) - ✅ Available now
 - Type `c` for Continue
-- Type `a` for Ask AI
 - Type `e` for Edit
+- Type `q` for Quit
+
+**🚧 Coming by Nov 2:**
+- Type `a` for Ask AI
 - Type `v` for View trace
 - Type `s` for Step mode
-- Type `q` for Stop
 
 Both methods do exactly the same thing - use whichever feels natural!
 
 ---
 
-## Continue Execution
+## Continue Execution ✅
 
 The most common action - just press `c` or `Enter`:
 
@@ -159,7 +172,9 @@ What do you want to do?
 
 ---
 
-## Ask AI for Help
+## Ask AI for Help 🚧
+
+**Coming by Nov 2, 2025**
 
 Get context-aware help from AI about what's happening:
 
@@ -220,7 +235,7 @@ ai>
 
 ---
 
-## Edit Variables (Python)
+## Edit Variables (Python) ✅
 
 Modify variables to test "what if" scenarios:
 
@@ -282,7 +297,9 @@ Available variables: query, result, tool_args
 
 ---
 
-## View Execution Trace
+## View Execution Trace 🚧
+
+**Coming by Nov 2, 2025**
 
 See the full execution history:
 
@@ -325,7 +342,9 @@ Press Enter to return to menu...
 
 ---
 
-## Toggle Step Mode
+## Toggle Step Mode 🚧
+
+**Coming by Nov 2, 2025**
 
 Pause at **EVERY tool**, not just `@xray` tools:
 
@@ -390,7 +409,9 @@ What do you want to do?
 
 ---
 
-## Universal Commands
+## Universal Commands 🚧
+
+**Coming by Nov 2, 2025**
 
 These commands work **everywhere** (menu, AI mode, Python mode):
 
@@ -468,14 +489,11 @@ Local Variables:
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 What do you want to do?
-  → Continue execution
-    Ask AI for help
-    Edit variables (Python)
-    View execution trace
-    Toggle step mode
-    Stop debugging
+  → Continue execution 🚀       [c or Enter]
+    Edit values 🔍             [e]
+    Quit debugging 🚫          [q]
 
-💡 Use ↑↓ arrows and Enter, or shortcuts: [c] [a] [e] [v] [s] [q]
+💡 Coming soon (by Nov 2): Ask AI [a], View trace [v], Step mode [s]
 > a    [Select "Ask AI"]
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -839,18 +857,18 @@ agent.auto_debug(step=True)
 
 ## Command Reference
 
-### Menu Options
+### Menu Options (v0.3.2)
 
-| Option | Shortcut | Description |
-|--------|----------|-------------|
-| Continue execution | `c` or `Enter` | Resume agent execution |
-| Ask AI for help | `a` | Enter AI mode for questions |
-| Edit variables (Python) | `e` | Enter Python REPL to modify state |
-| View execution trace | `v` | Show full execution history |
-| Toggle step mode | `s` | Pause at ALL tools (not just @xray) |
-| Stop debugging | `q` | Exit debug session |
+| Option | Shortcut | Status | Description |
+|--------|----------|--------|-------------|
+| Continue execution | `c` or `Enter` | ✅ Available | Resume agent execution |
+| Edit variables (Python) | `e` | ✅ Available | Enter Python REPL to modify state |
+| Stop debugging | `q` | ✅ Available | Exit debug session |
+| **Ask AI for help** | `a` | 🚧 Nov 2 | Enter AI mode for questions |
+| **View execution trace** | `v` | 🚧 Nov 2 | Show full execution history |
+| **Toggle step mode** | `s` | 🚧 Nov 2 | Pause at ALL tools (not just @xray) |
 
-### Universal Commands (Work Everywhere)
+### Universal Commands 🚧 (Coming by Nov 2)
 
 | Command | Description |
 |---------|-------------|
@@ -859,7 +877,7 @@ agent.auto_debug(step=True)
 | `?` or `/help` | Show help |
 | `/quit` | Exit debug session |
 
-### AI Mode Commands
+### AI Mode Commands 🚧 (Coming by Nov 2)
 
 | Input | What Happens |
 |-------|--------------|
@@ -868,15 +886,12 @@ agent.auto_debug(step=True)
 | `/continue` | Resume execution |
 | `?` | Show help |
 
-### Python Mode Commands
+### Python Mode Commands ✅ (Available in v0.3.2)
 
 | Input | What Happens |
 |-------|--------------|
 | Python code | Execute in current scope |
-| `/menu` | Back to menu |
-| `/continue` | Resume execution |
-| `Ctrl+D` | Resume execution |
-| `?` | Show help |
+| Exit REPL | Press `Ctrl+D` to continue execution |
 
 ---
 
@@ -967,34 +982,23 @@ A: Not currently - this is an interactive tool. For automation, use unit tests w
 
 ---
 
-## Keyboard Shortcuts Summary
+## Keyboard Shortcuts Summary (v0.3.2)
 
-### Menu Navigation
+### Menu Navigation ✅
 - `↑` `↓` - Move selection
 - `Enter` - Select highlighted option
-- `c` - Continue
+- `c` - Continue ✅
+- `e` - Edit Python ✅
+- `q` - Quit ✅
+
+**🚧 Coming by Nov 2:**
 - `a` - Ask AI
-- `e` - Edit Python
 - `v` - View trace
 - `s` - Step mode
-- `q` - Quit
 
-### AI Mode
-- Type questions naturally
-- `/menu` - Back to menu
-- `/continue` - Resume
-- `?` - Help
-
-### Python Mode
+### Python Mode ✅
 - Type Python code
-- `/menu` - Back to menu
-- `/continue` - Resume
-- `Ctrl+D` - Resume
-- `?` - Help
-
-### Universal (Anywhere)
-- `?` - Help
-- `/quit` - Exit session
+- `Ctrl+D` - Resume execution
 
 ---
 
