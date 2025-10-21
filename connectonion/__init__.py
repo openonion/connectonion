@@ -1,6 +1,6 @@
 """ConnectOnion - A simple agent framework with behavior tracking."""
 
-__version__ = "0.3.2"
+__version__ = "0.3.3"
 
 from .agent import Agent
 from .tool_factory import create_tool_from_function
