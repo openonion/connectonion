@@ -70,6 +70,25 @@ This command will:
 4. Save the token for future use"""
     )
 
+    # Reset command
+    reset_parser = subparsers.add_parser(
+        'reset',
+        help='Reset account and create new one',
+        description="""Reset your ConnectOnion account.
+
+WARNING: This will delete all your data and create a new account.
+You will lose your balance and transaction history."""
+    )
+
+    # Status command
+    status_parser = subparsers.add_parser(
+        'status',
+        help='Check account status and balance',
+        description="""Check your ConnectOnion account status.
+
+Shows your balance, usage, and account information without re-authenticating."""
+    )
+
     # Browser command
     browser_parser = subparsers.add_parser('browser', help='Execute browser automation commands')
     browser_parser.add_argument('command', help='Browser command to execute')
@@ -88,6 +107,8 @@ A simple Python framework for creating AI agents.
   [green]init[/green]      Initialize a ConnectOnion project in current directory
   [green]create[/green]    Create a new ConnectOnion project in a new directory
   [green]auth[/green]      Authenticate with OpenOnion for managed keys
+  [green]status[/green]    Check account status and balance
+  [green]reset[/green]     Reset account and create new one
   [green]browser[/green]   Execute browser automation commands
 
 [bold cyan]Options:[/bold cyan]
@@ -164,6 +185,12 @@ def cli():
     elif args.command == 'auth':
         from .commands.auth_commands import handle_auth
         handle_auth()
+    elif args.command == 'reset':
+        from .commands.reset_commands import handle_reset
+        handle_reset()
+    elif args.command == 'status':
+        from .commands.status_commands import handle_status
+        handle_status()
     elif args.command == 'browser':
         from .commands.browser_commands import handle_browser
         handle_browser(args.command)

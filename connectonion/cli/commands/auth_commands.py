@@ -179,8 +179,8 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
             info_lines.append(f"[cyan]Emails/Month:[/cyan] {email_info.get('quota', 100):,}")
 
         if user:
-            info_lines.append(f"[cyan]Token Credits:[/cyan] ${user.get('credits_usd', 0.0):.2f}")
-            info_lines.append(f"[cyan]Total Spent:[/cyan] ${user.get('total_cost_usd', 0.0):.2f}")
+            info_lines.append(f"[cyan]Balance:[/cyan] ${user.get('balance_usd', 0.0):.4f}")
+            info_lines.append(f"[cyan]Total Spent:[/cyan] ${user.get('total_cost_usd', 0.0):.4f}")
             info_lines.append(f"[cyan]New User:[/cyan] {'Yes' if user.get('is_new_user') else 'No'}")
 
         info_lines.append(f"[cyan]API Key:[/cyan] {token[:20]}...")
@@ -200,7 +200,7 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
             console.print("   • Upgrade to Plus/Pro tier for more emails and custom domains")
             console.print("   • Visit https://oo.openonion.ai to manage your account")
 
-        if user and user.get('credits_usd', 0) == 0:
+        if user and user.get('balance_usd', 0) <= 0:
             console.print("   • Purchase tokens at https://oo.openonion.ai to use managed LLM models")
 
         return True

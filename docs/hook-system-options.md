@@ -4,10 +4,10 @@ Four different API styles for hooks in ConnectOnion.
 
 ---
 
-## Option 1: Constructor Hooks
+## Option 1: TypedDict Hooks
 
 ```python
-from connectonion import Agent
+from connectonion import Agent, HookEvents
 
 def log_tokens(data):
     print(f"Tokens: {data['usage']['total_tokens']}")
@@ -27,25 +27,63 @@ def cache_results(data):
 agent = Agent(
     "assistant",
     tools=[search, analyze],
-    hooks={
-        'before_llm': [add_timestamp],
-        'after_llm': [log_tokens],
-        'after_tool': [cache_results],
-    }
+
+    # ✨ TypedDict provides IDE autocomplete + type checking
+    on_event=dict(
+        before_llm=[add_timestamp],
+        after_llm=[log_tokens],
+        after_tool=[cache_results],
+    )
 )
 
 agent.input("Find Python info")
 ```
 
+**Type Definition (in connectonion):**
+```python
+from typing import TypedDict, List, Callable
+
+class HookEvents(TypedDict, total=False):
+    """Type-safe hook event configuration.
+
+    IDE will autocomplete event names and type checker will validate.
+    All fields are optional - only specify the events you need.
+    """
+    before_llm: List[Callable]
+    after_llm: List[Callable]
+    before_tool: List[Callable]
+    after_tool: List[Callable]
+    on_error: List[Callable]
+```
+
+**With Type Annotation (for IDE hints):**
+```python
+# Option A: Inline annotation
+on_event: HookEvents = dict(
+    before_llm=[add_timestamp],
+    after_llm=[log_tokens]  # ← IDE autocompletes event names!
+)
+
+# Option B: Without annotation (still works, less IDE help)
+on_event=dict(
+    before_llm=[add_timestamp],
+    after_llm=[log_tokens]
+)
+
+agent = Agent("assistant", tools=[search], on_event=on_event)
+```
+
 **Reusable across agents:**
 ```python
-common_hooks = {
-    'after_llm': [log_tokens],
-    'after_tool': [cache_results],
-}
+from connectonion import HookEvents
 
-agent1 = Agent("assistant", tools=[search], hooks=common_hooks)
-agent2 = Agent("analyst", tools=[analyze], hooks=common_hooks)
+common_hooks: HookEvents = dict(
+    after_llm=[log_tokens],
+    after_tool=[cache_results],
+)
+
+agent1 = Agent("assistant", tools=[search], on_event=common_hooks)
+agent2 = Agent("analyst", tools=[analyze], on_event=common_hooks)
 ```
 
 ---
@@ -58,13 +96,14 @@ from connectonion import Agent, before_llm, after_llm, after_tool
 def log_tokens(data):
     print(f"Tokens: {data['usage']['total_tokens']}")
 
-def add_timestamp(data):
+def add_timestamp(agent):
     from datetime import datetime
+    agent.messages 
     data['messages'].append({
         'role': 'system',
         'content': f'Current time: {datetime.now()}'
     })
-    return data
+   
 
 def cache_results(data):
     cache[data['tool_name']] = data['result']
@@ -73,7 +112,7 @@ def cache_results(data):
 agent = Agent(
     "assistant",
     tools=[search, analyze],
-    on_event=[
+    hooks=[
         before_llm(add_timestamp),
         after_llm(log_tokens),
         after_tool(cache_results),
@@ -226,22 +265,29 @@ agent.off('after_llm', log_tokens)
 ### Cost Tracking
 
 ```python
-# Option 1: hooks={}
-agent = Agent("assistant", tools=[search],
-    hooks={'after_llm': [lambda d: print(f"Cost: ${d['usage']['total_tokens'] * 0.00001:.4f}")]})
+# Option 1: TypedDict
+from connectonion import Agent, HookEvents
 
-# Option 2: on_event=[]
+agent = Agent(
+    "assistant",
+    tools=[search],
+    on_event=dict(
+        after_llm=[lambda d: print(f"Cost: ${d['usage']['total_tokens'] * 0.00001:.4f}")]
+    )
+)
+
+# Option 2: Event Wrappers
 from connectonion import after_llm
 agent = Agent("assistant", tools=[search], on_event=[
     after_llm(lambda d: print(f"Cost: ${d['usage']['total_tokens'] * 0.00001:.4f}"))
 ])
 
-# Option 3: @hook
+# Option 3: Decorator
 @hook('after_llm')
 def track_cost(data):
     print(f"Cost: ${data['usage']['total_tokens'] * 0.00001:.4f}")
 
-# Option 4: agent.on()
+# Option 4: Event Emitter
 agent.on('after_llm', lambda d: print(f"Cost: ${d['usage']['total_tokens'] * 0.00001:.4f}"))
 ```
 
@@ -255,30 +301,41 @@ def cache_tool(data):
     cache[key] = data['result']
     return data
 
-# Option 1: hooks={'after_tool': [cache_tool]}
-# Option 2: on_event=[after_tool(cache_tool)]
-# Option 3: @hook('after_tool')
-# Option 4: agent.on('after_tool', cache_tool)
+# Option 1: TypedDict
+agent = Agent("assistant", tools=[search], on_event=dict(after_tool=[cache_tool]))
+
+# Option 2: Event Wrappers
+agent = Agent("assistant", tools=[search], on_event=[after_tool(cache_tool)])
+
+# Option 3: Decorator
+@hook('after_tool')
+def cache_tool(data): ...
+
+# Option 4: Event Emitter
+agent.on('after_tool', cache_tool)
 ```
 
 ### Custom Logging
 
 ```python
-# Option 1: hooks={}
-agent = Agent("assistant", tools=[search],
-    hooks={
-        'before_tool': [lambda d: logger.info(f"Tool: {d['tool_name']}")],
-        'on_error': [lambda d: logger.error(f"Error: {d['error']}")]
-    })
+# Option 1: TypedDict
+agent = Agent(
+    "assistant",
+    tools=[search],
+    on_event=dict(
+        before_tool=[lambda d: logger.info(f"Tool: {d['tool_name']}")],
+        on_error=[lambda d: logger.error(f"Error: {d['error']}")]
+    )
+)
 
-# Option 2: on_event=[]
+# Option 2: Event Wrappers
 from connectonion import before_tool, on_error
 agent = Agent("assistant", tools=[search], on_event=[
     before_tool(lambda d: logger.info(f"Tool: {d['tool_name']}")),
     on_error(lambda d: logger.error(f"Error: {d['error']}"))
 ])
 
-# Option 3: @hook
+# Option 3: Decorator
 @hook('before_tool')
 def log_tool(data):
     logger.info(f"Tool: {data['tool_name']}")
@@ -287,7 +344,7 @@ def log_tool(data):
 def log_error(data):
     logger.error(f"Error: {data['error']}")
 
-# Option 4: agent.on()
+# Option 4: Event Emitter
 agent.on('before_tool', lambda d: logger.info(f"Tool: {d['tool_name']}"))
 agent.on('on_error', lambda d: logger.error(f"Error: {d['error']}"))
 ```
