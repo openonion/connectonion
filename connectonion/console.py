@@ -46,7 +46,7 @@ class Console:
             self.log_file.parent.mkdir(parents=True, exist_ok=True)
 
         # Add session separator
-        with open(self.log_file, 'a') as f:
+        with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(f"\n{'='*60}\n")
             f.write(f"Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"{'='*60}\n\n")
@@ -72,7 +72,7 @@ class Console:
         # Log file output (plain text) if enabled
         if self.log_file:
             plain = self._to_plain_text(message)
-            with open(self.log_file, 'a') as f:
+            with open(self.log_file, 'a', encoding='utf-8') as f:
                 f.write(f"[{timestamp}] {plain}\n")
 
     def print_xray_table(
@@ -131,7 +131,7 @@ class Console:
 
         # Log to file if enabled (plain text version)
         if self.log_file:
-            with open(self.log_file, 'a') as f:
+            with open(self.log_file, 'a', encoding='utf-8') as f:
                 f.write(f"\n@xray: {tool_name}\n")
                 f.write(f"  agent: {agent.name}\n")
                 f.write(f"  task: {prompt_preview}\n")

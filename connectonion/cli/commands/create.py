@@ -43,7 +43,7 @@ def ensure_global_config() -> Dict[str, Any]:
 
     # If exists, just load and return
     if config_path.exists():
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             return toml.load(f)
 
     # First time - create global config
@@ -83,7 +83,7 @@ def ensure_global_config() -> Dict[str, Any]:
     }
 
     # Save config
-    with open(config_path, 'w') as f:
+    with open(config_path, 'w', encoding='utf-8') as f:
         toml.dump(config, f)
     console.print(f"  ✓ Created ~/.co/config.toml")
 
@@ -91,7 +91,8 @@ def ensure_global_config() -> Dict[str, Any]:
     keys_env = global_dir / "keys.env"
     if not keys_env.exists():
         keys_env.touch()
-        os.chmod(keys_env, 0o600)
+        if sys.platform != 'win32':
+            os.chmod(keys_env, 0o600)  # Read/write for owner only (Unix/Mac only)
     console.print(f"  ✓ Created ~/.co/keys.env (add your API keys here)")
 
     return config
@@ -149,7 +150,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
 
     # Try to load existing keys from global config
     if global_keys_env.exists() and not api_key:
-        with open(global_keys_env, 'r') as f:
+        with open(global_keys_env, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
@@ -188,14 +189,14 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         # Check if key already exists in global config
         key_exists = False
         if global_keys_env.exists():
-            with open(global_keys_env, 'r') as f:
+            with open(global_keys_env, 'r', encoding='utf-8') as f:
                 content = f.read()
                 if f"{env_var}=" in content:
                     key_exists = True
 
         # Save to global keys.env if not exists
         if not key_exists:
-            with open(global_keys_env, 'a') as f:
+            with open(global_keys_env, 'a', encoding='utf-8') as f:
                 if global_keys_env.stat().st_size > 0:
                     f.write('\n')
                 f.write(f"{env_var}={api_key}\n")
@@ -383,7 +384,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # Create custom agent.py if custom template
     if custom_code:
         agent_file = project_dir / "agent.py"
-        agent_file.write_text(custom_code)
+        agent_file.write_text(custom_code, encoding='utf-8')
         files_created.append("agent.py")
 
     # Create .co directory (skip if it already exists from temp project)
@@ -444,7 +445,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     }
 
     config_path = co_dir / "config.toml"
-    with open(config_path, "w") as f:
+    with open(config_path, "w", encoding='utf-8') as f:
         toml.dump(config, f)
     files_created.append(".co/config.toml")
 
@@ -455,7 +456,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # Try to copy from global keys.env first
     if global_keys_env.exists() and global_keys_env.stat().st_size > 0:
         # Copy global keys to project
-        with open(global_keys_env, 'r') as f:
+        with open(global_keys_env, 'r', encoding='utf-8') as f:
             env_content = f.read()
         console.print(f"{Colors.GREEN}✓ Copied API keys from ~/.co/keys.env{Colors.END}")
         env_has_keys = True
@@ -475,7 +476,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
 # MODEL=gpt-4o-mini
 """
 
-    env_path.write_text(env_content)
+    env_path.write_text(env_content, encoding='utf-8')
     files_created.append(".env")
 
     # Create .gitignore if in git repo
@@ -492,7 +493,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
 __pycache__/
 todo.md
 """
-        gitignore_path.write_text(gitignore_content.lstrip())
+        gitignore_path.write_text(gitignore_content.lstrip(), encoding='utf-8')
         files_created.append(".gitignore")
 
     # Success message with Rich formatting

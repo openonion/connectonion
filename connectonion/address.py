@@ -10,6 +10,7 @@ LLM-Note:
 """
 
 import os
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -151,13 +152,15 @@ def save(address_data: Dict[str, Any], co_dir: Path) -> None:
     # Save private key (binary format)
     key_file = keys_dir / "agent.key"
     key_file.write_bytes(bytes(address_data["signing_key"]))
-    key_file.chmod(0o600)  # Read/write for owner only
-    
+    if sys.platform != 'win32':
+        key_file.chmod(0o600)  # Read/write for owner only (Unix/Mac only)
+
     # Save recovery phrase if present
     if "seed_phrase" in address_data:
         recovery_file = keys_dir / "recovery.txt"
-        recovery_file.write_text(address_data["seed_phrase"])
-        recovery_file.chmod(0o600)  # Read/write for owner only
+        recovery_file.write_text(address_data["seed_phrase"], encoding='utf-8')
+        if sys.platform != 'win32':
+            recovery_file.chmod(0o600)  # Read/write for owner only (Unix/Mac only)
     
     # Create warning file
     warning_file = keys_dir / "DO_NOT_SHARE"
@@ -174,7 +177,7 @@ Files:
 
 Keep these files secure and backed up.
 """
-        warning_file.write_text(warning_content)
+        warning_file.write_text(warning_content, encoding='utf-8')
 
 
 def load(co_dir: Path) -> Optional[Dict[str, Any]]:
@@ -215,7 +218,7 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
         recovery_file = keys_dir / "recovery.txt"
         seed_phrase = None
         if recovery_file.exists():
-            seed_phrase = recovery_file.read_text().strip()
+            seed_phrase = recovery_file.read_text(encoding='utf-8').strip()
         
         # Try to load email and activation status from config.toml
         email = f"{address[:10]}@mail.openonion.ai"  # Default

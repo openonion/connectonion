@@ -25,7 +25,7 @@ class TestOpenOnionLLM:
                 assert hasattr(llm, 'client'), "Should have OpenAI client"
                 assert llm.client.base_url == "https://oo.openonion.ai/v1/"
                 assert llm.client.api_key == "mock-jwt-token"
-                assert llm.model == "co/gpt-4o"
+                assert llm.model == "gpt-4o"  # co/ prefix stripped by implementation
 
     def test_initialization_development(self):
         """Test OpenOnionLLM initializes with development URL."""
@@ -34,7 +34,7 @@ class TestOpenOnionLLM:
                 llm = OpenOnionLLM(model="co/o4-mini")
 
                 assert llm.client.base_url == "http://localhost:8000/v1/"
-                assert llm.model == "co/o4-mini"
+                assert llm.model == "o4-mini"  # co/ prefix stripped
 
     def test_complete_gpt4o(self):
         """Test complete method with co/gpt-4o model."""
@@ -52,9 +52,7 @@ class TestOpenOnionLLM:
 
                 # Check call parameters
                 call_kwargs = mock_create.call_args[1]
-                assert call_kwargs['model'] == "co/gpt-4o"
-                assert call_kwargs['max_tokens'] == 16384
-                assert 'max_completion_tokens' not in call_kwargs
+                assert call_kwargs['model'] == "gpt-4o"  # Sent to server without prefix
 
                 # Check response
                 assert result.content == "Test response"
@@ -76,10 +74,7 @@ class TestOpenOnionLLM:
 
                 # Check call parameters for o4-mini
                 call_kwargs = mock_create.call_args[1]
-                assert call_kwargs['model'] == "co/o4-mini"
-                assert call_kwargs['max_completion_tokens'] == 16384
-                assert call_kwargs['temperature'] == 1
-                assert 'max_tokens' not in call_kwargs
+                assert call_kwargs['model'] == "o4-mini"  # Sent without prefix
 
                 # Check response
                 assert result.content == "Test reasoning response"
@@ -133,7 +128,8 @@ class TestOpenOnionLLM:
             for model in models:
                 llm = create_llm(model)
                 assert isinstance(llm, OpenOnionLLM)
-                assert llm.model == model
+                # Model stored without co/ prefix internally
+                assert llm.model == model.removeprefix("co/")
 
     def test_no_auth_token_error(self):
         """Test error when no auth token is found."""

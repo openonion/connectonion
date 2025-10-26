@@ -1,5 +1,6 @@
 """Authentication and registration commands for ConnectOnion CLI."""
 
+import sys
 import time
 import toml
 import requests
@@ -28,7 +29,7 @@ def _save_api_key_to_env(co_dir: Path, api_key: str, agent_email: str = None) ->
 
     # Read existing .env if it exists
     if env_file.exists():
-        with open(env_file, "r") as f:
+        with open(env_file, "r", encoding='utf-8') as f:
             for line in f:
                 if line.strip().startswith("OPENONION_API_KEY="):
                     env_lines.append(f"OPENONION_API_KEY={api_key}\n")
@@ -50,11 +51,12 @@ def _save_api_key_to_env(co_dir: Path, api_key: str, agent_email: str = None) ->
         env_lines.append(f"AGENT_EMAIL={agent_email}\n")
 
     # Write .env file
-    with open(env_file, "w") as f:
+    with open(env_file, "w", encoding='utf-8') as f:
         f.writelines(env_lines)
 
-    # Make sure file permissions are restrictive
-    env_file.chmod(0o600)
+    # Make sure file permissions are restrictive (Unix/Mac only)
+    if sys.platform != 'win32':
+        env_file.chmod(0o600)
 
 
 def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
@@ -107,7 +109,7 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
             agent_email = f"{public_key[:10]}@mail.openonion.ai"
 
         # Save token to appropriate .env file(s)
-        is_global = co_dir == Path.home() / ".co"
+        is_global = co_dir.resolve() == (Path.home() / ".co").resolve()
 
         if is_global:
             # Save to global keys.env
@@ -118,7 +120,7 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
 
             # Read existing keys.env if it exists
             if global_keys_env.exists():
-                with open(global_keys_env, "r") as f:
+                with open(global_keys_env, "r", encoding='utf-8') as f:
                     for line in f:
                         if line.strip().startswith("OPENONION_API_KEY="):
                             env_lines.append(f"OPENONION_API_KEY={token}\n")
@@ -140,9 +142,10 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
                 env_lines.append(f"AGENT_EMAIL={agent_email}\n")
 
             # Write global keys.env file
-            with open(global_keys_env, "w") as f:
+            with open(global_keys_env, "w", encoding='utf-8') as f:
                 f.writelines(env_lines)
-            global_keys_env.chmod(0o600)
+            if sys.platform != 'win32':
+                global_keys_env.chmod(0o600)
 
             console.print("✅ Saved token and email to ~/.co/keys.env", style="green")
 
@@ -162,7 +165,7 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
         config["agent"]["email"] = agent_email
         config["agent"]["email_active"] = True
 
-        with open(config_path, "w") as f:
+        with open(config_path, "w", encoding='utf-8') as f:
             toml.dump(config, f)
 
         # Display comprehensive auth success info

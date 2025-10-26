@@ -1,6 +1,7 @@
 """Initialize command for ConnectOnion CLI - handles 'co init'."""
 
 import os
+import sys
 import shutil
 import subprocess
 import toml
@@ -41,7 +42,7 @@ def ensure_global_config() -> Dict[str, Any]:
 
     # If exists, just load and return
     if config_path.exists():
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding='utf-8') as f:
             return toml.load(f)
 
     # First time - create global config
@@ -81,7 +82,7 @@ def ensure_global_config() -> Dict[str, Any]:
     }
 
     # Save config
-    with open(config_path, 'w') as f:
+    with open(config_path, 'w', encoding='utf-8') as f:
         toml.dump(config, f)
     console.print(f"  ✓ Created ~/.co/config.toml")
 
@@ -89,7 +90,8 @@ def ensure_global_config() -> Dict[str, Any]:
     keys_env = global_dir / "keys.env"
     if not keys_env.exists():
         keys_env.touch()
-        os.chmod(keys_env, 0o600)
+        if sys.platform != 'win32':
+            os.chmod(keys_env, 0o600)  # Read/write for owner only (Unix/Mac only)
     console.print(f"  ✓ Created ~/.co/keys.env (add your API keys here)")
 
     return config
@@ -231,7 +233,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Create custom agent.py if custom template
     if custom_code:
         agent_file = Path(current_dir) / "agent.py"
-        agent_file.write_text(custom_code)
+        agent_file.write_text(custom_code, encoding='utf-8')
         files_created.append("agent.py")
 
     # AUTHENTICATE FIRST - so we have OPENONION_API_KEY to add to .env
@@ -251,7 +253,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     existing_env_content = ""
     existing_keys = set()
     if env_path.exists():
-        with open(env_path, 'r') as f:
+        with open(env_path, 'r', encoding='utf-8') as f:
             existing_env_content = f.read()
             # Parse existing keys
             for line in existing_env_content.split('\n'):
@@ -262,7 +264,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Read global keys (now includes OPENONION_API_KEY from auth)
     keys_to_add = []
     if global_keys_env.exists():
-        with open(global_keys_env, 'r') as f:
+        with open(global_keys_env, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
@@ -286,7 +288,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     if not env_path.exists():
         # Create new .env
         if keys_to_add:
-            env_path.write_text('\n'.join(keys_to_add) + '\n')
+            env_path.write_text('\n'.join(keys_to_add) + '\n', encoding='utf-8')
             console.print(f"{Colors.GREEN}✓ Created .env with API keys{Colors.END}")
         else:
             # Fallback - should not happen now that we always auth
@@ -299,11 +301,11 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 # Optional: Override default model
 # MODEL=gpt-4o-mini
 """
-            env_path.write_text(env_content)
+            env_path.write_text(env_content, encoding='utf-8')
         files_created.append(".env")
     elif keys_to_add:
         # Append missing keys to existing .env
-        with open(env_path, 'a') as f:
+        with open(env_path, 'a', encoding='utf-8') as f:
             if not existing_env_content.endswith('\n'):
                 f.write('\n')
             f.write('\n# API Keys\n')
@@ -376,7 +378,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     }
 
     config_path = co_dir / "config.toml"
-    with open(config_path, "w") as f:
+    with open(config_path, "w", encoding='utf-8') as f:
         toml.dump(config, f)
     files_created.append(".co/config.toml")
 
@@ -396,12 +398,12 @@ __pycache__/
 todo.md
 """
         if gitignore_path.exists():
-            with open(gitignore_path, "a") as f:
-                if "# ConnectOnion" not in gitignore_path.read_text():
+            with open(gitignore_path, "a", encoding='utf-8') as f:
+                if "# ConnectOnion" not in gitignore_path.read_text(encoding='utf-8'):
                     f.write(gitignore_content)
             files_created.append(".gitignore (updated)")
         else:
-            gitignore_path.write_text(gitignore_content.lstrip())
+            gitignore_path.write_text(gitignore_content.lstrip(), encoding='utf-8')
             files_created.append(".gitignore")
 
     # Success message with Rich formatting
@@ -450,7 +452,7 @@ todo.md
             current_data = toml.load(current_config)
             if "auth" in temp_data:
                 current_data["auth"] = temp_data["auth"]
-                with open(current_config, "w") as f:
+                with open(current_config, "w", encoding='utf-8') as f:
                     toml.dump(current_data, f)
 
         # Remove the temp directory

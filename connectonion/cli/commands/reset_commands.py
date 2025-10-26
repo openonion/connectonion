@@ -1,5 +1,6 @@
 """Reset command for ConnectOnion CLI - handles 'co reset'."""
 
+import sys
 import shutil
 import toml
 from pathlib import Path
@@ -111,12 +112,13 @@ def handle_reset():
         },
     }
 
-    with open(config_path, 'w') as f:
+    with open(config_path, 'w', encoding='utf-8') as f:
         toml.dump(config, f)
     console.print("✓ Created ~/.co/config.toml")
 
     keys_env.touch()
-    keys_env.chmod(0o600)
+    if sys.platform != 'win32':
+        keys_env.chmod(0o600)
     console.print("✓ Created ~/.co/keys.env")
 
     # Authenticate to get fresh bonus

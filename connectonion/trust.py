@@ -76,7 +76,7 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
     if isinstance(trust, Path):
         if not trust.exists():
             raise FileNotFoundError(f"Trust policy file not found: {trust}")
-        policy = trust.read_text()
+        policy = trust.read_text(encoding='utf-8')
         return Agent(
             name="trust_agent_custom",
             tools=trust_tools,
@@ -111,7 +111,7 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
             path = Path(trust)
             if not path.exists():
                 raise FileNotFoundError(f"Trust policy file not found: {trust}")
-            policy = path.read_text()
+            policy = path.read_text(encoding='utf-8')
             return Agent(
                 name="trust_agent_custom",
                 tools=trust_tools,
@@ -125,7 +125,7 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
             # Could be a file path without obvious markers
             path = Path(trust)
             if path.exists():
-                policy = path.read_text()
+                policy = path.read_text(encoding='utf-8')
                 return Agent(
                     name="trust_agent_custom",
                     tools=trust_tools,

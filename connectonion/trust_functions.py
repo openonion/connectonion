@@ -22,7 +22,7 @@ def check_whitelist(agent_id: str) -> str:
     whitelist_path = Path.home() / ".connectonion" / "trusted.txt"
     if whitelist_path.exists():
         try:
-            whitelist = whitelist_path.read_text()
+            whitelist = whitelist_path.read_text(encoding='utf-8')
             lines = whitelist.strip().split('\n')
             for line in lines:
                 line = line.strip()
