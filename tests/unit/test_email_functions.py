@@ -8,6 +8,7 @@ import toml
 import json
 import os
 import sys
+import requests
 
 from connectonion.useful_tools.send_email import send_email, get_agent_email, is_email_active
 from connectonion.useful_tools.get_emails import get_emails, mark_read, mark_unread
@@ -117,14 +118,10 @@ class TestGetEmails(unittest.TestCase):
             for email in SAMPLE_EMAILS[:2]
         ]
     
-    @patch('toml.load')
-    @patch('pathlib.Path.exists', return_value=True)
+    @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
     @patch('requests.get')
-    def test_get_emails_success(self, mock_get, mock_exists, mock_toml_load):
+    def test_get_emails_success(self, mock_get):
         """Test successful email retrieval."""
-        # Setup mocks
-        mock_toml_load.return_value = self.test_config
-
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"emails": self.sample_emails}
@@ -147,13 +144,10 @@ class TestGetEmails(unittest.TestCase):
         self.assertEqual(call_args[1]["params"]["limit"], 5)
         self.assertFalse(call_args[1]["params"]["unread_only"])
     
-    @patch('toml.load')
-    @patch('pathlib.Path.exists', return_value=True)
+    @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
     @patch('requests.get')
-    def test_get_emails_unread_only(self, mock_get, mock_exists, mock_toml_load):
+    def test_get_emails_unread_only(self, mock_get):
         """Test getting only unread emails."""
-        mock_toml_load.return_value = self.test_config
-
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.json.return_value = {"emails": [self.sample_emails[0]]}
@@ -169,39 +163,25 @@ class TestGetEmails(unittest.TestCase):
         self.assertTrue(call_args[1]["params"]["unread_only"])
     
     def test_get_emails_no_project(self):
-        """Test getting emails outside project (no .env file)."""
-        # Without environment variables, should return empty list
-        emails = get_emails()
+        """Test getting emails without OPENONION_API_KEY."""
+        # Without environment variables, should raise ValueError
+        with self.assertRaises(ValueError) as context:
+            get_emails()
 
-        self.assertEqual(emails, [])
-    
-    @patch('toml.load')
-    @patch('pathlib.Path.exists', return_value=True)
-    def test_get_emails_not_activated(self, mock_exists, mock_toml_load):
-        """Test when email not activated."""
-        config = self.test_config.copy()
-        config["agent"]["email_active"] = False
-        mock_toml_load.return_value = config
+        self.assertIn("OPENONION_API_KEY not found", str(context.exception))
 
-        emails = get_emails()
-
-        self.assertEqual(emails, [])
-    
-    @patch('pathlib.Path.exists')
-    @patch('toml.load')
+    @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
     @patch('requests.get')
-    def test_get_emails_api_error(self, mock_get, mock_toml_load, mock_exists):
+    def test_get_emails_api_error(self, mock_get):
         """Test handling API errors."""
-        mock_exists.return_value = True
-        mock_toml_load.return_value = self.test_config
-        
         mock_response = MagicMock()
         mock_response.status_code = 500
+        mock_response.raise_for_status.side_effect = requests.HTTPError("500 Server Error")
         mock_get.return_value = mock_response
-        
-        emails = get_emails()
-        
-        self.assertEqual(emails, [])
+
+        # Should raise HTTPError when API fails
+        with self.assertRaises(requests.HTTPError):
+            get_emails()
 
 
 class TestMarkRead(unittest.TestCase):
@@ -212,13 +192,10 @@ class TestMarkRead(unittest.TestCase):
         # Use fixed test account from test_config
         self.test_config = TEST_CONFIG_TOML
     
-    @patch('toml.load')
-    @patch('pathlib.Path.exists', return_value=True)
+    @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
     @patch('requests.post')
-    def test_mark_read_single(self, mock_post, mock_exists, mock_toml_load):
+    def test_mark_read_single(self, mock_post):
         """Test marking single email as read."""
-        mock_toml_load.return_value = self.test_config
-
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_post.return_value = mock_response
@@ -227,13 +204,10 @@ class TestMarkRead(unittest.TestCase):
 
         self.assertTrue(result)
     
-    @patch('toml.load')
-    @patch('pathlib.Path.exists', return_value=True)
+    @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
     @patch('requests.post')
-    def test_mark_read_multiple(self, mock_post, mock_exists, mock_toml_load):
+    def test_mark_read_multiple(self, mock_post):
         """Test marking multiple emails as read."""
-        mock_toml_load.return_value = self.test_config
-
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_post.return_value = mock_response
@@ -243,33 +217,33 @@ class TestMarkRead(unittest.TestCase):
         self.assertTrue(result)
     
     def test_mark_read_no_project(self):
-        """Test marking as read outside project (no .co directory)."""
-        # Without .co directory, should return False
-        result = mark_read("msg_123")
+        """Test marking as read without OPENONION_API_KEY."""
+        # Without environment variables, should raise ValueError
+        with self.assertRaises(ValueError) as context:
+            mark_read("msg_123")
 
-        self.assertFalse(result)
+        self.assertIn("OPENONION_API_KEY not found", str(context.exception))
     
     def test_mark_read_empty_list(self):
         """Test with empty email list."""
-        result = mark_read([])
-        
-        self.assertFalse(result)
+        # Empty list should raise ValueError
+        with self.assertRaises(ValueError) as context:
+            mark_read([])
+
+        self.assertIn("No email IDs provided", str(context.exception))
     
-    @patch('pathlib.Path.exists')
-    @patch('toml.load')
+    @patch.dict('os.environ', {'OPENONION_API_KEY': TEST_JWT_TOKEN})
     @patch('requests.post')
-    def test_mark_read_api_error(self, mock_post, mock_toml_load, mock_exists):
+    def test_mark_read_api_error(self, mock_post):
         """Test handling API errors."""
-        mock_exists.return_value = True
-        mock_toml_load.return_value = self.test_config
-        
         mock_response = MagicMock()
         mock_response.status_code = 404
+        mock_response.raise_for_status.side_effect = requests.HTTPError("404 Not Found")
         mock_post.return_value = mock_response
-        
-        result = mark_read("msg_123")
-        
-        self.assertFalse(result)
+
+        # Should raise HTTPError when API fails
+        with self.assertRaises(requests.HTTPError):
+            mark_read("msg_123")
 
 
 class TestHelperFunctions(unittest.TestCase):
