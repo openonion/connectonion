@@ -1,4 +1,14 @@
-"""Unified LLM provider abstraction layer for ConnectOnion framework.
+"""
+Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, and OpenOnion
+LLM-Note:
+  Dependencies: imports from [abc, typing, dataclasses, json, os, openai, anthropic, google.generativeai, requests, pathlib, toml, pydantic] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py]
+  Data flow: Agent/llm_do calls create_llm(model, api_key) → factory routes to provider class → Provider.__init__() validates API key → Agent calls complete(messages, tools) OR structured_complete(messages, output_schema) → provider converts to native format → calls API → parses response → returns LLMResponse(content, tool_calls, raw_response) OR Pydantic model instance
+  State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENONION_API_KEY) | reads ~/.connectonion/.co/config.toml for OpenOnion auth | makes HTTP requests to LLM APIs | no caching or persistence
+  Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
+  Performance: stateless (no caching) | synchronous (no streaming) | default max_tokens=8192 for Anthropic (required) | each call hits API
+  Errors: raises ValueError for missing API keys, unknown models, invalid parameters | provider-specific errors bubble up (openai.APIError, anthropic.APIError, etc.) | Pydantic ValidationError for invalid structured output
+
+Unified LLM provider abstraction layer for ConnectOnion framework.
 
 This module provides a consistent interface for interacting with multiple LLM providers
 (OpenAI, Anthropic, Google Gemini, and ConnectOnion managed keys) through a common API.

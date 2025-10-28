@@ -1,4 +1,14 @@
-"""One-shot LLM function for simple, single-round calls with optional structured output.
+"""
+Purpose: One-shot LLM function for simple single-round calls without agent overhead
+LLM-Note:
+  Dependencies: imports from [typing, pathlib, pydantic, dotenv, prompts.py, llm.py] | imported by [debug_explainer/explain_context.py, user code, examples] | tested by [tests/test_llm_do.py, tests/test_llm_do_comprehensive.py, tests/test_real_llm_do.py]
+  Data flow: user calls llm_do(input, output, system_prompt, model, api_key, **kwargs) → validates input non-empty → loads system_prompt via load_system_prompt() → builds messages [system, user] → calls create_llm(model, api_key) factory → calls llm.complete(messages, **kwargs) OR llm.structured_complete(messages, output, **kwargs) → returns string OR Pydantic model instance
+  State/Effects: loads .env via dotenv.load_dotenv() | reads system_prompt files if Path provided | makes one LLM API request | no caching or persistence | stateless
+  Integration: exposes llm_do(input, output, system_prompt, model, api_key, **kwargs) | default model="co/gpt-4o" (managed keys) | default temperature=0.1 | supports all create_llm() providers | **kwargs pass through to provider (max_tokens, temperature, etc.)
+  Performance: minimal overhead (no agent loop, no tool calling, no conversation history) | one LLM call per invocation | no caching | synchronous blocking
+  Errors: raises ValueError if input empty | provider errors from create_llm() and llm.complete() bubble up | Pydantic ValidationError if structured output doesn't match schema
+
+One-shot LLM function for simple, single-round calls with optional structured output.
 
 This module provides the `llm_do()` function - a simplified interface for making
 one-shot LLM calls without the overhead of the full Agent system. Perfect for
