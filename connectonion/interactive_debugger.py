@@ -1,7 +1,15 @@
 """
-Interactive debugging orchestration for AI agents.
-This module handles the debugging logic and delegates all UI
-interactions to the DebuggerUI class.
+Purpose: Orchestrate interactive debugging sessions by intercepting tool execution and pausing at breakpoints
+LLM-Note:
+  Dependencies: imports from [typing, debugger_ui.py, tool_executor.py, xray.py, debug_explainer/] | imported by [agent.py via .auto_debug()] | no dedicated test file found
+  Data flow: Agent.auto_debug(prompt) → creates InteractiveDebugger(agent, ui) → start_debug_session(prompt) → _attach_debugger_to_tool_execution() patches tool_executor.execute_single_tool globally → agent.input(prompt) runs normally → interceptor checks @xray or error status → pauses at _show_breakpoint_ui_and_wait_for_continue() → ui.show_breakpoint(context) → user actions: CONTINUE, EDIT (modify values), WHY (AI explanation), QUIT → _detach_debugger_from_tool_execution() restores original
+  State/Effects: MODIFIES tool_executor.execute_single_tool GLOBALLY (monkey-patch) | stores original in self.original_execute_single_tool | only affects self.agent (interceptor checks agent identity) | can modify trace_entry['result'], agent.current_session['iteration'], agent.max_iterations based on user edits | restored in finally block
+  Integration: exposes InteractiveDebugger(agent, ui), .start_debug_session(prompt) | accessed via Agent.auto_debug() method | uses DebuggerUI for all display and input | creates BreakpointContext with tool_name, tool_args, trace_entry, user_prompt, iteration, max_iterations, previous_tools, next_actions, tool_function | calls explain_tool_choice() from debug_explainer for WHY action
+  Performance: zero overhead when not debugging | interceptor adds minimal check per tool | LLM preview call (_get_llm_next_action_preview) makes extra LLM request to show what agent plans next | single-session or interactive loop mode based on prompt parameter
+  Errors: wraps agent execution in try/except KeyboardInterrupt | raises KeyboardInterrupt on QUIT action | preview failures are caught and printed (non-fatal) | CRITICAL: interceptor only affects tools executed by self.agent (identity check prevents cross-agent interference)
+
+  CRITICAL TIMING NOTE for _get_llm_next_action_preview():
+  Debugger pauses DURING tool execution (inside execute_single_tool), so current tool's result hasn't been added to messages yet. Timeline: 1) assistant message with tool_calls added, 2) tool executes → PAUSE HERE, 3) tool result message NOT YET ADDED. Must manually append current tool result to temp_messages for LLM preview to work correctly.
 """
 
 from typing import Any, Dict, Optional, List
@@ -204,6 +212,18 @@ class InteractiveDebugger:
                     # Update max_iterations on agent
                     self.agent.max_iterations = modifications['max_iterations']
                     context.max_iterations = modifications['max_iterations']
+            elif action == BreakpointAction.WHY:
+                # User wants AI explanation of why tool was chosen
+                from .debug_explainer import explain_tool_choice
+                from rich.console import Console
+
+                # Show progress indicator while analyzing
+                console = Console()
+                with console.status("[bold cyan]🤔 Analyzing why this tool was chosen...[/bold cyan]", spinner="dots"):
+                    explanation = explain_tool_choice(context, self.agent, model=self.agent.llm.model)
+
+                self.ui.display_explanation(explanation, context)
+                # Loop back to menu after showing explanation
             elif action == BreakpointAction.QUIT:
                 # User wants to quit debugging
                 raise KeyboardInterrupt("User quit debugging session")

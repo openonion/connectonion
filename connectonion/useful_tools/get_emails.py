@@ -1,4 +1,13 @@
-"""Get emails functionality for ConnectOnion agents."""
+"""
+Purpose: Retrieve emails from agent's inbox via OpenOnion API with filtering options
+LLM-Note:
+  Dependencies: imports from [os, json, toml, requests, pathlib, typing, dotenv] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/test_email_functions.py, tests/test_real_email.py]
+  Data flow: Agent calls get_emails(last=10, unread=False) → searches for .env file → loads OPENONION_API_KEY → GET to oo.openonion.ai/api/email with query params → returns List[Dict] with emails: {id, from, to, subject, body, html_body, date, read} | mark_read(email_id) PUTs to /api/email/{id}/read
+  State/Effects: reads .env files | makes HTTP GET/PUT requests | no local caching | mark_read() modifies server-side read status
+  Integration: exposes get_emails(last, unread), mark_read(email_id) | used as agent tool functions | requires 'co auth' setup | API endpoints: GET /api/email?last=N&unread=true, PUT /api/email/{id}/read
+  Performance: one HTTP request per call | no pagination (uses 'last' param) | synchronous blocking | no local cache
+  Errors: returns empty list [] on failure | HTTP errors caught and wrapped in error dict | missing auth returns error | let-it-crash pattern for API failures
+"""
 
 import os
 import json

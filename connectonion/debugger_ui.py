@@ -1,7 +1,12 @@
 """
-UI components for the interactive debugger.
-This module handles all user interaction and display logic,
-keeping it separate from the debugging orchestration.
+Purpose: Provide Rich-formatted UI for interactive debugging with breakpoint display and user interaction
+LLM-Note:
+  Dependencies: imports from [typing, dataclasses, enum, json, ast, inspect, pprint, questionary, rich.*] | imported by [interactive_debugger.py] | no dedicated test file found
+  Data flow: InteractiveDebugger creates DebuggerUI() → calls .show_welcome(agent_name) → .get_user_prompt() for input → .show_executing(prompt) → .show_breakpoint(context: BreakpointContext) → displays Rich panels/tables with tool execution details → returns BreakpointAction enum (CONTINUE, EDIT, WHY, QUIT) → .edit_value(context, agent) opens Python REPL for live modifications → returns modifications dict → .display_explanation(text, context) shows AI analysis
+  State/Effects: no persistent state (stateless UI) | uses Rich Console to write formatted output to terminal | uses questionary for interactive menus | REPL execution in .edit_value() can have arbitrary side effects (user code) | does not modify agent or trace data directly (returns modifications)
+  Integration: exposes DebuggerUI class, BreakpointContext dataclass, BreakpointAction enum | show_breakpoint() displays comprehensive debugging info: execution context, tool args/result, LLM next actions, source code, execution history | edit_value() provides REPL with access to trace_entry, tool_args, agent, result variables | display_explanation() formats AI-generated debugging insights
+  Performance: Rich rendering is fast | source code inspection uses inspect.getsource() | execution history can be large (shows all tools) | REPL evaluation is synchronous (blocks UI)
+  Errors: REPL errors caught and displayed with syntax highlighting | getsource() failures handled gracefully (shows "unavailable") | questionary keyboard interrupts propagate up | assumes terminal supports Rich formatting
 """
 
 from typing import Any, Dict, Optional, Tuple, List
@@ -28,6 +33,7 @@ class BreakpointAction(Enum):
     """User's choice at a breakpoint"""
     CONTINUE = "continue"
     EDIT = "edit"
+    WHY = "why"
     QUIT = "quit"
 
 
@@ -261,7 +267,7 @@ class DebuggerUI:
             if tool == context.tool_name:
                 # Current tool (highlighted)
                 timing = context.trace_entry.get('timing', 0)
-                llm_branch.add(f"[bold yellow]⚡ {tool}() - {timing:.1f}ms ← PAUSED HERE[/bold yellow]")
+                llm_branch.add(f"[bold yellow]⚡ {tool}() - {timing/1000:.4f}s ← PAUSED HERE[/bold yellow]")
             elif i < len(context.previous_tools):
                 # Completed tools
                 llm_branch.add(f"✓ {tool}() - [dim]completed[/dim]")
@@ -397,7 +403,7 @@ class DebuggerUI:
         sections.append(Text(""))  # Spacing
         timing = context.trace_entry.get('timing', 0)
         metadata = Text(
-            f"Execution time: {timing:.1f}ms | Iteration: {context.iteration}/{context.max_iterations} | Breakpoint: @xray",
+            f"Execution time: {timing/1000:.4f}s | Iteration: {context.iteration}/{context.max_iterations} | Breakpoint: @xray",
             style="dim italic",
             justify="center"
         )
@@ -476,6 +482,7 @@ class DebuggerUI:
             menu_entries = [
                 "[c] Continue execution 🚀",
                 "[e] Edit values 🔍",
+                "[w] Why this tool? 🤔",
                 "[q] Quit debugging 🚫"
             ]
 
@@ -497,11 +504,13 @@ class DebuggerUI:
                 return BreakpointAction.QUIT
 
             # Map index to action
-            actions = [BreakpointAction.CONTINUE, BreakpointAction.EDIT, BreakpointAction.QUIT]
+            actions = [BreakpointAction.CONTINUE, BreakpointAction.EDIT, BreakpointAction.WHY, BreakpointAction.QUIT]
             action = actions[menu_index]
 
             if action == BreakpointAction.CONTINUE:
                 self.console.print("[green]→ Continuing execution...[/green]")
+            elif action == BreakpointAction.WHY:
+                self.console.print("[cyan]→ Analyzing why tool was chosen...[/cyan]")
             elif action == BreakpointAction.QUIT:
                 self.console.print("[yellow]→ Quitting debug session...[/yellow]")
 
@@ -516,6 +525,7 @@ class DebuggerUI:
         choices = [
             questionary.Choice("[c] Continue execution 🚀", value=BreakpointAction.CONTINUE, shortcut_key='c'),
             questionary.Choice("[e] Edit values 🔍", value=BreakpointAction.EDIT, shortcut_key='e'),
+            questionary.Choice("[w] Why this tool? 🤔", value=BreakpointAction.WHY, shortcut_key='w'),
             questionary.Choice("[q] Quit debugging 🚫", value=BreakpointAction.QUIT, shortcut_key='q'),
         ]
 
@@ -524,7 +534,7 @@ class DebuggerUI:
                 "\nAction:",
                 choices=choices,
                 style=self.style,
-                instruction="(Press c/e/q)",
+                instruction="(Press c/e/w/q)",
                 use_shortcuts=True,
                 use_indicator=False,
                 use_arrow_keys=True
@@ -540,6 +550,8 @@ class DebuggerUI:
 
         if action == BreakpointAction.CONTINUE:
             self.console.print("[green]→ Continuing execution...[/green]")
+        elif action == BreakpointAction.WHY:
+            self.console.print("[cyan]→ Analyzing why tool was chosen...[/cyan]")
         elif action == BreakpointAction.QUIT:
             self.console.print("[yellow]→ Quitting debug session...[/yellow]")
 
@@ -554,26 +566,30 @@ class DebuggerUI:
         - Menu libraries not installed or not supported
 
         Returns:
-            User's chosen action based on keyboard input (c/e/q)
+            User's chosen action based on keyboard input (c/e/w/q)
         """
         self.console.print("\n[cyan bold]Action:[/cyan bold]")
         self.console.print("  [c] Continue execution 🚀")
         self.console.print("  [e] Edit values 🔍")
+        self.console.print("  [w] Why this tool? 🤔")
         self.console.print("  [q] Quit debugging 🚫")
 
         while True:
             try:
-                choice = input("\nYour choice (c/e/q): ").strip().lower()
+                choice = input("\nYour choice (c/e/w/q): ").strip().lower()
                 if choice == 'c':
                     self.console.print("[green]→ Continuing execution...[/green]")
                     return BreakpointAction.CONTINUE
                 elif choice == 'e':
                     return BreakpointAction.EDIT
+                elif choice == 'w':
+                    self.console.print("[cyan]→ Analyzing why tool was chosen...[/cyan]")
+                    return BreakpointAction.WHY
                 elif choice == 'q':
                     self.console.print("[yellow]→ Quitting debug session...[/yellow]")
                     return BreakpointAction.QUIT
                 else:
-                    self.console.print("[yellow]Invalid choice. Please enter c, e, or q.[/yellow]")
+                    self.console.print("[yellow]Invalid choice. Please enter c, e, w, or q.[/yellow]")
             except (KeyboardInterrupt, EOFError):
                 self.console.print("\n[yellow]→ Quitting debug session...[/yellow]")
                 return BreakpointAction.QUIT
@@ -940,5 +956,26 @@ class DebuggerUI:
                 formatted = str(value)
             
             self.console.print(f"  [yellow]{key}[/yellow] = [cyan]{formatted}[/cyan]")
-        
+
         self.console.print()
+
+    def display_explanation(self, explanation: str, context: BreakpointContext) -> None:
+        """Display AI explanation of why a tool was chosen.
+
+        Args:
+            explanation: The explanation text from the AI
+            context: Breakpoint context for displaying relevant info
+        """
+        self.console.print("\n")
+
+        panel = Panel(
+            explanation,
+            title=f"[bold cyan]🤔 Why {context.tool_name}?[/bold cyan]",
+            border_style="cyan",
+            padding=(1, 2)
+        )
+
+        self.console.print(panel)
+        self.console.print()
+
+        input("[dim]Press Enter to return to menu...[/dim]")

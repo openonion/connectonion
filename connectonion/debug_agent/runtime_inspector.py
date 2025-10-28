@@ -1,7 +1,12 @@
-"""Runtime inspector for debugging Python exceptions with live state access.
-
-A class-based tool that maintains the exception runtime context and provides
-methods to execute code, inspect objects, and test fixes with actual data.
+"""
+Purpose: Provide runtime inspection tools for AI-powered exception debugging with live frame access
+LLM-Note:
+  Dependencies: imports from [pathlib, typing, re] | imported by [debug_agent/agent.py, debug_agent/__init__.py, auto_debug_exception.py] | tested by [tests/test_runtime_inspector.py]
+  Data flow: auto_debug_exception() creates RuntimeInspector(frame, traceback) → stores frame.f_globals + frame.f_locals in self.namespace → AI agent calls methods: execute_in_frame(code) uses eval/exec, inspect_object(var) shows type/attrs/methods, validate_assumption(statement) tests hypothesis, test_fix(code) validates solutions, explore_namespace() lists all variables → returns formatted strings → AI interprets for debugging
+  State/Effects: stores frozen exception frame and namespace | execute_in_frame() can modify namespace via exec | no file I/O or external side effects | evaluates arbitrary Python code (security: only in debug context)
+  Integration: exposes RuntimeInspector class with methods: execute_in_frame(code), inspect_object(variable_name), validate_assumption(statement), test_fix(fix_code), try_alternative(code), explore_namespace(), get_traceback() | used as class-based tool (Agent auto-extracts methods via tool_factory.extract_methods_from_instance)
+  Performance: eval/exec are fast | namespace is dict copy (O(n) initial cost) | inspection uses dir() and getattr() | traceback formatting uses traceback module
+  Errors: execute_in_frame() catches exceptions and returns error strings (doesn't raise) | missing variables return "not found" messages | no frame returns "No runtime context available"
 """
 
 from pathlib import Path

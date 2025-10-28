@@ -1,6 +1,12 @@
-"""Trust management for ConnectOnion agents.
-
-This module coordinates trust agent creation using trust_agents and trust_functions.
+"""
+Purpose: Factory and coordinator for creating trust verification agents with policies
+LLM-Note:
+  Dependencies: imports from [os, pathlib, typing, trust_agents.py, trust_functions.py] | imported by [agent.py] | tested by [tests/test_trust.py]
+  Data flow: receives trust param from Agent.__init__ → get_default_trust_level() checks CONNECTONION_ENV → create_trust_agent() validates trust param → returns Agent with trust verification tools OR None | trust param can be: None (no trust), str ("open"/"careful"/"strict" levels OR markdown policy OR file path), Path (markdown file), Agent (custom trust agent)
+  State/Effects: reads markdown files if Path/file path provided | checks os.environ for CONNECTONION_ENV and CONNECTONION_TRUST | creates Agent instances with trust_verification_tools from trust_functions.py | no writes or global state
+  Integration: exposes create_trust_agent(trust, api_key, model), get_default_trust_level(), validate_trust_level(level), TRUST_LEVELS constant | used by Agent.__init__ to create self.trust | trust agents get tools from get_trust_verification_tools() and prompts from get_trust_prompt()
+  Performance: lazy creation (only when trust param provided) | environment checks are fast | file I/O only for custom policies
+  Errors: raises TypeError for invalid trust type | raises ValueError for invalid trust level string | raises FileNotFoundError for missing policy files | heuristic detection for ambiguous strings (checks if file exists before treating as inline policy)
 """
 
 import os

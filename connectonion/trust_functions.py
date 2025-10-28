@@ -1,8 +1,12 @@
-"""Trust verification functions for ConnectOnion trust agents.
-
-These functions are tools that trust agents can use to verify other agents.
-They return strings that describe what they're checking, which the AI agent
-then interprets according to its trust policy.
+"""
+Purpose: Provide tool functions for trust agents to verify other agents
+LLM-Note:
+  Dependencies: imports from [pathlib, typing] | imported by [trust.py] | tested by [tests/test_trust.py]
+  Data flow: create_trust_agent() calls get_trust_verification_tools() → returns list of [check_whitelist, test_capability, verify_agent] functions → these become tools for trust Agent → trust agent calls tools with agent_id → functions return descriptive strings → AI interprets results per trust policy
+  State/Effects: check_whitelist() reads ~/.connectonion/trusted.txt file if exists | supports wildcard patterns with * | test_capability() and verify_agent() are pure (no I/O, just return descriptive strings for AI)
+  Integration: exposes check_whitelist(agent_id), test_capability(agent_id, test, expected), verify_agent(agent_id, agent_info), get_trust_verification_tools() | used by trust.py to equip trust agents with verification capabilities
+  Performance: file read only for check_whitelist | simple string operations | no network calls
+  Errors: check_whitelist() catches file read exceptions and returns error string | missing whitelist file returns helpful message | no exceptions raised (errors returned as strings for AI interpretation)
 """
 
 from pathlib import Path
