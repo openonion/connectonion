@@ -157,7 +157,9 @@ def execute_single_tool(
 
         # Console output
         result_str = str(result)[:50] + "..." if len(str(result)) > 50 else str(result)
-        console.print(f"[green]←[/green] Result ({tool_duration:.0f}ms): {result_str}")
+        # Show more precision for fast operations (<0.1s), less for slow ones
+        time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
+        console.print(f"[green]←[/green] Result ({time_str}): {result_str}")
 
         # Auto-print Rich table if @xray enabled
         if xray_enabled:
@@ -183,7 +185,8 @@ def execute_single_tool(
         trace_entry["result"] = error_msg
 
         # Console output
-        console.print(f"[red]✗[/red] Error ({tool_duration:.0f}ms): {str(e)}")
+        time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
+        console.print(f"[red]✗[/red] Error ({time_str}): {str(e)}")
 
     finally:
         # Clear xray context after tool execution

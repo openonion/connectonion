@@ -979,3 +979,55 @@ class DebuggerUI:
         self.console.print()
 
         input("[dim]Press Enter to return to menu...[/dim]")
+
+    def display_execution_analysis(self, analysis) -> None:
+        """Display post-execution analysis with improvement suggestions.
+
+        Args:
+            analysis: ExecutionAnalysis object with structured results
+        """
+        self.console.print("\n")
+        self.console.print("[bold cyan]═══ 📊 Execution Analysis ═══[/bold cyan]\n")
+
+        # Task completion status
+        status_emoji = "✅" if analysis.task_completed else "❌"
+        self.console.print(f"{status_emoji} [bold]Task Completed:[/bold] {analysis.task_completed}")
+        self.console.print(f"   {analysis.completion_explanation}\n")
+
+        # Overall quality
+        quality_colors = {
+            "excellent": "green",
+            "good": "cyan",
+            "fair": "yellow",
+            "poor": "red"
+        }
+        quality_color = quality_colors.get(analysis.overall_quality, "white")
+        self.console.print(f"[bold]Quality:[/bold] [{quality_color}]{analysis.overall_quality.upper()}[/{quality_color}]\n")
+
+        # Problems identified
+        if analysis.problems_identified:
+            self.console.print("[bold red]⚠️  Problems Identified:[/bold red]")
+            for i, problem in enumerate(analysis.problems_identified, 1):
+                self.console.print(f"   {i}. {problem}")
+            self.console.print()
+
+        # System prompt suggestions
+        if analysis.system_prompt_suggestions:
+            panel = Panel(
+                "\n".join(f"• {suggestion}" for suggestion in analysis.system_prompt_suggestions),
+                title="[bold green]💡 System Prompt Suggestions[/bold green]",
+                border_style="green",
+                padding=(1, 2)
+            )
+            self.console.print(panel)
+            self.console.print()
+
+        # Key insights
+        if analysis.key_insights:
+            self.console.print("[bold magenta]🎯 Key Insights:[/bold magenta]")
+            for i, insight in enumerate(analysis.key_insights, 1):
+                self.console.print(f"   {i}. {insight}")
+            self.console.print()
+
+        self.console.print("[dim]" + "═" * 60 + "[/dim]\n")
+        input("[dim]Press Enter to continue...[/dim]")

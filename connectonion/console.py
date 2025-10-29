@@ -98,6 +98,9 @@ class Console:
         from rich.panel import Panel
 
         # Always print - console is always active
+        from rich.text import Text
+        from rich.console import Group
+
         table = Table(show_header=False, box=None, padding=(0, 1))
         table.add_column("Key", style="dim")
         table.add_column("Value")
@@ -107,7 +110,9 @@ class Console:
         user_prompt = agent.current_session.get('user_prompt', '')
         prompt_preview = user_prompt[:50] + "..." if len(user_prompt) > 50 else user_prompt
         table.add_row("user_prompt", prompt_preview)
-        table.add_row("iteration", str(agent.current_session['iteration']))
+        iteration = agent.current_session.get('iteration', 0)
+        max_iterations = getattr(agent, 'max_iterations', 10)
+        table.add_row("iteration", f"{iteration}/{max_iterations}")
 
         # Separator
         table.add_row("─" * 20, "─" * 40)
@@ -124,9 +129,21 @@ class Console:
         if len(result_str) > 60:
             result_str = result_str[:60] + "..."
         table.add_row("result", result_str)
-        table.add_row("timing", f"{timing:.1f}ms")
+        # Show more precision for fast operations (<0.1s), less for slow ones
+        time_str = f"{timing/1000:.4f}s" if timing < 100 else f"{timing/1000:.1f}s"
+        table.add_row("timing", time_str)
 
-        panel = Panel(table, title=f"[cyan]@xray: {tool_name}[/cyan]", border_style="cyan")
+        # Add metadata footer
+        metadata = Text(
+            f"Execution time: {time_str} | Iteration: {iteration}/{max_iterations} | Breakpoint: @xray",
+            style="dim italic",
+            justify="center"
+        )
+
+        # Group table and metadata
+        content = Group(table, Text(""), metadata)
+
+        panel = Panel(content, title=f"[cyan]@xray: {tool_name}[/cyan]", border_style="cyan")
         _rich_console.print(panel)
 
         # Log to file if enabled (plain text version)
@@ -135,12 +152,12 @@ class Console:
                 f.write(f"\n@xray: {tool_name}\n")
                 f.write(f"  agent: {agent.name}\n")
                 f.write(f"  task: {prompt_preview}\n")
-                f.write(f"  iteration: {agent.current_session['iteration']}\n")
+                f.write(f"  iteration: {iteration}/{max_iterations}\n")
                 for k, v in tool_args.items():
                     val_str = str(v)[:60]
                     f.write(f"  {k}: {val_str}\n")
                 f.write(f"  result: {result_str}\n")
-                f.write(f"  timing: {timing:.1f}ms\n\n")
+                f.write(f"  Execution time: {timing/1000:.4f}s | Iteration: {iteration}/{max_iterations} | Breakpoint: @xray\n\n")
 
     def _to_plain_text(self, message: str) -> str:
         """Convert Rich markup to plain text for log file."""

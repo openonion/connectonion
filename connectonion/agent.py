@@ -257,10 +257,13 @@ class Agent:
 
     def _get_llm_decision(self):
         """Get the next action/decision from the LLM."""
-        self.console.print(f"[yellow]→[/yellow] LLM Request ({self.llm.model})")
-
         # Get tool schemas
         tool_schemas = [tool.to_function_schema() for tool in self.tools] if self.tools else None
+
+        # Show request info
+        msg_count = len(self.current_session['messages'])
+        tool_count = len(self.tools) if self.tools else 0
+        self.console.print(f"[yellow]→[/yellow] LLM Request ({self.llm.model}) • {msg_count} msgs • {tool_count} tools")
 
         start = time.time()
         response = self.llm.complete(self.current_session['messages'], tools=tool_schemas)
@@ -277,9 +280,9 @@ class Agent:
         })
 
         if response.tool_calls:
-            self.console.print(f"[green]←[/green] LLM Response ({duration:.0f}ms): {len(response.tool_calls)} tool calls")
+            self.console.print(f"[green]←[/green] LLM Response ({duration/1000:.1f}s): {len(response.tool_calls)} tool calls")
         else:
-            self.console.print(f"[green]←[/green] LLM Response ({duration:.0f}ms)")
+            self.console.print(f"[green]←[/green] LLM Response ({duration/1000:.1f}s)")
 
         return response
 

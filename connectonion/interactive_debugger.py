@@ -73,11 +73,15 @@ class InteractiveDebugger:
         # Attach debugger to intercept tool execution
         self._attach_debugger_to_tool_execution()
 
+        result = None
         try:
             # Execute the prompt with debugging
             self.ui.show_executing(prompt)
             result = self.agent.input(prompt)
             self.ui.show_result(result)
+
+            # Post-execution analysis
+            self._show_execution_analysis(prompt, result)
 
         except KeyboardInterrupt:
             self.ui.show_interrupted()
@@ -306,3 +310,33 @@ class InteractiveDebugger:
             # Show the actual error for debugging (remove this later)
             print(f"[dim]Preview error: {type(e).__name__}: {str(e)}[/dim]")
             return None
+
+    def _show_execution_analysis(self, user_prompt: str, result: str):
+        """Show post-execution analysis with improvement suggestions.
+
+        Args:
+            user_prompt: The user's original request
+            result: Final result from agent
+        """
+        from .execution_analyzer import analyze_execution
+        from rich.console import Console
+
+        # Get execution data
+        session = self.agent.current_session or {}
+        trace = session.get('trace', [])
+        iteration = session.get('iteration', 0)
+        max_iterations_reached = iteration >= self.agent.max_iterations
+
+        # Show progress
+        console = Console()
+        with console.status("[bold cyan]📊 Analyzing execution and generating suggestions...[/bold cyan]", spinner="dots"):
+            analysis = analyze_execution(
+                user_prompt=user_prompt,
+                agent_instance=self.agent,
+                final_result=result,
+                execution_trace=trace,
+                max_iterations_reached=max_iterations_reached
+            )
+
+        # Display analysis
+        self.ui.display_execution_analysis(analysis)
