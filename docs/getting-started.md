@@ -13,22 +13,17 @@ pip install connectonion
 The fastest way to start is with the ConnectOnion CLI:
 
 ```bash
-# Create a directory for your meta-agent
-mkdir meta-agent
-cd meta-agent
+# Create a new agent project
+co create my-agent
 
-# Initialize the meta-agent
-co init
+# Navigate to the project
+cd my-agent
 
-# Copy .env.example to .env and add your OpenAI API key
-cp .env.example .env
-# Edit .env and add your key
-
-# Run your meta-agent
+# Run your agent (API key setup is automatic!)
 python agent.py
 ```
 
-That's it! You now have a self-reflective meta-agent with planning capabilities. 🎉
+That's it! You now have a working agent ready to use. 🎉
 
 ## Manual Setup (Alternative)
 
@@ -134,7 +129,7 @@ print(agent.history.summary())
 Agent: assistant
 Total tasks: 3
 Tools used: calculate (2), search (1), get_time (1)
-History saved to: ~/.connectonion/agents/assistant/behavior.json
+Activity logged to: .co/logs/assistant.log
 ```
 
 ## Real Example
@@ -172,30 +167,29 @@ assistant.input("What's in greeting.txt?")
 ConnectOnion provides different templates for common use cases:
 
 ```bash
-# Meta-agent (default) - ConnectOnion development assistant
-co init
+# Create with minimal template (default)
+co create my-agent
 
-# Web automation with Playwright
-co init --template playwright
+# Create with playwright template
+co create my-browser-bot --template playwright
+
+# Initialize in existing directory
+co init  # Adds .co folder only
+co init --template playwright  # Adds full template
 ```
 
 ### What Gets Created
 
 ```
-my-project/
-├── agent.py           # Main agent implementation
-├── prompts/           # System prompts (meta-agent only)
-│   ├── metagent.md
-│   ├── docs_retrieve_prompt.md
-│   ├── answer_prompt.md
-│   └── think_prompt.md
-├── prompt.md          # System prompt (playwright only)
-├── README.md          # Project documentation (meta-agent only)
-├── .env.example       # Environment variables template
-└── .co/               # ConnectOnion metadata
+my-agent/
+├── agent.py                                              # Main agent implementation
+├── .env                                                  # API keys (auto-configured)
+├── co-vibecoding-principles-docs-contexts-all-in-one.md  # Complete framework docs
+├── .gitignore                                            # Git configuration
+└── .co/                                                  # ConnectOnion metadata
     ├── config.toml
     └── docs/
-        └── connectonion.md  # Embedded framework documentation
+        └── co-vibecoding-principles-docs-contexts-all-in-one.md
 ```
 
 Learn more about templates in the [Templates Documentation](templates.md).
@@ -215,7 +209,7 @@ Ready for more?
 1. **Functions = Tools** (no classes needed!)
 2. **Docstrings = Descriptions** (agent reads these)
 3. **Type hints = Better results** (helps agent understand)
-4. **History = Free** (automatic tracking)
+4. **Logging = Free** (automatic activity tracking to `.co/logs/`)
 
 ---
 

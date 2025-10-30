@@ -1,365 +1,311 @@
-"""One-shot LLM function for simple LLM calls with optional structured output.
+"""
+Purpose: One-shot LLM function for simple single-round calls without agent overhead
+LLM-Note:
+  Dependencies: imports from [typing, pathlib, pydantic, dotenv, prompts.py, llm.py] | imported by [debug_explainer/explain_context.py, user code, examples] | tested by [tests/test_llm_do.py, tests/test_llm_do_comprehensive.py, tests/test_real_llm_do.py]
+  Data flow: user calls llm_do(input, output, system_prompt, model, api_key, **kwargs) → validates input non-empty → loads system_prompt via load_system_prompt() → builds messages [system, user] → calls create_llm(model, api_key) factory → calls llm.complete(messages, **kwargs) OR llm.structured_complete(messages, output, **kwargs) → returns string OR Pydantic model instance
+  State/Effects: loads .env via dotenv.load_dotenv() | reads system_prompt files if Path provided | makes one LLM API request | no caching or persistence | stateless
+  Integration: exposes llm_do(input, output, system_prompt, model, api_key, **kwargs) | default model="co/gpt-4o" (managed keys) | default temperature=0.1 | supports all create_llm() providers | **kwargs pass through to provider (max_tokens, temperature, etc.)
+  Performance: minimal overhead (no agent loop, no tool calling, no conversation history) | one LLM call per invocation | no caching | synchronous blocking
+  Errors: raises ValueError if input empty | provider errors from create_llm() and llm.complete() bubble up | Pydantic ValidationError if structured output doesn't match schema
 
-Uses LiteLLM to support 100+ LLM providers including:
-- OpenAI (GPT models)
-- Anthropic (Claude models)  
-- Google (Gemini models)
-- Azure OpenAI
-- AWS Bedrock
-- Ollama (local models)
-- And many more...
+One-shot LLM function for simple, single-round calls with optional structured output.
+
+This module provides the `llm_do()` function - a simplified interface for making
+one-shot LLM calls without the overhead of the full Agent system. Perfect for
+simple tasks that don't require multi-step reasoning or tool calling.
+
+Purpose
+-------
+`llm_do()` is designed for:
+- Quick LLM calls without agent overhead
+- Data extraction with Pydantic validation
+- Simple Q&A and text generation
+- Format conversion (text → JSON, etc.)
+- One-shot analysis tasks
+
+NOT designed for:
+- Multi-step workflows (use Agent instead)
+- Tool calling (use Agent instead)
+- Iterative refinement (use Agent instead)
+- Maintaining conversation history (use Agent instead)
+
+Architecture
+-----------
+The function is a thin wrapper around the LLM provider abstraction:
+
+1. **Input Validation**: Ensures non-empty input
+2. **System Prompt Loading**: Loads from string or file path
+3. **Message Building**: Constructs OpenAI-format message list
+4. **LLM Selection**: Uses create_llm() factory to get provider
+5. **Response Handling**: Routes to complete() or structured_complete()
+
+Key Design Decisions
+-------------------
+- **Stateless**: No conversation history, each call is independent
+- **Simple API**: Minimal parameters, sensible defaults
+- **Default Model**: Uses "co/gpt-4o" (ConnectOnion managed keys) for zero-setup
+- **Structured Output**: Native Pydantic support via provider-specific APIs
+- **Flexible Parameters**: **kwargs pass through to underlying LLM (temperature, max_tokens, etc.)
+
+Comparison with Agent
+--------------------
+┌─────────────────┬──────────────┬─────────────────┐
+│ Feature         │ llm_do()     │ Agent()         │
+├─────────────────┼──────────────┼─────────────────┤
+│ Iterations      │ Always 1     │ Up to max_iters │
+│ Tools           │ No           │ Yes             │
+│ State           │ Stateless    │ Maintains hist  │
+│ Use case        │ Quick tasks  │ Complex flows   │
+│ Overhead        │ Minimal      │ Full framework  │
+└─────────────────┴──────────────┴─────────────────┘
+
+Data Flow
+---------
+User code → llm_do(input, output, model, **kwargs)
+               ↓
+         Validate input → Load system_prompt → Build messages
+               ↓
+         create_llm(model, api_key) → Provider instance
+               ↓
+    ┌─────────────────────────────────────┐
+    │ If output (Pydantic model):         │
+    │   provider.structured_complete()    │
+    │   → Pydantic instance               │
+    │                                     │
+    │ If no output:                       │
+    │   provider.complete()               │
+    │   → String content                  │
+    └─────────────────────────────────────┘
+               ↓
+         Return result to user
+
+Supported Providers
+------------------
+All providers from llm.py module:
+
+1. **OpenAI**: gpt-4o, gpt-4o-mini, gpt-3.5-turbo, o4-mini
+   - Native structured output via responses.parse()
+   - Fastest structured output implementation
+
+2. **Anthropic**: claude-3-5-sonnet, claude-3-5-haiku-20241022
+   - Structured output via forced tool calling
+   - Requires max_tokens parameter (default: 8192)
+
+3. **Google Gemini**: gemini-2.5-flash, gemini-1.5-pro
+   - Structured output via response_schema
+   - Good balance of speed and quality
+
+4. **ConnectOnion**: co/gpt-4o, co/o4-mini (DEFAULT)
+   - Managed API keys (no env vars needed!)
+   - Proxies to OpenAI with usage tracking
+   - Requires: run `co auth` first
+
+Usage Patterns
+-------------
+1. **Simple Q&A**:
+   >>> answer = llm_do("What is 2+2?")
+   >>> print(answer)  # "4"
+
+2. **Structured Extraction**:
+   >>> class Person(BaseModel):
+   ...     name: str
+   ...     age: int
+   >>> result = llm_do("John, 30 years old", output=Person)
+   >>> result.name  # "John"
+
+3. **Custom System Prompt**:
+   >>> answer = llm_do(
+   ...     "Hello",
+   ...     system_prompt="You are a pirate. Always respond like a pirate."
+   ... )
+
+4. **Different Provider**:
+   >>> answer = llm_do("Hello", model="claude-3-5-haiku-20241022")
+
+5. **Runtime Parameters**:
+   >>> answer = llm_do(
+   ...     "Write a story",
+   ...     temperature=0.9,     # More creative
+   ...     max_tokens=100       # Short response
+   ... )
+
+Parameters
+----------
+- input (str): The text/question to send to the LLM
+- output (Type[BaseModel], optional): Pydantic model for structured output
+- system_prompt (str | Path, optional): System instructions (inline or file path)
+- model (str): Model name (default: "co/gpt-4o")
+- temperature (float): Sampling temperature (default: 0.1 for consistency)
+- api_key (str, optional): Override API key (uses env vars by default)
+- **kwargs: Additional parameters passed to LLM (max_tokens, top_p, etc.)
+
+Returns
+-------
+- str: Plain text response (when output is None)
+- BaseModel: Validated Pydantic instance (when output is provided)
+
+Raises
+------
+- ValueError: If input is empty
+- ValueError: If API key is missing
+- ValueError: If model is unknown
+- ValidationError: If structured output doesn't match schema
+- Provider-specific errors: From underlying LLM SDKs
+
+Environment Variables
+--------------------
+Optional (choose based on model):
+  - OPENAI_API_KEY: For OpenAI models
+  - ANTHROPIC_API_KEY: For Claude models
+  - GEMINI_API_KEY or GOOGLE_API_KEY: For Gemini models
+  - OPENONION_API_KEY: For co/ models (or run `co auth`)
+
+Dependencies
+-----------
+- llm.py: create_llm() factory and provider implementations
+- prompts.py: load_system_prompt() for file-based prompts
+- pydantic: BaseModel validation for structured output
+- dotenv: Loads .env file automatically
+
+Integration Points
+-----------------
+Used by:
+  - User code: Direct function calls
+  - Examples: Quick scripts and tutorials
+  - Tests: test_llm_do.py and test_llm_do_comprehensive.py
+
+Related modules:
+  - agent.py: Full agent system for complex workflows
+  - llm.py: Provider abstraction layer
+
+Code Size
+---------
+102 lines (down from 387 after refactoring)
+- Removed duplicate OpenOnion authentication logic
+- Eliminated LiteLLM-specific code
+- Now a pure wrapper around llm.py providers
+
+Testing
+-------
+Comprehensive test coverage in:
+  - tests/test_llm_do.py: 12 tests (unit + integration)
+  - tests/test_llm_do_comprehensive.py: 23 tests (all doc examples)
+  - tests/test_real_llm_do.py: Real API integration tests
+
+All documentation examples in docs/llm_do.md are tested and validated.
+
+Example from Documentation
+--------------------------
+From docs/llm_do.md Quick Start:
+
+    from connectonion import llm_do
+    from pydantic import BaseModel
+
+    # Simple call
+    answer = llm_do("What's 2+2?")
+
+    # Structured output
+    class Analysis(BaseModel):
+        sentiment: str
+        confidence: float
+        keywords: list[str]
+
+    result = llm_do(
+        "I absolutely love this product! Best purchase ever!",
+        output=Analysis
+    )
+    print(result.sentiment)    # "positive"
+    print(result.confidence)   # 0.98
 """
 
 from typing import Union, Type, Optional, TypeVar
 from pathlib import Path
 from pydantic import BaseModel
-import json
-import os
-import toml
-import requests
+from dotenv import load_dotenv
 from .prompts import load_system_prompt
-from .llm import MODEL_REGISTRY
+from .llm import create_llm
+
+# Load environment variables from .env file
+load_dotenv()
 
 T = TypeVar('T', bound=BaseModel)
-
-
-def _get_litellm_model_name(model: str) -> str:
-    """Convert model name to LiteLLM format.
-    
-    For most models, we use the simple name (e.g., "gpt-4o", "claude-3-5-sonnet").
-    Special prefixes:
-    - co/model_name for ConnectOnion managed keys (stripped for actual API call)
-    - ollama/model_name for local Ollama models
-    - azure/deployment_name for Azure OpenAI
-    - bedrock/model_id for AWS Bedrock
-    """
-    # Handle ConnectOnion managed keys prefix
-    if model.startswith("co/"):
-        # Strip the co/ prefix for the actual model name
-        model = model[3:]
-    
-    # If already has a provider prefix, return as-is
-    if "/" in model:
-        return model
-    
-    # Check if it's a Gemini model that needs the prefix
-    provider = MODEL_REGISTRY.get(model)
-    if provider == "google" and not model.startswith("gemini/"):
-        # Add gemini/ prefix for Google models in LiteLLM
-        return f"gemini/{model}"
-    
-    # For OpenAI and Anthropic models, use as-is
-    # LiteLLM handles them without prefixes
-    return model
-
-
-def _get_auth_token() -> Optional[str]:
-    """Get authentication token from .co/config.toml if available."""
-    try:
-        co_dir = Path(".co")
-        if co_dir.exists():
-            config_path = co_dir / "config.toml"
-            if config_path.exists():
-                config = toml.load(config_path)
-                return config.get("auth", {}).get("token")
-    except Exception:
-        pass
-    return None
 
 
 def llm_do(
     input: str,
     output: Optional[Type[T]] = None,
     system_prompt: Optional[Union[str, Path]] = None,
-    model: str = "gpt-4o-mini",
-    temperature: float = 0.1,
+    model: str = "co/gpt-4o",
     api_key: Optional[str] = None,
     **kwargs
 ) -> Union[str, T]:
     """
-    Make a one-shot LLM call with optional structured output using LiteLLM.
-    
-    Supports 100+ LLM providers. Most models work with simple names:
+    Make a one-shot LLM call with optional structured output.
+
+    Supports multiple LLM providers:
     - OpenAI: "gpt-4o", "o4-mini", "gpt-3.5-turbo"
-    - Anthropic: "claude-3-5-sonnet", "claude-3-5-haiku", "claude-3-opus"
+    - Anthropic: "claude-3-5-sonnet", "claude-3-5-haiku-20241022"
     - Google: "gemini-1.5-pro", "gemini-1.5-flash"
-    
-    Special providers need prefixes:
-    - ConnectOnion Managed: "co/gpt-4o", "co/claude-3-5-sonnet" (no API keys needed!)
-    - Ollama: "ollama/llama2", "ollama/mistral"
-    - Azure: "azure/<deployment-name>"
-    - Bedrock: "bedrock/anthropic.claude-v2"
-    
+    - ConnectOnion Managed: "co/gpt-4o", "co/o4-mini" (no API keys needed!)
+
     Args:
         input: The input text/question to send to the LLM
         output: Optional Pydantic model class for structured output
         system_prompt: Optional system prompt (string or file path)
-        model: Model name (e.g., "gpt-4o", "co/gpt-4o", "claude-3-5-sonnet")
-        temperature: Sampling temperature (default: 0.1 for consistency)
+        model: Model name (default: "co/gpt-4o")
         api_key: Optional API key (uses environment variable if not provided)
-        **kwargs: Additional parameters to pass to LiteLLM
-    
+        **kwargs: Additional parameters (temperature, max_tokens, etc.)
+
     Returns:
         Either a string response or an instance of the output model
-    
+
     Examples:
-        >>> # Simple string response with OpenAI
+        >>> # Simple string response with default model
         >>> answer = llm_do("What's 2+2?")
         >>> print(answer)  # "4"
-        
+
         >>> # With ConnectOnion managed keys (no API key needed!)
         >>> answer = llm_do("What's 2+2?", model="co/o4-mini")
-        
-        >>> # With Claude (simple name)
+
+        >>> # With Claude
         >>> answer = llm_do("Explain quantum physics", model="claude-3-5-haiku-20241022")
-        
-        >>> # With Gemini (simple name)
+
+        >>> # With Gemini
         >>> answer = llm_do("Write a poem", model="gemini-1.5-flash")
-        
-        >>> # With local Ollama (needs prefix)
-        >>> answer = llm_do("Hello", model="ollama/llama2")
-        
+
         >>> # With structured output
         >>> class Analysis(BaseModel):
         ...     sentiment: str
         ...     score: float
-        >>> 
+        >>>
         >>> result = llm_do("I love this!", output=Analysis)
         >>> print(result.sentiment)  # "positive"
     """
     # Validate input
     if not input or not input.strip():
         raise ValueError("Input cannot be empty")
-    
-    # Check if using ConnectOnion managed keys
-    is_managed_model = model.startswith("co/")
-    
+
     # Load system prompt
     if system_prompt:
         prompt_text = load_system_prompt(system_prompt)
     else:
         prompt_text = "You are a helpful assistant."
-    
-    # Handle co/ models through our backend
-    if is_managed_model:
-        import requests
-        
-        # Get auth token
-        auth_token = _get_auth_token()
-        if not auth_token:
-            raise ValueError(
-                "No authentication token found for co/ models.\n"
-                "Run 'co auth' to authenticate first."
-            )
-        
-        # Build messages
-        messages = [
-            {"role": "system", "content": prompt_text},
-            {"role": "user", "content": input}
-        ]
-        
-        # Prepare request - use production URL unless explicitly in dev mode
-        if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
-            api_url = "http://localhost:8000/api/llm/completions"
-        else:
-            api_url = "https://oo.openonion.ai/api/llm/completions"
-        
-        headers = {
-            "Authorization": f"Bearer {auth_token}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
-            "model": model,  # Keep the full model name with co/ prefix
-            "messages": messages,
-            "temperature": temperature,
-            **kwargs
-        }
-        
-        # Handle structured output
-        if output:
-            schema = output.model_json_schema()
-            json_instruction = (
-                f"\n\nPlease respond with a JSON object that matches this schema:\n"
-                f"{json.dumps(schema, indent=2)}\n"
-                f"Return ONLY valid JSON, no other text."
-            )
-            messages[-1]["content"] += json_instruction
-            payload["messages"] = messages
-        
-        try:
-            response = requests.post(api_url, json=payload, headers=headers)
-            response.raise_for_status()
-            data = response.json()
-            
-            content = data["choices"][0]["message"]["content"]
-            
-            if output:
-                # Parse structured output
-                import re
-                json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(0)
-                    json_data = json.loads(json_str)
-                    return output.model_validate(json_data)
-                else:
-                    # Try parsing entire content
-                    json_data = json.loads(content)
-                    return output.model_validate(json_data)
-            else:
-                return content
-                
-        except requests.exceptions.HTTPError as e:
-            if e.response.status_code == 401:
-                raise ValueError("Authentication expired. Run 'co auth' again.")
-            else:
-                raise ValueError(f"API error: {e.response.text}")
-        except Exception as e:
-            raise ValueError(f"Failed to call managed model: {e}")
-    
-    # Import LiteLLM for non-managed models
-    try:
-        from litellm import completion
-        import litellm
-    except ImportError:
-        raise ImportError(
-            "Please install litellm: pip install litellm\n"
-            "This enables support for 100+ LLM providers."
-        )
-    
-    # Convert model name to LiteLLM format
-    litellm_model = _get_litellm_model_name(model)
-    
-    # Set API key if provided
-    if api_key:
-        # Detect provider and set appropriate env var
-        provider = MODEL_REGISTRY.get(model)
-        if not provider and "/" not in model:
-            # Try to infer from model name
-            if model.startswith("gpt") or model.startswith("o"):
-                provider = "openai"
-            elif model.startswith("claude"):
-                provider = "anthropic"
-            elif model.startswith("gemini"):
-                provider = "google"
-        
-        if provider == "openai":
-            os.environ["OPENAI_API_KEY"] = api_key
-        elif provider == "anthropic":
-            os.environ["ANTHROPIC_API_KEY"] = api_key
-        elif provider == "google":
-            os.environ["GEMINI_API_KEY"] = api_key
-    
+
     # Build messages
     messages = [
         {"role": "system", "content": prompt_text},
         {"role": "user", "content": input}
     ]
-    
-    # Prepare completion kwargs
-    completion_kwargs = {
-        "model": litellm_model,
-        "messages": messages,
-        "temperature": temperature,
-        **kwargs  # Pass through any additional parameters
-    }
-    
-    # Make the API call
-    try:
-        if output:
-            # Check if model supports structured outputs
-            try:
-                from litellm import supports_response_schema
-                
-                # For structured output with Pydantic model
-                if supports_response_schema(model=litellm_model):
-                    # Model supports native structured outputs
-                    completion_kwargs["response_format"] = output
-                else:
-                    # Fallback: Use JSON mode with schema validation
-                    # Enable client-side validation for models that don't support json_schema
-                    litellm.enable_json_schema_validation = True
-                    
-                    # Add JSON instruction to the prompt
-                    schema = output.model_json_schema()
-                    json_instruction = (
-                        f"\n\nPlease respond with a JSON object that matches this schema:\n"
-                        f"{json.dumps(schema, indent=2)}\n"
-                        f"Return ONLY valid JSON, no other text."
-                    )
-                    messages[-1]["content"] += json_instruction
-                    
-                    # Try to use JSON mode if supported
-                    try:
-                        from litellm import get_supported_openai_params
-                        params = get_supported_openai_params(model=litellm_model)
-                        if "response_format" in params:
-                            completion_kwargs["response_format"] = {"type": "json_object"}
-                    except:
-                        pass  # Model doesn't support response_format
-            except ImportError:
-                # Older version of LiteLLM, use JSON instruction approach
-                schema = output.model_json_schema()
-                json_instruction = (
-                    f"\n\nPlease respond with a JSON object that matches this schema:\n"
-                    f"{json.dumps(schema, indent=2)}\n"
-                    f"Return ONLY valid JSON, no other text."
-                )
-                messages[-1]["content"] += json_instruction
-            
-            # Make the completion call
-            response = completion(**completion_kwargs)
-            
-            # Extract the content
-            content = response.choices[0].message.content
-            
-            # Parse the response
-            if hasattr(response.choices[0].message, 'parsed') and response.choices[0].message.parsed:
-                # Direct structured output support
-                return response.choices[0].message.parsed
-            else:
-                # Parse JSON from text response
-                import re
-                
-                # Try to extract JSON from the response
-                json_match = re.search(r'\{.*\}', content, re.DOTALL)
-                if json_match:
-                    json_str = json_match.group(0)
-                    try:
-                        json_data = json.loads(json_str)
-                        return output.model_validate(json_data)
-                    except (json.JSONDecodeError, Exception) as e:
-                        # Try to clean up common JSON issues
-                        json_str = json_str.replace("'", '"')  # Replace single quotes
-                        json_str = re.sub(r',\s*}', '}', json_str)  # Remove trailing commas
-                        json_str = re.sub(r',\s*]', ']', json_str)  # Remove trailing commas in arrays
-                        
-                        try:
-                            json_data = json.loads(json_str)
-                            return output.model_validate(json_data)
-                        except:
-                            raise ValueError(f"Failed to parse JSON response: {e}\nContent: {content}")
-                else:
-                    # Try parsing the entire content as JSON
-                    try:
-                        json_data = json.loads(content)
-                        return output.model_validate(json_data)
-                    except:
-                        raise ValueError(f"No valid JSON found in response: {content}")
-        else:
-            # Simple string response
-            response = completion(**completion_kwargs)
-            return response.choices[0].message.content or ""
-            
-    except Exception as e:
-        if "import litellm" in str(e):
-            raise ImportError(
-                "Please install litellm: pip install litellm\n"
-                "This enables support for 100+ LLM providers."
-            )
-        elif "API" in str(e) or "api" in str(e):
-            raise RuntimeError(f"API error: {str(e)}")
-        elif "Failed to parse" in str(e) or "No valid JSON" in str(e):
-            raise  # Re-raise parsing errors as-is
-        else:
-            raise RuntimeError(f"Unexpected error: {str(e)}")
+
+    # Create LLM using factory (only pass api_key and initialization params)
+    llm = create_llm(model=model, api_key=api_key)
+
+    # Get response
+    if output:
+        # Structured output - use structured_complete()
+        return llm.structured_complete(messages, output, **kwargs)
+    else:
+        # Plain text - use complete()
+        # Pass through kwargs (max_tokens, temperature, etc.)
+        response = llm.complete(messages, tools=None, **kwargs)
+        return response.content

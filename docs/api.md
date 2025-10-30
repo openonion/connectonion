@@ -128,34 +128,44 @@ tool = create_tool_from_function(simple_function)
 # tool now has: .name, .description, .run(), .to_function_schema()
 ```
 
-## History
+## Logging
 
-Automatic behavior tracking for agents.
+Automatic activity logging for agents.
 
-### Properties
+### Configuration
 
-- **save_dir** (`Path`): Directory where history is saved
-- **records** (`List[Dict]`): List of behavior records
-
-### Methods
-
-#### `summary() -> str`
-
-Get a summary of agent behavior.
+Control logging via the `log` parameter in Agent initialization:
 
 ```python
-print(agent.history.summary())
-# Agent: assistant
-# Total tasks: 5
-# Tools used: calculator (3), search (2)
+# Default: logs to .co/logs/{name}.log
+agent = Agent("assistant")
+
+# Log to current directory
+agent = Agent("assistant", log=True)  # → assistant.log
+
+# Disable logging
+agent = Agent("assistant", log=False)
+
+# Custom log file
+agent = Agent("assistant", log="my_logs/custom.log")
 ```
 
-#### `clear() -> None`
+### Log Format
 
-Clear the behavior history.
+Each log entry includes:
+- Timestamp
+- User input
+- LLM calls with timing
+- Tool executions with parameters and results
+- Final agent responses
 
-```python
-agent.history.clear()
+Example log output:
+```
+10:30:15 INPUT: Calculate 2 + 2
+10:30:15 → LLM call (gpt-4o-mini)
+10:30:16 → Tool: calculator(expression="2 + 2")
+10:30:16   Result: 4
+10:30:16 ✓ Complete (1.2s)
 ```
 
 ## LLM

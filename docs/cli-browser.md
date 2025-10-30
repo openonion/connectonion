@@ -1,10 +1,10 @@
 # CLI Browser Feature
 
-Quick browser screenshots for debugging web applications.
+Quick browser screenshots with one command.
 
 ## Overview
 
-The `-b` flag provides instant browser screenshots without writing code. Perfect for debugging, testing, and sharing visual proof of issues.
+The `-b` flag (or `co browser`) takes instant screenshots without writing code. Perfect for debugging, testing, and sharing visual proof.
 
 ## Basic Usage
 
@@ -12,11 +12,7 @@ The `-b` flag provides instant browser screenshots without writing code. Perfect
 co -b "screenshot localhost:3000"
 ```
 
-This command:
-1. Opens a headless browser
-2. Navigates to http://localhost:3000
-3. Takes a screenshot
-4. Saves as `screenshot_[timestamp].png`
+Saves to `.tmp/screenshot_YYYYMMDD_HHMMSS.png` by default.
 
 ## Command Format
 
@@ -104,9 +100,9 @@ The command intelligently handles URLs:
 ## Output Files
 
 If no path specified:
-- Saves in current directory
+- Saves under `.tmp/`
 - Named `screenshot_YYYYMMDD_HHMMSS.png`
-- Example: `screenshot_20240115_143022.png`
+- Example: `.tmp/screenshot_20240115_143022.png`
 
 ## Installation
 
@@ -173,6 +169,10 @@ co -b "screenshot localhost:3000"
 ❌ Browser tools not installed
    Run: pip install playwright && playwright install chromium
 
+# Missing OPENAI_API_KEY
+co -b "screenshot localhost:3000"
+❌ Natural language browser agent unavailable. Set OPENAI_API_KEY and try again.
+
 # Cannot reach URL
 co -b "screenshot localhost:3000"
 ❌ Cannot reach http://localhost:3000
@@ -198,6 +198,11 @@ co -b "screenshot localhost:3000 save to /root/test.png"
 - PNG format only
 
 For complex browser automation, use the full ConnectOnion browser agent or Playwright directly.
+
+## Requirements
+
+- `OPENAI_API_KEY` must be set (managed keys are not used here)
+- Playwright installed and set up
 
 ## Examples for Common Frameworks
 

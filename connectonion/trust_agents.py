@@ -1,7 +1,12 @@
-"""Pre-configured trust agents for ConnectOnion.
-
-This module contains default trust agents for different security levels.
-Users can import these directly or use them as templates for custom agents.
+"""
+Purpose: Provide pre-configured system prompts for trust agents at different security levels
+LLM-Note:
+  Dependencies: no imports | imported by [trust.py] | tested by [tests/test_trust.py]
+  Data flow: trust.py calls get_trust_prompt(level) → validates level → returns TRUST_PROMPTS[level] string → used as system_prompt for trust Agent
+  State/Effects: no state or side effects | pure data module | TRUST_PROMPTS dict contains 3 prompts: "open" (dev - trust all), "careful" (staging - basic verification), "strict" (prod - whitelist only)
+  Integration: exposes TRUST_PROMPTS dict, get_trust_prompt(level), get_open_trust_prompt(), get_careful_trust_prompt(), get_strict_trust_prompt() | used by create_trust_agent() in trust.py to configure trust agent behavior
+  Performance: constant-time dict lookup | no computation
+  Errors: raises ValueError if level not in ["open", "careful", "strict"]
 """
 
 # Default trust prompts for each level

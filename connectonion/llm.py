@@ -1,7 +1,148 @@
-"""LLM interface for ConnectOnion."""
+"""
+Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, and OpenOnion
+LLM-Note:
+  Dependencies: imports from [abc, typing, dataclasses, json, os, openai, anthropic, google.generativeai, requests, pathlib, toml, pydantic] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py]
+  Data flow: Agent/llm_do calls create_llm(model, api_key) → factory routes to provider class → Provider.__init__() validates API key → Agent calls complete(messages, tools) OR structured_complete(messages, output_schema) → provider converts to native format → calls API → parses response → returns LLMResponse(content, tool_calls, raw_response) OR Pydantic model instance
+  State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENONION_API_KEY) | reads ~/.connectonion/.co/config.toml for OpenOnion auth | makes HTTP requests to LLM APIs | no caching or persistence
+  Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
+  Performance: stateless (no caching) | synchronous (no streaming) | default max_tokens=8192 for Anthropic (required) | each call hits API
+  Errors: raises ValueError for missing API keys, unknown models, invalid parameters | provider-specific errors bubble up (openai.APIError, anthropic.APIError, etc.) | Pydantic ValidationError for invalid structured output
+
+Unified LLM provider abstraction layer for ConnectOnion framework.
+
+This module provides a consistent interface for interacting with multiple LLM providers
+(OpenAI, Anthropic, Google Gemini, and ConnectOnion managed keys) through a common API.
+
+Architecture Overview
+--------------------
+The module follows a factory pattern with provider-specific implementations:
+
+1. **Abstract Base Class (LLM)**:
+   - Defines the contract all providers must implement
+   - Two core methods: complete() for text, structured_complete() for Pydantic models
+   - Ensures consistent interface across all providers
+
+2. **Provider Implementations**:
+   - OpenAILLM: Native OpenAI API with responses.parse() for structured output
+   - AnthropicLLM: Claude API with tool calling workaround for structured output
+   - GeminiLLM: Google Gemini with response_schema for structured output
+   - OpenOnionLLM: Managed keys using OpenAI-compatible proxy endpoint
+
+3. **Factory Function (create_llm)**:
+   - Routes model names to appropriate providers
+   - Handles API key initialization
+   - Returns configured provider instance
+
+Key Design Decisions
+-------------------
+- **Structured Output**: Each provider uses its native structured output API when available
+  * OpenAI: responses.parse() with text_format parameter
+  * Anthropic: Forced tool calling with schema validation
+  * Gemini: response_schema with JSON MIME type
+  * OpenOnion: Proxies to OpenAI with fallback
+
+- **Tool Calling**: OpenAI format used as the common schema, converted per-provider
+  * All providers return ToolCall dataclasses with (name, arguments, id)
+  * Enables consistent agent behavior across providers
+
+- **Message Format**: OpenAI's message format (role/content) is the lingua franca
+  * Providers convert to their native format internally
+  * Simplifies Agent integration
+
+- **Parameter Passing**: **kwargs pattern for runtime parameters
+  * temperature, max_tokens, etc. flow through to provider APIs
+  * Allows provider-specific features without bloating base interface
+
+Data Flow
+---------
+Agent/llm_do → create_llm(model) → Provider.__init__(api_key)
+           ↓
+Provider.complete(messages, tools, **kwargs)
+           ↓
+Convert messages → Call native API → Parse response
+           ↓
+Return LLMResponse(content, tool_calls, raw_response)
+
+For structured output:
+Provider.structured_complete(messages, output_schema, **kwargs)
+           ↓
+Use native structured API → Validate with Pydantic
+           ↓
+Return Pydantic model instance
+
+Dependencies
+-----------
+- openai: OpenAI and OpenOnion provider implementations
+- anthropic: Claude provider implementation
+- google.generativeai: Gemini provider implementation
+- pydantic: Structured output validation
+- requests: OpenOnion authentication checks
+- toml: OpenOnion config file parsing
+
+Integration Points
+-----------------
+Imported by:
+  - agent.py: Agent class uses LLM for reasoning
+  - llm_do.py: One-shot function uses LLM directly
+  - conftest.py: Test fixtures
+
+Tested by:
+  - tests/test_llm.py: Unit tests with mocked APIs
+  - tests/test_llm_do.py: Integration tests
+  - tests/test_real_*.py: Real API integration tests
+
+Environment Variables
+--------------------
+Required (pick one):
+  - OPENAI_API_KEY: For OpenAI models
+  - ANTHROPIC_API_KEY: For Claude models
+  - GEMINI_API_KEY or GOOGLE_API_KEY: For Gemini models
+  - OPENONION_API_KEY: For co/ managed keys (or from ~/.connectonion/.co/config.toml)
+
+Optional:
+  - OPENONION_DEV: Use localhost:8000 for OpenOnion (development)
+  - ENVIRONMENT=development: Same as OPENONION_DEV
+
+Error Handling
+-------------
+- ValueError: Missing API keys, unknown models, invalid parameters
+- Provider-specific errors: Bubble up from native SDKs (openai.APIError, etc.)
+- Structured output errors: Pydantic ValidationError if response doesn't match schema
+
+Performance Considerations
+-------------------------
+- Default max_tokens: 8192 for Anthropic (required), configurable for others
+- No caching: Each call is stateless (Agent maintains conversation history)
+- No streaming: Currently synchronous only (streaming planned for future)
+
+Example Usage
+------------
+Basic completion:
+    >>> from connectonion.llm import create_llm
+    >>> llm = create_llm(model="gpt-4o-mini")
+    >>> response = llm.complete([{"role": "user", "content": "Hello"}])
+    >>> print(response.content)
+
+Structured output:
+    >>> from pydantic import BaseModel
+    >>> class Answer(BaseModel):
+    ...     value: int
+    >>> llm = create_llm(model="gpt-4o-mini")
+    >>> result = llm.structured_complete(
+    ...     [{"role": "user", "content": "What is 2+2?"}],
+    ...     Answer
+    ... )
+    >>> print(result.value)  # 4
+
+With tools:
+    >>> tools = [{"name": "search", "description": "Search the web", "parameters": {...}}]
+    >>> response = llm.complete(messages, tools=tools)
+    >>> if response.tool_calls:
+    ...     print(response.tool_calls[0].name)  # "search"
+"""
 
 from abc import ABC, abstractmethod
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any, Optional, Type
 from dataclasses import dataclass
 import json
 import os
@@ -11,6 +152,7 @@ import google.generativeai as genai
 import requests
 from pathlib import Path
 import toml
+from pydantic import BaseModel
 
 
 @dataclass
@@ -31,10 +173,26 @@ class LLMResponse:
 
 class LLM(ABC):
     """Abstract base class for LLM providers."""
-    
+
     @abstractmethod
     def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None) -> LLMResponse:
         """Complete a conversation with optional tool support."""
+        pass
+
+    @abstractmethod
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel]) -> BaseModel:
+        """Get structured Pydantic output matching the schema.
+
+        Args:
+            messages: Conversation messages in OpenAI format
+            output_schema: Pydantic model class defining the expected output structure
+
+        Returns:
+            Instance of output_schema with parsed and validated data
+
+        Raises:
+            ValueError: If the LLM fails to generate valid structured output
+        """
         pass
 
 
@@ -49,20 +207,21 @@ class OpenAILLM(LLM):
         self.client = openai.OpenAI(api_key=self.api_key)
         self.model = model
     
-    def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None) -> LLMResponse:
+    def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation with optional tool support."""
-        kwargs = {
+        api_kwargs = {
             "model": self.model,
-            "messages": messages
+            "messages": messages,
+            **kwargs  # Pass through user kwargs (max_tokens, temperature, etc.)
         }
-        
+
         if tools:
-            kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
-            kwargs["tool_choice"] = "auto"
-        
-        response = self.client.chat.completions.create(**kwargs)
+            api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
+            api_kwargs["tool_choice"] = "auto"
+
+        response = self.client.chat.completions.create(**api_kwargs)
         message = response.choices[0].message
-        
+
         # Parse tool calls if present
         tool_calls = []
         if hasattr(message, 'tool_calls') and message.tool_calls:
@@ -72,41 +231,72 @@ class OpenAILLM(LLM):
                     arguments=json.loads(tc.function.arguments),
                     id=tc.id
                 ))
-        
+
         return LLMResponse(
             content=message.content,
             tool_calls=tool_calls,
             raw_response=response
         )
 
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
+        """Get structured Pydantic output using OpenAI's native responses.parse API.
+
+        Uses the new OpenAI responses.parse() endpoint with text_format parameter
+        for guaranteed schema adherence.
+        """
+        response = self.client.responses.parse(
+            model=self.model,
+            input=messages,
+            text_format=output_schema,
+            **kwargs  # Pass through temperature, max_tokens, etc.
+        )
+
+        # Handle edge cases
+        if response.status == "incomplete":
+            if response.incomplete_details.reason == "max_output_tokens":
+                raise ValueError("Response incomplete: maximum output tokens reached")
+            elif response.incomplete_details.reason == "content_filter":
+                raise ValueError("Response incomplete: content filtered")
+
+        # Check for refusal
+        if response.output and len(response.output) > 0:
+            first_content = response.output[0].content[0] if response.output[0].content else None
+            if first_content and hasattr(first_content, 'type') and first_content.type == "refusal":
+                raise ValueError(f"Model refused to respond: {first_content.refusal}")
+
+        # Return the parsed Pydantic object
+        return response.output_parsed
+
 
 class AnthropicLLM(LLM):
     """Anthropic Claude LLM implementation."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-3-5-sonnet-20241022", **kwargs):
+    def __init__(self, api_key: Optional[str] = None, model: str = "claude-3-5-sonnet-20241022", max_tokens: int = 8192, **kwargs):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("Anthropic API key required. Set ANTHROPIC_API_KEY environment variable or pass api_key parameter.")
-        
+
         self.client = anthropic.Anthropic(api_key=self.api_key)
         self.model = model
+        self.max_tokens = max_tokens  # Anthropic requires max_tokens (default 8192)
     
-    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> LLMResponse:
+    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation with optional tool support."""
         # Convert messages to Anthropic format
         anthropic_messages = self._convert_messages(messages)
-        
-        kwargs = {
+
+        api_kwargs = {
             "model": self.model,
-            "max_tokens": 4096,
-            "messages": anthropic_messages
+            "messages": anthropic_messages,
+            "max_tokens": self.max_tokens,  # Required by Anthropic
+            **kwargs  # User can override max_tokens via kwargs
         }
-        
+
         # Add tools if provided
         if tools:
-            kwargs["tools"] = self._convert_tools(tools)
-        
-        response = self.client.messages.create(**kwargs)
+            api_kwargs["tools"] = self._convert_tools(tools)
+
+        response = self.client.messages.create(**api_kwargs)
         
         # Parse tool calls if present
         tool_calls = []
@@ -121,13 +311,50 @@ class AnthropicLLM(LLM):
                     arguments=block.input,
                     id=block.id
                 ))
-        
+
         return LLMResponse(
             content=content if content else None,
             tool_calls=tool_calls,
             raw_response=response
         )
-    
+
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
+        """Get structured Pydantic output using tool calling method.
+
+        Anthropic doesn't have native Pydantic support yet, so we use a tool calling
+        workaround: create a dummy tool with the Pydantic schema and force its use.
+        """
+        # Convert messages to Anthropic format
+        anthropic_messages = self._convert_messages(messages)
+
+        # Create a tool with the Pydantic schema as input_schema
+        tool = {
+            "name": "return_structured_output",
+            "description": "Returns the structured output based on the user's request",
+            "input_schema": output_schema.model_json_schema()
+        }
+
+        # Set max_tokens with safe default
+        api_kwargs = {
+            "model": self.model,
+            "max_tokens": self.max_tokens,
+            "messages": anthropic_messages,
+            "tools": [tool],
+            "tool_choice": {"type": "tool", "name": "return_structured_output"},
+            **kwargs  # User can override max_tokens, temperature, etc.
+        }
+
+        # Force the model to use this tool
+        response = self.client.messages.create(**api_kwargs)
+
+        # Extract structured data from tool call
+        for block in response.content:
+            if block.type == "tool_use" and block.name == "return_structured_output":
+                # Validate and return as Pydantic model
+                return output_schema.model_validate(block.input)
+
+        raise ValueError("No structured output received from Claude")
+
     def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert OpenAI-style messages to Anthropic format."""
         anthropic_messages = []
@@ -256,23 +483,21 @@ class GeminiLLM(LLM):
     """Google Gemini LLM implementation."""
     
     def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-flash", **kwargs):
-        self.api_key = api_key or os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY")
+        self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
-            raise ValueError("Google API key required. Set GOOGLE_API_KEY or GEMINI_API_KEY environment variable or pass api_key parameter.")
+            raise ValueError("Gemini API key required. Set GEMINI_API_KEY environment variable or pass api_key parameter. (GOOGLE_API_KEY is also supported for backward compatibility)")
         
         genai.configure(api_key=self.api_key)
         self.model = model
         self.client = genai.GenerativeModel(model)
     
-    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> LLMResponse:
+    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation with optional tool support."""
         # Convert messages to Gemini format
         gemini_messages = self._convert_messages(messages)
-        
-        # Configure generation with tools if provided
-        generation_config = genai.GenerationConfig(
-            max_output_tokens=4096,
-        )
+
+        # Configure generation with user kwargs (temperature, max_output_tokens, etc.)
+        generation_config = genai.GenerationConfig(**kwargs)
         
         # If we have tools, use the GenerativeModel with tools directly
         if tools:
@@ -369,15 +594,45 @@ class GeminiLLM(LLM):
             tool_calls=tool_calls,
             raw_response=response
         )
-    
+
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
+        """Get structured Pydantic output using Gemini's native response_schema."""
+        # Convert messages to Gemini's format
+        gemini_messages = self._convert_messages(messages)
+
+        # Prepare the generation config, including the JSON schema
+        generation_config = genai.GenerationConfig(
+            response_mime_type="application/json",
+            response_schema=output_schema,
+            **kwargs  # Pass through temperature, max_output_tokens, etc.
+        )
+
+        try:
+            # Use the existing self.client (a GenerativeModel instance)
+            response = self.client.generate_content(
+                contents=gemini_messages,
+                generation_config=generation_config
+            )
+
+            # The SDK automatically parses the JSON output into the .parsed attribute
+            if response.parsed:
+                return response.parsed
+            else:
+                # This would happen if the model failed to generate valid JSON.
+                raise ValueError("Failed to get parsed output from Gemini, even though a schema was provided.")
+
+        except Exception as e:
+            # Catch-all for any other API or validation errors
+            raise ValueError(f"An error occurred while generating structured output from Gemini: {e}")
+
     def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert OpenAI-style messages to Gemini format."""
         gemini_messages = []
         i = 0
-        
+
         while i < len(messages):
             msg = messages[i]
-            
+
             # Skip system messages (Gemini doesn't have a direct system role)
             if msg["role"] == "system":
                 i += 1
@@ -597,8 +852,8 @@ MODEL_REGISTRY = {
 
 
 class OpenOnionLLM(LLM):
-    """OpenOnion managed keys LLM implementation."""
-    
+    """OpenOnion managed keys LLM implementation using OpenAI-compatible API."""
+
     def __init__(self, api_key: Optional[str] = None, model: str = "co/o4-mini", **kwargs):
         # For co/ models, api_key is actually the auth token
         self.auth_token = api_key or self._get_auth_token()
@@ -607,23 +862,44 @@ class OpenOnionLLM(LLM):
                 "No authentication token found for co/ models.\n"
                 "Run 'co auth' to authenticate first."
             )
-        
-        self.model = model
-        
-        # Determine API URL
+
+        # Strip co/ prefix - it's only for client-side routing
+        self.model = model.removeprefix("co/")
+
+        # Determine base URL for OpenAI-compatible endpoint
         if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
-            self.api_url = "http://localhost:8000/api/llm/completions"
+            base_url = "http://localhost:8000/v1"
         else:
-            self.api_url = "https://oo.openonion.ai/api/llm/completions"
+            base_url = "https://oo.openonion.ai/v1"
+
+        # Use OpenAI client with OpenOnion endpoint
+        self.client = openai.OpenAI(
+            base_url=base_url,
+            api_key=self.auth_token
+        )
     
     def _get_auth_token(self) -> Optional[str]:
-        """Get authentication token from local config."""
-        # Try current directory first
+        """Get authentication token from environment or local config."""
+        # First check environment variable (from .env file)
+        token = os.getenv("OPENONION_API_KEY")
+        if token:
+            return token
+
+        # Try current directory first, then parent directories, then home
         config_paths = [
             Path.cwd() / ".co" / "config.toml",
+            Path.cwd().parent / ".co" / "config.toml",
+            Path.cwd().parent.parent / ".co" / "config.toml",
             Path.home() / ".connectonion" / ".co" / "config.toml"
         ]
-        
+
+        # Also check if we're running from a subdirectory
+        # Look for .co in the same directory as the script being run
+        import sys
+        if sys.argv[0]:
+            script_dir = Path(sys.argv[0]).parent.absolute()
+            config_paths.insert(0, script_dir / ".co" / "config.toml")
+
         for config_path in config_paths:
             if config_path.exists():
                 try:
@@ -632,57 +908,96 @@ class OpenOnionLLM(LLM):
                         return config["auth"]["token"]
                 except Exception:
                     continue
-        
+
         return None
     
-    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None) -> LLMResponse:
-        """Complete a conversation with optional tool support."""
-        headers = {
-            "Authorization": f"Bearer {self.auth_token}",
-            "Content-Type": "application/json"
-        }
-        
-        payload = {
+    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
+        """Complete a conversation with optional tool support using OpenAI-compatible API."""
+        api_kwargs = {
             "model": self.model,
-            "messages": messages
+            "messages": messages,
+            **kwargs  # Pass through user kwargs (temperature, max_tokens, etc.)
         }
-        
+
         # Add tools if provided
         if tools:
-            payload["tools"] = [{"type": "function", "function": tool} for tool in tools]
-            payload["tool_choice"] = "auto"
-        
+            api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
+            api_kwargs["tool_choice"] = "auto"
+
         try:
-            response = requests.post(self.api_url, json=payload, headers=headers, timeout=30)
-            response.raise_for_status()
-            data = response.json()
-            
-            # Parse the response
-            choice = data["choices"][0]
-            message = choice["message"]
-            
+            response = self.client.chat.completions.create(**api_kwargs)
+            message = response.choices[0].message
+
             # Parse tool calls if present
             tool_calls = []
-            if message.get("tool_calls"):
-                for tc in message["tool_calls"]:
+            if hasattr(message, 'tool_calls') and message.tool_calls:
+                for tc in message.tool_calls:
                     tool_calls.append(ToolCall(
-                        name=tc["function"]["name"],
-                        arguments=json.loads(tc["function"]["arguments"]) if isinstance(tc["function"]["arguments"], str) else tc["function"]["arguments"],
-                        id=tc["id"]
+                        name=tc.function.name,
+                        arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                        id=tc.id
                     ))
-            
+
             return LLMResponse(
-                content=message.get("content"),
+                content=message.content,
                 tool_calls=tool_calls,
-                raw_response=data
+                raw_response=response
             )
-            
-        except requests.exceptions.RequestException as e:
-            if hasattr(e, 'response') and e.response:
-                error_msg = f"OpenOnion API error: {e.response.status_code} - {e.response.text}"
-            else:
-                error_msg = f"Network error: {str(e)}"
+
+        except Exception as e:
+            error_msg = f"OpenOnion API error: {str(e)}"
             raise ValueError(error_msg)
+
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
+        """Get structured Pydantic output using OpenAI-compatible API.
+
+        Attempts to use the OpenAI responses.parse() API if available.
+        Falls back to prompt engineering if not supported.
+        """
+        try:
+            # Try the new OpenAI responses.parse() API
+            response = self.client.responses.parse(
+                model=self.model,
+                input=messages,
+                text_format=output_schema,
+                **kwargs  # Pass through temperature, max_tokens, etc.
+            )
+
+            # Handle edge cases
+            if response.status == "incomplete":
+                if response.incomplete_details.reason == "max_output_tokens":
+                    raise ValueError("Response incomplete: maximum output tokens reached")
+                elif response.incomplete_details.reason == "content_filter":
+                    raise ValueError("Response incomplete: content filtered")
+
+            # Check for refusal
+            if response.output and len(response.output) > 0:
+                first_content = response.output[0].content[0] if response.output[0].content else None
+                if first_content and hasattr(first_content, 'type') and first_content.type == "refusal":
+                    raise ValueError(f"Model refused to respond: {first_content.refusal}")
+
+            return response.output_parsed
+
+        except AttributeError:
+            # Fallback: responses.parse() not available, use prompt engineering
+            import re
+
+            schema = output_schema.model_json_schema()
+            messages_copy = messages.copy()
+            messages_copy[-1]["content"] += (
+                f"\n\nReturn JSON matching schema:\n{json.dumps(schema, indent=2)}"
+            )
+
+            response = self.complete(messages_copy, tools=None)
+
+            # Parse JSON from response
+            json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
+            if json_match:
+                json_data = json.loads(json_match.group(0))
+                return output_schema.model_validate(json_data)
+            else:
+                json_data = json.loads(response.content)
+                return output_schema.model_validate(json_data)
 
 
 def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:

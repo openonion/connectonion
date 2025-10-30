@@ -11,7 +11,7 @@ template = "minimal"
 [agent]
 address = "0xeb71b27b33b206ec2465e55b61a48e302346f98827886f37206d18c7c8705e1c"
 short_address = "0xeb71...5e1c"
-email = "0xeb71b27b@mail.openonion.ai"
+email = "0xeb71b27b@openonion.ai"
 email_active = true
 created_at = "2025-09-13T13:58:33.593682"
 algorithm = "ed25519"

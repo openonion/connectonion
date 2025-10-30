@@ -8,37 +8,26 @@ Get up and running with ConnectOnion in under 2 minutes.
 pip install connectonion
 ```
 
-## 2. Create Your First Meta-Agent
+## 2. Create Your First Agent
 
 ```bash
-# Create a new directory for your agent
-mkdir meta-agent
-cd meta-agent
+# Create a new agent project
+co create my-agent
 
-# Initialize the meta-agent (default)
-co init
+# Navigate to the project
+cd my-agent
 ```
 
-This creates a ConnectOnion development assistant with powerful capabilities:
-- `agent.py` - Meta-agent with documentation expertise and development tools
-- `prompt.md` - Main system prompt for your agent
-- `prompts/` - Folder with specialized prompts for different operations
-- `.env.example` - Template for API keys
+This creates a minimal agent with everything you need:
+- `agent.py` - Ready-to-run agent with example tools
+- `.env` - API keys (set up during creation)
 - `.co/` - Configuration and embedded ConnectOnion documentation
 - `.gitignore` - Pre-configured to exclude sensitive files
+- `co-vibecoding-principles-docs-contexts-all-in-one.md` - Complete framework docs
 
-## 3. Set Up Your API Key
+*The CLI guides you through API key setup automatically!*
 
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and add your OpenAI API key:
-```
-OPENAI_API_KEY=sk-your-actual-api-key-here
-```
-
-## 4. Run Your Agent
+## 3. Run Your Agent
 
 ```bash
 python agent.py
@@ -80,7 +69,8 @@ ConnectOnion offers specialized templates:
 
 ### Playwright Agent (Web Automation)
 ```bash
-co init --template playwright
+co create my-browser-bot --template playwright
+cd my-browser-bot
 ```
 
 Perfect for:

@@ -13,13 +13,13 @@ ConnectOnion is a Python framework for creating AI agents with behavior tracking
 - **Agent** (`connectonion/agent.py:10`): Main orchestrator that combines LLM calls with tool execution
 - **Tool** (`connectonion/tools.py:9`): Abstract base class for all agent tools with built-in implementations
 - **LLM** (`connectonion/llm.py:31`): Abstract interface with OpenAI implementation
-- **History** (`connectonion/history.py:24`): Automatic behavior tracking and persistence
+- **Console** (`connectonion/console.py:15`): Terminal output and file logging
 
 ### Key Design Patterns
 
 - **Tool Function Schema**: Tools automatically convert to OpenAI function calling format via `to_function_schema()`
 - **Message Flow**: Agent maintains conversation history with tool results for multi-turn interactions
-- **Automatic Persistence**: All agent behaviors save to `~/.connectonion/agents/{name}/behavior.json`
+- **Automatic Logging**: All agent activities log to `.co/logs/{name}.log` by default (customizable)
 - **Tool Mapping**: Agents maintain internal `tool_map` for O(1) tool lookup during execution
 
 ## Development Commands
@@ -51,6 +51,124 @@ python -m pytest --cov=connectonion --cov-report=term-missing
 ```bash
 pip install -e .
 ```
+
+## Documentation Architecture
+
+### GitHub Wiki (SEO Strategy)
+
+ConnectOnion uses a **nested Git repository** for the GitHub Wiki to gain SEO benefits from GitHub's high domain authority (DA ~95).
+
+**Structure:**
+```
+connectonion/                    # Main repo
+├── .git/                        # Main repo Git
+├── .gitignore                   # Contains: wiki/
+├── src/
+├── docs/
+└── wiki/                        # ← Ignored by main repo
+    ├── .git/                    # ← Wiki repo Git (separate!)
+    ├── Home.md
+    ├── Quick-Start.md
+    ├── Tutorials/
+    ├── How-To/
+    ├── Examples/
+    ├── FAQ.md
+    ├── Troubleshooting.md
+    └── _Sidebar.md
+```
+
+**How It Works:**
+- `wiki/` folder is added to `.gitignore` in main repo
+- Wiki content is a completely separate Git repository cloned inside `wiki/`
+- Each repo has independent history, remotes, and commits
+- No sync scripts needed - each folder IS its own Git repo
+
+**Editing Wiki Content:**
+```bash
+cd connectonion/wiki/
+# Edit any wiki page
+vim Quick-Start.md
+# Commit to wiki repo
+git add .
+git commit -m "Update quick start guide"
+git push origin master
+```
+
+**Working on Main Repo:**
+```bash
+cd connectonion/
+# Edit code
+vim connectonion/agent.py
+# Commit to main repo (wiki/ is ignored!)
+git add .
+git commit -m "Add new feature"
+git push
+```
+
+**SEO Benefits:**
+- Multiple SERP entries: main repo + wiki + docs site (https://docs.connectonion.com)
+- Fast indexing (hours vs weeks for new domains)
+- High domain authority from github.com
+- Cross-linking power between wiki and docs site
+- Keyword coverage: 13 pages targeting different search intents
+
+**Wiki URL:** https://github.com/openonion/connectonion/wiki
+
+### Docs Site (Private Repository)
+
+ConnectOnion uses a **nested Git repository** for the documentation website to keep it private during development while maintaining convenience.
+
+**Structure:**
+```
+connectonion/                    # Main repo (public)
+├── .git/                        # Main repo Git
+├── .gitignore                   # Contains: wiki/, docs-site/
+├── src/
+├── docs/
+├── wiki/                        # ← Public wiki (nested repo)
+└── docs-site/                   # ← Private docs site (nested repo)
+    ├── .git/                    # ← Docs site repo Git (separate, private!)
+    ├── app/
+    ├── components/
+    ├── public/
+    ├── package.json
+    └── next.config.ts
+```
+
+**How It Works:**
+- `docs-site/` folder is added to `.gitignore` in main repo
+- Docs site is a completely separate **private** Git repository
+- Each repo has independent history, remotes, and commits
+- No sync scripts needed - each folder IS its own Git repo
+
+**Editing Docs Site:**
+```bash
+cd connectonion/docs-site/
+# Edit any page
+vim app/agent/page.tsx
+# Commit to private docs-site repo
+git add .
+git commit -m "Update agent documentation"
+git push origin main
+```
+
+**Working on Main Repo:**
+```bash
+cd connectonion/
+# Edit code (docs-site/ is ignored!)
+vim connectonion/agent.py
+git add .
+git commit -m "Add new feature"
+git push
+```
+
+**Nested Repos Summary:**
+- Main repo: `connectonion` (public) - Framework code
+- Wiki repo: `connectonion.wiki` (public) - SEO-focused tutorials
+- Docs site repo: `connectonion-docs-site` (private) - Full documentation website
+
+**Docs site URL:** https://docs.connectonion.com
+**Docs site repo:** https://github.com/openonion/connectonion-docs-site (private)
 
 ## Tool System Architecture
 
@@ -87,12 +205,12 @@ The `create_tool_from_function()` utility:
 - Generates OpenAI-compatible function schemas
 - Attaches `.name`, `.description`, `.run()`, and `.to_function_schema()` attributes
 
-### Tool Call Recording (`connectonion/history.py:43`)
-Every tool execution is tracked with:
-- Parameters passed to the tool
+### Tool Call Logging (`connectonion/console.py:45`)
+Every tool execution is logged with:
+- Timestamp and parameters passed to the tool
 - Results (success/error/not_found status)
-- Call ID for correlation
-- Complete behavior history in `~/.connectonion/agents/{name}/behavior.json`
+- Execution timing
+- Complete activity log in `.co/logs/{name}.log` (default) or custom location
 
 ### Error Handling
 Tool errors are captured and passed back to the LLM as tool responses, allowing the agent to adapt or retry. Missing tools return "not_found" status.

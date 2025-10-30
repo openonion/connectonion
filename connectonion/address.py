@@ -1,6 +1,16 @@
-"""Agent address generation and management for ConnectOnion."""
+"""
+Purpose: Generate and manage Ed25519 cryptographic agent identities with seed phrase recovery
+LLM-Note:
+  Dependencies: imports from [os, pathlib, typing, nacl.signing, mnemonic] | imported by [cli/commands/auth_commands.py] | tested by [tests/test_address.py]
+  Data flow: generate() → creates 12-word seed phrase via Mnemonic → derives SigningKey from seed → creates address (0x + hex public key) → returns {address, short_address, email, seed_phrase, signing_key} | recover(seed_phrase) → validates phrase → recreates SigningKey → recreates address
+  State/Effects: save() writes to .co/keys/ directory: agent.key (binary signing key), recovery.txt (seed phrase), DO_NOT_SHARE (warning) | sets file permissions to 0o600 | load() reads from .co/keys/ and .co/config.toml | no global state
+  Integration: exposes generate(), recover(seed_phrase), save(address_data, co_dir), load(co_dir), verify(address, message, signature), sign(address_data, message) | address format: 0x + 64 hex chars (32 bytes public key) | email format: first 10 chars + @mail.openonion.ai
+  Performance: Ed25519 signing is fast (sub-millisecond) | mnemonic generation and validation are fast | file I/O minimal (only on save/load)
+  Errors: raises ImportError if pynacl or mnemonic not installed | raises ValueError for invalid recovery phrase | returns None for missing keys (graceful) | verify() returns False for invalid signatures
+"""
 
 import os
+import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
@@ -142,13 +152,15 @@ def save(address_data: Dict[str, Any], co_dir: Path) -> None:
     # Save private key (binary format)
     key_file = keys_dir / "agent.key"
     key_file.write_bytes(bytes(address_data["signing_key"]))
-    key_file.chmod(0o600)  # Read/write for owner only
-    
+    if sys.platform != 'win32':
+        key_file.chmod(0o600)  # Read/write for owner only (Unix/Mac only)
+
     # Save recovery phrase if present
     if "seed_phrase" in address_data:
         recovery_file = keys_dir / "recovery.txt"
-        recovery_file.write_text(address_data["seed_phrase"])
-        recovery_file.chmod(0o600)  # Read/write for owner only
+        recovery_file.write_text(address_data["seed_phrase"], encoding='utf-8')
+        if sys.platform != 'win32':
+            recovery_file.chmod(0o600)  # Read/write for owner only (Unix/Mac only)
     
     # Create warning file
     warning_file = keys_dir / "DO_NOT_SHARE"
@@ -165,7 +177,7 @@ Files:
 
 Keep these files secure and backed up.
 """
-        warning_file.write_text(warning_content)
+        warning_file.write_text(warning_content, encoding='utf-8')
 
 
 def load(co_dir: Path) -> Optional[Dict[str, Any]]:
@@ -206,7 +218,7 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
         recovery_file = keys_dir / "recovery.txt"
         seed_phrase = None
         if recovery_file.exists():
-            seed_phrase = recovery_file.read_text().strip()
+            seed_phrase = recovery_file.read_text(encoding='utf-8').strip()
         
         # Try to load email and activation status from config.toml
         email = f"{address[:10]}@mail.openonion.ai"  # Default

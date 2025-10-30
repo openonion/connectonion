@@ -25,7 +25,7 @@ def extract_relevant_connectonion_text(question: str, docs_path: str = ".co/docs
     return llm_do(
         input=f"Question: {question}\n\nDocumentation:\n{docs}",
         system_prompt="prompts/docs_retrieve_prompt.md",
-        model="gpt-4o-mini",
+        model="co/gpt-4o",
         temperature=0.1,
     )
 
@@ -37,7 +37,7 @@ def answer_connectonion_question(question: str) -> str:
     return llm_do(
         input=f"Question: {question}\n\nRelevant context:\n{relevant}",
         system_prompt="prompts/answer_prompt.md",
-        model="gpt-4o-mini",
+        model="co/gpt-4o",
         temperature=0.1,
     )
 
@@ -50,7 +50,7 @@ def think(context: str = "current situation") -> str:
     return llm_do(
         input=f"Context: {context}\n\nMessages: {transcript}",
         system_prompt="prompts/think_prompt.md",
-        model="gpt-4o-mini",
+        model="co/gpt-4o",
         temperature=0.1,
     )
  
@@ -156,7 +156,7 @@ agent = Agent(
         list_todos,
         run_shell
     ],
-    model="o4-mini",
+    model="co/o4-mini",
     max_iterations=15  # More iterations for complex assistance
 )
 

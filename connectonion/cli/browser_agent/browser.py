@@ -7,8 +7,7 @@ requests for taking screenshots and other browser operations via the ConnectOnio
 import os
 from pathlib import Path
 from datetime import datetime
-from connectonion import Agent, llm_do
-from connectonion.decorators import xray
+from connectonion import Agent, llm_do, xray
 from dotenv import load_dotenv
 from pydantic import BaseModel
 

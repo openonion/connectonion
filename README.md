@@ -4,13 +4,14 @@
 
 [![Production Ready](https://img.shields.io/badge/Status-Production_Ready-success?style=flat-square)](https://connectonion.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Python 3.8+](https://img.shields.io/badge/Python-3.8+-blue?style=flat-square&logo=python)](https://python.org)
+[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue?style=flat-square&logo=python)](https://python.org)
+[![PyPI Downloads](https://static.pepy.tech/personalized-badge/connectonion?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/connectonion)
 [![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
 [![Documentation](https://img.shields.io/badge/Docs-docs.connectonion.com-blue?style=flat-square)](http://docs.connectonion.com)
 
 **A simple, elegant open-source framework for production-ready AI agents**
 
-[📚 Documentation](http://docs.connectonion.com) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ Star Us](https://github.com/wu-changxing/connectonion)
+[📚 Documentation](http://docs.connectonion.com) • [💬 Discord](https://discord.gg/4xfD9k8AUF) • [⭐ Star Us](https://github.com/openonion/connectonion)
 
 </div>
 
@@ -56,12 +57,14 @@ pip install connectonion
 
 ```bash
 # Create a new agent project with one command
-co init
+co create my-agent
 
-# Follow the prompts to set up your API key and run
-cp .env.example .env  # Add your OpenAI API key
+# Navigate and run
+cd my-agent
 python agent.py
 ```
+
+*The CLI guides you through API key setup automatically. No manual `.env` editing needed!*
 
 ### Manual Usage
 
@@ -170,12 +173,12 @@ You are a senior customer support specialist with expertise in:
 - Provide clear, actionable solutions
 ```
 
-### History
-Automatic tracking of all agent behaviors including:
-- Tasks executed
-- Tools called with parameters and results
-- Agent responses and execution time
-- Persistent storage in `~/.connectonion/agents/{name}/behavior.json`
+### Logging
+Automatic logging of all agent activities including:
+- User inputs and agent responses
+- LLM calls with timing
+- Tool executions with parameters and results
+- Default storage in `.co/logs/{name}.log` (human-readable format)
 
 ## 🎯 Example Tools
 
@@ -215,24 +218,26 @@ The function-based approach is simpler, more Pythonic, and easier to test!
 ConnectOnion CLI provides templates to get you started quickly:
 
 ```bash
-# Basic agent with ConnectOnion knowledge
-co init
+# Create a minimal agent (default)
+co create my-agent
 
-# Conversational chat agent
-co init --template chat
+# Create with specific template
+co create my-playwright-bot --template playwright
 
-# Data analysis agent
-co init --template data
-
-# Web automation with Playwright
-co init --template playwright
+# Initialize in existing directory
+co init  # Adds .co folder only
+co init --template playwright  # Adds full template
 ```
 
+**Available Templates:**
+- `minimal` (default) - Simple agent starter
+- `playwright` - Web automation with browser tools
+
 Each template includes:
-- Pre-configured agent with relevant tools
-- Customizable system prompt in `prompt.md`
-- Environment configuration template
+- Pre-configured agent ready to run
+- Automatic API key setup
 - Embedded ConnectOnion documentation
+- Git-ready `.gitignore`
 
 Learn more in the [CLI Documentation](docs/cli.md) and [Templates Guide](docs/templates.md).
 
@@ -286,7 +291,7 @@ connectonion/
 │   ├── agent.py            # Agent class
 │   ├── tools.py            # Tool interface and built-ins
 │   ├── llm.py              # LLM interface and OpenAI implementation
-│   ├── history.py          # Behavior tracking
+│   ├── console.py          # Terminal output and logging
 │   └── cli/                # CLI module
 │       ├── main.py         # CLI commands
 │       ├── docs.md         # Embedded documentation
@@ -319,32 +324,33 @@ Or run individual test files:
 python -m unittest tests.test_agent
 ```
 
-## 📊 Behavior Tracking
+## 📊 Automatic Logging
 
-All agent behaviors are automatically tracked and saved to:
+All agent activities are automatically logged to:
 ```
-~/.connectonion/agents/{agent_name}/behavior.json
+.co/logs/{agent_name}.log  # Default location
 ```
 
-Each record includes:
+Each log entry includes:
 - Timestamp
-- Task description
-- Tool calls with parameters and results
-- Final result
-- Execution duration
+- User input
+- LLM calls with timing
+- Tool executions with parameters and results
+- Final responses
 
-View behavior summary:
+Control logging behavior:
 ```python
-print(agent.history.summary())
-# Agent: my_assistant
-# Total tasks completed: 5
-# Total tool calls: 8
-# Total execution time: 12.34 seconds
-# History file: ~/.connectonion/agents/my_assistant/behavior.json
-# 
-# Tool usage:
-#   calculator: 5 calls
-#   current_time: 3 calls
+# Default: logs to .co/logs/assistant.log
+agent = Agent("assistant")
+
+# Log to current directory
+agent = Agent("assistant", log=True)  # → assistant.log
+
+# Disable logging
+agent = Agent("assistant", log=False)
+
+# Custom log file
+agent = Agent("assistant", log="my_logs/custom.log")
 ```
 
 ## 🔑 Configuration
@@ -451,15 +457,15 @@ This is an MVP version with intentional limitations:
 <div align="center">
 
 [![Discord](https://img.shields.io/badge/Discord-Join_Community-5865F2?style=for-the-badge&logo=discord)](https://discord.gg/4xfD9k8AUF)
-[![GitHub](https://img.shields.io/badge/GitHub-Star_Us-black?style=for-the-badge&logo=github)](https://github.com/wu-changxing/connectonion)
+[![GitHub](https://img.shields.io/badge/GitHub-Star_Us-black?style=for-the-badge&logo=github)](https://github.com/openonion/connectonion)
 [![Documentation](https://img.shields.io/badge/Docs-Learn_More-blue?style=for-the-badge)](http://docs.connectonion.com)
 
 </div>
 
 - **💬 Discord**: [Join our community](https://discord.gg/4xfD9k8AUF) - Get help, share ideas, meet other developers
 - **📚 Documentation**: [docs.connectonion.com](http://docs.connectonion.com) - Comprehensive guides and examples
-- **⭐ GitHub**: [Star the repo](https://github.com/wu-changxing/connectonion) - Show your support
-- **🐛 Issues**: [Report bugs](https://github.com/wu-changxing/connectonion/issues) - We respond quickly
+- **⭐ GitHub**: [Star the repo](https://github.com/openonion/connectonion) - Show your support
+- **🐛 Issues**: [Report bugs](https://github.com/openonion/connectonion/issues) - We respond quickly
 
 ## 🤝 Contributing
 

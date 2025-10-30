@@ -1232,7 +1232,7 @@ def debug_tool(input: str) -> str:
 
 ## Links & Resources
 
-- **GitHub**: https://github.com/wu-changxing/connectonion
+- **GitHub**: https://github.com/openonion/connectonion
 - **PyPI**: https://pypi.org/project/connectonion/
 - **Latest Version**: 0.0.1b4
 

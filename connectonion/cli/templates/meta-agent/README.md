@@ -265,7 +265,7 @@ def debug_tool(text: str) -> str:
 
 ## 🔗 Resources
 
-- **GitHub**: https://github.com/wu-changxing/connectonion
+- **GitHub**: https://github.com/openonion/connectonion
 - **Documentation**: https://connectonion.com/docs
 - **PyPI**: https://pypi.org/project/connectonion/
 - **Discord**: https://discord.gg/4xfD9k8AUF

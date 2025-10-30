@@ -5,7 +5,11 @@ import os
 import json
 import requests
 from typing import Dict, List, Any
+from dotenv import load_dotenv
 from connectonion import Agent, llm_do
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 def search_web(query: str) -> str:
@@ -98,11 +102,11 @@ def main():
     agent = Agent(
         name="web-research-agent",
         tools=[search_web, extract_data, analyze_data, save_research],
-        model=os.getenv("MODEL", "o4-mini")
+        model=os.getenv("MODEL", "co/o4-mini")
     )
     
     # Example research task
-    response = agent.run(
+    response = agent.input(
         "Research the latest trends in AI and summarize the key findings"
     )
     print(response)

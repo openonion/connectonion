@@ -96,6 +96,7 @@ logs/
 .#*
 #*#
 .tmp/
+tmp/
 
 # Distribution / packaging
 .Python
@@ -104,6 +105,12 @@ pip-wheel-metadata/
 # Documentation
 docs/_build/
 site/
+
+# Wiki (separate Git repository)
+wiki/
+
+# Docs site (separate private Git repository)
+docs-site/
 
 # pyenv
 .python-version
@@ -131,3 +138,33 @@ dmypy.json
 
 # pytype static type analyzer
 .pytype/
+
+# Ruff
+.ruff_cache/
+
+# UV package manager
+uv.lock
+
+# Rye
+.rye/
+
+# Database files
+*.sqlite
+*.sqlite3
+*.db
+
+# Backup and merge files
+*.bak
+*.orig
+*.rej
+
+# AWS test infrastructure - private files
+tests/cli/aws/config.sh
+tests/cli/aws/*.pem
+tests/cli/aws/*.key
+tests/cli/aws/.server-ip
+
+# Test artifacts and results
+tests/cli/results/
+tests/cli/logs/
+test-package-*.tar.gz

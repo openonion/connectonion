@@ -2,6 +2,61 @@
 
 All notable changes to ConnectOnion will be documented in this file.
 
+## [0.1.9] - 2025-10-05
+
+### 🎉 New Features
+
+#### Simplified API Key Setup Flow
+- **Reduced Options**: Streamlined from 4 to 3 choices for better UX
+- **Universal Authentication**: All users now receive `OPENONION_API_KEY` automatically in `.env`
+- **Default Free Tokens**: "Skip" option is now default, providing 10k free tokens ($0.1 credit)
+- **Generous Onboarding**: Removed purchase complexity - everyone gets started with free tokens
+
+#### Token Allocation
+- **BYO Key**: Enter your own API key + get free OpenOnion tokens as bonus
+- **Star GitHub**: $1 credit (100k tokens) for starring the repository
+- **Skip (Default)**: $0.1 credit (10k tokens) automatically - no action required
+
+### 🔧 Improvements
+
+#### Developer Experience
+- **Better Error Messages**: TUI-friendly formatting with clear command options
+- **Improved `co auth` Errors**: Shows both `co init` and `co create` options side-by-side
+- **Cleaner Flow**: Authenticate before `.env` creation to guarantee key inclusion
+- **Scannable UI**: Rich markup for better terminal readability
+
+### 🗑️ Removed
+
+#### Removed Features
+- **Managed Keys Purchase Flow**: Removed complex "ConnectOnion credits" purchase option
+- **Result**: -85 lines of code (122 deleted, 37 added)
+
+### 📁 File Changes
+
+```
+Modified Files:
+├── connectonion/cli/commands/auth_commands.py (improved error messages)
+├── connectonion/cli/commands/init.py (universal authentication)
+├── connectonion/cli/commands/project_cmd_lib.py (simplified menu)
+├── setup.py (version bump to 0.1.9)
+└── connectonion/__init__.py (version bump to 0.1.9)
+```
+
+### 🚀 Impact
+
+- **Better UX**: Default option is now "Skip" with free tokens
+- **More Generous**: Everyone gets `OPENONION_API_KEY` automatically
+- **Cleaner Codebase**: Removed 60+ lines of purchase flow complexity
+- **Faster Onboarding**: Less decision fatigue, simpler choices
+
+### 💭 Philosophy
+
+> "Keep simple things simple, make complicated things possible"
+
+This release embodies our core philosophy by removing unnecessary complexity while ensuring everyone has access to the platform.
+
+---
+
 ## [0.0.4] - 2025-09-05
 
 ### 🎉 New Features

@@ -18,15 +18,22 @@ This provides two equivalent commands:
 
 ConnectOnion provides two main commands for project creation:
 
-- **`co create [name]`** - Creates a new project directory
-- **`co init`** - Initializes the current directory
+- **`co create [name]`** (Recommended) - Creates a new project directory with automatic setup
+- **`co init`** - Adds ConnectOnion to existing directory
 
-Both commands share the same interactive flow:
-1. AI feature toggle (Yes/No)
-2. API key input (with auto-detection)
-3. Template selection
+**Quick Start:**
+```bash
+co create my-agent  # Creates new project (default: minimal template)
+cd my-agent
+python agent.py
+```
 
-Note: The CLI now uses Rich for spinners/progress, improving readability without changing commands or flags.
+The CLI guides you through:
+1. API key setup (auto-detected from environment or interactive input)
+2. Template selection (if --template flag provided)
+3. Project initialization with all files
+
+Note: The CLI uses Rich for beautiful terminal output and automatic progress indicators.
 
 ## Commands
 

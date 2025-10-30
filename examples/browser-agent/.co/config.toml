@@ -15,3 +15,5 @@ created_at = "2025-09-03T16:04:41.692671"
 algorithm = "ed25519"
 default_model = "o4-mini"
 max_iterations = 15
+email = "agent+04e1c4ae@openonion.ai"
+email_active = true

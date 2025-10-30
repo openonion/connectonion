@@ -12,7 +12,11 @@ except ImportError:
 
 from connectonion import Agent, xray
 from typing import Optional, List, Dict
+from dotenv import load_dotenv
 import json
+
+# Load environment variables from .env file
+load_dotenv()
 
 
 class BrowserAutomation:
@@ -267,28 +271,60 @@ agent = Agent(
 )
 
 
+def main():
+    """Run the Playwright agent in interactive mode."""
+    print("🌐 Playwright Web Automation Agent")
+    print("Stateful browser automation with persistent session")
+    print("Type 'quit' to exit\n")
+
+    # Interactive conversation loop
+    while True:
+        user_input = input("You: ").strip()
+
+        if user_input.lower() in ['quit', 'exit', 'q']:
+            # Clean up browser resources before exit
+            try:
+                browser.close_browser()
+            except:
+                pass
+            print("👋 Goodbye!")
+            break
+
+        if not user_input:
+            continue
+
+        # Get response from agent
+        response = agent.input(user_input)
+        print(f"Agent: {response}\n")
+
+
 if __name__ == "__main__":
-    print("🌐 Playwright Web Automation Agent initialized!")
-    print("Stateful browser automation with persistent session\n")
-    
     if not PLAYWRIGHT_AVAILABLE:
         print("⚠️  Playwright is not installed!")
         print("To use this agent, run:")
-        print("  pip install playwright")
-        print("  playwright install chromium")
+        print("  pip install -r requirements.txt")
+        print("  playwright install chromium\n")
     else:
+        print("🌐 Playwright Web Automation Agent initialized!")
+        print("Stateful browser automation with persistent session\n")
+
         print("Available browser tools:")
         for tool_name in agent.list_tools():
             print(f"  🔧 {tool_name}")
-        
-        print("\n📚 Example usage:")
-        print('  agent.input("Start the browser and go to example.com")')
-        print('  agent.input("Take a screenshot of the page")')
-        print('  agent.input("Extract all links from the page")')
-        print('  agent.input("Fill the form with name John and email john@example.com")')
-        
+
+        print("\n📚 Example commands:")
+        print('  "Start the browser and go to example.com"')
+        print('  "Take a screenshot of the page"')
+        print('  "Extract all links from the page"')
+        print('  "Get the page title and URL"')
+
         print("\n💡 Tips:")
-        print("  - Browser state persists across tool calls")
+        print("  - Browser state persists across commands")
         print("  - Always start_browser() before other operations")
-        print("  - Use close_browser() when done to free resources")
-        print("  - Check session_info() to see browser state")
+        print("  - Use close_browser() when done (or type 'quit')")
+        print("  - Ask for session_info() to see browser state\n")
+
+        print("=" * 50 + "\n")
+
+        # Start interactive mode
+        main()
