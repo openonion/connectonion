@@ -121,10 +121,48 @@ OPENAI_API_KEY="sk-..." MODEL="gpt-4-turbo" python agent.py
 - Edit tool results before continuing
 - Shows complete execution flow from user prompt to result
 
-### quick_debug_demo.py
-- Minimal debug example with zero configuration
-- Shows all debug features in one simple script
-- Perfect for understanding how `@xray` breakpoints work
+## Testing
+
+All tests are organized in the `tests/` directory:
+
+### Debug Features Tests
+```bash
+# Run all debug tests
+python tests/test_debug_features.py
+
+# Run specific test
+python tests/test_debug_features.py --test breakpoints
+python tests/test_debug_features.py --test post-analysis
+python tests/test_debug_features.py --test menu
+python tests/test_debug_features.py --test preview
+
+# Run demos
+python tests/test_debug_features.py --demo quick
+python tests/test_debug_features.py --demo preview
+```
+
+### API Integration Tests
+```bash
+# Run all API tests
+python tests/test_api_integration.py
+
+# Run specific test
+python tests/test_api_integration.py --test auth
+python tests/test_api_integration.py --test co-o4-mini
+python tests/test_api_integration.py --test co-gpt4o
+python tests/test_api_integration.py --test full
+```
+
+### Model-Specific Tests
+```bash
+# Run all model tests
+python tests/test_models.py
+
+# Run specific test
+python tests/test_models.py --test gemini
+python tests/test_models.py --test mock
+python tests/test_models.py --test template
+```
 
 ## Notes
 

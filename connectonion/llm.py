@@ -148,7 +148,7 @@ import json
 import os
 import openai
 import anthropic
-import google.generativeai as genai
+# google-genai not needed - using OpenAI-compatible endpoint instead
 import requests
 from pathlib import Path
 import toml
@@ -480,323 +480,60 @@ class AnthropicLLM(LLM):
 
 
 class GeminiLLM(LLM):
-    """Google Gemini LLM implementation."""
-    
-    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-1.5-flash", **kwargs):
+    """Google Gemini LLM implementation using OpenAI-compatible endpoint."""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash-exp", **kwargs):
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
             raise ValueError("Gemini API key required. Set GEMINI_API_KEY environment variable or pass api_key parameter. (GOOGLE_API_KEY is also supported for backward compatibility)")
-        
-        genai.configure(api_key=self.api_key)
+
+        # Use Gemini's OpenAI-compatible endpoint
+        self.client = openai.OpenAI(
+            api_key=self.api_key,
+            base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
+        )
         self.model = model
-        self.client = genai.GenerativeModel(model)
     
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
-        """Complete a conversation with optional tool support."""
-        # Convert messages to Gemini format
-        gemini_messages = self._convert_messages(messages)
+        """Complete a conversation using Gemini's OpenAI-compatible endpoint."""
+        api_kwargs = {
+            "model": self.model,
+            "messages": messages,
+            **kwargs
+        }
 
-        # Configure generation with user kwargs (temperature, max_output_tokens, etc.)
-        generation_config = genai.GenerationConfig(**kwargs)
-        
-        # If we have tools, use the GenerativeModel with tools directly
         if tools:
-            # Convert tools to Gemini format
-            gemini_tools = self._convert_tools(tools)
-            
-            # Create a new model instance with tools
-            model = genai.GenerativeModel(
-                self.model,
-                tools=gemini_tools
-            )
-            
-            # For Gemini, we need to use the contents directly, not a chat session
-            # when dealing with function calls
-            if gemini_messages and gemini_messages[-1].get("role") == "function":
-                # If the last message is a function response, we need to continue the conversation
-                # Build the full contents list
-                contents = []
-                for msg in gemini_messages:
-                    # Convert parts properly - they might be strings or proto objects
-                    parts_list = []
-                    for part in msg["parts"]:
-                        if isinstance(part, str):
-                            # Convert string to Part
-                            parts_list.append(genai.protos.Part(text=part))
-                        else:
-                            # Already a Part object
-                            parts_list.append(part)
-                    
-                    contents.append(genai.protos.Content(
-                        role=msg["role"],
-                        parts=parts_list
-                    ))
-                
-                # Generate response with the full conversation history
-                response = model.generate_content(
-                    contents=contents,
-                    generation_config=generation_config
-                )
-            else:
-                # Start or continue a chat
-                chat = model.start_chat(
-                    history=gemini_messages[:-1] if len(gemini_messages) > 1 else []
-                )
-                # Send the last message
-                last_msg = gemini_messages[-1] if gemini_messages else {"parts": ["Hello"]}
-                response = chat.send_message(
-                    last_msg["parts"][0] if isinstance(last_msg["parts"][0], str) else last_msg["parts"],
-                    generation_config=generation_config
-                )
-        else:
-            # No tools, just chat
-            chat = self.client.start_chat(
-                history=gemini_messages[:-1] if gemini_messages else []
-            )
-            response = chat.send_message(
-                gemini_messages[-1]["parts"][0] if gemini_messages else "Hello",
-                generation_config=generation_config
-            )
-        
-        # Parse response
+            api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
+            api_kwargs["tool_choice"] = "auto"
+
+        response = self.client.chat.completions.create(**api_kwargs)
+        message = response.choices[0].message
+
+        # Parse tool calls if present
         tool_calls = []
-        content = ""
-        
-        # Handle response candidates
-        if hasattr(response, 'candidates') and response.candidates:
-            candidate = response.candidates[0]
-            if hasattr(candidate, 'content') and hasattr(candidate.content, 'parts'):
-                for part in candidate.content.parts:
-                    if hasattr(part, 'text') and part.text:
-                        content += part.text
-                    elif hasattr(part, 'function_call'):
-                        fc = part.function_call
-                        tool_calls.append(ToolCall(
-                            name=fc.name,
-                            arguments=dict(fc.args),
-                            id=f"call_{fc.name}_{len(tool_calls)}"  # Generate a unique ID
-                        ))
-        # Fallback to direct parts access (for older API responses)
-        elif hasattr(response, 'parts'):
-            for part in response.parts:
-                if hasattr(part, 'text') and part.text:
-                    content += part.text
-                elif hasattr(part, 'function_call'):
-                    fc = part.function_call
-                    tool_calls.append(ToolCall(
-                        name=fc.name,
-                        arguments=dict(fc.args),
-                        id=f"call_{fc.name}_{len(tool_calls)}"  # Generate a unique ID
-                    ))
-        
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
+
         return LLMResponse(
-            content=content if content else None,
+            content=message.content,
             tool_calls=tool_calls,
             raw_response=response
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
-        """Get structured Pydantic output using Gemini's native response_schema."""
-        # Convert messages to Gemini's format
-        gemini_messages = self._convert_messages(messages)
-
-        # Prepare the generation config, including the JSON schema
-        generation_config = genai.GenerationConfig(
-            response_mime_type="application/json",
-            response_schema=output_schema,
-            **kwargs  # Pass through temperature, max_output_tokens, etc.
+        """Get structured Pydantic output using Gemini's OpenAI-compatible endpoint with beta.chat.completions.parse."""
+        completion = self.client.beta.chat.completions.parse(
+            model=self.model,
+            messages=messages,
+            response_format=output_schema,
+            **kwargs
         )
-
-        try:
-            # Use the existing self.client (a GenerativeModel instance)
-            response = self.client.generate_content(
-                contents=gemini_messages,
-                generation_config=generation_config
-            )
-
-            # The SDK automatically parses the JSON output into the .parsed attribute
-            if response.parsed:
-                return response.parsed
-            else:
-                # This would happen if the model failed to generate valid JSON.
-                raise ValueError("Failed to get parsed output from Gemini, even though a schema was provided.")
-
-        except Exception as e:
-            # Catch-all for any other API or validation errors
-            raise ValueError(f"An error occurred while generating structured output from Gemini: {e}")
-
-    def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Convert OpenAI-style messages to Gemini format."""
-        gemini_messages = []
-        i = 0
-
-        while i < len(messages):
-            msg = messages[i]
-
-            # Skip system messages (Gemini doesn't have a direct system role)
-            if msg["role"] == "system":
-                i += 1
-                continue
-            
-            # Convert user messages
-            if msg["role"] == "user":
-                # Handle tool result messages from OpenAI format
-                if isinstance(msg.get("content"), list):
-                    # This is a tool result message in OpenAI format
-                    parts = []
-                    for item in msg["content"]:
-                        if item.get("type") == "tool_result":
-                            # Create proper function response for Gemini
-                            parts.append(genai.protos.Part(
-                                function_response=genai.protos.FunctionResponse(
-                                    name=item.get("name", "unknown"),
-                                    response={"result": item["content"]}
-                                )
-                            ))
-                    if parts:
-                        gemini_messages.append({
-                            "role": "function",
-                            "parts": parts
-                        })
-                else:
-                    gemini_messages.append({
-                        "role": "user",
-                        "parts": [msg["content"]]
-                    })
-                i += 1
-                
-            # Handle assistant messages with tool calls
-            elif msg["role"] == "assistant":
-                if msg.get("tool_calls"):
-                    # Add the model's function calls
-                    parts = []
-                    if msg.get("content"):
-                        parts.append(msg["content"])
-                    
-                    # Add function calls to parts
-                    for tc in msg["tool_calls"]:
-                        func_name = tc["function"]["name"]
-                        func_args = tc["function"]["arguments"]
-                        if isinstance(func_args, str):
-                            import json
-                            try:
-                                func_args = json.loads(func_args)
-                            except json.JSONDecodeError:
-                                # If it's not valid JSON, skip the eval for security
-                                func_args = {}
-                        
-                        parts.append(genai.protos.Part(
-                            function_call=genai.protos.FunctionCall(
-                                name=func_name,
-                                args=func_args
-                            )
-                        ))
-                    
-                    gemini_messages.append({
-                        "role": "model",
-                        "parts": parts
-                    })
-                    
-                    # Now collect all the tool responses that follow
-                    i += 1
-                    function_responses = []
-                    while i < len(messages) and messages[i]["role"] == "tool":
-                        tool_msg = messages[i]
-                        # Find which tool call this response is for
-                        tool_name = None
-                        for tc in msg["tool_calls"]:
-                            if tc["id"] == tool_msg["tool_call_id"]:
-                                tool_name = tc["function"]["name"]
-                                break
-                        
-                        if tool_name:
-                            function_responses.append(genai.protos.Part(
-                                function_response=genai.protos.FunctionResponse(
-                                    name=tool_name,
-                                    response={"result": tool_msg["content"]}
-                                )
-                            ))
-                        i += 1
-                    
-                    # Add all function responses in a single message
-                    if function_responses:
-                        gemini_messages.append({
-                            "role": "function",
-                            "parts": function_responses
-                        })
-                else:
-                    # Regular assistant message without tool calls
-                    gemini_messages.append({
-                        "role": "model",
-                        "parts": [msg["content"]]
-                    })
-                    i += 1
-                    
-            # Skip individual tool messages (they're handled above)
-            elif msg["role"] == "tool":
-                i += 1
-                continue
-            else:
-                i += 1
-        
-        return gemini_messages
-    
-    def _convert_tools(self, tools: List[Dict[str, Any]]) -> List:
-        """Convert OpenAI-style tools to Gemini format."""
-        gemini_tools = []
-        
-        for tool in tools:
-            # Create function declaration for Gemini
-            function_declaration = genai.protos.FunctionDeclaration(
-                name=tool["name"],
-                description=tool.get("description", ""),
-                parameters=genai.protos.Schema(
-                    type=genai.protos.Type.OBJECT,
-                    properties=self._convert_properties(tool.get("parameters", {}).get("properties", {})),
-                    required=tool.get("parameters", {}).get("required", [])
-                )
-            )
-            gemini_tools.append(genai.protos.Tool(function_declarations=[function_declaration]))
-        
-        return gemini_tools
-    
-    def _convert_properties(self, properties: Dict[str, Any]) -> Dict:
-        """Convert OpenAI property definitions to Gemini Schema format."""
-        converted = {}
-        
-        for key, value in properties.items():
-            prop_type = value.get("type", "string")
-            
-            # Map types to Gemini types
-            type_map = {
-                "string": genai.protos.Type.STRING,
-                "number": genai.protos.Type.NUMBER,
-                "integer": genai.protos.Type.NUMBER,
-                "boolean": genai.protos.Type.BOOLEAN,
-                "array": genai.protos.Type.ARRAY,
-                "object": genai.protos.Type.OBJECT
-            }
-            
-            schema = genai.protos.Schema(
-                type=type_map.get(prop_type, genai.protos.Type.STRING),
-                description=value.get("description", "")
-            )
-            
-            # Handle enums
-            if "enum" in value:
-                schema.enum = value["enum"]
-            
-            # Handle array items
-            if prop_type == "array" and "items" in value:
-                items = value["items"]
-                item_type = items.get("type", "string")
-                schema.items = genai.protos.Schema(
-                    type=type_map.get(item_type, genai.protos.Type.STRING)
-                )
-            
-            converted[key] = schema
-        
-        return converted
+        return completion.choices[0].message.parsed
 
 
 # Model registry mapping model names to providers
@@ -859,9 +596,21 @@ class OpenOnionLLM(LLM):
         self.auth_token = api_key or self._get_auth_token()
         if not self.auth_token:
             raise ValueError(
-                "No authentication token found for co/ models.\n"
-                "Run 'co auth' to authenticate first."
+                "OPENONION_API_KEY not found in environment.\n"
+                "Run 'co init' to get started or set OPENONION_API_KEY in your .env file."
             )
+
+        # Show helpful tip about OpenOnion being for experimentation only
+        import sys
+        print(
+            "⚠️  OPENONION_API_KEY detected - This is for experimentation only.\n"
+            "   We provide free credits to help you get started, but this is NOT for production.\n"
+            "   For production, please switch to stable LLM providers:\n"
+            "   • Anthropic (Claude): Set ANTHROPIC_API_KEY\n"
+            "   • OpenAI (GPT): Set OPENAI_API_KEY\n"
+            "   • Google (Gemini): Set GEMINI_API_KEY\n",
+            file=sys.stderr
+        )
 
         # Strip co/ prefix - it's only for client-side routing
         self.model = model.removeprefix("co/")
@@ -902,12 +651,9 @@ class OpenOnionLLM(LLM):
 
         for config_path in config_paths:
             if config_path.exists():
-                try:
-                    config = toml.load(config_path)
-                    if "auth" in config and "token" in config["auth"]:
-                        return config["auth"]["token"]
-                except Exception:
-                    continue
+                config = toml.load(config_path)
+                if "auth" in config and "token" in config["auth"]:
+                    return config["auth"]["token"]
 
         return None
     
@@ -924,80 +670,48 @@ class OpenOnionLLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        try:
-            response = self.client.chat.completions.create(**api_kwargs)
-            message = response.choices[0].message
+        response = self.client.chat.completions.create(**api_kwargs)
+        message = response.choices[0].message
 
-            # Parse tool calls if present
-            tool_calls = []
-            if hasattr(message, 'tool_calls') and message.tool_calls:
-                for tc in message.tool_calls:
-                    tool_calls.append(ToolCall(
-                        name=tc.function.name,
-                        arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
-                        id=tc.id
-                    ))
+        # Parse tool calls if present
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
 
-            return LLMResponse(
-                content=message.content,
-                tool_calls=tool_calls,
-                raw_response=response
-            )
-
-        except Exception as e:
-            error_msg = f"OpenOnion API error: {str(e)}"
-            raise ValueError(error_msg)
+        return LLMResponse(
+            content=message.content,
+            tool_calls=tool_calls,
+            raw_response=response
+        )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
-        """Get structured Pydantic output using OpenAI-compatible API.
+        """Get structured Pydantic output using OpenAI-compatible API."""
+        response = self.client.responses.parse(
+            model=self.model,
+            input=messages,
+            text_format=output_schema,
+            **kwargs
+        )
 
-        Attempts to use the OpenAI responses.parse() API if available.
-        Falls back to prompt engineering if not supported.
-        """
-        try:
-            # Try the new OpenAI responses.parse() API
-            response = self.client.responses.parse(
-                model=self.model,
-                input=messages,
-                text_format=output_schema,
-                **kwargs  # Pass through temperature, max_tokens, etc.
-            )
+        # Handle edge cases
+        if response.status == "incomplete":
+            if response.incomplete_details.reason == "max_output_tokens":
+                raise ValueError("Response incomplete: maximum output tokens reached")
+            elif response.incomplete_details.reason == "content_filter":
+                raise ValueError("Response incomplete: content filtered")
 
-            # Handle edge cases
-            if response.status == "incomplete":
-                if response.incomplete_details.reason == "max_output_tokens":
-                    raise ValueError("Response incomplete: maximum output tokens reached")
-                elif response.incomplete_details.reason == "content_filter":
-                    raise ValueError("Response incomplete: content filtered")
+        # Check for refusal
+        if response.output and len(response.output) > 0:
+            first_content = response.output[0].content[0] if response.output[0].content else None
+            if first_content and hasattr(first_content, 'type') and first_content.type == "refusal":
+                raise ValueError(f"Model refused to respond: {first_content.refusal}")
 
-            # Check for refusal
-            if response.output and len(response.output) > 0:
-                first_content = response.output[0].content[0] if response.output[0].content else None
-                if first_content and hasattr(first_content, 'type') and first_content.type == "refusal":
-                    raise ValueError(f"Model refused to respond: {first_content.refusal}")
-
-            return response.output_parsed
-
-        except AttributeError:
-            # Fallback: responses.parse() not available, use prompt engineering
-            import re
-
-            schema = output_schema.model_json_schema()
-            messages_copy = messages.copy()
-            messages_copy[-1]["content"] += (
-                f"\n\nReturn JSON matching schema:\n{json.dumps(schema, indent=2)}"
-            )
-
-            response = self.complete(messages_copy, tools=None)
-
-            # Parse JSON from response
-            json_match = re.search(r'\{.*\}', response.content, re.DOTALL)
-            if json_match:
-                json_data = json.loads(json_match.group(0))
-                return output_schema.model_validate(json_data)
-            else:
-                json_data = json.loads(response.content)
-                return output_schema.model_validate(json_data)
+        return response.output_parsed
 
 
 def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:

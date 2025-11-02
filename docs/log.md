@@ -22,7 +22,7 @@ agent = Agent("assistant", log="debug.log")
 [2025-09-25 10:32:14.127] LLM_REQUEST: model=gpt-4 messages=2
 [2025-09-25 10:32:15.235] LLM_RESPONSE: duration=1.1s
 [2025-09-25 10:32:15.238] TOOL_CALL: generate_code(language="python")
-[2025-09-25 10:32:15.286] TOOL_RESULT: success (45ms)
+[2025-09-25 10:32:15.286] TOOL_RESULT: success (0.05s)
 [2025-09-25 10:32:16.458] RESULT: Task completed
 [2025-09-25 10:32:16.461] DURATION: 2.3s
 ```

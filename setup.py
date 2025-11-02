@@ -7,9 +7,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 # Core dependencies - we install everything by default for simplicity
 requirements = [
-    "openai>=1.0.0",
+    "openai>=1.0.0",  # Also used for Gemini via OpenAI-compatible endpoint
     "anthropic>=0.18.0",
-    "google-generativeai>=0.3.0",
     "litellm>=1.0.0",  # For llm_do function supporting 100+ providers
     "pydantic>=2.0.0",
     "python-dotenv>=1.0.0",
@@ -38,13 +37,13 @@ setup(
     # - At 0.1.10, roll to MINOR: 0.2.0
     # - At 0.10.0, roll to MAJOR: 1.0.0
     # - Example progression: 0.1.0 -> 0.1.1 -> ... -> 0.1.9 -> 0.1.10 -> 0.2.0
-    version="0.3.6",
+    version="0.3.7",
     author="ConnectOnion Team",
     author_email="pypi@connectonion.com",
     description="A simple Python framework for creating AI agents with behavior tracking",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/connectonion/connectonion",
+    url="https://github.com/openonion/connectonion",
     packages=find_packages(),
     package_data={
         'connectonion.cli': [
@@ -55,6 +54,12 @@ setup(
         ],
         'connectonion.debug_agent': [
             'prompts/*.md',  # Include debug assistant prompts
+        ],
+        'connectonion.debug_explainer': [
+            '*.md',  # Include all markdown prompts for debug explainer
+        ],
+        'connectonion.execution_analyzer': [
+            '*.md',  # Include all markdown prompts for execution analyzer
         ],
     },
     include_package_data=True,
@@ -74,11 +79,11 @@ setup(
     python_requires=">=3.9",
     install_requires=requirements,
     extras_require=optional_deps,
-    keywords="ai, agent, llm, tools, openai, automation",
+    keywords="ai, agent, llm, tools, openai, automation, debugging, interactive-debugging, breakpoints, xray",
     project_urls={
-        "Bug Reports": "https://github.com/connectonion/connectonion/issues",
-        "Source": "https://github.com/connectonion/connectonion",
-        "Documentation": "https://github.com/connectonion/connectonion#readme",
+        "Bug Reports": "https://github.com/openonion/connectonion/issues",
+        "Source": "https://github.com/openonion/connectonion",
+        "Documentation": "https://github.com/openonion/connectonion#readme",
     },
     entry_points={
         "console_scripts": [

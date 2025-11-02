@@ -63,6 +63,66 @@ result = agent.input("Suggest structure for a multi-agent system")
 result = agent.input("Create a to-do list for building a REST API")
 ```
 
+## 🔍 Debug Your Agent Interactively
+
+ConnectOnion includes powerful interactive debugging with `@xray` breakpoints:
+
+```python
+from connectonion import Agent
+from connectonion.decorators import xray
+
+# Mark tools you want to debug
+@xray
+def search_data(query: str) -> str:
+    """Search for information."""
+    return f"Found results for: {query}"
+
+# Create agent
+agent = Agent(
+    name="debug_demo",
+    tools=[search_data]
+)
+
+# Start interactive debugging
+agent.auto_debug()
+```
+
+**What you'll see at each `@xray` breakpoint:**
+
+```
+@xray BREAKPOINT: search_data
+
+Local Variables:
+  query = "Python tutorials"
+  result = "Found results for: Python tutorials"
+
+What do you want to do?
+  → Continue execution       [c or Enter]
+    Edit values (Python)     [e]
+    Quit debugging          [q]
+>
+```
+
+**Try it now:**
+```bash
+# Run the included debug demo
+cd simple-agent/
+python agent_debug.py
+```
+
+**What you can do:**
+- **Continue** (`c` or Enter): Resume execution
+- **Edit** (`e`): Open Python REPL to modify variables
+- **Quit** (`q`): Stop debugging
+
+Perfect for:
+- Understanding agent decisions
+- Testing edge cases
+- Exploring "what if" scenarios
+- Learning how agents work
+
+[Full debugging guide](auto_debug.md)
+
 ## Choose a Different Template
 
 ConnectOnion offers specialized templates:

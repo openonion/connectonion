@@ -1,6 +1,13 @@
 #!/usr/bin/env python3
 """
-Simple example demonstrating auto_debug functionality.
+Purpose: Interactive debugging example demonstrating @xray breakpoints and auto_debug workflow
+LLM-Note:
+  Dependencies: imports from [connectonion.Agent, connectonion.xray] | standalone example (not imported by other files) | no test files
+  Data flow: receives sys.argv (command line args) → creates Agent with @xray decorated tools → calls agent.auto_debug(task) → pauses at @xray breakpoints → returns exit code
+  State/Effects: prints to stdout/stderr via Rich console | reads sys.argv | agent writes to .co/logs/debug_demo.log | no state mutations
+  Integration: exposes three example tools: search_info(), format_result(), save_to_memory() | demonstrates @xray decorator usage | shows interactive vs single-task debug modes
+  Performance: synchronous execution | pauses at each @xray decorated tool | no caching or optimization
+  Errors: no error handling (relies on Agent's error handling) | exits with code 0 or 1
 
 This example shows:
 - Creating an agent with @xray decorated tools
@@ -9,6 +16,8 @@ This example shows:
 
 Run this example:
     python agent_debug.py
+    python agent_debug.py "Your custom task"
+    python agent_debug.py --interactive
 """
 
 import os

@@ -23,7 +23,7 @@ ConnectOnion is a simple Python framework for creating AI agents that can use to
 - Automatic behavior tracking and history
 - System prompts for agent personality
 - Built-in OpenAI integration
-- Debugging with @xray decorator
+- Interactive debugging with @xray and agent.auto_debug()
 
 ---
 
@@ -917,6 +917,123 @@ def smart_search(query: str) -> str:
     
     return f"Results for: {query}"
 ```
+
+---
+
+## Interactive Debugging with agent.auto_debug()
+
+Debug your agents interactively - pause at breakpoints, inspect variables, and modify behavior in real-time.
+
+### Quick Start
+
+```python
+from connectonion import Agent
+from connectonion.decorators import xray
+
+@xray  # Tools with @xray become breakpoints
+def search(query: str):
+    return f"Results for {query}"
+
+agent = Agent("assistant", tools=[search])
+agent.auto_debug()  # Enable interactive debugging
+
+# Agent will pause at @xray tools
+agent.input("Search for Python tutorials")
+```
+
+### What Happens at Breakpoints
+
+When execution pauses, you'll see:
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@xray BREAKPOINT: search
+
+Local Variables:
+  query = "Python tutorials"
+  result = "Results for Python tutorials"
+
+What do you want to do?
+  → Continue execution 🚀       [c or Enter]
+    Edit values 🔍             [e]
+    Quit debugging 🚫          [q]
+>
+```
+
+### Debug Menu Commands
+
+- **Continue** (`c` or Enter): Resume execution
+- **Edit** (`e`): Open Python REPL to modify variables
+- **Quit** (`q`): Stop debugging
+
+### Edit Values in Python REPL
+
+```python
+> e
+
+>>> # See current values
+>>> query
+'Python tutorials'
+
+>>> # Modify them
+>>> query = "Python advanced tutorials"
+>>> result = search(query)
+
+>>> # Continue with changes
+>>> /continue
+```
+
+### Use Cases
+
+**1. Test "What If" Scenarios:**
+```python
+@xray
+def calculate_price(quantity: int):
+    return quantity * 10
+
+agent.auto_debug()
+agent.input("Calculate price for 5 items")
+
+# At breakpoint:
+# > e
+# >>> quantity = 100  # Test bulk pricing
+# >>> /continue
+```
+
+**2. Debug Wrong Decisions:**
+```python
+@xray
+def search_contacts(name: str):
+    # Agent searched for "Jon" but database has "John"
+    contacts = {"John": "john@email.com"}
+    return contacts.get(name, "Not found")
+
+agent.auto_debug()
+agent.input("Email Jon about meeting")
+
+# At breakpoint:
+# > e
+# >>> name = "John"  # Fix typo
+# >>> result = search_contacts(name)
+# >>> /continue
+```
+
+**3. Understand Agent Behavior:**
+```python
+# Just press 'c' at each breakpoint to see:
+# - What tools are called
+# - What parameters are used
+# - What results are returned
+# Perfect for learning how your agent works!
+```
+
+### Tips
+
+- **Development only**: Use `auto_debug()` during development, not production
+- **Combine with @xray**: Mark critical tools with `@xray` for breakpoints
+- **Press 'c' to skip**: If you just want to observe, press 'c' at each pause
+- **Full Python access**: In edit mode, you have full Python REPL access
+
+For more details, see [docs/auto_debug.md](https://github.com/openonion/connectonion/blob/main/docs/auto_debug.md)
 
 ---
 
