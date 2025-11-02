@@ -1,4 +1,13 @@
-"""Reset command for ConnectOnion CLI - handles 'co reset'."""
+"""
+Purpose: Delete global ConnectOnion configuration and create fresh account with new Ed25519 keypair
+LLM-Note:
+  Dependencies: imports from [sys, shutil, toml, pathlib, rich.console, rich.prompt, rich.panel, address, auth_commands.authenticate, __version__, datetime] | imported by [cli/main.py via handle_reset()] | tested by [tests/cli/test_cli_reset.py]
+  Data flow: receives no args → checks ~/.co/ exists → prompts user for 'Y' confirmation with clear warnings → deletes ~/.co/keys/, ~/.co/config.toml, ~/.co/keys.env → recreates directory structure → address.generate() creates new Ed25519 keypair with seed phrase → address.save() saves to ~/.co/keys/ → creates new config.toml with fresh agent identity → calls authenticate(global_dir, save_to_project=False) to register new account and get bonus credits → displays seed phrase in Rich panel → warns user to update project .env files
+  State/Effects: DESTRUCTIVE OPERATION | deletes entire ~/.co/ directory contents (keys, config, keys.env) | creates fresh ~/.co/ with new keypair | calls authenticate() which creates new backend account and writes OPENONION_API_KEY to keys.env | writes to stdout via rich.Console with warnings and confirmations | existing projects still have old API key (requires manual 'co init' to update)
+  Integration: exposes handle_reset() for CLI | similar to ensure_global_config() in init.py but deletes first | relies on address.generate() for new Ed25519 keypair | calls authenticate() to register new account | displays seed phrase via Rich panel | requires explicit 'Y' confirmation to proceed
+  Performance: file deletion is fast (<100ms) | address.generate() is fast (<100ms) | authenticate() makes network call (2-5s) | config file writes are I/O bound
+  Errors: gracefully handles missing ~/.co/ (nothing to reset) | requires uppercase 'Y' for confirmation (case-sensitive) | cancels if user types anything else | authenticate() may fail but reset still completes | warns user about data loss before proceeding
+"""
 
 import sys
 import shutil

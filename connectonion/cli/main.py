@@ -1,4 +1,13 @@
-"""Main CLI entry point for ConnectOnion - Router for commands."""
+"""
+Purpose: CLI argument parser and command router for ConnectOnion framework
+LLM-Note:
+  Dependencies: imports from [argparse, rich.console, rich.panel, rich.text, __version__, commands/{init,create,auth_commands,reset_commands,status_commands,browser_commands}] | imported by [tests/cli/test_cli.py, tests/cli/test_cli_init.py, tests/cli/test_cli_create.py] | entry point defined in pyproject.toml [project.scripts]
+  Data flow: receives sys.argv from shell → create_parser() builds argparse.ArgumentParser with 6 subcommands (init, create, auth, reset, status, browser) + --version + --browser flags → cli() parses args and routes to command handlers → command handlers execute and return exit code → main() wraps cli() with exception handling → sys.exit(code)
+  State/Effects: no persistent state | dynamically imports command modules on demand (lazy loading) | writes to stdout/stderr via rich.Console | calls sys.exit() with code (1=error, 0=success) | KeyboardInterrupt exits with code 1 and "Cancelled by user" message
+  Integration: exposes cli() and main() entry points | routes to 6 command handlers: init.handle_init(ai, key, template, description, yes, force), create.handle_create(name, ai, key, template, description, yes), auth_commands.handle_auth(), reset_commands.handle_reset(), status_commands.handle_status(), browser_commands.handle_browser(command) | shows Rich-formatted help via show_help() when no args provided | version display via --version flag
+  Performance: lazy imports command modules (not loaded until subcommand invoked) | argument parsing is O(n) where n=number of args | show_help() renders static Rich Panel on each call
+  Errors: catches KeyboardInterrupt (prints "Cancelled by user" and exits 1) | catches generic Exception (prints error to console and exits 1) | argparse handles --help and invalid arguments automatically | missing subcommand shows help via show_help()
+"""
 
 import sys
 import argparse
