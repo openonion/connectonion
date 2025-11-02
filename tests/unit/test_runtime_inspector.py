@@ -1,7 +1,7 @@
 """Tests for RuntimeInspector class."""
 
 import sys
-import unittest
+import pytest
 from pathlib import Path
 
 # Add parent directory to path
@@ -10,7 +10,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from connectonion.debug_agent.runtime_inspector import RuntimeInspector
 
 
-class TestRuntimeInspector(unittest.TestCase):
+class TestRuntimeInspector:
     """Test RuntimeInspector functionality."""
 
     def create_test_frame(self):
@@ -53,11 +53,11 @@ class TestRuntimeInspector(unittest.TestCase):
 
         inspector = RuntimeInspector(frame=frame, exception_traceback=traceback)
 
-        self.assertIsNotNone(inspector.frame)
-        self.assertIsNotNone(inspector.exception_traceback)
-        self.assertIsNotNone(inspector.namespace)
-        self.assertIn("test_string", inspector.namespace)
-        self.assertEqual(inspector.namespace["test_string"], "hello")
+        assert inspector.frame is not None
+        assert inspector.exception_traceback is not None
+        assert inspector.namespace is not None
+        assert "test_string" in inspector.namespace
+        assert inspector.namespace["test_string"] == "hello"
 
     def test_execute_in_frame(self):
         """Test executing code in the frame context."""
@@ -66,19 +66,19 @@ class TestRuntimeInspector(unittest.TestCase):
 
         # Test simple expression
         result = inspector.execute_in_frame("test_number * 2")
-        self.assertEqual(result, "84")
+        assert result == "84"
 
         # Test accessing variables
         result = inspector.execute_in_frame("test_string.upper()")
-        self.assertEqual(result, "'HELLO'")
+        assert result == "'HELLO'"
 
         # Test list operations
         result = inspector.execute_in_frame("len(test_list)")
-        self.assertEqual(result, "3")
+        assert result == "3"
 
         # Test dict access
         result = inspector.execute_in_frame("test_dict['key']")
-        self.assertEqual(result, "'value'")
+        assert result == "'value'"
 
     def test_execute_in_frame_with_error(self):
         """Test execute_in_frame handles errors gracefully."""
@@ -87,12 +87,12 @@ class TestRuntimeInspector(unittest.TestCase):
 
         # Test undefined variable
         result = inspector.execute_in_frame("undefined_variable")
-        self.assertIn("Error", result)
-        self.assertIn("undefined_variable", result)
+        assert "Error" in result
+        assert "undefined_variable" in result
 
         # Test invalid syntax
         result = inspector.execute_in_frame("invalid syntax here")
-        self.assertIn("Error", result)
+        assert "Error" in result
 
     def test_inspect_object(self):
         """Test inspecting objects in the runtime context."""
@@ -101,21 +101,21 @@ class TestRuntimeInspector(unittest.TestCase):
 
         # Inspect dictionary
         result = inspector.inspect_object("test_dict")
-        self.assertIn("dict", result)
-        self.assertIn("Keys (2)", result)
-        self.assertIn("key", result)
-        self.assertIn("count", result)
+        assert "dict" in result
+        assert "Keys (2)" in result
+        assert "key" in result
+        assert "count" in result
 
         # Inspect list
         result = inspector.inspect_object("test_list")
-        self.assertIn("list", result)
-        self.assertIn("Length: 3", result)
-        self.assertIn("First: 1", result)
+        assert "list" in result
+        assert "Length: 3" in result
+        assert "First: 1" in result
 
         # Inspect string
         result = inspector.inspect_object("test_string")
-        self.assertIn("str", result)
-        self.assertIn("hello", result)
+        assert "str" in result
+        assert "hello" in result
 
     def test_inspect_object_not_found(self):
         """Test inspecting non-existent object."""
@@ -123,7 +123,7 @@ class TestRuntimeInspector(unittest.TestCase):
         inspector = RuntimeInspector(frame=frame)
 
         result = inspector.inspect_object("non_existent_variable")
-        self.assertIn("not found", result)
+        assert "not found" in result
 
     def test_test_fix(self):
         """Test the test_fix method."""
@@ -136,12 +136,12 @@ class TestRuntimeInspector(unittest.TestCase):
             "test_dict.get('missing_key', 'default')"  # This works
         )
 
-        self.assertIn("Testing Fix", result)
-        self.assertIn("Original:", result)
-        self.assertIn("✗", result)  # Original fails (marked with ✗)
-        self.assertIn("Fixed:", result)
-        self.assertIn("'default'", result)  # Fixed returns default
-        self.assertIn("✓ Fix works!", result)
+        assert "Testing Fix" in result
+        assert "Original:" in result
+        assert "✗" in result  # Original fails (marked with ✗)
+        assert "Fixed:" in result
+        assert "'default'" in result  # Fixed returns default
+        assert "✓ Fix works!" in result
 
     def test_validate_assumption(self):
         """Test validating assumptions."""
@@ -150,20 +150,20 @@ class TestRuntimeInspector(unittest.TestCase):
 
         # Test true assumption
         result = inspector.validate_assumption("isinstance(test_dict, dict)")
-        self.assertIn("✓ TRUE", result)
+        assert "✓ TRUE" in result
 
         # Test false assumption
         result = inspector.validate_assumption("isinstance(test_string, int)")
-        self.assertIn("✗ FALSE", result)
-        self.assertIn("Actual type: str", result)
+        assert "✗ FALSE" in result
+        assert "Actual type: str" in result
 
         # Test membership check
         result = inspector.validate_assumption("'key' in test_dict")
-        self.assertIn("✓ TRUE", result)
+        assert "✓ TRUE" in result
 
         result = inspector.validate_assumption("'missing' in test_dict")
-        self.assertIn("✗ FALSE", result)
-        self.assertIn("Available keys", result)
+        assert "✗ FALSE" in result
+        assert "Available keys" in result
 
     def test_explore_namespace(self):
         """Test exploring available variables."""
@@ -172,15 +172,15 @@ class TestRuntimeInspector(unittest.TestCase):
 
         result = inspector.explore_namespace()
 
-        self.assertIn("Available Variables", result)
-        self.assertIn("str:", result)
-        self.assertIn("test_string", result)
-        self.assertIn("int:", result)
-        self.assertIn("test_number", result)
-        self.assertIn("list:", result)
-        self.assertIn("test_list", result)
-        self.assertIn("dict:", result)
-        self.assertIn("test_dict", result)
+        assert "Available Variables" in result
+        assert "str:" in result
+        assert "test_string" in result
+        assert "int:" in result
+        assert "test_number" in result
+        assert "list:" in result
+        assert "test_list" in result
+        assert "dict:" in result
+        assert "test_dict" in result
 
     def test_try_alternative(self):
         """Test trying alternative expressions."""
@@ -194,11 +194,11 @@ class TestRuntimeInspector(unittest.TestCase):
             "test_dict['key']"  # Also works
         )
 
-        self.assertIn("Trying Alternatives", result)
-        self.assertIn("Original:", result)
-        self.assertIn("✗", result)  # Original fails (marked with ✗)
-        self.assertIn("Alternative:", result)
-        self.assertIn("✓ Works: 'value'", result)  # Some alternatives work
+        assert "Trying Alternatives" in result
+        assert "Original:" in result
+        assert "✗" in result  # Original fails (marked with ✗)
+        assert "Alternative:" in result
+        assert "✓ Works: 'value'" in result  # Some alternatives work
 
     def test_trace_variable(self):
         """Test tracing a variable through the call stack."""
@@ -226,7 +226,7 @@ class TestRuntimeInspector(unittest.TestCase):
 
             result = inspector.trace_variable("data")
 
-            self.assertIn("Tracing 'data'", result)
+            assert "Tracing 'data'" in result
             # Should show data variable in different frames
             # Note: exact content depends on how frames are captured
 
@@ -237,8 +237,8 @@ class TestRuntimeInspector(unittest.TestCase):
 
         result = inspector.read_source_around_error(context_lines=3)
 
-        self.assertIn(">>>", result)  # Error line marker
-        self.assertIn("return x / y", result)  # The actual error line
+        assert ">>>" in result  # Error line marker
+        assert "return x / y" in result  # The actual error line
 
     def test_no_frame_context(self):
         """Test methods handle missing frame gracefully."""
@@ -246,22 +246,22 @@ class TestRuntimeInspector(unittest.TestCase):
 
         # All methods should return appropriate error messages
         result = inspector.execute_in_frame("1 + 1")
-        self.assertIn("No runtime context", result)
+        assert "No runtime context" in result
 
         result = inspector.inspect_object("anything")
-        self.assertIn("No runtime context", result)
+        assert "No runtime context" in result
 
         result = inspector.test_fix("a", "b")
-        self.assertIn("No runtime context", result)
+        assert "No runtime context" in result
 
         result = inspector.validate_assumption("True")
-        self.assertIn("No runtime context", result)
+        assert "No runtime context" in result
 
         result = inspector.explore_namespace()
-        self.assertIn("No runtime context", result)
+        assert "No runtime context" in result
 
         result = inspector.try_alternative("a", "b")
-        self.assertIn("No runtime context", result)
+        assert "No runtime context" in result
 
     def test_set_context(self):
         """Test updating the runtime context."""
@@ -269,7 +269,7 @@ class TestRuntimeInspector(unittest.TestCase):
 
         # Initially no context
         result = inspector.execute_in_frame("1 + 1")
-        self.assertIn("No runtime context", result)
+        assert "No runtime context" in result
 
         # Set context
         frame = self.create_test_frame()
@@ -278,8 +278,4 @@ class TestRuntimeInspector(unittest.TestCase):
 
         # Now should work
         result = inspector.execute_in_frame("test_number")
-        self.assertEqual(result, "42")
-
-
-if __name__ == '__main__':
-    unittest.main()
+        assert result == "42"
