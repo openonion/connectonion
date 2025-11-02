@@ -1,6 +1,6 @@
 """Unit tests for connectonion/tool_executor.py"""
 
-import unittest
+import pytest
 from unittest.mock import Mock
 from connectonion.tool_executor import execute_single_tool
 from connectonion.console import Console
@@ -11,7 +11,7 @@ class FakeAgent:
         self.current_session = {"messages": [], "trace": [], "iteration": 1}
 
 
-class TestToolExecutor(unittest.TestCase):
+class TestToolExecutor:
     """Test minimal path of tool execution utility."""
 
     def test_execute_tool_success(self):
@@ -29,9 +29,9 @@ class TestToolExecutor(unittest.TestCase):
             agent=agent,
             console=console,
         )
-        self.assertEqual(trace["status"], "success")
+        assert trace["status"] == "success"
         # execute_single_tool stores the raw result as string in trace['result']
-        self.assertIn("10", str(trace["result"]))
+        assert "10" in str(trace["result"])
 
     def test_execute_tool_not_found(self):
         """Unknown tool returns not_found status."""
@@ -45,8 +45,4 @@ class TestToolExecutor(unittest.TestCase):
             agent=agent,
             console=console,
         )
-        self.assertEqual(trace["status"], "not_found")
-
-
-if __name__ == '__main__':
-    unittest.main()
+        assert trace["status"] == "not_found"
