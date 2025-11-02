@@ -103,11 +103,13 @@ What do you want to do?
 >
 ```
 
-**Try it now:**
+**Try it yourself:**
 ```bash
-# Run the included debug demo
-cd simple-agent/
-python agent_debug.py
+# Create a new project with the minimal template
+co create my-debug-agent --template minimal
+
+cd my-debug-agent
+python agent.py
 ```
 
 **What you can do:**
