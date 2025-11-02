@@ -40,6 +40,7 @@ agent = Agent("production",
 ## ✨ What Makes ConnectOnion Special
 
 - **🎯 Simple API**: Just one `Agent` class and your functions as tools
+- **🔍 Interactive Debugging**: Pause at breakpoints with `@xray`, inspect state, modify variables on-the-fly
 - **🚀 Production Ready**: Battle-tested with GPT-5, Gemini 2.5, Claude Opus 4.1
 - **🌍 Open Source**: MIT licensed, community-driven development
 - **⚡ No Boilerplate**: Start building in 2 lines, not 200
@@ -102,6 +103,72 @@ print(result)  # Agent will use the search function
 # 4. View behavior history (automatic!)
 print(agent.history.summary())
 ```
+
+### 🔍 Interactive Debugging with `@xray`
+
+Debug your agents like you debug code - pause at breakpoints, inspect variables, and test edge cases:
+
+```python
+from connectonion import Agent
+from connectonion.decorators import xray
+
+# Mark tools you want to debug with @xray
+@xray
+def search_database(query: str) -> str:
+    """Search for information."""
+    return f"Found 3 results for '{query}'"
+
+@xray
+def send_email(to: str, subject: str) -> str:
+    """Send an email."""
+    return f"Email sent to {to}"
+
+# Create agent with @xray tools
+agent = Agent(
+    name="debug_demo",
+    tools=[search_database, send_email]
+)
+
+# Launch interactive debugging session
+agent.auto_debug()
+
+# Or debug a specific task
+agent.auto_debug("Search for Python tutorials and email the results")
+```
+
+**What happens at each `@xray` breakpoint:**
+
+```
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+@xray BREAKPOINT: search_database
+
+Local Variables:
+  query = "Python tutorials"
+  result = "Found 3 results for 'Python tutorials'"
+
+What do you want to do?
+  → Continue execution 🚀       [c or Enter]
+    Edit values 🔍             [e]
+    Quit debugging 🚫          [q]
+
+💡 Use arrow keys to navigate or type shortcuts
+>
+```
+
+**Key features:**
+- **Pause at breakpoints**: Tools decorated with `@xray` pause execution
+- **Inspect state**: See all local variables and execution context
+- **Edit variables**: Modify results to test "what if" scenarios
+- **Full Python REPL**: Run any code to explore agent behavior
+- **See next action**: Preview what the LLM plans to do next
+
+Perfect for:
+- Understanding why agents make certain decisions
+- Testing edge cases without modifying code
+- Exploring agent behavior interactively
+- Debugging complex multi-tool workflows
+
+[Learn more in the auto_debug guide](docs/auto_debug.md)
 
 ## 🔧 Core Concepts
 

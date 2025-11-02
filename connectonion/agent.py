@@ -343,3 +343,69 @@ class Agent:
         from .interactive_debugger import InteractiveDebugger
         debugger = InteractiveDebugger(self)
         debugger.start_debug_session(prompt)
+
+    def serve(self, relay_url: str = "wss://oo.openonion.ai/ws/announce"):
+        """
+        Start serving this agent on the relay network.
+
+        This makes the agent discoverable and connectable by other agents.
+        The agent will:
+        1. Load/generate Ed25519 keys for identity
+        2. Connect to relay server
+        3. Send ANNOUNCE message with agent summary
+        4. Wait for incoming TASK messages
+        5. Process tasks and send responses
+
+        Args:
+            relay_url: WebSocket URL for relay (default: production relay)
+
+        Example:
+            >>> agent = Agent("translator", tools=[translate])
+            >>> agent.serve()  # Runs forever, processing tasks
+            ✓ Announced to relay: 0x3d4017c3...
+            Debug: https://oo.openonion.ai/agent/0x3d4017c3e843895a...
+            ♥ Sent heartbeat
+            → Received task: abc12345...
+            ✓ Sent response: abc12345...
+
+        Note:
+            This is a blocking call. The agent will run until interrupted (Ctrl+C).
+        """
+        import asyncio
+        from . import address, announce, relay
+
+        # Load or generate keys
+        co_dir = Path.cwd() / '.co'
+        addr_data = address.load(co_dir)
+
+        if addr_data is None:
+            self.console.print("[yellow]No keys found, generating new identity...[/yellow]")
+            addr_data = address.generate()
+            address.save(addr_data, co_dir)
+            self.console.print(f"[green]✓ Keys saved to {co_dir / 'keys'}[/green]")
+
+        # Create ANNOUNCE message
+        # Use system_prompt as summary (first 1000 chars)
+        summary = self.system_prompt[:1000] if self.system_prompt else f"{self.name} agent"
+        announce_msg = announce.create_announce_message(
+            addr_data,
+            summary,
+            endpoints=[]  # MVP: No direct endpoints yet
+        )
+
+        self.console.print(f"\n[bold]Starting agent: {self.name}[/bold]")
+        self.console.print(f"Address: {addr_data['address']}")
+        self.console.print(f"Debug: https://oo.openonion.ai/agent/{addr_data['address']}\n")
+
+        # Define async task handler
+        async def task_handler(prompt: str) -> str:
+            """Handle incoming task by running through agent.input()"""
+            return self.input(prompt)
+
+        # Run serve loop
+        async def run():
+            ws = await relay.connect(relay_url)
+            await relay.serve_loop(ws, announce_msg, task_handler)
+
+        # Run the async loop
+        asyncio.run(run())

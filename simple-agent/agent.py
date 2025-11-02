@@ -22,8 +22,8 @@ def hello_world(name: str = "World") -> str:
 
 def main():
     """Run the minimal agent."""
-    # Use co/o4-mini by default, can override with MODEL env var
-    model = "co/o4-mini"
+    # Use gpt-4o-mini by default, can override with MODEL env var
+    model = os.getenv("MODEL", "gpt-4o-mini")
     print(f"🚀 ConnectOnion Simple Agent")
     print(f"📦 Using model: {model}")
     print("-" * 50)
