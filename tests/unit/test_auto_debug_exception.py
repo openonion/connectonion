@@ -2,30 +2,29 @@
 
 import sys
 import os
-import unittest
+import pytest
 from unittest.mock import Mock, patch, MagicMock
 from io import StringIO
 
 # Add parent directory to path
-import sys
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from connectonion.auto_debug_exception import auto_debug_exception
 
 
-class TestAutoDebugException(unittest.TestCase):
+class TestAutoDebugException:
     """Test auto_debug_exception functionality."""
 
-    def setUp(self):
+    @pytest.fixture(autouse=True)
+    def setup_method(self):
         """Set up test environment."""
         # Save original excepthook
         self.original_excepthook = sys.excepthook
         # Clear any environment variables
         os.environ.pop('CONNECTONION_AUTO_DEBUG', None)
-
-    def tearDown(self):
-        """Restore original state."""
+        yield
+        # Teardown
         # Restore original excepthook
         sys.excepthook = self.original_excepthook
         # Clear environment
@@ -39,7 +38,7 @@ class TestAutoDebugException(unittest.TestCase):
         with patch('connectonion.console.Console'):
             auto_debug_exception()
 
-        self.assertNotEqual(sys.excepthook, original_hook)
+        assert sys.excepthook != original_hook
 
     def test_auto_debug_exception_respects_env_disable(self):
         """Test that auto_debug_exception respects CONNECTONION_AUTO_DEBUG=false."""
@@ -53,7 +52,7 @@ class TestAutoDebugException(unittest.TestCase):
         auto_debug_exception()
 
         # Hook should NOT be changed
-        self.assertEqual(sys.excepthook, original_hook)
+        assert sys.excepthook == original_hook
 
     def test_auto_debug_exception_confirmation_message(self):
         """Test auto_debug_exception shows confirmation message."""
@@ -67,8 +66,8 @@ class TestAutoDebugException(unittest.TestCase):
             calls = mock_console.return_value.print.call_args_list
             # Check that at least one call contains the expected message
             messages = [str(call) for call in calls]
-            self.assertTrue(any("Exception debugging enabled" in msg for msg in messages))
-            self.assertTrue(any("uncaught exceptions" in msg for msg in messages))
+            assert any("Exception debugging enabled" in msg for msg in messages)
+            assert any("uncaught exceptions" in msg for msg in messages)
 
     @patch('connectonion.console.Console')
     def test_exception_handling_with_runtime_tools(self, mock_console_class):
@@ -101,22 +100,22 @@ class TestAutoDebugException(unittest.TestCase):
             # Verify create_debug_agent was called with frame and traceback
             mock_create_agent.assert_called_once()
             call_kwargs = mock_create_agent.call_args[1]
-            self.assertIn('frame', call_kwargs)
-            self.assertIn('exception_traceback', call_kwargs)
-            self.assertIsNotNone(call_kwargs['frame'])
-            self.assertIsNotNone(call_kwargs['exception_traceback'])
+            assert 'frame' in call_kwargs
+            assert 'exception_traceback' in call_kwargs
+            assert call_kwargs['frame'] is not None
+            assert call_kwargs['exception_traceback'] is not None
 
             # Verify prompt guides tool usage
             mock_agent.input.assert_called_once()
             prompt = mock_agent.input.call_args[0][0]
-            self.assertIn("runtime inspection tools", prompt)
-            self.assertIn("explore_namespace", prompt)
-            self.assertIn("execute_in_frame", prompt)
+            assert "runtime inspection tools" in prompt
+            assert "explore_namespace" in prompt
+            assert "execute_in_frame" in prompt
 
             # Verify console output
             console_calls = [str(call) for call in mock_console.print.call_args_list]
-            self.assertTrue(any("Analyzing with AI runtime inspection" in str(call) for call in console_calls))
-            self.assertTrue(any("AI Runtime Debug Analysis" in str(call) for call in console_calls))
+            assert any("Analyzing with AI runtime inspection" in str(call) for call in console_calls)
+            assert any("AI Runtime Debug Analysis" in str(call) for call in console_calls)
 
     def test_auto_debug_exception_handles_ai_failure_gracefully(self):
         """Test that auto_debug_exception handles AI analysis failure gracefully."""
@@ -141,7 +140,7 @@ class TestAutoDebugException(unittest.TestCase):
 
                 # Verify error message is shown
                 console_calls = [str(call) for call in mock_console.print.call_args_list]
-                self.assertTrue(any("AI analysis failed" in str(call) for call in console_calls))
+                assert any("AI analysis failed" in str(call) for call in console_calls)
 
     def test_auto_debug_exception_model_parameter(self):
         """Test that auto_debug_exception respects the model parameter."""
@@ -164,7 +163,7 @@ class TestAutoDebugException(unittest.TestCase):
                 # Verify model was passed correctly
                 mock_create_agent.assert_called()
                 call_kwargs = mock_create_agent.call_args[1]
-                self.assertEqual(call_kwargs['model'], "gpt-4")
+                assert call_kwargs['model'] == "gpt-4"
 
     def test_exception_with_complex_data(self):
         """Test exception handling with complex nested data structures."""
@@ -202,7 +201,7 @@ class TestAutoDebugException(unittest.TestCase):
 
                 # Check that prompt includes exception details
                 prompt = mock_agent.input.call_args[0][0]
-                self.assertIn("KeyError", prompt)
+                assert "KeyError" in prompt
 
     def test_no_frame_found_handling(self):
         """Test handling when no relevant frame is found."""
@@ -225,7 +224,3 @@ class TestAutoDebugException(unittest.TestCase):
 
             # Should handle gracefully even if no user frame found
             # Just verify it doesn't crash
-
-
-if __name__ == '__main__':
-    unittest.main()
