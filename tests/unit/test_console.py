@@ -1,11 +1,11 @@
 """Unit tests for connectonion/console.py"""
 
-import unittest
+import pytest
 from unittest.mock import patch
 import connectonion.console as console_mod
 
 
-class TestConsole(unittest.TestCase):
+class TestConsole:
     """Test console output functions."""
 
     @patch('connectonion.console._rich_console.print')
@@ -15,7 +15,7 @@ class TestConsole(unittest.TestCase):
         c.print("Test message")
         mock_rich_print.assert_called_once()
         args, kwargs = mock_rich_print.call_args
-        self.assertIn("Test message", args[0])
+        assert "Test message" in args[0]
 
     @patch('connectonion.console._rich_console.print')
     def test_print_with_style(self, mock_rich_print):
@@ -24,8 +24,4 @@ class TestConsole(unittest.TestCase):
         c.print("Error occurred", style="red")
         mock_rich_print.assert_called_once()
         args, kwargs = mock_rich_print.call_args
-        self.assertIn("Error occurred", args[0])
-
-
-if __name__ == '__main__':
-    unittest.main()
+        assert "Error occurred" in args[0]
