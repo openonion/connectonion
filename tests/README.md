@@ -139,7 +139,7 @@ curl -X POST "https://oo.openonion.ai/api/emails/mark-read" \
 Create a temporary ConnectOnion project for testing:
 
 ```python
-from tests.test_config import TestProject
+from tests.utils.config_helpers import TestProject
 
 with TestProject() as project_dir:
     # Test code here - project is automatically cleaned up
@@ -154,7 +154,7 @@ with TestProject() as project_dir:
 Use predefined test emails:
 
 ```python
-from tests.test_config import SAMPLE_EMAILS
+from tests.utils.config_helpers import SAMPLE_EMAILS
 
 for email in SAMPLE_EMAILS:
     print(f"Test email: {email['subject']}")
@@ -168,7 +168,7 @@ for email in SAMPLE_EMAILS:
 
 ```python
 import unittest
-from tests.test_config import TEST_ACCOUNT, TestProject
+from tests.utils.config_helpers import TEST_ACCOUNT, TestProject
 
 class TestNewFeature(unittest.TestCase):
     def test_with_project(self):

@@ -14,7 +14,7 @@ from connectonion.useful_tools.send_email import send_email, get_agent_email, is
 from connectonion.useful_tools.get_emails import get_emails, mark_read, mark_unread
 
 # Import test configuration
-from tests.test_config import TEST_ACCOUNT, TEST_JWT_TOKEN, TEST_CONFIG_TOML, SAMPLE_EMAILS, TestProject
+from tests.utils.config_helpers import TEST_ACCOUNT, TEST_JWT_TOKEN, TEST_CONFIG_TOML, SAMPLE_EMAILS, TestProject
 
 
 class TestSendEmail(unittest.TestCase):

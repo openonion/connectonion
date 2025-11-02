@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from connectonion import send_email, get_emails, mark_read
-from tests.test_config import TestProject
+from tests.utils.config_helpers import TestProject
 
 
 def test_live_email():
