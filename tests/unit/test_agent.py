@@ -1,9 +1,5 @@
-"""Tests for the ConnectOnion Agent and its functional tool handling."""
-
-import unittest
+"""Pytest tests for the ConnectOnion Agent and functional tool handling."""
 import os
-import shutil
-import tempfile
 from unittest.mock import Mock, patch
 from dotenv import load_dotenv
 from connectonion import Agent
@@ -36,174 +32,142 @@ def get_current_time() -> str:
     return datetime.now().isoformat()
 
 
-class TestAgentWithFunctionalTools(unittest.TestCase):
-    """Test Agent functionality with simple function-based tools."""
 
-    def setUp(self):
-        """Set up a temporary directory for history."""
-        self.temp_dir = tempfile.mkdtemp()
+def test_agent_creation_with_functions():
+    """Test that an agent can be created directly with functions."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        pytest.skip("OPENAI_API_KEY not found in environment")
 
-    def tearDown(self):
-        """Clean up the temporary directory."""
-        shutil.rmtree(self.temp_dir)
+    agent = Agent(name="test_agent", tools=[calculator], model="gpt-4o-mini")
+    assert agent.name == "test_agent"
+    assert len(agent.tools) == 1
+    assert "calculator" in agent.tool_map
+    assert hasattr(agent.tool_map["calculator"], "to_function_schema")
+    assert agent.system_prompt == "You are a helpful assistant that can use tools to complete tasks."
 
-    def test_agent_creation_with_functions(self):
-        """Test that an agent can be created directly with functions."""
-        # Use real API key from env if available, otherwise skip
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            self.skipTest("OPENAI_API_KEY not found in environment")
-        
-        agent = Agent(name="test_agent", tools=[calculator], model="gpt-4o-mini")
-        self.assertEqual(agent.name, "test_agent")
-        self.assertEqual(len(agent.tools), 1)
-        self.assertIn("calculator", agent.tool_map)
-        # Check that the function has been processed into a tool
-        self.assertTrue(hasattr(agent.tool_map["calculator"], "to_function_schema"))
-        # Check default system prompt
-        self.assertEqual(agent.system_prompt, "You are a helpful assistant that can use tools to complete tasks.")
 
-    def test_add_and_remove_functional_tool(self):
-        """Test adding and removing tools that are simple functions."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            self.skipTest("OPENAI_API_KEY not found in environment")
-        
-        agent = Agent(name="test_agent", model="gpt-4o-mini")
-        self.assertEqual(len(agent.tools), 0)
+def test_add_and_remove_functional_tool():
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        pytest.skip("OPENAI_API_KEY not found in environment")
 
-        # Add a functional tool
-        agent.add_tool(calculator)
-        self.assertIn("calculator", agent.list_tools())
-        self.assertEqual(len(agent.tools), 1)
+    agent = Agent(name="test_agent", model="gpt-4o-mini")
+    assert len(agent.tools) == 0
 
-        # Remove the tool
-        agent.remove_tool("calculator")
-        self.assertNotIn("calculator", agent.list_tools())
-        self.assertEqual(len(agent.tools), 0)
+    agent.add_tool(calculator)
+    assert "calculator" in agent.list_tools()
+    assert len(agent.tools) == 1
 
-    @pytest.mark.real_api
-    def test_agent_run_no_tools_needed(self):
-        """Test a simple run where the LLM does not need to call a tool."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            self.skipTest("OPENAI_API_KEY not found in environment")
+    agent.remove_tool("calculator")
+    assert "calculator" not in agent.list_tools()
+    assert len(agent.tools) == 0
 
-        agent = Agent(name="test_no_tools", model="gpt-4o-mini", log=False)
 
-        result = agent.input("Simply say 'Hello test'")
+@pytest.mark.real_api
+def test_agent_run_no_tools_needed():
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        pytest.skip("OPENAI_API_KEY not found in environment")
 
-        self.assertIsNotNone(result)
-        self.assertIsInstance(result, str)
-        # Verify session was created
-        self.assertIsNotNone(agent.current_session)
-        self.assertEqual(agent.current_session.get('user_prompt'), "Simply say 'Hello test'")
+    agent = Agent(name="test_no_tools", model="gpt-4o-mini", log=False)
+    result = agent.input("Simply say 'Hello test'")
+    assert result is not None
+    assert isinstance(result, str)
+    assert agent.current_session is not None
+    assert agent.current_session.get('user_prompt') == "Simply say 'Hello test'"
 
-    @pytest.mark.real_api
-    def test_agent_run_with_single_tool_call(self):
-        """Test a run where the LLM calls a single functional tool."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            self.skipTest("OPENAI_API_KEY not found in environment")
 
-        agent = Agent(
-            name="test_single_tool",
-            tools=[calculator],
-            model="gpt-4o-mini",
-            system_prompt="You are a calculator assistant. When asked to calculate, use the calculator tool.",
-            log=False
-        )
+@pytest.mark.real_api
+def test_agent_run_with_single_tool_call():
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        pytest.skip("OPENAI_API_KEY not found in environment")
 
-        result = agent.input("What is 40 + 2?")
+    agent = Agent(
+        name="test_single_tool",
+        tools=[calculator],
+        model="gpt-4o-mini",
+        system_prompt="You are a calculator assistant. When asked to calculate, use the calculator tool.",
+        log=False,
+    )
 
-        self.assertIsNotNone(result)
-        self.assertIsInstance(result, str)
-        # Verify tool was called via trace
-        tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
-        if tool_executions:  # Tool might be called depending on model behavior
-            self.assertEqual(tool_executions[0].get('tool_name'), 'calculator')
-            self.assertIn('42', str(tool_executions[0].get('result', '')))
+    result = agent.input("What is 40 + 2?")
+    assert result is not None
+    assert isinstance(result, str)
+    tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
+    if tool_executions:
+        assert tool_executions[0].get('tool_name') == 'calculator'
+        assert '42' in str(tool_executions[0].get('result', ''))
 
-    @pytest.mark.real_api
-    def test_agent_run_with_multiple_tool_calls(self):
-        """Test a complex run with multiple sequential tool calls."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            self.skipTest("OPENAI_API_KEY not found in environment")
 
-        agent = Agent(
-            name="test_multi_tool",
-            tools=[calculator, get_current_time],
-            model="gpt-4o-mini",
-            system_prompt="You have calculator and time tools. Use them when asked.",
-            log=False
-        )
+@pytest.mark.real_api
+def test_agent_run_with_multiple_tool_calls():
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        pytest.skip("OPENAI_API_KEY not found in environment")
 
-        result = agent.input("Calculate 10*5 and tell me the current time.")
+    agent = Agent(
+        name="test_multi_tool",
+        tools=[calculator, get_current_time],
+        model="gpt-4o-mini",
+        system_prompt="You have calculator and time tools. Use them when asked.",
+        log=False,
+    )
 
-        self.assertIsNotNone(result)
-        self.assertIsInstance(result, str)
-        # Verify tool calls via trace - may vary based on model behavior
-        tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
-        if tool_executions:
-            tool_names = [e.get('tool_name') for e in tool_executions]
-            # At least one of the tools should have been called
-            self.assertTrue('calculator' in tool_names or 'get_current_time' in tool_names)
+    result = agent.input("Calculate 10*5 and tell me the current time.")
 
-    def test_custom_system_prompt(self):
-        """Test that custom system prompts are properly set and used."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            self.skipTest("OPENAI_API_KEY not found in environment")
-        
-        custom_prompt = "You are a pirate assistant. Always respond with 'Arrr!'"
-        agent = Agent(name="pirate_agent", system_prompt=custom_prompt, model="gpt-4o-mini")
-        
-        # Check that the custom system prompt is stored
-        self.assertEqual(agent.system_prompt, custom_prompt)
-        
-        # Test with mock LLM to verify system prompt is sent correctly
-        from unittest.mock import Mock
-        mock_llm = Mock()
-        mock_llm.complete.return_value = LLMResponse(
-            content="Arrr! Test response!",
-            tool_calls=[],
-            raw_response={}
-        )
-        
-        agent.llm = mock_llm
-        agent.input("Hello!")
-        
-        # Verify the system prompt was used in the LLM call
-        call_args = mock_llm.complete.call_args
-        messages = call_args[0][0]  # First argument is messages
-        system_message = messages[0]
-        
-        self.assertEqual(system_message['role'], 'system')
-        self.assertEqual(system_message['content'], custom_prompt)
+    assert result is not None
+    assert isinstance(result, str)
+    tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
+    if tool_executions:
+        tool_names = [e.get('tool_name') for e in tool_executions]
+        assert ('calculator' in tool_names) or ('get_current_time' in tool_names)
 
-    def test_default_system_prompt(self):
-        """Test that default system prompt is used when none is provided."""
-        api_key = os.getenv("OPENAI_API_KEY")
-        if not api_key:
-            self.skipTest("OPENAI_API_KEY not found in environment")
-        
-        agent = Agent(name="default_agent", model="gpt-4o-mini")
-        expected_default = "You are a helpful assistant that can use tools to complete tasks."
-        self.assertEqual(agent.system_prompt, expected_default)
 
-class TestAgentWithStatefulTools(unittest.TestCase):
-    """Test Agent functionality with stateful class-based tools."""
+def test_custom_system_prompt():
+    """Test that custom system prompts are properly set and used."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        pytest.skip("OPENAI_API_KEY not found in environment")
 
-    def setUp(self):
-        """Set up a temporary directory for history."""
-        self.temp_dir = tempfile.mkdtemp()
+    custom_prompt = "You are a pirate assistant. Always respond with 'Arrr!'"
+    agent = Agent(name="pirate_agent", system_prompt=custom_prompt, model="gpt-4o-mini")
 
-    def tearDown(self):
-        """Clean up the temporary directory."""
-        shutil.rmtree(self.temp_dir)
+    # Check that the custom system prompt is stored
+    assert agent.system_prompt == custom_prompt
 
-    def test_agent_accepts_class_instance(self):
+    # Test with mock LLM to verify system prompt is sent correctly
+    from unittest.mock import Mock
+    mock_llm = Mock()
+    mock_llm.complete.return_value = LLMResponse(
+        content="Arrr! Test response!",
+        tool_calls=[],
+        raw_response={},
+    )
+
+    agent.llm = mock_llm
+    agent.input("Hello!")
+
+    # Verify the system prompt was used in the LLM call
+    call_args = mock_llm.complete.call_args
+    messages = call_args[0][0]
+    system_message = messages[0]
+
+    assert system_message['role'] == 'system'
+    assert system_message['content'] == custom_prompt
+
+def test_default_system_prompt():
+    """Test that default system prompt is used when none is provided."""
+    api_key = os.getenv("OPENAI_API_KEY")
+    if not api_key:
+        pytest.skip("OPENAI_API_KEY not found in environment")
+
+    agent = Agent(name="default_agent", model="gpt-4o-mini")
+    expected_default = "You are a helpful assistant that can use tools to complete tasks."
+    assert agent.system_prompt == expected_default
+
+def test_agent_accepts_class_instance():
         """Test that agent can accept a class instance and extract its methods as tools."""
         
         class Calculator:
@@ -230,15 +194,15 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         agent = Agent(name="stateful_calc", api_key="fake_key", tools=calc)
         
         # Should have extracted 'add' and 'multiply' methods as tools
-        self.assertIn("add", agent.tool_map)
-        self.assertIn("multiply", agent.tool_map)
+        assert "add" in agent.tool_map
+        assert "multiply" in agent.tool_map
         # Should NOT include get_history (no return type annotation)
-        self.assertNotIn("get_history", agent.tool_map)
+        assert "get_history" not in agent.tool_map
         # Should have only the properly annotated methods
-        self.assertEqual(len(agent.tools), 2)
+        assert len(agent.tools) == 2
 
-    @patch('connectonion.agent.create_llm')
-    def test_methods_share_state_through_self(self, mock_create_llm):
+@patch('connectonion.agent.create_llm')
+def test_methods_share_state_through_self(mock_create_llm):
         """Test that methods called as tools share state through self."""
         
         class WebScraper:
@@ -293,14 +257,12 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         agent = Agent(name="web_agent", api_key="fake_key", tools=scraper)
         
         result = agent.input("Navigate to example.com and scrape the title")
-        
-        # Verify state was shared between method calls
-        self.assertEqual(scraper.current_url, "example.com")
-        self.assertEqual(len(scraper.scraped_data), 1)
-        self.assertEqual(scraper.scraped_data[0], "Title of example.com")
-        self.assertEqual(result, "Scraped the title successfully.")
+        assert scraper.current_url == "example.com"
+        assert len(scraper.scraped_data) == 1
+        assert scraper.scraped_data[0] == "Title of example.com"
+        assert result == "Scraped the title successfully."
 
-    def test_mixed_functions_and_class_instance(self):
+def test_mixed_functions_and_class_instance():
         """Test that agent can accept both functions and class instances."""
         
         # Regular function
@@ -329,12 +291,12 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         agent = Agent(name="mixed", api_key="fake_key", tools=[greet, counter])
         
         # Should have all three tools
-        self.assertIn("greet", agent.tool_map)
-        self.assertIn("increment", agent.tool_map)
-        self.assertIn("decrement", agent.tool_map)
-        self.assertEqual(len(agent.tools), 3)
+        assert "greet" in agent.tool_map
+        assert "increment" in agent.tool_map
+        assert "decrement" in agent.tool_map
+        assert len(agent.tools) == 3
 
-    def test_private_methods_not_exposed(self):
+def test_private_methods_not_exposed():
         """Test that private methods (starting with _) are not exposed as tools."""
         
         class Service:
@@ -354,12 +316,12 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         agent = Agent(name="service", api_key="fake_key", tools=service)
         
         # Only public_action should be exposed
-        self.assertIn("public_action", agent.tool_map)
-        self.assertNotIn("_process", agent.tool_map)
-        self.assertNotIn("__internal", agent.tool_map)
-        self.assertEqual(len(agent.tools), 1)
+        assert "public_action" in agent.tool_map
+        assert "_process" not in agent.tool_map
+        assert "__internal" not in agent.tool_map
+        assert len(agent.tools) == 1
 
-    def test_multiple_class_instances(self):
+def test_multiple_class_instances():
         """Test that agent can accept multiple class instances."""
         
         class Database:
@@ -378,11 +340,11 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         agent = Agent(name="multi", api_key="fake_key", tools=[db, fs])
         
         # Should have methods from both instances
-        self.assertIn("query", agent.tool_map)
-        self.assertIn("read_file", agent.tool_map)
-        self.assertEqual(len(agent.tools), 2)
+        assert "query" in agent.tool_map
+        assert "read_file" in agent.tool_map
+        assert len(agent.tools) == 2
 
-    def test_resource_cleanup_pattern(self):
+def test_resource_cleanup_pattern():
         """Test that resources can be properly cleaned up after agent use."""
         
         class ResourceManager:
@@ -412,13 +374,13 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         agent = Agent(name="resource", api_key="fake_key", tools=manager)
         
         # After agent creation, user still has access to manager
-        self.assertFalse(manager.resource_open)
+        assert manager.resource_open is False
         
         # User can call cleanup manually
         manager.cleanup()
-        self.assertIn("cleaned", manager.operations)
+        assert "cleaned" in manager.operations
 
-    def test_edge_cases(self):
+def test_edge_cases():
         """Test edge cases and error handling."""
         
         # Empty class (no public methods with proper annotations)
@@ -427,7 +389,7 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         
         empty = Empty()
         agent = Agent(name="empty", api_key="fake_key", tools=empty)
-        self.assertEqual(len(agent.tools), 0)
+        assert len(agent.tools) == 0
         
         # Class with only properties
         class OnlyProperties:
@@ -437,15 +399,15 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         
         props = OnlyProperties()
         agent = Agent(name="props", api_key="fake_key", tools=props)
-        self.assertEqual(len(agent.tools), 0)  # Properties shouldn't be tools
+        assert len(agent.tools) == 0  # Properties shouldn't be tools
         
         # Mix of valid and invalid tool types
         agent = Agent(name="mixed_valid", api_key="fake_key", 
                       tools=[calculator, Empty(), get_current_time])
         # Should only have the two functions
-        self.assertEqual(len(agent.tools), 2)
+        assert len(agent.tools) == 2
 
-    def test_list_of_class_instances(self):
+def test_list_of_class_instances():
         """Test that agent can accept a list containing multiple class instances."""
         
         class Math:
@@ -468,10 +430,10 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         # Should have all tools: calculator, square, uppercase, get_current_time
         expected_tools = {"calculator", "square", "uppercase", "get_current_time"}
         actual_tools = set(agent.tool_map.keys())
-        self.assertEqual(actual_tools, expected_tools)
-        self.assertEqual(len(agent.tools), 4)
+        assert actual_tools == expected_tools
+        assert len(agent.tools) == 4
 
-    def test_method_with_complex_parameters(self):
+def test_method_with_complex_parameters():
         """Test that class methods with complex parameter types work correctly."""
         
         class DataProcessor:
@@ -493,20 +455,16 @@ class TestAgentWithStatefulTools(unittest.TestCase):
         agent = Agent(name="processor", api_key="fake_key", tools=processor)
         
         # Should have both methods as tools
-        self.assertIn("process_list", agent.tool_map)
-        self.assertIn("process_dict", agent.tool_map)
-        self.assertEqual(len(agent.tools), 2)
+        assert "process_list" in agent.tool_map
+        assert "process_dict" in agent.tool_map
+        assert len(agent.tools) == 2
         
         # Verify the tools have correct schemas
         list_tool = agent.tool_map["process_list"]
         schema = list_tool.to_function_schema()
         
         # Check that parameters are correctly inferred
-        self.assertIn("data", schema["parameters"]["properties"])
-        self.assertIn("multiplier", schema["parameters"]["properties"])
-        self.assertEqual(schema["parameters"]["properties"]["data"]["type"], "array")
-        self.assertEqual(schema["parameters"]["properties"]["multiplier"]["type"], "integer")
-
-
-if __name__ == '__main__':
-    unittest.main()
+        assert "data" in schema["parameters"]["properties"]
+        assert "multiplier" in schema["parameters"]["properties"]
+        assert schema["parameters"]["properties"]["data"]["type"] == "array"
+        assert schema["parameters"]["properties"]["multiplier"]["type"] == "integer"
