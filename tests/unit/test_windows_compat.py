@@ -7,9 +7,9 @@ Tests that ConnectOnion works correctly on Windows with:
 - Platform-specific chmod behavior
 """
 
-import unittest
 import tempfile
 import sys
+import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
@@ -17,7 +17,7 @@ from connectonion import address
 from connectonion.console import Console
 
 
-class TestUTF8Encoding(unittest.TestCase):
+class TestUTF8Encoding:
     """Test UTF-8 encoding works with non-ASCII paths."""
 
     def test_address_save_load_with_chinese_path(self):
@@ -26,7 +26,7 @@ class TestUTF8Encoding(unittest.TestCase):
         try:
             addr_data = address.generate()
         except ImportError:
-            self.skipTest("pynacl not installed")
+            pytest.skip("pynacl not installed")
 
         # Create temp directory simulating Chinese username
         with tempfile.TemporaryDirectory(prefix="王小明_") as temp_dir:
@@ -37,23 +37,23 @@ class TestUTF8Encoding(unittest.TestCase):
 
             # Verify recovery file was created and is UTF-8
             recovery_file = co_dir / "keys" / "recovery.txt"
-            self.assertTrue(recovery_file.exists())
+            assert recovery_file.exists()
 
             # Read back and verify - this tests UTF-8 encoding explicitly
             seed_phrase = recovery_file.read_text(encoding='utf-8')
-            self.assertEqual(seed_phrase.strip(), addr_data["seed_phrase"])
+            assert seed_phrase.strip() == addr_data["seed_phrase"]
 
             # Load should work
             loaded = address.load(co_dir)
-            self.assertIsNotNone(loaded)
-            self.assertEqual(loaded["address"], addr_data["address"])
+            assert loaded is not None
+            assert loaded["address"] == addr_data["address"]
 
     def test_address_save_load_with_arabic_path(self):
         """Test saving and loading with Arabic username path."""
         try:
             addr_data = address.generate()
         except ImportError:
-            self.skipTest("pynacl not installed")
+            pytest.skip("pynacl not installed")
 
         # Arabic username
         with tempfile.TemporaryDirectory(prefix="محمد_") as temp_dir:
@@ -62,15 +62,15 @@ class TestUTF8Encoding(unittest.TestCase):
             address.save(addr_data, co_dir)
             loaded = address.load(co_dir)
 
-            self.assertIsNotNone(loaded)
-            self.assertEqual(loaded["address"], addr_data["address"])
+            assert loaded is not None
+            assert loaded["address"] == addr_data["address"]
 
     def test_address_save_with_spaces_in_path(self):
         """Test paths with spaces work correctly."""
         try:
             addr_data = address.generate()
         except ImportError:
-            self.skipTest("pynacl not installed")
+            pytest.skip("pynacl not installed")
 
         # Username with spaces (common on Windows)
         with tempfile.TemporaryDirectory(prefix="John Smith_") as temp_dir:
@@ -80,8 +80,8 @@ class TestUTF8Encoding(unittest.TestCase):
             address.save(addr_data, co_dir)
             loaded = address.load(co_dir)
 
-            self.assertIsNotNone(loaded)
-            self.assertEqual(loaded["address"], addr_data["address"])
+            assert loaded is not None
+            assert loaded["address"] == addr_data["address"]
 
     def test_console_logging_with_utf8_path(self):
         """Test console logging works with UTF-8 paths."""
@@ -94,14 +94,14 @@ class TestUTF8Encoding(unittest.TestCase):
             console.print("Test message with emoji 🚀")
 
             # Verify file was created and is readable
-            self.assertTrue(log_file.exists())
+            assert log_file.exists()
 
             # Read back with UTF-8 (critical test!)
             content = log_file.read_text(encoding='utf-8')
-            self.assertIn("Test message with emoji 🚀", content)
+            assert "Test message with emoji 🚀" in content
 
 
-class TestChmodPlatformCheck(unittest.TestCase):
+class TestChmodPlatformCheck:
     """Test chmod is skipped on Windows, applied on Unix."""
 
     @patch('sys.platform', 'win32')
@@ -110,7 +110,7 @@ class TestChmodPlatformCheck(unittest.TestCase):
         try:
             addr_data = address.generate()
         except ImportError:
-            self.skipTest("pynacl not installed")
+            pytest.skip("pynacl not installed")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             co_dir = Path(temp_dir)
@@ -129,7 +129,7 @@ class TestChmodPlatformCheck(unittest.TestCase):
         try:
             addr_data = address.generate()
         except ImportError:
-            self.skipTest("pynacl not installed")
+            pytest.skip("pynacl not installed")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             co_dir = Path(temp_dir)
@@ -142,11 +142,11 @@ class TestChmodPlatformCheck(unittest.TestCase):
             recovery_file = co_dir / "keys" / "recovery.txt"
 
             # Verify files exist and are readable (chmod succeeded)
-            self.assertTrue(key_file.exists())
-            self.assertTrue(recovery_file.exists())
+            assert key_file.exists()
+            assert recovery_file.exists()
 
 
-class TestPathComparison(unittest.TestCase):
+class TestPathComparison:
     """Test path comparison works correctly on Windows."""
 
     def test_path_resolve_normalization(self):
@@ -158,7 +158,7 @@ class TestPathComparison(unittest.TestCase):
 
         # Without resolve(), these might compare differently on Windows
         # With resolve(), they should always match
-        self.assertEqual(co_dir1.resolve(), co_dir2.resolve())
+        assert co_dir1.resolve() == co_dir2.resolve()
 
     def test_path_comparison_with_different_separators(self):
         """Test paths with different separators resolve to same path."""
@@ -173,10 +173,10 @@ class TestPathComparison(unittest.TestCase):
             path2 = Path(f"{temp_dir}/.co")
 
             # resolve() should normalize both to the same form
-            self.assertEqual(path1.resolve(), path2.resolve())
+            assert path1.resolve() == path2.resolve()
 
 
-class TestRoundTripEncoding(unittest.TestCase):
+class TestRoundTripEncoding:
     """Test data survives write → read cycle with UTF-8 encoding."""
 
     def test_recovery_phrase_roundtrip(self):
@@ -184,7 +184,7 @@ class TestRoundTripEncoding(unittest.TestCase):
         try:
             addr_data = address.generate()
         except ImportError:
-            self.skipTest("pynacl not installed")
+            pytest.skip("pynacl not installed")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             co_dir = Path(temp_dir)
@@ -197,14 +197,14 @@ class TestRoundTripEncoding(unittest.TestCase):
             saved_phrase = recovery_file.read_text(encoding='utf-8').strip()
 
             # CRITICAL: Must match exactly (no encoding corruption)
-            self.assertEqual(saved_phrase, addr_data["seed_phrase"])
+            assert saved_phrase == addr_data["seed_phrase"]
 
     def test_warning_file_roundtrip_with_unicode(self):
         """Test warning file with unicode symbols roundtrips correctly."""
         try:
             addr_data = address.generate()
         except ImportError:
-            self.skipTest("pynacl not installed")
+            pytest.skip("pynacl not installed")
 
         with tempfile.TemporaryDirectory() as temp_dir:
             co_dir = Path(temp_dir)
@@ -217,9 +217,5 @@ class TestRoundTripEncoding(unittest.TestCase):
             content = warning_file.read_text(encoding='utf-8')
 
             # Verify unicode warning symbol is intact
-            self.assertIn("⚠️", content)
-            self.assertIn("WARNING", content)
-
-
-if __name__ == "__main__":
-    unittest.main()
+            assert "⚠️" in content
+            assert "WARNING" in content
