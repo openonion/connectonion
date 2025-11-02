@@ -196,6 +196,20 @@ def openai_api_key():
     return "sk-test-key-for-testing-only"
 
 
+# Load environment variables from tests/.env
+import os
+from pathlib import Path
+from dotenv import load_dotenv
+
+env_file = Path(__file__).parent / ".env"
+if env_file.exists():
+    load_dotenv(env_file)
+else:
+    print("\n⚠️  Warning: tests/.env not found!")
+    print("   Some tests may fail without API keys.")
+    print("   Copy tests/.env.example to tests/.env and add your API keys.\n")
+
+
 # Test markers
 def pytest_configure(config):
     """Configure custom pytest markers."""
@@ -203,3 +217,23 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line("markers", "unit: marks tests as unit tests")
     config.addinivalue_line("markers", "benchmark: marks tests as performance benchmarks")
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip tests that need API keys if keys are missing."""
+
+    # Check for API keys
+    has_openai = bool(os.getenv("OPENAI_API_KEY"))
+    has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
+    has_google = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
+    has_openonion = bool(os.getenv("OPENONION_API_KEY"))
+
+    has_any_key = has_openai or has_anthropic or has_google or has_openonion
+
+    if not has_any_key:
+        skip_marker = pytest.mark.skip(
+            reason="API keys not found. Copy tests/.env.example to tests/.env and add your keys."
+        )
+        for item in items:
+            if "real_api" in item.keywords:
+                item.add_marker(skip_marker)

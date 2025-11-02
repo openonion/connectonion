@@ -31,9 +31,11 @@ tests/
 # Install dependencies
 pip install -r requirements.txt
 
-# Tests automatically load from tests/.env file
-# The .env file already contains the necessary API keys
-# DO NOT copy or overwrite this file - it has real keys configured
+# Copy .env.example to .env and add your API keys
+cp tests/.env.example tests/.env
+# Edit tests/.env and add your API keys
+
+# Tests will auto-skip real_api tests if no API keys are found
 ```
 
 ### 2. Run Tests by Category
