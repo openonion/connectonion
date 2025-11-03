@@ -162,7 +162,7 @@ def cleanup_test_project(project_dir: Path):
 
 
 # Context manager for test projects
-class TestProject:
+class ProjectHelper:
     """Context manager for creating and cleaning up test projects."""
     
     def __init__(self, base_dir: Path = None):

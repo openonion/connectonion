@@ -29,11 +29,9 @@ class CharacterAnalysis(BaseModel):
     power_level: int = Field(description="An estimated power level for the character, on a scale of 1 to 100.")
 
 
-@pytest.mark.real_api
 class TestRealLLMDoStructuredOutput:
     """Test llm_do with real API calls for structured output."""
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
     def test_structured_output_openai(self):
         """Test structured output with an OpenAI model."""
         result = llm_do(
@@ -46,7 +44,6 @@ class TestRealLLMDoStructuredOutput:
         assert result.role.lower() == "protagonist"
         assert 1 <= result.power_level <= 100
 
-    @pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="No Anthropic API key")
     def test_structured_output_anthropic(self):
         """Test structured output with an Anthropic model."""
         result = llm_do(
@@ -59,7 +56,6 @@ class TestRealLLMDoStructuredOutput:
         assert result.role.lower() == "protagonist"
         assert 1 <= result.power_level <= 100
 
-    @pytest.mark.skipif(not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")), reason="No Gemini API key")
     def test_structured_output_gemini(self):
         """Test structured output with a Google Gemini model."""
         result = llm_do(
@@ -72,7 +68,6 @@ class TestRealLLMDoStructuredOutput:
         assert result.role.lower() == "antagonist"
         assert 1 <= result.power_level <= 100
 
-    @pytest.mark.skipif(not os.getenv("OPENONION_API_KEY"), reason="No OpenOnion API key for co/ models")
     def test_structured_output_connectonion(self):
         """Test structured output with a ConnectOnion managed (co/) model."""
         result = llm_do(

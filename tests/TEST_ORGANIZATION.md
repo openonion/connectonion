@@ -188,9 +188,9 @@ Files were organized into folders (unit, real_api, cli, e2e). Non-pytest, print-
 
 ## Notes
 
-- Keep test files flat in `tests/` directory - no subdirectories needed
-- The naming convention IS the organization
-- When in doubt, prefer unit tests over real tests
+- Tests are organized by folders with auto-applied markers (unit, integration, cli, e2e, real_api)
+- The naming convention inside each folder still follows `test_*.py`
+- When in doubt, prefer unit tests over real API tests
 - The example agent test is special - it's both documentation and validation
 ## Organization Status - Updated
 

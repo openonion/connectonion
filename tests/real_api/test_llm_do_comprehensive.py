@@ -158,8 +158,7 @@ def has_connectonion():
 # Basic Functionality Tests
 # ============================================================================
 
-@pytest.mark.real_api
-class TestBasicFunctionality:
+classTestBasicFunctionality:
     """Test basic llm_do functionality with different providers."""
 
     def test_empty_input_validation(self):
@@ -170,8 +169,7 @@ class TestBasicFunctionality:
         with pytest.raises(ValueError, match="Input cannot be empty"):
             llm_do("   ")
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_simple_openai(self):
+    deftest_simple_openai(self):
         """Test simple completion with OpenAI."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
@@ -180,8 +178,7 @@ class TestBasicFunctionality:
         assert isinstance(result, str)
         assert "4" in result
 
-    @pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="No Anthropic API key")
-    def test_simple_anthropic(self):
+    deftest_simple_anthropic(self):
         """Test simple completion with Anthropic."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
@@ -190,11 +187,7 @@ class TestBasicFunctionality:
         assert isinstance(result, str)
         assert "4" in result
 
-    @pytest.mark.skipif(
-        not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
-        reason="No Gemini API key"
-    )
-    def test_simple_gemini(self):
+    deftest_simple_gemini(self):
         """Test simple completion with Gemini."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
@@ -203,8 +196,7 @@ class TestBasicFunctionality:
         assert isinstance(result, str)
         assert "4" in result
 
-    @pytest.mark.skipif(not os.getenv("OPENONION_API_KEY"), reason="No ConnectOnion auth")
-    def test_simple_connectonion(self):
+    deftest_simple_connectonion(self):
         """Test simple completion with ConnectOnion managed keys."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
@@ -218,12 +210,10 @@ class TestBasicFunctionality:
 # Structured Output Tests (from documentation)
 # ============================================================================
 
-@pytest.mark.real_api
-class TestStructuredOutput:
+classTestStructuredOutput:
     """Test structured output with Pydantic models."""
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_sentiment_analysis(self):
+    deftest_sentiment_analysis(self):
         """Test simple sentiment analysis from Quick Start."""
         result = llm_do(
             "I absolutely love this product! Best purchase ever!",
@@ -238,8 +228,7 @@ class TestStructuredOutput:
         assert isinstance(result.keywords, list)
         assert len(result.keywords) > 0
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_invoice_extraction(self):
+    deftest_invoice_extraction(self):
         """Test invoice data extraction from documentation."""
         invoice_text = """
         Invoice #INV-2024-001
@@ -255,8 +244,7 @@ class TestStructuredOutput:
         # Date can be in different formats (January 15, 2024 or 2024-01-15)
         assert ("January" in result.due_date or "01" in result.due_date) and "15" in result.due_date
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_person_extraction(self):
+    deftest_person_extraction(self):
         """Test data extraction with nested models."""
         result = llm_do(
             "John Doe, 30, software engineer",
@@ -269,8 +257,7 @@ class TestStructuredOutput:
         assert result.age == 30
         assert "engineer" in result.occupation.lower()
 
-    @pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="No Anthropic API key")
-    def test_structured_anthropic(self):
+    deftest_structured_anthropic(self):
         """Test structured output with Anthropic."""
         result = llm_do(
             "I absolutely love this product! Best purchase ever!",
@@ -283,11 +270,7 @@ class TestStructuredOutput:
         assert isinstance(result.score, float)
 
     @pytest.mark.skip(reason="Gemini structured output API incompatibility - .parsed attribute not available")
-    @pytest.mark.skipif(
-        not (os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")),
-        reason="No Gemini API key"
-    )
-    def test_structured_gemini(self):
+    deftest_structured_gemini(self):
         """Test structured output with Gemini."""
         result = llm_do(
             "I absolutely love this product! Best purchase ever!",
@@ -304,12 +287,10 @@ class TestStructuredOutput:
 # Complex Structured Output Tests
 # ============================================================================
 
-@pytest.mark.real_api
-class TestComplexStructuredOutput:
+classTestComplexStructuredOutput:
     """Test complex structured output patterns from documentation."""
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_keyword_extraction(self):
+    deftest_keyword_extraction(self):
         """Test list fields extraction."""
         result = llm_do(
             "Extract keywords from: 'Machine learning and artificial intelligence are transforming technology and business'",
@@ -323,8 +304,7 @@ class TestComplexStructuredOutput:
         assert isinstance(result.categories, list)
         assert isinstance(result.count, int)
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_product_review_optional_fields(self):
+    deftest_product_review_optional_fields(self):
         """Test optional fields and Field constraints."""
         result = llm_do(
             "Review: The laptop is amazing! Fast performance, great display. Rating: 5/5. Highly recommend!",
@@ -338,8 +318,7 @@ class TestComplexStructuredOutput:
         assert len(result.pros) > 0
         assert result.would_recommend is True
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_email_classification(self):
+    deftest_email_classification(self):
         """Test classification tasks."""
         result = llm_do(
             'Email: "URGENT: Your account will be suspended unless you verify your information immediately!" Classify this email.',
@@ -353,8 +332,7 @@ class TestComplexStructuredOutput:
         assert isinstance(result.requires_action, bool)
         assert isinstance(result.summary, str)
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_detailed_invoice_extraction(self):
+    deftest_detailed_invoice_extraction(self):
         """Test complex nested structures with lists."""
         invoice_text = """
         INVOICE #INV-2024-001
@@ -381,8 +359,7 @@ class TestComplexStructuredOutput:
         assert len(result.items) == 2
         assert result.total == 39.05
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_blog_analysis(self):
+    deftest_blog_analysis(self):
         """Test multi-entity extraction."""
         blog_text = """
         Understanding Machine Learning: A Beginner's Guide
@@ -408,8 +385,7 @@ class TestComplexStructuredOutput:
         assert isinstance(result.word_count_estimate, int)
         assert isinstance(result.key_takeaways, list)
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_content_moderation(self):
+    deftest_content_moderation(self):
         """Test boolean decision making."""
         result = llm_do(
             "User comment: 'This is a great product! Everyone should try it. Visit my-totally-legit-site.com for more info!'",
@@ -429,12 +405,10 @@ class TestComplexStructuredOutput:
 # Advanced Features Tests
 # ============================================================================
 
-@pytest.mark.real_api
-class TestAdvancedFeatures:
+classTestAdvancedFeatures:
     """Test advanced features like temperature, max_tokens, custom prompts."""
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_temperature_parameter(self):
+    deftest_temperature_parameter(self):
         """Test temperature parameter for consistency."""
         result1 = llm_do(
             "What is the capital of France? One word only.",
@@ -451,8 +425,7 @@ class TestAdvancedFeatures:
         assert "Paris" in result1 or "paris" in result1.lower()
         assert "Paris" in result2 or "paris" in result2.lower()
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_max_tokens_parameter(self):
+    deftest_max_tokens_parameter(self):
         """Test max_tokens parameter pass-through."""
         result = llm_do(
             "Write a very long story about a dragon",
@@ -464,8 +437,7 @@ class TestAdvancedFeatures:
         assert isinstance(result, str)
         assert len(result.split()) < 30
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_custom_system_prompt_inline(self):
+    deftest_custom_system_prompt_inline(self):
         """Test inline system prompt."""
         result = llm_do(
             "Hello",
@@ -483,8 +455,7 @@ class TestAdvancedFeatures:
 # Cross-Provider Consistency Tests
 # ============================================================================
 
-@pytest.mark.real_api
-class TestCrossProviderConsistency:
+classTestCrossProviderConsistency:
     """Test that all providers handle the same prompts correctly."""
 
     def test_all_providers_basic_math(self, has_openai, has_anthropic, has_gemini):
@@ -515,18 +486,15 @@ class TestCrossProviderConsistency:
 # Documentation Example Tests
 # ============================================================================
 
-@pytest.mark.real_api
-class TestDocumentationExamples:
+classTestDocumentationExamples:
     """Test exact examples from docs/llm_do.md."""
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_quick_start_example(self):
+    deftest_quick_start_example(self):
         """Test the Quick Start example from docs."""
         answer = llm_do("What's 2+2?", model="gpt-4o-mini")
         assert "4" in answer
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_format_conversion_example(self):
+    deftest_format_conversion_example(self):
         """Test format conversion pattern from docs."""
         class PersonData(BaseModel):
             name: str
@@ -542,8 +510,7 @@ class TestDocumentationExamples:
         assert "john" in result.name.lower()
         assert result.age == 30
 
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_validation_pattern(self):
+    deftest_validation_pattern(self):
         """Test validation pattern from docs."""
         result = llm_do(
             "Is this valid SQL? Reply yes/no only: SELECT * FROM users",

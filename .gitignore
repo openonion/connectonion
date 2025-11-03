@@ -168,3 +168,5 @@ tests/cli/aws/.server-ip
 tests/cli/results/
 tests/cli/logs/
 test-package-*.tar.gz
+# Agent runtime directory
+.co/

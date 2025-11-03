@@ -29,8 +29,6 @@ def calculator(expression: str) -> str:
         return "Error in calculation"
 
 
-@pytest.mark.real_api
-@pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
 class TestRealOpenAI:
     """Test real OpenAI API integration."""
 

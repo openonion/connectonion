@@ -19,7 +19,7 @@ from tests.utils.config_helpers import (
     TEST_JWT_TOKEN,
     TEST_CONFIG_TOML,
     SAMPLE_EMAILS,
-    TestProject,
+    ProjectHelper,
 )
 
 

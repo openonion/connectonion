@@ -211,10 +211,7 @@ class BrowserAutomation:
         return f"Clicked: {result.selector}"
 
 
-# Removed create_browser_agent to reduce indirection; agent is constructed inline
 
-
-# Removed thin wrapper to reduce indirection
 
 
 def execute_browser_command(command: str) -> str:
@@ -229,7 +226,7 @@ def execute_browser_command(command: str) -> str:
     browser = BrowserAutomation()
     agent = Agent(
         name="browser_cli",
-        model="o4-mini",
+        model="co/o4-mini",
         system_prompt=PROMPT_PATH,
         tools=[browser],
         max_iterations=10

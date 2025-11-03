@@ -6,19 +6,21 @@
 
 ## 📁 Test Organization
 
-Tests are organized into 4 clear categories following the principles in [TEST_ORGANIZATION.md](./TEST_ORGANIZATION.md):
+Tests are organized into folders with pytest markers (see [TEST_ORGANIZATION.md](./TEST_ORGANIZATION.md)):
 
 ```
 tests/
-├── TEST_ORGANIZATION.md    # Test organization principles
-├── README.md               # This file
-├── conftest.py            # Shared pytest fixtures
-├── .env.test              # Test credentials (DO NOT use in production)
+├── TEST_ORGANIZATION.md      # Principles and guidance
+├── README.md                 # This file
+├── conftest.py               # Shared fixtures/markers
+├── .env.example              # Template for local test env
+├── .env                      # Local test env (gitignored)
 │
-├── test_*.py              # Unit tests (one per source file)
-├── test_real_*.py         # Real API tests (requires API keys)
-├── test_cli_*.py          # CLI command tests
-└── test_example_agent.py  # Complete working agent example
+├── unit/                     # Unit tests (auto-marked: unit)
+├── integration/              # Integration tests (auto-marked: integration)
+├── cli/                      # CLI tests (auto-marked: cli)
+├── e2e/                      # End-to-end tests (auto-marked: e2e)
+└── real_api/                 # Real API tests (auto-marked: real_api)
 ```
 
 ---
@@ -31,29 +33,34 @@ tests/
 # Install dependencies
 pip install -r requirements.txt
 
-# Copy .env.example to .env and add your API keys
+# Copy .env.example to .env and add your API keys (optional)
 cp tests/.env.example tests/.env
 # Edit tests/.env and add your API keys
 
-# Tests will auto-skip real_api tests if no API keys are found
+# Notes:
+# - real_api tests are excluded by default via pytest.ini addopts
+# - enable them by running with: pytest -m real_api
 ```
 
 ### 2. Run Tests by Category
 
 ```bash
-# Run unit tests only (fast, no API keys needed)
-pytest test_*.py --ignore=test_real_* --ignore=test_cli_* --ignore=test_example_*
+# Unit tests (fast)
+pytest -m unit
 
-# Run real API tests (requires API keys)
-pytest test_real_*.py
+# Integration tests (no external APIs)
+pytest -m integration
 
-# Run CLI tests
-pytest test_cli_*.py
+# CLI tests
+pytest -m cli
 
-# Run the complete example agent
-pytest test_example_agent.py
+# End-to-end example
+pytest -m e2e
 
-# Run everything except real API tests (for CI)
+# Real API tests (requires API keys)
+pytest -m real_api
+
+# Everything except real API (default in CI)
 pytest -m "not real_api"
 ```
 
@@ -164,21 +171,17 @@ for email in SAMPLE_EMAILS:
 
 ## 📝 Writing New Tests
 
-### Template for New Test
+### Pytest Template for New Test
 
 ```python
-import unittest
-from tests.utils.config_helpers import TEST_ACCOUNT, TestProject
+from tests.utils.config_helpers import TestProject
 
-class TestNewFeature(unittest.TestCase):
-    def test_with_project(self):
-        """Test new feature with test project."""
-        with TestProject() as project_dir:
-            # Your test code here
-            from connectonion import your_function
-            
-            result = your_function()
-            self.assertTrue(result)
+def test_with_project():
+    """Test new feature with a temporary project."""
+    with TestProject() as project_dir:
+        from connectonion import your_function
+        result = your_function()
+        assert result
 ```
 
 ### Mocking Best Practices
@@ -248,11 +251,8 @@ else:
 ### Debug Mode
 
 ```bash
-# Run tests with verbose output
-python -m pytest tests/ -vvs
-
-# Run with debug logging
-TEST_VERBOSE=true python tests/test_email_live.py
+# Verbose output, print stdout/stderr, show logs
+pytest -vvvs
 ```
 
 ---
@@ -279,12 +279,12 @@ Current coverage targets:
 
 ## 🔄 Continuous Integration
 
-Tests run automatically on:
-- Pull requests
-- Commits to main branch
-- Nightly builds
+CI runs on pull requests and pushes to main:
+- Installs dependencies
+- Runs `pytest -m "not real_api"`
+- Reports durations and failures
 
-See `.github/workflows/test.yml` for CI configuration.
+See `.github/workflows/tests.yml` for CI configuration.
 
 ---
 

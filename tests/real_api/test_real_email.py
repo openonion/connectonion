@@ -9,7 +9,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from connectonion import send_email, get_emails, mark_read
-from tests.utils.config_helpers import TestProject
+from tests.utils.config_helpers import ProjectHelper
 
 
 def test_live_email():
@@ -28,8 +28,8 @@ def test_live_email():
         return
     
     print(f"🌐 Using backend: {backend_url}")
-    
-    with TestProject() as project_dir:
+
+    with ProjectHelper() as project_dir:
         print(f"📁 Test project: {project_dir}")
         
         # The test project already has the test account configured

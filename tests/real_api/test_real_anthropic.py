@@ -25,8 +25,6 @@ def text_processor(text: str) -> str:
     return f"Processed: {text.upper()}"
 
 
-@pytest.mark.real_api
-@pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="No Anthropic API key")
 class TestRealAnthropic:
     """Test real Anthropic API integration."""
 

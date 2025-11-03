@@ -1,6 +1,5 @@
-"""Tests for multi-LLM model support across OpenAI, Google, and Anthropic."""
+"""Pytest tests for multi-LLM model support across OpenAI, Google, and Anthropic."""
 
-import unittest
 import os
 import time
 from unittest.mock import Mock, patch, MagicMock
@@ -31,89 +30,58 @@ def process_data(data: str, uppercase: bool = False) -> str:
     return data.lower()
 
 
-class TestMultiLLMSupport(unittest.TestCase):
-    """Test multi-LLM model support functionality."""
-    
-    @classmethod
-    def setUpClass(cls):
-        """Set up class-level fixtures."""
-        # Check which API keys are available
-        cls.available_providers = []
-        
-        if os.getenv("OPENAI_API_KEY"):
-            cls.available_providers.append("openai")
-        if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
-            cls.available_providers.append("google")
-        if os.getenv("ANTHROPIC_API_KEY"):
-            cls.available_providers.append("anthropic")
-        
-        # Define test models for each provider (using actual models from docs/models.md)
-        cls.test_models = {
-            "openai": {
-                # "flagship": "gpt-5",  # Requires passport verification
-                # "fast": "gpt-5-mini",  # Requires passport verification
-                # "fastest": "gpt-5-nano",  # Requires passport verification
-                # "smart": "gpt-4.1",  # Not yet available
-                "flagship": "o4-mini",  # Using o4-mini for testing
-                "fast": "gpt-4o-mini",
-                "fastest": "gpt-3.5-turbo",
-                "smart": "gpt-4o",
-                "legacy": "gpt-4o-mini"
-            },
-            "google": {
-                "flagship": "gemini-2.5-pro",
-                "experimental": "gemini-2.0-flash-exp",
-                "fast": "gemini-1.5-flash",
-                "long_context": "gemini-1.5-pro"
-            },
-            "anthropic": {
-                "flagship": "claude-opus-4.1",
-                "previous": "claude-opus-4",
-                "balanced": "claude-sonnet-4",
-                "fast": "claude-3-5-haiku"
-            }
-        }
-    
-    def setUp(self):
-        """Set up test fixtures."""
-        self.tools = [simple_calculator, get_greeting, process_data]
+def _available_providers():
+    providers = []
+    if os.getenv("OPENAI_API_KEY"):
+        providers.append("openai")
+    if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
+        providers.append("google")
+    if os.getenv("ANTHROPIC_API_KEY"):
+        providers.append("anthropic")
+    return providers
+
+
+def _tools():
+    return [simple_calculator, get_greeting, process_data]
     
     # -------------------------------------------------------------------------
     # Model Detection Tests
     # -------------------------------------------------------------------------
     
-    def test_model_detection_openai(self):
-        """Test that OpenAI models are correctly detected."""
-        # OpenAI models
-        # models = ["gpt-5", "gpt-5-mini", "gpt-5-nano", "gpt-4.1", "gpt-4o", "gpt-4o-mini", "o1", "o1-mini"]  # GPT-5 requires passport
-        models = ["o4-mini", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo", "o1", "o1-mini"]  # Using available models
-        
-        for model in models:
-            # Models starting with gpt or o should be OpenAI
-            self.assertTrue(model.startswith("gpt") or model.startswith("o"))
+def test_model_detection_openai():
+    models = ["o4-mini", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo", "o1", "o1-mini"]
+    for model in models:
+        assert model.startswith("gpt") or model.startswith("o")
     
-    def test_model_detection_google(self):
-        """Test that Google models are correctly detected."""
-        models = ["gemini-2.5-pro", "gemini-2.0-flash-exp", "gemini-2.0-flash-thinking-exp", 
-                  "gemini-1.5-pro", "gemini-1.5-flash", "gemini-1.5-flash-8b"]
-        
-        for model in models:
-            self.assertTrue(model.startswith("gemini"))
+def test_model_detection_google():
+    models = [
+        "gemini-2.5-pro",
+        "gemini-2.0-flash-exp",
+        "gemini-2.0-flash-thinking-exp",
+        "gemini-1.5-pro",
+        "gemini-1.5-flash",
+        "gemini-1.5-flash-8b",
+    ]
+    for model in models:
+        assert model.startswith("gemini")
     
-    def test_model_detection_anthropic(self):
-        """Test that Anthropic models are correctly detected."""
-        models = ["claude-opus-4.1", "claude-opus-4", "claude-sonnet-4", 
-                  "claude-3-5-sonnet", "claude-3-5-haiku"]
-        
-        for model in models:
-            self.assertTrue(model.startswith("claude"))
+def test_model_detection_anthropic():
+    models = [
+        "claude-opus-4.1",
+        "claude-opus-4",
+        "claude-sonnet-4",
+        "claude-3-5-sonnet",
+        "claude-3-5-haiku",
+    ]
+    for model in models:
+        assert model.startswith("claude")
     
     # -------------------------------------------------------------------------
     # Agent Creation Tests (Using Mock)
     # -------------------------------------------------------------------------
     
-    @patch('connectonion.llm.OpenAILLM')
-    def test_create_agent_with_openai_flagship(self, mock_openai):
+@patch('connectonion.llm.OpenAILLM')
+def test_create_agent_with_openai_flagship(mock_openai):
         """Test creating an agent with OpenAI flagship model."""
         mock_instance = Mock()
         # mock_instance.model = "gpt-5"  # GPT-5 requires passport verification
@@ -122,12 +90,12 @@ class TestMultiLLMSupport(unittest.TestCase):
         
         # agent = Agent("test_gpt5", model="gpt-5")  # Original GPT-5 test
         agent = Agent("test_o4", model="o4-mini")  # Using o4-mini
-        self.assertEqual(agent.name, "test_o4")
+        assert agent.name == "test_o4"
         # Will work once multi-LLM is implemented
         # self.assertEqual(agent.llm.model, "o4-mini")
     
-    @patch('connectonion.llm.GeminiLLM')  
-    def test_create_agent_with_gemini25(self, mock_gemini):
+@patch('connectonion.llm.GeminiLLM')
+def test_create_agent_with_gemini25(mock_gemini):
         """Test creating an agent with Gemini 2.5 Pro model."""
         mock_instance = Mock()
         mock_instance.model = "gemini-2.5-pro"
@@ -136,10 +104,10 @@ class TestMultiLLMSupport(unittest.TestCase):
         # Will work once GeminiLLM is implemented
         # agent = Agent("test_gemini", model="gemini-2.5-pro")
         # self.assertEqual(agent.llm.model, "gemini-2.5-pro")
-        self.skipTest("GeminiLLM not yet implemented")
+        pytest.skip("GeminiLLM not yet implemented")
     
-    @patch('connectonion.llm.AnthropicLLM')
-    def test_create_agent_with_claude_opus4(self, mock_anthropic):
+@patch('connectonion.llm.AnthropicLLM')
+def test_create_agent_with_claude_opus4(mock_anthropic):
         """Test creating an agent with Claude Opus 4.1 model."""
         mock_instance = Mock()
         mock_instance.model = "claude-opus-4.1"
@@ -148,56 +116,52 @@ class TestMultiLLMSupport(unittest.TestCase):
         # Will work once AnthropicLLM is implemented
         # agent = Agent("test_claude", model="claude-opus-4.1")
         # self.assertEqual(agent.llm.model, "claude-opus-4.1")
-        self.skipTest("AnthropicLLM not yet implemented")
+        pytest.skip("AnthropicLLM not yet implemented")
     
     # -------------------------------------------------------------------------
     # Tool Compatibility Tests
     # -------------------------------------------------------------------------
     
-    def test_tools_work_across_all_models(self):
+def test_tools_work_across_all_models():
         """Test that the same tools work with all model providers."""
         test_cases = []
         
         # Use actual models from our docs
-        if "openai" in self.available_providers:
+        available_providers = _available_providers()
+        tools = _tools()
+        if "openai" in available_providers:
             # test_cases.append(("gpt-5-nano", "openai"))  # GPT-5 requires passport
             test_cases.append(("gpt-4o-mini", "openai"))  # Use available model for testing
-        if "google" in self.available_providers:
+        if "google" in available_providers:
             test_cases.append(("gemini-1.5-flash", "google"))
-        if "anthropic" in self.available_providers:
+        if "anthropic" in available_providers:
             test_cases.append(("claude-3-5-haiku", "anthropic"))
         
         if not test_cases:
-            self.skipTest("No API keys available for testing")
+            pytest.skip("No API keys available for testing")
         
         for model, provider in test_cases:
-            with self.subTest(model=model, provider=provider):
-                try:
-                    agent = Agent(f"test_{provider}", model=model, tools=self.tools)
-                    
-                    # Check all tools are registered
-                    self.assertEqual(len(agent.tools), 3)
-                    self.assertIn("simple_calculator", agent.tool_map)
-                    self.assertIn("get_greeting", agent.tool_map)
-                    self.assertIn("process_data", agent.tool_map)
-                    
-                    # Check tool schemas are generated correctly
-                    for tool in agent.tools:
-                        schema = tool.to_function_schema()
-                        self.assertIn("name", schema)
-                        self.assertIn("description", schema)
-                        self.assertIn("parameters", schema)
-                except Exception as e:
-                    # Model might not be available yet
-                    if "Unknown model" in str(e) or "not yet implemented" in str(e):
-                        self.skipTest(f"Model {model} not yet implemented")
-                    raise
+            try:
+                agent = Agent(f"test_{provider}", model=model, tools=tools)
+                assert len(agent.tools) == 3
+                assert "simple_calculator" in agent.tool_map
+                assert "get_greeting" in agent.tool_map
+                assert "process_data" in agent.tool_map
+                for tool in agent.tools:
+                    schema = tool.to_function_schema()
+                    assert "name" in schema
+                    assert "description" in schema
+                    assert "parameters" in schema
+            except Exception as e:
+                if "Unknown model" in str(e) or "not yet implemented" in str(e):
+                    pytest.skip(f"Model {model} not yet implemented")
+                raise
     
     # -------------------------------------------------------------------------
     # Model Registry Tests
     # -------------------------------------------------------------------------
     
-    def test_model_registry_mapping(self):
+def test_model_registry_mapping():
         """Test that models map to correct providers."""
         # This will be the expected mapping when implemented
         expected_mapping = {
@@ -233,16 +197,17 @@ class TestMultiLLMSupport(unittest.TestCase):
         try:
             from connectonion.llm import MODEL_REGISTRY
             for model, expected_provider in expected_mapping.items():
-                self.assertEqual(MODEL_REGISTRY.get(model), expected_provider,
-                               f"Model {model} should map to {expected_provider}")
+                assert MODEL_REGISTRY.get(model) == expected_provider, (
+                    f"Model {model} should map to {expected_provider}"
+                )
         except ImportError:
-            self.skipTest("MODEL_REGISTRY not yet implemented")
+            pytest.skip("MODEL_REGISTRY not yet implemented")
     
     # -------------------------------------------------------------------------
     # Error Handling Tests
     # -------------------------------------------------------------------------
     
-    def test_missing_api_key_error(self):
+def test_missing_api_key_error():
         """Test appropriate error when API key is missing."""
         # Temporarily remove API key
         original_key = os.environ.get("OPENAI_API_KEY")
@@ -250,108 +215,100 @@ class TestMultiLLMSupport(unittest.TestCase):
             del os.environ["OPENAI_API_KEY"]
         
         try:
-            with self.assertRaises(ValueError) as context:
-                # agent = Agent("test", model="gpt-5")  # GPT-5 requires passport
-                agent = Agent("test", model="o4-mini")  # Using o4-mini
-            
-            self.assertIn("API key", str(context.exception))
+            with pytest.raises(ValueError) as context:
+                Agent("test", model="o4-mini")
+            assert "API key" in str(context.value)
         finally:
             # Restore API key
             if original_key:
                 os.environ["OPENAI_API_KEY"] = original_key
     
-    def test_unknown_model_error(self):
+def test_unknown_model_error():
         """Test error handling for unknown model names."""
         # This should raise an error once model validation is implemented
         try:
-            with self.assertRaises(ValueError) as context:
-                agent = Agent("test", model="unknown-model-xyz")
-            self.assertIn("Unknown model", str(context.exception))
-        except:
-            # Model validation not yet implemented
-            self.skipTest("Model validation not yet implemented")
+            with pytest.raises(ValueError) as context:
+                Agent("test", model="unknown-model-xyz")
+            assert "Unknown model" in str(context.value)
+        except Exception:
+            pytest.skip("Model validation not yet implemented")
     
     # -------------------------------------------------------------------------
     # Integration Tests (require actual API keys)
     # -------------------------------------------------------------------------
     
-    @pytest.mark.real_api
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="Requires OpenAI API key")
-    def test_openai_flagship_real_call(self):
+deftest_openai_flagship_real_call():
         """Test actual API call with OpenAI flagship model."""
         # Testing with o4-mini (GPT-5 requires passport verification)
+        tools = _tools()
         try:
-            # agent = Agent("test", model="gpt-5", tools=self.tools)  # GPT-5 requires passport
-            agent = Agent("test", model="o4-mini", tools=self.tools)  # Using o4-mini
+            agent = Agent("test", model="o4-mini", tools=tools)
             response = agent.input("Use the simple_calculator tool to add 5 and 3")
-            self.assertIn("8", response)
+            assert "8" in response
         except Exception as e:
             if "model not found" in str(e).lower() or "o4-mini" in str(e).lower():
                 # o4-mini not available yet, try with current model
-                agent = Agent("test", model="gpt-4o-mini", tools=self.tools)
+                agent = Agent("test", model="gpt-4o-mini", tools=tools)
                 response = agent.input("Use the simple_calculator tool to add 5 and 3")
-                self.assertIn("8", response)
+                assert "8" in response
             else:
                 raise
     
-    @pytest.mark.real_api
-    @pytest.mark.skipif(not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"),
-                        reason="Requires Gemini API key")
-    def test_google_gemini_real_call(self):
+deftest_google_gemini_real_call():
         """Test actual API call with Gemini model."""
         # Try Gemini 2.5 Pro first, fallback to 1.5 if not available
         models_to_try = ["gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"]
         
+        tools = _tools()
         for model in models_to_try:
             try:
-                agent = Agent("test", model=model, tools=self.tools)
+                agent = Agent("test", model=model, tools=tools)
                 response = agent.input("Use the get_greeting tool to greet 'Alice'")
-                self.assertIn("Alice", response)
+                assert "Alice" in response
                 break
             except Exception as e:
                 if model == models_to_try[-1]:
-                    self.skipTest(f"No Gemini models available: {e}")
+                    pytest.skip(f"No Gemini models available: {e}")
                 continue
     
-    @pytest.mark.real_api
-    @pytest.mark.skipif(not os.getenv("ANTHROPIC_API_KEY"), reason="Requires Anthropic API key")
-    def test_anthropic_claude_real_call(self):
+deftest_anthropic_claude_real_call():
         """Test actual API call with Claude model."""
         # Try Claude Opus 4.1 first, fallback to available models
         models_to_try = ["claude-opus-4.1", "claude-3-5-sonnet", "claude-3-5-haiku"]
         
+        tools = _tools()
         for model in models_to_try:
             try:
-                agent = Agent("test", model=model, tools=self.tools)
+                agent = Agent("test", model=model, tools=tools)
                 response = agent.input("Use the process_data tool to convert 'Hello' to uppercase")
-                self.assertIn("HELLO", response)
+                assert "HELLO" in response
                 break
             except Exception as e:
                 if model == models_to_try[-1]:
-                    self.skipTest(f"No Claude models available: {e}")
+                    pytest.skip(f"No Claude models available: {e}")
                 continue
     
     # -------------------------------------------------------------------------
     # Model Comparison Tests
     # -------------------------------------------------------------------------
     
-    @pytest.mark.real_api
-    def test_flagship_model_comparison(self):
+deftest_flagship_model_comparison():
         """Test that flagship models from each provider can handle the same prompt."""
         prompt = "What is 2 + 2?"
         results = {}
         
         flagship_models = []
-        if "openai" in self.available_providers:
+        available_providers = _available_providers()
+        if "openai" in available_providers:
             # Use gpt-4o-mini as fallback since GPT-5 isn't available yet
             flagship_models.append(("gpt-4o-mini", "openai"))
-        if "google" in self.available_providers:
+        if "google" in available_providers:
             flagship_models.append(("gemini-1.5-flash", "google"))
-        if "anthropic" in self.available_providers:
+        if "anthropic" in available_providers:
             flagship_models.append(("claude-3-5-haiku", "anthropic"))
         
         if len(flagship_models) < 2:
-            self.skipTest("Need at least 2 providers for comparison test")
+            pytest.skip("Need at least 2 providers for comparison test")
         
         for model, provider in flagship_models:
             try:
@@ -360,7 +317,7 @@ class TestMultiLLMSupport(unittest.TestCase):
                 results[model] = response
                 
                 # All should mention "4" in their response
-                self.assertIn("4", response.lower())
+                assert "4" in response.lower()
             except Exception as e:
                 print(f"Failed with {model}: {e}")
                 continue
@@ -369,7 +326,7 @@ class TestMultiLLMSupport(unittest.TestCase):
     # Fallback Chain Tests
     # -------------------------------------------------------------------------
     
-    def test_fallback_chain_with_new_models(self):
+def test_fallback_chain_with_new_models():
         """Test fallback chain with new model hierarchy."""
         # Priority order from docs/models.md
         fallback_models = [
@@ -394,16 +351,16 @@ class TestMultiLLMSupport(unittest.TestCase):
                 continue
         
         if agent is None:
-            self.skipTest("No models available for fallback test")
+            pytest.skip("No models available for fallback test")
         
-        self.assertIsNotNone(agent)
-        self.assertIsNotNone(successful_model)
+        assert agent is not None
+        assert successful_model is not None
     
     # -------------------------------------------------------------------------
     # Model Feature Tests
     # -------------------------------------------------------------------------
     
-    def test_context_window_sizes(self):
+def test_context_window_sizes():
         """Test that models have correct context window sizes."""
         # Based on docs/models.md specifications
         context_windows = {
@@ -424,9 +381,9 @@ class TestMultiLLMSupport(unittest.TestCase):
         }
         
         # This will be tested once model metadata is implemented
-        self.skipTest("Model metadata not yet implemented")
+        pytest.skip("Model metadata not yet implemented")
     
-    def test_multimodal_capabilities(self):
+def test_multimodal_capabilities():
         """Test which models support multimodal input."""
         # Based on docs/models.md
         multimodal_models = [
@@ -444,26 +401,27 @@ class TestMultiLLMSupport(unittest.TestCase):
         ]
         
         # Will be tested once multimodal support is implemented
-        self.skipTest("Multimodal support not yet implemented")
+        pytest.skip("Multimodal support not yet implemented")
     
     # -------------------------------------------------------------------------
     # Performance Tests
     # -------------------------------------------------------------------------
     
     @pytest.mark.benchmark
-    def test_fast_model_performance(self):
+def test_fast_model_performance():
         """Test that fast models initialize quickly."""
-        if not self.available_providers:
-            self.skipTest("No API keys available")
+        available_providers = _available_providers()
+        if not available_providers:
+            pytest.skip("No API keys available")
         
         # Use the fastest model from each provider
         fast_models = []
-        if "openai" in self.available_providers:
+        if "openai" in available_providers:
             # fast_models.append("gpt-5-nano")  # Requires passport verification
             fast_models.append("gpt-4o-mini")  # Fastest available
-        if "google" in self.available_providers:
+        if "google" in available_providers:
             fast_models.append("gemini-1.5-flash")
-        if "anthropic" in self.available_providers:
+        if "anthropic" in available_providers:
             fast_models.append("claude-3-5-haiku")
         
         for model in fast_models:
@@ -484,37 +442,21 @@ class TestMultiLLMSupport(unittest.TestCase):
                 raise
 
 
-class TestModelSelection(unittest.TestCase):
+def test_select_model_for_code_generation():
     """Test smart model selection based on use case."""
-    
-    def test_select_model_for_code_generation(self):
-        """Test model selection for code generation tasks."""
-        # Based on docs/models.md recommendations
-        # code_models = ["gpt-5", "claude-opus-4.1"]  # GPT-5 requires passport
-        code_models = ["o4-mini", "claude-opus-4.1"]  # Using o4-mini for testing
-        
-        # This would be implemented in actual code
-        def select_model_for_task(task_type):
-            if task_type == "code":
-                # return "gpt-5"  # Requires passport verification
-                return "o4-mini"  # Using o4-mini as alternative
-            elif task_type == "reasoning":
-                return "gemini-2.5-pro"
-            elif task_type == "fast":
-                # return "gpt-5-nano"  # Requires passport
-                return "gpt-4o-mini"  # Using available fast model
-            elif task_type == "long_context":
-                return "gemini-2.5-pro"  # 2M tokens
-            else:
-                # return "gpt-5"  # Requires passport
-                return "o4-mini"  # Using o4-mini
-        
-        self.assertEqual(select_model_for_task("code"), "o4-mini")
-        self.assertEqual(select_model_for_task("reasoning"), "gemini-2.5-pro")
-        self.assertEqual(select_model_for_task("fast"), "gpt-4o-mini")
-        self.assertEqual(select_model_for_task("long_context"), "gemini-2.5-pro")
+    def select_model_for_task(task_type):
+        if task_type == "code":
+            return "o4-mini"
+        elif task_type == "reasoning":
+            return "gemini-2.5-pro"
+        elif task_type == "fast":
+            return "gpt-4o-mini"
+        elif task_type == "long_context":
+            return "gemini-2.5-pro"
+        else:
+            return "o4-mini"
 
-
-if __name__ == "__main__":
-    # Run tests
-    unittest.main()
+    assert select_model_for_task("code") == "o4-mini"
+    assert select_model_for_task("reasoning") == "gemini-2.5-pro"
+    assert select_model_for_task("fast") == "gpt-4o-mini"
+    assert select_model_for_task("long_context") == "gemini-2.5-pro"

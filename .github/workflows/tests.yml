@@ -1,0 +1,38 @@
+name: Tests
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-cov
+
+      - name: Run tests (excluding real_api)
+        env:
+          PYTEST_ADDOPTS: "-m 'not real_api'"
+        run: |
+          pytest -v --durations=10 --tb=short --color=yes --strict-markers --strict-config
+          # Uncomment for coverage in CI:
+          # pytest -v --cov=connectonion --cov-report=term-missing -m "not real_api"

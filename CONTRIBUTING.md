@@ -83,7 +83,16 @@ Unsure where to begin? You can start by looking through these issues:
 
 5. **Run Tests**
    ```bash
-   python -m pytest tests/
+   # Fast feedback (excludes real API tests)
+   pytest -m "not real_api"
+
+   # Or use Makefile shortcuts
+   make test          # not real_api
+   make test-unit     # unit
+   make test-integration
+   make test-cli
+   make test-e2e
+   make test-real     # requires API keys
    ```
 
 ## Pull Request Process
@@ -102,13 +111,13 @@ Unsure where to begin? You can start by looking through these issues:
 3. **Test Your Changes**
    ```bash
    # Run unit tests
-   python -m pytest tests/unit
+   pytest -m unit
 
-   # Run all tests
-   python -m pytest tests/
+   # Run everything except real API
+   pytest -m "not real_api"
 
-   # Test with coverage
-   python -m pytest --cov=connectonion
+   # With coverage
+   pytest --cov=connectonion --cov-report=term-missing -m "not real_api"
    ```
 
 4. **Commit Your Changes**
@@ -178,15 +187,16 @@ def my_tool(text: str, max_length: int = 100) -> str:
 - Aim for good test coverage
 - Use meaningful test names
 
-Example test:
+Example pytest-style test:
 ```python
 def test_agent_with_custom_tool():
-    """Test that agents can use custom tools correctly."""
     def my_tool(text: str) -> str:
         return f"Processed: {text}"
-    
+
     agent = Agent("test", tools=[my_tool])
-    # Test implementation
+    # Exercise functionality
+    # ...
+    assert True
 ```
 
 ## Community
