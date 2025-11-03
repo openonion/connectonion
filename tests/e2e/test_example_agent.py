@@ -137,7 +137,7 @@ class TestExampleAgent:
         if isinstance(agent.console.log_file, Path):
             assert agent.console.log_file.exists()
 
-    deftest_agent_with_real_conversation(self, temp_dir):
+    def test_agent_with_real_conversation(self, temp_dir):
         """
         Test agent with a real multi-turn conversation.
 
@@ -171,7 +171,7 @@ class TestExampleAgent:
         # Verify session exists
         assert agent.current_session is not None
 
-    deftest_agent_with_decorators(self, temp_dir):
+    def test_agent_with_decorators(self, temp_dir):
         """
         Test agent with xray and replay decorators.
 
