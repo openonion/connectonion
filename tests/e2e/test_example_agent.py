@@ -137,9 +137,7 @@ class TestExampleAgent:
         if isinstance(agent.console.log_file, Path):
             assert agent.console.log_file.exists()
 
-    @pytest.mark.real_api
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_agent_with_real_conversation(self, temp_dir):
+    deftest_agent_with_real_conversation(self, temp_dir):
         """
         Test agent with a real multi-turn conversation.
 
@@ -173,9 +171,7 @@ class TestExampleAgent:
         # Verify session exists
         assert agent.current_session is not None
 
-    @pytest.mark.real_api
-    @pytest.mark.skipif(not os.getenv("OPENAI_API_KEY"), reason="No OpenAI API key")
-    def test_agent_with_decorators(self, temp_dir):
+    deftest_agent_with_decorators(self, temp_dir):
         """
         Test agent with xray and replay decorators.
 

@@ -26,11 +26,6 @@ def word_counter(text: str) -> str:
     return f"Word count: {len(words)}"
 
 
-@pytest.mark.real_api
-@pytest.mark.skipif(
-    not os.getenv("GEMINI_API_KEY") and not os.getenv("GOOGLE_API_KEY"),
-    reason="No Gemini API key"
-)
 class TestRealGemini:
     """Test real Google Gemini API integration."""
 

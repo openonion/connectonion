@@ -237,7 +237,7 @@ def test_unknown_model_error():
     # Integration Tests (require actual API keys)
     # -------------------------------------------------------------------------
     
-deftest_openai_flagship_real_call():
+def test_openai_flagship_real_call():
         """Test actual API call with OpenAI flagship model."""
         # Testing with o4-mini (GPT-5 requires passport verification)
         tools = _tools()
@@ -254,7 +254,7 @@ deftest_openai_flagship_real_call():
             else:
                 raise
     
-deftest_google_gemini_real_call():
+def test_google_gemini_real_call():
         """Test actual API call with Gemini model."""
         # Try Gemini 2.5 Pro first, fallback to 1.5 if not available
         models_to_try = ["gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"]
@@ -271,7 +271,7 @@ deftest_google_gemini_real_call():
                     pytest.skip(f"No Gemini models available: {e}")
                 continue
     
-deftest_anthropic_claude_real_call():
+def test_anthropic_claude_real_call():
         """Test actual API call with Claude model."""
         # Try Claude Opus 4.1 first, fallback to available models
         models_to_try = ["claude-opus-4.1", "claude-3-5-sonnet", "claude-3-5-haiku"]
@@ -292,7 +292,7 @@ deftest_anthropic_claude_real_call():
     # Model Comparison Tests
     # -------------------------------------------------------------------------
     
-deftest_flagship_model_comparison():
+def test_flagship_model_comparison():
         """Test that flagship models from each provider can handle the same prompt."""
         prompt = "What is 2 + 2?"
         results = {}
@@ -403,11 +403,11 @@ def test_multimodal_capabilities():
         # Will be tested once multimodal support is implemented
         pytest.skip("Multimodal support not yet implemented")
     
-    # -------------------------------------------------------------------------
-    # Performance Tests
-    # -------------------------------------------------------------------------
-    
-    @pytest.mark.benchmark
+# -------------------------------------------------------------------------
+# Performance Tests
+# -------------------------------------------------------------------------
+
+@pytest.mark.benchmark
 def test_fast_model_performance():
         """Test that fast models initialize quickly."""
         available_providers = _available_providers()

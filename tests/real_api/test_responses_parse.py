@@ -39,7 +39,6 @@ def get_test_token():
     return response.json()["token"]
 
 
-@pytest.mark.real_api
 def test_structured_output_with_managed_keys():
     """Test that llm_do() with Pydantic output works with co/ models.
 
