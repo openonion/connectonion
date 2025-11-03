@@ -158,7 +158,7 @@ def has_connectonion():
 # Basic Functionality Tests
 # ============================================================================
 
-classTestBasicFunctionality:
+class TestBasicFunctionality:
     """Test basic llm_do functionality with different providers."""
 
     def test_empty_input_validation(self):
@@ -169,7 +169,7 @@ classTestBasicFunctionality:
         with pytest.raises(ValueError, match="Input cannot be empty"):
             llm_do("   ")
 
-    deftest_simple_openai(self):
+    def test_simple_openai(self):
         """Test simple completion with OpenAI."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
@@ -178,7 +178,7 @@ classTestBasicFunctionality:
         assert isinstance(result, str)
         assert "4" in result
 
-    deftest_simple_anthropic(self):
+    def test_simple_anthropic(self):
         """Test simple completion with Anthropic."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
@@ -187,7 +187,7 @@ classTestBasicFunctionality:
         assert isinstance(result, str)
         assert "4" in result
 
-    deftest_simple_gemini(self):
+    def test_simple_gemini(self):
         """Test simple completion with Gemini."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
@@ -196,7 +196,7 @@ classTestBasicFunctionality:
         assert isinstance(result, str)
         assert "4" in result
 
-    deftest_simple_connectonion(self):
+    def test_simple_connectonion(self):
         """Test simple completion with ConnectOnion managed keys."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
@@ -210,10 +210,10 @@ classTestBasicFunctionality:
 # Structured Output Tests (from documentation)
 # ============================================================================
 
-classTestStructuredOutput:
+class TestStructuredOutput:
     """Test structured output with Pydantic models."""
 
-    deftest_sentiment_analysis(self):
+    def test_sentiment_analysis(self):
         """Test simple sentiment analysis from Quick Start."""
         result = llm_do(
             "I absolutely love this product! Best purchase ever!",
@@ -228,7 +228,7 @@ classTestStructuredOutput:
         assert isinstance(result.keywords, list)
         assert len(result.keywords) > 0
 
-    deftest_invoice_extraction(self):
+    def test_invoice_extraction(self):
         """Test invoice data extraction from documentation."""
         invoice_text = """
         Invoice #INV-2024-001
@@ -244,7 +244,7 @@ classTestStructuredOutput:
         # Date can be in different formats (January 15, 2024 or 2024-01-15)
         assert ("January" in result.due_date or "01" in result.due_date) and "15" in result.due_date
 
-    deftest_person_extraction(self):
+    def test_person_extraction(self):
         """Test data extraction with nested models."""
         result = llm_do(
             "John Doe, 30, software engineer",
@@ -257,7 +257,7 @@ classTestStructuredOutput:
         assert result.age == 30
         assert "engineer" in result.occupation.lower()
 
-    deftest_structured_anthropic(self):
+    def test_structured_anthropic(self):
         """Test structured output with Anthropic."""
         result = llm_do(
             "I absolutely love this product! Best purchase ever!",
@@ -270,7 +270,7 @@ classTestStructuredOutput:
         assert isinstance(result.score, float)
 
     @pytest.mark.skip(reason="Gemini structured output API incompatibility - .parsed attribute not available")
-    deftest_structured_gemini(self):
+    def test_structured_gemini(self):
         """Test structured output with Gemini."""
         result = llm_do(
             "I absolutely love this product! Best purchase ever!",
@@ -287,10 +287,10 @@ classTestStructuredOutput:
 # Complex Structured Output Tests
 # ============================================================================
 
-classTestComplexStructuredOutput:
+class TestComplexStructuredOutput:
     """Test complex structured output patterns from documentation."""
 
-    deftest_keyword_extraction(self):
+    def test_keyword_extraction(self):
         """Test list fields extraction."""
         result = llm_do(
             "Extract keywords from: 'Machine learning and artificial intelligence are transforming technology and business'",
@@ -304,7 +304,7 @@ classTestComplexStructuredOutput:
         assert isinstance(result.categories, list)
         assert isinstance(result.count, int)
 
-    deftest_product_review_optional_fields(self):
+    def test_product_review_optional_fields(self):
         """Test optional fields and Field constraints."""
         result = llm_do(
             "Review: The laptop is amazing! Fast performance, great display. Rating: 5/5. Highly recommend!",
@@ -318,7 +318,7 @@ classTestComplexStructuredOutput:
         assert len(result.pros) > 0
         assert result.would_recommend is True
 
-    deftest_email_classification(self):
+    def test_email_classification(self):
         """Test classification tasks."""
         result = llm_do(
             'Email: "URGENT: Your account will be suspended unless you verify your information immediately!" Classify this email.',
@@ -332,7 +332,7 @@ classTestComplexStructuredOutput:
         assert isinstance(result.requires_action, bool)
         assert isinstance(result.summary, str)
 
-    deftest_detailed_invoice_extraction(self):
+    def test_detailed_invoice_extraction(self):
         """Test complex nested structures with lists."""
         invoice_text = """
         INVOICE #INV-2024-001
@@ -359,7 +359,7 @@ classTestComplexStructuredOutput:
         assert len(result.items) == 2
         assert result.total == 39.05
 
-    deftest_blog_analysis(self):
+    def test_blog_analysis(self):
         """Test multi-entity extraction."""
         blog_text = """
         Understanding Machine Learning: A Beginner's Guide
@@ -385,7 +385,7 @@ classTestComplexStructuredOutput:
         assert isinstance(result.word_count_estimate, int)
         assert isinstance(result.key_takeaways, list)
 
-    deftest_content_moderation(self):
+    def test_content_moderation(self):
         """Test boolean decision making."""
         result = llm_do(
             "User comment: 'This is a great product! Everyone should try it. Visit my-totally-legit-site.com for more info!'",
@@ -405,10 +405,10 @@ classTestComplexStructuredOutput:
 # Advanced Features Tests
 # ============================================================================
 
-classTestAdvancedFeatures:
+class TestAdvancedFeatures:
     """Test advanced features like temperature, max_tokens, custom prompts."""
 
-    deftest_temperature_parameter(self):
+    def test_temperature_parameter(self):
         """Test temperature parameter for consistency."""
         result1 = llm_do(
             "What is the capital of France? One word only.",
@@ -425,7 +425,7 @@ classTestAdvancedFeatures:
         assert "Paris" in result1 or "paris" in result1.lower()
         assert "Paris" in result2 or "paris" in result2.lower()
 
-    deftest_max_tokens_parameter(self):
+    def test_max_tokens_parameter(self):
         """Test max_tokens parameter pass-through."""
         result = llm_do(
             "Write a very long story about a dragon",
@@ -437,7 +437,7 @@ classTestAdvancedFeatures:
         assert isinstance(result, str)
         assert len(result.split()) < 30
 
-    deftest_custom_system_prompt_inline(self):
+    def test_custom_system_prompt_inline(self):
         """Test inline system prompt."""
         result = llm_do(
             "Hello",
@@ -455,7 +455,7 @@ classTestAdvancedFeatures:
 # Cross-Provider Consistency Tests
 # ============================================================================
 
-classTestCrossProviderConsistency:
+class TestCrossProviderConsistency:
     """Test that all providers handle the same prompts correctly."""
 
     def test_all_providers_basic_math(self, has_openai, has_anthropic, has_gemini):
@@ -486,15 +486,15 @@ classTestCrossProviderConsistency:
 # Documentation Example Tests
 # ============================================================================
 
-classTestDocumentationExamples:
+class TestDocumentationExamples:
     """Test exact examples from docs/llm_do.md."""
 
-    deftest_quick_start_example(self):
+    def test_quick_start_example(self):
         """Test the Quick Start example from docs."""
         answer = llm_do("What's 2+2?", model="gpt-4o-mini")
         assert "4" in answer
 
-    deftest_format_conversion_example(self):
+    def test_format_conversion_example(self):
         """Test format conversion pattern from docs."""
         class PersonData(BaseModel):
             name: str
@@ -510,7 +510,7 @@ classTestDocumentationExamples:
         assert "john" in result.name.lower()
         assert result.age == 30
 
-    deftest_validation_pattern(self):
+    def test_validation_pattern(self):
         """Test validation pattern from docs."""
         result = llm_do(
             "Is this valid SQL? Reply yes/no only: SELECT * FROM users",

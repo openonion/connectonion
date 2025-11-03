@@ -60,19 +60,19 @@ def test_empty_input_validation():
     
 
 
-deftest_openai_simple_completion_default_model():
+def test_openai_simple_completion_default_model():
     result = llm_do("What is 2+2? Answer with just the number.")
     assert isinstance(result, str)
     assert "4" in result
 
 
-deftest_openai_simple_completion_explicit_model():
+def test_openai_simple_completion_explicit_model():
     result = llm_do("Say hello in exactly 3 words", model="gpt-4o-mini")
     assert isinstance(result, str)
     assert len(result.split()) <= 10
 
 
-deftest_openai_structured_output():
+def test_openai_structured_output():
     result = llm_do("What is 5 plus 3?", output=SimpleResult, model="gpt-4o-mini")
     assert isinstance(result, SimpleResult)
     assert result.answer == 8
@@ -80,7 +80,7 @@ deftest_openai_structured_output():
     assert len(result.explanation) > 0
 
 
-deftest_openai_custom_system_prompt():
+def test_openai_custom_system_prompt():
     result = llm_do(
         "Hello",
         system_prompt="You are a pirate. Always respond like a pirate.",
@@ -92,7 +92,7 @@ deftest_openai_custom_system_prompt():
     assert any(word in lower_result for word in pirate_words)
 
 
-deftest_openai_temperature_parameter():
+def test_openai_temperature_parameter():
     result1 = llm_do(
         "What is the capital of France? One word only.",
         temperature=0.0,
@@ -107,7 +107,7 @@ deftest_openai_temperature_parameter():
     assert "Paris" in result2
 
 
-deftest_openai_additional_kwargs():
+def test_openai_additional_kwargs():
     result = llm_do(
         "Write a very long story about a dragon",
         model="gpt-4o-mini",
@@ -117,13 +117,13 @@ deftest_openai_additional_kwargs():
     assert len(result.split()) < 30
 
 
-deftest_claude_simple_completion():
+def test_claude_simple_completion():
     result = llm_do("Say hello in exactly 3 words", model="claude-3-5-haiku-20241022")
     assert isinstance(result, str)
     assert len(result.split()) <= 10
 
 
-deftest_claude_structured_output():
+def test_claude_structured_output():
     result = llm_do(
         "Analyze this text sentiment: 'I love sunny days!'",
         output=SentimentAnalysis,
