@@ -9,6 +9,11 @@ from unittest.mock import Mock, MagicMock
 from connectonion import Agent
 # No need to import tools - they're just functions
 from connectonion.llm import LLMResponse, ToolCall, OpenAILLM
+import os
+from dotenv import load_dotenv
+
+# Load .env file for API keys
+load_dotenv()
 
 
 @pytest.fixture
@@ -197,10 +202,6 @@ def openai_api_key():
 
 
 # Load environment variables from tests/.env
-import os
-from pathlib import Path
-from dotenv import load_dotenv
-
 env_file = Path(__file__).parent / ".env"
 if env_file.exists():
     load_dotenv(env_file)
@@ -210,13 +211,54 @@ else:
     print("   Copy tests/.env.example to tests/.env and add your API keys.\n")
 
 
-# Test markers
+# Network test fixtures
+@pytest.fixture
+def relay_url():
+    """
+    Default relay URL for network tests.
+
+    Uses production relay server by default.
+    Override with --relay-url flag or RELAY_URL env var.
+    """
+    return os.getenv("RELAY_URL", "wss://oo.openonion.ai/ws/announce")
+
+
+@pytest.fixture
+def local_relay_url():
+    """Local relay URL for development/testing."""
+    return "ws://localhost:8000/ws/announce"
+
+
+@pytest.fixture
+def relay_url_from_cli(request):
+    """Get relay URL from command line or use default."""
+    if request.config.getoption("--use-local-relay"):
+        return "ws://localhost:8000/ws/announce"
+    return request.config.getoption("--relay-url")
+
+
+# Test markers and CLI options
 def pytest_configure(config):
     """Configure custom pytest markers."""
     config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line("markers", "unit: marks tests as unit tests")
     config.addinivalue_line("markers", "benchmark: marks tests as performance benchmarks")
+
+
+def pytest_addoption(parser):
+    """Add custom command line options."""
+    parser.addoption(
+        "--relay-url",
+        action="store",
+        default="wss://oo.openonion.ai/ws/announce",
+        help="Relay server URL for network tests"
+    )
+    parser.addoption(
+        "--use-local-relay",
+        action="store_true",
+        help="Use local relay server (ws://localhost:8000/ws/announce)"
+    )
 
 
 def pytest_collection_modifyitems(config, items):

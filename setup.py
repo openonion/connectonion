@@ -19,6 +19,7 @@ requirements = [
     "PyNaCl>=1.5.0",  # For Ed25519 key generation (needed for global config)
     "mnemonic>=0.20",  # For recovery phrase generation (needed for global config)
     "questionary>=2.0.0",  # For interactive CLI prompts (arrow key navigation)
+    "websockets>=11.0.0",  # For network features (agent.serve() and connect())
 ]
 
 # Note: playwright is the only one we keep optional since it's large and requires browser binaries

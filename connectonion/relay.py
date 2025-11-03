@@ -1,27 +1,23 @@
 """
-Purpose: WebSocket relay client for agent-to-agent communication via central relay server
+Purpose: WebSocket relay client for agent-to-agent communication via central relay server using INPUT/OUTPUT protocol
 LLM-Note:
   Dependencies: imports from [json, asyncio, typing, websockets] | imported by [agent.py] | tested by [tests/test_relay.py]
-  Data flow: Agent.serve() → connect(relay_url) → WebSocket established → send_announce(ws, announce_msg) → serve_loop() → wait_for_task(ws) receives TASK from relay → task_handler(prompt) executes → send_response(ws, task_id, result) → heartbeat re-announces every 60s
-  State/Effects: maintains WebSocket connection to relay | reads incoming JSON messages | writes outgoing JSON messages | prints status to stdout | asyncio timeout for heartbeat | no file I/O
-  Integration: exposes connect(relay_url), send_announce(ws, msg), wait_for_task(ws, timeout), send_response(ws, task_id, result), serve_loop(ws, announce_msg, task_handler, heartbeat_interval) | used by Agent.serve() to make agent discoverable on relay network | task_handler is async function (prompt: str) -> str
+  Data flow: Agent.serve() → connect(relay_url) → WebSocket established → send_announce(ws, announce_msg) → serve_loop() → wait_for_task(ws) receives INPUT message from relay → task_handler(prompt) executes → send OUTPUT response via WebSocket → heartbeat re-announces every 60s
+  State/Effects: maintains WebSocket connection to relay | reads incoming JSON messages (INPUT type) | writes outgoing JSON messages (OUTPUT type) | prints status to stdout | asyncio timeout for heartbeat | no file I/O
+  Integration: exposes connect(relay_url), send_announce(ws, msg), wait_for_task(ws, timeout), send_response(ws, input_id, result), serve_loop(ws, announce_msg, task_handler, heartbeat_interval) | used by Agent.serve() to make agent discoverable on relay network | task_handler is async function (prompt: str) -> str | Protocol: INPUT/OUTPUT messages (not TASK/RESPONSE)
   Performance: async/await non-blocking I/O | heartbeat_interval=60s default (configurable) | timeout-based heartbeat scheduling | WebSocket maintains persistent connection
-  Errors: raises ImportError if websockets not installed | raises asyncio.TimeoutError on wait timeout | raises websockets.exceptions.ConnectionClosed on disconnect | prints errors to stdout (non-fatal)
+  Errors: let it crash - ImportError if websockets missing | asyncio.TimeoutError used for heartbeat timing | websockets.ConnectionClosed exits serve loop gracefully
 
 WebSocket relay client functions.
 
-Simple async functions for connecting to relay and exchanging messages.
+Simple async functions for connecting to relay and exchanging messages using INPUT/OUTPUT protocol.
 No classes needed - just stateless functions operating on websocket connections.
 """
 
 import json
 import asyncio
 from typing import Dict, Any
-
-try:
-    import websockets
-except ImportError:
-    websockets = None
+import websockets
 
 
 async def connect(relay_url: str = "wss://oo.openonion.ai/ws/announce"):
@@ -38,12 +34,6 @@ async def connect(relay_url: str = "wss://oo.openonion.ai/ws/announce"):
         >>> ws = await connect()
         >>> # Now use ws for sending/receiving
     """
-    if websockets is None:
-        raise ImportError(
-            "websockets library required. "
-            "Install with: pip install websockets"
-        )
-
     return await websockets.connect(relay_url)
 
 
@@ -71,17 +61,17 @@ async def send_announce(websocket, announce_message: Dict[str, Any]):
 
 async def wait_for_task(websocket, timeout: float = None) -> Dict[str, Any]:
     """
-    Wait for next TASK message from relay.
+    Wait for next INPUT message from relay.
 
     Args:
         websocket: WebSocket connection from connect()
         timeout: Optional timeout in seconds (None = wait forever)
 
     Returns:
-        TASK message dict:
+        INPUT message dict:
         {
-            "type": "TASK",
-            "task_id": "abc123...",
+            "type": "INPUT",
+            "input_id": "abc123...",
             "prompt": "Translate hello to Spanish",
             "from_address": "0x..."
         }
@@ -106,27 +96,27 @@ async def wait_for_task(websocket, timeout: float = None) -> Dict[str, Any]:
 
 async def send_response(
     websocket,
-    task_id: str,
+    input_id: str,
     result: str,
     success: bool = True
 ):
     """
-    Send task response back to relay.
+    Send output response back to relay.
 
     Args:
         websocket: WebSocket connection from connect()
-        task_id: ID from TASK message
+        input_id: ID from INPUT message
         result: Agent's response/output
         success: Whether task succeeded (default True)
 
     Example:
         >>> task = await wait_for_task(ws)
         >>> result = agent.input(task["prompt"])
-        >>> await send_response(ws, task["task_id"], result)
+        >>> await send_response(ws, task["input_id"], result)
     """
     response_message = {
-        "type": "RESPONSE",
-        "task_id": task_id,
+        "type": "OUTPUT",
+        "input_id": input_id,
         "result": result,
         "success": success
     }
@@ -174,16 +164,21 @@ async def serve_loop(
             # Wait for message with timeout to allow heartbeat
             task = await wait_for_task(websocket, timeout=heartbeat_interval)
 
-            # Handle TASK message
-            if task.get("type") == "TASK":
-                print(f"→ Received task: {task['task_id'][:8]}...")
+            # Handle INPUT message
+            if task.get("type") == "INPUT":
+                print(f"→ Received input: {task['input_id'][:8]}...")
 
                 # Process with handler
                 result = await task_handler(task["prompt"])
 
-                # Send response
-                await send_response(websocket, task["task_id"], result)
-                print(f"✓ Sent response: {task['task_id'][:8]}...")
+                # Send OUTPUT response
+                output_message = {
+                    "type": "OUTPUT",
+                    "input_id": task["input_id"],
+                    "result": result
+                }
+                await websocket.send(json.dumps(output_message))
+                print(f"✓ Sent output: {task['input_id'][:8]}...")
 
             elif task.get("type") == "ERROR":
                 print(f"✗ Error from relay: {task.get('error')}")
