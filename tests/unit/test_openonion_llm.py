@@ -137,8 +137,8 @@ class TestOpenOnionLLM:
             with pytest.raises(ValueError) as exc_info:
                 OpenOnionLLM(model="co/gpt-4o")
 
-            assert "No authentication token found" in str(exc_info.value)
-            assert "Run 'co auth'" in str(exc_info.value)
+            assert "OPENONION_API_KEY not found" in str(exc_info.value)
+            assert "Run 'co init'" in str(exc_info.value)
 
 
 if __name__ == "__main__":
