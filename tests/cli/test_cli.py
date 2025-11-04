@@ -22,13 +22,13 @@ class TestCliInit:
             # Import here to avoid issues before installation
             from connectonion.cli.main import cli
 
-            # Run init
-            result = self.runner.invoke(cli, ['init'])
+            # Run init with template to create agent.py
+            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
             assert result.exit_code == 0
 
             # Check core files exist
             assert os.path.exists('agent.py')
-            assert os.path.exists('.env.example')
+            assert os.path.exists('.env')  # CLI creates .env, not .env.example
             assert os.path.exists('.co/config.toml')
 
             # Verify agent.py is valid Python
@@ -77,7 +77,7 @@ class TestCliInit:
                 assert not os.path.exists('agent.py') or result.exit_code != 0
 
             # Should proceed when user confirms
-            result = self.runner.invoke(cli, ['init'], input='y\n')
+            result = self.runner.invoke(cli, ['init', '--template', 'minimal'], input='y\n')
             assert result.exit_code == 0
             assert os.path.exists('agent.py')
             assert os.path.exists('existing.txt')  # Preserves existing files

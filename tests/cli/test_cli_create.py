@@ -34,18 +34,18 @@ class TestCliCreate:
             assert os.path.exists('my-agent/.co/config.toml')
 
     def test_create_without_name_prompts(self):
-        """Test that create without name prompts for project name."""
+        """Test that create without name auto-generates directory name from template."""
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            # Create project without name (interactive)
+            # Create project without name - auto-generates name from template
             result = self.runner.invoke(cli, ['create'],
-                                        input='test-project\nn\nminimal\n')
+                                        input='minimal\n')
             assert result.exit_code == 0
 
-            # Check directory was created with provided name
-            assert os.path.exists('test-project')
-            assert os.path.exists('test-project/agent.py')
+            # Check directory was created with auto-generated name
+            assert os.path.exists('minimal-agent')
+            assert os.path.exists('minimal-agent/agent.py')
 
     def test_create_ai_enabled_shows_custom_option(self):
         """Test that enabling AI shows custom template option."""
