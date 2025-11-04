@@ -51,7 +51,7 @@ class TestPerformanceBenchmarks:
         ]
         
         # Create agent with tools
-        agent = Agent(name="perf_tools", llm=mock_llm, tools=[Calculator()])
+        agent = Agent(name="perf_tools", llm=mock_llm, tools=[Calculator])
         # Logging disabled for benchmarks
         
         # Benchmark multiple runs
@@ -121,7 +121,7 @@ class TestPerformanceBenchmarks:
         mock_llm = Mock()
         mock_llm.complete.return_value = LLMResponseBuilder.text_response("Response")
         
-        agent = Agent(name="memory_test", llm=mock_llm, tools=[Calculator(), CurrentTime()])
+        agent = Agent(name="memory_test", llm=mock_llm, tools=[Calculator, CurrentTime])
         # Logging disabled for benchmarks
         
         # Run multiple tasks
@@ -205,8 +205,8 @@ class TestPerformanceBenchmarks:
     
     def test_calculator_complex_expressions_performance(self):
         """Benchmark calculator performance with complex expressions."""
-        calc = Calculator()
-        
+        # Calculator is a function, not a class
+
         # Complex expressions of varying difficulty
         expressions = [
             "2 + 2",
@@ -215,12 +215,12 @@ class TestPerformanceBenchmarks:
             "2 ** 10 + 3 ** 8 - 4 ** 6",
             "(((1 + 2) * (3 + 4)) + ((5 + 6) * (7 + 8))) * ((9 + 10) / (11 - 1))"
         ]
-        
+
         times = []
         for expr in expressions:
             start = time.time()
             for _ in range(100):  # Run each expression 100 times
-                calc.input(expression=expr)
+                Calculator(expression=expr)
             end = time.time()
             times.append((end - start) / 100)  # Average time per execution
         

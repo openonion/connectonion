@@ -44,7 +44,7 @@ class TestAgentWorkflows:
         ]
         
         # Create agent with calculator
-        agent = Agent(name="single_tool_test", llm=mock_llm, tools=[Calculator()])
+        agent = Agent(name="single_tool_test", llm=mock_llm, tools=[Calculator])
         # Logging disabled for tests
         
         # Run calculation task
@@ -65,7 +65,7 @@ class TestAgentWorkflows:
         ]
         
         # Create agent with multiple tools
-        tools = [Calculator(), CurrentTime()]
+        tools = [Calculator, CurrentTime]
         agent = Agent(name="multi_tool_test", llm=mock_llm, tools=tools)
         # Logging disabled for tests
         
@@ -91,7 +91,7 @@ class TestAgentWorkflows:
         ]
         
         # Create agent with file reading capability
-        agent = Agent(name="file_test", llm=mock_llm, tools=[ReadFile()])
+        agent = Agent(name="file_test", llm=mock_llm, tools=[ReadFile])
         # Logging disabled for tests
         
         # Run file reading task
@@ -126,7 +126,7 @@ class TestAgentWorkflows:
         ]
         
         # Create agent with all tools
-        tools = [ReadFile(), Calculator(), CurrentTime()]
+        tools = [ReadFile, Calculator, CurrentTime]
         agent = Agent(name="complex_test", llm=mock_llm, tools=tools)
         # Logging disabled for tests
         
@@ -157,7 +157,7 @@ class TestAgentWorkflows:
         mock_llm.complete.side_effect = responses
         
         # Create agent
-        agent = Agent(name="iteration_test", llm=mock_llm, tools=[Calculator()])
+        agent = Agent(name="iteration_test", llm=mock_llm, tools=[Calculator])
         # Logging disabled for tests
         
         # Run task
@@ -187,7 +187,7 @@ class TestErrorRecoveryWorkflows:
         ]
         
         # Create agent
-        agent = Agent(name="error_recovery_test", llm=mock_llm, tools=[Calculator()])
+        agent = Agent(name="error_recovery_test", llm=mock_llm, tools=[Calculator])
         # Logging disabled for tests
         
         # Run task
@@ -210,7 +210,7 @@ class TestErrorRecoveryWorkflows:
         ]
         
         # Create agent with limited tools
-        agent = Agent(name="unknown_tool_test", llm=mock_llm, tools=[Calculator()])
+        agent = Agent(name="unknown_tool_test", llm=mock_llm, tools=[Calculator])
         # Logging disabled for tests
         
         # Run task
@@ -232,7 +232,7 @@ class TestErrorRecoveryWorkflows:
         ]
         
         # Create agent
-        agent = Agent(name="file_error_test", llm=mock_llm, tools=[ReadFile()])
+        agent = Agent(name="file_error_test", llm=mock_llm, tools=[ReadFile])
         # Logging disabled for tests
         
         # Run task
@@ -338,7 +338,7 @@ class TestLongRunningWorkflows:
         ]
         
         # Create agent
-        agent = Agent(name="large_output_test", llm=mock_llm, tools=[ReadFile()])
+        agent = Agent(name="large_output_test", llm=mock_llm, tools=[ReadFile])
         # Logging disabled for tests
         
         # Run task
