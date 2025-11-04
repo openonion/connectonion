@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import Mock, patch
 from connectonion import Agent
-from tests.fixtures.test_tools import Calculator, CurrentTime, ReadFile
+from tests.fixtures.test_tools import calculator, current_time, read_file
 from tests.utils.mock_helpers import (
     LLMResponseBuilder, 
     AgentWorkflowMocker,
@@ -44,7 +44,7 @@ class TestAgentWorkflows:
         ]
         
         # Create agent with calculator
-        agent = Agent(name="single_tool_test", llm=mock_llm, tools=[Calculator])
+        agent = Agent(name="single_tool_test", llm=mock_llm, tools=[calculator])
         # Logging disabled for tests
         
         # Run calculation task
@@ -65,7 +65,7 @@ class TestAgentWorkflows:
         ]
         
         # Create agent with multiple tools
-        tools = [Calculator, CurrentTime]
+        tools = [calculator, current_time]
         agent = Agent(name="multi_tool_test", llm=mock_llm, tools=tools)
         # Logging disabled for tests
         
@@ -74,12 +74,7 @@ class TestAgentWorkflows:
         
         # Verify response
         assert "25.0" in result
-        # History removed - checking trace instead
-        
-        # Verify tool call sequence
-        assert tool_calls[0]["name"] == "calculator"
-        assert tool_calls[1]["name"] == "current_time"
-        assert all(call["status"] == "success" for call in tool_calls)
+        # History removed - tool call tracking no longer available
     
     def test_file_reading_workflow(self, temp_dir, test_files):
         """Test agent reading and processing files."""
@@ -91,7 +86,7 @@ class TestAgentWorkflows:
         ]
         
         # Create agent with file reading capability
-        agent = Agent(name="file_test", llm=mock_llm, tools=[ReadFile])
+        agent = Agent(name="file_test", llm=mock_llm, tools=[read_file])
         # Logging disabled for tests
         
         # Run file reading task
@@ -126,7 +121,7 @@ class TestAgentWorkflows:
         ]
         
         # Create agent with all tools
-        tools = [ReadFile, Calculator, CurrentTime]
+        tools = [read_file, calculator, current_time]
         agent = Agent(name="complex_test", llm=mock_llm, tools=tools)
         # Logging disabled for tests
         
@@ -138,12 +133,7 @@ class TestAgentWorkflows:
         
         # Verify response
         assert "23" in result
-        # History removed - checking trace instead
-        
-        # Verify tool sequence
-        assert "read_file" in tool_names
-        assert "calculator" in tool_names
-        assert "current_time" in tool_names
+        # History removed - tool call tracking no longer available
     
     def test_iteration_limit_protection(self, temp_dir):
         """Test that agent doesn't get stuck in infinite tool calling loops."""
@@ -157,7 +147,7 @@ class TestAgentWorkflows:
         mock_llm.complete.side_effect = responses
         
         # Create agent
-        agent = Agent(name="iteration_test", llm=mock_llm, tools=[Calculator])
+        agent = Agent(name="iteration_test", llm=mock_llm, tools=[calculator])
         # Logging disabled for tests
         
         # Run task
@@ -187,7 +177,7 @@ class TestErrorRecoveryWorkflows:
         ]
         
         # Create agent
-        agent = Agent(name="error_recovery_test", llm=mock_llm, tools=[Calculator])
+        agent = Agent(name="error_recovery_test", llm=mock_llm, tools=[calculator])
         # Logging disabled for tests
         
         # Run task
@@ -210,7 +200,7 @@ class TestErrorRecoveryWorkflows:
         ]
         
         # Create agent with limited tools
-        agent = Agent(name="unknown_tool_test", llm=mock_llm, tools=[Calculator])
+        agent = Agent(name="unknown_tool_test", llm=mock_llm, tools=[calculator])
         # Logging disabled for tests
         
         # Run task
@@ -232,7 +222,7 @@ class TestErrorRecoveryWorkflows:
         ]
         
         # Create agent
-        agent = Agent(name="file_error_test", llm=mock_llm, tools=[ReadFile])
+        agent = Agent(name="file_error_test", llm=mock_llm, tools=[read_file])
         # Logging disabled for tests
         
         # Run task
@@ -248,46 +238,38 @@ class TestConcurrentAgentOperations:
     """Test concurrent agent operations."""
     
     def test_multiple_agents_different_histories(self, temp_dir):
-        """Test that multiple agents maintain separate histories."""
+        """Test that multiple agents can run concurrently."""
         import threading
-        import time
-        
+
         # Mock LLM
         mock_llm1 = Mock()
         mock_llm1.complete.return_value = LLMResponseBuilder.text_response("Agent 1 response")
-        
+
         mock_llm2 = Mock()
         mock_llm2.complete.return_value = LLMResponseBuilder.text_response("Agent 2 response")
-        
+
         # Create two agents
         agent1 = Agent(name="concurrent_agent_1", llm=mock_llm1)
-        agent1.history.save_dir = temp_dir
-        
         agent2 = Agent(name="concurrent_agent_2", llm=mock_llm2)
-        agent2.history.save_dir = temp_dir
-        
+
         # Results storage
         results = {}
-        
+
         def run_agent(agent, task_id):
             result = agent.input(f"Task {task_id}")
             results[agent.name] = result
-        
+
         # Run agents concurrently
         thread1 = threading.Thread(target=run_agent, args=(agent1, "A"))
         thread2 = threading.Thread(target=run_agent, args=(agent2, "B"))
-        
+
         thread1.start()
         thread2.start()
-        
+
         thread1.join()
         thread2.join()
-        
-        # Verify separate histories
-        assert len(agent1.history.records) == 1
-        assert len(agent2.history.records) == 1
-        assert agent1.history.records[0].user_prompt == "Task A"
-        assert agent2.history.records[0].user_prompt == "Task B"
+
+        # Verify concurrent execution completed successfully
         assert results["concurrent_agent_1"] == "Agent 1 response"
         assert results["concurrent_agent_2"] == "Agent 2 response"
 
@@ -315,11 +297,8 @@ class TestLongRunningWorkflows:
         for i in range(20):
             result = agent.input(f"Task {i}")
             assert f"Completed task {i}" in result
-        
-        # Verify all tasks recorded
-        # History removed - checking trace instead
-        for i, record in enumerate(agent.history.records):
-            assert record.user_prompt == f"Task {i}"
+
+        # History removed - task tracking no longer available
     
     def test_large_tool_output_handling(self, temp_dir):
         """Test agent handling tools that produce large outputs."""
@@ -338,7 +317,7 @@ class TestLongRunningWorkflows:
         ]
         
         # Create agent
-        agent = Agent(name="large_output_test", llm=mock_llm, tools=[ReadFile])
+        agent = Agent(name="large_output_test", llm=mock_llm, tools=[read_file])
         # Logging disabled for tests
         
         # Run task
@@ -346,6 +325,4 @@ class TestLongRunningWorkflows:
         
         # Verify handling
         assert "successfully" in result
-        # History removed - checking trace instead
-        # Tool result should contain the large content
-        assert len(tool_result) > 100000  # Should be substantial
+        # History removed - tool result tracking no longer available

@@ -6,7 +6,7 @@ import psutil
 import os
 from unittest.mock import Mock
 from connectonion import Agent
-from tests.fixtures.test_tools import Calculator, CurrentTime, ReadFile
+from tests.fixtures.test_tools import calculator, current_time, read_file
 from tests.utils.mock_helpers import LLMResponseBuilder
 
 
@@ -51,7 +51,7 @@ class TestPerformanceBenchmarks:
         ]
         
         # Create agent with tools
-        agent = Agent(name="perf_tools", llm=mock_llm, tools=[Calculator])
+        agent = Agent(name="perf_tools", llm=mock_llm, tools=[calculator])
         # Logging disabled for benchmarks
         
         # Benchmark multiple runs
@@ -77,9 +77,10 @@ class TestPerformanceBenchmarks:
         
         print(f"Tool response - Avg: {avg_time:.3f}s, Max: {max_time:.3f}s")
     
+    @pytest.mark.skip(reason="History class removed")
     def test_history_file_write_performance(self, temp_dir):
         """Benchmark history file writing performance."""
-        
+
         # Create history instance
         history = History("perf_test", save_dir=temp_dir)
         
@@ -121,7 +122,7 @@ class TestPerformanceBenchmarks:
         mock_llm = Mock()
         mock_llm.complete.return_value = LLMResponseBuilder.text_response("Response")
         
-        agent = Agent(name="memory_test", llm=mock_llm, tools=[Calculator, CurrentTime])
+        agent = Agent(name="memory_test", llm=mock_llm, tools=[calculator, current_time])
         # Logging disabled for benchmarks
         
         # Run multiple tasks
@@ -184,12 +185,10 @@ class TestPerformanceBenchmarks:
                 f.write(f"This is line {i} with some substantial content to make it realistic.\n")
         
         file_size = os.path.getsize(large_file) / 1024 / 1024  # MB
-        
-        # Test ReadFile tool performance
-        read_tool = ReadFile()
-        
+
+        # Test read_file function performance
         start = time.time()
-        result = read_tool.input(filepath=large_file)
+        result = read_file(filepath=large_file)
         end = time.time()
         
         processing_time = end - start
@@ -205,7 +204,7 @@ class TestPerformanceBenchmarks:
     
     def test_calculator_complex_expressions_performance(self):
         """Benchmark calculator performance with complex expressions."""
-        # Calculator is a function, not a class
+        # calculator is a function, call it directly
 
         # Complex expressions of varying difficulty
         expressions = [
@@ -220,7 +219,7 @@ class TestPerformanceBenchmarks:
         for expr in expressions:
             start = time.time()
             for _ in range(100):  # Run each expression 100 times
-                Calculator(expression=expr)
+                calculator(expression=expr)
             end = time.time()
             times.append((end - start) / 100)  # Average time per execution
         
@@ -264,6 +263,7 @@ class TestStressTests:
         print(f"Stress test - 1000 tasks in {total_time:.1f}s, "
               f"avg {avg_per_task:.3f}s/task")
     
+    @pytest.mark.skip(reason="History class removed")
     def test_history_file_stress(self, temp_dir):
         """Stress test history file with many concurrent writes."""
         import threading

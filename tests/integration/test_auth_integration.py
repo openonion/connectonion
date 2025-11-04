@@ -52,8 +52,7 @@ def test_connectonion_auth_format():
         print("\nLocal API not running, skipping integration test")
     
     # Test message parsing logic directly
-    from connectonion.cli.commands.auth_commands import Colors
-    
+
     # Verify message format
     parts = message.split("-")
     assert len(parts) == 4

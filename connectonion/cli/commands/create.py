@@ -29,7 +29,6 @@ from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
-    Colors,
     LoadingAnimation,
     validate_project_name,
     check_environment_for_api_keys,
@@ -121,10 +120,10 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         """Clean up temp directory on exit."""
         if temp_project_dir and temp_project_dir.exists():
             try:
-                if Confirm.ask(f"\n{Colors.YELLOW}Remove temporary project directory '{temp_project_dir}'?{Colors.END}", default=True):
+                if Confirm.ask(f"\n[yellow]Remove temporary project directory '{temp_project_dir}'?[/yellow]", default=True):
                     import shutil
                     shutil.rmtree(temp_project_dir)
-                    console.print(f"{Colors.GREEN}✓ Temporary directory removed.{Colors.END}")
+                    console.print("[green]✓ Temporary directory removed.[/green]")
             except Exception:
                 pass
         sys.exit(0)
@@ -149,7 +148,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         env_api = check_environment_for_api_keys()
         if env_api:
             provider, env_key = env_api
-            console.print(f"\n{Colors.GREEN}✓ Found {provider.title()} API key in environment{Colors.END}")
+            console.print(f"\n[green]✓ Found {provider.title()} API key in environment[/green]")
             if not api_key:
                 api_key = env_key
 
@@ -167,7 +166,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                     if env_key == "OPENAI_API_KEY" and env_value.strip():
                         api_key = env_value.strip()
                         provider = "openai"
-                        console.print(f"\n{Colors.GREEN}✓ Found OpenAI API key in ~/.co/keys.env{Colors.END}")
+                        console.print(f"\n[green]✓ Found OpenAI API key in ~/.co/keys.env[/green]")
                         break
 
     # API key setup (temp_project_dir already declared above for signal handler)
@@ -179,7 +178,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             ai = False  # Disable AI features since no API key
         elif not api_key and not provider:
             # User cancelled (Ctrl+C or similar)
-            console.print(f"{Colors.YELLOW}API key setup cancelled.{Colors.END}")
+            console.print("[yellow]API key setup cancelled.[/yellow]")
             return
     elif ai and api_key:
         provider, key_type = detect_api_provider(api_key)
@@ -209,7 +208,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                 if global_keys_env.stat().st_size > 0:
                     f.write('\n')
                 f.write(f"{env_var}={api_key}\n")
-            console.print(f"{Colors.GREEN}✓ Saved to ~/.co/keys.env for future projects{Colors.END}")
+            console.print("[green]✓ Saved to ~/.co/keys.env for future projects[/green]")
 
     # Handle custom template
     custom_code = None
@@ -217,17 +216,17 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     if template == 'custom':
         # Custom template requires AI
         if not ai or not api_key:
-            console.print(f"{Colors.RED}❌ Custom template requires an API key for AI generation{Colors.END}")
-            console.print(f"{Colors.YELLOW}Please run 'co create' again and provide an API key{Colors.END}")
+            console.print("[red]❌ Custom template requires an API key for AI generation[/red]")
+            console.print("[yellow]Please run 'co create' again and provide an API key[/yellow]")
             return
         if not description and not yes:
-            console.print(f"\n{Colors.CYAN}🤖 Describe your agent:{Colors.END}")
+            console.print("\n[cyan]🤖 Describe your agent:[/cyan]")
             description = Prompt.ask("  What should your agent do?")
         elif not description:
             description = "A general purpose agent"
 
         # Use loading animation for AI generation
-        console.print(f"\n{Colors.CYAN}🤖 AI is generating your custom agent...{Colors.END}")
+        console.print("\n[cyan]🤖 AI is generating your custom agent...[/cyan]")
 
         with LoadingAnimation("Preparing AI generation...") as loading:
             # Use ConnectOnion model if available (user just got 100k tokens!)
@@ -253,8 +252,8 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                     description, api_key or "", model=None, loading_animation=loading
                 )
 
-        console.print(f"{Colors.GREEN}✓ Generated custom agent code{Colors.END}")
-        console.print(f"{Colors.GREEN}✓ Suggested project name: {ai_suggested_name}{Colors.END}")
+        console.print("[green]✓ Generated custom agent code[/green]")
+        console.print(f"[green]✓ Suggested project name: {ai_suggested_name}[/green]")
 
     # Get project name
     if not name and not yes:
@@ -293,27 +292,27 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                     ).ask()
 
                     if result == "custom":
-                        name = Prompt.ask(f"{Colors.CYAN}Project name{Colors.END}")
+                        name = Prompt.ask("[cyan]Project name[/cyan]")
                     else:
                         name = result
 
-                    console.print(f"{Colors.GREEN}✓ Project name:{Colors.END} {name}")
+                    console.print(f"[green]✓ Project name:[/green] {name}")
 
                 except ImportError:
                     # Fallback to numbered menu
-                    console.print(f"\n{Colors.CYAN}Choose a project name:{Colors.END}")
-                    console.print(f"  1. {Colors.GREEN}{ai_suggested_name}{Colors.END} (AI suggested)")
-                    console.print(f"  2. Type your own")
+                    console.print("\n[cyan]Choose a project name:[/cyan]")
+                    console.print(f"  1. [green]{ai_suggested_name}[/green] (AI suggested)")
+                    console.print("  2. Type your own")
 
                     choice = IntPrompt.ask("Select [1-2]", choices=["1", "2"], default="1")
 
                     if choice == 1:
                         name = ai_suggested_name
                     else:
-                        name = Prompt.ask(f"{Colors.CYAN}Project name{Colors.END}")
+                        name = Prompt.ask("[cyan]Project name[/cyan]")
             else:
                 # No AI suggestion, ask for name
-                name = Prompt.ask(f"\n{Colors.CYAN}Project name{Colors.END}", default="custom-agent")
+                name = Prompt.ask("\n[cyan]Project name[/cyan]", default="custom-agent")
         else:
             # For non-custom templates, use template name directly
             name = f"{template}-agent"
@@ -321,8 +320,8 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         # Validate project name
         is_valid, error_msg = validate_project_name(name)
         while not is_valid:
-            console.print(f"{Colors.RED}❌ {error_msg}{Colors.END}")
-            name = Prompt.ask(f"{Colors.CYAN}Project name{Colors.END}", default="my-agent")
+            console.print(f"[red]❌ {error_msg}[/red]")
+            name = Prompt.ask("[cyan]Project name[/cyan]", default="my-agent")
             is_valid, error_msg = validate_project_name(name)
     elif not name:
         # Auto mode - use template name for non-custom, AI suggestion for custom
@@ -337,7 +336,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         # Validate provided name
         is_valid, error_msg = validate_project_name(name)
         if not is_valid:
-            console.print(f"{Colors.RED}❌ {error_msg}{Colors.END}")
+            console.print(f"[red]❌ {error_msg}[/red]")
             return
 
     # Handle temp directory or create new project directory
@@ -368,7 +367,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     template_dir = cli_dir / "templates" / template
 
     if not template_dir.exists() and template != 'custom':
-        console.print(f"{Colors.RED}❌ Template '{template}' not found!{Colors.END}")
+        console.print(f"[red]❌ Template '{template}' not found![/red]")
         shutil.rmtree(project_dir)
         return
 
@@ -467,7 +466,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         # Copy global keys to project
         with open(global_keys_env, 'r', encoding='utf-8') as f:
             env_content = f.read()
-        console.print(f"{Colors.GREEN}✓ Copied API keys from ~/.co/keys.env{Colors.END}")
+        console.print("[green]✓ Copied API keys from ~/.co/keys.env[/green]")
         env_has_keys = True
     elif api_key and provider:
         # Use the key just provided

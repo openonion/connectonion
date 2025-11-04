@@ -28,7 +28,6 @@ from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
-    Colors,
     get_special_directory_warning,
     is_directory_empty,
     check_environment_for_api_keys,
@@ -125,7 +124,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     warning = get_special_directory_warning(current_dir)
     if warning:
         console.print(f"[yellow]{warning}[/yellow]")
-        if not yes and not Confirm.ask(f"{Colors.YELLOW}Continue anyway?{Colors.END}"):
+        if not yes and not Confirm.ask("[yellow]Continue anyway?[/yellow]"):
             console.print("[yellow]Initialization cancelled.[/yellow]")
             return
 
@@ -134,7 +133,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         existing_files = os.listdir(current_dir)[:5]
         console.print("[yellow]⚠️  Directory not empty[/yellow]")
         console.print(f"[yellow]Existing files: {', '.join(existing_files[:5])}[/yellow]")
-        if not yes and not Confirm.ask(f"\n{Colors.YELLOW}Add ConnectOnion to existing project?{Colors.END}"):
+        if not yes and not Confirm.ask("\n[yellow]Add ConnectOnion to existing project?[/yellow]"):
             console.print("[yellow]Initialization cancelled.[/yellow]")
             return
 
@@ -151,7 +150,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
                 if not key:
                     key = env_key
             else:
-                ai = Confirm.ask(f"\n{Colors.CYAN}Enable AI features?{Colors.END}", default=True)
+                ai = Confirm.ask("\n[cyan]Enable AI features?[/cyan]", default=True)
         else:
             # Non-interactive mode - enable AI if key provided
             ai = bool(key or check_environment_for_api_keys())
@@ -177,7 +176,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         # No --template flag provided, just add ConnectOnion config
         template = 'none'
         if not yes:
-            console.print(f"\n{Colors.GREEN}✓ Adding ConnectOnion config (.co folder){Colors.END} (use --template <name> for full templates)")
+            console.print("\n[green]✓ Adding ConnectOnion config (.co folder)[/green] (use --template <name> for full templates)")
     # else: template has a specific value from --template <name>
 
     # Handle custom template
@@ -298,7 +297,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         # Create new .env
         if keys_to_add:
             env_path.write_text('\n'.join(keys_to_add) + '\n', encoding='utf-8')
-            console.print(f"{Colors.GREEN}✓ Created .env with API keys{Colors.END}")
+            console.print("[green]✓ Created .env with API keys[/green]")
         else:
             # Fallback - should not happen now that we always auth
             env_content = """# Add your LLM API key(s) below (uncomment one and set value)
@@ -319,10 +318,10 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
                 f.write('\n')
             f.write('\n# API Keys\n')
             f.write('\n'.join(keys_to_add) + '\n')
-        console.print(f"{Colors.GREEN}✓ Updated .env with API keys{Colors.END}")
+        console.print("[green]✓ Updated .env with API keys[/green]")
         files_created.append(".env (updated)")
     else:
-        console.print(f"{Colors.GREEN}✓ .env already contains all necessary keys{Colors.END}")
+        console.print("[green]✓ .env already contains all necessary keys[/green]")
 
     # Create .co directory with metadata
     co_dir = Path(current_dir) / ".co"
