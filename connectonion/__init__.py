@@ -11,6 +11,14 @@ from .decorators import replay, xray_replay
 from .useful_tools import send_email, get_emails, mark_read
 from .auto_debug_exception import auto_debug_exception
 from .connect import connect, RemoteAgent
+from .events import (
+    after_user_input,
+    before_llm,
+    after_llm,
+    before_tool,
+    after_tool,
+    on_error
+)
 
 __all__ = [
     "Agent",
@@ -25,5 +33,11 @@ __all__ = [
     "mark_read",
     "auto_debug_exception",
     "connect",
-    "RemoteAgent"
+    "RemoteAgent",
+    "after_user_input",
+    "before_llm",
+    "after_llm",
+    "before_tool",
+    "after_tool",
+    "on_error"
 ]

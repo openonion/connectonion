@@ -113,8 +113,14 @@ def execute_single_tool(
         trace_entry["status"] = "not_found"
         trace_entry["error"] = error_msg
 
+        # Add trace entry to session (so on_error handlers can see it)
+        agent.current_session['trace'].append(trace_entry)
+
         # Console output
         console.print(f"[red]✗[/red] {error_msg}")
+
+        # Invoke on_error events (consistent with tool execution errors)
+        agent._invoke_events('on_error')
 
         return trace_entry
 
@@ -139,10 +145,15 @@ def execute_single_tool(
         previous_tools=previous_tools
     )
 
-    # Execute the tool with timing
+    # Initialize timing (for error case if before_tool fails)
     tool_start = time.time()
+
     try:
-        # Execute the tool
+        # Invoke before_tool events
+        agent._invoke_events('before_tool')
+
+        # Execute the tool with timing (restart timer AFTER events for accurate tool timing)
+        tool_start = time.time()
         result = tool_func(**tool_args)
         tool_duration = (time.time() - tool_start) * 1000  # milliseconds
 
@@ -171,8 +182,11 @@ def execute_single_tool(
                 agent=agent
             )
 
+        # Invoke after_tool events
+        agent._invoke_events('after_tool')
+
     except Exception as e:
-        # Calculate timing
+        # Calculate timing from initial start (includes before_tool if it succeeded)
         tool_duration = (time.time() - tool_start) * 1000
 
         # Update trace entry
@@ -184,9 +198,15 @@ def execute_single_tool(
         error_msg = f"Error executing tool: {str(e)}"
         trace_entry["result"] = error_msg
 
+        # Add error trace entry to session (so on_error handlers can see it)
+        agent.current_session['trace'].append(trace_entry)
+
         # Console output
         time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
         console.print(f"[red]✗[/red] Error ({time_str}): {str(e)}")
+
+        # Invoke on_error events
+        agent._invoke_events('on_error')
 
     finally:
         # Clear xray context after tool execution

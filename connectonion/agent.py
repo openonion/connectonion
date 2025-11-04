@@ -23,6 +23,7 @@ from .decorators import (
 )
 from .console import Console
 from .tool_executor import execute_and_record_tools, execute_single_tool
+from .events import EventHandler
 
 # Load environment variables from .env file
 load_dotenv()
@@ -36,13 +37,14 @@ class Agent:
         self,
         name: str,
         llm: Optional[LLM] = None,
-        tools: Optional[Union[List[Callable], Callable, Any]] = None, 
+        tools: Optional[Union[List[Callable], Callable, Any]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
         model: str = "co/o4-mini",
         max_iterations: int = 10,
         trust: Optional[Union[str, Path, 'Agent']] = None,
-        log: Optional[Union[bool, str, Path]] = None
+        log: Optional[Union[bool, str, Path]] = None,
+        on_events: Optional[List[EventHandler]] = None
     ):
         self.name = name
         self.system_prompt = load_system_prompt(system_prompt)
@@ -86,7 +88,37 @@ class Agent:
         else:
             # Store the trust agent directly (or None)
             self.trust = create_trust_agent(trust, api_key=api_key, model=model)
-        
+
+        # Parse and organize event handlers by type
+        self.events = {
+            'after_user_input': [],
+            'before_llm': [],
+            'after_llm': [],
+            'before_tool': [],
+            'after_tool': [],
+            'on_error': []
+        }
+        if on_events:
+            for event_func in on_events:
+                # Validate event is callable
+                if not callable(event_func):
+                    raise TypeError(f"Event must be callable, got {type(event_func)}")
+
+                # Validate event has _event_type attribute
+                event_type = getattr(event_func, '_event_type', None)
+                if not event_type:
+                    func_name = getattr(event_func, '__name__', str(event_func))
+                    raise ValueError(
+                        f"Event function '{func_name}' missing _event_type. "
+                        f"Did you forget to wrap it? Use after_llm({func_name}), etc."
+                    )
+
+                # Validate event_type is valid
+                if event_type not in self.events:
+                    raise ValueError(f"Invalid event type '{event_type}'")
+
+                self.events[event_type].append(event_func)
+
         # Process tools: convert raw functions and class instances to tool schemas automatically
         processed_tools = []
         if tools is not None:
@@ -124,7 +156,12 @@ class Agent:
         
         # Create tool mapping for quick lookup
         self.tool_map = {tool.name: tool for tool in self.tools}
-    
+
+    def _invoke_events(self, event_type: str):
+        """Invoke all event handlers for given type. Exceptions propagate (fail fast)."""
+        for handler in self.events.get(event_type, []):
+            handler(self)
+
     def input(self, prompt: str, max_iterations: Optional[int] = None) -> str:
         """Provide input to the agent and get response.
 
@@ -164,6 +201,9 @@ class Agent:
             'prompt': prompt,  # Keep 'prompt' in trace for backward compatibility
             'timestamp': turn_start
         })
+
+        # Invoke after_user_input events
+        self._invoke_events('after_user_input')
 
         # Process
         self.current_session['iteration'] = 0  # Reset iteration for this turn
@@ -265,6 +305,9 @@ class Agent:
         tool_count = len(self.tools) if self.tools else 0
         self.console.print(f"[yellow]→[/yellow] LLM Request ({self.llm.model}) • {msg_count} msgs • {tool_count} tools")
 
+        # Invoke before_llm events
+        self._invoke_events('before_llm')
+
         start = time.time()
         response = self.llm.complete(self.current_session['messages'], tools=tool_schemas)
         duration = (time.time() - start) * 1000  # milliseconds
@@ -278,6 +321,9 @@ class Agent:
             'tool_calls_count': len(response.tool_calls) if response.tool_calls else 0,
             'iteration': self.current_session['iteration']
         })
+
+        # Invoke after_llm events (after trace entry is added)
+        self._invoke_events('after_llm')
 
         if response.tool_calls:
             self.console.print(f"[green]←[/green] LLM Response ({duration/1000:.1f}s): {len(response.tool_calls)} tool calls")
