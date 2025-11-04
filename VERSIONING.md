@@ -26,14 +26,14 @@ Example: `0.0.2`
 - Reset MINOR and PATCH to 0
 - Reserved for major breaking changes or stable releases
 
-## Current Version: 0.3.5
+## Current Version: 0.3.8
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
 - 0.0.2 → 0.0.9 (Early production releases)
 - 0.1.0 → 0.1.9 (Added multi-model support, CLI improvements)
 - 0.2.0 → 0.2.9 (Documentation improvements, LLM refactoring, test coverage, CLI enhancements and fixes)
-- 0.3.0 → 0.3.5 (Enhanced debugger, CLI status/reset, Windows support, email refactoring)
+- 0.3.0 → 0.3.8 (Enhanced debugger, CLI status/reset, Windows support, email refactoring, network features, pytest migration)
 
 ## Files to Update When Versioning
 
