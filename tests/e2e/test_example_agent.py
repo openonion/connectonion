@@ -113,22 +113,26 @@ class TestExampleAgent:
 
         # Test 1: Simple conversation without tools
         response = agent.input("Hello! What can you help me with?")
-        assert response.content is not None
+        assert response is not None
+        assert isinstance(response, str)
 
         # Test 2: Use calculator tool
         response = agent.input("Calculate 15 * 7 for me")
-        assert response.content is not None
+        assert response is not None
+        assert isinstance(response, str)
         # Check that tool was called
 
         # Test 3: Multi-tool usage
         response = agent.input(
             "What time is it? Also calculate 100 / 4"
         )
-        assert response.content is not None
+        assert response is not None
+        assert isinstance(response, str)
 
         # Test 4: Error handling
         response = agent.input("Calculate this invalid expression: 2 ++ 2")
-        assert response.content is not None
+        assert response is not None
+        assert isinstance(response, str)
         # Agent should handle the error gracefully
 
         # Test 5: Check history persistence
@@ -164,8 +168,9 @@ class TestExampleAgent:
 
         for message in conversations:
             response = agent.input(message)
-            assert response.content is not None
-            assert not response.content.startswith("Error")
+            assert response is not None
+            assert isinstance(response, str)
+            assert not response.startswith("Error")
 
         # Verify conversation history
         # Verify session exists

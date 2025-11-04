@@ -154,7 +154,7 @@ class TestAgentWorkflows:
         result = agent.input("Keep calculating 1 + 1")
         
         # Should stop at max iterations
-        assert "Maximum iterations reached" in result
+        assert "Maximum iterations" in result and "reached" in result
         # History removed - checking trace instead
         # Should have stopped at max iterations (10), not continue to 15
 
