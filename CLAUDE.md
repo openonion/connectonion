@@ -170,6 +170,32 @@ git push
 **Docs site URL:** https://docs.connectonion.com
 **Docs site repo:** https://github.com/openonion/connectonion-docs-site (private)
 
+### Nested Repository Verification
+
+**Status: ✅ Verified and Working**
+
+The nested repository architecture is properly configured:
+
+```bash
+# Main repo properly ignores nested repos
+$ git check-ignore -v wiki docs-site
+.gitignore:110:wiki/       wiki
+.gitignore:113:docs-site/  docs-site
+
+# No files from nested repos are tracked
+$ git ls-files | grep -E "^wiki/|^docs-site/"
+(no output - correct!)
+
+# Each nested repo has independent .git directory
+$ ls -d wiki/.git docs-site/.git
+wiki/.git/      docs-site/.git/
+```
+
+**Important:**
+- Never remove `wiki/` or `docs-site/` from main repo's `.gitignore`
+- Each repo pushes to its own remote independently
+- No sync scripts needed - each folder IS its own Git repo
+
 ## Tool System Architecture
 
 ### Function-Based Tools (Recommended)
