@@ -223,7 +223,7 @@ class TestLLMFunction:
             pytest.skip("OPENAI_API_KEY not found")
 
         from connectonion import llm_do
-        result = llm_do("What is 2+2? Reply with just the number.")
+        result = llm_do("What is 2+2? Reply with just the number.", model="gpt-4o-mini")
 
         assert result is not None
         assert "4" in result
@@ -242,7 +242,8 @@ class TestLLMFunction:
 
         result = llm_do(
             "What is 10 times 5?",
-            output=TestResult
+            output=TestResult,
+            model="gpt-4o-mini"
         )
 
         assert isinstance(result, TestResult)
@@ -258,7 +259,8 @@ class TestLLMFunction:
         from connectonion import llm_do
         result = llm_do(
             "Bonjour",
-            system_prompt="You are a translator. Translate from French to English only. Be concise."
+            system_prompt="You are a translator. Translate from French to English only. Be concise.",
+            model="gpt-4o-mini"
         )
 
         assert result is not None
@@ -425,7 +427,7 @@ class TestMultiLLMSupport:
             pytest.skip("GEMINI_API_KEY not found")
 
         from connectonion import Agent
-        agent = Agent("test_gemini", model="gemini-1.5-flash")
+        agent = Agent("test_gemini", model="gemini-2.0-flash-exp")
         response = agent.input("Say hello in 5 words or less")
 
         assert response is not None
@@ -455,7 +457,7 @@ class TestMultiLLMSupport:
         # Test Gemini with tools
         if self.has_google:
             from connectonion import Agent
-            agent = Agent("gemini_tools", model="gemini-1.5-flash", tools=[add_numbers])
+            agent = Agent("gemini_tools", model="gemini-2.0-flash-exp", tools=[add_numbers])
             response = agent.input("What is 25 plus 17?")
             assert "42" in str(response)
     
@@ -476,8 +478,6 @@ class TestMultiLLMSupport:
 
         # Test Google models
         assert MODEL_REGISTRY["gemini-2.0-flash-exp"] == "google"
-        assert MODEL_REGISTRY["gemini-1.5-pro"] == "google"
-        assert MODEL_REGISTRY["gemini-1.5-flash"] == "google"
     
     def test_create_llm_factory(self):
         """Test the create_llm factory function."""
@@ -495,7 +495,7 @@ class TestMultiLLMSupport:
 
         # Test Google model creation
         if self.has_google:
-            llm = create_llm("gemini-1.5-flash")
+            llm = create_llm("gemini-2.0-flash-exp")
             assert isinstance(llm, GeminiLLM)
     
     def test_model_inference_from_name(self):
@@ -539,7 +539,7 @@ class TestGeminiTools:
             """Add two numbers together."""
             return a + b
 
-        agent = Agent("gemini_calc", model="gemini-1.5-flash", tools=[add_numbers])
+        agent = Agent("gemini_calc", model="gemini-2.0-flash-exp", tools=[add_numbers])
         response = agent.input("What is 15 plus 27? Please use the add_numbers tool.")
 
         assert response is not None
@@ -561,7 +561,7 @@ class TestGeminiTools:
             """Multiply two numbers."""
             return x * y
 
-        agent = Agent("gemini_multi", model="gemini-1.5-flash",
+        agent = Agent("gemini_multi", model="gemini-2.0-flash-exp",
                      tools=[add_numbers, multiply_numbers])
         response = agent.input("First add 10 and 20, then multiply 5 by 6. Use the tools.")
 
@@ -577,7 +577,7 @@ class TestGeminiTools:
             pytest.skip("GEMINI_API_KEY not found")
 
         from connectonion import Agent
-        agent = Agent("gemini_chat", model="gemini-1.5-flash")
+        agent = Agent("gemini_chat", model="gemini-2.0-flash-exp")
         response = agent.input("What is the capital of France?")
 
         assert response is not None

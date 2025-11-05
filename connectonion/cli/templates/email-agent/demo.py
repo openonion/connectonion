@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Demo script to showcase the Email Agent capabilities."""
 
 from agent import EmailManager

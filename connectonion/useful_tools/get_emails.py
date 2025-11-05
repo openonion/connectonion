@@ -15,7 +15,6 @@ import toml
 import requests
 from pathlib import Path
 from typing import List, Dict, Optional, Union
-from dotenv import load_dotenv
 
 
 def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
@@ -34,9 +33,6 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
             - timestamp: ISO format timestamp
             - read: Boolean read status
     """
-    # Load environment variables from .env file
-    load_dotenv()
-
     # Get authentication token from environment
     # Emails are hosted by OpenOnion and require OPENONION_API_KEY for authentication
     token = os.getenv("OPENONION_API_KEY")
@@ -107,9 +103,6 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
     if not email_ids:
         raise ValueError("No email IDs provided to mark as read")
 
-    # Load environment variables from .env file
-    load_dotenv()
-
     # Get authentication token from environment
     token = os.getenv("OPENONION_API_KEY")
 
@@ -157,9 +150,6 @@ def mark_unread(email_ids: Union[str, List[str]]) -> bool:
 
     if not email_ids:
         raise ValueError("No email IDs provided to mark as unread")
-
-    # Load environment variables from .env file
-    load_dotenv()
 
     # Get authentication token from environment
     token = os.getenv("OPENONION_API_KEY")

@@ -12,11 +12,7 @@ except ImportError:
 
 from connectonion import Agent, xray
 from typing import Optional, List, Dict
-from dotenv import load_dotenv
 import json
-
-# Load environment variables from .env file
-load_dotenv()
 
 
 class BrowserAutomation:

@@ -10,7 +10,6 @@ LLM-Note:
 """
 
 import os
-import signal
 import sys
 import shutil
 import toml
@@ -18,7 +17,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
 from rich.console import Console
-from rich.prompt import Prompt, Confirm, IntPrompt
+from rich.prompt import Prompt, IntPrompt
 from rich.panel import Panel
 from rich.syntax import Syntax
 from rich.text import Text
@@ -32,10 +31,8 @@ from .project_cmd_lib import (
     LoadingAnimation,
     validate_project_name,
     check_environment_for_api_keys,
-    api_key_setup_menu,
     detect_api_provider,
     get_template_info,
-    interactive_menu,
     generate_custom_template_with_name,
     show_progress,
     configure_env_for_provider
@@ -69,7 +66,7 @@ def ensure_global_config() -> Dict[str, Any]:
     console.print(f"  ✓ Generated master keypair")
     console.print(f"  ✓ Your address: {addr_data['short_address']}")
 
-    # Create config
+    # Create config (simplified - address/email now in .env)
     config = {
         "connectonion": {
             "framework_version": __version__,
@@ -79,14 +76,10 @@ def ensure_global_config() -> Dict[str, Any]:
             "version": "1.0.0",
         },
         "agent": {
-            "address": addr_data["address"],
-            "short_address": addr_data["short_address"],
-            "email": addr_data.get("email", f"{addr_data['address'][:10]}@mail.openonion.ai"),
-            "email_active": False,
-            "created_at": datetime.now().isoformat(),
             "algorithm": "ed25519",
-            "default_model": "gpt-4o-mini",
+            "default_model": "co/o4-mini",
             "max_iterations": 10,
+            "created_at": datetime.now().isoformat(),
         },
     }
 
@@ -95,13 +88,28 @@ def ensure_global_config() -> Dict[str, Any]:
         toml.dump(config, f)
     console.print(f"  ✓ Created ~/.co/config.toml")
 
-    # Create empty keys.env
+    # Create keys.env with config path and agent address
     keys_env = global_dir / "keys.env"
     if not keys_env.exists():
-        keys_env.touch()
+        with open(keys_env, 'w', encoding='utf-8') as f:
+            f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
+            f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
+            f.write("# Your agent address (Ed25519 public key) is used for:\n")
+            f.write("#   - Secure agent communication (encrypt/decrypt with private key)\n")
+            f.write("#   - Authentication with OpenOnion managed LLM provider\n")
+            f.write(f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n")
         if sys.platform != 'win32':
             os.chmod(keys_env, 0o600)  # Read/write for owner only (Unix/Mac only)
-    console.print(f"  ✓ Created ~/.co/keys.env (add your API keys here)")
+    else:
+        # Append if not exists
+        existing = keys_env.read_text()
+        if 'AGENT_CONFIG_PATH=' not in existing:
+            with open(keys_env, 'a', encoding='utf-8') as f:
+                f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
+        if 'AGENT_ADDRESS=' not in existing:
+            with open(keys_env, 'a', encoding='utf-8') as f:
+                f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
+    console.print(f"  ✓ Created ~/.co/keys.env")
 
     return config
 
@@ -111,25 +119,6 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     """Create a new ConnectOnion project in a new directory."""
     # Ensure global config exists first
     global_config = ensure_global_config()
-    global_identity = global_config.get("agent", {})
-
-    # Track temp directory for cleanup
-    temp_project_dir = None
-
-    def cleanup_on_exit(signum=None, frame=None):
-        """Clean up temp directory on exit."""
-        if temp_project_dir and temp_project_dir.exists():
-            try:
-                if Confirm.ask(f"\n[yellow]Remove temporary project directory '{temp_project_dir}'?[/yellow]", default=True):
-                    import shutil
-                    shutil.rmtree(temp_project_dir)
-                    console.print("[green]✓ Temporary directory removed.[/green]")
-            except Exception:
-                pass
-        sys.exit(0)
-
-    # Register signal handler for Ctrl+C
-    signal.signal(signal.SIGINT, cleanup_on_exit)
 
     # Header removed for cleaner output
 
@@ -138,84 +127,74 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         template = 'minimal'
     # Silent - no verbose messages
 
-    # ALL templates need AI to function (agents need LLMs!)
+    # Auto-detect API keys from environment (no menu, just detect)
+    detected_keys = {}
     provider = None
-    api_key = key
-    ai = True  # Always true - all agents need AI
 
-    # Check for environment API keys first
-    if not api_key and not yes:
-        env_api = check_environment_for_api_keys()
-        if env_api:
-            provider, env_key = env_api
-            console.print(f"\n[green]✓ Found {provider.title()} API key in environment[/green]")
-            if not api_key:
-                api_key = env_key
+    # Check for API keys in environment
+    env_api = check_environment_for_api_keys()
+    if env_api:
+        provider, env_key = env_api
+        detected_keys[provider] = env_key
+        if not yes:
+            console.print(f"[green]✓ Detected {provider.title()} API key[/green]")
 
-    # Check global keys.env first
+    # If --key provided via flag, use it
+    if key:
+        provider, key_type = detect_api_provider(key)
+        detected_keys[provider] = key
+
+    # Always authenticate to get OPENONION_API_KEY
     global_dir = Path.home() / ".co"
-    global_keys_env = global_dir / "keys.env"
+    if not yes:
+        console.print("\n[cyan]🔐 Authenticating with OpenOnion for managed keys...[/cyan]")
 
-    # Try to load existing keys from global config
-    if global_keys_env.exists() and not api_key:
+    success = authenticate(global_dir, save_to_project=False)
+    if not success and not yes:
+        console.print("[yellow]⚠️  Authentication failed - you can still use your own API keys[/yellow]")
+
+    # Check global keys.env for API keys
+    global_keys_env = global_dir / "keys.env"
+    if global_keys_env.exists():
         with open(global_keys_env, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
-                    env_key, env_value = line.split('=', 1)
-                    if env_key == "OPENAI_API_KEY" and env_value.strip():
-                        api_key = env_value.strip()
-                        provider = "openai"
-                        console.print(f"\n[green]✓ Found OpenAI API key in ~/.co/keys.env[/green]")
-                        break
+                    env_key_name, env_value = line.split('=', 1)
+                    # Detect provider from key name
+                    if env_key_name == "OPENAI_API_KEY" and env_value.strip():
+                        detected_keys["openai"] = env_value.strip()
+                    elif env_key_name == "ANTHROPIC_API_KEY" and env_value.strip():
+                        detected_keys["anthropic"] = env_value.strip()
+                    elif env_key_name == "GEMINI_API_KEY" and env_value.strip():
+                        detected_keys["google"] = env_value.strip()
+                    elif env_key_name == "GROQ_API_KEY" and env_value.strip():
+                        detected_keys["groq"] = env_value.strip()
+                    elif env_key_name == "OPENONION_API_KEY" and env_value.strip():
+                        detected_keys["openonion"] = env_value.strip()
 
-    # API key setup (temp_project_dir already declared above for signal handler)
-    if ai and not api_key and not yes:
-        api_key, provider, temp_project_dir = api_key_setup_menu()
-        if api_key == "skip":
-            # User chose to skip
-            api_key = None
-            ai = False  # Disable AI features since no API key
-        elif not api_key and not provider:
-            # User cancelled (Ctrl+C or similar)
-            console.print("[yellow]API key setup cancelled.[/yellow]")
-            return
-    elif ai and api_key:
-        provider, key_type = detect_api_provider(api_key)
+    # Use first detected key for template generation if needed
+    if detected_keys and not provider:
+        provider = list(detected_keys.keys())[0]
 
-    # Save API key to global config if provided
-    if api_key and api_key != "skip" and provider:
-        # Map provider to env variable name
-        provider_to_env = {
-            "openai": "OPENAI_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-            "google": "GEMINI_API_KEY",
-            "groq": "GROQ_API_KEY",
-        }
-        env_var = provider_to_env.get(provider, f"{provider.upper()}_API_KEY")
-
-        # Check if key already exists in global config
-        key_exists = False
-        if global_keys_env.exists():
-            with open(global_keys_env, 'r', encoding='utf-8') as f:
-                content = f.read()
-                if f"{env_var}=" in content:
-                    key_exists = True
-
-        # Save to global keys.env if not exists
-        if not key_exists:
-            with open(global_keys_env, 'a', encoding='utf-8') as f:
-                if global_keys_env.stat().st_size > 0:
-                    f.write('\n')
-                f.write(f"{env_var}={api_key}\n")
-            console.print("[green]✓ Saved to ~/.co/keys.env for future projects[/green]")
+    # For custom template generation, we need an API key
+    template_key = ""
+    if template == 'custom':
+        if detected_keys:
+            # Prefer OpenAI for custom generation, fallback to first available
+            if "openai" in detected_keys:
+                template_key = detected_keys["openai"]
+                provider = "openai"
+            else:
+                template_key = list(detected_keys.values())[0]
+                provider = list(detected_keys.keys())[0]
 
     # Handle custom template
     custom_code = None
     ai_suggested_name = None
     if template == 'custom':
         # Custom template requires AI
-        if not ai or not api_key:
+        if not template_key:
             console.print("[red]❌ Custom template requires an API key for AI generation[/red]")
             console.print("[yellow]Please run 'co create' again and provide an API key[/yellow]")
             return
@@ -229,28 +208,11 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         console.print("\n[cyan]🤖 AI is generating your custom agent...[/cyan]")
 
         with LoadingAnimation("Preparing AI generation...") as loading:
-            # Use ConnectOnion model if available (user just got 100k tokens!)
-            if provider == "connectonion" and temp_project_dir:
-                # Load the JWT token from the temp project
-                config_path = temp_project_dir / ".co" / "config.toml"
-                jwt_token = None
-                if config_path.exists():
-                    config = toml.load(config_path)
-                    jwt_token = config.get("auth", {}).get("token")
-
-                model_to_use = "co/gpt-4o-mini"
-                loading.update(f"Using {model_to_use} to analyze: {description[:40]}...")
-
-                # Pass JWT token as api_key for co/ models
-                custom_code, ai_suggested_name = generate_custom_template_with_name(
-                    description, jwt_token, model=model_to_use, loading_animation=loading
-                )
-            else:
-                # Use user's API key and model
-                loading.update(f"Analyzing: {description[:40]}...")
-                custom_code, ai_suggested_name = generate_custom_template_with_name(
-                    description, api_key or "", model=None, loading_animation=loading
-                )
+            # Use detected API key for generation
+            loading.update(f"Analyzing: {description[:40]}...")
+            custom_code, ai_suggested_name = generate_custom_template_with_name(
+                description, template_key, model=None, loading_animation=loading
+            )
 
         console.print("[green]✓ Generated custom agent code[/green]")
         console.print(f"[green]✓ Suggested project name: {ai_suggested_name}[/green]")
@@ -339,7 +301,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             console.print(f"[red]❌ {error_msg}[/red]")
             return
 
-    # Handle temp directory or create new project directory
+    # Create new project directory
     project_dir = Path(name)
 
     # Check if directory exists and suggest alternative
@@ -355,12 +317,8 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         console.print(f"\n[red]❌ '{base_name}' exists. Try: [bold]co create {suggested_name}[/bold][/red]\n")
         return
 
-    if temp_project_dir:
-        # Rename temp directory to final project name
-        temp_project_dir.rename(project_dir)
-    else:
-        # Create project directory
-        project_dir.mkdir(parents=True, exist_ok=True)
+    # Create project directory
+    project_dir.mkdir(parents=True, exist_ok=True)
 
     # Get template files
     cli_dir = Path(__file__).parent.parent
@@ -421,14 +379,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     else:
         console.print(f"[yellow]⚠️  Warning: Vibe coding documentation not found at {master_vibe_doc}[/yellow]")
 
-    # Use global identity instead of generating project keys
-    # NO PROJECT KEYS - we use global address/email
-    addr_data = global_identity  # Use the global identity we loaded earlier
-
-    # Note: We're NOT creating project-specific keys anymore
-    # If user wants project-specific keys, they'll use 'co address' command
-
-    # Create config.toml
+    # Create config.toml (simplified - agent metadata now in .env)
     config = {
         "project": {
             "name": name,
@@ -441,14 +392,10 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             "template": template,
         },
         "agent": {
-            "address": addr_data["address"],
-            "short_address": addr_data["short_address"],
-            "email": addr_data.get("email", f"{addr_data['address'][:10]}@mail.openonion.ai"),
-            "email_active": addr_data.get("email_active", False),
-            "created_at": datetime.now().isoformat(),
             "algorithm": "ed25519",
-            "default_model": "gpt-4o-mini" if provider == 'openai' else "gpt-4o-mini",
+            "default_model": "co/o4-mini",  # Default to managed keys
             "max_iterations": 10,
+            "created_at": datetime.now().isoformat(),
         },
     }
 
@@ -459,33 +406,62 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
 
     # Create .env file - copy from global keys.env
     env_path = project_dir / ".env"
-    env_has_keys = False
 
-    # Try to copy from global keys.env first
+    # Always copy from global keys.env (includes AGENT_ADDRESS, AGENT_EMAIL, and API keys)
     if global_keys_env.exists() and global_keys_env.stat().st_size > 0:
         # Copy global keys to project
         with open(global_keys_env, 'r', encoding='utf-8') as f:
             env_content = f.read()
-        console.print("[green]✓ Copied API keys from ~/.co/keys.env[/green]")
-        env_has_keys = True
-    elif api_key and provider:
-        # Use the key just provided
-        env_content = configure_env_for_provider(provider, api_key)
-        env_has_keys = True
-    else:
-        # Default comments-only template (no fake keys)
-        env_content = """# Add your LLM API key(s) below (uncomment one and set value)
-# OPENAI_API_KEY=
-# ANTHROPIC_API_KEY=
-# GEMINI_API_KEY=
-# GROQ_API_KEY=
 
-# Optional: Override default model
-# MODEL=gpt-4o-mini
-"""
+        # Add config path and default model comment if not already present
+        lines_to_add = []
+        if "AGENT_CONFIG_PATH=" not in env_content:
+            lines_to_add.append(f"AGENT_CONFIG_PATH={Path.home() / '.co'}\n")
+        if "# Default model:" not in env_content:
+            lines_to_add.append("# Default model: co/o4-mini (managed keys with free credits)\n")
+
+        if lines_to_add:
+            # Add blank line after comments if we're adding any
+            lines_to_add.append("\n")
+            env_content = "".join(lines_to_add) + env_content
+    else:
+        # Fallback - create minimal .env with detected keys
+        env_lines = [
+            f"AGENT_CONFIG_PATH={Path.home() / '.co'}",
+            "# Default model: co/o4-mini (managed keys with free credits)",
+            "",
+        ]
+
+        # Add detected API keys
+        provider_to_env = {
+            "openai": "OPENAI_API_KEY",
+            "anthropic": "ANTHROPIC_API_KEY",
+            "google": "GEMINI_API_KEY",
+            "groq": "GROQ_API_KEY",
+            "openonion": "OPENONION_API_KEY",
+        }
+
+        for prov, key_value in detected_keys.items():
+            env_var = provider_to_env.get(prov, f"{prov.upper()}_API_KEY")
+            env_lines.append(f"{env_var}={key_value}")
+
+        if len(env_lines) == 3:  # Only header, no keys added
+            # No keys at all - create template
+            env_lines.extend([
+                "# Add your LLM API key(s) below",
+                "# OPENAI_API_KEY=",
+                "# ANTHROPIC_API_KEY=",
+                "# GEMINI_API_KEY=",
+            ])
+
+        env_content = "\n".join(env_lines) + "\n"
 
     env_path.write_text(env_content, encoding='utf-8')
     files_created.append(".env")
+
+    # Show where the .env file was saved
+    if not yes:
+        console.print(f"[green]✓ Saved to {env_path}[/green]")
 
     # Create .gitignore if in git repo
     if (project_dir / ".git").exists() or (Path.cwd() / ".git").exists():

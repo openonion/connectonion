@@ -1,90 +1,29 @@
-#!/usr/bin/env python3
 """Minimal ConnectOnion agent with a simple calculator tool."""
 
-import os
-from dotenv import load_dotenv
-from connectonion import Agent, llm_do
-
-# Load environment variables from .env file
-load_dotenv()
+from connectonion import Agent
 
 
-def calculator(operation: str, a: float, b: float) -> float:
-    """Simple calculator that performs basic arithmetic operations.
+def calculator(expression: str) -> float:
+    """Simple calculator that evaluates arithmetic expressions.
 
     Args:
-        operation: The operation to perform (add, subtract, multiply, divide)
-        a: First number
-        b: Second number
+        expression: A mathematical expression (e.g., "5*5", "10+20")
 
     Returns:
         The result of the calculation
     """
-    if operation == "add":
-        return a + b
-    elif operation == "subtract":
-        return a - b
-    elif operation == "multiply":
-        return a * b
-    elif operation == "divide":
-        if b == 0:
-            return "Error: Cannot divide by zero"
-        return a / b
-    else:
-        return f"Error: Unknown operation '{operation}'"
+    # Note: eval() is used for simplicity. For production, use a safer parser.
+    return eval(expression)
 
 
-def main():
-    """Run the minimal calculator agent with interactive conversation."""
+# Create agent with calculator tool
+agent = Agent(
+    name="calculator-agent", 
+    system_prompt="pls use the calculator tool to answer math questions", # you can also pass a markdown file like system_prompt="path/to/your_markdown_file.md"
+    tools=[calculator], # tools can be python classes or functions
+    model="co/gpt-5" # co/gpt-5 is hosted by OpenOnion, you can write your api key to .env file and change this to "gpt-5"
+)
 
-    # Create agent with calculator tool
-    agent = Agent(
-        name="calculator-agent",
-        tools=[calculator],
-        model=os.getenv("MODEL", "co/o4-mini")
-    )
-
-    print("🧮 Calculator Agent Started!")
-    print("Ask me to perform calculations or chat with me.")
-    print("Type 'quit' to exit.\n")
-
-    # Interactive conversation loop
-    while True:
-        user_input = input("You: ").strip()
-
-        if user_input.lower() in ['quit', 'exit', 'q']:
-            print("👋 Goodbye!")
-            break
-
-        if not user_input:
-            continue
-
-        # Get response from agent (can use calculator tool if needed)
-        response = agent.input(user_input)
-        print(f"Agent: {response}\n")
-
-
-if __name__ == "__main__":
-    # Quick demo before starting interactive mode
-    print("=== Quick Demo ===\n")
-
-    # Example 1: Using the agent with tools
-    agent = Agent(
-        name="calculator-agent",
-        tools=[calculator],
-        model=os.getenv("MODEL", "co/o4-mini")
-    )
-
-    demo_response = agent.input("What is 25 times 4?")
-    print(f"Q: What is 25 times 4?")
-    print(f"A: {demo_response}\n")
-
-    # Example 2: Direct LLM call without tools (faster for simple queries)
-    quick_response = llm_do("In one sentence, what is ConnectOnion?")
-    print(f"Q: What is ConnectOnion?")
-    print(f"A: {quick_response}\n")
-
-    print("=" * 50 + "\n")
-
-    # Start interactive mode
-    main()
+# Run the agent
+result = agent.input("what is the result of 5*5")
+print(result)

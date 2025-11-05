@@ -221,12 +221,8 @@ From docs/llm_do.md Quick Start:
 from typing import Union, Type, Optional, TypeVar
 from pathlib import Path
 from pydantic import BaseModel
-from dotenv import load_dotenv
 from .prompts import load_system_prompt
 from .llm import create_llm
-
-# Load environment variables from .env file
-load_dotenv()
 
 T = TypeVar('T', bound=BaseModel)
 

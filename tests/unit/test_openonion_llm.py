@@ -18,27 +18,26 @@ class TestOpenOnionLLM:
 
     def test_initialization_production(self):
         """Test OpenOnionLLM initializes with production URL."""
-        with patch.object(OpenOnionLLM, '_get_auth_token', return_value='mock-jwt-token'):
-            with patch.dict(os.environ, {}, clear=True):
-                llm = OpenOnionLLM(model="co/gpt-4o")
+        with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
+            llm = OpenOnionLLM(model="co/gpt-4o")
 
-                assert hasattr(llm, 'client'), "Should have OpenAI client"
-                assert llm.client.base_url == "https://oo.openonion.ai/v1/"
-                assert llm.client.api_key == "mock-jwt-token"
-                assert llm.model == "gpt-4o"  # co/ prefix stripped by implementation
+            assert hasattr(llm, 'client'), "Should have OpenAI client"
+            assert llm.client.base_url == "https://oo.openonion.ai/v1/"
+            assert llm.client.api_key == "mock-jwt-token"
+            assert llm.auth_token == "mock-jwt-token"
+            assert llm.model == "gpt-4o"  # co/ prefix stripped by implementation
 
     def test_initialization_development(self):
         """Test OpenOnionLLM initializes with development URL."""
-        with patch.object(OpenOnionLLM, '_get_auth_token', return_value='mock-jwt-token'):
-            with patch.dict(os.environ, {'OPENONION_DEV': '1'}):
-                llm = OpenOnionLLM(model="co/o4-mini")
+        with patch.dict(os.environ, {'OPENONION_DEV': '1', 'OPENONION_API_KEY': 'mock-jwt-token'}):
+            llm = OpenOnionLLM(model="co/o4-mini")
 
-                assert llm.client.base_url == "http://localhost:8000/v1/"
-                assert llm.model == "o4-mini"  # co/ prefix stripped
+            assert llm.client.base_url == "http://localhost:8000/v1/"
+            assert llm.model == "o4-mini"  # co/ prefix stripped
 
     def test_complete_gpt4o(self):
         """Test complete method with co/gpt-4o model."""
-        with patch.object(OpenOnionLLM, '_get_auth_token', return_value='mock-jwt-token'):
+        with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
             # Create mock response
             mock_response = MagicMock()
             mock_response.choices = [MagicMock()]
@@ -60,7 +59,7 @@ class TestOpenOnionLLM:
 
     def test_complete_o4mini(self):
         """Test complete method with co/o4-mini model."""
-        with patch.object(OpenOnionLLM, '_get_auth_token', return_value='mock-jwt-token'):
+        with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
             # Create mock response
             mock_response = MagicMock()
             mock_response.choices = [MagicMock()]
@@ -81,7 +80,7 @@ class TestOpenOnionLLM:
 
     def test_complete_with_tools(self):
         """Test complete method with tools."""
-        with patch.object(OpenOnionLLM, '_get_auth_token', return_value='mock-jwt-token'):
+        with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
             # Create mock response with tool call
             mock_response = MagicMock()
             mock_response.choices = [MagicMock()]
@@ -121,9 +120,9 @@ class TestOpenOnionLLM:
 
     def test_create_llm_co_models(self):
         """Test create_llm function with co/ models."""
-        with patch.object(OpenOnionLLM, '_get_auth_token', return_value='mock-jwt-token'):
+        with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
             # Test various co/ models
-            models = ["co/gpt-4o", "co/o4-mini", "co/claude-3-haiku", "co/gemini-1.5-pro"]
+            models = ["co/gpt-4o", "co/o4-mini", "co/claude-3-haiku", "co/gemini-2.0-flash-exp"]
 
             for model in models:
                 llm = create_llm(model)
@@ -133,7 +132,7 @@ class TestOpenOnionLLM:
 
     def test_no_auth_token_error(self):
         """Test error when no auth token is found."""
-        with patch.object(OpenOnionLLM, '_get_auth_token', return_value=None):
+        with patch.dict('os.environ', {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
                 OpenOnionLLM(model="co/gpt-4o")
 

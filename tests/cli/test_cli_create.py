@@ -18,6 +18,14 @@ class TestCliCreate:
         """Setup test environment."""
         self.runner = ArgparseCliRunner()
 
+    @pytest.fixture(autouse=True)
+    def mock_auth(self):
+        """Mock authentication to avoid network calls in tests."""
+        with patch('connectonion.cli.commands.create.authenticate') as mock:
+            # Simulate successful authentication
+            mock.return_value = True
+            yield mock
+
     def test_create_with_name_creates_directory(self):
         """Test that create with name creates a new directory."""
         with self.runner.isolated_filesystem():
@@ -204,3 +212,72 @@ class TestCliCreate:
             assert os.path.exists(f'{base_path}/agent.py')
             assert os.path.exists(f'{base_path}/.co')
             assert os.path.exists(f'{base_path}/.co/config.toml')
+
+    def test_create_adds_agent_config_path_to_env(self):
+        """Test that create adds AGENT_CONFIG_PATH to project .env file."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['create', 'config-test-agent',
+                                              '--yes',
+                                              '--template', 'minimal'])
+
+            assert result.exit_code == 0
+
+            # Check that project .env contains AGENT_CONFIG_PATH
+            env_file = 'config-test-agent/.env'
+            assert os.path.exists(env_file)
+            with open(env_file) as f:
+                content = f.read()
+                assert "AGENT_CONFIG_PATH=" in content
+                # Should point to home directory .co folder
+                assert "/.co" in content
+
+    def test_create_adds_default_model_comment_to_env(self):
+        """Test that create adds default model comment to project .env file."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['create', 'model-test-agent',
+                                              '--yes',
+                                              '--template', 'minimal'])
+
+            assert result.exit_code == 0
+
+            # Check that project .env contains default model comment
+            env_file = 'model-test-agent/.env'
+            assert os.path.exists(env_file)
+            with open(env_file) as f:
+                content = f.read()
+                assert "# Default model: co/o4-mini" in content
+                assert "managed keys with free credits" in content
+
+    def test_create_adds_agent_address_explanation_to_global_keys(self):
+        """Test that create adds explanatory comments to global keys.env when first created."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+            from pathlib import Path
+            import shutil
+
+            # Remove existing ~/.co to ensure fresh creation
+            global_co_dir = Path.home() / ".co"
+            if global_co_dir.exists():
+                shutil.rmtree(global_co_dir)
+
+            result = self.runner.invoke(cli, ['create', 'explain-test-agent',
+                                              '--yes',
+                                              '--template', 'minimal'])
+
+            assert result.exit_code == 0
+
+            # Check global keys.env (should exist now since we removed it)
+            global_keys_env = Path.home() / ".co" / "keys.env"
+            assert global_keys_env.exists()
+
+            with open(global_keys_env) as f:
+                content = f.read()
+                # Should have explanatory comment about agent address (only on first creation)
+                assert "Your agent address (Ed25519 public key) is used for:" in content
+                assert "Secure agent communication" in content
+                assert "Authentication with OpenOnion" in content
+                assert "@mail.openonion.ai" in content

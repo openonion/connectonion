@@ -14,7 +14,6 @@ import sys
 import time
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
-from dotenv import load_dotenv
 from .llm import LLM, create_llm
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .prompts import load_system_prompt
@@ -25,10 +24,7 @@ from .console import Console
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .events import EventHandler
 
-# Load environment variables from .env file
-load_dotenv()
-
-        # Handle trust parameter - convert to trust agent
+# Handle trust parameter - convert to trust agent
 from .trust import create_trust_agent, get_default_trust_level
 class Agent:
     """Agent that can use tools to complete tasks."""
@@ -151,7 +147,11 @@ class Agent:
             self.llm = llm
         else:
             # Use factory function to create appropriate LLM based on model
-            # For co/ models, the JWT token from 'co auth' is used automatically
+            # Each LLM provider checks its own env var if api_key is None:
+            # - OpenAI models check OPENAI_API_KEY
+            # - Anthropic models check ANTHROPIC_API_KEY
+            # - Google models check GOOGLE_API_KEY
+            # - co/ models check OPENONION_API_KEY
             self.llm = create_llm(model=model, api_key=api_key)
         
         # Create tool mapping for quick lookup

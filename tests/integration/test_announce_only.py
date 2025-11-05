@@ -7,12 +7,14 @@ Tests connectivity without waiting for heartbeat or tasks.
 
 import sys
 import asyncio
+import pytest
 sys.path.insert(0, '/Users/changxing/project/OnCourse/platform/connectonion-network')
 
 from pathlib import Path
 from connectonion import address, announce, relay
 
 
+@pytest.mark.asyncio
 async def test_announce():
     """Test that we can connect and announce successfully."""
     print("=== Testing Client ANNOUNCE ===\n")

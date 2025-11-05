@@ -3,15 +3,10 @@
 from connectonion import Agent, xray
 from connectonion import llm_do
 import json
-from dotenv import load_dotenv
 from pathlib import Path
 import subprocess
 import platform
 import shutil
-
-
-# Load environment variables from .env file
-load_dotenv()
 
 @xray
 def extract_relevant_connectonion_text(question: str, docs_path: str = ".co/docs/connectonion.md") -> str:

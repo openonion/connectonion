@@ -140,10 +140,13 @@ def handle_status():
     # Build info display
     api_key_display = f"{api_key[:20]}..." if len(api_key) > 20 else api_key
 
+    # Compute short address from full address (first 6 chars + ... + last 4 chars)
+    short_address = f"{public_key[:6]}...{public_key[-4:]}"
+
     info_lines = [
         f"[cyan]Agent Address:[/cyan] {public_key}",
-        f"[cyan]Agent ID:[/cyan] {agent_info.get('short_address', 'Unknown')}",
-        f"[cyan]Email:[/cyan] {email_info.get('address') or agent_info.get('email', 'Not configured')}",
+        f"[cyan]Agent ID:[/cyan] {short_address}",
+        f"[cyan]Email:[/cyan] {email_info.get('address') or os.getenv('AGENT_EMAIL', 'Not configured')}",
         f"[cyan]API Key:[/cyan] {api_key_display}",
         f"[cyan]Balance:[/cyan] ${user.get('balance_usd', 0.0):.4f}",
         f"[cyan]Total Spent:[/cyan] ${user.get('total_cost_usd', 0.0):.4f}",

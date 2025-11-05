@@ -11,9 +11,6 @@ from connectonion import Agent, llm_do, xray
 from dotenv import load_dotenv
 from pydantic import BaseModel
 
-# Load environment variables
-load_dotenv()
-
 # Default screenshots directory in current working directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
 
@@ -219,14 +216,25 @@ def execute_browser_command(command: str) -> str:
 
     Returns the agent's natural language response directly.
     """
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key or api_key == 'sk-your-key-here':
-        return '❌ Natural language browser agent unavailable. Set OPENAI_API_KEY and try again.'
+    # Framework auto-loads local .env, but CLI commands need global fallback
+    # Check for API key in environment first
+    api_key = os.getenv('OPENONION_API_KEY')
+
+    # If not found, try loading from global config
+    if not api_key:
+        global_env = Path.home() / ".co" / "keys.env"
+        if global_env.exists():
+            load_dotenv(global_env)
+            api_key = os.getenv('OPENONION_API_KEY')
+
+    if not api_key:
+        return '❌ Browser agent requires authentication. Run: co auth'
 
     browser = BrowserAutomation()
     agent = Agent(
         name="browser_cli",
         model="co/o4-mini",
+        api_key=api_key,
         system_prompt=PROMPT_PATH,
         tools=[browser],
         max_iterations=10

@@ -593,7 +593,8 @@ class OpenOnionLLM(LLM):
 
     def __init__(self, api_key: Optional[str] = None, model: str = "co/o4-mini", **kwargs):
         # For co/ models, api_key is actually the auth token
-        self.auth_token = api_key or self._get_auth_token()
+        # Framework auto-loads .env, so OPENONION_API_KEY will be in environment
+        self.auth_token = api_key or os.getenv("OPENONION_API_KEY")
         if not self.auth_token:
             raise ValueError(
                 "OPENONION_API_KEY not found in environment.\n"
@@ -626,37 +627,7 @@ class OpenOnionLLM(LLM):
             base_url=base_url,
             api_key=self.auth_token
         )
-    
-    def _get_auth_token(self) -> Optional[str]:
-        """Get authentication token from environment or local config."""
-        # First check environment variable (from .env file)
-        token = os.getenv("OPENONION_API_KEY")
-        if token:
-            return token
 
-        # Try current directory first, then parent directories, then home
-        config_paths = [
-            Path.cwd() / ".co" / "config.toml",
-            Path.cwd().parent / ".co" / "config.toml",
-            Path.cwd().parent.parent / ".co" / "config.toml",
-            Path.home() / ".connectonion" / ".co" / "config.toml"
-        ]
-
-        # Also check if we're running from a subdirectory
-        # Look for .co in the same directory as the script being run
-        import sys
-        if sys.argv[0]:
-            script_dir = Path(sys.argv[0]).parent.absolute()
-            config_paths.insert(0, script_dir / ".co" / "config.toml")
-
-        for config_path in config_paths:
-            if config_path.exists():
-                config = toml.load(config_path)
-                if "auth" in config and "token" in config["auth"]:
-                    return config["auth"]["token"]
-
-        return None
-    
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation with optional tool support using OpenAI-compatible API."""
         api_kwargs = {

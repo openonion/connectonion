@@ -1,6 +1,14 @@
 """ConnectOnion - A simple agent framework with behavior tracking."""
 
-__version__ = "0.3.9"
+__version__ = "0.4.0"
+
+# Auto-load .env files for the entire framework
+from dotenv import load_dotenv
+from pathlib import Path as _Path
+
+# Load from current working directory (where user runs their script)
+# NOT from the module's location (framework directory)
+load_dotenv(_Path.cwd() / ".env")
 
 from .agent import Agent
 from .tool_factory import create_tool_from_function

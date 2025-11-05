@@ -199,10 +199,12 @@ class TestExampleAgent:
 
         # Use tools with decorators
         response = agent.input("Use the custom tool with input 'test data'")
-        assert response.content is not None
+        assert response is not None
+        assert isinstance(response, str)
 
         response = agent.input("Process the text 'hello world' with the process_data function")
-        assert response.content is not None
+        assert response is not None
+        assert isinstance(response, str)
 
     def test_agent_with_mock_llm(self):
         """
@@ -315,8 +317,9 @@ class TestExampleAgent:
         response = agent.input("Use the failing tool")
 
         # Agent should recover and provide a response
-        assert response.content is not None
-        assert "error" in response.content.lower() or "help" in response.content.lower()
+        assert response is not None
+        assert isinstance(response, str)
+        assert "error" in response.lower() or "help" in response.lower()
 
 
 if __name__ == "__main__":

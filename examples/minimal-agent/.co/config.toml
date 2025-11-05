@@ -1,22 +1,19 @@
 [project]
 name = "minimal-agent"
-created = "2025-09-13T13:58:33.593669"
-framework_version = "0.0.7"
+created = "2025-11-04T15:23:15.075584"
+framework_version = "0.3.7"
 
 [cli]
 version = "1.0.0"
-command = "co create minimal-agent"
-template = "minimal"
+command = "co init"
+template = "none"
 
 [agent]
-address = "0xeb71b27b33b206ec2465e55b61a48e302346f98827886f37206d18c7c8705e1c"
-short_address = "0xeb71...5e1c"
-email = "0xeb71b27b@openonion.ai"
+address = "0x3b9fd603fa7fd31f31f9087985133cc54f11ae2ed0524e5627efe4e59cbbbd5f"
+short_address = "0x3b9f...bd5f"
+email = "0x3b9fd603@mail.openonion.ai"
 email_active = true
-created_at = "2025-09-13T13:58:33.593682"
+created_at = "2025-11-04T15:23:15.075599"
 algorithm = "ed25519"
 default_model = "gpt-4o-mini"
 max_iterations = 10
-
-[auth]
-token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdWJsaWNfa2V5IjoiMHhlYjcxYjI3YjMzYjIwNmVjMjQ2NWU1NWI2MWE0OGUzMDIzNDZmOTg4Mjc4ODZmMzcyMDZkMThjN2M4NzA1ZTFjIiwiZXhwIjoxNzU3ODIyMzE2LCJpYXQiOjE3NTc3MzU5MTZ9.whXuztYFaomsE-G88HJVJg8JXO-uhf8R0WINTvbZF2s"

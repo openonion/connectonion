@@ -12,10 +12,6 @@ LLM-Note:
 import sys
 import traceback
 import os
-from dotenv import load_dotenv
-
-# Load .env file so users can set CONNECTONION_AUTO_DEBUG=false there
-load_dotenv()
 
 
 def auto_debug_exception(model: str = "o4-mini"):

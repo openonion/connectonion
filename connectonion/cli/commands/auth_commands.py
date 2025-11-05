@@ -23,18 +23,20 @@ from ... import address
 console = Console()
 
 
-def _save_api_key_to_env(co_dir: Path, api_key: str, agent_email: str = None) -> None:
-    """Save OPENONION_API_KEY and AGENT_EMAIL to .env file.
+def _save_api_key_to_env(co_dir: Path, api_key: str, agent_email: str = None, agent_address: str = None) -> None:
+    """Save OPENONION_API_KEY, AGENT_EMAIL, and AGENT_ADDRESS to .env file.
 
     Args:
         co_dir: Path to .co directory
         api_key: The API key/token to save
         agent_email: The agent email address to save (optional)
+        agent_address: The full agent address to save (optional)
     """
     env_file = co_dir.parent / ".env"
     env_lines = []
     key_found = False
     email_found = False
+    address_found = False
 
     # Read existing .env if it exists
     if env_file.exists():
@@ -46,6 +48,9 @@ def _save_api_key_to_env(co_dir: Path, api_key: str, agent_email: str = None) ->
                 elif line.strip().startswith("AGENT_EMAIL=") and agent_email:
                     env_lines.append(f"AGENT_EMAIL={agent_email}\n")
                     email_found = True
+                elif line.strip().startswith("AGENT_ADDRESS=") and agent_address:
+                    env_lines.append(f"AGENT_ADDRESS={agent_address}\n")
+                    address_found = True
                 else:
                     env_lines.append(line)
 
@@ -59,6 +64,10 @@ def _save_api_key_to_env(co_dir: Path, api_key: str, agent_email: str = None) ->
     if agent_email and not email_found:
         env_lines.append(f"AGENT_EMAIL={agent_email}\n")
 
+    # Add address if not found and provided
+    if agent_address and not address_found:
+        env_lines.append(f"AGENT_ADDRESS={agent_address}\n")
+
     # Write .env file
     with open(env_file, "w", encoding='utf-8') as f:
         f.writelines(env_lines)
@@ -68,12 +77,13 @@ def _save_api_key_to_env(co_dir: Path, api_key: str, agent_email: str = None) ->
         env_file.chmod(0o600)
 
 
-def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
+def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False) -> bool:
     """Authenticate with OpenOnion API directly.
 
     Args:
         co_dir: Path to .co directory with keys
         save_to_project: Whether to also save token to current directory's .env
+        quiet: If True, suppress verbose output (only show errors and minimal success)
 
     Returns:
         True if authentication successful, False otherwise
@@ -85,9 +95,6 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
         return False
 
     public_key = addr_data["address"]
-
-    console.print("🔐 Authenticating with OpenOnion...", style="cyan")
-    console.print(f"   Agent: [bold]{addr_data['short_address']}[/bold]")
 
     # Create signed authentication message
     timestamp = int(time.time())
@@ -126,8 +133,10 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
             env_lines = []
             key_found = False
             email_found = False
+            address_found = False
 
-            # Read existing keys.env if it exists
+            # Read existing keys.env if it exists (preserve AGENT_ADDRESS)
+            config_path_found = False
             if global_keys_env.exists():
                 with open(global_keys_env, "r", encoding='utf-8') as f:
                     for line in f:
@@ -137,8 +146,18 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
                         elif line.strip().startswith("AGENT_EMAIL="):
                             env_lines.append(f"AGENT_EMAIL={agent_email}\n")
                             email_found = True
+                        elif line.strip().startswith("AGENT_ADDRESS="):
+                            address_found = True
+                            env_lines.append(line)  # Preserve existing address
+                        elif line.strip().startswith("AGENT_CONFIG_PATH="):
+                            config_path_found = True
+                            env_lines.append(line)  # Preserve existing config path
                         else:
                             env_lines.append(line)
+
+            # Add config path if not found (at the beginning)
+            if not config_path_found:
+                env_lines.insert(0, f"AGENT_CONFIG_PATH={co_dir}\n")
 
             # Add key if not found
             if not key_found:
@@ -150,70 +169,32 @@ def authenticate(co_dir: Path, save_to_project: bool = True) -> bool:
             if not email_found:
                 env_lines.append(f"AGENT_EMAIL={agent_email}\n")
 
+            # Add address if not found (ensure AGENT_ADDRESS is always in global keys.env)
+            if not address_found:
+                env_lines.append(f"AGENT_ADDRESS={public_key}\n")
+
             # Write global keys.env file
             with open(global_keys_env, "w", encoding='utf-8') as f:
                 f.writelines(env_lines)
             if sys.platform != 'win32':
                 global_keys_env.chmod(0o600)
 
-            console.print("✅ Saved token and email to ~/.co/keys.env", style="green")
+            console.print(f"✓ Saved to {global_keys_env}", style="green")
 
             # Also save to current directory's .env (always create if using global keys and save_to_project=True)
             if save_to_project:
-                _save_api_key_to_env(Path(".co") if Path(".co").exists() else co_dir, token, agent_email)
-                console.print("✅ Also saved to local .env file", style="green")
+                local_env_path = Path(".co") if Path(".co").exists() else co_dir
+                _save_api_key_to_env(local_env_path, token, agent_email, public_key)
+                # Show relative path for local .env
+                local_env_file = Path.cwd() / ".env"
+                console.print(f"✓ Saved to {local_env_file}", style="green")
         else:
             # Save to local project .env
-            _save_api_key_to_env(co_dir, token, agent_email)
+            _save_api_key_to_env(co_dir, token, agent_email, public_key)
 
-        # Save email and activation status to config
-        config_path = co_dir / "config.toml"
-        config = toml.load(config_path) if config_path.exists() else {}
-        if "agent" not in config:
-            config["agent"] = {}
-        config["agent"]["email"] = agent_email
-        config["agent"]["email_active"] = True
-
-        with open(config_path, "w", encoding='utf-8') as f:
-            toml.dump(config, f)
-
-        # Display comprehensive auth success info
-        console.print("\n✅ [bold green]Authentication successful![/bold green]")
-
-        # Build info string based on available data
-        info_lines = [
-            f"[cyan]Agent ID:[/cyan] {addr_data['short_address']}",
-            f"[cyan]Email:[/cyan] {agent_email}",
-        ]
-
-        if email_info:
-            info_lines.append(f"[cyan]Email Tier:[/cyan] {email_info.get('tier', 'free').capitalize()}")
-            info_lines.append(f"[cyan]Emails/Month:[/cyan] {email_info.get('quota', 100):,}")
-
-        if user:
-            info_lines.append(f"[cyan]Balance:[/cyan] ${user.get('balance_usd', 0.0):.4f}")
-            info_lines.append(f"[cyan]Total Spent:[/cyan] ${user.get('total_cost_usd', 0.0):.4f}")
-            info_lines.append(f"[cyan]New User:[/cyan] {'Yes' if user.get('is_new_user') else 'No'}")
-
-        info_lines.append(f"[cyan]API Key:[/cyan] {token[:20]}...")
-
-        console.print(Panel.fit(
-            "\n".join(info_lines),
-            title="🎯 Account Information",
-            border_style="green"
-        ))
-
-        # Show additional tips based on tier
-        console.print("\n[yellow]💡 Tips:[/yellow]")
-        console.print("   • Your API key has been saved to .env")
-        console.print("   • You can use managed models like 'co/gpt-4o' and 'co/o4-mini' in your agents")
-
-        if email_info and email_info.get('tier') == 'free':
-            console.print("   • Upgrade to Plus/Pro tier for more emails and custom domains")
-            console.print("   • Visit https://oo.openonion.ai to manage your account")
-
-        if user and user.get('balance_usd', 0) <= 0:
-            console.print("   • Purchase tokens at https://oo.openonion.ai to use managed LLM models")
+        # Simple success message with balance
+        balance = user.get('balance_usd', 0.0) if user else 0.0
+        console.print(f"✓ Authenticated (Balance: ${balance:.2f})", style="green")
 
         return True
     else:
