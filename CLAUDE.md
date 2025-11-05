@@ -421,6 +421,7 @@ When multiple valid approaches exist, choose based on:
 - Commit messages are clear
 - Implementation matches plan
 - No TODOs without issue numbers
+- **Documentation updated** (Wiki + Docs Website) for user-facing features
 
 #### Test Guidelines
 - Test behavior, not implementation
@@ -441,5 +442,9 @@ When multiple valid approaches exist, choose based on:
 - Update plan documentation as you go
 - Learn from existing implementations
 - Stop after 3 failed attempts and reassess
+- **Remind user to update documentation** after completing user-facing features:
+  * GitHub Wiki (public, SEO-optimized): `wiki/` directory
+  * Docs Website (private): `docs-site/` directory
+  * Both are separate Git repos - cd and commit/push independently
 - for the UI, always remember that:
 Each code block, the left side is the code, and the right side is after running the code block. What's the result it will be?So basically, a left side called right side running result.
