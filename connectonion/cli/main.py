@@ -23,9 +23,23 @@ console = Console()
 
 def create_parser():
     """Create the main argument parser."""
+    # Main parser with examples in epilog
+    main_epilog = """
+Examples:
+  co init                              Initialize current directory
+  co create my-agent                   Create named project
+  co init --template playwright        Use browser automation template
+  co auth                              Authenticate for managed keys
+  co -b "screenshot localhost:3000"    Quick browser command
+
+Documentation: https://docs.connectonion.com
+Discord: https://discord.gg/4xfD9k8AUF
+"""
+
     parser = argparse.ArgumentParser(
         prog='co',
-        description='ConnectOnion - A simple Python framework for creating AI agents.',
+        description='A simple Python framework for creating AI agents.',
+        epilog=main_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
@@ -37,120 +51,256 @@ def create_parser():
 
     parser.add_argument(
         '-b', '--browser',
-        help='Browser command - guide browser to do something (e.g., "screenshot localhost:3000")'
+        metavar='CMD',
+        help='Quick browser command (e.g., "screenshot localhost:3000")'
     )
 
     subparsers = parser.add_subparsers(dest='command', help='Available commands')
 
     # Init command
-    init_parser = subparsers.add_parser('init', help='Initialize a ConnectOnion project in the current directory')
-    init_parser.add_argument('--ai', '--no-ai', dest='ai', action='store', nargs='?', const=True, default=None,
-                           help='Enable or disable AI features')
-    init_parser.add_argument('--key', help='API key for AI provider')
-    init_parser.add_argument('--template', '-t',
-                           choices=['minimal', 'playwright', 'custom'],
-                           help='Template to use')
-    init_parser.add_argument('--description', help='Description for custom template (requires AI)')
-    init_parser.add_argument('--yes', '-y', action='store_true', help='Skip all prompts, use defaults')
-    init_parser.add_argument('--force', action='store_true', help='Overwrite existing files')
+    init_epilog = """
+Examples:
+  co init                                      Interactive setup
+  co init --template playwright                Use template without prompts
+  co init --yes                                Use defaults, no prompts
+  co init --ai --key sk-xxx                   Provide API key directly
+  co init --template custom --description "..." AI-generated template
+
+Files Created:
+  agent.py           Main agent file
+  .env               Environment variables
+  .co/config.toml    Project configuration
+  .gitignore         Git ignore rules
+
+Documentation: https://docs.connectonion.com/cli/init
+"""
+
+    init_parser = subparsers.add_parser(
+        'init',
+        help='Initialize a ConnectOnion project in current directory',
+        description='Initialize a ConnectOnion project in the current directory.',
+        epilog=init_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    init_parser.add_argument(
+        '--template', '-t',
+        choices=['minimal', 'playwright', 'custom'],
+        metavar='NAME',
+        help='Template: minimal, playwright, custom'
+    )
+    init_parser.add_argument(
+        '--yes', '-y',
+        action='store_true',
+        help='Skip prompts, use defaults'
+    )
+    init_parser.add_argument(
+        '--ai', '--no-ai',
+        dest='ai',
+        action='store',
+        nargs='?',
+        const=True,
+        default=None,
+        help='Enable or disable AI features'
+    )
+    init_parser.add_argument(
+        '--key',
+        metavar='KEY',
+        help='API key for AI provider (or use .env)'
+    )
+    init_parser.add_argument(
+        '--description',
+        metavar='TEXT',
+        help='Description for custom template (requires --ai)'
+    )
+    init_parser.add_argument(
+        '--force',
+        action='store_true',
+        help='Overwrite existing files without confirmation'
+    )
 
     # Create command
-    create_parser = subparsers.add_parser('create', help='Create a new ConnectOnion project in a new directory')
-    create_parser.add_argument('name', nargs='?', help='Project name')
-    create_parser.add_argument('--ai', '--no-ai', dest='ai', action='store', nargs='?', const=True, default=None,
-                             help='Enable or disable AI features')
-    create_parser.add_argument('--key', help='API key for AI provider')
-    create_parser.add_argument('--template', '-t',
-                             choices=['minimal', 'playwright', 'custom'],
-                             help='Template to use')
-    create_parser.add_argument('--description', help='Description for custom template (requires AI)')
-    create_parser.add_argument('--yes', '-y', action='store_true', help='Skip all prompts, use defaults')
+    create_epilog = """
+Examples:
+  co create my-agent                           Interactive setup
+  co create my-agent --template playwright     Use template
+  co create my-agent --yes                     Use defaults, no prompts
+  co create email-bot --ai --key sk-xxx       Provide API key
+
+Files Created:
+  my-agent/agent.py           Main agent file
+  my-agent/.env               Environment variables
+  my-agent/.co/config.toml    Project configuration
+  my-agent/.gitignore         Git ignore rules
+
+Documentation: https://docs.connectonion.com/cli/create
+"""
+
+    create_parser = subparsers.add_parser(
+        'create',
+        help='Create a new ConnectOnion project in a new directory',
+        description='Create a new ConnectOnion project in a new directory.',
+        epilog=create_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    create_parser.add_argument(
+        'name',
+        nargs='?',
+        help='Project name'
+    )
+    create_parser.add_argument(
+        '--template', '-t',
+        choices=['minimal', 'playwright', 'custom'],
+        metavar='NAME',
+        help='Template: minimal, playwright, custom'
+    )
+    create_parser.add_argument(
+        '--yes', '-y',
+        action='store_true',
+        help='Skip prompts, use defaults'
+    )
+    create_parser.add_argument(
+        '--ai', '--no-ai',
+        dest='ai',
+        action='store',
+        nargs='?',
+        const=True,
+        default=None,
+        help='Enable or disable AI features'
+    )
+    create_parser.add_argument(
+        '--key',
+        metavar='KEY',
+        help='API key for AI provider (or use .env)'
+    )
+    create_parser.add_argument(
+        '--description',
+        metavar='TEXT',
+        help='Description for custom template (requires --ai)'
+    )
 
     # Auth command
+    auth_epilog = """
+Examples:
+  co auth    Authenticate with OpenOnion for managed keys
+
+This command will:
+  1. Load your agent's keys from .co/keys/
+  2. Sign an authentication message
+  3. Authenticate directly with the backend
+  4. Save the token for future use
+
+Documentation: https://docs.connectonion.com/cli/auth
+"""
+
     auth_parser = subparsers.add_parser(
         'auth',
         help='Authenticate with OpenOnion for managed keys (co/ models)',
-        description="""Authenticate with OpenOnion for managed keys (co/ models).
-
-This command will:
-1. Load your agent's keys from .co/keys/
-2. Sign an authentication message
-3. Authenticate directly with the backend
-4. Save the token for future use"""
-    )
-
-    # Reset command
-    reset_parser = subparsers.add_parser(
-        'reset',
-        help='Reset account and create new one',
-        description="""Reset your ConnectOnion account.
-
-WARNING: This will delete all your data and create a new account.
-You will lose your balance and transaction history."""
+        description='Authenticate with OpenOnion for managed keys (co/ models).',
+        epilog=auth_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     # Status command
+    status_epilog = """
+Examples:
+  co status    Check your account balance and usage
+
+Shows your balance, usage, and account information without re-authenticating.
+
+Documentation: https://docs.connectonion.com/cli/status
+"""
+
     status_parser = subparsers.add_parser(
         'status',
         help='Check account status and balance',
-        description="""Check your ConnectOnion account status.
+        description='Check your ConnectOnion account status.',
+        epilog=status_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
-Shows your balance, usage, and account information without re-authenticating."""
+    # Reset command
+    reset_epilog = """
+Examples:
+  co reset    Reset your account and create a new one
+
+WARNING: This will delete all your data and create a new account.
+You will lose your balance and transaction history.
+
+Documentation: https://docs.connectonion.com/cli/reset
+"""
+
+    reset_parser = subparsers.add_parser(
+        'reset',
+        help='Reset account and create new one [destructive]',
+        description='Reset your ConnectOnion account.',
+        epilog=reset_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
     )
 
     # Browser command
-    browser_parser = subparsers.add_parser('browser', help='Execute browser automation commands')
-    browser_parser.add_argument('command', help='Browser command to execute')
+    browser_epilog = """
+Examples:
+  co browser "screenshot localhost:3000"
+  co browser "click on login button"
+  co -b "fill form with test data"
+
+Documentation: https://docs.connectonion.com/cli/browser
+"""
+
+    browser_parser = subparsers.add_parser(
+        'browser',
+        help='Execute browser automation commands',
+        description='Execute browser automation commands.',
+        epilog=browser_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    browser_parser.add_argument(
+        'command',
+        help='Browser command to execute'
+    )
 
     return parser
 
 
 def show_help():
-    """Display help information using Rich formatting."""
-    title = Text("🧅 ConnectOnion CLI", style="bold cyan")
+    """Display brief help information using Rich formatting (examples first)."""
+    console.print()
+    console.print(f"[bold cyan]co[/bold cyan] - ConnectOnion v{__version__}")
+    console.print()
+    console.print("A simple Python framework for creating AI agents.")
+    console.print()
 
-    content = """
-A simple Python framework for creating AI agents.
+    console.print("[bold]Usage:[/bold]")
+    console.print("  [cyan]co init[/cyan]                           Initialize project in current directory")
+    console.print("  [cyan]co create <name>[/cyan]                  Create project in new directory")
+    console.print("  [cyan]co auth[/cyan]                           Authenticate with OpenOnion")
+    console.print("  [cyan]co -b \"screenshot localhost:3000\"[/cyan] Quick browser automation")
+    console.print()
 
-[bold cyan]Commands:[/bold cyan]
-  [green]init[/green]      Initialize a ConnectOnion project in current directory
-  [green]create[/green]    Create a new ConnectOnion project in a new directory
-  [green]auth[/green]      Authenticate with OpenOnion for managed keys
-  [green]status[/green]    Check account status and balance
-  [green]reset[/green]     Reset account and create new one
-  [green]browser[/green]   Execute browser automation commands
+    console.print("[bold]Common Commands:[/bold]")
+    console.print("  [green]init[/green]      Initialize project in current directory")
+    console.print("  [green]create[/green]    Create new project with name")
+    console.print("  [green]auth[/green]      Authenticate for managed LLM keys (co/ models)")
+    console.print("  [green]status[/green]    Check account balance and usage")
+    console.print()
 
-[bold cyan]Options:[/bold cyan]
-  [yellow]-h, --help[/yellow]     Show this help message
-  [yellow]--version[/yellow]      Show version number
-  [yellow]-b, --browser[/yellow]  Quick browser command
+    console.print("[bold]Other Commands:[/bold]")
+    console.print("  [yellow]reset[/yellow]     Reset account and create new one (destructive)")
+    console.print("  [yellow]browser[/yellow]   Execute browser automation commands")
+    console.print()
 
-[bold cyan]Examples:[/bold cyan]
-  [dim]# Initialize a new project[/dim]
-  co init
+    console.print("[bold]Options:[/bold]")
+    console.print("  [cyan]-h, --help[/cyan]       Show this help message")
+    console.print("  [cyan]--version[/cyan]        Show version number")
+    console.print("  [cyan]-b, --browser[/cyan]    Quick browser command")
+    console.print()
 
-  [dim]# Create a new project with a name[/dim]
-  co create my-agent
-
-  [dim]# Authenticate with OpenOnion[/dim]
-  co auth
-
-  [dim]# Take a screenshot[/dim]
-  co -b "screenshot localhost:3000"
-
-[bold cyan]Learn more:[/bold cyan]
-  Docs: https://github.com/openonion/connectonion
-  Discord: https://discord.gg/4xfD9k8AUF
-"""
-
-    panel = Panel(
-        content,
-        title=title,
-        border_style="cyan",
-        padding=(1, 2),
-        expand=False
-    )
-    console.print(panel)
+    console.print("[dim]Run 'co --help' for all commands and options.[/dim]")
+    console.print("[dim]Run 'co <command> --help' for more info on a command.[/dim]")
+    console.print()
+    console.print("[bold]Documentation:[/bold] https://docs.connectonion.com")
+    console.print("[bold]Discord:[/bold] https://discord.gg/4xfD9k8AUF")
+    console.print()
 
 
 def cli():
