@@ -259,6 +259,28 @@ Documentation: https://docs.connectonion.com/cli/browser
         help='Browser command to execute'
     )
 
+    # Doctor command
+    doctor_epilog = """
+Examples:
+  co doctor    Run diagnostics on ConnectOnion installation
+
+Checks:
+  • System info (version, Python, paths)
+  • Configuration files
+  • API keys
+  • Backend connectivity
+
+Documentation: https://docs.connectonion.com/cli/doctor
+"""
+
+    doctor_parser = subparsers.add_parser(
+        'doctor',
+        help='Diagnose installation and configuration issues',
+        description='Run comprehensive diagnostics on your ConnectOnion setup.',
+        epilog=doctor_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+
     return parser
 
 
@@ -270,33 +292,42 @@ def show_help():
     console.print("A simple Python framework for creating AI agents.")
     console.print()
 
-    console.print("[bold]Usage:[/bold]")
-    console.print("  [cyan]co init[/cyan]                           Initialize project in current directory")
-    console.print("  [cyan]co create <name>[/cyan]                  Create project in new directory")
-    console.print("  [cyan]co auth[/cyan]                           Authenticate with OpenOnion")
-    console.print("  [cyan]co -b \"screenshot localhost:3000\"[/cyan] Quick browser automation")
+    console.print("[bold]Quick Start:[/bold]")
+    console.print("  [cyan]co create my-agent[/cyan]                Create new agent project")
+    console.print("  [cyan]cd my-agent && python agent.py[/cyan]   Run your agent")
     console.print()
 
-    console.print("[bold]Common Commands:[/bold]")
-    console.print("  [green]init[/green]      Initialize project in current directory")
-    console.print("  [green]create[/green]    Create new project with name")
-    console.print("  [green]auth[/green]      Authenticate for managed LLM keys (co/ models)")
-    console.print("  [green]status[/green]    Check account balance and usage")
+    console.print("[bold]Project Commands:[/bold]")
+    console.print("  [green]create[/green]  [dim]<name>[/dim]     Create new project in new directory")
+    console.print("  [green]init[/green]              Initialize project in current directory")
     console.print()
 
-    console.print("[bold]Other Commands:[/bold]")
-    console.print("  [yellow]reset[/yellow]     Reset account and create new one (destructive)")
-    console.print("  [yellow]browser[/yellow]   Execute browser automation commands")
+    console.print("[bold]Authentication & Account:[/bold]")
+    console.print("  [green]auth[/green]              Authenticate for managed keys (co/ models)")
+    console.print("  [green]status[/green]            Check account balance and usage")
+    console.print("  [yellow]reset[/yellow]             Reset account (destructive - deletes data)")
+    console.print()
+
+    console.print("[bold]Utilities:[/bold]")
+    console.print("  [cyan]doctor[/cyan]            Diagnose installation and config issues")
+    console.print("  [cyan]browser[/cyan] [dim]<cmd>[/dim]     Execute browser automation commands")
     console.print()
 
     console.print("[bold]Options:[/bold]")
     console.print("  [cyan]-h, --help[/cyan]       Show this help message")
     console.print("  [cyan]--version[/cyan]        Show version number")
-    console.print("  [cyan]-b, --browser[/cyan]    Quick browser command")
+    console.print("  [cyan]-b, --browser[/cyan]    Quick browser shortcut (e.g., co -b \"screenshot url\")")
     console.print()
 
-    console.print("[dim]Run 'co --help' for all commands and options.[/dim]")
-    console.print("[dim]Run 'co <command> --help' for more info on a command.[/dim]")
+    console.print("[bold]Examples:[/bold]")
+    console.print("  [dim]co create my-agent                     # Create new project[/dim]")
+    console.print("  [dim]co init --template playwright          # Add to existing directory[/dim]")
+    console.print("  [dim]co auth                                 # Get managed keys[/dim]")
+    console.print("  [dim]co doctor                               # Check your setup[/dim]")
+    console.print("  [dim]co -b \"screenshot localhost:3000\"      # Quick browser command[/dim]")
+    console.print()
+
+    console.print("[dim]Run 'co <command> --help' for detailed info on a command.[/dim]")
     console.print()
     console.print("[bold]Documentation:[/bold] https://docs.connectonion.com")
     console.print("[bold]Discord:[/bold] https://discord.gg/4xfD9k8AUF")
@@ -353,6 +384,9 @@ def cli():
     elif args.command == 'browser':
         from .commands.browser_commands import handle_browser
         handle_browser(args.command)
+    elif args.command == 'doctor':
+        from .commands.doctor_commands import handle_doctor
+        handle_doctor()
     else:
         # If command is None but other args exist, show help
         show_help()
