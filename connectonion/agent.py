@@ -40,6 +40,7 @@ class Agent:
         max_iterations: int = 10,
         trust: Optional[Union[str, Path, 'Agent']] = None,
         log: Optional[Union[bool, str, Path]] = None,
+        plugins: Optional[List[List[EventHandler]]] = None,
         on_events: Optional[List[EventHandler]] = None
     ):
         self.name = name
@@ -85,7 +86,7 @@ class Agent:
             # Store the trust agent directly (or None)
             self.trust = create_trust_agent(trust, api_key=api_key, model=model)
 
-        # Parse and organize event handlers by type
+        # Initialize event registry
         self.events = {
             'after_user_input': [],
             'before_llm': [],
@@ -94,26 +95,17 @@ class Agent:
             'after_tool': [],
             'on_error': []
         }
+
+        # Register plugin events (flatten list of lists)
+        if plugins:
+            for event_list in plugins:
+                for event_func in event_list:
+                    self._register_event(event_func)
+
+        # Register custom event handlers
         if on_events:
             for event_func in on_events:
-                # Validate event is callable
-                if not callable(event_func):
-                    raise TypeError(f"Event must be callable, got {type(event_func)}")
-
-                # Validate event has _event_type attribute
-                event_type = getattr(event_func, '_event_type', None)
-                if not event_type:
-                    func_name = getattr(event_func, '__name__', str(event_func))
-                    raise ValueError(
-                        f"Event function '{func_name}' missing _event_type. "
-                        f"Did you forget to wrap it? Use after_llm({func_name}), etc."
-                    )
-
-                # Validate event_type is valid
-                if event_type not in self.events:
-                    raise ValueError(f"Invalid event type '{event_type}'")
-
-                self.events[event_type].append(event_func)
+                self._register_event(event_func)
 
         # Process tools: convert raw functions and class instances to tool schemas automatically
         processed_tools = []
@@ -161,6 +153,29 @@ class Agent:
         """Invoke all event handlers for given type. Exceptions propagate (fail fast)."""
         for handler in self.events.get(event_type, []):
             handler(self)
+
+    def _register_event(self, event_func: EventHandler):
+        """
+        Register a single event handler to appropriate event type.
+
+        Args:
+            event_func: Event handler wrapped with after_llm(), after_tool(), etc.
+
+        Raises:
+            ValueError: If event handler missing _event_type or invalid event type
+        """
+        event_type = getattr(event_func, '_event_type', None)
+        if not event_type:
+            func_name = getattr(event_func, '__name__', str(event_func))
+            raise ValueError(
+                f"Event handler '{func_name}' missing _event_type. "
+                f"Did you forget to wrap it? Use after_llm({func_name}), etc."
+            )
+
+        if event_type not in self.events:
+            raise ValueError(f"Invalid event type: {event_type}")
+
+        self.events[event_type].append(event_func)
 
     def input(self, prompt: str, max_iterations: Optional[int] = None) -> str:
         """Provide input to the agent and get response.

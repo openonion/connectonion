@@ -40,6 +40,7 @@ agent = Agent("production",
 ## ✨ What Makes ConnectOnion Special
 
 - **🎯 Simple API**: Just one `Agent` class and your functions as tools
+- **🔌 Plugin System**: Reusable event bundles for reflection, logging, and more
 - **🔍 Interactive Debugging**: Pause at breakpoints with `@xray`, inspect state, modify variables on-the-fly
 - **🚀 Production Ready**: Battle-tested with GPT-5, Gemini 2.5, Claude Opus 4.1
 - **🌍 Open Source**: MIT licensed, community-driven development
@@ -169,6 +170,44 @@ Perfect for:
 - Debugging complex multi-tool workflows
 
 [Learn more in the auto_debug guide](docs/auto_debug.md)
+
+### 🔌 Plugin System
+
+Package reusable capabilities as plugins and use them across multiple agents:
+
+```python
+from connectonion import Agent, after_tool, llm_do
+
+# Define a reflection plugin
+def add_reflection(agent):
+    trace = agent.current_session['trace'][-1]
+    if trace['type'] == 'tool_execution' and trace['status'] == 'success':
+        result = trace['result']
+        reflection = llm_do(
+            f"Result: {result[:200]}\n\nWhat did we learn?",
+            system_prompt="Be concise.",
+            temperature=0.3
+        )
+        agent.current_session['messages'].append({
+            'role': 'assistant',
+            'content': f"🤔 {reflection}"
+        })
+
+# Plugin is just a list of event handlers
+reflection = [after_tool(add_reflection)]
+
+# Use across multiple agents
+researcher = Agent("researcher", tools=[search], plugins=[reflection])
+analyst = Agent("analyst", tools=[analyze], plugins=[reflection])
+```
+
+**What plugins provide:**
+- **Reusable capabilities**: Package event handlers into bundles
+- **Simple pattern**: A plugin is just a list of event handlers
+- **Easy composition**: Combine multiple plugins together
+- **Built-in examples**: Reflection, logging, todo tracking, and more
+
+[Learn more about plugins](docs/plugin.md)
 
 ## 🔧 Core Concepts
 
