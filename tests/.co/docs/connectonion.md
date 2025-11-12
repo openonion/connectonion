@@ -7,7 +7,7 @@ You are helping a developer who wants to use ConnectOnion, a Python framework fo
 **Key Principles:**
 - Keep simple things simple, make hard things possible
 - Function-based tools are preferred over classes
-- All agent behavior is automatically tracked
+- Activity logging to .co/logs/ (Python SDK only)
 - Default settings work for most use cases
 
 ---

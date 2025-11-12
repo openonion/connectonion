@@ -47,7 +47,7 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
     
     # Fetch emails from backend API
     backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/email/received"
+    endpoint = f"{backend_url}/api/v1/email/received"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -115,7 +115,7 @@ def mark_read(email_ids: Union[str, List[str]]) -> bool:
     
     # Mark emails as read via backend API
     backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/email/s/mark-read"
+    endpoint = f"{backend_url}/api/v1/email/s/mark-read"
 
     headers = {
         "Authorization": f"Bearer {token}",
@@ -163,7 +163,7 @@ def mark_unread(email_ids: Union[str, List[str]]) -> bool:
 
     # Mark emails as unread via backend API
     backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/email/s/mark-unread"
+    endpoint = f"{backend_url}/api/v1/email/s/mark-unread"
 
     headers = {
         "Authorization": f"Bearer {token}",

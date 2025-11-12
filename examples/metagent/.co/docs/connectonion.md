@@ -7,7 +7,7 @@ ConnectOnion is a simple Python framework for creating AI agents that can use to
 **Key Principles:**
 - Keep simple things simple, make hard things possible
 - Function-based tools are preferred over classes
-- All agent behavior is automatically tracked
+- Activity logging to .co/logs/ (Python SDK only)
 - Default settings work for most use cases
 
 ## Quick Start
@@ -105,7 +105,7 @@ def my_tool(text: str) -> str:
 
 ## History & Tracking
 
-All agent behavior is automatically tracked:
+Activity logging to .co/logs/ (Python SDK only):
 ```python
 # Access history
 print(agent.history.summary())

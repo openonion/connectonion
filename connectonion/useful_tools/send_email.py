@@ -93,7 +93,7 @@ def send_email(to: str, subject: str, message: str) -> Dict:
     
     # Send email via backend API
     backend_url = os.getenv("CONNECTONION_BACKEND_URL", "https://oo.openonion.ai")
-    endpoint = f"{backend_url}/api/email/send"
+    endpoint = f"{backend_url}/api/v1/email/send"
     
     headers = {
         "Authorization": f"Bearer {token}",

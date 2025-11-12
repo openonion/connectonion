@@ -16,8 +16,8 @@ TEST_ACCOUNT = {
 # Test JWT token (for testing only, not valid for production)
 TEST_JWT_TOKEN = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdWJsaWNfa2V5IjoiMDRlMWM0YWUzYzU3ZDcxNjM4MzE1MzQ3OWRhZTg2OWU1MWU4NmQ0M2Q4OGRiOGRmYTIyZmJhNzUzM2YzOTY4ZCIsImV4cCI6OTk5OTk5OTk5OX0.test_signature"
 
-# Test backend URL
-TEST_BACKEND_URL = os.getenv("TEST_BACKEND_URL", "http://localhost:8000")
+# Test backend URL - defaults to production for real API tests
+TEST_BACKEND_URL = os.getenv("TEST_BACKEND_URL", "https://oo.openonion.ai")
 
 # Test configuration for .co directory
 TEST_CONFIG_TOML = {
@@ -139,12 +139,9 @@ if __name__ == "__main__":
     main()
 """)
     
-    # Create .env file
-    env_file = base_dir / ".env"
-    env_file.write_text(f"""# Test environment
-OPENAI_API_KEY=sk-test-key-not-real
-CONNECTONION_BACKEND_URL={TEST_BACKEND_URL}
-""")
+    # Don't create a fake .env - use environment variables from tests/.env
+    # The tests/.env file is loaded by the module-level load_dotenv in __init__.py
+    # and re-loaded by ProjectHelper.__enter__() to ensure test env vars are available
     
     return base_dir
 
@@ -172,9 +169,16 @@ class ProjectHelper:
     
     def __enter__(self):
         import os
+        from dotenv import load_dotenv
+        from pathlib import Path
         self.original_cwd = os.getcwd()
         self.project_dir = create_test_project(self.base_dir)
         os.chdir(self.project_dir)
+        # Load environment variables from tests/.env
+        # This ensures real API keys are available for integration tests
+        tests_env = Path(__file__).parent.parent / ".env"
+        if tests_env.exists():
+            load_dotenv(tests_env, override=True)
         return self.project_dir
     
     def __exit__(self, exc_type, exc_val, exc_tb):

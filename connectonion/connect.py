@@ -1,4 +1,13 @@
 """
+Purpose: Client interface for connecting to remote agents via relay network using INPUT/OUTPUT protocol
+LLM-Note:
+  Dependencies: imports from [asyncio, json, uuid, websockets] | imported by [__init__.py, tests/test_connect.py, examples/] | tested by [tests/test_connect.py, tests/integration/manual/network_connect_manual.py]
+  Data flow: user calls connect(address, relay_url) → creates RemoteAgent instance → user calls .input(prompt) → _send_task() creates WebSocket to relay /ws/input → sends INPUT message with {type, input_id, to, prompt} → waits for OUTPUT response from relay → returns result string OR raises ConnectionError
+  State/Effects: establishes temporary WebSocket connection per task (no persistent connection) | sends INPUT messages to relay | receives OUTPUT/ERROR messages | no file I/O or global state | asyncio.run() blocks on .input(), await on .input_async()
+  Integration: exposes connect(address, relay_url), RemoteAgent class with .input(prompt, timeout), .input_async(prompt, timeout) | default relay_url="wss://oo.openonion.ai/ws/announce" | address format: 0x + 64 hex chars (Ed25519 public key) | complements Agent.serve() which listens for INPUT on relay | Protocol: INPUT type with to/prompt fields → OUTPUT type with input_id/result fields
+  Performance: creates new WebSocket connection per input() call (no connection pooling) | default timeout=30s | async under the hood (asyncio.run wraps for sync API) | no caching or retry logic
+  Errors: raises ImportError if websockets not installed | raises ConnectionError for ERROR responses from relay | raises ConnectionError for unexpected response types | asyncio.TimeoutError if no response within timeout | WebSocket connection errors bubble up
+
 Connect to remote agents on the network.
 
 Simple function-based API for using remote agents.

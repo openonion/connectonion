@@ -7,7 +7,7 @@
 ## 📌 Current Status (as of Sep 2025)
 
 ✅ **Working**: Email sending via `mail.openonion.ai` domain
-✅ **API Endpoint**: `https://oo.openonion.ai/api/email/send`
+✅ **API Endpoint**: `https://oo.openonion.ai/api/v1/email/send`
 ✅ **Sender**: Your agent's unique email `0x{your_key}@mail.openonion.ai`
 ✅ **JWT Tokens**: No expiration - authenticate once and use forever
 

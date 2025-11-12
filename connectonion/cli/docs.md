@@ -7,7 +7,7 @@ ConnectOnion is a simple Python framework for creating AI agents that can use to
 **Key Principles:**
 - Keep simple things simple, make hard things possible
 - Function-based tools are preferred over classes
-- All agent behavior is automatically tracked
+- Activity logging to .co/logs/ (Python SDK only)
 - Default settings work for most use cases
 
 ## Quick Start
@@ -103,15 +103,17 @@ def my_tool(text: str) -> str:
 4. **Use markdown for prompts** - Keep prompts separate from code
 5. **Set appropriate iterations** - Match complexity of task
 
-## History & Tracking
+## Activity Logging
 
-All agent behavior is automatically tracked:
+All agent activities are automatically logged to `.co/logs/{name}.log`:
 ```python
-# Access history
-print(agent.history.summary())
-print(len(agent.history.records))
+# Logs are written to .co/logs/ directory by default
+# Each agent gets its own log file: .co/logs/{agent_name}.log
 
-# History saved to ~/.connectonion/agents/{name}/behavior.json
+# You can customize logging:
+agent = Agent("assistant", log=False)  # Disable logging
+agent = Agent("assistant", log=True)   # Log to {name}.log in current dir
+agent = Agent("assistant", log="custom.log")  # Custom log path
 ```
 
 ## Full Documentation

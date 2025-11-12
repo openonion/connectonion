@@ -8,7 +8,7 @@ You are helping a developer who wants to use ConnectOnion, a Python framework fo
 - Keep simple things simple, make hard things possible
 - Function-based tools are preferred over classes
 - **For class-based tools: Pass instances directly (not individual methods)**
-- All agent behavior is automatically tracked
+- Activity logging to .co/logs/ (Python SDK only)
 - Default settings work for most use cases
 
 ---

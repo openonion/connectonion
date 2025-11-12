@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ConnectOnion is a Python framework for creating AI agents with behavior tracking. It's designed as an MVP with intentional simplicity, focusing on core agent functionality with OpenAI integration and automatic behavior recording.
+ConnectOnion is a Python framework for creating AI agents with activity logging. It's designed as an MVP with intentional simplicity, focusing on core agent functionality with OpenAI integration and automatic activity logging to `.co/logs/`.
 
 ## Architecture
 
