@@ -2,6 +2,7 @@
 
 import os
 from connectonion import Agent, xray
+from connectonion.useful_plugins import reflection, react
 from dotenv import load_dotenv
 from pathlib import Path
 import time
@@ -182,19 +183,22 @@ agent = Agent(
     system_prompt="prompts/browser_agent.md",
     tools=[browser],  # ConnectOnion automatically extracts all public methods
     model="gpt-4o-mini",
-    max_iterations=15
+    max_iterations=15,
+    plugins=[reflection, react]  # Add reflection and ReAct reasoning
 )
 
 
 if __name__ == "__main__":
     print("🌐 ConnectOnion Browser Agent initialized!")
-    print("Your AI assistant for web automation\n")
+    print("Your AI assistant for web automation with reflection & reasoning\n")
     print("Available capabilities:")
     print("🚀 Browser control - Start/stop Chromium browser with custom viewport")
     print("🧭 Navigation - Visit websites")
     print("📸 Advanced screenshots - Custom paths, sizes, full-page capture")
     print("🔍 Content extraction - Scrape text and links")
     print("📏 Viewport control - Adjust browser window size")
+    print("💭 Reflection - Learn from each action")
+    print("🤔 ReAct - Reason about actions and plan next steps")
     print("\nTry: 'Open Google and take a screenshot'")
     print("     'Take a full-page screenshot and save to ./screenshots/'")
     print("     'Set viewport to 1920x1080 and navigate to example.com'")

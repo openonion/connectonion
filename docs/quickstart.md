@@ -125,6 +125,49 @@ Perfect for:
 
 [Full debugging guide](auto_debug.md)
 
+## 🔌 Add Plugins for Reflection & Reasoning
+
+ConnectOnion includes built-in plugins that add powerful capabilities to any agent:
+
+```python
+from connectonion import Agent
+from connectonion.useful_plugins import reflection, react
+
+# Add reflection and ReAct reasoning
+agent = Agent(
+    name="assistant",
+    tools=[search, calculate],
+    plugins=[reflection, react]  # One line to add both!
+)
+
+agent.input("Search for Python and calculate 15 * 8")
+
+# After each tool execution, you'll see:
+# 💭 We learned that Python is a popular programming language...
+# 🤔 We should next calculate 15 * 8 to complete the request.
+```
+
+**Built-in Plugins:**
+- **reflection**: Generates insights after each tool execution
+- **react**: ReAct-style reasoning to plan next steps
+
+**Create Custom Plugins:**
+```python
+from connectonion import after_tool
+
+def log_tool(agent):
+    trace = agent.current_session['trace'][-1]
+    print(f"✓ {trace['tool_name']} completed")
+
+# Plugin is just an event list
+logger = [after_tool(log_tool)]
+
+# Use it!
+agent = Agent("assistant", tools=[search], plugins=[logger])
+```
+
+[Learn more about plugins](plugin.md)
+
 ## Choose a Different Template
 
 ConnectOnion offers specialized templates:

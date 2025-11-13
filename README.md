@@ -40,7 +40,7 @@ agent = Agent("production",
 ## ✨ What Makes ConnectOnion Special
 
 - **🎯 Simple API**: Just one `Agent` class and your functions as tools
-- **🔌 Plugin System**: Reusable event bundles for reflection, logging, and more
+- **🔌 Plugin System**: Add reflection & reasoning to any agent in one line
 - **🔍 Interactive Debugging**: Pause at breakpoints with `@xray`, inspect state, modify variables on-the-fly
 - **🚀 Production Ready**: Battle-tested with GPT-5, Gemini 2.5, Claude Opus 4.1
 - **🌍 Open Source**: MIT licensed, community-driven development

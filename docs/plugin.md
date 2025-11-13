@@ -7,21 +7,14 @@ Plugins are reusable event lists. Package capabilities like reflection and reuse
 ## Quick Start (60 seconds)
 
 ```python
-from connectonion import Agent, after_llm
+from connectonion import Agent
+from connectonion.useful_plugins import reflection
 
-def log_llm(agent):
-    trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'llm_call':
-        print(f"💬 {trace['model']}: {trace['duration_ms']:.0f}ms")
-
-# A plugin is an event list
-simple_logger = [after_llm(log_llm)]
-
-# Use it (plugins takes a list of event lists)
-agent = Agent("assistant", tools=[search], plugins=[simple_logger])
+# Use built-in reflection plugin
+agent = Agent("assistant", tools=[search], plugins=[reflection])
 
 agent.input("Search for Python")
-# 💬 gpt-4o-mini: 234ms
+# 💭 We learned that Python is a popular programming language...
 ```
 
 That's it!
@@ -74,38 +67,189 @@ agent = Agent(
 
 ---
 
-## Example: Reflection Plugin
+## Built-in Plugins (useful_plugins)
+
+ConnectOnion provides ready-to-use plugins that you can import and use immediately.
+
+### Reflection Plugin
+
+Reflects on tool execution results to generate insights:
 
 ```python
-from connectonion import Agent, after_tool, llm_do
+from connectonion import Agent
+from connectonion.useful_plugins import reflection
 
-def add_reflection(agent):
+agent = Agent("assistant", tools=[search], plugins=[reflection])
+
+agent.input("Search for Python")
+# After each successful tool execution:
+# 💭 We learned that Python is a popular high-level programming language known for simplicity
+```
+
+### ReAct Plugin
+
+Uses ReAct-style reasoning to plan next steps:
+
+```python
+from connectonion import Agent
+from connectonion.useful_plugins import react
+
+agent = Agent("assistant", tools=[search], plugins=[react])
+
+agent.input("Search for Python and explain it")
+# After each tool execution:
+# 🤔 We learned Python is widely used. We should next explain its key features and use cases.
+```
+
+### Using Both Together
+
+```python
+from connectonion import Agent
+from connectonion.useful_plugins import reflection, react
+
+agent = Agent("assistant", tools=[search], plugins=[reflection, react])
+
+# Now you get both after each tool:
+# 💭 Reflection: What we learned
+# 🤔 ReAct: What to do next
+```
+
+---
+
+## Writing Custom Plugins
+
+Learn by example - here's how the reflection plugin is implemented:
+
+### Step 1: Message Compression Helper
+
+```python
+from typing import List, Dict
+
+def _compress_messages(messages: List[Dict], tool_result_limit: int = 150) -> str:
+    """
+    Compress conversation messages with structure:
+    - USER messages → Keep FULL
+    - ASSISTANT tool_calls → Keep parameters FULL
+    - ASSISTANT text → Keep FULL
+    - TOOL results → Truncate to tool_result_limit chars
+    """
+    lines = []
+
+    for msg in messages:
+        role = msg['role']
+
+        if role == 'user':
+            lines.append(f"USER: {msg['content']}")
+
+        elif role == 'assistant':
+            if 'tool_calls' in msg:
+                tools = [f"{tc['function']['name']}({tc['function']['arguments']})"
+                         for tc in msg['tool_calls']]
+                lines.append(f"ASSISTANT: {', '.join(tools)}")
+            else:
+                lines.append(f"ASSISTANT: {msg['content']}")
+
+        elif role == 'tool':
+            result = msg['content']
+            if len(result) > tool_result_limit:
+                result = result[:tool_result_limit] + '...'
+            lines.append(f"TOOL: {result}")
+
+    return "\n".join(lines)
+```
+
+**Why this works:**
+- Keep user messages FULL (need to know what they asked)
+- Keep tool parameters FULL (exactly what actions were taken)
+- Keep assistant text FULL (reasoning/responses)
+- Truncate tool results (save tokens while maintaining overview)
+
+### Step 2: Event Handler Function
+
+```python
+from connectonion.events import after_tool
+from connectonion.llm_do import llm_do
+
+def _add_reflection(agent) -> None:
+    """Reflect on tool execution result"""
     trace = agent.current_session['trace'][-1]
 
     if trace['type'] == 'tool_execution' and trace['status'] == 'success':
-        result = trace['result']
+        # Extract current tool execution
+        user_prompt = agent.current_session.get('user_prompt', '')
+        tool_name = trace['tool_name']
+        tool_args = trace['arguments']
+        tool_result = trace['result']
 
-        reflection = llm_do(
-            f"Result: {result[:200]}\n\nWhat did we learn?",
-            system_prompt="Be concise.",
-            temperature=0.3
+        # Compress conversation messages
+        conversation = _compress_messages(agent.current_session['messages'])
+
+        # Build prompt with conversation context + current execution
+        prompt = f"""CONVERSATION:
+{conversation}
+
+CURRENT EXECUTION:
+User asked: {user_prompt}
+Tool: {tool_name}({tool_args})
+Result: {tool_result}
+
+Reflect in 1-2 sentences on what we learned:"""
+
+        reflection_text = llm_do(
+            prompt,
+            model="co/gpt-4o",
+            temperature=0.3,
+            system_prompt="You reflect on tool execution results to generate insights about what was learned and why it's useful for answering the user's question."
         )
 
+        # Add reflection as assistant message
         agent.current_session['messages'].append({
             'role': 'assistant',
-            'content': f"🤔 {reflection}"
+            'content': f"💭 {reflection_text}"
         })
 
-        print(f"💭 {reflection}")
+        agent.console.print(f"[dim]💭 {reflection_text}[/dim]")
+```
+
+**Key insights:**
+- Access agent state via `agent.current_session`
+- Use `llm_do()` for AI-powered analysis
+- Add results back to conversation messages
+- Print to console for user feedback
+
+### Step 3: Create Plugin (Event List)
+
+```python
+# Plugin is an event list
+reflection = [after_tool(_add_reflection)]
+```
+
+**That's it!** A plugin is just an event list.
+
+### Step 4: Use Your Plugin
+
+```python
+agent = Agent("assistant", tools=[search], plugins=[reflection])
+```
+
+---
+
+## Quick Custom Plugin Example
+
+Build a simple plugin in 3 lines:
+
+```python
+from connectonion import Agent, after_tool
+
+def log_tool(agent):
+    trace = agent.current_session['trace'][-1]
+    print(f"✓ {trace['tool_name']} completed in {trace['timing']}ms")
 
 # Plugin is an event list
-reflection = [after_tool(add_reflection)]
+logger = [after_tool(log_tool)]
 
 # Use it
-agent = Agent("researcher", tools=[search], plugins=[reflection])
-
-agent.input("Search for Python")
-# 💭 We learned Python is a popular programming language...
+agent = Agent("assistant", tools=[search], plugins=[logger])
 ```
 
 ---
