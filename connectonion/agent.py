@@ -270,6 +270,14 @@ class Agent:
 
         # Note: trace_entry already added to session in execute_single_tool
 
+        # Fire events (same as execute_and_record_tools)
+        # on_error fires first for errors/not_found, then after_tool always fires
+        if trace_entry["status"] in ("error", "not_found"):
+            self._invoke_events('on_error')
+
+        # after_tool fires for ALL tool executions (success, error, not_found)
+        self._invoke_events('after_tool')
+
         # Return simplified result (omit internal fields)
         return {
             "name": trace_entry["tool_name"],

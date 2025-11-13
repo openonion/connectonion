@@ -62,6 +62,14 @@ def execute_and_record_tools(
         # Note: trace_entry already added to session in execute_single_tool
         # (before auto-trace, so it shows up in xray.trace() output)
 
+        # Fire events AFTER tool result message is added (proper message ordering)
+        # on_error fires first for errors/not_found, then after_tool always fires
+        if trace_entry["status"] in ("error", "not_found"):
+            agent._invoke_events('on_error')
+
+        # after_tool fires for ALL tool executions (success, error, not_found)
+        agent._invoke_events('after_tool')
+
 
 def execute_single_tool(
     tool_name: str,
@@ -119,8 +127,7 @@ def execute_single_tool(
         # Console output
         console.print(f"[red]✗[/red] {error_msg}")
 
-        # Invoke on_error events (consistent with tool execution errors)
-        agent._invoke_events('on_error')
+        # Note: on_error event will fire in execute_and_record_tools after result message added
 
         return trace_entry
 
@@ -182,8 +189,7 @@ def execute_single_tool(
                 agent=agent
             )
 
-        # Invoke after_tool events
-        agent._invoke_events('after_tool')
+        # Note: after_tool event will fire in execute_and_record_tools after result message added
 
     except Exception as e:
         # Calculate timing from initial start (includes before_tool if it succeeded)
@@ -205,8 +211,7 @@ def execute_single_tool(
         time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
         console.print(f"[red]✗[/red] Error ({time_str}): {str(e)}")
 
-        # Invoke on_error events
-        agent._invoke_events('on_error')
+        # Note: on_error event will fire in execute_and_record_tools after result message added
 
     finally:
         # Clear xray context after tool execution

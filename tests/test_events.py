@@ -385,5 +385,38 @@ class TestEventSystem:
 
         # Should fire on_error exactly once
         assert len(calls) == 1
-        # Verify result status
-        assert result['status'] == 'not_found'
+
+    def test_after_tool_fires_for_all_executions(self):
+        """Test after_tool fires for ALL tool executions (success, error, not_found)"""
+        after_tool_calls = []
+        on_error_calls = []
+
+        def track_after_tool(agent):
+            after_tool_calls.append(agent.current_session['trace'][-1]['status'])
+
+        def track_error(agent):
+            on_error_calls.append(agent.current_session['trace'][-1]['status'])
+
+        agent = Agent(
+            "test",
+            tools=[search, failing_tool],
+            model="gpt-4o-mini",
+            on_events=[after_tool(track_after_tool), on_error(track_error)]
+        )
+
+        # Success case
+        agent.execute_tool("search", {"query": "test"})
+
+        # Error case
+        agent.execute_tool("failing_tool", {"query": "test"})
+
+        # Not found case
+        agent.execute_tool("nonexistent", {})
+
+        # after_tool should fire for all 3 executions
+        assert len(after_tool_calls) == 3
+        assert after_tool_calls == ['success', 'error', 'not_found']
+
+        # on_error should fire only for error and not_found (2 times)
+        assert len(on_error_calls) == 2
+        assert on_error_calls == ['error', 'not_found']

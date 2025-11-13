@@ -58,29 +58,14 @@ def handle_errors(agent: Agent) -> None:
         # Could add recovery instructions to messages
 
 
-# Example 2: AI-powered reflection after LLM completes tool calling
+# Example 2: AI-powered reflection after tool execution
 def add_reflection(agent: Agent) -> None:
-    """Use llm_do to generate reflection after tools are executed (fires after_llm)"""
-    # Check if the last LLM call resulted in tool executions
-    trace = agent.current_session['trace']
+    """Use llm_do to generate reflection after each tool completes (fires after_tool)"""
+    # Get the last tool execution from trace
+    trace = agent.current_session['trace'][-1]
 
-    # Find recent tool executions (skip the current LLM call at the end)
-    recent_tools = []
-    llm_count = 0
-    for entry in reversed(trace):
-        if entry.get('type') == 'llm_call':
-            llm_count += 1
-            if llm_count >= 2:
-                # Stop at the second LLM call (before current one)
-                break
-        elif entry.get('type') == 'tool_execution' and entry.get('status') == 'success':
-            recent_tools.append(entry)
-
-    # If tools were executed between the last two LLM calls, add reflection
-    if recent_tools:
-        # Get the most recent tool result
-        latest_tool = recent_tools[0]
-        result_preview = str(latest_tool['result'])[:200]
+    if trace['type'] == 'tool_execution' and trace['status'] == 'success':
+        result_preview = str(trace['result'])[:200]
 
         # Use llm_do to generate a quick reflection
         reflection = llm_do(
@@ -88,8 +73,7 @@ def add_reflection(agent: Agent) -> None:
             model="gpt-4o-mini"
         )
 
-        # Inject as ASSISTANT message AFTER all tool results are added
-        # (after_llm fires after LLM response, tool execution, and tool result messages)
+        # Add reflection as assistant message (fires after tool result message is added)
         agent.current_session['messages'].append({
             'role': 'assistant',
             'content': f"💭 Reflection: {reflection}"
@@ -147,13 +131,13 @@ def main():
     print("Example 2: AI-Powered Reflection")
     print("="*60 + "\n")
 
-    # Create agent with reflection (use after_llm to inject after tools are complete)
+    # Create agent with reflection (use after_tool to reflect on each tool execution)
     agent2 = Agent(
         name="reflective_agent",
         tools=[search],
         model="gpt-4o-mini",
         on_events=[
-            after_llm(add_reflection)
+            after_tool(add_reflection)
         ]
     )
 
