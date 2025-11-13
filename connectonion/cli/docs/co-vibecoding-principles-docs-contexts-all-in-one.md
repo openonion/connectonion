@@ -1593,15 +1593,38 @@ agent.input("Search for Python and explain it")
 # 🤔 We learned Python is widely used. We should next explain its key features and use cases.
 ```
 
-**Using Both Together:**
+**Image Result Formatter Plugin** - Converts base64 image results to proper image messages for vision models:
 
 ```python
 from connectonion import Agent
-from connectonion.useful_plugins import reflection, react
+from connectonion.useful_plugins import image_result_formatter
 
-agent = Agent("assistant", tools=[search], plugins=[reflection, react])
+agent = Agent("assistant", tools=[take_screenshot], plugins=[image_result_formatter])
 
-# Now you get both after each tool:
+agent.input("Take a screenshot of the homepage and describe what you see")
+# 🖼️  Formatted tool result as image (image/png)
+# Agent can now see and analyze the actual image, not just base64 text!
+```
+
+**When to use:** Tools that return screenshots, generated images, or any visual data as base64.
+**Supported formats:** PNG, JPEG, WebP, GIF
+**What it does:** Detects base64 images in tool results and converts them to OpenAI vision API format, allowing multimodal LLMs to see images visually instead of as text.
+
+**Using Multiple Plugins Together:**
+
+```python
+from connectonion import Agent
+from connectonion.useful_plugins import reflection, react, image_result_formatter
+
+# Combine plugins for powerful agents
+agent = Agent(
+    name="visual_researcher",
+    tools=[take_screenshot, search, analyze],
+    plugins=[image_result_formatter, reflection, react]
+)
+
+# Now you get:
+# 🖼️  Image formatting for screenshots
 # 💭 Reflection: What we learned
 # 🤔 ReAct: What to do next
 ```
