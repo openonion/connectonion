@@ -6,6 +6,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
 [![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue?style=flat-square&logo=python)](https://python.org)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/connectonion?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/connectonion)
+[![GitHub stars](https://img.shields.io/github/stars/openonion/connectonion?style=flat-square)](https://github.com/openonion/connectonion)
+[![Contributors](https://img.shields.io/github/contributors/openonion/connectonion?style=flat-square)](https://github.com/openonion/connectonion/graphs/contributors)
 [![Discord](https://img.shields.io/badge/Discord-Join-7289DA?style=flat-square&logo=discord)](https://discord.gg/4xfD9k8AUF)
 [![Documentation](https://img.shields.io/badge/Docs-docs.connectonion.com-blue?style=flat-square)](http://docs.connectonion.com)
 
@@ -37,15 +39,60 @@ agent = Agent("production",
               trust="prompt")                    # Multi-agent ready
 ```
 
-## ✨ What Makes ConnectOnion Special
+## ✨ Why ConnectOnion?
 
-- **🎯 Simple API**: Just one `Agent` class and your functions as tools
-- **🔌 Plugin System**: Add reflection & reasoning to any agent in one line
-- **🔍 Interactive Debugging**: Pause at breakpoints with `@xray`, inspect state, modify variables on-the-fly
-- **🚀 Production Ready**: Battle-tested with GPT-5, Gemini 2.5, Claude Opus 4.1
-- **🌍 Open Source**: MIT licensed, community-driven development
-- **⚡ No Boilerplate**: Start building in 2 lines, not 200
-- **🔧 Extensible**: Scale from prototypes to production systems
+<table>
+<tr>
+<td width="33%">
+
+### 🎯 **Simple API**
+Just one `Agent` class. Your functions become tools automatically. Start in 2 lines, not 200.
+
+</td>
+<td width="33%">
+
+### 🚀 **Production Ready**
+Battle-tested with GPT-5, Gemini 2.5, Claude Opus 4.1. Logging, debugging, trust system built-in.
+
+</td>
+<td width="33%">
+
+### 🌍 **Open Source**
+MIT licensed. Community-driven. Join 1000+ developers building the future of AI agents.
+
+</td>
+</tr>
+<tr>
+<td width="33%">
+
+### 🔌 **Plugin System**
+Add reflection & reasoning to any agent in one line. Extensible and composable.
+
+</td>
+<td width="33%">
+
+### 🔍 **Interactive Debugging**
+Pause at breakpoints with `@xray`, inspect state, modify variables on-the-fly.
+
+</td>
+<td width="33%">
+
+### ⚡ **No Boilerplate**
+Scale from prototypes to production systems without rewriting code.
+
+</td>
+</tr>
+</table>
+
+---
+
+## 💬 Join the Community
+
+[![Discord](https://img.shields.io/discord/1234567890?color=7289da&label=Join%20Discord&logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/4xfD9k8AUF)
+
+Get help, share agents, and discuss with 1000+ builders in our active community.
+
+---
 
 ## 🚀 Quick Start
 
@@ -573,6 +620,18 @@ This is an MVP version with intentional limitations:
 - **⭐ GitHub**: [Star the repo](https://github.com/openonion/connectonion) - Show your support
 - **🐛 Issues**: [Report bugs](https://github.com/openonion/connectonion/issues) - We respond quickly
 
+---
+
+## ⭐ Show Your Support
+
+If ConnectOnion helps you build better agents, **give it a star!** ⭐
+
+It helps others discover the framework and motivates us to keep improving it.
+
+[⭐ Star on GitHub](https://github.com/openonion/connectonion)
+
+---
+
 ## 🤝 Contributing
 
 We welcome contributions! ConnectOnion is open source and community-driven.
@@ -584,6 +643,8 @@ We welcome contributions! ConnectOnion is open source and community-driven.
 
 See our [Contributing Guide](http://docs.connectonion.com/website-maintenance) for more details.
 
+---
+
 ## 📄 License
 
 MIT License - Use it anywhere, even commercially. See [LICENSE](LICENSE) file for details.
@@ -592,12 +653,8 @@ MIT License - Use it anywhere, even commercially. See [LICENSE](LICENSE) file fo
 
 <div align="center">
 
-### 💫 Remember
+**Built with ❤️ by the open-source community**
 
-## **"Keep simple things simple, make complicated things possible"**
-
-*Built with ❤️ by the open-source community*
-
-[⬆ Back to top](#-connectonion)
+[⭐ Star this repo](https://github.com/openonion/connectonion) • [💬 Join Discord](https://discord.gg/4xfD9k8AUF) • [📖 Read Docs](https://docs.connectonion.com) • [⬆ Back to top](#-connectonion)
 
 </div>
