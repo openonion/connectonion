@@ -25,18 +25,46 @@
 
 ## 🎯 Living Our Philosophy
 
+### Step 1: Simple - Create and Use
 ```python
-# Simple thing (2 lines) - Just works!
 from connectonion import Agent
-agent = Agent("assistant").input("Hello!")
 
-# Complicated thing (still possible) - Production ready!
-agent = Agent("production",
-              model="gpt-5",                    # Latest models
-              tools=[search, analyze, execute], # Your functions as tools
-              system_prompt=company_prompt,     # Custom behavior
-              max_iterations=10,                # Safety controls
-              trust="prompt")                    # Multi-agent ready
+agent = Agent(name="assistant")
+agent.input("Hello!")  # That's it!
+```
+
+### Step 2: Add Your Tools
+```python
+def search(query: str) -> str:
+    """Search for information."""
+    return f"Results for {query}"
+
+agent = Agent(name="assistant", tools=[search])
+agent.input("Search for Python tutorials")
+```
+
+### Step 3: Debug Your Agent
+```python
+agent = Agent(name="assistant", tools=[search])
+agent.auto_debug()  # Interactive debugging session
+```
+
+### Step 4: Production Ready
+```python
+agent = Agent(
+    name="production",
+    model="gpt-5",                    # Latest models
+    tools=[search, analyze, execute], # Your functions as tools
+    system_prompt=company_prompt,     # Custom behavior
+    max_iterations=10,                # Safety controls
+    trust="prompt"                    # Multi-agent ready
+)
+agent.input("Complex production task")
+```
+
+### Step 5: Multi-Agent - Make it Remotely Callable
+```python
+agent.serve()  # Other agents can now discover and call this agent
 ```
 
 ## ✨ Why ConnectOnion?
