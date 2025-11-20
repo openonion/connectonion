@@ -1,6 +1,6 @@
-# Google OAuth (co auth google)
+# Gmail & Calendar Integration (co auth google)
 
-> Connect your Google account in 30 seconds. Send emails and read calendar events from your AI agents.
+> Send emails via Gmail and read calendar events from your AI agents. 30-second setup.
 
 ---
 

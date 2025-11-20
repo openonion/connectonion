@@ -22,7 +22,7 @@ What `co auth google` does:
 - Connects your Google account for Gmail Send and Calendar Read
 - Opens browser for OAuth authorization
 - Saves credentials to `.env` for your agents to use
-- See [Google OAuth Guide](cli-auth-google.md) for details
+- See [Gmail & Calendar Integration](cli-auth-google.md) for details
 
 ## Use Managed Models (co/ prefix)
 
