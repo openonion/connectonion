@@ -32,12 +32,20 @@ class ArgparseCliRunner:
         if temp_dir is None:
             temp_dir = tempfile.mkdtemp()
 
-        original_dir = os.getcwd()
+        try:
+            original_dir = os.getcwd()
+        except FileNotFoundError:
+            original_dir = os.path.expanduser("~")
+
         try:
             os.chdir(temp_dir)
             yield temp_dir
         finally:
-            os.chdir(original_dir)
+            try:
+                os.chdir(original_dir)
+            except (FileNotFoundError, OSError):
+                os.chdir(os.path.expanduser("~"))
+
             if os.path.exists(temp_dir):
                 shutil.rmtree(temp_dir)
 
