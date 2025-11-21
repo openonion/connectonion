@@ -1,6 +1,6 @@
 """ConnectOnion - A simple agent framework with behavior tracking."""
 
-__version__ = "0.4.2"
+__version__ = "0.4.3"
 
 # Auto-load .env files for the entire framework
 from dotenv import load_dotenv
@@ -16,7 +16,7 @@ from .llm import LLM
 from .llm_do import llm_do
 from .xray import xray
 from .decorators import replay, xray_replay
-from .useful_tools import send_email, get_emails, mark_read
+from .useful_tools import send_email, get_emails, mark_read, mark_unread, Memory, Gmail
 from .auto_debug_exception import auto_debug_exception
 from .connect import connect, RemoteAgent
 from .events import (
@@ -39,6 +39,9 @@ __all__ = [
     "send_email",
     "get_emails",
     "mark_read",
+    "mark_unread",
+    "Memory",
+    "Gmail",
     "auto_debug_exception",
     "connect",
     "RemoteAgent",
