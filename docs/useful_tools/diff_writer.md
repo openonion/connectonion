@@ -19,8 +19,8 @@ Write content to a file with diff display and user approval.
 ```python
 result = writer.write("hello.py", "print('hello')")
 # Shows colorized diff
-# Asks: "Apply changes to hello.py? [y/n]"
-# Returns: "Wrote 15 bytes to hello.py" or "Changes rejected by user"
+# Asks user to choose: 1=Yes, 2=Yes to all, 3=No + feedback
+# Returns: "Wrote 15 bytes to hello.py" or feedback message
 ```
 
 ### diff(path, content)
@@ -40,6 +40,34 @@ Read file contents.
 content = writer.read("hello.py")
 # Returns: "print('hello')"
 ```
+
+## Approval Options
+
+When a file change is proposed, user sees:
+
+```
+╭─── Changes to hello.py ────────────────────────╮
+│ --- a/hello.py                                 │
+│ +++ b/hello.py                                 │
+│ @@ -1,2 +1,3 @@                                │
+│  def hello():                                  │
+│ -    pass                                      │
+│ +    print("Hello!")                           │
+╰────────────────────────────────────────────────╯
+
+Choose an option:
+  1 - Yes, apply this change
+  2 - Yes to all (auto-approve for this session)
+  3 - No, and tell agent what to do instead
+
+Apply changes to hello.py? [1/2/3]:
+```
+
+| Option | Effect |
+|--------|--------|
+| **1** | Apply this change, ask again for next change |
+| **2** | Apply this and all future changes (session-wide) |
+| **3** | Reject + provide feedback for agent to try again |
 
 ## Options
 
@@ -65,35 +93,31 @@ agent = Agent("coder", tools=[writer])
 
 agent.input("create a hello.py file with a hello world function")
 # Agent calls writer.write()
-# User sees diff and approves
+# User sees diff and chooses 1, 2, or 3
+# If 3: User provides feedback, agent receives it and tries again
 ```
 
-## Visual Output
+## Feedback Flow
 
-```
-╭─── Changes to hello.py ────────────────────────╮
-│ --- /dev/null                                  │
-│ +++ b/hello.py                                 │
-│ @@ -0,0 +1,3 @@                                │
-│ +def hello():                                  │
-│ +    print("Hello, World!")                    │
-│ +                                              │
-╰────────────────────────────────────────────────╯
-Apply changes to hello.py? [y/n]:
-```
+When user chooses option 3 (reject):
+
+1. User is prompted: "What should the agent do instead?"
+2. User types feedback, e.g., "use snake_case for function names"
+3. Agent receives: `"User rejected changes to hello.py. Feedback: use snake_case for function names"`
+4. Agent can retry with the feedback
 
 ## Common Use Cases
 
 ```python
-# Coding agent with human approval
+# Interactive coding with approval
 writer = DiffWriter()
-agent = Agent("coder", tools=[writer, bash, read_file])
+agent = Agent("coder", tools=[writer])
 
-# CI/CD - auto-approve
+# CI/CD automation - skip prompts
 writer = DiffWriter(auto_approve=True)
 agent = Agent("automation", tools=[writer])
 
 # Preview changes only
 diff = writer.diff("config.py", new_config)
-print(diff)  # Show what would change
+print(diff)
 ```

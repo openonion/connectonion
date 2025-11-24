@@ -19,7 +19,7 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.prompt import Confirm
+from rich.prompt import Prompt
 
 
 class DiffWriter:
@@ -42,7 +42,7 @@ class DiffWriter:
             content: Content to write
 
         Returns:
-            Success message or rejection message
+            Success message, rejection message, or user feedback for agent
         """
         file_path = Path(path)
 
@@ -50,13 +50,20 @@ class DiffWriter:
             diff_text = self._generate_diff(path, content)
             if diff_text:
                 self._display_diff(diff_text, path)
-                if not Confirm.ask(f"Apply changes to [bold]{path}[/bold]?", console=self._console):
-                    return f"Changes to {path} rejected by user"
             else:
-                # New file, show preview
                 self._display_new_file(path, content)
-                if not Confirm.ask(f"Create [bold]{path}[/bold]?", console=self._console):
-                    return f"Creation of {path} rejected by user"
+
+            choice = self._ask_approval(path)
+
+            if choice == "reject":
+                feedback = Prompt.ask(
+                    "[bold yellow]What should the agent do instead?[/]",
+                    console=self._console
+                )
+                return f"User rejected changes to {path}. Feedback: {feedback}"
+
+            if choice == "approve_all":
+                self.auto_approve = True
 
         file_path.parent.mkdir(parents=True, exist_ok=True)
         file_path.write_text(content, encoding='utf-8')
@@ -91,6 +98,35 @@ class DiffWriter:
         if not file_path.exists():
             return f"Error: File {path} not found"
         return file_path.read_text(encoding='utf-8')
+
+    def _ask_approval(self, path: str) -> str:
+        """Ask user for approval with numbered options.
+
+        Returns:
+            'approve', 'approve_all', or 'reject'
+        """
+        self._console.print()
+        self._console.print("[bold]Choose an option:[/]")
+        self._console.print("  [cyan]1[/] - Yes, apply this change")
+        self._console.print("  [cyan]2[/] - Yes to all (auto-approve for this session)")
+        self._console.print("  [cyan]3[/] - No, and tell agent what to do instead")
+        self._console.print()
+
+        while True:
+            choice = Prompt.ask(
+                f"Apply changes to [bold]{path}[/]? [1/2/3]",
+                console=self._console,
+                default="1"
+            )
+
+            if choice == "1":
+                return "approve"
+            elif choice == "2":
+                return "approve_all"
+            elif choice == "3":
+                return "reject"
+            else:
+                self._console.print("[red]Please enter 1, 2, or 3[/]")
 
     def _generate_diff(self, path: str, new_content: str) -> str:
         """Generate unified diff between existing file and new content."""
