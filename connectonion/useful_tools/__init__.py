@@ -7,5 +7,6 @@ from .gmail import Gmail
 from .web_fetch import WebFetch
 from .shell import Shell
 from .diff_writer import DiffWriter
+from .terminal import pick, yes_no
 
-__all__ = ["send_email", "get_emails", "mark_read", "mark_unread", "Memory", "Gmail", "WebFetch", "Shell", "DiffWriter"]
+__all__ = ["send_email", "get_emails", "mark_read", "mark_unread", "Memory", "Gmail", "WebFetch", "Shell", "DiffWriter", "pick", "yes_no"]

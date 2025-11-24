@@ -14,32 +14,13 @@ Usage:
 """
 
 import difflib
-import sys
 from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-
-def _getch():
-    """Read a single character from stdin without waiting for Enter."""
-    try:
-        # Unix/macOS
-        import termios
-        import tty
-        fd = sys.stdin.fileno()
-        old_settings = termios.tcgetattr(fd)
-        try:
-            tty.setraw(fd)
-            ch = sys.stdin.read(1)
-        finally:
-            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
-        return ch
-    except ImportError:
-        # Windows
-        import msvcrt
-        return msvcrt.getch().decode('utf-8', errors='ignore')
+from connectonion.useful_tools.terminal import pick
 
 
 class DiffWriter:
@@ -124,28 +105,16 @@ class DiffWriter:
         Returns:
             'approve', 'approve_all', or 'reject'
         """
-        self._console.print()
-        self._console.print(f"[bold]Apply changes to {path}?[/]")
-        self._console.print()
-        self._console.print("  [bold cyan]1[/]  Yes, apply this change")
-        self._console.print("  [bold cyan]2[/]  Yes to all (auto-approve for session)")
-        self._console.print("  [bold cyan]3[/]  No, and tell agent what to do instead")
-        self._console.print()
-        self._console.print("[dim]Press 1, 2, or 3:[/] ", end="")
-
-        while True:
-            ch = _getch()
-            if ch == "1":
-                self._console.print("1")
-                return "approve"
-            elif ch == "2":
-                self._console.print("2")
-                return "approve_all"
-            elif ch == "3":
-                self._console.print("3")
-                return "reject"
-            elif ch in ("\x03", "\x04"):  # Ctrl+C, Ctrl+D
-                raise KeyboardInterrupt()
+        choice = pick(
+            f"Apply changes to {path}?",
+            {
+                "1": "Yes, apply this change",
+                "2": "Yes to all (auto-approve for session)",
+                "3": "No, and tell agent what to do instead",
+            },
+            console=self._console,
+        )
+        return {"1": "approve", "2": "approve_all", "3": "reject"}[choice]
 
     def _generate_diff(self, path: str, new_content: str) -> str:
         """Generate unified diff between existing file and new content."""
