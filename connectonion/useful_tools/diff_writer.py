@@ -19,7 +19,6 @@ from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
-from rich.prompt import Prompt
 
 
 class DiffWriter:
@@ -32,7 +31,7 @@ class DiffWriter:
             auto_approve: If True, skip approval prompts (for automation)
         """
         self.auto_approve = auto_approve
-        self._console = Console(stderr=True)
+        self._console = Console()
 
     def write(self, path: str, content: str) -> str:
         """Write content to a file with diff display and approval.
@@ -56,10 +55,9 @@ class DiffWriter:
             choice = self._ask_approval(path)
 
             if choice == "reject":
-                feedback = Prompt.ask(
-                    "[bold yellow]What should the agent do instead?[/]",
-                    console=self._console
-                )
+                self._console.print()
+                self._console.print("[bold yellow]What should the agent do instead?[/]")
+                feedback = input("> ")
                 return f"User rejected changes to {path}. Feedback: {feedback}"
 
             if choice == "approve_all":
@@ -106,18 +104,15 @@ class DiffWriter:
             'approve', 'approve_all', or 'reject'
         """
         self._console.print()
-        self._console.print("[bold]Choose an option:[/]")
-        self._console.print("  [cyan]1[/] - Yes, apply this change")
-        self._console.print("  [cyan]2[/] - Yes to all (auto-approve for this session)")
-        self._console.print("  [cyan]3[/] - No, and tell agent what to do instead")
+        self._console.print(f"[bold]Apply changes to {path}?[/]")
+        self._console.print()
+        self._console.print("  [bold cyan]1[/]  Yes, apply this change")
+        self._console.print("  [bold cyan]2[/]  Yes to all (auto-approve for session)")
+        self._console.print("  [bold cyan]3[/]  No, and tell agent what to do instead")
         self._console.print()
 
         while True:
-            choice = Prompt.ask(
-                f"Apply changes to [bold]{path}[/]? [1/2/3]",
-                console=self._console,
-                default="1"
-            )
+            choice = input("Choose [1/2/3]: ").strip()
 
             if choice == "1":
                 return "approve"
