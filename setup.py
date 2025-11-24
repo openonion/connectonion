@@ -20,6 +20,9 @@ requirements = [
     "mnemonic>=0.20",  # For recovery phrase generation (needed for global config)
     "questionary>=2.0.0",  # For interactive CLI prompts (arrow key navigation)
     "websockets>=11.0.0",  # For network features (agent.serve() and connect())
+    "google-auth>=2.0.0",  # For Gmail OAuth credentials
+    "google-api-python-client>=2.0.0",  # For Gmail API access
+    "httpx>=0.24.0",  # For token refresh in Gmail tool
 ]
 
 # Note: playwright is the only one we keep optional since it's large and requires browser binaries
