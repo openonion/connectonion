@@ -14,29 +14,32 @@ Usage:
 """
 
 import difflib
+import sys
 from pathlib import Path
 
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-try:
-    import questionary
-    from questionary import Style
-    QUESTIONARY_AVAILABLE = True
-except ImportError:
-    QUESTIONARY_AVAILABLE = False
 
-
-# Custom style for questionary
-custom_style = Style([
-    ('qmark', 'fg:cyan bold'),
-    ('question', 'bold'),
-    ('answer', 'fg:cyan bold'),
-    ('pointer', 'fg:cyan bold'),
-    ('highlighted', 'fg:cyan bold'),
-    ('selected', 'fg:green'),
-])
+def _getch():
+    """Read a single character from stdin without waiting for Enter."""
+    try:
+        # Unix/macOS
+        import termios
+        import tty
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(fd)
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+    except ImportError:
+        # Windows
+        import msvcrt
+        return msvcrt.getch().decode('utf-8', errors='ignore')
 
 
 class DiffWriter:
@@ -116,48 +119,33 @@ class DiffWriter:
         return file_path.read_text(encoding='utf-8')
 
     def _ask_approval(self, path: str) -> str:
-        """Ask user for approval with interactive selection.
+        """Ask user for approval with single keypress.
 
         Returns:
             'approve', 'approve_all', or 'reject'
         """
         self._console.print()
+        self._console.print(f"[bold]Apply changes to {path}?[/]")
+        self._console.print()
+        self._console.print("  [bold cyan]1[/]  Yes, apply this change")
+        self._console.print("  [bold cyan]2[/]  Yes to all (auto-approve for session)")
+        self._console.print("  [bold cyan]3[/]  No, and tell agent what to do instead")
+        self._console.print()
+        self._console.print("[dim]Press 1, 2, or 3:[/] ", end="")
 
-        if QUESTIONARY_AVAILABLE:
-            choices = [
-                questionary.Choice("1. Yes, apply this change", value="approve"),
-                questionary.Choice("2. Yes to all (auto-approve for session)", value="approve_all"),
-                questionary.Choice("3. No, and tell agent what to do instead", value="reject"),
-            ]
-
-            result = questionary.select(
-                f"Apply changes to {path}?",
-                choices=choices,
-                style=custom_style,
-                use_shortcuts=True,
-                use_arrow_keys=True,
-            ).ask()
-
-            return result if result else "reject"
-        else:
-            # Fallback to simple input
-            self._console.print(f"[bold]Apply changes to {path}?[/]")
-            self._console.print()
-            self._console.print("  [bold cyan]1[/]  Yes, apply this change")
-            self._console.print("  [bold cyan]2[/]  Yes to all (auto-approve for session)")
-            self._console.print("  [bold cyan]3[/]  No, and tell agent what to do instead")
-            self._console.print()
-
-            while True:
-                choice = input("Choose [1/2/3]: ").strip()
-                if choice == "1":
-                    return "approve"
-                elif choice == "2":
-                    return "approve_all"
-                elif choice == "3":
-                    return "reject"
-                else:
-                    self._console.print("[red]Please enter 1, 2, or 3[/]")
+        while True:
+            ch = _getch()
+            if ch == "1":
+                self._console.print("1")
+                return "approve"
+            elif ch == "2":
+                self._console.print("2")
+                return "approve_all"
+            elif ch == "3":
+                self._console.print("3")
+                return "reject"
+            elif ch in ("\x03", "\x04"):  # Ctrl+C, Ctrl+D
+                raise KeyboardInterrupt()
 
     def _generate_diff(self, path: str, new_content: str) -> str:
         """Generate unified diff between existing file and new content."""
