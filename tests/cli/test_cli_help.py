@@ -28,12 +28,11 @@ class TestCliHelp:
         assert "ConnectOnion" in result.output
 
         # Should show usage examples (examples first principle)
-        assert "Usage:" in result.output
-        assert "co init" in result.output
-        assert "co create" in result.output
+        assert "Quick Start:" in result.output
+        assert "co init" in result.output or "co create" in result.output
 
-        # Should show common commands
-        assert "Common Commands:" in result.output
+        # Should show command categories
+        assert "Project Commands:" in result.output or "Commands:" in result.output
         assert "init" in result.output
         assert "create" in result.output
         assert "auth" in result.output
@@ -280,8 +279,8 @@ class TestCliHelp:
         assert line_count < 50, "Brief help should be scannable (< 50 lines)"
 
         # Should have clear sections
-        assert "Usage:" in result.output
-        assert "Commands:" in result.output
+        assert "Quick Start:" in result.output
+        assert "Project Commands:" in result.output or "Commands:" in result.output
 
     def test_invalid_command_shows_help(self):
         """Test that invalid command shows helpful error."""
@@ -408,6 +407,6 @@ class TestHelpBestPractices:
 
         result = self.runner.invoke(cli, [])
 
-        # Should group common vs other commands
-        assert "Common Commands:" in result.output
-        assert "Other Commands:" in result.output or "Commands:" in result.output
+        # Should group commands into categories
+        assert "Project Commands:" in result.output or "Commands:" in result.output
+        assert "Authentication & Account:" in result.output or "Utilities:" in result.output

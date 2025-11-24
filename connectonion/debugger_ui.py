@@ -199,6 +199,12 @@ class DebuggerUI:
 
         sys.displayhook = rich_displayhook
 
+        # Check if stdin is available for interactive REPL
+        if not sys.stdin or not hasattr(sys.stdin, 'isatty') or not sys.stdin.isatty():
+            self.console.print("\n[yellow]⚠️  Interactive REPL not available (stdin not connected)[/yellow]")
+            self.console.print("[dim]Tip: Run directly in a terminal (not through VSCode/IDE) to use EDIT feature[/dim]")
+            return {}
+
         # Start interactive Python REPL
         banner = ""  # Empty banner since we show our own header
         try:
@@ -329,13 +335,13 @@ class DebuggerUI:
             sections.append(Text(f"Error: {error}", style="red"))
         else:
             if isinstance(result, str):
-                sections.append(Text(f"'{result}'", style="green"))
+                display_result = result[:150] + ('...' if len(result) > 150 else '')
+                sections.append(Text(f"'{display_result}'", style="green"))
             elif isinstance(result, (dict, list)):
                 try:
                     result_json = json.dumps(result, indent=2, ensure_ascii=False)
-                    if len(result_json) > 200:
-                        result_json = result_json[:200] + "..."
-                    sections.append(Text(result_json, style="green"))
+                    display_json = result_json[:200] + ('...' if len(result_json) > 200 else '')
+                    sections.append(Text(display_json, style="green"))
                 except:
                     sections.append(Text(f"{str(result)[:100]}...", style="green"))
             else:

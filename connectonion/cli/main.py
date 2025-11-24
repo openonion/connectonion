@@ -181,13 +181,17 @@ Documentation: https://docs.connectonion.com/cli/create
     # Auth command
     auth_epilog = """
 Examples:
-  co auth    Authenticate with OpenOnion for managed keys
+  co auth         Authenticate with OpenOnion for managed keys
+  co auth google  Connect Google account for Gmail/Calendar access
 
 This command will:
   1. Load your agent's keys from .co/keys/
   2. Sign an authentication message
   3. Authenticate directly with the backend
   4. Save the token for future use
+
+For Google OAuth:
+  Opens browser for authorization, saves credentials to .env
 
 Documentation: https://docs.connectonion.com/cli/auth
 """
@@ -198,6 +202,12 @@ Documentation: https://docs.connectonion.com/cli/auth
         description='Authenticate with OpenOnion for managed keys (co/ models).',
         epilog=auth_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    auth_parser.add_argument(
+        'service',
+        nargs='?',
+        choices=['google'],
+        help='OAuth service to connect (google)'
     )
 
     # Status command
@@ -304,6 +314,7 @@ def show_help():
 
     console.print("[bold]Authentication & Account:[/bold]")
     console.print("  [green]auth[/green]              Authenticate for managed keys (co/ models)")
+    console.print("  [green]auth google[/green]       Connect Google account (Gmail/Calendar)")
     console.print("  [green]status[/green]            Check account balance and usage")
     console.print("  [yellow]reset[/yellow]             Reset account (destructive - deletes data)")
     console.print()
@@ -323,6 +334,7 @@ def show_help():
     console.print("  [dim]co create my-agent                     # Create new project[/dim]")
     console.print("  [dim]co init --template playwright          # Add to existing directory[/dim]")
     console.print("  [dim]co auth                                 # Get managed keys[/dim]")
+    console.print("  [dim]co auth google                          # Connect Google account[/dim]")
     console.print("  [dim]co doctor                               # Check your setup[/dim]")
     console.print("  [dim]co -b \"screenshot localhost:3000\"      # Quick browser command[/dim]")
     console.print()
@@ -373,8 +385,12 @@ def cli():
             yes=args.yes
         )
     elif args.command == 'auth':
-        from .commands.auth_commands import handle_auth
-        handle_auth()
+        if args.service == 'google':
+            from .commands.auth_commands import handle_google_auth
+            handle_google_auth()
+        else:
+            from .commands.auth_commands import handle_auth
+            handle_auth()
     elif args.command == 'reset':
         from .commands.reset_commands import handle_reset
         handle_reset()

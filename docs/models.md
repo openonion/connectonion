@@ -124,33 +124,33 @@ agent = Agent("assistant", model="gemini-1.5-flash-8b")     # Your key
 
 ### Anthropic Claude Models
 
+#### Claude 4.5 Series (Latest)
+```python
+# Claude Sonnet 4.5 - Best balance of intelligence and speed
+agent = Agent("assistant", model="co/claude-sonnet-4-5")  # Managed
+agent = Agent("assistant", model="claude-sonnet-4-5")     # Your key
+
+# Claude Haiku 4.5 - Fastest with near-frontier intelligence
+agent = Agent("assistant", model="co/claude-haiku-4-5")   # Managed
+agent = Agent("assistant", model="claude-haiku-4-5")      # Your key
+```
+
 #### Claude Opus 4 Series
 ```python
-# Claude Opus 4.1 - Latest and most capable
-agent = Agent("assistant", model="co/claude-opus-4.1")  # Managed
-agent = Agent("assistant", model="claude-opus-4.1")     # Your key
+# Claude Opus 4.1 - Specialized reasoning
+agent = Agent("assistant", model="co/claude-opus-4-1")    # Managed
+agent = Agent("assistant", model="claude-opus-4-1")       # Your key
 
 # Claude Opus 4 - Previous version
-agent = Agent("assistant", model="co/claude-opus-4")    # Managed
-agent = Agent("assistant", model="claude-opus-4")       # Your key
+agent = Agent("assistant", model="co/claude-opus-4")      # Managed
+agent = Agent("assistant", model="claude-opus-4")         # Your key
 ```
 
 #### Claude Sonnet 4
 ```python
 # Balanced performance model
-agent = Agent("assistant", model="co/claude-sonnet-4")  # Managed
-agent = Agent("assistant", model="claude-sonnet-4")     # Your key
-```
-
-#### Claude 3.5 Series (Previous Generation)
-```python
-# Excellent at coding
-agent = Agent("assistant", model="co/claude-3-5-sonnet")  # Managed
-agent = Agent("assistant", model="claude-3-5-sonnet")     # Your key
-
-# Fast and cost-effective
-agent = Agent("assistant", model="co/claude-3-5-haiku")   # Managed
-agent = Agent("assistant", model="claude-3-5-haiku")      # Your key
+agent = Agent("assistant", model="co/claude-sonnet-4")    # Managed
+agent = Agent("assistant", model="claude-sonnet-4")       # Your key
 ```
 
 ## Model Capabilities Comparison
@@ -161,7 +161,7 @@ agent = Agent("assistant", model="claude-3-5-haiku")      # Your key
 |-------|----------|---------------|------------|
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
 | gemini-2.5-pro | Google | Enhanced reasoning, supports audio/video/PDF | ✅ |
-| claude-opus-4.1 | Anthropic | Most capable Claude model | ✅ |
+| claude-sonnet-4-5 | Anthropic | Best balance of intelligence and speed | ✅ |
 
 ### Context Windows
 
@@ -177,9 +177,57 @@ agent = Agent("assistant", model="claude-3-5-haiku")      # Your key
 | gemini-1.5-pro | 2M tokens |
 | gemini-1.5-flash | 1M tokens |
 | **Anthropic** | |
-| claude-opus-4.1 | 200K tokens |
-| claude-opus-4 | 200K tokens |
-| claude-sonnet-4 | 200K tokens |
+| claude-sonnet-4-5 | 200K tokens |
+| claude-haiku-4-5 | 200K tokens |
+| claude-opus-4-1 | 200K tokens |
+
+## Pricing (Managed Keys)
+
+All prices are **per 1M tokens** and match official provider pricing:
+
+### OpenAI Models
+
+| Model | Input | Output | Notes |
+|-------|-------|--------|-------|
+| gpt-5 | $1.25 | $10.00 | Best overall |
+| gpt-5-mini | $0.25 | $2.00 | Fast, cost-effective |
+| gpt-5-nano | $0.05 | $0.40 | Cheapest |
+| gpt-4o | $2.50 | $10.00 | Previous gen flagship |
+| gpt-4o-mini | $0.15 | $0.60 | Most cost-effective |
+| o4-mini | $3.00 | $12.00 | Reasoning model |
+
+### Google Gemini Models
+
+| Model | Input | Output | Notes |
+|-------|-------|--------|-------|
+| gemini-2.5-pro | $1.25 | $10.00 | Advanced thinking |
+| gemini-2.5-flash | $0.30 | $2.50 | Best price-performance |
+| gemini-2.5-flash-lite | $0.10 | $0.40 | Ultra fast, cheapest |
+| gemini-2.0-flash | $0.10 | $0.40 | Previous gen |
+
+### Anthropic Claude Models
+
+| Model | Input | Output | Notes |
+|-------|-------|--------|-------|
+| claude-sonnet-4-5 | $3.00 | $15.00 | Best intelligence/speed balance |
+| claude-haiku-4-5 | $1.00 | $5.00 | Fastest Claude |
+| claude-opus-4-1 | $15.00 | $75.00 | Specialized reasoning |
+| claude-sonnet-4 | $3.00 | $15.00 | Previous gen |
+| claude-opus-4 | $15.00 | $75.00 | Previous gen |
+
+### Cost Estimation Examples
+
+```python
+# Typical conversation (~1000 input, ~500 output tokens)
+# gpt-5:           $0.00125 + $0.005 = $0.00625 (~$6.25 per 1000 requests)
+# gemini-2.5-flash: $0.0003 + $0.00125 = $0.00155 (~$1.55 per 1000 requests)
+# claude-sonnet-4-5: $0.003 + $0.0075 = $0.0105 (~$10.50 per 1000 requests)
+
+# With 100K free tokens, you can make approximately:
+# - 66 requests with gpt-5 (1500 tokens each)
+# - 66 requests with gemini-2.5-pro
+# - 66 requests with claude-sonnet-4-5
+```
 
 ### Tool Use Support
 
@@ -199,7 +247,7 @@ tools = [search, calculate]
 
 agent_openai = Agent("assistant", model="gpt-5", tools=tools)
 agent_google = Agent("assistant", model="gemini-2.5-pro", tools=tools)
-agent_claude = Agent("assistant", model="claude-opus-4.1", tools=tools)
+agent_claude = Agent("assistant", model="claude-sonnet-4-5", tools=tools)
 ```
 
 ## Two Ways to Use Models
@@ -219,7 +267,7 @@ from connectonion import Agent
 # Use any model with co/ prefix
 agent = Agent("assistant", model="co/gpt-5")
 agent = Agent("assistant", model="co/gemini-2.5-pro")
-agent = Agent("assistant", model="co/claude-opus-4.1")
+agent = Agent("assistant", model="co/claude-sonnet-4-5")
 ```
 
 **Includes:**
@@ -276,9 +324,9 @@ agent = Agent("assistant", model="claude-opus-4.1")
 **Best Overall Performance**
 ```python
 # Top tier models from each provider
-agent = Agent("assistant", model="gpt-5")           # OpenAI flagship
-agent = Agent("assistant", model="gemini-2.5-pro")  # Google flagship
-agent = Agent("assistant", model="claude-opus-4.1") # Anthropic flagship
+agent = Agent("assistant", model="gpt-5")             # OpenAI flagship
+agent = Agent("assistant", model="gemini-2.5-pro")    # Google flagship
+agent = Agent("assistant", model="claude-sonnet-4-5") # Anthropic flagship
 ```
 
 **Code Generation**
@@ -286,16 +334,16 @@ agent = Agent("assistant", model="claude-opus-4.1") # Anthropic flagship
 # GPT-5 excels at coding and agentic tasks
 agent = Agent("coder", model="gpt-5")
 
-# Alternative: Claude Opus 4.1
-agent = Agent("coder", model="claude-opus-4.1")
+# Alternative: Claude Sonnet 4.5
+agent = Agent("coder", model="claude-sonnet-4-5")
 ```
 
 **Fast Responses**
 ```python
 # Fastest options from each provider
-agent = Agent("quick", model="gpt-5-nano")      # OpenAI fastest
+agent = Agent("quick", model="gpt-5-nano")       # OpenAI fastest
 agent = Agent("quick", model="gemini-1.5-flash") # Google fast
-agent = Agent("quick", model="claude-3-5-haiku") # Anthropic fast
+agent = Agent("quick", model="claude-haiku-4-5") # Anthropic fast
 ```
 
 **Cost-Optimized**
@@ -349,7 +397,7 @@ response = agent_claude.input("Explain quantum computing")
 
 ```python
 # Compare responses from top models (using managed keys)
-models = ["co/gpt-5", "co/gemini-2.5-pro", "co/claude-opus-4.1"]
+models = ["co/gpt-5", "co/gemini-2.5-pro", "co/claude-sonnet-4-5"]
 prompt = "Write a Python implementation of binary search"
 
 for model in models:
@@ -397,7 +445,7 @@ def create_agent_with_fallback(name: str):
     # Priority order
     model_chain = [
         "gpt-5",              # Best overall
-        "claude-opus-4.1",    # Strong alternative
+        "claude-sonnet-4-5",  # Strong alternative
         "gemini-2.5-pro",     # Multimodal option
         "gpt-5-mini",         # Faster fallback
         "gpt-4o"              # Legacy fallback
@@ -487,7 +535,7 @@ def create_robust_agent(name: str, model: str, max_retries: int = 3):
                 alternatives = {
                     "gpt-5": "gpt-5-mini",
                     "gemini-2.5-pro": "gemini-1.5-pro",
-                    "claude-opus-4.1": "claude-opus-4"
+                    "claude-sonnet-4-5": "claude-sonnet-4"
                 }
                 alt_model = alternatives.get(model)
                 if alt_model and attempt == 0:
@@ -522,7 +570,7 @@ agent = Agent("assistant", model="gpt-4o-mini")
 # Any provider, any model
 agent = Agent("assistant", model="gpt-5")
 agent = Agent("assistant", model="gemini-2.5-pro")
-agent = Agent("assistant", model="claude-opus-4.1")
+agent = Agent("assistant", model="claude-sonnet-4-5")
 ```
 
 ### From Direct SDK Usage
@@ -545,7 +593,7 @@ response = client.messages.create(model="claude-3", ...)
 agent = Agent("assistant", model="gpt-5")
 response = agent.input(prompt)
 
-agent = Agent("assistant", model="claude-opus-4.1")
+agent = Agent("assistant", model="claude-sonnet-4-5")
 response = agent.input(prompt)
 ```
 

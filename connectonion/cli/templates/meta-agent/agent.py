@@ -151,7 +151,7 @@ agent = Agent(
         list_todos,
         run_shell
     ],
-    model="co/o4-mini",
+    model="co/gemini-2.5-pro",
     max_iterations=15  # More iterations for complex assistance
 )
 

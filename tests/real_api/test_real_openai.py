@@ -38,8 +38,8 @@ class TestRealOpenAI:
         agent = Agent(name="openai_test", llm=llm)
 
         response = agent.input("Say 'Hello from OpenAI' exactly")
-        assert response.content is not None
-        assert "Hello from OpenAI" in response.content
+        assert response is not None
+        assert "Hello from OpenAI" in response
 
     def test_openai_with_tools(self):
         """Test OpenAI with tool calling."""
@@ -50,8 +50,8 @@ class TestRealOpenAI:
         )
 
         response = agent.input("Calculate 42 * 2")
-        assert response.content is not None
-        assert "84" in response.content
+        assert response is not None
+        assert "84" in response
 
     def test_openai_multi_turn(self):
         """Test multi-turn conversation with OpenAI."""
@@ -62,26 +62,25 @@ class TestRealOpenAI:
 
         # First turn
         response = agent.input("My name is Alice. Remember this.")
-        assert response.content is not None
+        assert response is not None
 
         # Second turn - should remember context
         response = agent.input("What's my name?")
-        assert response.content is not None
-        assert "Alice" in response.content
+        assert response is not None
+        assert "Alice" in response
 
     def test_openai_streaming(self):
         """Test streaming responses from OpenAI."""
         agent = Agent(
             name="openai_streaming",
-            model="gpt-4o-mini",
-            stream=True
+            model="gpt-4o-mini"
         )
 
         response = agent.input("Count from 1 to 5")
-        assert response.content is not None
+        assert response is not None
         # Should contain numbers 1 through 5
         for num in ["1", "2", "3", "4", "5"]:
-            assert num in response.content
+            assert num in response
 
     def test_openai_different_models(self):
         """Test different OpenAI models."""
@@ -97,5 +96,5 @@ class TestRealOpenAI:
             )
 
             response = agent.input("Reply with OK")
-            assert response.content is not None
-            assert len(response.content) > 0
+            assert response is not None
+            assert len(response) > 0

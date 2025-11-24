@@ -330,7 +330,7 @@ class TestSendTaskErrorHandling:
 
         mock_ws = AsyncMock()
         mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock()
+        mock_ws.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
         mock_ws.recv.return_value = json.dumps({
             "type": "ERROR",
             "error": "Agent not found"
@@ -350,7 +350,7 @@ class TestSendTaskErrorHandling:
 
         mock_ws = AsyncMock()
         mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock()
+        mock_ws.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
         mock_ws.recv.return_value = json.dumps({
             "type": "UNKNOWN",
             "data": "something"
@@ -370,7 +370,7 @@ class TestSendTaskErrorHandling:
 
         mock_ws = AsyncMock()
         mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock()
+        mock_ws.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
         mock_ws.recv.return_value = json.dumps({
             "type": "OUTPUT",
             "input_id": "wrong-uuid",
@@ -391,7 +391,7 @@ class TestSendTaskErrorHandling:
 
         mock_ws = AsyncMock()
         mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock()
+        mock_ws.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
         # Simulate timeout by never returning
         mock_ws.recv = AsyncMock(side_effect=asyncio.TimeoutError())
 

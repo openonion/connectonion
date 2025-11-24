@@ -26,6 +26,7 @@ Run all:
 
 import sys
 from pathlib import Path
+import pytest
 
 # Add parent to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -109,6 +110,7 @@ def summarize(analysis: str) -> str:
 # Test 1: Debug with @xray Breakpoints
 # ============================================================================
 
+@pytest.mark.skip(reason="Interactive test - requires terminal. Run manually with: python test_debug_features.py --test breakpoints")
 def test_debug_with_breakpoints():
     """Test post-execution analysis WITH @xray breakpoints."""
     print("\n" + "=" * 70)
@@ -140,6 +142,7 @@ def test_debug_with_breakpoints():
 # Test 2: Debug WITHOUT Breakpoints (Post-Analysis)
 # ============================================================================
 
+@pytest.mark.skip(reason="Interactive test - requires terminal. Run manually with: python test_debug_features.py --test post-analysis")
 def test_debug_without_breakpoints():
     """Test post-execution analysis WITHOUT @xray breakpoints."""
     print("\n" + "=" * 70)
@@ -170,6 +173,7 @@ def test_debug_without_breakpoints():
 # Test 3: Menu Display and Keyboard Shortcuts
 # ============================================================================
 
+@pytest.mark.skip(reason="Interactive test - requires terminal. Run manually with: python test_debug_features.py --test menu")
 def test_menu_display():
     """Test the interactive menu display and keyboard shortcuts."""
     print("\n" + "=" * 70)

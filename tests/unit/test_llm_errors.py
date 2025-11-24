@@ -79,13 +79,12 @@ class TestMissingAPIKeys:
     def test_openonion_missing_api_key_helpful_message(self):
         """Test OpenOnion raises ValueError with helpful message about co init."""
         with patch.dict(os.environ, {}, clear=True):
-            with patch('connectonion.llm.OpenOnionLLM._get_auth_token', return_value=None):
-                with pytest.raises(ValueError) as exc_info:
-                    OpenOnionLLM(model="co/gpt-4o")
+            with pytest.raises(ValueError) as exc_info:
+                OpenOnionLLM(model="co/gpt-4o")
 
-                error_msg = str(exc_info.value)
-                assert "OPENONION_API_KEY not found" in error_msg
-                assert "co init" in error_msg
+            error_msg = str(exc_info.value)
+            assert "OPENONION_API_KEY not found" in error_msg
+            assert "co init" in error_msg
 
 
 class TestUnknownModels:

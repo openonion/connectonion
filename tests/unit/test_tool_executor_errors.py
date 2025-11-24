@@ -171,10 +171,10 @@ class TestToolExecutionExceptions:
 
         tool_map = {"crash": crashing_tool}
 
-        execute_single_tool(
-            tool_name="crash",
-            tool_args={},
-            tool_id="call_789",
+        tool_calls = [ToolCall(id="call_789", name="crash", arguments={})]
+
+        execute_and_record_tools(
+            tool_calls=tool_calls,
             tool_map=tool_map,
             agent=mock_agent,
             console=console
@@ -436,10 +436,10 @@ class TestEventInvocation:
 
         tool_map = {"success": success_tool}
 
-        execute_single_tool(
-            tool_name="success",
-            tool_args={},
-            tool_id="call_after",
+        tool_calls = [ToolCall(id="call_after", name="success", arguments={})]
+
+        execute_and_record_tools(
+            tool_calls=tool_calls,
             tool_map=tool_map,
             agent=mock_agent,
             console=console
@@ -465,20 +465,18 @@ class TestEventInvocation:
 
         tool_map = {"fail": failing_tool}
 
-        execute_single_tool(
-            tool_name="fail",
-            tool_args={},
-            tool_id="call_onerr",
+        tool_calls = [ToolCall(id="call_onerr", name="fail", arguments={})]
+
+        execute_and_record_tools(
+            tool_calls=tool_calls,
             tool_map=tool_map,
             agent=mock_agent,
             console=console
         )
 
-        # Verify on_error was invoked (but not after_tool)
+        # Verify on_error was invoked and after_tool also fires for all executions
         mock_agent._invoke_events.assert_any_call('on_error')
-        # after_tool should NOT be called on error
-        calls = [call[0][0] for call in mock_agent._invoke_events.call_args_list]
-        assert 'on_error' in calls
+        mock_agent._invoke_events.assert_any_call('after_tool')
         # Note: after_tool might still be in calls depending on implementation
 
 

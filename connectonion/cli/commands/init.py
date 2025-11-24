@@ -299,7 +299,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         if keys_to_add:
             # Add global config path and default model comment
             env_content = f"AGENT_CONFIG_PATH={Path.home() / '.co'}\n"
-            env_content += "# Default model: co/o4-mini (managed keys with free credits)\n\n"
+            env_content += "# Default model: co/gemini-2.5-pro (managed keys with free credits)\n\n"
             env_content += '\n'.join(keys_to_add) + '\n'
             env_path.write_text(env_content, encoding='utf-8')
             console.print(f"[green]✓ Saved to {env_path}[/green]")
@@ -380,7 +380,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         },
         "agent": {
             "algorithm": "ed25519",
-            "default_model": "co/o4-mini",  # Use managed model by default
+            "default_model": "co/gemini-2.5-pro",  # Use managed model by default
             "max_iterations": 10,
             "created_at": datetime.now().isoformat(),
         },

@@ -1,0 +1,156 @@
+"""
+DiffWriter - Human-in-the-loop file writing with diff display.
+
+Usage:
+    from connectonion import Agent, DiffWriter
+
+    writer = DiffWriter()
+    agent = Agent("coder", tools=[writer])
+
+    # Agent can now use:
+    # - write(path, content) - Write with diff display and approval
+    # - diff(path, content) - Preview diff without writing
+    # - read(path) - Read file contents
+"""
+
+import difflib
+from pathlib import Path
+
+from rich.console import Console
+from rich.panel import Panel
+from rich.text import Text
+from rich.prompt import Confirm
+
+
+class DiffWriter:
+    """File writer with diff display and human approval."""
+
+    def __init__(self, auto_approve: bool = False):
+        """Initialize DiffWriter.
+
+        Args:
+            auto_approve: If True, skip approval prompts (for automation)
+        """
+        self.auto_approve = auto_approve
+        self._console = Console(stderr=True)
+
+    def write(self, path: str, content: str) -> str:
+        """Write content to a file with diff display and approval.
+
+        Args:
+            path: File path to write to
+            content: Content to write
+
+        Returns:
+            Success message or rejection message
+        """
+        file_path = Path(path)
+
+        if not self.auto_approve:
+            diff_text = self._generate_diff(path, content)
+            if diff_text:
+                self._display_diff(diff_text, path)
+                if not Confirm.ask(f"Apply changes to [bold]{path}[/bold]?", console=self._console):
+                    return f"Changes to {path} rejected by user"
+            else:
+                # New file, show preview
+                self._display_new_file(path, content)
+                if not Confirm.ask(f"Create [bold]{path}[/bold]?", console=self._console):
+                    return f"Creation of {path} rejected by user"
+
+        file_path.parent.mkdir(parents=True, exist_ok=True)
+        file_path.write_text(content, encoding='utf-8')
+        return f"Wrote {len(content)} bytes to {path}"
+
+    def diff(self, path: str, content: str) -> str:
+        """Show diff without writing (preview mode).
+
+        Args:
+            path: File path to compare against
+            content: New content to compare
+
+        Returns:
+            Diff string in unified format
+        """
+        diff_text = self._generate_diff(path, content)
+        if diff_text:
+            self._display_diff(diff_text, path)
+            return diff_text
+        return f"No changes to {path}"
+
+    def read(self, path: str) -> str:
+        """Read file contents.
+
+        Args:
+            path: File path to read
+
+        Returns:
+            File contents or error message
+        """
+        file_path = Path(path)
+        if not file_path.exists():
+            return f"Error: File {path} not found"
+        return file_path.read_text(encoding='utf-8')
+
+    def _generate_diff(self, path: str, new_content: str) -> str:
+        """Generate unified diff between existing file and new content."""
+        file_path = Path(path)
+
+        if file_path.exists():
+            original_lines = file_path.read_text(encoding='utf-8').splitlines(keepends=True)
+        else:
+            return ""  # New file, no diff
+
+        new_lines = new_content.splitlines(keepends=True)
+
+        diff = difflib.unified_diff(
+            original_lines,
+            new_lines,
+            fromfile=f"a/{path}",
+            tofile=f"b/{path}",
+        )
+
+        return ''.join(diff)
+
+    def _display_diff(self, diff_text: str, path: str):
+        """Display colorized diff."""
+        styled = Text()
+
+        for line in diff_text.splitlines():
+            if line.startswith('+++') or line.startswith('---'):
+                styled.append(line + '\n', style="bold white")
+            elif line.startswith('@@'):
+                styled.append(line + '\n', style="cyan")
+            elif line.startswith('+'):
+                styled.append(line + '\n', style="green")
+            elif line.startswith('-'):
+                styled.append(line + '\n', style="red")
+            else:
+                styled.append(line + '\n', style="dim")
+
+        panel = Panel(
+            styled,
+            title=f"[bold yellow]Changes to {path}[/]",
+            border_style="yellow",
+            padding=(0, 1)
+        )
+        self._console.print(panel)
+
+    def _display_new_file(self, path: str, content: str):
+        """Display preview of new file."""
+        styled = Text()
+
+        lines = content.splitlines()
+        for line in lines[:50]:  # Limit preview to 50 lines
+            styled.append(f"+ {line}\n", style="green")
+
+        if len(lines) > 50:
+            styled.append(f"... ({len(lines) - 50} more lines)\n", style="dim")
+
+        panel = Panel(
+            styled,
+            title=f"[bold yellow]New file: {path}[/]",
+            border_style="yellow",
+            padding=(0, 1)
+        )
+        self._console.print(panel)

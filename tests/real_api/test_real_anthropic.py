@@ -34,8 +34,8 @@ class TestRealAnthropic:
         agent = Agent(name="anthropic_test", llm=llm)
 
         response = agent.input("Say 'Hello from Claude' exactly")
-        assert response.content is not None
-        assert "Hello from Claude" in response.content
+        assert response is not None
+        assert "Hello from Claude" in response
 
     def test_anthropic_with_tools(self):
         """Test Anthropic with tool calling."""
@@ -46,8 +46,8 @@ class TestRealAnthropic:
         )
 
         response = agent.input("Process the text 'hello world'")
-        assert response.content is not None
-        assert "HELLO WORLD" in response.content or "processed" in response.content.lower()
+        assert response is not None
+        assert "HELLO WORLD" in response or "processed" in response.lower()
 
     def test_anthropic_multi_turn(self):
         """Test multi-turn conversation with Anthropic."""
@@ -58,12 +58,12 @@ class TestRealAnthropic:
 
         # First turn
         response = agent.input("I'm learning Python. Remember this.")
-        assert response.content is not None
+        assert response is not None
 
         # Second turn - should remember context
         response = agent.input("What programming language am I learning?")
-        assert response.content is not None
-        assert "Python" in response.content
+        assert response is not None
+        assert "Python" in response
 
     def test_anthropic_different_models(self):
         """Test different Anthropic models."""
@@ -83,8 +83,8 @@ class TestRealAnthropic:
             )
 
             response = agent.input("Reply with OK")
-            assert response.content is not None
-            assert len(response.content) > 0
+            assert response is not None
+            assert len(response) > 0
 
     def test_anthropic_system_prompt(self):
         """Test Anthropic with custom system prompt."""
@@ -95,7 +95,7 @@ class TestRealAnthropic:
         )
 
         response = agent.input("Tell me about the weather")
-        assert response.content is not None
+        assert response is not None
         # Check it's attempting haiku format (3 lines, roughly)
-        lines = response.content.strip().split('\n')
+        lines = response.strip().split('\n')
         assert len(lines) >= 1  # At least has content

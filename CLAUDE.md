@@ -4,447 +4,418 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-ConnectOnion is a Python framework for creating AI agents with activity logging. It's designed as an MVP with intentional simplicity, focusing on core agent functionality with OpenAI integration and automatic activity logging to `.co/logs/`.
+ConnectOnion is a Python framework for creating AI agents with automatic activity logging, interactive debugging, and multi-agent collaboration. Philosophy: **"Keep simple things simple, make complicated things possible"** - simple 2-line agent creation, but production-ready with trust verification, event system, and plugin architecture.
 
 ## Architecture
 
 ### Core Components
 
-- **Agent** (`connectonion/agent.py:10`): Main orchestrator that combines LLM calls with tool execution
-- **Tool** (`connectonion/tools.py:9`): Abstract base class for all agent tools with built-in implementations
-- **LLM** (`connectonion/llm.py:31`): Abstract interface with OpenAI implementation
-- **Console** (`connectonion/console.py:15`): Terminal output and file logging
+- **Agent** (`connectonion/agent.py:29`): Main orchestrator with LLM integration, tool execution, event system, and trust verification
+- **LLM** (`connectonion/llm.py:11`): Unified abstraction supporting OpenAI, Anthropic, Gemini, and managed keys via factory pattern
+- **Tool Executor** (`connectonion/tool_executor.py:24`): Executes tools with xray context injection, timing, error handling, and trace recording
+- **Tool Factory** (`connectonion/tool_factory.py`): Converts Python functions to OpenAI-compatible tool schemas automatically
+- **Console** (`connectonion/console.py`): Terminal output and file logging to `.co/logs/` by default
+- **Events** (`connectonion/events.py:11`): Lifecycle hooks (after_user_input, before_llm, after_llm, before_tool, after_tool, on_error)
+- **Trust System** (`connectonion/trust.py:42`): Three-level verification (open/careful/strict) with custom policy support
+- **XRay Debug** (`connectonion/xray.py:32`): Runtime context injection for interactive debugging with `@xray` decorator
 
 ### Key Design Patterns
 
-- **Tool Function Schema**: Tools automatically convert to OpenAI function calling format via `to_function_schema()`
-- **Message Flow**: Agent maintains conversation history with tool results for multi-turn interactions
-- **Automatic Logging**: All agent activities log to `.co/logs/{name}.log` by default (customizable)
-- **Tool Mapping**: Agents maintain internal `tool_map` for O(1) tool lookup during execution
+#### Tool System
+- **Function-based (recommended)**: Regular Python functions auto-convert to tools via type hints and docstrings
+- **Class-based (legacy)**: Inherit from `Tool` base class with explicit schemas
+- Auto-conversion: `create_tool_from_function()` inspects signatures and generates OpenAI schemas
+
+#### Agent Execution Loop (`connectonion/agent.py:input()`)
+1. Initialize/extend session with user input
+2. Fire `after_user_input` event
+3. Loop (max_iterations times):
+   - Fire `before_llm` event
+   - Call LLM with messages and tool schemas
+   - Fire `after_llm` event
+   - If tool_calls: execute via `tool_executor.execute_and_record_tools()`
+   - Fire `before_tool` and `after_tool` events per tool
+   - Add results to messages, continue
+4. Return final response or iteration limit message
+
+#### Multi-LLM Provider Architecture (`connectonion/llm.py`)
+- Factory pattern: `create_llm(model, api_key)` routes to provider classes
+- OpenAI format as lingua franca (all providers convert to/from)
+- Structured output: Each provider uses native API (OpenAI's `parse()`, Anthropic's forced tool calling, Gemini's `response_schema`)
+- Tool calling: Unified `ToolCall` dataclass format across all providers
+
+#### Event System & Plugins (`connectonion/events.py`)
+- Wrapper functions tag handlers with `_event_type` attribute
+- Plugins are lists of event handlers bundled together
+- Handlers receive `agent` instance, can modify `current_session`
+- Built-in plugins: reflection, ReAct, image_result_formatter
+
+#### Trust Verification (`connectonion/trust.py`)
+- Three levels: "open" (dev), "careful" (staging), "strict" (prod)
+- Custom policies: markdown files or inline text describing verification rules
+- Custom agents: Pass your own Agent instance with verification tools
+- Environment-based defaults: `CONNECTONION_ENV` sets trust level automatically
+
+#### XRay Debugging (`connectonion/xray.py`)
+- `@xray` decorator injects context: `xray.agent`, `xray.task`, `xray.messages`, `xray.iteration`
+- `xray.trace()` displays formatted execution history
+- `inject_xray_context()` in `tool_executor.py:24` provides runtime context
+- Enables interactive debugging with `agent.auto_debug()`
 
 ## Development Commands
 
 ### Installation
 ```bash
 pip install -r requirements.txt
+pip install -e .  # Development mode
 ```
 
 ### Testing
 ```bash
-# Run all tests
-python -m pytest tests/
+# Run all tests except real API calls (default)
+python -m pytest
 
-# Run specific test categories with markers
-python -m pytest -m unit          # Unit tests only
-python -m pytest -m integration   # Integration tests only
-python -m pytest -m benchmark     # Performance benchmarks
-python -m pytest -m "not real_api"  # Skip tests requiring API keys
+# Run specific test categories
+python -m pytest tests/unit           # Unit tests (fast, mocked)
+python -m pytest tests/integration    # Integration tests (no external APIs)
+python -m pytest tests/cli            # CLI tests
+python -m pytest tests/e2e            # End-to-end example agent
 
-# Run specific test file
-python -m unittest tests.test_agent
+# Run real API tests (requires keys)
+python -m pytest tests/real_api -m real_api
 
-# Run tests with coverage (if pytest-cov installed)
+# Run with coverage
 python -m pytest --cov=connectonion --cov-report=term-missing
+
+# Run single test file
+python -m pytest tests/unit/test_agent.py
+python -m pytest tests/unit/test_agent.py::test_specific_function
 ```
 
-### Package Installation (Development)
+### CLI Commands
 ```bash
-pip install -e .
+# Create new agent project
+co create my-agent                    # Minimal template (default)
+co create my-bot --template playwright    # Browser automation
+co create emailer --template email-agent  # Email automation
+
+# Available templates: minimal, playwright, email-agent, meta-agent, web-research
+
+# Initialize in existing directory
+co init                               # Add .co folder only
+co init --template minimal           # Add full template
+
+# Authentication (for managed keys)
+co auth login                         # Interactive login
+co auth status                        # Check auth status
+co auth logout                        # Logout
+
+# Browser automation
+co browser                            # Launch browser agent
+
+# Diagnostics
+co doctor                             # Check installation
+co status                             # Show project status
 ```
 
-## Documentation Architecture
-
-### GitHub Wiki (SEO Strategy)
-
-ConnectOnion uses a **nested Git repository** for the GitHub Wiki to gain SEO benefits from GitHub's high domain authority (DA ~95).
-
-**Structure:**
-```
-connectonion/                    # Main repo
-├── .git/                        # Main repo Git
-├── .gitignore                   # Contains: wiki/
-├── src/
-├── docs/
-└── wiki/                        # ← Ignored by main repo
-    ├── .git/                    # ← Wiki repo Git (separate!)
-    ├── Home.md
-    ├── Quick-Start.md
-    ├── Tutorials/
-    ├── How-To/
-    ├── Examples/
-    ├── FAQ.md
-    ├── Troubleshooting.md
-    └── _Sidebar.md
-```
-
-**How It Works:**
-- `wiki/` folder is added to `.gitignore` in main repo
-- Wiki content is a completely separate Git repository cloned inside `wiki/`
-- Each repo has independent history, remotes, and commits
-- No sync scripts needed - each folder IS its own Git repo
-
-**Editing Wiki Content:**
+### Building & Publishing
 ```bash
-cd connectonion/wiki/
-# Edit any wiki page
-vim Quick-Start.md
-# Commit to wiki repo
-git add .
-git commit -m "Update quick start guide"
-git push origin master
+# Build package
+python setup.py sdist bdist_wheel
+
+# Publish to PyPI
+twine upload dist/*
+
+# Version update (see VERSIONING.md)
+# Current: 0.4.1
+# Strategy: increment PATCH (0.4.1 → 0.4.2), roll to MINOR at .10 (0.4.10 → 0.5.0)
 ```
 
-**Working on Main Repo:**
-```bash
-cd connectonion/
-# Edit code
-vim connectonion/agent.py
-# Commit to main repo (wiki/ is ignored!)
-git add .
-git commit -m "Add new feature"
-git push
+## Project Structure
+
 ```
-
-**SEO Benefits:**
-- Multiple SERP entries: main repo + wiki + docs site (https://docs.connectonion.com)
-- Fast indexing (hours vs weeks for new domains)
-- High domain authority from github.com
-- Cross-linking power between wiki and docs site
-- Keyword coverage: 13 pages targeting different search intents
-
-**Wiki URL:** https://github.com/openonion/connectonion/wiki
-
-### Docs Site (Private Repository)
-
-ConnectOnion uses a **nested Git repository** for the documentation website to keep it private during development while maintaining convenience.
-
-**Structure:**
+connectonion/
+├── connectonion/
+│   ├── __init__.py                 # Main exports
+│   ├── agent.py                    # Agent class with event system
+│   ├── llm.py                      # Multi-provider LLM abstraction
+│   ├── tool_executor.py            # Tool execution with xray
+│   ├── tool_factory.py             # Function → tool conversion
+│   ├── console.py                  # Logging and output
+│   ├── events.py                   # Event system
+│   ├── trust.py                    # Trust system coordinator
+│   ├── trust_agents.py             # Trust prompts
+│   ├── trust_functions.py          # Trust verification tools
+│   ├── xray.py                     # XRay debugging
+│   ├── decorators.py               # @replay, @xray_replay
+│   ├── llm_do.py                   # One-shot LLM function
+│   ├── prompts.py                  # Prompt loading utilities
+│   ├── connect.py                  # Multi-agent networking
+│   ├── relay.py                    # Agent relay server
+│   ├── announce.py                 # Service announcement
+│   ├── address.py                  # Agent addressing
+│   ├── auto_debug_exception.py     # Exception debugging
+│   ├── cli/
+│   │   ├── main.py                 # CLI entry point
+│   │   ├── commands/               # CLI command implementations
+│   │   └── templates/              # Agent templates
+│   │       ├── minimal/
+│   │       ├── playwright/
+│   │       ├── email-agent/
+│   │       ├── meta-agent/
+│   │       └── web-research/
+│   ├── useful_tools/               # Built-in tools
+│   │   ├── send_email.py
+│   │   └── get_emails.py
+│   ├── useful_plugins/             # Built-in plugins
+│   │   ├── reflection.py
+│   │   ├── react.py
+│   │   └── image_result_formatter.py
+│   ├── debug_agent/                # Interactive debugger
+│   ├── debug_explainer/            # Debug explanation agent
+│   └── execution_analyzer/         # Execution analysis
+├── tests/
+│   ├── unit/                       # Fast, isolated tests
+│   ├── integration/                # Multi-component tests
+│   ├── real_api/                   # Tests requiring API keys
+│   ├── cli/                        # CLI command tests
+│   └── e2e/                        # End-to-end examples
+├── docs/                           # Markdown documentation
+├── wiki/                           # GitHub Wiki (nested repo)
+├── docs-site/                      # Next.js docs site (nested repo, private)
+├── examples/                       # Example agents
+├── prompts/                        # System prompt templates
+├── setup.py                        # Package configuration
+├── pytest.ini                      # Test configuration
+└── requirements.txt                # Dependencies
 ```
-connectonion/                    # Main repo (public)
-├── .git/                        # Main repo Git
-├── .gitignore                   # Contains: wiki/, docs-site/
-├── src/
-├── docs/
-├── wiki/                        # ← Public wiki (nested repo)
-└── docs-site/                   # ← Private docs site (nested repo)
-    ├── .git/                    # ← Docs site repo Git (separate, private!)
-    ├── app/
-    ├── components/
-    ├── public/
-    ├── package.json
-    └── next.config.ts
-```
-
-**How It Works:**
-- `docs-site/` folder is added to `.gitignore` in main repo
-- Docs site is a completely separate **private** Git repository
-- Each repo has independent history, remotes, and commits
-- No sync scripts needed - each folder IS its own Git repo
-
-**Editing Docs Site:**
-```bash
-cd connectonion/docs-site/
-# Edit any page
-vim app/agent/page.tsx
-# Commit to private docs-site repo
-git add .
-git commit -m "Update agent documentation"
-git push origin main
-```
-
-**Working on Main Repo:**
-```bash
-cd connectonion/
-# Edit code (docs-site/ is ignored!)
-vim connectonion/agent.py
-git add .
-git commit -m "Add new feature"
-git push
-```
-
-**Nested Repos Summary:**
-- Main repo: `connectonion` (public) - Framework code
-- Wiki repo: `connectonion.wiki` (public) - SEO-focused tutorials
-- Docs site repo: `connectonion-docs-site` (private) - Full documentation website
-
-**Docs site URL:** https://docs.connectonion.com
-**Docs site repo:** https://github.com/openonion/connectonion-docs-site (private)
-
-### Nested Repository Verification
-
-**Status: ✅ Verified and Working**
-
-The nested repository architecture is properly configured:
-
-```bash
-# Main repo properly ignores nested repos
-$ git check-ignore -v wiki docs-site
-.gitignore:110:wiki/       wiki
-.gitignore:113:docs-site/  docs-site
-
-# No files from nested repos are tracked
-$ git ls-files | grep -E "^wiki/|^docs-site/"
-(no output - correct!)
-
-# Each nested repo has independent .git directory
-$ ls -d wiki/.git docs-site/.git
-wiki/.git/      docs-site/.git/
-```
-
-**Important:**
-- Never remove `wiki/` or `docs-site/` from main repo's `.gitignore`
-- Each repo pushes to its own remote independently
-- No sync scripts needed - each folder IS its own Git repo
-
-## Tool System Architecture
-
-### Function-Based Tools (Recommended)
-ConnectOnion's primary tool approach converts regular Python functions into agent tools automatically:
-
-```python
-def my_tool(param: str, optional_param: int = 10) -> str:
-    """This docstring becomes the tool description."""
-    return f"Processed {param} with value {optional_param}"
-
-# Auto-conversion via create_tool_from_function()
-agent = Agent("assistant", tools=[my_tool])
-```
-
-The `create_tool_from_function()` utility (`connectonion/tools.py:16`) inspects function signatures and type hints to generate OpenAI-compatible schemas.
-
-### Traditional Tool Classes (Legacy Support)
-Class-based tools inherit from the abstract `Tool` base class and implement `run()` method and parameter schemas.
 
 ## Key Implementation Details
 
-### Agent Execution Loop (`connectonion/agent.py:47`)
-Agents use a controlled iteration loop (max 10) to prevent infinite tool calling. Each iteration:
-1. Calls LLM with current message history and tool schemas
-2. Processes ALL tool calls from the response in parallel
-3. Adds tool results to message history
-4. Continues until no more tool calls or max iterations reached
+### Agent Session Management (`connectonion/agent.py`)
+- `current_session`: Runtime-only context with `messages`, `trace`, `turn`, `iteration`
+- Session persists across turns for multi-turn conversations
+- `tool_map`: O(1) tool lookup by name
+- Default model: `co/o4-mini` (managed keys via OpenOnion proxy)
 
-### Function Tool Auto-Conversion (`connectonion/tools.py:16`)
-The `create_tool_from_function()` utility:
-- Inspects function signatures using `inspect.signature()`
-- Maps Python types to JSON Schema types via `TYPE_MAP`
-- Generates OpenAI-compatible function schemas
-- Attaches `.name`, `.description`, `.run()`, and `.to_function_schema()` attributes
+### LLM Provider Routing (`connectonion/llm.py:create_llm()`)
+- Model prefix determines provider:
+  - `gpt-*` → OpenAI
+  - `claude-*` or `anthropic.*` → Anthropic
+  - `gemini-*` or `models/gemini-*` → Google
+  - `co/*` → OpenOnion managed keys (OpenAI proxy)
+- API keys from environment or parameter
+- Structured output via provider-native APIs
 
-### Tool Call Logging (`connectonion/console.py:45`)
-Every tool execution is logged with:
-- Timestamp and parameters passed to the tool
-- Results (success/error/not_found status)
-- Execution timing
-- Complete activity log in `.co/logs/{name}.log` (default) or custom location
+### Tool Execution Flow (`connectonion/tool_executor.py`)
+1. Add assistant message with tool_calls to session
+2. For each tool:
+   - `inject_xray_context()` provides runtime context
+   - Execute tool function with arguments
+   - Record timing and result in trace
+   - Clear xray context
+   - Add tool result message
+3. Fire `before_tool` and `after_tool` events
+4. Handle errors: capture in trace, return to LLM for retry
 
-### Error Handling
-Tool errors are captured and passed back to the LLM as tool responses, allowing the agent to adapt or retry. Missing tools return "not_found" status.
+### Trust Verification (`connectonion/trust.py`)
+- Environment defaults: `CONNECTONION_ENV=development` → trust="open"
+- Custom policies loaded from markdown files or inline strings
+- Trust agent created lazily when trust parameter provided
+- Prevents infinite recursion: trust agents don't have their own trust agents
 
-### OpenAI Integration (`connectonion/llm.py:51`)
-Uses OpenAI's function calling with proper message formatting:
-- Assistant messages include all tool_calls
-- Individual tool responses use tool_call_id for correlation
-- Supports multi-turn conversations with tool context
+### XRay Context Injection (`connectonion/xray.py`)
+- Stores context in `builtins.xray` global object
+- Thread-safe via thread-local storage
+- Tools access: `xray.agent`, `xray.task`, `xray.messages`, `xray.iteration`, `xray.previous_tools`
+- `xray.trace()` displays Rich-formatted execution history
 
-## Design Considerations
+### Logging System (`connectonion/console.py`)
+- Default: `.co/logs/{agent_name}.log` (automatic audit trail)
+- Override: `log=True` (current dir), `log=False` (disabled), `log="path/to/file.log"` (custom)
+- Environment variable: `CONNECTONION_LOG` (highest priority)
+- Logs: timestamps, user input, LLM calls with timing, tool executions, results
 
-- **Page Design Approach**: 
-  - For each page, we should customize the design based on the specific document content
-  - We will not use the same template for all docs
-- **Doc Site Page Feature Design**:
-  - For each feature of doc site page, we should according to content to design the page
-  - All pages should have a button to copy all content in markdown format, so users can easily send to their AI platform
-- **Doc Website UI Considerations**:
-  - The doc website UI should always be one single column for user easy to read
+## Test Organization
 
-## Collaboration Guidelines
+### Folder Structure (see `tests/TEST_ORGANIZATION.md`)
+- `tests/unit/` - One test file per source file, mocked dependencies, fast (<1s)
+- `tests/integration/` - Multi-component tests, no external APIs, medium speed
+- `tests/real_api/` - Actual API calls, requires keys, slow (5-30s), costs money
+- `tests/cli/` - CLI command tests, file system operations
+- `tests/e2e/` - Complete example agent (living documentation)
 
-- When discussing the new design of the agent/features:
-  - Always show how the user experience looks like first
-  - Discuss the UX details before making any code updates
-  - Only proceed with code updates after user agreement on the UX design
+### Running Tests
+```bash
+# Fast feedback loop (unit + integration only)
+pytest -m "not real_api"
 
-## Common Errors and Troubleshooting
+# Test specific module
+pytest tests/unit/test_agent.py
 
-### Frontend Parsing Errors
-- When using JSX/TSX, be careful with special characters like `>` in template literals or code snippets
-  - Use `&gt;` or `{'>'}` instead of raw `>` to avoid parsing errors in `./app/xray/page.tsx`
-  - Specifically for code display, ensure proper escaping of special characters
-  - Example error source: Unexpected token parsing near code display blocks with unescaped `>` symbol
+# Real API tests (set API keys first)
+export OPENAI_API_KEY=sk-...
+pytest tests/real_api/test_real_openai.py -m real_api
 
-## Documentation Guidelines
+# All tests except real API (default, for CI)
+pytest
+```
 
-- When in the doc site introduce features, it always should start from core simple examples to add more things to it, think about a world-class tutorial, make it perfect
-  - Focus on building tutorials that progressively introduce complexity
-  - Start with the most minimal, straightforward use case
-  - Gradually build up to more advanced scenarios
-  - Ensure each step is clear, concise, and builds upon previous knowledge
+### Test Markers
+- `@pytest.mark.unit` - Unit tests
+- `@pytest.mark.integration` - Integration tests
+- `@pytest.mark.real_api` - Requires API keys
+- `@pytest.mark.cli` - CLI tests
+- `@pytest.mark.slow` - Takes >10 seconds
+- `@pytest.mark.network` - Requires network/relay
+
+## Documentation Architecture
+
+### Three-Layer Strategy
+1. **GitHub Wiki** (public, SEO-focused): Nested repo at `wiki/`, targets search keywords
+2. **Docs Website** (private during dev): Nested repo at `docs-site/`, Next.js site at https://docs.connectonion.com
+3. **Main Repo Docs** (public): Markdown files in `docs/` folder
+
+### Nested Repository Pattern
+Both wiki and docs-site are separate Git repositories inside the main repo:
+
+```bash
+# Wiki editing (public)
+cd wiki/
+git add .
+git commit -m "Update tutorial"
+git push origin master
+
+# Docs site editing (private)
+cd docs-site/
+git add .
+git commit -m "Update agent page"
+git push origin main
+
+# Main repo (ignores both)
+cd connectonion/
+git add .
+git commit -m "Add feature"
+git push
+```
+
+**Important:** Both `wiki/` and `docs-site/` are in `.gitignore` - they are independent repos.
+
+### Documentation Guidelines
+- Start with minimal examples, progressively add complexity
+- Show real working code with actual output
+- One concept per page (progressive disclosure)
+- Mobile-friendly, scannable structure
+- Command blocks use `CommandBlock` component (no $ in copy text)
+- Each page has "copy all as markdown" button
+
+## Common Development Tasks
+
+### Adding a New Tool
+1. Write function with type hints and docstring
+2. Pass to Agent: `agent = Agent("name", tools=[my_tool])`
+3. Tool auto-converts via `create_tool_from_function()`
+
+### Adding a New Event Handler
+1. Import wrapper: `from connectonion import after_tool`
+2. Define handler: `def my_handler(agent): ...`
+3. Register: `agent = Agent("name", on_events=[after_tool(my_handler)])`
+
+### Creating a Plugin
+1. Define event handlers
+2. Bundle in list: `my_plugin = [after_tool(handler1), before_llm(handler2)]`
+3. Use: `agent = Agent("name", plugins=[my_plugin])`
+
+### Adding a CLI Command
+1. Create command in `connectonion/cli/commands/`
+2. Import in `connectonion/cli/main.py`
+3. Add to CLI group with `@cli.command()`
+
+### Adding a CLI Template
+1. Create folder in `connectonion/cli/templates/{template-name}/`
+2. Add `agent.py`, `.env.example`, prompt files
+3. Update `setup.py` package_data to include template files
+4. Test: `co create test-project --template {template-name}`
+
+### Adding LLM Provider Support
+1. Implement class inheriting from `LLM` in `connectonion/llm.py`
+2. Implement `complete()` and `structured_complete()` methods
+3. Add routing logic to `create_llm()` factory function
+4. Add tests in `tests/real_api/test_real_{provider}.py`
 
 ## Version Numbering Strategy
 
-**Version Strategy: Now in Production (0.0.4)**
-- Current production version: 0.0.4
-- Follow semantic versioning: increment PATCH by 1 until 10, then roll to MINOR
-- See VERSIONING.md for detailed versioning rules and update checklist
+**Current Version:** 0.4.1 (Production Ready)
 
-### Command Block UI Pattern
+**Strategy:** Semantic versioning with specific rollover rules
+- Increment PATCH: 0.4.1 → 0.4.2 → ... → 0.4.9
+- At .10, roll to MINOR: 0.4.10 → 0.5.0
+- At .10.0, roll to MAJOR: 0.10.0 → 1.0.0
 
-When displaying terminal commands in the documentation site:
+**Update Checklist:** See `VERSIONING.md` for complete steps (update `setup.py`, `__init__.py`, create git tag, update CHANGELOG.md)
 
-1. **Use the CommandBlock component** (`docs-site/components/CommandBlock.tsx`) for all terminal commands
-2. **Never include $ signs in the copyable text** - the $ sign should be displayed visually but marked as `select-none`
-3. **Implementation pattern**:
-   ```tsx
-   import { CommandBlock } from '../../components/CommandBlock'
-   
-   // Single command
-   <CommandBlock commands={['pip install connectonion']} />
-   
-   // Multiple commands
-   <CommandBlock 
-     commands={[
-       'mkdir my-project',
-       'cd my-project',
-       'co init'
-     ]}
-   />
-   ```
+## Philosophy & Principles
 
-4. **Visual design**:
-   - $ signs are displayed in gray (`text-gray-500`) and non-selectable (`select-none`)
-   - Commands have hover effect (`hover:bg-white/5`) to show interactivity
-   - Copy button copies all commands without $ signs, joined with newlines
-   - Shows green checkmark when successfully copied
+### Core Philosophy
+**"Keep simple things simple, make complicated things possible"**
+- Simple: 2-line agent creation (`Agent("name").input("query")`)
+- Complicated: Trust verification, multi-agent networking, custom LLM providers, plugin system
 
-5. **User benefits**:
-   - Users can click copy button to get clean commands ready for terminal
-   - Manual text selection won't accidentally grab $ signs
-   - Multi-line commands are properly formatted for pasting
+### Design Principles
+1. **Function as Primitive**: Everything is a function (agents, tools, trust, events)
+2. **The 100-Line Test**: If a feature needs >100 lines, it's too complex
+3. **Behavior Over Identity**: Trust earned through action, not authority
+4. **Simplicity Enables Robustness**: Complex systems are fragile
 
-## Core Beliefs and Process Guidelines
+### Code Quality Standards
+- **Single responsibility** per function/class
+- **Avoid premature abstractions** - wait until you need it 3 times
+- **No clever tricks** - choose the boring solution
+- **Explicit over implicit** - clear data flow and dependencies
+- **Test behavior, not implementation**
 
-### Core Beliefs
-- Incremental progress over big bangs - Small changes that compile and pass tests
-- Learning from existing code - Study and plan before implementing
-- Pragmatic over dogmatic - Adapt to project reality
-- Clear intent over clever code - Be boring and obvious
+### Error Handling Philosophy
+- **Fail fast** with descriptive messages
+- **Include context** for debugging
+- **Let errors bubble** to agent for retry
+- **Never silently swallow exceptions**
+- **No try-except-pass** unless explicitly required
 
-### Simplicity Means
-- Single responsibility per function/class
-- Avoid premature abstractions
-- No clever tricks - choose the boring solution
-- If you need to explain it, it's too complex
+### Process Guidelines
+1. **Planning**: Break complex work into 3-5 stages in IMPLEMENTATION_PLAN.md
+2. **Implementation**: Test first (red) → Minimal code (green) → Refactor → Commit
+3. **When Stuck**: Max 3 attempts, then document failures and try different approach
+4. **Definition of Done**: Tests pass, follows conventions, no TODOs, documentation updated
 
-### Process
-1. **Planning & Staging**
-   - Break complex work into 3-5 stages
-   - Document in IMPLEMENTATION_PLAN.md with clear goals, success criteria, and tests
-   - Update status as progress is made
-   - Remove file when all stages are complete
+## Important Reminders
 
-2. **Implementation Flow**
-   - Understand - Study existing patterns in codebase
-   - Test - Write test first (red)
-   - Implement - Minimal code to pass (green)
-   - Refactor - Clean up with tests passing
-   - Commit - With clear message linking to plan
-
-3. **When Stuck (After 3 Attempts)**
-   - CRITICAL: Maximum 3 attempts per issue, then STOP
-   - Document failures:
-     * What was tried
-     * Specific error messages
-     * Hypothesized failure reasons
-   - Research alternatives:
-     * Find 2-3 similar implementations
-     * Note different approaches
-   - Question fundamentals:
-     * Is this the right abstraction level?
-     * Can this be split into smaller problems?
-     * Is there a simpler approach?
-   - Try different angles:
-     * Different library/framework feature?
-     * Different architectural pattern?
-     * Remove abstraction instead of adding?
-
-### Technical Standards
-#### Architecture Principles
-- Composition over inheritance - Use dependency injection
-- Interfaces over singletons - Enable testing and flexibility
-- Explicit over implicit - Clear data flow and dependencies
-- Test-driven when possible - Never disable tests, fix them
-
-#### Code Quality
-- Every commit must:
-  * Compile successfully
-  * Pass all existing tests
-  * Include tests for new functionality
-  * Follow project formatting/linting
-- Before committing:
-  * Run formatters/linters
-  * Self-review changes
-  * Ensure commit message explains "why"
-
-#### Error Handling
-- Fail fast with descriptive messages
-- Include context for debugging
-- Handle errors at appropriate level
-- Never silently swallow exceptions
-
-### Decision Framework
-When multiple valid approaches exist, choose based on:
-- Testability - Can I easily test this?
-- Readability - Will someone understand this in 6 months?
-- Consistency - Does this match project patterns?
-- Simplicity - Is this the simplest solution that works?
-- Reversibility - How hard to change later?
-
-### Project Integration
-#### Learning the Codebase
-- Find 3 similar features/components
-- Identify common patterns and conventions
-- Use same libraries/utilities when possible
-- Follow existing test patterns
-
-#### Tooling
-- Use project's existing build system
-- Use project's test framework
-- Use project's formatter/linter settings
-- Don't introduce new tools without strong justification
-
-### Quality Gates
-#### Definition of Done
-- Tests written and passing
-- Code follows project conventions
-- No linter/formatter warnings
-- Commit messages are clear
-- Implementation matches plan
-- No TODOs without issue numbers
-- **Documentation updated** (Wiki + Docs Website) for user-facing features
-
-#### Test Guidelines
-- Test behavior, not implementation
-- One assertion per test when possible
-- Clear test names describing scenario
-- Use existing test utilities/helpers
-- Tests should be deterministic
-
-### Important Reminders
-#### NEVER
-- Use --no-verify to bypass commit hooks
+### NEVER
+- Use `--no-verify` to bypass commit hooks
 - Disable tests instead of fixing them
 - Commit code that doesn't compile
-- Make assumptions - verify with existing code
+- Add try-except-pass without explicit requirement
+- Use utils.py or helper.py (keep helpers with features)
 
-#### ALWAYS
+### ALWAYS
 - Commit working code incrementally
-- Update plan documentation as you go
-- Learn from existing implementations
-- Stop after 3 failed attempts and reassess
-- **Remind user to update documentation** after completing user-facing features:
-  * GitHub Wiki (public, SEO-optimized): `wiki/` directory
-  * Docs Website (private): `docs-site/` directory
-  * Both are separate Git repos - cd and commit/push independently
-- for the UI, always remember that:
-Each code block, the left side is the code, and the right side is after running the code block. What's the result it will be?So basically, a left side called right side running result.
+- Let programs crash to see errors (avoid try-except)
+- Keep functions under 30 lines when possible
+- Use existing test patterns from codebase
+- Remind user to update documentation for user-facing features:
+  - GitHub Wiki: `cd wiki/ && git commit && git push`
+  - Docs Website: `cd docs-site/ && git commit && git push`
+  - Main docs: `docs/` folder
+
+### Code Organization Preferences
+- Avoid `utils.py` - keep helper functions with their features
+- Default model for agents: `co/o4-mini` (production), `o4-mini` (testing)
+- No co-authoring with Claude Code in commit messages
+- Function-based tools over class-based tools
+- Events/plugins over subclassing Agent
+
+## Community & Support
+
+- **Documentation**: https://docs.connectonion.com
+- **Discord**: https://discord.gg/4xfD9k8AUF
+- **GitHub**: https://github.com/openonion/connectonion
+- **PyPI**: https://pypi.org/project/connectonion/

@@ -170,23 +170,117 @@ Example log output:
 
 ## LLM
 
-Abstract base class for language models.
+Abstract base class for language models. ConnectOnion supports multiple LLM providers through a unified interface.
+
+### Model Routing
+
+The `create_llm()` factory function routes models to the appropriate provider:
+
+```python
+from connectonion.llm import create_llm
+
+# OpenAI models
+llm = create_llm("gpt-4o-mini")      # → OpenAILLM
+llm = create_llm("o4-mini")          # → OpenAILLM
+
+# Anthropic models
+llm = create_llm("claude-3-5-sonnet") # → AnthropicLLM
+
+# Google Gemini models
+llm = create_llm("gemini-2.5-flash")  # → GeminiLLM
+
+# ConnectOnion managed keys (co/ prefix)
+llm = create_llm("co/gpt-4o-mini")    # → OpenOnionLLM
+llm = create_llm("co/gemini-2.5-flash") # → OpenOnionLLM
+```
+
+### co/ Models (Managed Keys)
+
+Models prefixed with `co/` use ConnectOnion's managed API keys through the OpenOnion proxy:
+
+```python
+from connectonion import Agent
+
+# Uses OpenOnion managed keys - no API key needed
+agent = Agent(name="bot", model="co/gemini-2.5-flash")
+```
+
+**How it works:**
+1. Client detects `co/` prefix → routes to `OpenOnionLLM`
+2. Prefix is stripped before sending to server
+3. Server routes to appropriate provider (OpenAI, Anthropic, Gemini)
+4. Response returned in OpenAI-compatible format
+
+**Available co/ models:**
+- `co/gpt-4o-mini`, `co/gpt-4o`, `co/gpt-5`, `co/gpt-5-mini`, `co/gpt-5-nano`, `co/o4-mini`
+- `co/gemini-2.5-pro`, `co/gemini-2.5-flash`, `co/gemini-2.5-flash-lite`, `co/gemini-2.0-flash`
+
+**Environment variable:** `OPENONION_API_KEY` (auto-loaded from `.env`)
 
 ### OpenAILLM
 
-Default implementation using OpenAI's API.
+OpenAI API implementation.
 
 ```python
 from connectonion.llm import OpenAILLM
 
 llm = OpenAILLM(
-    api_key="your-key",
-    model="gpt-4",
+    api_key="your-key",  # or OPENAI_API_KEY env var
+    model="gpt-4o-mini",
     temperature=0.7
 )
 
 agent = Agent("bot", llm=llm)
 ```
+
+### AnthropicLLM
+
+Anthropic Claude API implementation.
+
+```python
+from connectonion.llm import AnthropicLLM
+
+llm = AnthropicLLM(
+    api_key="your-key",  # or ANTHROPIC_API_KEY env var
+    model="claude-3-5-sonnet-20241022"
+)
+
+agent = Agent("bot", llm=llm)
+```
+
+### GeminiLLM
+
+Google Gemini API implementation (uses OpenAI-compatible endpoint).
+
+```python
+from connectonion.llm import GeminiLLM
+
+llm = GeminiLLM(
+    api_key="your-key",  # or GEMINI_API_KEY env var
+    model="gemini-2.5-flash"
+)
+
+agent = Agent("bot", llm=llm)
+```
+
+### OpenOnionLLM
+
+ConnectOnion managed keys implementation.
+
+```python
+from connectonion.llm import OpenOnionLLM
+
+llm = OpenOnionLLM(
+    api_key="your-token",  # or OPENONION_API_KEY env var
+    model="co/gemini-2.5-flash"
+)
+
+agent = Agent("bot", llm=llm)
+```
+
+**Base URLs:**
+- Production: `https://oo.openonion.ai/v1`
+- Development: `http://localhost:8000/v1` (when `ENVIRONMENT=development`)
 
 ## Prompts Module
 

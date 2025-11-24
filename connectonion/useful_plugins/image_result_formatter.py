@@ -51,11 +51,17 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
 
 def _format_image_result(agent: 'Agent') -> None:
     """
-    Format base64 image in tool result to proper image message format.
+    Format base64 image in tool result to proper multimodal message format.
 
     When a tool returns base64 image data, this converts the tool message
-    to use image format instead of text, so the LLM can properly see and
+    to multimodal format (text + image) so the LLM can properly see and
     analyze the image visually.
+
+    Uses OpenAI vision format:
+    content: [
+        {"type": "text", "text": "Tool 'tool_name' returned an image. See below."},
+        {"type": "image_url", "image_url": "data:image/png;base64,..."}
+    ]
     """
     trace = agent.current_session['trace'][-1]
 
@@ -63,7 +69,8 @@ def _format_image_result(agent: 'Agent') -> None:
         return
 
     result = trace['result']
-    tool_call_id = trace.get('tool_call_id')
+    tool_call_id = trace.get('call_id')  # Fixed: trace uses 'call_id' not 'tool_call_id'
+    tool_name = trace.get('tool_name', 'unknown')
 
     # Check if result contains base64 image
     is_image, mime_type, base64_data = _is_base64_image(result)
@@ -71,26 +78,39 @@ def _format_image_result(agent: 'Agent') -> None:
     if not is_image:
         return
 
-    # Find the tool result message and convert it to image format
+    # Find the tool result message and modify it
+    # Keep tool message with shortened text + insert user message with image
+    # This works around OpenAI's requirement (tool_calls must have tool responses)
+    # while also providing image in user message (only format that supports images)
     messages = agent.current_session['messages']
 
     for i in range(len(messages) - 1, -1, -1):
         msg = messages[i]
 
         if msg['role'] == 'tool' and msg.get('tool_call_id') == tool_call_id:
-            # Convert to image message format
-            # Using OpenAI's format (works with most providers via LiteLLM)
-            messages[i]['content'] = [
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": f"data:{mime_type};base64,{base64_data}"
-                    }
-                }
-            ]
+            # Shorten the tool message content (remove base64 to save tokens)
+            messages[i]['content'] = f"Screenshot captured (image provided below)"
 
-            agent.console.print(f"[dim]🖼️  Formatted tool result as image ({mime_type})[/dim]")
+            # Insert a user message with the image right after the tool message
+            messages.insert(i + 1, {
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": f"Tool '{tool_name}' returned an image result. See image below."
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime_type};base64,{base64_data}"}
+                    }
+                ]
+            })
+
+            agent.console.print(f"[dim]🖼️  Formatted '{tool_name}' result as image[/dim]")
             break
+
+    # Update trace result to short message (avoids token overflow in other plugins like ReAct)
+    trace['result'] = f"🖼️ Tool '{tool_name}' returned image ({mime_type})"
 
 
 # Plugin is an event list

@@ -162,8 +162,14 @@ class Agent:
             event_func: Event handler wrapped with after_llm(), after_tool(), etc.
 
         Raises:
+            TypeError: If event handler is not callable
             ValueError: If event handler missing _event_type or invalid event type
         """
+        # First check if it's callable (type validation)
+        if not callable(event_func):
+            raise TypeError(f"Event must be callable, got {type(event_func).__name__}")
+
+        # Then check if it has _event_type attribute (wrapper validation)
         event_type = getattr(event_func, '_event_type', None)
         if not event_type:
             func_name = getattr(event_func, '__name__', str(event_func))
@@ -172,6 +178,7 @@ class Agent:
                 f"Did you forget to wrap it? Use after_llm({func_name}), etc."
             )
 
+        # Finally check if it's a valid event type (value validation)
         if event_type not in self.events:
             raise ValueError(f"Invalid event type: {event_type}")
 

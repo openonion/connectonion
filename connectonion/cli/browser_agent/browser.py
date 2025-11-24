@@ -233,7 +233,7 @@ def execute_browser_command(command: str) -> str:
     browser = BrowserAutomation()
     agent = Agent(
         name="browser_cli",
-        model="co/o4-mini",
+        model="co/gemini-2.5-pro",
         api_key=api_key,
         system_prompt=PROMPT_PATH,
         tools=[browser],

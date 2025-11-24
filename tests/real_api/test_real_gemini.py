@@ -36,8 +36,8 @@ class TestRealGemini:
         agent = Agent(name="gemini_test", llm=llm)
 
         response = agent.input("Say 'Hello from Gemini' exactly")
-        assert response.content is not None
-        assert "Hello from Gemini" in response.content
+        assert response is not None
+        assert "Hello from Gemini" in response
 
     def test_gemini_with_tools(self):
         """Test Gemini with tool calling."""
@@ -48,8 +48,8 @@ class TestRealGemini:
         )
 
         response = agent.input("Count the words in 'The quick brown fox'")
-        assert response.content is not None
-        assert "4" in response.content or "four" in response.content.lower()
+        assert response is not None
+        assert "4" in response or "four" in response.lower()
 
     def test_gemini_multi_turn(self):
         """Test multi-turn conversation with Gemini."""
@@ -60,12 +60,12 @@ class TestRealGemini:
 
         # First turn
         response = agent.input("My favorite color is blue. Remember this.")
-        assert response.content is not None
+        assert response is not None
 
         # Second turn - should remember context
         response = agent.input("What's my favorite color?")
-        assert response.content is not None
-        assert "blue" in response.content.lower()
+        assert response is not None
+        assert "blue" in response.lower()
 
     def test_gemini_different_models(self):
         """Test different Gemini models."""
@@ -82,8 +82,8 @@ class TestRealGemini:
             )
 
             response = agent.input("Reply with OK")
-            assert response.content is not None
-            assert len(response.content) > 0
+            assert response is not None
+            assert len(response) > 0
 
     def test_gemini_system_prompt(self):
         """Test Gemini with custom system prompt."""
@@ -94,5 +94,5 @@ class TestRealGemini:
         )
 
         response = agent.input("What is 2 + 2?")
-        assert response.content is not None
-        assert "4" in response.content or "four" in response.content.lower()
+        assert response is not None
+        assert "4" in response or "four" in response.lower()

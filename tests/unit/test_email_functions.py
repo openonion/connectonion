@@ -61,6 +61,7 @@ def test_send_email_not_activated(mock_post):
     assert "Email not activated" in result["error"]
 
 
+@patch.dict('os.environ', {}, clear=True)
 def test_send_email_no_project():
     """Test email sending when missing OPENONION_API_KEY."""
     result = send_email("test@example.com", "Test", "Message")
@@ -155,6 +156,7 @@ def test_get_emails_unread_only(mock_get):
     assert call_args[1]["params"]["unread_only"] is True
 
 
+@patch.dict('os.environ', {}, clear=True)
 def test_get_emails_no_project():
     """Test getting emails without OPENONION_API_KEY."""
     with pytest.raises(ValueError) as exc:
@@ -199,6 +201,7 @@ def test_mark_read_multiple(mock_post):
     assert result is True
 
 
+@patch.dict('os.environ', {}, clear=True)
 def test_mark_read_no_project():
     with pytest.raises(ValueError) as exc:
         mark_read("msg_123")

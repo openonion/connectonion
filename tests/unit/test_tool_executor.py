@@ -10,6 +10,10 @@ class FakeAgent:
     def __init__(self):
         self.current_session = {"messages": [], "trace": [], "iteration": 1}
 
+    def _invoke_events(self, event_type: str):
+        """Stub for event invocation - no-op in test."""
+        pass
+
 
 class TestToolExecutor:
     """Test minimal path of tool execution utility."""

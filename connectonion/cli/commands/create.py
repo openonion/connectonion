@@ -77,7 +77,7 @@ def ensure_global_config() -> Dict[str, Any]:
         },
         "agent": {
             "algorithm": "ed25519",
-            "default_model": "co/o4-mini",
+            "default_model": "co/gemini-2.5-pro",
             "max_iterations": 10,
             "created_at": datetime.now().isoformat(),
         },
@@ -393,7 +393,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         },
         "agent": {
             "algorithm": "ed25519",
-            "default_model": "co/o4-mini",  # Default to managed keys
+            "default_model": "co/gemini-2.5-pro",  # Default to managed keys
             "max_iterations": 10,
             "created_at": datetime.now().isoformat(),
         },
@@ -418,7 +418,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         if "AGENT_CONFIG_PATH=" not in env_content:
             lines_to_add.append(f"AGENT_CONFIG_PATH={Path.home() / '.co'}\n")
         if "# Default model:" not in env_content:
-            lines_to_add.append("# Default model: co/o4-mini (managed keys with free credits)\n")
+            lines_to_add.append("# Default model: co/gemini-2.5-pro (managed keys with free credits)\n")
 
         if lines_to_add:
             # Add blank line after comments if we're adding any
@@ -428,7 +428,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         # Fallback - create minimal .env with detected keys
         env_lines = [
             f"AGENT_CONFIG_PATH={Path.home() / '.co'}",
-            "# Default model: co/o4-mini (managed keys with free credits)",
+            "# Default model: co/gemini-2.5-pro (managed keys with free credits)",
             "",
         ]
 
