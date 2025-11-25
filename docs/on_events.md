@@ -60,6 +60,10 @@ def my_event(agent):
     agent.current_session['turn']      # Current turn number
     agent.current_session['user_prompt'] # Current user input
 
+    # Only in before_tool events:
+    agent.current_session['pending_tool']  # Tool about to execute
+    # {'name': 'bash', 'arguments': {'command': 'ls'}, 'id': 'call_123'}
+
     # Modify the agent:
     agent.current_session['messages'].append({
         'role': 'system',
@@ -108,6 +112,46 @@ def my_event(agent):
 ---
 
 ## Examples
+
+### Approve Dangerous Commands (before_tool)
+
+Use `before_tool` to intercept and approve tool calls before execution:
+
+```python
+from connectonion import Agent, before_tool
+
+def approve_dangerous_commands(agent):
+    """Ask for approval before dangerous bash commands"""
+    pending = agent.current_session.get('pending_tool')
+    if not pending:
+        return
+
+    # Only check bash commands
+    if pending['name'] != 'bash':
+        return
+
+    command = pending['arguments'].get('command', '')
+
+    # Check for dangerous patterns
+    if 'rm ' in command or 'sudo ' in command:
+        print(f"\n⚠️ Dangerous command: {command}")
+        response = input("Execute? (y/N): ")
+        if response.lower() != 'y':
+            raise ValueError("Command rejected by user")
+
+agent = Agent(
+    "assistant",
+    tools=[bash],
+    on_events=[before_tool(approve_dangerous_commands)]
+)
+```
+
+**Note:** `pending_tool` is only available during `before_tool` events. It contains:
+- `name`: Tool name (e.g., "bash")
+- `arguments`: Tool arguments (e.g., `{'command': 'rm -rf /tmp'}`)
+- `id`: Tool call ID
+
+---
 
 ### Add Context Once Per Turn
 

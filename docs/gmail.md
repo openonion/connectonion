@@ -22,6 +22,8 @@ co auth google
 
 Your agent can now read and manage Gmail.
 
+**Switch accounts?** Run `co auth google` again to connect a different Google account.
+
 ## Agent Methods
 
 ### Reading

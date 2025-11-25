@@ -51,7 +51,10 @@ class Shell:
         if result.returncode != 0:
             parts.append(f"\nExit code: {result.returncode}")
 
-        return "\n".join(parts) if parts else "(no output)"
+        output = "\n".join(parts) if parts else "(no output)"
+        if len(output) > 1000:
+            output = output[:1000] + f"\n... (truncated, {len(output):,} total chars)"
+        return output
 
     def run_in_dir(self, command: str, directory: str) -> str:
         """Execute command in a specific directory.
@@ -79,4 +82,7 @@ class Shell:
         if result.returncode != 0:
             parts.append(f"\nExit code: {result.returncode}")
 
-        return "\n".join(parts) if parts else "(no output)"
+        output = "\n".join(parts) if parts else "(no output)"
+        if len(output) > 1000:
+            output = output[:1000] + f"\n... (truncated, {len(output):,} total chars)"
+        return output

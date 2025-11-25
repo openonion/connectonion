@@ -81,15 +81,25 @@ def before_tool(func: EventHandler) -> EventHandler:
     Wrapper for before_tool events.
 
     Fires before each tool execution.
-    Use for: validating arguments, logging.
+    Use for: validating arguments, approval prompts, logging.
+
+    Access pending tool via agent.current_session['pending_tool']:
+        - name: Tool name (e.g., "bash")
+        - arguments: Tool arguments dict
+        - id: Tool call ID
+
+    Raise an exception to cancel the tool execution.
 
     Example:
-        def validate_tool_args(agent: Agent) -> None:
-            trace = agent.current_session['trace'][-1]
-            # Validate tool arguments
-            pass
+        def approve_dangerous(agent: Agent) -> None:
+            pending = agent.current_session.get('pending_tool')
+            if pending and pending['name'] == 'bash':
+                cmd = pending['arguments'].get('command', '')
+                if 'rm ' in cmd:
+                    if input("Execute? (y/N): ").lower() != 'y':
+                        raise ValueError("Rejected by user")
 
-        agent = Agent("assistant", on_events=[before_tool(validate_tool_args)])
+        agent = Agent("assistant", on_events=[before_tool(approve_dangerous)])
     """
     func._event_type = 'before_tool'  # type: ignore
     return func

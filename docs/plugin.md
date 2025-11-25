@@ -128,6 +128,69 @@ agent.input("Take a screenshot of the homepage and describe what you see")
 - Converts to OpenAI vision API format
 - Allows multimodal LLMs to see images visually instead of as text
 
+### Shell Approval Plugin
+
+Prompts for user approval before executing shell commands (except safe read-only commands):
+
+```python
+from connectonion import Agent, Shell
+from connectonion.useful_plugins import shell_approval
+
+shell = Shell()
+agent = Agent("assistant", tools=[shell], plugins=[shell_approval])
+
+agent.input("Clean up temp files")
+# ┌─ Shell Command ─────────────────┐
+# │ rm -rf /tmp/test                │
+# └─────────────────────────────────┘
+# Execute this command?
+#   ❯ Yes, execute
+#     Auto approve 'rm' in this session
+#     No, tell agent what I want
+```
+
+**Safe commands (no approval needed):**
+- `ls`, `cat`, `head`, `tail` - File reading
+- `grep`, `rg`, `find`, `fd` - Search
+- `git status`, `git log`, `git diff` - Git read operations
+- `pwd`, `echo`, `date`, `whoami` - Info commands
+- `tree`, `wc`, `file`, `stat` - File info
+- And more read-only commands...
+
+**All other commands require approval.**
+
+**How it works:**
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    Shell Approval Flow                          │
+├─────────────────────────────────────────────────────────────────┤
+│                                                                 │
+│  Agent.input()                                                  │
+│       ↓                                                         │
+│  tool_executor.execute_single_tool()                            │
+│       ↓                                                         │
+│  Sets current_session['pending_tool'] = {name, arguments, id}   │
+│       ↓                                                         │
+│  agent._invoke_events('before_tool')                            │
+│       ↓                                                         │
+│  shell_approval._check_approval(agent)                          │
+│       ↓                                                         │
+│  ┌─────────────────────────────────────────┐                    │
+│  │ 1. Check if bash/shell/run tool         │                    │
+│  │ 2. Check if auto-approved command type  │                    │
+│  │ 3. Check if safe read-only command      │                    │
+│  │ 4. Show Panel + pick() UI               │                    │
+│  │ 5. Handle user choice                   │                    │
+│  └─────────────────────────────────────────┘                    │
+│       ↓                                                         │
+│  Clears current_session['pending_tool']                         │
+│       ↓                                                         │
+│  Execute tool or raise ValueError                               │
+│                                                                 │
+└─────────────────────────────────────────────────────────────────┘
+```
+
 ### Using Multiple Plugins Together
 
 ```python

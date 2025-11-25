@@ -1072,79 +1072,85 @@ Emails:
 
                 # Skip automated senders by email patterns
                 automated_email_patterns = [
-                # Generic automated prefixes
-                'noreply', 'no-reply', 'donotreply', 'do-not-reply',
-                'notifications@', 'notification@', 'newsletter@', 'news@',
-                'alerts@', 'alert@', 'updates@', 'update@',
-                'security@', 'team@', 'support@', 'help@', 'info@',
-                'marketing@', 'promo@', 'promotions@', 'offers@',
-                'billing@', 'invoice@', 'receipt@', 'order@',
-                'feedback@', 'survey@', 'announce@', 'digest@',
-                'hello@',  # Common marketing prefix
-                # Common automated domains/subdomains
-                'mail.instagram.com', 'mail.linkedin.com', 'mail.facebook.com',
-                'mail.twitter.com', 'mail.x.com', 'mail.google.com',
-                'facebookmail.com', 'linkedin.com', 'glassdoor.com',
-                'calendly.com', 'zoom.us', 'mailchimp', 'sendgrid',
-                'amazonses', 'postmark', 'intercom', 'hubspot',
-                'mailgun', 'sparkpost', 'constantcontact', 'campaign-archive',
-                'vimeo.com', 'vimeo@',  # Video platforms
-                'mongodb.com', 'mongodb@', 'atlassian.com', 'github.com',
-                'aws.amazon.com', 'cloud.google.com', 'azure.microsoft.com',
-                # Subdomain patterns (careful - these match anywhere in domain)
-                'mail.', 'send.', 'email.', 'mailer.', 'bounce.',
-                'notify.', 'msg.', 'campaigns.',
-            ]
-            if any(p in last_from_email for p in automated_email_patterns):
-                continue
+                    # Generic automated prefixes
+                    'noreply', 'no-reply', 'donotreply', 'do-not-reply',
+                    'notifications@', 'notification@', 'newsletter@', 'news@',
+                    'alerts@', 'alert@', 'updates@', 'update@',
+                    'security@', 'team@', 'support@', 'help@', 'info@',
+                    'marketing@', 'promo@', 'promotions@', 'offers@',
+                    'billing@', 'invoice@', 'receipt@', 'order@',
+                    'feedback@', 'survey@', 'announce@', 'digest@',
+                    'hello@',  # Common marketing prefix
+                    # Common automated domains/subdomains
+                    'mail.instagram.com', 'mail.linkedin.com', 'mail.facebook.com',
+                    'mail.twitter.com', 'mail.x.com', 'mail.google.com',
+                    'facebookmail.com', 'linkedin.com', 'glassdoor.com',
+                    'calendly.com', 'zoom.us', 'mailchimp', 'sendgrid',
+                    'amazonses', 'postmark', 'intercom', 'hubspot',
+                    'mailgun', 'sparkpost', 'constantcontact', 'campaign-archive',
+                    'vimeo.com', 'vimeo@',  # Video platforms
+                    'mongodb.com', 'mongodb@', 'atlassian.com', 'github.com',
+                    'aws.amazon.com', 'cloud.google.com', 'azure.microsoft.com',
+                    # Subdomain patterns (careful - these match anywhere in domain)
+                    'mail.', 'send.', 'email.', 'mailer.', 'bounce.',
+                    'notify.', 'msg.', 'campaigns.',
+                ]
+                if any(p in last_from_email for p in automated_email_patterns):
+                    continue
 
-            # Skip by subject line patterns (common automated email subjects)
-            automated_subject_patterns = [
-                'your job', 'job alert', 'new jobs', 'jobs for you',
-                'password reset', 'verify your', 'confirm your',
-                'security alert', 'new sign-in', 'new login', 'login attempt',
-                'weekly digest', 'daily digest', 'monthly digest',
-                'newsletter', 'unsubscribe', 'subscription',
-                'receipt for', 'invoice', 'payment confirmation', 'order confirmation',
-                'your order', 'shipping confirmation', 'delivery update',
-                'welcome to', 'thanks for signing up', 'account created',
-                'is active', 'expiring soon', 'expires', 'renew',
-                # Calendar/meeting related
-                'invitation:', 'invitation from', 'canceled event', 'accepted:', 'declined:',
-                'updated invitation', 'event canceled', 'meeting canceled',
-                'from an unknown sender',
-                # Account related
-                'account registration', 'registration complete', 'verify your email',
-                'confirm your email', 'activate your account', 'action required',
-                'build your first', 'getting started with', 'complete your setup',
-                # Monthly/periodic reports
-                'in january', 'in february', 'in march', 'in april', 'in may',
-                'in june', 'in july', 'in august', 'in september', 'in october',
-                'in november', 'in december', 'this month', 'last month',
-                'pro tips', 'tips to', 'getting started',
-            ]
-            if any(p in subject_lower for p in automated_subject_patterns):
-                continue
-            from_email = next((h['value'] for h in first_headers if h['name'] == 'From'), 'Unknown')
-            date_str = next((h['value'] for h in first_headers if h['name'] == 'Date'), '')
+                # Skip by subject line patterns (common automated email subjects)
+                automated_subject_patterns = [
+                    'your job', 'job alert', 'new jobs', 'jobs for you',
+                    'password reset', 'verify your', 'confirm your',
+                    'security alert', 'new sign-in', 'new login', 'login attempt',
+                    'weekly digest', 'daily digest', 'monthly digest',
+                    'newsletter', 'unsubscribe', 'subscription',
+                    'receipt for', 'invoice', 'payment confirmation', 'order confirmation',
+                    'your order', 'shipping confirmation', 'delivery update',
+                    'welcome to', 'thanks for signing up', 'account created',
+                    'is active', 'expiring soon', 'expires', 'renew',
+                    # Calendar/meeting related
+                    'invitation:', 'invitation from', 'canceled event', 'accepted:', 'declined:',
+                    'updated invitation', 'event canceled', 'meeting canceled',
+                    'from an unknown sender',
+                    # Account related
+                    'account registration', 'registration complete', 'verify your email',
+                    'confirm your email', 'activate your account', 'action required',
+                    'build your first', 'getting started with', 'complete your setup',
+                    # Monthly/periodic reports
+                    'in january', 'in february', 'in march', 'in april', 'in may',
+                    'in june', 'in july', 'in august', 'in september', 'in october',
+                    'in november', 'in december', 'this month', 'last month',
+                    'pro tips', 'tips to', 'getting started',
+                ]
+                if any(p in subject_lower for p in automated_subject_patterns):
+                    continue
+                from_email = next((h['value'] for h in first_headers if h['name'] == 'From'), 'Unknown')
+                date_str = next((h['value'] for h in first_headers if h['name'] == 'Date'), '')
 
-            # Calculate age
-            age_days = within_days  # Default fallback
-            if date_str:
-                date_obj = parsedate_to_datetime(date_str)
-                now = datetime.now(timezone.utc)
-                age_days = (now - date_obj).days
+                # Calculate age
+                age_days = within_days  # Default fallback
+                if date_str:
+                    date_obj = parsedate_to_datetime(date_str)
+                    now = datetime.now(timezone.utc)
+                    age_days = (now - date_obj).days
 
-            unanswered.append({
-                'thread_id': thread_id,
-                'from': from_email,
-                'subject': subject,
-                'date': date_str,
-                'age_days': age_days,
-                'messages_in_thread': len(thread_messages)
-            })
+                unanswered.append({
+                    'thread_id': thread_id,
+                    'from': from_email,
+                    'subject': subject,
+                    'date': date_str,
+                    'age_days': age_days,
+                    'messages_in_thread': len(thread_messages)
+                })
 
-            if len(unanswered) >= max_results:
+                if len(unanswered) >= max_results:
+                    break
+
+            # Pagination: get next page
+            page_token = results.get('nextPageToken')
+            pages_fetched += 1
+            if not page_token:
                 break
 
         if not unanswered:

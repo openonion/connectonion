@@ -156,8 +156,18 @@ def execute_single_tool(
     tool_start = time.time()
 
     try:
+        # Set pending_tool for before_tool handlers to access
+        agent.current_session['pending_tool'] = {
+            'name': tool_name,
+            'arguments': tool_args,
+            'id': tool_id
+        }
+
         # Invoke before_tool events
         agent._invoke_events('before_tool')
+
+        # Clear pending_tool after event (it's only valid during before_tool)
+        agent.current_session.pop('pending_tool', None)
 
         # Execute the tool with timing (restart timer AFTER events for accurate tool timing)
         tool_start = time.time()

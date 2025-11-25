@@ -1,4 +1,4 @@
-# Gmail & Calendar Integration (co auth google)
+# Google Integration (co auth google)
 
 > Send emails via Gmail and read calendar events from your AI agents. 30-second setup.
 
@@ -11,12 +11,15 @@ co auth google
 ```
 
 What happens:
-1. Opens browser to Google OAuth consent screen
-2. You authorize Gmail Send + Calendar Read permissions
-3. Credentials saved to `.env` (both local and global `~/.co/keys.env`)
-4. Ready to use Gmail and Calendar tools immediately
+1. Clears any existing Google connection (allows switching accounts)
+2. Opens browser to Google OAuth consent screen
+3. You authorize Gmail Send + Calendar Read permissions
+4. Credentials saved to `.env` (both local and global `~/.co/keys.env`)
+5. Ready to use Gmail and Calendar tools immediately
 
 **That's it.** Your agents can now send emails and read your calendar.
+
+**Switching accounts?** Just run `co auth google` again - it will clear the old connection and let you pick a new Google account.
 
 ---
 
@@ -300,7 +303,17 @@ If credentials exist but don't work, re-authenticate:
 co auth google
 ```
 
-This will update your existing credentials.
+This will clear old credentials and set up fresh ones.
+
+### Switch Google Account
+
+To use a different Google account:
+
+```bash
+co auth google
+```
+
+This automatically clears the old connection before starting a new OAuth flow. Pick your desired account in the browser.
 
 ### Revoke Access
 
@@ -352,11 +365,12 @@ To disconnect your Google account:
 
 Behind the scenes, `co auth google`:
 
-1. **Initiates OAuth flow**: Calls `/api/v1/oauth/google/init` with your `OPENONION_API_KEY`
-2. **Opens browser**: Launches Google's OAuth consent screen with required scopes
-3. **Polls for completion**: Checks `/api/v1/oauth/google/status` every 2 seconds
-4. **Retrieves credentials**: Gets tokens from `/api/v1/oauth/google/credentials`
-5. **Saves locally**: Writes credentials to `.env` files with secure permissions
+1. **Clears existing connection**: Calls `/api/v1/oauth/google/revoke` to remove old credentials (allows switching accounts)
+2. **Initiates OAuth flow**: Calls `/api/v1/oauth/google/init` with your `OPENONION_API_KEY`
+3. **Opens browser**: Launches Google's OAuth consent screen with required scopes
+4. **Polls for completion**: Checks `/api/v1/oauth/google/status` every 5 seconds
+5. **Retrieves credentials**: Gets tokens from `/api/v1/oauth/google/credentials`
+6. **Saves locally**: Writes credentials to `.env` files with secure permissions
 
 The backend handles:
 - OAuth 2.0 authorization code flow

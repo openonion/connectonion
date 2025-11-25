@@ -105,6 +105,9 @@ class DiffWriter:
         Returns:
             'approve', 'approve_all', or 'reject'
         """
+        self._console.print()
+        self._console.print(f"[bold cyan]File:[/] {path}")
+
         choice = pick(
             f"Apply changes to {path}?",
             {

@@ -375,21 +375,34 @@ def input_with_at(prompt: str = "> ") -> str:
         if autocomplete_active:
             if ch == '\x1b':  # ESC - cancel autocomplete
                 clear_autocomplete()
+                # Keep @ and filter in buffer
+                buffer = buffer + '@' + autocomplete_filter
+                # Redraw line cleanly
+                sys.stdout.write('\r\033[K')
+                sys.stdout.write(prompt + buffer)
+                sys.stdout.flush()
                 autocomplete_active = False
                 autocomplete_filter = ""
                 autocomplete_items = []
 
             elif ch in ('\t', '\r', '\n'):  # Tab/Enter - accept selection
+                clear_autocomplete()
                 if autocomplete_items and autocomplete_selected < len(autocomplete_items):
-                    clear_autocomplete()
                     selected_item = autocomplete_items[autocomplete_selected]
                     selected_name = selected_item.name
                     if selected_item.is_dir():
                         selected_name += "/"
 
-                    buffer += selected_name
-                    sys.stdout.write(selected_name)
-                    sys.stdout.flush()
+                    # Replace @filter with selected file
+                    buffer = buffer + selected_name
+                else:
+                    # No selection, keep @ and filter as-is
+                    buffer = buffer + '@' + autocomplete_filter
+
+                # Redraw line cleanly
+                sys.stdout.write('\r\033[K')
+                sys.stdout.write(prompt + buffer)
+                sys.stdout.flush()
 
                 autocomplete_active = False
                 autocomplete_filter = ""
@@ -410,25 +423,36 @@ def input_with_at(prompt: str = "> ") -> str:
             elif ch in ('\x7f', '\x08'):  # Backspace
                 if autocomplete_filter:
                     autocomplete_filter = autocomplete_filter[:-1]
-                    sys.stdout.write('\b \b')
-                    sys.stdout.flush()
+                    # Redraw line cleanly
                     clear_autocomplete()
+                    sys.stdout.write('\r\033[K')
+                    full_text = buffer + '@' + autocomplete_filter
+                    sys.stdout.write(prompt + full_text)
+                    sys.stdout.flush()
+                    # Update suggestions
                     autocomplete_items = get_file_suggestions(autocomplete_filter)
                     autocomplete_selected = 0
                     render_autocomplete()
                 else:
-                    # Cancel autocomplete if filter is empty
+                    # Cancel autocomplete if filter is empty, remove @ too
                     clear_autocomplete()
+                    sys.stdout.write('\r\033[K')
+                    sys.stdout.write(prompt + buffer)
+                    sys.stdout.flush()
                     autocomplete_active = False
                     autocomplete_items = []
 
             elif ch.isprintable():
                 # Add to filter
                 autocomplete_filter += ch
-                buffer += ch
-                sys.stdout.write(ch)
-                sys.stdout.flush()
+                # Redraw the input line cleanly
                 clear_autocomplete()
+                # Move to start of line, clear line, rewrite everything
+                sys.stdout.write('\r\033[K')
+                full_text = buffer + '@' + autocomplete_filter
+                sys.stdout.write(prompt + full_text)
+                sys.stdout.flush()
+                # Update suggestions
                 autocomplete_items = get_file_suggestions(autocomplete_filter)
                 autocomplete_selected = 0
                 render_autocomplete()

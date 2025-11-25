@@ -211,6 +211,9 @@ class TestAuthGoogleFlow:
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
 
             # Mock API responses
+            mock_revoke_response = Mock()
+            mock_revoke_response.status_code = 404  # No existing connection to revoke
+
             mock_init_response = Mock()
             mock_init_response.status_code = 200
             mock_init_response.json.return_value = {
@@ -232,6 +235,7 @@ class TestAuthGoogleFlow:
             }
 
             # Setup mock to return different responses
+            mock_requests.delete.return_value = mock_revoke_response  # /google/revoke
             mock_requests.get.side_effect = [
                 mock_init_response,  # /google/init
                 mock_status_response,  # /google/status
@@ -245,6 +249,9 @@ class TestAuthGoogleFlow:
             with patch('time.sleep', return_value=None):
                 from connectonion.cli.main import cli
                 result = self.runner.invoke(cli, ['auth', 'google'])
+
+            # Verify revoke was called first (to clear any existing connection)
+            mock_requests.delete.assert_called_once()
 
             # Verify browser was opened
             mock_webbrowser.open.assert_called_once()
@@ -261,6 +268,11 @@ class TestAuthGoogleFlow:
         with self.runner.isolated_filesystem():
             # Setup: Create .env with API key
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
+
+            # Mock revoke (always called first)
+            mock_revoke_response = Mock()
+            mock_revoke_response.status_code = 404
+            mock_requests.delete.return_value = mock_revoke_response
 
             # Mock failed init response
             mock_response = Mock()
@@ -282,6 +294,11 @@ class TestAuthGoogleFlow:
         with self.runner.isolated_filesystem():
             # Setup: Create .env with API key
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
+
+            # Mock revoke (always called first)
+            mock_revoke_response = Mock()
+            mock_revoke_response.status_code = 404
+            mock_requests.delete.return_value = mock_revoke_response
 
             # Mock init response
             mock_init_response = Mock()

@@ -338,6 +338,10 @@ def handle_google_auth():
     api_url = "https://oo.openonion.ai/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
 
+    # Clear any existing connection first - this ensures we wait for NEW OAuth to complete
+    # (otherwise /google/status returns connected=true immediately from old credentials)
+    requests.delete(f"{api_url}/google/revoke", headers=headers)
+
     # Get OAuth URL
     console.print("🔑 Initializing Google OAuth...", style="cyan")
 
