@@ -2,13 +2,25 @@
 
 Run this file directly to test:
     python tests/test_diff_writer.py
+
+NOTE: These tests require user input and should only be run interactively.
+They are skipped when running via pytest (non-TTY environment).
 """
 
+import sys
 import tempfile
 import os
 from pathlib import Path
+import pytest
 
 from connectonion import pick, yes_no, DiffWriter
+
+
+# Skip all tests if not running interactively (no TTY)
+pytestmark = pytest.mark.skipif(
+    not sys.stdin.isatty(),
+    reason="Interactive tests require TTY (run with: python tests/test_diff_writer.py)"
+)
 
 
 def test_pick_list():
