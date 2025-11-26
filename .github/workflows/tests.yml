@@ -7,7 +7,6 @@ on:
     branches: [ main, master ]
 
 jobs:
-  # Unit and integration tests (no API keys needed)
   test:
     runs-on: ubuntu-latest
     strategy:
@@ -24,41 +23,17 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install tox
-        run: |
-          python -m pip install --upgrade pip
-          pip install tox tox-gh-actions
-
-      - name: Run tests with tox
-        run: |
-          tox -e py
-
-  # Real API tests (only runs if secrets are available)
-  test-real-api:
-    runs-on: ubuntu-latest
-    # Only run on main branch pushes (not PRs from forks which can't access secrets)
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Set up Python 3.11
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.11"
-
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -e .
-          pip install pytest pytest-asyncio
+          pip install pytest pytest-cov pytest-mock pytest-asyncio psutil
 
-      - name: Run real API tests
+      - name: Run all tests
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
         run: |
-          pytest tests/real_api/ -v -m real_api --tb=short
+          pytest tests/ -v --tb=short -o "addopts="
