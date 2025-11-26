@@ -213,302 +213,64 @@ def yes_no(
             raise KeyboardInterrupt()
 
 
-def browse_files(start_path: str = ".") -> Union[str, None]:
-    """Browse files and folders interactively.
+def autocomplete(suggestions: list, max_visible: int = 5) -> Union[str, None]:
+    """Show inline autocomplete dropdown with arrow key navigation.
+
+    Pure UI component - displays suggestions and handles selection.
+    Does NOT handle filtering or search logic - that's the caller's job.
 
     Args:
-        start_path: Starting directory (default: current directory)
+        suggestions: List of strings to display
+        max_visible: Maximum suggestions to show (default: 5)
 
     Returns:
-        Selected file/folder path or None if cancelled
+        Selected string or None if cancelled (ESC pressed)
 
     Example:
-        path = browse_files()
-        # User navigates folders with arrow keys + Enter
-        # Press Enter on file to select
-        # Returns: "src/agent.py"
+        from connectonion import autocomplete
+
+        files = ["agent.py", "main.py", "utils.py"]
+        selected = autocomplete(files)
+        if selected:
+            print(f"Selected: {selected}")
     """
-    from pathlib import Path
+    from rich.live import Live
+    from rich.table import Table
 
-    console = Console()
-    current_path = Path(start_path).resolve()
+    if not suggestions:
+        return None
 
-    while True:
-        # Get files and folders
-        try:
-            items = list(current_path.iterdir())
-        except PermissionError:
-            console.print(f"[red]Permission denied: {current_path}[/]")
-            return None
+    # Limit to max visible
+    suggestions = suggestions[:max_visible]
+    selected = 0
 
-        # Separate folders and files
-        folders = sorted([f for f in items if f.is_dir() and not f.name.startswith('.')], key=lambda x: x.name)
-        files = sorted([f for f in items if f.is_file() and not f.name.startswith('.')], key=lambda x: x.name)
-
-        # Build options
-        options = []
-        all_items = []
-
-        # Add parent directory if not at root
-        if current_path.parent != current_path:
-            options.append("📁 ../")
-            all_items.append(("parent", current_path.parent))
-
-        # Add folders
-        for folder in folders:
-            options.append(f"📁 {folder.name}/")
-            all_items.append(("folder", folder))
-
-        # Add files
-        for file in files:
-            options.append(f"📄 {file.name}")
-            all_items.append(("file", file))
-
-        if not options:
-            console.print("[yellow]Empty directory[/]")
-            return None
-
-        # Show current path
-        console.print(f"\n[cyan]Current:[/] {current_path}")
-        choice = pick("Select file (or folder to navigate):", options, console=console)
-
-        # Find selected item
-        idx = options.index(choice)
-        item_type, item_path = all_items[idx]
-
-        if item_type in ("parent", "folder"):
-            # Navigate to folder
-            current_path = item_path
-        else:
-            # File selected - return relative path
-            try:
-                return str(item_path.relative_to(Path.cwd()))
-            except ValueError:
-                return str(item_path)
-
-
-def input_with_at(prompt: str = "> ") -> str:
-    """Get user input with @ autocomplete for file paths.
-
-    When user types @, shows inline file autocomplete. Type to filter, arrows to navigate.
-
-    Args:
-        prompt: Input prompt to display
-
-    Returns:
-        User input with file paths inserted
-
-    Example:
-        cmd = input_with_at("> ")
-        # User types: "edit "
-        # User types: "@"
-        # Inline autocomplete appears below (doesn't block input)
-        # User types: "age" - filters to "agent.py"
-        # Tab/Enter to accept, ESC to cancel
-    """
-    from pathlib import Path
-
-    console = Console()
-    if prompt:
-        console.print(prompt, end="")
-
-    buffer = ""
-    autocomplete_active = False
-    autocomplete_filter = ""
-    autocomplete_selected = 0
-    autocomplete_items = []
-
-    def get_file_suggestions(filter_text: str, current_path: Path = None):
-        """Get filtered file suggestions from directory."""
-        if current_path is None:
-            current_path = Path.cwd()
-
-        try:
-            items = list(current_path.iterdir())
-            # Filter hidden files
-            items = [f for f in items if not f.name.startswith('.')]
-
-            # Apply text filter
-            if filter_text:
-                items = [f for f in items if filter_text.lower() in f.name.lower()]
-
-            # Sort: folders first, then by name, limit to 5
-            items = sorted(items, key=lambda x: (not x.is_dir(), x.name.lower()))[:5]
-            return items
-        except (PermissionError, OSError):
-            return []
-
-    def render_autocomplete():
-        """Render autocomplete dropdown below cursor."""
-        if not autocomplete_items:
-            sys.stdout.write("\n[dim]No matches[/]\033[1A")
-            sys.stdout.flush()
-            return
-
-        # Print each suggestion on new line
-        for i, item in enumerate(autocomplete_items):
-            sys.stdout.write("\n")
-            if i == autocomplete_selected:
-                icon = "📁" if item.is_dir() else "📄"
-                sys.stdout.write(f"\033[1;36m❯ {icon} {item.name}\033[0m")
+    def create_table():
+        """Create table with current selection highlighted."""
+        table = Table(show_header=False, box=None, padding=(0, 1), show_edge=False)
+        for i, item in enumerate(suggestions):
+            if i == selected:
+                table.add_row(f"[cyan]❯ {item}[/]")
             else:
-                icon = "📁" if item.is_dir() else "📄"
-                sys.stdout.write(f"\033[2m  {icon} {item.name}\033[0m")
+                table.add_row(f"[dim]  {item}[/]")
+        return table
 
-        # Move cursor back to input line
-        sys.stdout.write(f"\033[{len(autocomplete_items)}A")
-        sys.stdout.flush()
+    # Show live display with keyboard navigation
+    with Live(create_table(), refresh_per_second=10, auto_refresh=False) as live:
+        while True:
+            key = _read_key()
 
-    def clear_autocomplete():
-        """Clear autocomplete dropdown."""
-        if autocomplete_items:
-            # Move down, clear lines, move back up
-            for i in range(len(autocomplete_items)):
-                sys.stdout.write("\n\033[K")
-            sys.stdout.write(f"\033[{len(autocomplete_items)}A")
-            sys.stdout.flush()
+            if key == '\x1b':  # ESC - cancel
+                return None
 
-    while True:
-        ch = _getch()
+            elif key in ('\r', '\n', '\t'):  # Enter/Tab - accept
+                return suggestions[selected]
 
-        # Autocomplete mode
-        if autocomplete_active:
-            if ch == '\x1b':  # ESC - cancel autocomplete
-                clear_autocomplete()
-                # Keep @ and filter in buffer
-                buffer = buffer + '@' + autocomplete_filter
-                # Redraw line cleanly
-                sys.stdout.write('\r\033[K')
-                sys.stdout.write(prompt + buffer)
-                sys.stdout.flush()
-                autocomplete_active = False
-                autocomplete_filter = ""
-                autocomplete_items = []
+            elif key == 'up':
+                selected = (selected - 1) % len(suggestions)
+                live.update(create_table(), refresh=True)
 
-            elif ch in ('\t', '\r', '\n'):  # Tab/Enter - accept selection
-                clear_autocomplete()
-                if autocomplete_items and autocomplete_selected < len(autocomplete_items):
-                    selected_item = autocomplete_items[autocomplete_selected]
-                    selected_name = selected_item.name
-                    if selected_item.is_dir():
-                        selected_name += "/"
-
-                    # Replace @filter with selected file
-                    buffer = buffer + selected_name
-                else:
-                    # No selection, keep @ and filter as-is
-                    buffer = buffer + '@' + autocomplete_filter
-
-                # Redraw line cleanly
-                sys.stdout.write('\r\033[K')
-                sys.stdout.write(prompt + buffer)
-                sys.stdout.flush()
-
-                autocomplete_active = False
-                autocomplete_filter = ""
-                autocomplete_items = []
-
-            elif ch == 'up':
-                if autocomplete_items:
-                    clear_autocomplete()
-                    autocomplete_selected = (autocomplete_selected - 1) % len(autocomplete_items)
-                    render_autocomplete()
-
-            elif ch == 'down':
-                if autocomplete_items:
-                    clear_autocomplete()
-                    autocomplete_selected = (autocomplete_selected + 1) % len(autocomplete_items)
-                    render_autocomplete()
-
-            elif ch in ('\x7f', '\x08'):  # Backspace
-                if autocomplete_filter:
-                    autocomplete_filter = autocomplete_filter[:-1]
-                    # Redraw line cleanly
-                    clear_autocomplete()
-                    sys.stdout.write('\r\033[K')
-                    full_text = buffer + '@' + autocomplete_filter
-                    sys.stdout.write(prompt + full_text)
-                    sys.stdout.flush()
-                    # Update suggestions
-                    autocomplete_items = get_file_suggestions(autocomplete_filter)
-                    autocomplete_selected = 0
-                    render_autocomplete()
-                else:
-                    # Cancel autocomplete if filter is empty, remove @ too
-                    clear_autocomplete()
-                    sys.stdout.write('\r\033[K')
-                    sys.stdout.write(prompt + buffer)
-                    sys.stdout.flush()
-                    autocomplete_active = False
-                    autocomplete_items = []
-
-            elif ch.isprintable():
-                # Add to filter
-                autocomplete_filter += ch
-                # Redraw the input line cleanly
-                clear_autocomplete()
-                # Move to start of line, clear line, rewrite everything
-                sys.stdout.write('\r\033[K')
-                full_text = buffer + '@' + autocomplete_filter
-                sys.stdout.write(prompt + full_text)
-                sys.stdout.flush()
-                # Update suggestions
-                autocomplete_items = get_file_suggestions(autocomplete_filter)
-                autocomplete_selected = 0
-                render_autocomplete()
-
-        # Normal input mode
-        else:
-            if ch in ('\r', '\n'):  # Enter - submit
-                print()
-                return buffer
-
-            elif ch in ('\x03', '\x04'):  # Ctrl+C/D - abort
-                print()
-                raise KeyboardInterrupt()
-
-            elif ch in ('\x7f', '\x08'):  # Backspace
-                if buffer:
-                    buffer = buffer[:-1]
-                    sys.stdout.write('\b \b')
-                    sys.stdout.flush()
-
-            elif ch == '@':  # Start autocomplete
-                buffer += '@'
-                sys.stdout.write('@')
-                sys.stdout.flush()
-                autocomplete_active = True
-                autocomplete_filter = ""
-                autocomplete_items = get_file_suggestions("")
-                autocomplete_selected = 0
-                render_autocomplete()
-
-            elif ch.isprintable():
-                buffer += ch
-                sys.stdout.write(ch)
-                sys.stdout.flush()
-
-            # Ignore other keys
-            else:
-                pass
+            elif key == 'down':
+                selected = (selected + 1) % len(suggestions)
+                live.update(create_table(), refresh=True)
 
 
-if __name__ == "__main__":
-    print("=== pick / yes_no Demo ===\n")
-
-    fruit = pick("Pick a fruit", ["Apple", "Banana", "Cherry"])
-    print(f"\nYou picked: {fruit}\n")
-
-    action = pick("What to do?", {"c": "Continue", "r": "Retry", "q": "Quit"})
-    print(f"\nYou chose: {action}\n")
-
-    ok = yes_no("Are you sure?")
-    print(f"\nConfirmed: {ok}\n")
-
-    print("\n=== browse_files Demo ===\n")
-    path = browse_files()
-    print(f"\nSelected: {path}\n")
-
-    print("\n=== input_with_at Demo ===\n")
-    cmd = input_with_at("Command: ")
-    print(f"\nFinal input: {cmd}")
