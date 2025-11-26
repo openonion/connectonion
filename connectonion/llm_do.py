@@ -91,7 +91,7 @@ All providers from llm.py module:
    - Structured output via forced tool calling
    - Requires max_tokens parameter (default: 8192)
 
-3. **Google Gemini**: gemini-2.5-flash, gemini-1.5-pro
+3. **Google Gemini**: gemini-2.5-flash, gemini-2.5-pro
    - Structured output via response_schema
    - Good balance of speed and quality
 
@@ -241,7 +241,7 @@ def llm_do(
     Supports multiple LLM providers:
     - OpenAI: "gpt-4o", "o4-mini", "gpt-3.5-turbo"
     - Anthropic: "claude-3-5-sonnet", "claude-3-5-haiku-20241022"
-    - Google: "gemini-1.5-pro", "gemini-1.5-flash"
+    - Google: "gemini-2.5-pro", "gemini-2.5-flash"
     - ConnectOnion Managed: "co/gpt-4o", "co/o4-mini" (no API keys needed!)
 
     Args:
@@ -267,7 +267,7 @@ def llm_do(
         >>> answer = llm_do("Explain quantum physics", model="claude-3-5-haiku-20241022")
 
         >>> # With Gemini
-        >>> answer = llm_do("Write a poem", model="gemini-1.5-flash")
+        >>> answer = llm_do("Write a poem", model="gemini-2.5-flash")
 
         >>> # With structured output
         >>> class Analysis(BaseModel):

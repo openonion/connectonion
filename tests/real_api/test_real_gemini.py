@@ -32,7 +32,7 @@ class TestRealGemini:
     def test_gemini_basic_completion(self):
         """Test basic completion with Gemini."""
         api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
-        llm = GeminiLLM(api_key=api_key, model="gemini-pro")
+        llm = GeminiLLM(api_key=api_key, model="gemini-2.5-pro")
         agent = Agent(name="gemini_test", llm=llm)
 
         response = agent.input("Say 'Hello from Gemini' exactly")
@@ -43,7 +43,7 @@ class TestRealGemini:
         """Test Gemini with tool calling."""
         agent = Agent(
             name="gemini_tools",
-            model="gemini-pro",
+            model="gemini-2.5-pro",
             tools=[word_counter]
         )
 
@@ -55,7 +55,7 @@ class TestRealGemini:
         """Test multi-turn conversation with Gemini."""
         agent = Agent(
             name="gemini_conversation",
-            model="gemini-pro"
+            model="gemini-2.5-pro"
         )
 
         # First turn
@@ -69,11 +69,9 @@ class TestRealGemini:
 
     def test_gemini_different_models(self):
         """Test different Gemini models."""
-        models = ["gemini-pro", "gemini-1.5-pro-latest"]
+        models = ["gemini-2.5-pro", "gemini-2.5-flash"]
 
         for model in models:
-            if "1.5-pro" in model and not os.getenv("TEST_EXPENSIVE_MODELS"):
-                continue  # Skip expensive models unless explicitly enabled
 
             api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
             agent = Agent(
@@ -89,7 +87,7 @@ class TestRealGemini:
         """Test Gemini with custom system prompt."""
         agent = Agent(
             name="gemini_system",
-            model="gemini-pro",
+            model="gemini-2.5-pro",
             system_prompt="You are a helpful math tutor. Always explain your reasoning step by step."
         )
 

@@ -542,7 +542,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'google': {
             'var': 'GEMINI_API_KEY',
-            'model': 'gemini-pro'
+            'model': 'gemini-2.5-flash'
         },
         'groq': {
             'var': 'GROQ_API_KEY',

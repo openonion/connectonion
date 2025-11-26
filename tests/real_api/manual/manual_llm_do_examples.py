@@ -72,12 +72,12 @@ else:
 
 # Test 4: With Gemini
 print("\n" + "=" * 70)
-print("Test 4: With Gemini (gemini-1.5-flash)")
+print("Test 4: With Gemini (gemini-2.5-flash)")
 print("=" * 70)
 
 if has_gemini:
     try:
-        answer = llm_do("Write a short haiku about code", model="gemini-1.5-flash")
+        answer = llm_do("Write a short haiku about code", model="gemini-2.5-flash")
         print(f"✓ Gemini works")
         print(f"  Answer:\n{answer}")
     except Exception as e:

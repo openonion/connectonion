@@ -574,7 +574,8 @@ MODEL_REGISTRY = {
     "claude-3-7-sonnet-20250219": "anthropic",
     
     # Google Gemini models
-    "gemini-2.5-pro": "google",  # Testing placeholder
+    "gemini-2.5-pro": "google",
+    "gemini-2.5-flash": "google",
     "gemini-2.0-flash-exp": "google",
     "gemini-2.0-flash-thinking-exp": "google",
     "gemini-1.5-pro": "google",

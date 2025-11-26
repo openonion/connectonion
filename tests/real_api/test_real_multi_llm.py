@@ -58,9 +58,9 @@ def test_model_detection_google():
         "gemini-2.5-pro",
         "gemini-2.0-flash-exp",
         "gemini-2.0-flash-thinking-exp",
-        "gemini-1.5-pro",
-        "gemini-1.5-flash",
-        "gemini-1.5-flash-8b",
+        "gemini-2.5-pro",
+        "gemini-2.5-flash",
+        "gemini-2.5-flash-8b",
     ]
     for model in models:
         assert model.startswith("gemini")
@@ -133,7 +133,7 @@ def test_tools_work_across_all_models():
             # test_cases.append(("gpt-5-nano", "openai"))  # GPT-5 requires passport
             test_cases.append(("gpt-4o-mini", "openai"))  # Use available model for testing
         if "google" in available_providers:
-            test_cases.append(("gemini-1.5-flash", "google"))
+            test_cases.append(("gemini-2.5-flash", "google"))
         if "anthropic" in available_providers:
             test_cases.append(("claude-3-5-haiku", "anthropic"))
         
@@ -181,9 +181,9 @@ def test_model_registry_mapping():
             "gemini-2.5-pro": "google",
             "gemini-2.0-flash-exp": "google",
             "gemini-2.0-flash-thinking-exp": "google",
-            "gemini-1.5-pro": "google",
-            "gemini-1.5-flash": "google",
-            "gemini-1.5-flash-8b": "google",
+            "gemini-2.5-pro": "google",
+            "gemini-2.5-flash": "google",
+            "gemini-2.5-flash-8b": "google",
             
             # Anthropic Claude series
             "claude-opus-4.1": "anthropic",
@@ -257,7 +257,7 @@ def test_openai_flagship_real_call():
 def test_google_gemini_real_call():
         """Test actual API call with Gemini model."""
         # Try Gemini 2.5 Pro first, fallback to 1.5 if not available
-        models_to_try = ["gemini-2.5-pro", "gemini-1.5-flash", "gemini-1.5-pro"]
+        models_to_try = ["gemini-2.5-pro", "gemini-2.5-flash", "gemini-2.5-pro"]
         
         tools = _tools()
         for model in models_to_try:
@@ -303,7 +303,7 @@ def test_flagship_model_comparison():
             # Use gpt-4o-mini as fallback since GPT-5 isn't available yet
             flagship_models.append(("gpt-4o-mini", "openai"))
         if "google" in available_providers:
-            flagship_models.append(("gemini-1.5-flash", "google"))
+            flagship_models.append(("gemini-2.5-flash", "google"))
         if "anthropic" in available_providers:
             flagship_models.append(("claude-3-5-haiku", "anthropic"))
         
@@ -373,8 +373,8 @@ def test_context_window_sizes():
             "gpt-4o-mini": 128000,
             "gpt-3.5-turbo": 16385,
             "gemini-2.5-pro": 2000000,  # 2M tokens
-            "gemini-1.5-pro": 2000000,  # 2M tokens
-            "gemini-1.5-flash": 1000000,  # 1M tokens
+            "gemini-2.5-pro": 2000000,  # 2M tokens
+            "gemini-2.5-flash": 1000000,  # 1M tokens
             "claude-opus-4.1": 200000,
             "claude-opus-4": 200000,
             "claude-sonnet-4": 200000
@@ -393,8 +393,8 @@ def test_multimodal_capabilities():
             "gpt-4o-mini",
             "gemini-2.5-pro",  # Supports audio, video, images, PDF
             "gemini-2.0-flash-exp",
-            "gemini-1.5-pro",
-            "gemini-1.5-flash",
+            "gemini-2.5-pro",
+            "gemini-2.5-flash",
             "claude-opus-4.1",
             "claude-opus-4",
             "claude-sonnet-4"
@@ -420,7 +420,7 @@ def test_fast_model_performance():
             # fast_models.append("gpt-5-nano")  # Requires passport verification
             fast_models.append("gpt-4o-mini")  # Fastest available
         if "google" in available_providers:
-            fast_models.append("gemini-1.5-flash")
+            fast_models.append("gemini-2.5-flash")
         if "anthropic" in available_providers:
             fast_models.append("claude-3-5-haiku")
         

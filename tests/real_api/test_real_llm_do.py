@@ -61,7 +61,7 @@ class TestRealLLMDoStructuredOutput:
         result = llm_do(
             "Analyze the character 'Darth Vader' from Star Wars.",
             output=CharacterAnalysis,
-            model="gemini-pro"
+            model="gemini-2.5-pro"
         )
         assert isinstance(result, CharacterAnalysis)
         assert result.name.lower() == "darth vader"
