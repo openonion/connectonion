@@ -538,7 +538,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'anthropic': {
             'var': 'ANTHROPIC_API_KEY',
-            'model': 'claude-3-5-haiku'
+            'model': 'claude-3-5-haiku-latest'
         },
         'google': {
             'var': 'GEMINI_API_KEY',

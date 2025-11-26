@@ -163,12 +163,17 @@ class ToolCall:
     id: str
 
 
+# Import TokenUsage from usage module
+from .usage import TokenUsage, calculate_cost
+
+
 @dataclass
 class LLMResponse:
     """Response from LLM including content and tool calls."""
     content: Optional[str]
     tool_calls: List[ToolCall]
     raw_response: Any
+    usage: Optional[TokenUsage] = None
 
 
 class LLM(ABC):
@@ -232,10 +237,22 @@ class OpenAILLM(LLM):
                     id=tc.id
                 ))
 
+        # Extract token usage
+        input_tokens = response.usage.prompt_tokens
+        output_tokens = response.usage.completion_tokens
+        cached_tokens = response.usage.prompt_tokens_details.cached_tokens if response.usage.prompt_tokens_details else 0
+        cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
+
         return LLMResponse(
             content=message.content,
             tool_calls=tool_calls,
-            raw_response=response
+            raw_response=response,
+            usage=TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                cost=cost,
+            ),
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
@@ -312,10 +329,24 @@ class AnthropicLLM(LLM):
                     id=block.id
                 ))
 
+        # Extract token usage - Anthropic uses input_tokens/output_tokens
+        input_tokens = response.usage.input_tokens
+        output_tokens = response.usage.output_tokens
+        cached_tokens = getattr(response.usage, 'cache_read_input_tokens', 0) or 0
+        cache_write_tokens = getattr(response.usage, 'cache_creation_input_tokens', 0) or 0
+        cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens, cache_write_tokens)
+
         return LLMResponse(
             content=content if content else None,
             tool_calls=tool_calls,
-            raw_response=response
+            raw_response=response,
+            usage=TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                cache_write_tokens=cache_write_tokens,
+                cost=cost,
+            ),
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
@@ -519,10 +550,27 @@ class GeminiLLM(LLM):
                     id=tc.id
                 ))
 
+        # Extract token usage (OpenAI-compatible format)
+        usage = None
+        if hasattr(response, 'usage') and response.usage:
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cached_tokens = 0
+            if hasattr(response.usage, 'prompt_tokens_details') and response.usage.prompt_tokens_details:
+                cached_tokens = getattr(response.usage.prompt_tokens_details, 'cached_tokens', 0) or 0
+            cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
+            usage = TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                cost=cost,
+            )
+
         return LLMResponse(
             content=message.content,
             tool_calls=tool_calls,
-            raw_response=response
+            raw_response=response,
+            usage=usage,
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
@@ -655,10 +703,28 @@ class OpenOnionLLM(LLM):
                     id=tc.id
                 ))
 
+        # Extract token usage (OpenAI-compatible format)
+        usage = None
+        if hasattr(response, 'usage') and response.usage:
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cached_tokens = 0
+            if hasattr(response.usage, 'prompt_tokens_details') and response.usage.prompt_tokens_details:
+                cached_tokens = getattr(response.usage.prompt_tokens_details, 'cached_tokens', 0) or 0
+            # Use the underlying model for pricing (without co/ prefix)
+            cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
+            usage = TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cached_tokens=cached_tokens,
+                cost=cost,
+            )
+
         return LLMResponse(
             content=message.content,
             tool_calls=tool_calls,
-            raw_response=response
+            raw_response=response,
+            usage=usage,
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
