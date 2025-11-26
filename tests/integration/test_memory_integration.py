@@ -43,13 +43,15 @@ def test_memory_tool_schemas(memory_instance):
     # Check write_memory schema
     write_tool = tool_map["write_memory"]
     assert write_tool.name == "write_memory"
-    assert "key" in str(write_tool.schema)
-    assert "content" in str(write_tool.schema)
+    write_schema = str(write_tool.to_function_schema())
+    assert "key" in write_schema
+    assert "content" in write_schema
 
     # Check read_memory schema
     read_tool = tool_map["read_memory"]
     assert read_tool.name == "read_memory"
-    assert "key" in str(read_tool.schema)
+    read_schema = str(read_tool.to_function_schema())
+    assert "key" in read_schema
 
 
 def test_memory_methods_callable_from_agent(memory_instance):
