@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 from dotenv import load_dotenv
 from connectonion import Agent
 from connectonion.llm import LLMResponse, ToolCall
+from connectonion.usage import TokenUsage
 import pytest
 
 # Load environment variables from .env file
@@ -144,6 +145,7 @@ def test_custom_system_prompt():
         content="Arrr! Test response!",
         tool_calls=[],
         raw_response={},
+        usage=TokenUsage(),
     )
 
     agent.llm = mock_llm
@@ -237,19 +239,22 @@ def test_methods_share_state_through_self(mock_create_llm):
             LLMResponse(
                 content=None,
                 tool_calls=[ToolCall(name="navigate", arguments={"url": "example.com"}, id="call_1")],
-                raw_response={}
+                raw_response={},
+                usage=TokenUsage(),
             ),
             # Then call scrape_title
             LLMResponse(
                 content=None,
                 tool_calls=[ToolCall(name="scrape_title", arguments={}, id="call_2")],
-                raw_response={}
+                raw_response={},
+                usage=TokenUsage(),
             ),
             # Final response
             LLMResponse(
                 content="Scraped the title successfully.",
                 tool_calls=[],
-                raw_response={}
+                raw_response={},
+                usage=TokenUsage(),
             )
         ]
         mock_create_llm.return_value = mock_llm

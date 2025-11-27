@@ -159,6 +159,20 @@ class Console:
                 f.write(f"  result: {result_str}\n")
                 f.write(f"  Execution time: {timing/1000:.4f}s | Iteration: {iteration}/{max_iterations} | Breakpoint: @xray\n\n")
 
+    def log_llm_response(self, duration_ms: float, tool_count: int, usage) -> None:
+        """Log LLM response with token usage."""
+        total_tokens = usage.input_tokens + usage.output_tokens
+        tokens_str = f"{total_tokens/1000:.1f}k" if total_tokens >= 1000 else str(total_tokens)
+        tools_str = f" • {tool_count} tools" if tool_count else ""
+        msg = f"LLM Response ({duration_ms/1000:.1f}s){tools_str} • {tokens_str} tokens • ${usage.cost:.4f}"
+
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        _rich_console.print(f"[dim]{timestamp}[/dim] [green]←[/green] {msg}")
+
+        if self.log_file:
+            with open(self.log_file, 'a', encoding='utf-8') as f:
+                f.write(f"[{timestamp}] <- {msg}\n")
+
     def _to_plain_text(self, message: str) -> str:
         """Convert Rich markup to plain text for log file."""
         # Remove Rich markup tags

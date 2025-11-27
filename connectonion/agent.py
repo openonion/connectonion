@@ -14,7 +14,8 @@ import sys
 import time
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
-from .llm import LLM, create_llm
+from .llm import LLM, create_llm, TokenUsage
+from .usage import get_context_limit
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .prompts import load_system_prompt
 from .decorators import (
@@ -49,6 +50,10 @@ class Agent:
 
         # Current session context (runtime only)
         self.current_session = None
+
+        # Token usage tracking
+        self.total_cost: float = 0.0  # Cumulative cost in USD
+        self.last_usage: Optional[TokenUsage] = None  # From most recent LLM call
 
         # Setup file logging (default to .co/logs/)
         log_file = None
@@ -342,6 +347,11 @@ class Agent:
         response = self.llm.complete(self.current_session['messages'], tools=tool_schemas)
         duration = (time.time() - start) * 1000  # milliseconds
 
+        # Track token usage
+        if response.usage:
+            self.last_usage = response.usage
+            self.total_cost += response.usage.cost
+
         # Add to trace
         self.current_session['trace'].append({
             'type': 'llm_call',
@@ -349,16 +359,14 @@ class Agent:
             'timestamp': start,
             'duration_ms': duration,
             'tool_calls_count': len(response.tool_calls) if response.tool_calls else 0,
-            'iteration': self.current_session['iteration']
+            'iteration': self.current_session['iteration'],
+            'usage': response.usage,
         })
 
         # Invoke after_llm events (after trace entry is added)
         self._invoke_events('after_llm')
 
-        if response.tool_calls:
-            self.console.print(f"[green]←[/green] LLM Response ({duration/1000:.1f}s): {len(response.tool_calls)} tool calls")
-        else:
-            self.console.print(f"[green]←[/green] LLM Response ({duration/1000:.1f}s)")
+        self.console.log_llm_response(duration, len(response.tool_calls), response.usage)
 
         return response
 
@@ -395,6 +403,18 @@ class Agent:
     def list_tools(self) -> List[str]:
         """List all available tool names."""
         return [tool.name for tool in self.tools]
+
+    @property
+    def context_percent(self) -> float:
+        """Get current context window usage as percentage (0-100).
+
+        Returns the percentage of context window used based on input_tokens
+        from the last LLM call. Returns 0 if no LLM calls have been made yet.
+        """
+        if not self.last_usage:
+            return 0.0
+        limit = get_context_limit(self.llm.model)
+        return (self.last_usage.input_tokens / limit) * 100
 
     def auto_debug(self, prompt: Optional[str] = None):
         """Start a debugging session for the agent.

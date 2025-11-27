@@ -4,6 +4,7 @@ import json
 from unittest.mock import Mock, MagicMock
 from typing import Dict, List, Any, Optional
 from connectonion.llm import LLMResponse, ToolCall
+from connectonion.usage import TokenUsage
 
 
 class OpenAIMockBuilder:
@@ -102,7 +103,8 @@ class LLMResponseBuilder:
         return LLMResponse(
             content=content,
             tool_calls=[],
-            raw_response=None
+            raw_response=None,
+            usage=TokenUsage(),
         )
 
     @staticmethod
@@ -121,7 +123,8 @@ class LLMResponseBuilder:
         return LLMResponse(
             content=None,
             tool_calls=[tool_call],
-            raw_response=None
+            raw_response=None,
+            usage=TokenUsage(),
         )
 
     @staticmethod
@@ -138,7 +141,8 @@ class LLMResponseBuilder:
         return LLMResponse(
             content=None,
             tool_calls=calls,
-            raw_response=None
+            raw_response=None,
+            usage=TokenUsage(),
         )
 
 

@@ -14,6 +14,8 @@ Usage:
     # - search_emails(query, max_results)
     # - get_email_body(email_id)
     # - get_email_attachments(email_id)
+    # - send(to, subject, body, cc, bcc)
+    # - reply(email_id, body)
     # - mark_read(email_id)
     # - mark_unread(email_id)
     # - archive_email(email_id)
@@ -66,7 +68,14 @@ class Gmail:
             raise ValueError(
                 "Missing 'gmail.readonly' scope.\n"
                 f"Current scopes: {scopes}\n"
-                "Please authorize Gmail read access:\n"
+                "Please authorize Gmail access:\n"
+                "  co auth google"
+            )
+        if "gmail.send" not in scopes:
+            raise ValueError(
+                "Missing 'gmail.send' scope.\n"
+                f"Current scopes: {scopes}\n"
+                "Please authorize Gmail send access:\n"
                 "  co auth google"
             )
 
@@ -75,10 +84,7 @@ class Gmail:
         self.contacts_csv = contacts_csv
 
     def _get_service(self):
-        """Get Gmail API service (lazy load)."""
-        if self._service:
-            return self._service
-
+        """Get Gmail API service (lazy load with auto-refresh)."""
         access_token = os.getenv("GOOGLE_ACCESS_TOKEN")
         refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
         expires_at_str = os.getenv("GOOGLE_TOKEN_EXPIRES_AT")
@@ -90,6 +96,7 @@ class Gmail:
             )
 
         # Check if token is expired or about to expire (within 5 minutes)
+        # Always check before returning cached service
         if expires_at_str:
             from datetime import datetime, timedelta
             expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
@@ -98,6 +105,12 @@ class Gmail:
             if now >= expires_at - timedelta(minutes=5):
                 # Token expired or about to expire, refresh via backend
                 access_token = self._refresh_via_backend(refresh_token)
+                # Clear cached service to use new token
+                self._service = None
+
+        # Return cached service if available
+        if self._service:
+            return self._service
 
         # Create credentials without client_id/client_secret
         # Backend handles token refresh, so we don't need auto-refresh
@@ -108,7 +121,8 @@ class Gmail:
             client_id=None,
             client_secret=None,
             scopes=["https://www.googleapis.com/auth/gmail.readonly",
-                   "https://www.googleapis.com/auth/gmail.modify"]
+                   "https://www.googleapis.com/auth/gmail.modify",
+                   "https://www.googleapis.com/auth/gmail.send"]
         )
 
         self._service = build('gmail', 'v1', credentials=creds)
@@ -426,6 +440,92 @@ class Gmail:
             output.append(f"   ID: {att['id']}\n")
 
         return "\n".join(output)
+
+    def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None) -> str:
+        """Send email via Gmail API.
+
+        Args:
+            to: Recipient email address
+            subject: Email subject
+            body: Email body (plain text)
+            cc: Optional CC recipients (comma-separated)
+            bcc: Optional BCC recipients (comma-separated)
+
+        Returns:
+            Confirmation message with sent message ID
+        """
+        from email.mime.text import MIMEText
+
+        service = self._get_service()
+
+        # Create message
+        message = MIMEText(body)
+        message['To'] = to
+        message['Subject'] = subject
+
+        if cc:
+            message['Cc'] = cc
+        if bcc:
+            message['Bcc'] = bcc
+
+        # Encode message
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+
+        # Send via Gmail API
+        sent_message = service.users().messages().send(
+            userId='me',
+            body={'raw': raw_message}
+        ).execute()
+
+        return f"Email sent successfully to {to}. Message ID: {sent_message['id']}"
+
+    def reply(self, email_id: str, body: str) -> str:
+        """Reply to an email via Gmail API.
+
+        Args:
+            email_id: Gmail message ID to reply to
+            body: Reply message body (plain text)
+
+        Returns:
+            Confirmation message with sent message ID
+        """
+        from email.mime.text import MIMEText
+
+        service = self._get_service()
+
+        # Get original message to extract headers
+        original = service.users().messages().get(
+            userId='me',
+            id=email_id,
+            format='metadata',
+            metadataHeaders=['From', 'To', 'Subject', 'Message-ID']
+        ).execute()
+
+        headers = {h['name']: h['value'] for h in original['payload']['headers']}
+        original_subject = headers.get('Subject', '')
+        original_from = headers.get('From', '')
+        original_message_id = headers.get('Message-ID', '')
+        thread_id = original.get('threadId', '')
+
+        # Create reply
+        message = MIMEText(body)
+        message['To'] = original_from
+        message['Subject'] = original_subject if original_subject.startswith('Re: ') else f"Re: {original_subject}"
+
+        if original_message_id:
+            message['In-Reply-To'] = original_message_id
+            message['References'] = original_message_id
+
+        # Encode message
+        raw_message = base64.urlsafe_b64encode(message.as_bytes()).decode('utf-8')
+
+        # Send as reply in same thread
+        sent_message = service.users().messages().send(
+            userId='me',
+            body={'raw': raw_message, 'threadId': thread_id}
+        ).execute()
+
+        return f"Reply sent successfully. Message ID: {sent_message['id']}"
 
     # === Actions ===
 

@@ -27,6 +27,7 @@ from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from connectonion import Agent
 from connectonion.llm import LLMResponse
+from connectonion.usage import TokenUsage
 
 
 @pytest.fixture
@@ -36,7 +37,8 @@ def mock_llm():
     llm.complete.return_value = LLMResponse(
         content="Test response",
         tool_calls=[],
-        raw_response=None
+        raw_response=None,
+        usage=TokenUsage(),
     )
     return llm
 

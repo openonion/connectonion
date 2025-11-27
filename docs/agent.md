@@ -100,6 +100,11 @@ agent.tool_map              # Dict[str, Callable]: Fast tool lookup
 agent.system_prompt         # str: Agent's personality
 agent.max_iterations        # int: Default iteration limit
 agent.current_session       # dict | None: Runtime state
+
+# Token usage tracking
+agent.last_usage            # TokenUsage | None: From last LLM call
+agent.total_cost            # float: Cumulative cost in USD
+agent.context_percent       # float: Context window usage (0-100%)
 ```
 
 **That's the complete API.** Now let's dive into each feature.
@@ -114,11 +119,12 @@ agent.current_session       # dict | None: Runtime state
 4. [Conversations & Multi-Turn](#conversations--multi-turn)
 5. [Iteration Control](#iteration-control)
 6. [Models & LLMs](#models--llms)
-7. [Logging & Debugging](#logging--debugging)
-8. [Trust & Security](#trust--security)
-9. [Common Patterns](#common-patterns)
-10. [Testing Your Agents](#testing-your-agents)
-11. [Architecture & Internals](#architecture--internals)
+7. [Token Usage & Cost Tracking](#token-usage--cost-tracking)
+8. [Logging & Debugging](#logging--debugging)
+9. [Trust & Security](#trust--security)
+10. [Common Patterns](#common-patterns)
+11. [Testing Your Agents](#testing-your-agents)
+12. [Architecture & Internals](#architecture--internals)
 
 ---
 
@@ -492,6 +498,100 @@ agent = Agent("bot", llm=custom_llm)
 ```
 
 See [models.md](models.md) for complete model list and details.
+
+---
+
+## Token Usage & Cost Tracking
+
+Track token consumption and API costs across LLM calls.
+
+### Basic Usage
+
+```python
+agent = Agent("assistant", tools=[search])
+result = agent.input("Search for Python tutorials")
+
+# Check usage after any LLM call
+print(f"Last call used {agent.last_usage.input_tokens} input tokens")
+print(f"Total cost so far: ${agent.total_cost:.4f}")
+print(f"Context window used: {agent.context_percent:.1f}%")
+```
+
+### TokenUsage Object
+
+After each LLM call, `agent.last_usage` contains:
+
+```python
+from connectonion.usage import TokenUsage
+
+# TokenUsage fields:
+agent.last_usage.input_tokens      # Total input tokens
+agent.last_usage.output_tokens     # Output/completion tokens
+agent.last_usage.cached_tokens     # Tokens from cache (cheaper)
+agent.last_usage.cache_write_tokens # Tokens written to cache (Anthropic)
+agent.last_usage.cost              # Cost for this call in USD
+```
+
+### Multi-Turn Cost Tracking
+
+```python
+agent = Agent("chat", tools=[calculator])
+
+agent.input("What is 10 + 5?")
+print(f"After turn 1: ${agent.total_cost:.4f}")
+
+agent.input("Multiply that by 2")
+print(f"After turn 2: ${agent.total_cost:.4f}")
+
+agent.input("Now divide by 3")
+print(f"Total spent: ${agent.total_cost:.4f}")
+```
+
+### Context Window Monitoring
+
+Monitor how much context you're using to avoid hitting limits:
+
+```python
+agent = Agent("researcher", tools=[search, analyze])
+
+for topic in topics:
+    result = agent.input(f"Research {topic}")
+
+    # Warn if context is getting full
+    if agent.context_percent > 80:
+        print(f"Warning: {agent.context_percent:.0f}% context used")
+        agent.reset_conversation()  # Start fresh
+```
+
+### Cache Pricing
+
+Different providers handle caching differently:
+
+| Provider | Cache Read | Cache Write |
+|----------|-----------|-------------|
+| OpenAI | 50% of input price | N/A |
+| Anthropic | 10% of input price | 125% of input price |
+| Google Gemini | 25% of input price | N/A |
+
+Cached tokens save money on repeated context (e.g., system prompts, previous messages).
+
+### Console Output
+
+Token usage is automatically shown in console logs after each LLM call:
+
+```
+→ LLM Request (gpt-4o-mini) • 5 msgs • 2 tools
+← LLM Response (0.8s) • 1,234 in • 156 out • $0.0003
+```
+
+### Supported Models
+
+Cost tracking works with all supported providers:
+- OpenAI (gpt-4o, gpt-4o-mini, o1, o3-mini, o4-mini)
+- Anthropic Claude (claude-3-5-sonnet, claude-3-5-haiku, claude-opus-4)
+- Google Gemini (gemini-2.5-pro, gemini-2.5-flash, gemini-1.5-pro)
+
+Unknown models use default pricing estimates.
 
 ---
 

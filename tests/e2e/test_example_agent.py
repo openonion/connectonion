@@ -214,6 +214,7 @@ class TestExampleAgent:
         """
         from unittest.mock import Mock
         from connectonion.llm import LLMResponse, ToolCall
+        from connectonion.usage import TokenUsage
 
         # Create mock LLM
         mock_llm = Mock()
@@ -226,7 +227,7 @@ class TestExampleAgent:
                     id="call_123"
                 )
             ],
-            raw_response=None
+            raw_response=None, usage=TokenUsage()
         )
 
         # Create agent with mock
@@ -250,12 +251,13 @@ class TestExampleAgent:
         """
         from unittest.mock import Mock
         from connectonion.llm import LLMResponse
+        from connectonion.usage import TokenUsage
 
         mock_llm = Mock()
         mock_llm.complete.return_value = LLMResponse(
             content="Ahoy! I be calculatin' that for ye!",
             tool_calls=[],
-            raw_response=None
+            raw_response=None, usage=TokenUsage()
         )
 
         pirate_agent = Agent(
@@ -284,6 +286,7 @@ class TestExampleAgent:
 
         from unittest.mock import Mock
         from connectonion.llm import LLMResponse, ToolCall
+        from connectonion.usage import TokenUsage
 
         mock_llm = Mock()
         # First response: try to use the failing tool
@@ -297,13 +300,13 @@ class TestExampleAgent:
                         id="call_1"
                     )
                 ],
-                raw_response=None
+                raw_response=None, usage=TokenUsage()
             ),
             # Second response: acknowledge the error
             LLMResponse(
                 content="I encountered an error with the tool, but I can still help you.",
                 tool_calls=[],
-                raw_response=None
+                raw_response=None, usage=TokenUsage()
             )
         ]
 

@@ -9,6 +9,7 @@ from unittest.mock import Mock, MagicMock
 from connectonion import Agent
 # No need to import tools - they're just functions
 from connectonion.llm import LLMResponse, ToolCall, OpenAILLM
+from connectonion.usage import TokenUsage
 import os
 from dotenv import load_dotenv
 
@@ -46,7 +47,8 @@ def mock_llm():
     mock.complete.return_value = LLMResponse(
         content="Mock response",
         tool_calls=[],
-        raw_response=None
+        raw_response=None,
+        usage=TokenUsage(),
     )
     return mock
 
