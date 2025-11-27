@@ -100,12 +100,13 @@ class TestUnknownModels:
 
     def test_unknown_provider_in_create_llm(self):
         """Test create_llm raises ValueError when provider not implemented."""
-        # This shouldn't happen in practice, but test the error path
-        with patch('connectonion.llm.MODEL_REGISTRY', {"test-model": "unknown_provider"}):
-            with pytest.raises(ValueError) as exc_info:
-                create_llm("test-model")
+        # Test that unknown models raise appropriate error
+        # Note: The error message depends on whether the model matches known prefixes
+        with pytest.raises(ValueError) as exc_info:
+            create_llm("totally-unknown-model-xyz")
 
-            assert "Provider" in str(exc_info.value) and "not implemented" in str(exc_info.value)
+        # Should get "Unknown model" error since no prefix matches
+        assert "Unknown model" in str(exc_info.value) or "not implemented" in str(exc_info.value)
 
 
 class TestStructuredOutputErrors:

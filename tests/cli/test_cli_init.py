@@ -244,7 +244,7 @@ class TestCliInit:
                 assert "AGENT_ADDRESS=" in content or "OPENONION_API_KEY=" in content
 
     def test_init_uses_managed_model_by_default(self):
-        """Test that init sets default model to co/o4-mini."""
+        """Test that init sets default model to co/gemini-2.5-pro."""
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
@@ -257,7 +257,7 @@ class TestCliInit:
                 config = toml.load(f)
 
             # Should use managed model by default
-            assert config.get("agent", {}).get("default_model") == "co/o4-mini"
+            assert config.get("agent", {}).get("default_model") == "co/gemini-2.5-pro"
 
     def test_init_creates_agent_config_path_in_env(self):
         """Test that init creates AGENT_CONFIG_PATH in .env file."""
@@ -287,7 +287,7 @@ class TestCliInit:
             assert os.path.exists(".env")
             with open(".env") as f:
                 content = f.read()
-                assert "# Default model: co/o4-mini" in content
+                assert "# Default model: co/gemini-2.5-pro" in content
                 assert "managed keys with free credits" in content
 
     def test_init_creates_agent_address_explanation_in_global_keys(self):

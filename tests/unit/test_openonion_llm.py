@@ -43,6 +43,10 @@ class TestOpenOnionLLM:
             mock_response.choices = [MagicMock()]
             mock_response.choices[0].message.content = "Test response"
             mock_response.choices[0].message.tool_calls = None
+            # Mock usage data for cost calculation
+            mock_response.usage.prompt_tokens = 10
+            mock_response.usage.completion_tokens = 20
+            mock_response.usage.prompt_tokens_details = None
 
             llm = OpenOnionLLM(model="co/gpt-4o")
 
@@ -65,6 +69,10 @@ class TestOpenOnionLLM:
             mock_response.choices = [MagicMock()]
             mock_response.choices[0].message.content = "Test reasoning response"
             mock_response.choices[0].message.tool_calls = None
+            # Mock usage data for cost calculation
+            mock_response.usage.prompt_tokens = 10
+            mock_response.usage.completion_tokens = 20
+            mock_response.usage.prompt_tokens_details = None
 
             llm = OpenOnionLLM(model="co/o4-mini")
 
@@ -85,6 +93,10 @@ class TestOpenOnionLLM:
             mock_response = MagicMock()
             mock_response.choices = [MagicMock()]
             mock_response.choices[0].message.content = None
+            # Mock usage data for cost calculation
+            mock_response.usage.prompt_tokens = 10
+            mock_response.usage.completion_tokens = 20
+            mock_response.usage.prompt_tokens_details = None
 
             # Mock tool call
             mock_tool_call = MagicMock()

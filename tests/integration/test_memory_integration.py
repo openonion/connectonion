@@ -31,7 +31,7 @@ def test_memory_as_agent_tool(memory_instance):
     assert "write_memory" in tool_names
     assert "read_memory" in tool_names
     assert "list_memories" in tool_names
-    assert "delete_memory" in tool_names
+    assert "search_memory" in tool_names
 
 
 def test_memory_tool_schemas(memory_instance):

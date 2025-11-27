@@ -249,7 +249,7 @@ class TestCliCreate:
             assert os.path.exists(env_file)
             with open(env_file) as f:
                 content = f.read()
-                assert "# Default model: co/o4-mini" in content
+                assert "# Default model: co/gemini-2.5-pro" in content
                 assert "managed keys with free credits" in content
 
     def test_create_adds_agent_address_explanation_to_global_keys(self):
