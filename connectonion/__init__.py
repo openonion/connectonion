@@ -1,6 +1,6 @@
 """ConnectOnion - A simple agent framework with behavior tracking."""
 
-__version__ = "0.4.7"
+__version__ = "0.4.8"
 
 # Auto-load .env files for the entire framework
 from dotenv import load_dotenv
@@ -25,7 +25,8 @@ from .events import (
     after_llm,
     before_tool,
     after_tool,
-    on_error
+    on_error,
+    on_complete
 )
 
 __all__ = [
@@ -59,5 +60,6 @@ __all__ = [
     "after_llm",
     "before_tool",
     "after_tool",
-    "on_error"
+    "on_error",
+    "on_complete"
 ]

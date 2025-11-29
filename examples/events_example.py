@@ -1,19 +1,20 @@
 """
 Example demonstrating the event system (on_events parameter).
 
-This example shows all 6 event types:
+This example shows all 7 event types:
 1. after_user_input - fires once per turn
 2. before_llm - fires before each LLM call
 3. after_llm - fires after each LLM response
 4. before_tool - fires before each tool execution
 5. after_tool - fires after successful tool execution
 6. on_error - fires when tool execution fails
+7. on_complete - fires once after agent completes task
 
 Run with:
     python examples/events_example.py
 """
 
-from connectonion import Agent, after_user_input, before_llm, after_llm, before_tool, after_tool, on_error, llm_do
+from connectonion import Agent, after_user_input, before_llm, after_llm, before_tool, after_tool, on_error, on_complete, llm_do
 from datetime import datetime
 
 
@@ -56,6 +57,17 @@ def handle_errors(agent: Agent) -> None:
         # Could implement retry logic here
         # Could log to external monitoring system
         # Could add recovery instructions to messages
+
+
+def log_completion(agent: Agent) -> None:
+    """Log task completion with summary statistics"""
+    trace = agent.current_session['trace']
+
+    llm_calls = sum(1 for t in trace if t['type'] == 'llm_call')
+    tool_calls = sum(1 for t in trace if t['type'] == 'tool_execution')
+    errors = sum(1 for t in trace if t.get('status') == 'error')
+
+    print(f"✅ Task complete: {llm_calls} LLM calls, {tool_calls} tools, {errors} errors")
 
 
 # Example 2: AI-powered reflection after tool execution
@@ -164,10 +176,11 @@ def main():
 
 
     print("\n" + "="*60)
-    print("Example 4: Multiple Events Combined")
+    print("Example 4: Grouping Multiple Handlers")
     print("="*60 + "\n")
 
-    # Create agent with multiple event types
+    # You can group multiple handlers for the same event type
+    # This is cleaner than listing them separately
     agent4 = Agent(
         name="full_featured_agent",
         tools=[search, slow_analysis, failing_tool],
@@ -175,13 +188,31 @@ def main():
         on_events=[
             after_user_input(log_user_input),
             after_llm(track_llm_calls),
-            after_tool(monitor_tool_performance),
+            after_tool(monitor_tool_performance, add_reflection),  # grouped handlers
             on_error(handle_errors)
         ]
     )
 
     result4 = agent4.input("Search for 'machine learning', analyze it, then process 'success'")
     print(f"\nResult: {result4}\n")
+
+
+    print("\n" + "="*60)
+    print("Example 5: Task Completion with on_complete")
+    print("="*60 + "\n")
+
+    # Create agent with completion handler
+    agent5 = Agent(
+        name="completion_agent",
+        tools=[search],
+        model="gpt-4o-mini",
+        on_events=[
+            on_complete(log_completion)
+        ]
+    )
+
+    result5 = agent5.input("Search for 'Python programming'")
+    print(f"\nResult: {result5}\n")
 
     print("\n" + "="*60)
     print("All examples completed!")

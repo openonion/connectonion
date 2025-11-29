@@ -34,7 +34,7 @@ from connectonion import Agent
 
 **Environment (please complete the following information):**
  - OS: [e.g. macOS, Ubuntu, Windows]
- - Python Version: [e.g. 3.9, 3.10, 3.11]
+ - Python Version: [e.g. 3.10, 3.11, 3.12]
  - ConnectOnion Version: [e.g. 0.0.5]
  - OpenAI API Key configured: [yes/no]
 

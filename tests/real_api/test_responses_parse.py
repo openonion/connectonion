@@ -15,6 +15,15 @@ class EmailDraft(BaseModel):
     body: str
 
 
+def _is_localhost_available():
+    """Check if localhost:8000 is reachable."""
+    try:
+        requests.get("http://localhost:8000/health", timeout=2)
+        return True
+    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
+        return False
+
+
 def get_test_token():
     """Generate test auth token for local backend"""
     signing_key = SigningKey.generate()
@@ -39,6 +48,10 @@ def get_test_token():
     return response.json()["token"]
 
 
+@pytest.mark.skipif(
+    os.getenv("CI") or os.getenv("GITHUB_ACTIONS") or not _is_localhost_available(),
+    reason="Skipped in CI or when localhost:8000 is not available"
+)
 def test_structured_output_with_managed_keys():
     """Test that llm_do() with Pydantic output works with co/ models.
 

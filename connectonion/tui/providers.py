@@ -1,37 +1,85 @@
 """Providers for CommandPalette and Input autocomplete."""
 
 from pathlib import Path
-from typing import Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable, Union
 
 from .fuzzy import fuzzy_match
+from .dropdown import DropdownItem
 
 
 @runtime_checkable
 class Provider(Protocol):
     """Protocol for autocomplete providers."""
 
-    def search(self, query: str) -> list[tuple[str, any, int, list[int]]]:
-        """Return matches as (display, value, score, positions)."""
+    def search(self, query: str) -> list[Union[DropdownItem, tuple]]:
+        """Return matches as DropdownItem or (display, value, score, positions) tuple."""
         ...
 
 
 class StaticProvider:
-    """Provider for static list of items."""
+    """Provider for static list of items.
 
-    def __init__(self, items: list[tuple[str, any]]):
+    Supports multiple input formats:
+    - (display, value) - simple tuple
+    - (display, value, description) - with description
+    - (display, value, description, icon) - with icon
+    - DropdownItem - full control
+
+    Usage:
+        # Simple commands
+        provider = StaticProvider([
+            ("/today", "/today"),
+            ("/inbox", "/inbox"),
+        ])
+
+        # With descriptions
+        provider = StaticProvider([
+            ("/today", "/today", "Daily email briefing"),
+            ("/inbox", "/inbox", "Show recent emails"),
+        ])
+
+        # With icons
+        provider = StaticProvider([
+            ("/today", "/today", "Daily briefing", "📅"),
+            ("/inbox", "/inbox", "Show emails", "📥"),
+        ])
+    """
+
+    def __init__(self, items: list):
         """
         Args:
-            items: List of (display_text, value) tuples
+            items: List of tuples or DropdownItem objects
         """
-        self.items = items
+        self.items = self._normalize_items(items)
 
-    def search(self, query: str) -> list[tuple[str, any, int, list[int]]]:
+    def _normalize_items(self, items: list) -> list[tuple]:
+        """Convert items to normalized format (display, value, description, icon)."""
+        normalized = []
+        for item in items:
+            if isinstance(item, DropdownItem):
+                normalized.append((item.display, item.value, item.description, item.icon))
+            elif len(item) == 2:
+                normalized.append((item[0], item[1], "", ""))
+            elif len(item) == 3:
+                normalized.append((item[0], item[1], item[2], ""))
+            elif len(item) >= 4:
+                normalized.append((item[0], item[1], item[2], item[3]))
+        return normalized
+
+    def search(self, query: str) -> list[DropdownItem]:
         results = []
-        for name, value in self.items:
-            matched, score, positions = fuzzy_match(query, name)
+        for display, value, description, icon in self.items:
+            matched, score, positions = fuzzy_match(query, display)
             if matched:
-                results.append((name, value, score, positions))
-        return sorted(results, key=lambda x: -x[2])
+                results.append(DropdownItem(
+                    display=display,
+                    value=value,
+                    score=score,
+                    positions=positions,
+                    description=description,
+                    icon=icon,
+                ))
+        return sorted(results, key=lambda x: -x.score)
 
 
 class FileProvider:
@@ -58,7 +106,7 @@ class FileProvider:
     def context(self, value: str):
         self._context = value
 
-    def search(self, query: str) -> list[tuple[str, any, int, list[int]]]:
+    def search(self, query: str) -> list[DropdownItem]:
         """Search files in current context directory."""
         base = self.root / self._context if self._context else self.root
         if not base.exists():
@@ -79,10 +127,16 @@ class FileProvider:
 
             if matched:
                 full_path = (self._context + name) if self._context else name
-                results.append((name, full_path, score, positions))
+                # Icons are handled by Dropdown based on filename
+                results.append(DropdownItem(
+                    display=name,
+                    value=full_path,
+                    score=score,
+                    positions=positions,
+                ))
 
         # Sort: directories first, then by score, then alphabetically
-        results.sort(key=lambda x: (not x[0].endswith('/'), -x[2], x[0].lower()))
+        results.sort(key=lambda x: (not x.display.endswith('/'), -x.score, x.display.lower()))
         return results
 
     def enter(self, path: str) -> bool:

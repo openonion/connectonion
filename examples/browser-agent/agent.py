@@ -2,7 +2,7 @@
 
 import os
 from connectonion import Agent, xray
-from connectonion.useful_plugins import reflection, react
+from connectonion.useful_plugins import re_act
 from dotenv import load_dotenv
 from pathlib import Path
 import time
@@ -184,7 +184,7 @@ agent = Agent(
     tools=[browser],  # ConnectOnion automatically extracts all public methods
     model="gpt-4o-mini",
     max_iterations=15,
-    plugins=[reflection, react]  # Add reflection and ReAct reasoning
+    plugins=[re_act]  # Add ReAct reasoning (planning + reflection)
 )
 
 
@@ -197,8 +197,8 @@ if __name__ == "__main__":
     print("📸 Advanced screenshots - Custom paths, sizes, full-page capture")
     print("🔍 Content extraction - Scrape text and links")
     print("📏 Viewport control - Adjust browser window size")
-    print("💭 Reflection - Learn from each action")
-    print("🤔 ReAct - Reason about actions and plan next steps")
+    print("💭 Planning - Plan before action")
+    print("🤔 Reflection - Learn from each action")
     print("\nTry: 'Open Google and take a screenshot'")
     print("     'Take a full-page screenshot and save to ./screenshots/'")
     print("     'Set viewport to 1920x1080 and navigate to example.com'")

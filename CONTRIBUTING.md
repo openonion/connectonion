@@ -20,7 +20,7 @@ This project and everyone participating in it is governed by our [Code of Conduc
 ConnectOnion is a simple Python framework for creating AI agents with behavior tracking. We aim to keep things simple while making complicated things possible.
 
 ### Prerequisites
-- Python 3.9 or higher
+- Python 3.10 or higher
 - OpenAI API key (for running agents)
 - Git for version control
 

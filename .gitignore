@@ -143,8 +143,8 @@ dmypy.json
 # Ruff
 .ruff_cache/
 
-# UV package manager
-uv.lock
+# UV package manager cache
+.uv/
 
 # Rye
 .rye/

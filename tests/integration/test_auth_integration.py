@@ -9,6 +9,11 @@ from pathlib import Path
 from nacl.signing import SigningKey
 from nacl.encoding import HexEncoder
 
+# Get absolute path to llm_do.py for reliable file access
+# tests/integration/test_auth_integration.py -> tests/integration -> tests -> repo root -> connectonion/llm_do.py
+_TEST_DIR = Path(__file__).parent.resolve()
+_LLM_DO_PATH = _TEST_DIR.parent.parent / "connectonion" / "llm_do.py"
+
 # Test the authentication flow
 def test_connectonion_auth_format():
     """Test that ConnectOnion auth message format works with API."""
@@ -67,9 +72,12 @@ def test_connectonion_auth_format():
 def test_llm_proxy_url():
     """Test that LLM proxy URL is correctly configured."""
     import os
-    
+
+    if not _LLM_DO_PATH.exists():
+        pytest.skip(f"llm_do.py not found at {_LLM_DO_PATH}")
+
     # Check URL configuration
-    with open("../connectonion/connectonion/llm_do.py", "r") as f:
+    with open(_LLM_DO_PATH, "r") as f:
         content = f.read()
         
         # Check for environment detection
@@ -101,9 +109,12 @@ def test_llm_proxy_url():
 
 def test_model_name_handling():
     """Test how model names with co/ prefix are handled."""
-    
+
+    if not _LLM_DO_PATH.exists():
+        pytest.skip(f"llm_do.py not found at {_LLM_DO_PATH}")
+
     # Check the fix in llm_do.py
-    with open("../connectonion/connectonion/llm_do.py", "r") as f:
+    with open(_LLM_DO_PATH, "r") as f:
         content = f.read()
         
         # Check if model is kept intact (not stripped)

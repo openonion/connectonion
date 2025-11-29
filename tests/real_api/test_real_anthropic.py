@@ -69,7 +69,7 @@ class TestRealAnthropic:
         """Test different Anthropic models."""
         models = [
             "claude-3-5-haiku-latest",
-            "claude-3-5-sonnet",
+            "claude-3-5-sonnet-latest",
         ]
 
         for model in models:

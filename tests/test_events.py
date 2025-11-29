@@ -3,7 +3,7 @@ Tests for the event system (on_events parameter)
 """
 import pytest
 from unittest.mock import Mock
-from connectonion import Agent, after_user_input, before_llm, after_llm, before_tool, after_tool, on_error
+from connectonion import Agent, after_user_input, before_llm, after_llm, before_tool, after_tool, on_error, on_complete
 
 
 def search(query: str) -> str:
@@ -319,6 +319,7 @@ class TestEventSystem:
         assert before_tool(handler)._event_type == 'before_tool'
         assert after_tool(handler)._event_type == 'after_tool'
         assert on_error(handler)._event_type == 'on_error'
+        assert on_complete(handler)._event_type == 'on_complete'
 
     def test_event_validation_rejects_non_callable(self):
         """Test that non-callable events are rejected with clear error"""
@@ -386,6 +387,59 @@ class TestEventSystem:
         # Should fire on_error exactly once
         assert len(calls) == 1
 
+    def test_on_complete_fires_once_per_input(self):
+        """Test on_complete fires exactly once per input() call, after final response"""
+        calls = []
+
+        def track_complete(agent):
+            calls.append('on_complete')
+            # Verify session exists and has response
+            assert agent.current_session is not None
+            assert 'trace' in agent.current_session
+
+        agent = Agent(
+            "test",
+            tools=[search],
+            model="gpt-4o-mini",
+            on_events=[on_complete(track_complete)]
+        )
+
+        # First input
+        agent.input("Search for Python")
+        assert len(calls) == 1
+
+        # Second input
+        agent.input("Search for JavaScript")
+        assert len(calls) == 2
+
+    def test_on_complete_fires_after_tool_execution(self):
+        """Test on_complete fires after all tools have completed"""
+        event_order = []
+
+        def track_after_tool(agent):
+            event_order.append('after_tool')
+
+        def track_complete(agent):
+            event_order.append('on_complete')
+
+        agent = Agent(
+            "test",
+            tools=[search],
+            model="gpt-4o-mini",
+            on_events=[
+                after_tool(track_after_tool),
+                on_complete(track_complete)
+            ]
+        )
+
+        agent.input("Search for Python")
+
+        # on_complete should be the last event
+        assert event_order[-1] == 'on_complete'
+        # after_tool should fire before on_complete
+        assert 'after_tool' in event_order
+        assert event_order.index('after_tool') < event_order.index('on_complete')
+
     def test_after_tool_fires_for_all_executions(self):
         """Test after_tool fires for ALL tool executions (success, error, not_found)"""
         after_tool_calls = []
@@ -420,3 +474,204 @@ class TestEventSystem:
         # on_error should fire only for error and not_found (2 times)
         assert len(on_error_calls) == 2
         assert on_error_calls == ['error', 'not_found']
+
+
+class TestNewEventSyntax:
+    """Test new decorator and multiple-args wrapper syntax"""
+
+    def test_decorator_syntax_single_function(self):
+        """Test @before_tool decorator returns single callable function"""
+
+        @before_tool
+        def check_something(agent):
+            pass
+
+        # Should be callable (not a list)
+        assert callable(check_something)
+        assert hasattr(check_something, '_event_type')
+        assert check_something._event_type == 'before_tool'
+
+    def test_decorator_syntax_all_event_types(self):
+        """Test decorator syntax works for all event types"""
+
+        @after_user_input
+        def handler1(agent):
+            pass
+
+        @before_llm
+        def handler2(agent):
+            pass
+
+        @after_llm
+        def handler3(agent):
+            pass
+
+        @before_tool
+        def handler4(agent):
+            pass
+
+        @after_tool
+        def handler5(agent):
+            pass
+
+        @on_error
+        def handler6(agent):
+            pass
+
+        @on_complete
+        def handler7(agent):
+            pass
+
+        # All should be callable
+        assert callable(handler1)
+        assert callable(handler2)
+        assert callable(handler3)
+        assert callable(handler4)
+        assert callable(handler5)
+        assert callable(handler6)
+        assert callable(handler7)
+
+        # All should have correct _event_type
+        assert handler1._event_type == 'after_user_input'
+        assert handler2._event_type == 'before_llm'
+        assert handler3._event_type == 'after_llm'
+        assert handler4._event_type == 'before_tool'
+        assert handler5._event_type == 'after_tool'
+        assert handler6._event_type == 'on_error'
+        assert handler7._event_type == 'on_complete'
+
+    def test_wrapper_multiple_args_returns_list(self):
+        """Test before_tool(fn1, fn2) returns list"""
+
+        def handler1(agent):
+            pass
+
+        def handler2(agent):
+            pass
+
+        result = before_tool(handler1, handler2)
+
+        # Should be a list
+        assert isinstance(result, list)
+        assert len(result) == 2
+
+        # Both should have _event_type
+        assert result[0]._event_type == 'before_tool'
+        assert result[1]._event_type == 'before_tool'
+
+    def test_wrapper_single_arg_returns_function(self):
+        """Test before_tool(fn) returns single function (backward compatible)"""
+
+        def handler(agent):
+            pass
+
+        result = before_tool(handler)
+
+        # Should be callable, not list
+        assert callable(result)
+        assert not isinstance(result, list)
+        assert result._event_type == 'before_tool'
+
+    def test_agent_accepts_decorated_handlers(self):
+        """Test Agent accepts @decorated handlers in on_events"""
+
+        @before_tool
+        def check_tool(agent):
+            pass
+
+        @after_tool
+        def log_tool(agent):
+            pass
+
+        agent = Agent(
+            "test",
+            model="gpt-4o-mini",
+            on_events=[check_tool, log_tool],
+            log=False
+        )
+
+        assert len(agent.events['before_tool']) == 1
+        assert len(agent.events['after_tool']) == 1
+
+    def test_agent_accepts_multiple_args_wrapper(self):
+        """Test Agent accepts before_tool(fn1, fn2) in on_events"""
+
+        def handler1(agent):
+            pass
+
+        def handler2(agent):
+            pass
+
+        def handler3(agent):
+            pass
+
+        agent = Agent(
+            "test",
+            model="gpt-4o-mini",
+            on_events=[
+                before_tool(handler1, handler2),  # returns [fn, fn]
+                after_tool(handler3),              # returns fn
+            ],
+            log=False
+        )
+
+        # Should have 2 before_tool handlers and 1 after_tool handler
+        assert len(agent.events['before_tool']) == 2
+        assert len(agent.events['after_tool']) == 1
+
+    def test_mixed_decorator_and_wrapper_syntax(self):
+        """Test mixing @decorator and wrapper(fn1, fn2) syntax"""
+
+        @before_tool
+        def decorated_handler(agent):
+            pass
+
+        def wrapper_handler1(agent):
+            pass
+
+        def wrapper_handler2(agent):
+            pass
+
+        agent = Agent(
+            "test",
+            model="gpt-4o-mini",
+            on_events=[
+                decorated_handler,                          # @decorator
+                before_tool(wrapper_handler1, wrapper_handler2),  # wrapper(fn1, fn2)
+            ],
+            log=False
+        )
+
+        # Should have 3 before_tool handlers total
+        assert len(agent.events['before_tool']) == 3
+
+    def test_handlers_fire_in_order(self):
+        """Test handlers fire in correct order regardless of syntax"""
+        calls = []
+
+        @after_user_input
+        def handler1(agent):
+            calls.append('handler1')
+
+        def handler2(agent):
+            calls.append('handler2')
+
+        def handler3(agent):
+            calls.append('handler3')
+
+        agent = Agent(
+            "test",
+            model="gpt-4o-mini",
+            on_events=[
+                handler1,                              # decorated
+                after_user_input(handler2, handler3),  # wrapper with multiple
+            ],
+            log=False
+        )
+
+        # Manually invoke to test order
+        agent.current_session = {'user_prompt': 'test'}
+        agent._invoke_events('after_user_input')
+
+        # Should fire in registration order
+        assert calls == ['handler1', 'handler2', 'handler3']

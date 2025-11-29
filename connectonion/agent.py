@@ -98,7 +98,8 @@ class Agent:
             'after_llm': [],
             'before_tool': [],
             'after_tool': [],
-            'on_error': []
+            'on_error': [],
+            'on_complete': []
         }
 
         # Register plugin events (flatten list of lists)
@@ -107,10 +108,16 @@ class Agent:
                 for event_func in event_list:
                     self._register_event(event_func)
 
-        # Register custom event handlers
+        # Register custom event handlers (supports both single functions and lists)
         if on_events:
-            for event_func in on_events:
-                self._register_event(event_func)
+            for item in on_events:
+                if isinstance(item, list):
+                    # Multiple handlers: before_tool(fn1, fn2) returns [fn1, fn2]
+                    for fn in item:
+                        self._register_event(fn)
+                else:
+                    # Single handler: @before_tool or before_tool(fn)
+                    self._register_event(item)
 
         # Process tools: convert raw functions and class instances to tool schemas automatically
         processed_tools = []
@@ -242,6 +249,7 @@ class Agent:
         duration = time.time() - turn_start
 
         self.console.print(f"[green]✓ Complete[/green] ({duration:.1f}s)")
+        self._invoke_events('on_complete')
         return result
 
     def reset_conversation(self):

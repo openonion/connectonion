@@ -1,0 +1,120 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "connectonion"
+version = "0.4.8"
+description = "A simple Python framework for creating AI agents with behavior tracking"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.10"
+authors = [
+    { name = "ConnectOnion Team", email = "pypi@connectonion.com" }
+]
+keywords = [
+    "ai",
+    "agent",
+    "llm",
+    "tools",
+    "openai",
+    "automation",
+    "debugging",
+    "interactive-debugging",
+    "breakpoints",
+    "xray",
+]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "openai>=1.0.0",
+    "anthropic>=0.18.0",
+    "litellm>=1.0.0",
+    "pydantic>=2.0.0",
+    "python-dotenv>=1.0.0",
+    "click>=8.0.0",
+    "toml>=0.10.2",
+    "requests>=2.25.0",
+    "rich>=13.0.0",
+    "PyNaCl>=1.5.0",
+    "mnemonic>=0.20",
+    "questionary>=2.0.0",
+    "websockets>=11.0.0",
+    "google-auth>=2.0.0",
+    "google-api-python-client>=2.0.0",
+    "httpx>=0.24.0",
+    "beautifulsoup4>=4.12.0",
+    "pyyaml>=6.0.0",
+]
+
+[project.optional-dependencies]
+browser = ["playwright>=1.40.0"]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "pytest-cov>=4.0.0",
+]
+
+[project.urls]
+Homepage = "https://github.com/openonion/connectonion"
+Documentation = "https://docs.connectonion.com"
+Repository = "https://github.com/openonion/connectonion"
+"Bug Tracker" = "https://github.com/openonion/connectonion/issues"
+
+[project.scripts]
+co = "connectonion.cli.main:cli"
+connectonion = "connectonion.cli.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["connectonion"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "connectonion/**",
+    "README.md",
+    "LICENSE",
+]
+
+# Include all non-Python files (md, txt, etc.) in the package
+[tool.hatch.build]
+include = [
+    "connectonion/**/*.md",
+    "connectonion/**/*.txt",
+    "connectonion/**/*.example",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests (fast, isolated)",
+    "integration: Integration tests (multi-component)",
+    "real_api: Tests requiring real API keys",
+    "slow: Tests that take >10 seconds",
+    "network: Tests requiring network/relay",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+addopts = "-m 'not real_api and not slow'"
+
+[tool.ruff]
+line-length = 120
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]

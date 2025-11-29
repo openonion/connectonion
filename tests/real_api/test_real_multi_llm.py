@@ -58,9 +58,8 @@ def test_model_detection_google():
         "gemini-2.5-pro",
         "gemini-2.0-flash-exp",
         "gemini-2.0-flash-thinking-exp",
-        "gemini-2.5-pro",
         "gemini-2.5-flash",
-        "gemini-2.5-flash-8b",
+        "gemini-1.5-flash-8b",  # Note: 2.5-flash-8b doesn't exist, use 1.5-flash-8b
     ]
     for model in models:
         assert model.startswith("gemini")
@@ -70,8 +69,8 @@ def test_model_detection_anthropic():
         "claude-opus-4.1",
         "claude-opus-4",
         "claude-sonnet-4",
-        "claude-3-5-sonnet",
-        "claude-3-5-haiku",
+        "claude-3-5-sonnet-latest",
+        "claude-3-5-haiku-latest",
     ]
     for model in models:
         assert model.startswith("claude")
@@ -135,7 +134,7 @@ def test_tools_work_across_all_models():
         if "google" in available_providers:
             test_cases.append(("gemini-2.5-flash", "google"))
         if "anthropic" in available_providers:
-            test_cases.append(("claude-3-5-haiku", "anthropic"))
+            test_cases.append(("claude-3-5-haiku-latest", "anthropic"))
         
         if not test_cases:
             pytest.skip("No API keys available for testing")
@@ -166,31 +165,26 @@ def test_model_registry_mapping():
         # This will be the expected mapping when implemented
         expected_mapping = {
             # OpenAI models
-            # "gpt-5": "openai",  # Requires passport verification
-            # "gpt-5-mini": "openai",  # Requires passport verification
-            # "gpt-5-nano": "openai",  # Requires passport verification
-            # "gpt-4.1": "openai",  # Not yet available
             "o4-mini": "openai",  # Testing model
             "gpt-4o": "openai",
             "gpt-4o-mini": "openai",
             "gpt-3.5-turbo": "openai",
             "o1": "openai",
             "o1-mini": "openai",
-            
+
             # Google Gemini series
             "gemini-2.5-pro": "google",
             "gemini-2.0-flash-exp": "google",
             "gemini-2.0-flash-thinking-exp": "google",
-            "gemini-2.5-pro": "google",
             "gemini-2.5-flash": "google",
-            "gemini-2.5-flash-8b": "google",
-            
+            "gemini-1.5-flash-8b": "google",  # Fixed: 2.5-flash-8b doesn't exist
+
             # Anthropic Claude series
             "claude-opus-4.1": "anthropic",
             "claude-opus-4": "anthropic",
             "claude-sonnet-4": "anthropic",
-            "claude-3-5-sonnet": "anthropic",
-            "claude-3-5-haiku": "anthropic"
+            "claude-3-5-sonnet-latest": "anthropic",
+            "claude-3-5-haiku-latest": "anthropic"
         }
         
         # When MODEL_REGISTRY is implemented, test it
@@ -274,7 +268,7 @@ def test_google_gemini_real_call():
 def test_anthropic_claude_real_call():
         """Test actual API call with Claude model."""
         # Try Claude Opus 4.1 first, fallback to available models
-        models_to_try = ["claude-opus-4.1", "claude-3-5-sonnet", "claude-3-5-haiku"]
+        models_to_try = ["claude-opus-4.1", "claude-3-5-sonnet-latest", "claude-3-5-haiku-latest"]
         
         tools = _tools()
         for model in models_to_try:
@@ -305,7 +299,7 @@ def test_flagship_model_comparison():
         if "google" in available_providers:
             flagship_models.append(("gemini-2.5-flash", "google"))
         if "anthropic" in available_providers:
-            flagship_models.append(("claude-3-5-haiku", "anthropic"))
+            flagship_models.append(("claude-3-5-haiku-latest", "anthropic"))
         
         if len(flagship_models) < 2:
             pytest.skip("Need at least 2 providers for comparison test")
@@ -413,28 +407,26 @@ def test_fast_model_performance():
         available_providers = _available_providers()
         if not available_providers:
             pytest.skip("No API keys available")
-        
+
         # Use the fastest model from each provider
         fast_models = []
         if "openai" in available_providers:
-            # fast_models.append("gpt-5-nano")  # Requires passport verification
             fast_models.append("gpt-4o-mini")  # Fastest available
         if "google" in available_providers:
             fast_models.append("gemini-2.5-flash")
         if "anthropic" in available_providers:
-            fast_models.append("claude-3-5-haiku")
-        
+            fast_models.append("claude-3-5-haiku-latest")
+
         for model in fast_models:
             try:
                 start_time = time.time()
                 agent = Agent("perf_test", model=model)
                 end_time = time.time()
-                
+
                 initialization_time = end_time - start_time
-                
+
                 # Should initialize in less than 2 seconds
-                self.assertLess(initialization_time, 2.0, 
-                               f"Model {model} initialization took {initialization_time:.2f}s")
+                assert initialization_time < 2.0, f"Model {model} initialization took {initialization_time:.2f}s"
             except Exception as e:
                 # Model might not be available yet
                 if "not found" in str(e).lower() or "not available" in str(e).lower():

@@ -13,24 +13,49 @@ def log_llm_call(agent):
     """Log LLM calls"""
     last_trace = agent.current_session['trace'][-1]
     if last_trace['type'] == 'llm_call':
-        model = last_trace['model']
-        duration = last_trace['duration_ms']
-        print(f"💬 LLM call to {model} took {duration:.0f}ms")
+        print(f"LLM call took {last_trace['duration_ms']:.0f}ms")
 
 agent = Agent(
     "assistant",
-    tools=[search, calculate],
+    tools=[search],
     on_events=[
         after_llm(log_llm_call)
     ]
 )
-
-agent.input("Search for Python and calculate 2+2")
-# 💬 LLM call to gpt-4o-mini took 234ms
-# 💬 LLM call to gpt-4o-mini took 189ms
 ```
 
-**That's it!** Your event runs automatically after every LLM call.
+**Group multiple handlers:**
+
+```python
+from connectonion import Agent, before_tool
+
+def check_shell(agent):
+    ...
+
+def check_email(agent):
+    ...
+
+agent = Agent(
+    "assistant",
+    on_events=[
+        before_tool(check_shell, check_email),  # both handlers for same event
+    ]
+)
+```
+
+**That's it!** Your events run automatically at the right lifecycle points.
+
+> **Note: Alternative Decorator Syntax**
+>
+> You can also use decorator syntax: `@before_tool` instead of `before_tool(fn)`.
+> ```python
+> @before_tool
+> def check_shell(agent):
+>     ...
+>
+> on_events=[check_shell]  # works!
+> ```
+> We recommend the wrapper style `before_tool(fn)` because it's easier for LLMs to understand when reading your code. But if you find decorators more elegant, feel free to use them.
 
 ---
 
@@ -44,6 +69,7 @@ agent.input("Search for Python and calculate 2+2")
 | `before_tool` | Before tool execution | Per tool call | Validate args, add logging |
 | `after_tool` | After tool succeeds | Per tool call | Add reflection, log performance |
 | `on_error` | When tool fails | Per tool error | Custom error handling, retries |
+| `on_complete` | After agent finishes | Once per input() | Metrics, cleanup, final summary |
 
 ---
 
@@ -278,6 +304,40 @@ def handle_tool_error(agent):
 
 agent = Agent("assistant", tools=[search], on_events=[on_error(handle_tool_error)])
 ```
+
+### Task Completion Handler (on_complete)
+
+Use `on_complete` to run logic after the agent finishes a task:
+
+```python
+from connectonion import Agent, on_complete
+
+def log_completion(agent):
+    """Log when task completes"""
+    trace = agent.current_session['trace']
+
+    llm_calls = sum(1 for t in trace if t['type'] == 'llm_call')
+    tool_calls = sum(1 for t in trace if t['type'] == 'tool_execution')
+    errors = sum(1 for t in trace if t.get('status') == 'error')
+
+    print(f"✅ Task complete: {llm_calls} LLM calls, {tool_calls} tools, {errors} errors")
+
+agent = Agent(
+    "assistant",
+    tools=[search],
+    on_events=[on_complete(log_completion)]
+)
+
+agent.input("Search for Python")
+# ✅ Task complete: 2 LLM calls, 1 tools, 0 errors
+```
+
+**Use cases for `on_complete`:**
+- Final metrics and statistics
+- Cleanup temporary resources
+- Send task completion notifications
+- Log total execution time
+- Update external systems
 
 ### Session Statistics
 

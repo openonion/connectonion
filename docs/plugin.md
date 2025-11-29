@@ -1,6 +1,6 @@
 # Plugin System
 
-Plugins are reusable event lists. Package capabilities like reflection and reuse them across agents.
+Plugins are reusable event lists. Package capabilities like reasoning and reuse them across agents.
 
 ---
 
@@ -8,13 +8,17 @@ Plugins are reusable event lists. Package capabilities like reflection and reuse
 
 ```python
 from connectonion import Agent
-from connectonion.useful_plugins import reflection
+from connectonion.useful_plugins import re_act
 
-# Use built-in reflection plugin
-agent = Agent("assistant", tools=[search], plugins=[reflection])
+# Use built-in ReAct plugin
+agent = Agent("assistant", tools=[search], plugins=[re_act])
 
 agent.input("Search for Python")
-# 💭 We learned that Python is a popular programming language...
+# /planning...
+# 💭 Will search for Python info first.
+# ... tool executes ...
+# /reflecting...
+# 🤔 Found Python basics, task complete.
 ```
 
 That's it!
@@ -26,21 +30,21 @@ That's it!
 **A plugin is an event list:**
 
 ```python
-from connectonion import after_llm, after_tool
+from connectonion import after_user_input, after_tool
 
 # This is a plugin (one event list)
-reflection = [after_tool(add_reflection)]
+re_act = [after_user_input(plan), after_tool(reflect)]
 
 # This is also a plugin (one event list with multiple events)
-logger = [after_llm(log_llm), after_tool(log_tool)]
+logger = [after_tool(log_tool)]
 
 # Use them (plugins takes a list of plugins)
-agent = Agent("assistant", tools=[search], plugins=[reflection, logger])
+agent = Agent("assistant", tools=[search], plugins=[re_act, logger])
 ```
 
 **Just like tools:**
 - Tools: `Agent(tools=[search, calculate])`
-- Plugins: `Agent(plugins=[reflection, logger])`
+- Plugins: `Agent(plugins=[re_act, logger])`
 
 ---
 
@@ -71,35 +75,28 @@ agent = Agent(
 
 ConnectOnion provides ready-to-use plugins that you can import and use immediately.
 
-### Reflection Plugin
-
-Reflects on tool execution results to generate insights:
-
-```python
-from connectonion import Agent
-from connectonion.useful_plugins import reflection
-
-agent = Agent("assistant", tools=[search], plugins=[reflection])
-
-agent.input("Search for Python")
-# After each successful tool execution:
-# 💭 We learned that Python is a popular high-level programming language known for simplicity
-```
-
 ### ReAct Plugin
 
-Uses ReAct-style reasoning to plan next steps:
+Implements the ReAct (Reason + Act) pattern with planning and reflection:
 
 ```python
 from connectonion import Agent
-from connectonion.useful_plugins import react
+from connectonion.useful_plugins import re_act
 
-agent = Agent("assistant", tools=[search], plugins=[react])
+agent = Agent("assistant", tools=[search], plugins=[re_act])
 
 agent.input("Search for Python and explain it")
-# After each tool execution:
-# 🤔 We learned Python is widely used. We should next explain its key features and use cases.
+# /planning...
+# 💭 Will search for Python info first, then summarize key features.
+# ... tool executes ...
+# /reflecting...
+# 🤔 Got Python basics, now explain its use cases.
 ```
+
+**How it works:**
+1. **After user input**: Plans what to do (💭)
+2. **After each tool**: Reflects on results and plans next step (🤔)
+3. **Agent decides** when task is complete
 
 ### Image Result Formatter Plugin
 
@@ -195,19 +192,19 @@ agent.input("Clean up temp files")
 
 ```python
 from connectonion import Agent
-from connectonion.useful_plugins import reflection, react, image_result_formatter
+from connectonion.useful_plugins import re_act, image_result_formatter
 
 # Combine plugins for powerful agents
 agent = Agent(
     name="visual_researcher",
     tools=[take_screenshot, search, analyze],
-    plugins=[image_result_formatter, reflection, react]
+    plugins=[image_result_formatter, re_act]
 )
 
 # Now you get:
 # 🖼️  Image formatting for screenshots
-# 💭 Reflection: What we learned
-# 🤔 ReAct: What to do next
+# 💭 Planning: What to do
+# 🤔 Reflection: What we learned and next step
 ```
 
 ---

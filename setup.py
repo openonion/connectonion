@@ -66,6 +66,9 @@ setup(
         'connectonion.execution_analyzer': [
             '*.md',  # Include all markdown prompts for execution analyzer
         ],
+        'connectonion.prompts': [
+            '*.md',  # Include all prompts (reflect.md, analyze_contact.md)
+        ],
     },
     include_package_data=True,
     classifiers=[
@@ -74,14 +77,13 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.9",
         "Programming Language :: Python :: 3.10",
         "Programming Language :: Python :: 3.11",
         "Programming Language :: Python :: 3.12",
         "Topic :: Software Development :: Libraries :: Python Modules",
         "Topic :: Scientific/Engineering :: Artificial Intelligence",
     ],
-    python_requires=">=3.9",
+    python_requires=">=3.10",
     install_requires=requirements,
     extras_require=optional_deps,
     keywords="ai, agent, llm, tools, openai, automation, debugging, interactive-debugging, breakpoints, xray",

@@ -4,7 +4,7 @@
 
 [![Production Ready](https://img.shields.io/badge/Status-Production_Ready-success?style=flat-square)](https://connectonion.com)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
-[![Python 3.9+](https://img.shields.io/badge/Python-3.9+-blue?style=flat-square&logo=python)](https://python.org)
+[![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python)](https://python.org)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/connectonion?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/connectonion)
 [![GitHub stars](https://img.shields.io/github/stars/openonion/connectonion?style=flat-square)](https://github.com/openonion/connectonion)
 [![Contributors](https://img.shields.io/github/contributors/openonion/connectonion?style=flat-square)](https://github.com/openonion/connectonion/graphs/contributors)

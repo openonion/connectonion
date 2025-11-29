@@ -7,27 +7,34 @@ Tests connectivity without waiting for heartbeat or tasks.
 
 import sys
 import asyncio
+import os
+import tempfile
 import pytest
-sys.path.insert(0, '/Users/changxing/project/OnCourse/platform/connectonion-network')
 
 from pathlib import Path
 from connectonion import address, announce, relay
 
 
 @pytest.mark.asyncio
+@pytest.mark.network
+@pytest.mark.skipif(
+    os.getenv("CI") or os.getenv("GITHUB_ACTIONS"),
+    reason="Skipped in CI - requires local relay server"
+)
 async def test_announce():
     """Test that we can connect and announce successfully."""
     print("=== Testing Client ANNOUNCE ===\n")
 
-    # Generate or load keys
-    co_dir = Path('/Users/changxing/project/OnCourse/platform/connectonion-network/.co')
+    # Use temp directory for keys in tests
+    co_dir = Path(tempfile.gettempdir()) / ".co-test-announce"
+    co_dir.mkdir(parents=True, exist_ok=True)
     addr_data = address.load(co_dir)
 
     if addr_data is None:
         print("Generating new keys...")
         addr_data = address.generate()
         address.save(addr_data, co_dir)
-        print(f"✓ Keys saved\n")
+        print("✓ Keys saved\n")
 
     print(f"Address: {addr_data['address']}")
     print(f"Short: {addr_data['short_address']}\n")

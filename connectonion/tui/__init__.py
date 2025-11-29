@@ -22,7 +22,7 @@ Usage:
 """
 
 from .input import Input
-from .dropdown import Dropdown
+from .dropdown import Dropdown, DropdownItem
 from .providers import FileProvider, StaticProvider
 from .keys import getch, read_key
 from .fuzzy import fuzzy_match, highlight_match
@@ -32,6 +32,7 @@ from .divider import Divider
 __all__ = [
     "Input",
     "Dropdown",
+    "DropdownItem",
     "FileProvider",
     "StaticProvider",
     "getch",

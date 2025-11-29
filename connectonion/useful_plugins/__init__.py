@@ -4,9 +4,9 @@ Useful plugins for ConnectOnion agents.
 Pre-built plugins that can be easily imported and used across agents.
 """
 
-from .reflection import reflection
-from .react import react
+from .re_act import re_act
 from .image_result_formatter import image_result_formatter
 from .shell_approval import shell_approval
+from .gmail_plugin import gmail_plugin
 
-__all__ = ['reflection', 'react', 'image_result_formatter', 'shell_approval']
+__all__ = ['re_act', 'image_result_formatter', 'shell_approval', 'gmail_plugin']
