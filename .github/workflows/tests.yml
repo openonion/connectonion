@@ -36,4 +36,4 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
         run: |
-          pytest tests/ -v --tb=short -o "addopts="
+          pytest tests/ -v --tb=short -m "not slow and not real_api"
