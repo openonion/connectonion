@@ -18,8 +18,8 @@ class TestCreateAnnounceMessage:
             "signing_key": b"fake_key"
         }
 
-        with patch("connectonion.announce.address") as mock_address:
-            mock_address.sign.return_value = b"signature_bytes"
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = b"signature_bytes"
             result = create_announce_message(address_data, "Test agent")
 
         assert result["type"] == "ANNOUNCE"
@@ -37,8 +37,8 @@ class TestCreateAnnounceMessage:
         }
         endpoints = ["tcp://127.0.0.1:8080", "ws://localhost:9000"]
 
-        with patch("connectonion.announce.address") as mock_address:
-            mock_address.sign.return_value = b"sig"
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = b"sig"
             result = create_announce_message(address_data, "Agent", endpoints)
 
         assert result["endpoints"] == endpoints
@@ -51,8 +51,8 @@ class TestCreateAnnounceMessage:
         }
 
         before = int(time.time())
-        with patch("connectonion.announce.address") as mock_address:
-            mock_address.sign.return_value = b"sig"
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = b"sig"
             result = create_announce_message(address_data, "Agent")
         after = int(time.time())
 
@@ -65,8 +65,8 @@ class TestCreateAnnounceMessage:
             "signing_key": b"key"
         }
 
-        with patch("connectonion.announce.address") as mock_address:
-            mock_address.sign.return_value = bytes.fromhex("abcd1234")
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = bytes.fromhex("abcd1234")
             result = create_announce_message(address_data, "Agent")
 
         assert result["signature"] == "abcd1234"
@@ -79,12 +79,12 @@ class TestCreateAnnounceMessage:
             "signing_key": b"key"
         }
 
-        with patch("connectonion.announce.address") as mock_address:
-            mock_address.sign.return_value = b"sig"
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = b"sig"
             create_announce_message(address_data, "Agent", ["tcp://host:80"])
 
             # Verify sign was called with sorted JSON
-            call_args = mock_address.sign.call_args
+            call_args = mock_sign.call_args
             signed_data = call_args[0][1]  # Second argument is message_bytes
 
             # Parse and verify it's sorted
@@ -99,8 +99,8 @@ class TestCreateAnnounceMessage:
             "signing_key": b"key"
         }
 
-        with patch("connectonion.announce.address") as mock_address:
-            mock_address.sign.return_value = b"sig"
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = b"sig"
             result = create_announce_message(address_data, "Agent")
 
         assert result["endpoints"] == []
@@ -112,8 +112,8 @@ class TestCreateAnnounceMessage:
             "signing_key": b"key"
         }
 
-        with patch("connectonion.announce.address") as mock_address:
-            mock_address.sign.return_value = b"sig"
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = b"sig"
             result = create_announce_message(address_data, "Agent", None)
 
         assert result["endpoints"] == []
@@ -125,8 +125,8 @@ class TestCreateAnnounceMessage:
         }
 
         with pytest.raises(KeyError):
-            with patch("connectonion.announce.address") as mock_address:
-                mock_address.sign.return_value = b"sig"
+            with patch("connectonion.address.sign") as mock_sign:
+                mock_sign.return_value = b"sig"
                 create_announce_message(address_data, "Agent")
 
     def test_long_summary_is_preserved(self):
@@ -137,8 +137,8 @@ class TestCreateAnnounceMessage:
         }
         long_summary = "A" * 1000
 
-        with patch("connectonion.announce.address") as mock_address:
-            mock_address.sign.return_value = b"sig"
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = b"sig"
             result = create_announce_message(address_data, long_summary)
 
         assert result["summary"] == long_summary
@@ -152,8 +152,8 @@ class TestCreateAnnounceMessage:
         }
         unicode_summary = "Agent with emoji and unicode chars"
 
-        with patch("connectonion.announce.address") as mock_address:
-            mock_address.sign.return_value = b"sig"
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = b"sig"
             result = create_announce_message(address_data, unicode_summary)
 
         assert result["summary"] == unicode_summary
