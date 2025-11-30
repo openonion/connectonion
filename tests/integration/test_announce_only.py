@@ -18,7 +18,7 @@ from connectonion import address, announce, relay
 @pytest.mark.asyncio
 @pytest.mark.network
 @pytest.mark.skipif(
-    os.getenv("CI") or os.getenv("GITHUB_ACTIONS"),
+    bool(os.getenv("CI") or os.getenv("GITHUB_ACTIONS")),
     reason="Skipped in CI - requires local relay server"
 )
 async def test_announce():
