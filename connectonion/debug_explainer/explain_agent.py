@@ -42,7 +42,7 @@ def explain_tool_choice(
     tool_status = breakpoint_context.trace_entry.get('status')
 
     # Get tool source code
-    tool = agent_instance.tool_map.get(tool_name)
+    tool = agent_instance.tools.get(tool_name)
     tool_source = "Source unavailable"
     if tool:
         func = tool.run if hasattr(tool, 'run') else tool

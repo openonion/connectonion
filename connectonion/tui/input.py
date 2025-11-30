@@ -169,6 +169,10 @@ class Input:
                 return True
 
         # Accept the selection
+        # Remove trigger from buffer (it was just the activation point, not data)
+        # Provider controls the final value (include trigger if needed)
+        if self.active_trigger and self.buffer.endswith(self.active_trigger):
+            self.buffer = self.buffer[:-len(self.active_trigger)]
         self.buffer += str(value)
         self._exit_autocomplete()
         return False
@@ -230,8 +234,10 @@ class Input:
                         self._exit_autocomplete()
                         live.update(self._render(), refresh=True)
 
-                elif key in ('\x03', '\x04'):  # Ctrl+C/D
+                elif key == '\x03':  # Ctrl+C
                     raise KeyboardInterrupt()
+                elif key == '\x04':  # Ctrl+D
+                    raise EOFError()
 
                 elif key in ('\x7f', '\x08'):  # Backspace
                     if self.active_trigger:

@@ -195,7 +195,8 @@ connectonion/
 ### Agent Session Management (`connectonion/agent.py`)
 - `current_session`: Runtime-only context with `messages`, `trace`, `turn`, `iteration`
 - Session persists across turns for multi-turn conversations
-- `tool_map`: O(1) tool lookup by name
+- `tools`: ToolRegistry with O(1) lookup via `.get()` or attribute access (`agent.tools.tool_name`)
+- Class instances accessible via `agent.tools.instance_name` (e.g., `agent.tools.gmail`)
 - Default model: `co/o4-mini` (managed keys via OpenOnion proxy)
 
 ### LLM Provider Routing (`connectonion/llm.py:create_llm()`)

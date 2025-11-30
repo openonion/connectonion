@@ -12,7 +12,7 @@ Usage:
 from datetime import datetime
 from typing import TYPE_CHECKING
 from ..events import before_tool, after_tool
-from ..useful_tools.terminal import pick
+from ..tui import pick
 from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
@@ -24,15 +24,6 @@ _console = Console()
 
 # Gmail class method names that send emails
 SEND_METHODS = ('send', 'reply')
-
-
-def _get_gmail_instance(agent: 'Agent'):
-    """Get Gmail instance from agent's tools."""
-    from ..useful_tools.gmail import Gmail
-    for tool in agent.tools:
-        if isinstance(tool, Gmail):
-            return tool
-    raise ValueError("Gmail instance not found in agent tools. Add Gmail() to tools list.")
 
 
 @before_tool
@@ -111,26 +102,24 @@ def check_email_approval(agent: 'Agent') -> None:
     if tool_name == 'reply':
         options.append("Auto approve all replies this session")
     options.append("Auto approve all emails this session")
-    options.append("No, tell agent what I want")
 
-    choice = pick(f"Send this {action.lower()}?", options, console=_console)
+    choice = pick(f"Send this {action.lower()}?", options, other=True, console=_console)
 
     if choice == "Yes, send it":
         return
-    elif choice.startswith("Auto approve emails to"):
+    if choice.startswith("Auto approve emails to"):
         if 'gmail_approved_recipients' not in agent.current_session:
             agent.current_session['gmail_approved_recipients'] = set()
         agent.current_session['gmail_approved_recipients'].add(recipient_key)
         return
-    elif choice == "Auto approve all replies this session":
+    if choice == "Auto approve all replies this session":
         agent.current_session['gmail_approve_replies'] = True
         return
-    elif choice == "Auto approve all emails this session":
+    if choice == "Auto approve all emails this session":
         agent.current_session['gmail_approve_all'] = True
         return
-    else:
-        feedback = input("What do you want the agent to do instead? ")
-        raise ValueError(f"User feedback: {feedback}")
+    # User typed custom feedback via "Other"
+    raise ValueError(f"User feedback: {choice}")
 
 
 @after_tool
@@ -148,7 +137,8 @@ def sync_crm_after_send(agent: 'Agent') -> None:
     if not to:
         return
 
-    gmail = _get_gmail_instance(agent)
+    # Access Gmail instance via agent.tools.gmail
+    gmail = agent.tools.gmail
     today = datetime.now().strftime('%Y-%m-%d')
     result = gmail.update_contact(to, last_contact=today, next_contact_date='')
 

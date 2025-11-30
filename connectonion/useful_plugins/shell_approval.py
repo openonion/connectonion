@@ -14,7 +14,7 @@ Usage:
 import re
 from typing import TYPE_CHECKING
 from ..events import before_tool
-from ..useful_tools.terminal import pick
+from ..tui import pick
 from rich.console import Console
 
 if TYPE_CHECKING:

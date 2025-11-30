@@ -31,11 +31,11 @@ from connectonion.console import Console
 
 
 class TestToolNotFound:
-    """Test handling when tool doesn't exist in tool_map."""
+    """Test handling when tool doesn't exist in tools registry."""
 
     def test_tool_not_found_creates_error_trace(self):
         """Test that non-existent tool creates not_found trace entry."""
-        # Setup
+        # Setup - use dict as mock (has get() method)
         mock_agent = Mock()
         mock_agent.current_session = {
             'messages': [],
@@ -43,14 +43,14 @@ class TestToolNotFound:
             'iteration': 1
         }
         console = Console()
-        tool_map = {"existing_tool": lambda x: "result"}
+        tools = {"existing_tool": lambda x: "result"}
 
         # Execute non-existent tool
         trace_entry = execute_single_tool(
             tool_name="nonexistent_tool",
             tool_args={"param": "value"},
             tool_id="call_123",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -75,14 +75,14 @@ class TestToolNotFound:
 
         # Tool that should never be called
         mock_tool = Mock(return_value="should not see this")
-        tool_map = {"other_tool": mock_tool}
+        tools = {"other_tool": mock_tool}
 
         # Execute non-existent tool
         trace_entry = execute_single_tool(
             tool_name="missing_tool",
             tool_args={},
             tool_id="call_xyz",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -102,13 +102,13 @@ class TestToolNotFound:
         mock_agent._invoke_events = Mock()
 
         console = Console()
-        tool_map = {"calc": lambda x: x * 2}
+        tools = {"calc": lambda x: x * 2}
 
         tool_calls = [
             ToolCall(name="unknown_tool", arguments={"x": 5}, id="call_1")
         ]
 
-        execute_and_record_tools(tool_calls, tool_map, mock_agent, console)
+        execute_and_record_tools(tool_calls, tools, mock_agent, console)
 
         # Verify messages were added
         assert len(mock_agent.current_session['messages']) == 2  # assistant + tool result
@@ -136,13 +136,13 @@ class TestToolExecutionExceptions:
         def failing_tool(x):
             raise ValueError("Invalid input value")
 
-        tool_map = {"failing_tool": failing_tool}
+        tools = {"failing_tool": failing_tool}
 
         trace_entry = execute_single_tool(
             tool_name="failing_tool",
             tool_args={"x": "bad"},
             tool_id="call_456",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -169,13 +169,13 @@ class TestToolExecutionExceptions:
         def crashing_tool():
             raise RuntimeError("Tool crashed!")
 
-        tool_map = {"crash": crashing_tool}
+        tools = {"crash": crashing_tool}
 
         tool_calls = [ToolCall(id="call_789", name="crash", arguments={})]
 
         execute_and_record_tools(
             tool_calls=tool_calls,
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -208,13 +208,13 @@ class TestToolExecutionExceptions:
             def failing_tool():
                 raise exc_type(exc_msg)
 
-            tool_map = {"test": failing_tool}
+            tools = {"test": failing_tool}
 
             trace_entry = execute_single_tool(
                 tool_name="test",
                 tool_args={},
                 tool_id="call_test",
-                tool_map=tool_map,
+                tools=tools,
                 agent=mock_agent,
                 console=console
             )
@@ -239,13 +239,13 @@ class TestToolExecutionExceptions:
             time.sleep(0.01)  # Sleep 10ms
             raise Exception("Delayed failure")
 
-        tool_map = {"slow_fail": slow_failing_tool}
+        tools = {"slow_fail": slow_failing_tool}
 
         trace_entry = execute_single_tool(
             tool_name="slow_fail",
             tool_args={},
             tool_id="call_slow",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -269,13 +269,13 @@ class TestToolExecutionExceptions:
         def error_tool():
             raise ValueError("Test error")
 
-        tool_map = {"error": error_tool}
+        tools = {"error": error_tool}
 
         execute_single_tool(
             tool_name="error",
             tool_args={},
             tool_id="call_err",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -308,13 +308,13 @@ class TestXrayContextHandling:
         def success_tool():
             return "success"
 
-        tool_map = {"success": success_tool}
+        tools = {"success": success_tool}
 
         execute_single_tool(
             tool_name="success",
             tool_args={},
             tool_id="call_ok",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -341,13 +341,13 @@ class TestXrayContextHandling:
         def failing_tool():
             raise Exception("Tool failed")
 
-        tool_map = {"fail": failing_tool}
+        tools = {"fail": failing_tool}
 
         execute_single_tool(
             tool_name="fail",
             tool_args={},
             tool_id="call_fail",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -369,13 +369,13 @@ class TestXrayContextHandling:
         mock_agent._invoke_events = Mock()
 
         console = Console()
-        tool_map = {}
+        tools = {}
 
         execute_single_tool(
             tool_name="missing",
             tool_args={},
             tool_id="call_miss",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -405,13 +405,13 @@ class TestEventInvocation:
             assert mock_agent._invoke_events.call_count >= 1
             return "result"
 
-        tool_map = {"tool": simple_tool}
+        tools = {"tool": simple_tool}
 
         execute_single_tool(
             tool_name="tool",
             tool_args={},
             tool_id="call_before",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -434,13 +434,13 @@ class TestEventInvocation:
         def success_tool():
             return "success"
 
-        tool_map = {"success": success_tool}
+        tools = {"success": success_tool}
 
         tool_calls = [ToolCall(id="call_after", name="success", arguments={})]
 
         execute_and_record_tools(
             tool_calls=tool_calls,
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -463,13 +463,13 @@ class TestEventInvocation:
         def failing_tool():
             raise RuntimeError("Failure")
 
-        tool_map = {"fail": failing_tool}
+        tools = {"fail": failing_tool}
 
         tool_calls = [ToolCall(id="call_onerr", name="fail", arguments={})]
 
         execute_and_record_tools(
             tool_calls=tool_calls,
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -542,13 +542,13 @@ class TestTraceEntryStructure:
         def test_tool(x, y):
             return f"{x} + {y} = {x+y}"
 
-        tool_map = {"test": test_tool}
+        tools = {"test": test_tool}
 
         trace_entry = execute_single_tool(
             tool_name="test",
             tool_args={"x": 5, "y": 10},
             tool_id="call_success",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -582,13 +582,13 @@ class TestTraceEntryStructure:
         def error_tool():
             raise ValueError("Invalid value")
 
-        tool_map = {"error": error_tool}
+        tools = {"error": error_tool}
 
         trace_entry = execute_single_tool(
             tool_name="error",
             tool_args={},
             tool_id="call_error",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )
@@ -609,13 +609,13 @@ class TestTraceEntryStructure:
         }
 
         console = Console()
-        tool_map = {}
+        tools = {}
 
         trace_entry = execute_single_tool(
             tool_name="missing",
             tool_args={"param": "value"},
             tool_id="call_notfound",
-            tool_map=tool_map,
+            tools=tools,
             agent=mock_agent,
             console=console
         )

@@ -1460,7 +1460,8 @@ Emails:
 
     def update_contact(self, email: str, type: str = None, company: str = None,
                        relationship: str = None, priority: str = None, deal: str = None,
-                       next_contact_date: str = None, tags: str = None, notes: str = None) -> str:
+                       next_contact_date: str = None, tags: str = None, notes: str = None,
+                       last_contact: str = None) -> str:
         """Update CRM fields for a contact in contacts.csv.
 
         Args:
@@ -1473,6 +1474,7 @@ Emails:
             next_contact_date: When to follow up (YYYY-MM-DD)
             tags: Comma-separated tags
             notes: Additional context
+            last_contact: Date of last contact (YYYY-MM-DD)
 
         Returns:
             Confirmation message
@@ -1507,6 +1509,8 @@ Emails:
                         row['tags'] = tags
                     if notes is not None:
                         row['notes'] = notes
+                    if last_contact is not None:
+                        row['last_contact'] = last_contact
                 contacts.append(row)
 
         if not found:
@@ -1531,6 +1535,8 @@ Emails:
             updates.append(f"relationship={relationship}")
         if company:
             updates.append(f"company={company}")
+        if last_contact:
+            updates.append(f"last_contact={last_contact}")
 
         return f"Updated {email}: {', '.join(updates) if updates else 'no changes'}"
 
@@ -1567,7 +1573,7 @@ Emails:
                 email_key = row['email'].lower()
                 if email_key in updates_map:
                     update = updates_map[email_key]
-                    for field in ['type', 'company', 'relationship', 'priority', 'deal', 'next_contact_date', 'tags', 'notes']:
+                    for field in ['type', 'company', 'relationship', 'priority', 'deal', 'next_contact_date', 'tags', 'notes', 'last_contact']:
                         if field in update and update[field] is not None:
                             row[field] = update[field]
                 contacts.append(row)

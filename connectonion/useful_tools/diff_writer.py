@@ -20,7 +20,7 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.text import Text
 
-from connectonion.useful_tools.terminal import pick
+from connectonion.tui import pick
 
 
 class DiffWriter:

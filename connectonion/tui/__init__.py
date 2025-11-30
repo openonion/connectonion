@@ -28,6 +28,8 @@ from .keys import getch, read_key
 from .fuzzy import fuzzy_match, highlight_match
 from .status_bar import StatusBar, SimpleStatusBar, ProgressSegment
 from .divider import Divider
+from .pick import pick
+from .footer import Footer
 
 __all__ = [
     "Input",
@@ -43,4 +45,6 @@ __all__ = [
     "SimpleStatusBar",
     "ProgressSegment",
     "Divider",
+    "pick",
+    "Footer",
 ]

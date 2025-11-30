@@ -67,8 +67,8 @@ async def run_serving_agent():
     return addr_data['address'], ws, announce_msg, task_handler
 
 
-async def test_client_side(agent_address: str):
-    """Test client connecting to remote agent."""
+async def run_client_side(agent_address: str):
+    """Run client connecting to remote agent."""
     print("\n=== Testing Client Connection ===\n")
 
     # Give server a moment to fully announce
@@ -103,7 +103,7 @@ async def main():
     await asyncio.sleep(2)
 
     # Test client connection
-    response = await test_client_side(agent_address)
+    response = await run_client_side(agent_address)
 
     # Verify response contains expected greeting
     if "Alice" in response and "Hello" in response:

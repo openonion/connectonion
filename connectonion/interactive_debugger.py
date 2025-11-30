@@ -106,10 +106,10 @@ class InteractiveDebugger:
         self.original_execute_single_tool = tool_executor.execute_single_tool
 
         # Create interceptor function
-        def tool_execution_interceptor(tool_name, tool_args, tool_id, tool_map, agent, console):
+        def tool_execution_interceptor(tool_name, tool_args, tool_id, tools, agent, console):
             # Execute tool normally
             trace_entry = self.original_execute_single_tool(
-                tool_name, tool_args, tool_id, tool_map, agent, console
+                tool_name, tool_args, tool_id, tools, agent, console
             )
 
             # CRITICAL: Only debug OUR agent, not all agents in the process
@@ -117,7 +117,7 @@ class InteractiveDebugger:
                 return trace_entry  # Skip debugging for other agents
 
             # Check if tool has @xray decorator or if there was an error
-            tool = tool_map.get(tool_name)
+            tool = tools.get(tool_name)
             should_pause = False
 
             if tool and is_xray_enabled(tool):
@@ -169,7 +169,7 @@ class InteractiveDebugger:
         next_actions = self._get_llm_next_action_preview(tool_name, trace_entry)
 
         # Get the actual tool function for source inspection
-        tool = self.agent.tool_map.get(tool_name)
+        tool = self.agent.tools.get(tool_name)
         tool_function = tool.run if tool and hasattr(tool, 'run') else None
 
         # Create context for UI with extended debugging info

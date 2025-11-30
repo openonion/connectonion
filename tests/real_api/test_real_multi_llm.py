@@ -143,9 +143,9 @@ def test_tools_work_across_all_models():
             try:
                 agent = Agent(f"test_{provider}", model=model, tools=tools)
                 assert len(agent.tools) == 3
-                assert "simple_calculator" in agent.tool_map
-                assert "get_greeting" in agent.tool_map
-                assert "process_data" in agent.tool_map
+                assert "simple_calculator" in agent.tools
+                assert "get_greeting" in agent.tools
+                assert "process_data" in agent.tools
                 for tool in agent.tools:
                     schema = tool.to_function_schema()
                     assert "name" in schema

@@ -95,8 +95,10 @@ session = agent.current_session      # Messages, trace, turn count
 
 ```python
 agent.name                  # str: Agent identifier
-agent.tools                 # List[Callable]: All available tools
-agent.tool_map              # Dict[str, Callable]: Fast tool lookup
+agent.tools                 # ToolRegistry: All available tools
+agent.tools.names()         # list[str]: Tool names
+agent.tools.get("name")     # Tool: Get tool by name
+agent.tools.tool_name       # Tool: Attribute access to tools
 agent.system_prompt         # str: Agent's personality
 agent.max_iterations        # int: Default iteration limit
 agent.current_session       # dict | None: Runtime state

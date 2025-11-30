@@ -8,7 +8,8 @@ from .google_calendar import GoogleCalendar
 from .web_fetch import WebFetch
 from .shell import Shell
 from .diff_writer import DiffWriter
-from .terminal import pick, yes_no, autocomplete
+from ..tui import pick
+from .terminal import yes_no, autocomplete
 from .todo_list import TodoList
 from .slash_command import SlashCommand
 

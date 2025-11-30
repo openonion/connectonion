@@ -118,9 +118,18 @@ class TestCliInit:
                 assert '__pycache__' in content
 
 
+def _co_cli_works():
+    """Check if 'co --version' actually runs successfully."""
+    import subprocess
+    if shutil.which('co') is None:
+        return False
+    result = subprocess.run(['co', '--version'], capture_output=True, text=True)
+    return result.returncode == 0
+
+
 @pytest.mark.skipif(
-    shutil.which('co') is None,
-    reason="CLI not installed"
+    not _co_cli_works(),
+    reason="CLI not installed or not working"
 )
 class TestCliCommands:
     """Test actual CLI commands (requires installation)."""

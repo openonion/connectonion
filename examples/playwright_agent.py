@@ -163,47 +163,47 @@ def demo_google_search():
     )
     
     print(f"Agent has {len(agent.tools)} browser tools available:")
-    for tool_name in agent.tool_map.keys():
+    for tool_name in agent.tools.names():
         print(f"  - {tool_name}")
-    
+
     try:
         # Simulate agent workflow (in real usage, the LLM would call these)
         print("\n--- Simulating Automated Google Search ---")
-        
+
         # Start browser
-        result = agent.tool_map['start_browser'](headless=True)
+        result = agent.tools.start_browser.run(headless=True)
         print(f"1. {result}")
-        
+
         # Navigate to Google
-        result = agent.tool_map['navigate'](url="https://www.google.com")
+        result = agent.tools.navigate.run(url="https://www.google.com")
         print(f"2. {result}")
-        
+
         # Get page title
-        result = agent.tool_map['get_title']()
+        result = agent.tools.get_title.run()
         print(f"3. {result}")
-        
+
         # Take screenshot
-        result = agent.tool_map['take_screenshot'](filename="google_homepage.png")
+        result = agent.tools.take_screenshot.run(filename="google_homepage.png")
         print(f"4. {result}")
-        
+
         # Fill search box (Google's search input)
-        result = agent.tool_map['fill_input'](selector="textarea[name='q']", text="ConnectOnion Python")
+        result = agent.tools.fill_input.run(selector="textarea[name='q']", text="ConnectOnion Python")
         print(f"5. {result}")
-        
+
         # Submit search
-        result = agent.tool_map['click_element'](selector="input[name='btnK']")
+        result = agent.tools.click_element.run(selector="input[name='btnK']")
         print(f"6. {result}")
-        
+
         # Wait for results
-        result = agent.tool_map['wait_for_element'](selector="#search", timeout=5000)
+        result = agent.tools.wait_for_element.run(selector="#search", timeout=5000)
         print(f"7. {result}")
-        
+
         # Take screenshot of results
-        result = agent.tool_map['take_screenshot'](filename="search_results.png")
+        result = agent.tools.take_screenshot.run(filename="search_results.png")
         print(f"8. {result}")
-        
+
         # Get session info
-        result = agent.tool_map['get_session_info']()
+        result = agent.tools.get_session_info.run()
         print(f"9. {result}")
         
         print("\n--- User Has Full Access to Browser State ---")

@@ -414,7 +414,7 @@ agent = Agent(
 - **✅ For class-based tools: Pass the instance directly (not individual methods)!** ConnectOnion automatically extracts all public methods with type hints.
 - The first docstring line is used as the one-liner description in UIs.
 - Prefer explicit types on parameters and returns so tools are eligible and discoverable.
-- You can always call `agent.tool_map["tool_name"](**kwargs)` to run tools without an LLM.
+- You can always call `agent.tools.tool_name.run(**kwargs)` to run tools without an LLM.
 
 ## Class Instance vs Individual Methods
 

@@ -35,7 +35,7 @@ def plan_task(agent: 'Agent') -> None:
         return
 
     # Get available tools for context
-    tool_names = list(agent.tool_map.keys()) if agent.tool_map else []
+    tool_names = agent.tools.names() if agent.tools else []
     tools_str = ", ".join(tool_names) if tool_names else "no tools"
 
     prompt = f"""User request: {user_prompt}

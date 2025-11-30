@@ -504,11 +504,11 @@ agent = Agent(
 )
 
 # Manual session (no LLM) — call tools directly
-print(agent.tool_map["start_browser"](headless=True))
-title = agent.tool_map["goto"]("https://example.com")
-print(agent.tool_map["format_title"](title=title))
-print(agent.tool_map["screenshot"](filename="example.png"))
-print(agent.tool_map["close"]())
+print(agent.tools.start_browser.run(headless=True))
+title = agent.tools.goto.run("https://example.com")
+print(agent.tools.format_title.run(title=title))
+print(agent.tools.screenshot.run(filename="example.png"))
+print(agent.tools.close.run())
 ```
 
 **Example output:**

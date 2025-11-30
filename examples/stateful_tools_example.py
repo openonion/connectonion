@@ -157,26 +157,26 @@ def demo_web_scraping():
     )
     
     print(f"Agent has {len(agent.tools)} tools available:")
-    for tool_name in agent.tool_map.keys():
+    for tool_name in agent.tools.names():
         print(f"  - {tool_name}")
-    
+
     # Demonstrate manual tool usage (since we can't call the LLM without a real key)
     print("\n--- Simulating Agent Tool Calls ---")
-    
+
     # Call tools directly to show state sharing
-    result1 = agent.tool_map['start_session']()
+    result1 = agent.tools.start_session.run()
     print(f"1. start_session(): {result1}")
-    
-    result2 = agent.tool_map['navigate'](url="https://example.com")
+
+    result2 = agent.tools.navigate.run(url="https://example.com")
     print(f"2. navigate(): {result2}")
-    
-    result3 = agent.tool_map['scrape_data'](data_type="title")
+
+    result3 = agent.tools.scrape_data.run(data_type="title")
     print(f"3. scrape_data(): {result3}")
-    
-    result4 = agent.tool_map['scrape_data'](data_type="links")
+
+    result4 = agent.tools.scrape_data.run(data_type="links")
     print(f"4. scrape_data(): {result4}")
-    
-    result5 = agent.tool_map['get_session_summary']()
+
+    result5 = agent.tools.get_session_summary.run()
     print(f"5. get_session_summary(): {result5}")
     
     print("\n--- Scraper State After Tool Calls ---")
@@ -209,18 +209,18 @@ def demo_mixed_tools():
     )
     
     print(f"Agent has {len(agent.tools)} tools available:")
-    for tool_name in agent.tool_map.keys():
+    for tool_name in agent.tools.names():
         print(f"  - {tool_name}")
-    
+
     # Demonstrate tool usage without calling LLM
     print("\n--- Simulating Mixed Tool Calls ---")
-    calc_result = agent.tool_map['simple_calculator'](expression="2+2*3")
+    calc_result = agent.tools.simple_calculator.run(expression="2+2*3")
     print(f"Calculator: {calc_result}")
-    
-    db_result = agent.tool_map['connect']()
+
+    db_result = agent.tools.connect.run()
     print(f"Database: {db_result}")
-    
-    scraper_result = agent.tool_map['start_session']()
+
+    scraper_result = agent.tools.start_session.run()
     print(f"Scraper: {scraper_result}")
     
     print("\n--- State After Mixed Operations ---")
@@ -266,13 +266,13 @@ def demo_resource_cleanup():
     
     # Demonstrate tool usage
     print("\n--- Simulating File Processing ---")
-    result1 = agent.tool_map['open_file'](filename="data.txt")
+    result1 = agent.tools.open_file.run(filename="data.txt")
     print(f"1. {result1}")
-    
-    result2 = agent.tool_map['open_file'](filename="report.csv")
+
+    result2 = agent.tools.open_file.run(filename="report.csv")
     print(f"2. {result2}")
-    
-    result3 = agent.tool_map['process_data'](operation="analyze")
+
+    result3 = agent.tools.process_data.run(operation="analyze")
     print(f"3. {result3}")
     
     print(f"Files opened: {processor.files_opened}")

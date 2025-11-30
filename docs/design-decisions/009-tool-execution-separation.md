@@ -76,7 +76,7 @@ class Agent:
         # One line! Delegate to the expert
         execute_and_record_tools(
             tool_calls,
-            self.tool_map,
+            self.tools,  # ToolRegistry with O(1) lookup
             console=self.console if self.debug else None
         )
 ```

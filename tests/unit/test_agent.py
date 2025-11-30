@@ -43,8 +43,8 @@ def test_agent_creation_with_functions():
     agent = Agent(name="test_agent", tools=[calculator], model="gpt-4o-mini")
     assert agent.name == "test_agent"
     assert len(agent.tools) == 1
-    assert "calculator" in agent.tool_map
-    assert hasattr(agent.tool_map["calculator"], "to_function_schema")
+    assert "calculator" in agent.tools
+    assert hasattr(agent.tools.get("calculator"), "to_function_schema")
     assert agent.system_prompt == "You are a helpful assistant that can use tools to complete tasks."
 
 
@@ -196,10 +196,10 @@ def test_agent_accepts_class_instance():
         agent = Agent(name="stateful_calc", api_key="fake_key", tools=calc)
         
         # Should have extracted 'add' and 'multiply' methods as tools
-        assert "add" in agent.tool_map
-        assert "multiply" in agent.tool_map
+        assert "add" in agent.tools
+        assert "multiply" in agent.tools
         # Should NOT include get_history (no return type annotation)
-        assert "get_history" not in agent.tool_map
+        assert "get_history" not in agent.tools
         # Should have only the properly annotated methods
         assert len(agent.tools) == 2
 
@@ -294,11 +294,11 @@ def test_mixed_functions_and_class_instance():
         
         # Mix function and instance
         agent = Agent(name="mixed", api_key="fake_key", tools=[greet, counter])
-        
+
         # Should have all three tools
-        assert "greet" in agent.tool_map
-        assert "increment" in agent.tool_map
-        assert "decrement" in agent.tool_map
+        assert "greet" in agent.tools
+        assert "increment" in agent.tools
+        assert "decrement" in agent.tools
         assert len(agent.tools) == 3
 
 def test_private_methods_not_exposed():
@@ -319,11 +319,11 @@ def test_private_methods_not_exposed():
         
         service = Service()
         agent = Agent(name="service", api_key="fake_key", tools=service)
-        
+
         # Only public_action should be exposed
-        assert "public_action" in agent.tool_map
-        assert "_process" not in agent.tool_map
-        assert "__internal" not in agent.tool_map
+        assert "public_action" in agent.tools
+        assert "_process" not in agent.tools
+        assert "__internal" not in agent.tools
         assert len(agent.tools) == 1
 
 def test_multiple_class_instances():
@@ -341,12 +341,12 @@ def test_multiple_class_instances():
         
         db = Database()
         fs = FileSystem()
-        
+
         agent = Agent(name="multi", api_key="fake_key", tools=[db, fs])
-        
+
         # Should have methods from both instances
-        assert "query" in agent.tool_map
-        assert "read_file" in agent.tool_map
+        assert "query" in agent.tools
+        assert "read_file" in agent.tools
         assert len(agent.tools) == 2
 
 def test_resource_cleanup_pattern():
@@ -429,12 +429,12 @@ def test_list_of_class_instances():
         text_tools = Text()
         
         # Pass instances in a list along with functions
-        agent = Agent(name="list_test", api_key="fake_key", 
+        agent = Agent(name="list_test", api_key="fake_key",
                       tools=[calculator, math_tools, text_tools, get_current_time])
-        
+
         # Should have all tools: calculator, square, uppercase, get_current_time
         expected_tools = {"calculator", "square", "uppercase", "get_current_time"}
-        actual_tools = set(agent.tool_map.keys())
+        actual_tools = set(agent.tools.names())
         assert actual_tools == expected_tools
         assert len(agent.tools) == 4
 
@@ -458,14 +458,14 @@ def test_method_with_complex_parameters():
         
         processor = DataProcessor()
         agent = Agent(name="processor", api_key="fake_key", tools=processor)
-        
+
         # Should have both methods as tools
-        assert "process_list" in agent.tool_map
-        assert "process_dict" in agent.tool_map
+        assert "process_list" in agent.tools
+        assert "process_dict" in agent.tools
         assert len(agent.tools) == 2
-        
+
         # Verify the tools have correct schemas
-        list_tool = agent.tool_map["process_list"]
+        list_tool = agent.tools.get("process_list")
         schema = list_tool.to_function_schema()
         
         # Check that parameters are correctly inferred

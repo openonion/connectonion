@@ -105,7 +105,7 @@ class TestAgentSystemPrompts:
             )
             assert agent.system_prompt == content
             assert len(agent.tools) == 1
-            assert agent.tools[0].name == "calculator"
+            assert agent.tools.get("calculator").name == "calculator"
         finally:
             os.unlink(temp_path)
     

@@ -1,11 +1,11 @@
 """
 Purpose: Orchestrate AI agent execution with LLM calls, tool execution, and automatic logging
 LLM-Note:
-  Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, console.py, tool_executor.py, trust.py] | imported by [__init__.py, trust.py, debug_agent/__init__.py] | tested by [tests/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py]
+  Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, console.py, tool_executor.py, trust.py, tool_registry.py] | imported by [__init__.py, trust.py, debug_agent/__init__.py] | tested by [tests/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py]
   Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → console logs to .co/logs/{name}.log → returns final response: str
   State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log via console.py (default) or custom log path | initializes trust agent if trust parameter provided
-  Integration: exposes Agent(name, tools, system_prompt, model, trust, log), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools auto-converted via tool_factory.create_tool_from_function() | tool execution delegates to tool_executor module | trust system via trust.create_trust_agent() | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path
-  Performance: max_iterations=10 default (configurable per-input) | session state persists across turns for multi-turn conversations | tool_map provides O(1) tool lookup by name
+  Integration: exposes Agent(name, tools, system_prompt, model, trust, log), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | trust system via trust.create_trust_agent() | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path
+  Performance: max_iterations=10 default (configurable per-input) | session state persists across turns for multi-turn conversations | ToolRegistry provides O(1) tool lookup via .get() or attribute access
   Errors: LLM errors bubble up | tool execution errors captured in trace and returned to LLM for retry | trust agent creation can fail if invalid trust parameter
 """
 
@@ -17,6 +17,7 @@ from pathlib import Path
 from .llm import LLM, create_llm, TokenUsage
 from .usage import get_context_limit
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
+from .tool_registry import ToolRegistry
 from .prompts import load_system_prompt
 from .decorators import (
     _is_replay_enabled  # Only need this for replay check
@@ -120,31 +121,26 @@ class Agent:
                     self._register_event(item)
 
         # Process tools: convert raw functions and class instances to tool schemas automatically
-        processed_tools = []
+        self.tools = ToolRegistry()
+
         if tools is not None:
-            # Normalize tools to a list
-            if isinstance(tools, list):
-                tools_list = tools
-            else:
-                tools_list = [tools]
-            
-            # Process each tool
+            tools_list = tools if isinstance(tools, list) else [tools]
+
             for tool in tools_list:
                 if is_class_instance(tool):
-                    # Extract methods from class instance
-                    methods = extract_methods_from_instance(tool)
-                    processed_tools.extend(methods)
+                    # Store instance (agent.tools.gmail.my_id)
+                    class_name = tool.__class__.__name__.lower()
+                    self.tools.add_instance(class_name, tool)
+
+                    # Extract methods as tools (agent.tools.send())
+                    for method_tool in extract_methods_from_instance(tool):
+                        self.tools.add(method_tool)
                 elif callable(tool):
-                    # Handle function or method
                     if not hasattr(tool, 'to_function_schema'):
-                        processed_tools.append(create_tool_from_function(tool))
+                        processed = create_tool_from_function(tool)
                     else:
-                        processed_tools.append(tool)  # Already a valid tool
-                else:
-                    # Skip non-callable, non-instance objects
-                    continue
-        
-        self.tools = processed_tools
+                        processed = tool
+                    self.tools.add(processed)
 
         # Initialize LLM
         if llm:
@@ -157,9 +153,6 @@ class Agent:
             # - Google models check GOOGLE_API_KEY
             # - co/ models check OPENONION_API_KEY
             self.llm = create_llm(model=model, api_key=api_key)
-        
-        # Create tool mapping for quick lookup
-        self.tool_map = {tool.name: tool for tool in self.tools}
 
     def _invoke_events(self, event_type: str):
         """Invoke all event handlers for given type. Exceptions propagate (fail fast)."""
@@ -283,7 +276,7 @@ class Agent:
             tool_name=tool_name,
             tool_args=arguments,
             tool_id=f"manual_{tool_name}_{time.time()}",
-            tool_map=self.tool_map,
+            tools=self.tools,
             agent=self,
             console=self.console
         )
@@ -380,37 +373,28 @@ class Agent:
 
     def _execute_and_record_tools(self, tool_calls):
         """Execute requested tools and update conversation messages."""
-        # Delegate to tool_executor module
         execute_and_record_tools(
             tool_calls=tool_calls,
-            tool_map=self.tool_map,
-            agent=self,  # Agent has current_session with messages and trace
+            tools=self.tools,
+            agent=self,
             console=self.console
         )
 
     def add_tool(self, tool: Callable):
         """Add a new tool to the agent."""
-        # Process the tool before adding it
         if not hasattr(tool, 'to_function_schema'):
             processed_tool = create_tool_from_function(tool)
         else:
             processed_tool = tool
-            
-        self.tools.append(processed_tool)
-        self.tool_map[processed_tool.name] = processed_tool
-    
+        self.tools.add(processed_tool)
+
     def remove_tool(self, tool_name: str) -> bool:
         """Remove a tool by name."""
-        if tool_name in self.tool_map:
-            tool = self.tool_map[tool_name]
-            self.tools.remove(tool)
-            del self.tool_map[tool_name]
-            return True
-        return False
-    
+        return self.tools.remove(tool_name)
+
     def list_tools(self) -> List[str]:
         """List all available tool names."""
-        return [tool.name for tool in self.tools]
+        return self.tools.names()
 
     @property
     def context_percent(self) -> float:

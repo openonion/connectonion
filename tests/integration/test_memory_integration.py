@@ -38,32 +38,30 @@ def test_memory_tool_schemas(memory_instance):
     """Test that Memory methods have correct tool schemas."""
     agent = Agent("test-agent", tools=[memory_instance])
 
-    tool_map = {tool.name: tool for tool in agent.tools}
-
     # Check write_memory schema
-    write_tool = tool_map["write_memory"]
+    write_tool = agent.tools.get("write_memory")
     assert write_tool.name == "write_memory"
     write_schema = str(write_tool.to_function_schema())
     assert "key" in write_schema
     assert "content" in write_schema
 
     # Check read_memory schema
-    read_tool = tool_map["read_memory"]
+    read_tool = agent.tools.get("read_memory")
     assert read_tool.name == "read_memory"
     read_schema = str(read_tool.to_function_schema())
     assert "key" in read_schema
 
 
 def test_memory_methods_callable_from_agent(memory_instance):
-    """Test that memory methods work when called via agent's tool_map."""
+    """Test that memory methods work when called via agent's tools."""
     agent = Agent("test-agent", tools=[memory_instance])
 
-    # Write via tool_map
-    write_result = agent.tool_map["write_memory"]("test-key", "test content")
+    # Write via tools
+    write_result = agent.tools.write_memory.run("test-key", "test content")
     assert "saved" in write_result.lower()
 
-    # Read via tool_map
-    read_result = agent.tool_map["read_memory"]("test-key")
+    # Read via tools
+    read_result = agent.tools.read_memory.run("test-key")
     assert "test content" in read_result
 
 
@@ -79,10 +77,10 @@ def test_multiple_agents_same_memory():
     agent2 = Agent("agent2", tools=[memory])
 
     # Agent1 writes
-    agent1.tool_map["write_memory"]("shared-key", "Shared content")
+    agent1.tools.write_memory.run("shared-key", "Shared content")
 
     # Agent2 reads
-    result = agent2.tool_map["read_memory"]("shared-key")
+    result = agent2.tools.read_memory.run("shared-key")
     assert "Shared content" in result
 
     # Cleanup
