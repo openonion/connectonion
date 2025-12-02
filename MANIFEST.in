@@ -3,6 +3,11 @@ include LICENSE
 recursive-include connectonion/cli/templates *
 include connectonion/cli/docs.md
 recursive-include connectonion/cli/docs *.md
+recursive-include connectonion/prompt_files *.md
+recursive-include connectonion/debug_agent/prompts *.md
+recursive-include connectonion/debug_explainer *.md
+recursive-include connectonion/execution_analyzer *.md
+recursive-include connectonion/cli/browser_agent *.md
 global-exclude *.pyc
 global-exclude __pycache__
 global-exclude .DS_Store

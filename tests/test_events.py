@@ -285,7 +285,7 @@ class TestEventSystem:
             assert hasattr(agent, 'current_session')
             assert hasattr(agent, 'tools')
             assert hasattr(agent, 'llm')
-            assert hasattr(agent, 'console')
+            assert hasattr(agent, 'logger')
             assert agent.name == "test"
 
         agent = Agent(

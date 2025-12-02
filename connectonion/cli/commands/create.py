@@ -385,6 +385,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             "name": name,
             "created": datetime.now().isoformat(),
             "framework_version": __version__,
+            "secrets": ".env",  # Path to secrets file
         },
         "cli": {
             "version": "1.0.0",

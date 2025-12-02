@@ -406,3 +406,122 @@ def handle_google_auth():
     console.print(f"   [dim]from connectonion.tools import gmail_send[/dim]")
     console.print(f"   [dim]agent = Agent('assistant', tools=[gmail_send])[/dim]\n")
 
+
+def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:
+    """Save Microsoft OAuth credentials to .env file.
+
+    Args:
+        env_file: Path to .env file
+        credentials: Dict with access_token, refresh_token, expires_at, microsoft_email, scopes
+    """
+    env_lines = []
+
+    # Read existing .env
+    if env_file.exists():
+        with open(env_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                # Skip existing Microsoft credentials
+                if not line.strip().startswith('MICROSOFT_'):
+                    env_lines.append(line)
+
+    # Add Microsoft credentials
+    if not env_lines or not env_lines[-1].endswith('\n'):
+        env_lines.append('\n')
+
+    env_lines.append('# Microsoft OAuth Credentials\n')
+    env_lines.append(f"MICROSOFT_ACCESS_TOKEN={credentials['access_token']}\n")
+    env_lines.append(f"MICROSOFT_REFRESH_TOKEN={credentials['refresh_token']}\n")
+    env_lines.append(f"MICROSOFT_TOKEN_EXPIRES_AT={credentials['expires_at']}\n")
+    env_lines.append(f"MICROSOFT_SCOPES={credentials['scopes']}\n")
+    env_lines.append(f"MICROSOFT_EMAIL={credentials['microsoft_email']}\n")
+
+    # Write .env
+    with open(env_file, 'w', encoding='utf-8') as f:
+        f.writelines(env_lines)
+
+    # Set permissions (Unix/Mac only)
+    if sys.platform != 'win32':
+        env_file.chmod(0o600)
+
+
+def handle_microsoft_auth():
+    """Authenticate with Microsoft OAuth for Outlook/Calendar access."""
+
+    # Check if user is authenticated with OpenOnion first
+    api_key = _load_api_key()
+    if not api_key:
+        console.print("\n❌ [bold red]Not authenticated with OpenOnion[/bold red]")
+        console.print("\n[cyan]Authenticate first:[/cyan]")
+        console.print("  [bold]co auth[/bold]     Get your OpenOnion API key\n")
+        return
+
+    api_url = "https://oo.openonion.ai/api/v1/oauth"
+    headers = {"Authorization": f"Bearer {api_key}"}
+
+    # Clear any existing connection first
+    requests.delete(f"{api_url}/microsoft/revoke", headers=headers)
+
+    # Get OAuth URL
+    console.print("🔑 Initializing Microsoft OAuth...", style="cyan")
+
+    response = requests.get(f"{api_url}/microsoft/init", headers=headers)
+    if response.status_code != 200:
+        console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
+        return
+
+    auth_url = response.json()['auth_url']
+
+    # Open browser
+    console.print(f"\n🌐 Opening browser for Microsoft authentication...")
+    console.print(f"    URL: {auth_url}\n", style="dim")
+
+    webbrowser.open(auth_url)
+
+    # Poll for completion
+    console.print("⏳ Waiting for authorization...", style="yellow")
+    console.print("   (Complete the authorization in your browser)\n", style="dim")
+
+    max_attempts = 60  # 5 minutes (5 second intervals)
+    for attempt in range(max_attempts):
+        time.sleep(5)
+
+        status_response = requests.get(f"{api_url}/microsoft/status", headers=headers)
+        if status_response.status_code == 200:
+            status = status_response.json()
+            if status.get('connected'):
+                console.print("✓ Authorization successful!", style="green")
+                break
+    else:
+        console.print("\n❌ Authorization timed out", style="red")
+        console.print("Please try again with: [bold]co auth microsoft[/bold]\n")
+        return
+
+    # Get credentials
+    creds_response = requests.get(f"{api_url}/microsoft/credentials", headers=headers)
+    if creds_response.status_code != 200:
+        console.print(f"\n❌ Failed to get credentials: {creds_response.text}", style="red")
+        return
+
+    credentials = creds_response.json()
+
+    # Save credentials
+    console.print("\n💾 Saving credentials...", style="cyan")
+
+    # Save to global ~/.co/keys.env
+    global_keys_env = Path.home() / ".co" / "keys.env"
+    if global_keys_env.exists():
+        _save_microsoft_to_env(global_keys_env, credentials)
+        console.print(f"   ✓ Saved to {global_keys_env}", style="green")
+
+    # Save to local .env
+    local_env = Path(".env")
+    _save_microsoft_to_env(local_env, credentials)
+    console.print(f"   ✓ Saved to {local_env.absolute()}", style="green")
+
+    # Success message
+    console.print(f"\n✅ [bold green]Microsoft account connected![/bold green]")
+    console.print(f"   Email: {credentials['microsoft_email']}", style="green")
+    console.print(f"\n📧 You can now use Microsoft tools in your agents:")
+    console.print(f"   [dim]from connectonion import Outlook, MicrosoftCalendar[/dim]")
+    console.print(f"   [dim]agent = Agent('assistant', tools=[Outlook()])[/dim]\n")
+

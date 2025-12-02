@@ -1,4 +1,14 @@
-"""Playwright Web Automation Agent - Browser control and web scraping
+"""
+Purpose: Browser automation agent template using Playwright for web scraping and interaction
+LLM-Note:
+  Dependencies: imports from [playwright.sync_api, connectonion.Agent, connectonion.xray, json] | requires playwright package | template file copied by [cli/commands/init.py, cli/commands/create.py]
+  Data flow: user command → Agent.input() → BrowserAutomation methods (navigate, click, fill_form, scrape_content, take_screenshot) → Playwright browser actions → returns results
+  State/Effects: stateful browser session (playwright, browser, page) | tracks visited_urls, screenshots | modifies filesystem with screenshots | headless browser process
+  Integration: template for 'co create --template playwright' | BrowserAutomation class passed as tool | uses prompt.md for system prompt | @xray decorator on all methods
+  Performance: browser launch overhead 1-3s | operations vary by page complexity | max_iterations=20 for complex automation
+  Errors: graceful fallback if Playwright not installed | method-level error handling returns error strings | cleanup on exit
+
+Playwright Web Automation Agent - Browser control and web scraping
 
 Based on the ConnectOnion Playwright example with stateful browser tools.
 """

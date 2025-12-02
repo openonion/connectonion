@@ -372,6 +372,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
             "name": os.path.basename(current_dir) or "connectonion-agent",
             "created": datetime.now().isoformat(),
             "framework_version": __version__,
+            "secrets": ".env",  # Path to secrets file
         },
         "cli": {
             "version": "1.0.0",

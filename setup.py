@@ -16,6 +16,7 @@ requirements = [
     "toml>=0.10.2",
     "requests>=2.25.0",
     "rich>=13.0.0",  # For CLI formatting
+    "typer>=0.9.0",  # For elegant CLI
     "PyNaCl>=1.5.0",  # For Ed25519 key generation (needed for global config)
     "mnemonic>=0.20",  # For recovery phrase generation (needed for global config)
     "questionary>=2.0.0",  # For interactive CLI prompts (arrow key navigation)
@@ -37,12 +38,10 @@ optional_deps = {
 setup(
     name="connectonion",
     # Version numbering strategy:
-    # - Current: 0.1.9
-    # - Increment PATCH for bug fixes: 0.1.1, 0.1.2, ..., 0.1.9
-    # - At 0.1.10, roll to MINOR: 0.2.0
-    # - At 0.10.0, roll to MAJOR: 1.0.0
-    # - Example progression: 0.1.0 -> 0.1.1 -> ... -> 0.1.9 -> 0.1.10 -> 0.2.0
-    version="0.4.9",
+    # - Increment PATCH: 0.5.0 -> 0.5.1 -> ... -> 0.5.9
+    # - At .9, roll to next MINOR: 0.5.9 -> 0.6.0
+    # - At 0.9.9, roll to MAJOR: 0.9.9 -> 1.0.0
+    version="0.5.0",
     author="ConnectOnion Team",
     author_email="pypi@connectonion.com",
     description="A simple Python framework for creating AI agents with behavior tracking",
@@ -66,7 +65,7 @@ setup(
         'connectonion.execution_analyzer': [
             '*.md',  # Include all markdown prompts for execution analyzer
         ],
-        'connectonion.prompts': [
+        'connectonion.prompt_files': [
             '*.md',  # Include all prompts (reflect.md, analyze_contact.md)
         ],
     },

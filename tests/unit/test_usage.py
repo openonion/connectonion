@@ -89,6 +89,8 @@ class TestGetContextLimit:
 
     def test_gemini_large_context(self):
         """Test Gemini models have large context windows."""
+        limit = get_context_limit("gemini-3-pro-preview")
+        assert limit == 1_000_000
         limit = get_context_limit("gemini-2.5-pro")
         assert limit == 1_000_000
 
@@ -186,6 +188,8 @@ class TestModelPricing:
 
     def test_gemini_models_exist(self):
         """Test Gemini models are in pricing."""
+        assert "gemini-3-pro-preview" in MODEL_PRICING
+        assert "gemini-3-pro-image-preview" in MODEL_PRICING
         assert "gemini-2.5-pro" in MODEL_PRICING
         assert "gemini-2.5-flash" in MODEL_PRICING
 
@@ -205,5 +209,9 @@ class TestModelContextLimits:
 
     def test_gemini_models_exist(self):
         """Test Gemini models are in context limits."""
+        assert "gemini-3-pro-preview" in MODEL_CONTEXT_LIMITS
+        assert MODEL_CONTEXT_LIMITS["gemini-3-pro-preview"] == 1_000_000
+        assert "gemini-3-pro-image-preview" in MODEL_CONTEXT_LIMITS
+        assert MODEL_CONTEXT_LIMITS["gemini-3-pro-image-preview"] == 65000
         assert "gemini-2.5-pro" in MODEL_CONTEXT_LIMITS
         assert MODEL_CONTEXT_LIMITS["gemini-2.5-pro"] == 1_000_000

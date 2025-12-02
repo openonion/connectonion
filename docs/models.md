@@ -88,6 +88,18 @@ agent = Agent("assistant", model="o1-mini")         # Your key
 
 ### Google Gemini Models
 
+#### Gemini 3 (Newest - State-of-the-Art Reasoning)
+```python
+# Most intelligent model family with state-of-the-art reasoning
+# 1M token context, dynamic thinking levels (low/medium/high)
+agent = Agent("assistant", model="co/gemini-3-pro-preview")  # Managed
+agent = Agent("assistant", model="gemini-3-pro-preview")     # Your key
+
+# Image generation model with grounded generation
+agent = Agent("assistant", model="co/gemini-3-pro-image-preview")  # Managed
+agent = Agent("assistant", model="gemini-3-pro-image-preview")     # Your key
+```
+
 #### Gemini 2.5
 ```python
 # Enhanced thinking and reasoning, multimodal understanding, advanced coding
@@ -160,7 +172,7 @@ agent = Agent("assistant", model="claude-sonnet-4")       # Your key
 | Model | Provider | Key Strengths | Multimodal |
 |-------|----------|---------------|------------|
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
-| gemini-2.5-pro | Google | Enhanced reasoning, supports audio/video/PDF | ✅ |
+| gemini-3-pro-preview | Google | State-of-the-art reasoning, dynamic thinking | ✅ |
 | claude-sonnet-4-5 | Anthropic | Best balance of intelligence and speed | ✅ |
 
 ### Context Windows
@@ -173,6 +185,8 @@ agent = Agent("assistant", model="claude-sonnet-4")       # Your key
 | gpt-5-nano | 128K tokens |
 | gpt-4.1 | 128K tokens |
 | **Google** | |
+| gemini-3-pro-preview | 1M tokens |
+| gemini-3-pro-image-preview | 65K tokens |
 | gemini-2.5-pro | 2M tokens |
 | gemini-1.5-pro | 2M tokens |
 | gemini-1.5-flash | 1M tokens |
@@ -200,6 +214,8 @@ All prices are **per 1M tokens** and match official provider pricing:
 
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
+| gemini-3-pro-preview | $2.00 | $12.00 | State-of-the-art reasoning |
+| gemini-3-pro-image-preview | $2.00 | $0.134 | Image generation |
 | gemini-2.5-pro | $1.25 | $10.00 | Advanced thinking |
 | gemini-2.5-flash | $0.30 | $2.50 | Best price-performance |
 | gemini-2.5-flash-lite | $0.10 | $0.40 | Ultra fast, cheapest |

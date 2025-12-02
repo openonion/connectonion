@@ -1070,8 +1070,8 @@ Emails:
 {emails_result}"""
 
         # Get path to prompt file relative to this module
-        # gmail.py is in connectonion/useful_tools/, prompts/ is in connectonion/prompts/
-        prompt_path = Path(__file__).parent.parent / "prompts" / "analyze_contact.md"
+        # gmail.py is in connectonion/useful_tools/, prompt_files/ is in connectonion/prompt_files/
+        prompt_path = Path(__file__).parent.parent / "prompt_files" / "analyze_contact.md"
 
         analysis = llm_do(
             input_data,

@@ -1,5 +1,12 @@
 """
-Memory system for persistent agent knowledge storage.
+Purpose: Persistent key-value memory storage for agents using markdown files with automatic scaling
+LLM-Note:
+  Dependencies: imports from [os, re] | imported by [useful_tools/__init__.py] | tested by [tests/test_memory.py]
+  Data flow: Agent calls Memory methods → write_memory(key, content) stores in memory.md (or directory) → read_memory(key) retrieves by parsing markdown sections → list_memories() shows all keys → search_memory(pattern) uses regex across all content → auto-splits to directory when file exceeds split_threshold lines
+  State/Effects: creates/modifies memory.md file or memory/ directory | single file uses ## headings as keys | auto-migrates to directory structure at threshold | does NOT delete old file on migration (removes it) | no network I/O
+  Integration: exposes Memory class with write_memory(), read_memory(), list_memories(), search_memory() | used as agent tool by passing to Agent(tools=[memory]) | storage format: markdown with ## key headings | directory format: one .md file per key
+  Performance: file I/O per operation (no caching) | parsing is O(n) file lines | search is O(n*m) files * lines | auto-scaling avoids single file bloat
+  Errors: returns error string for missing keys | invalid key names sanitized (alphanumeric, hyphen, underscore only) | no exceptions raised (returns error messages)
 
 **Simple by default**: Stores all memories in a single `memory.md` file.
 **Scales automatically**: Splits into directory when file exceeds 3000 lines.

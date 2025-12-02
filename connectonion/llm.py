@@ -622,6 +622,8 @@ MODEL_REGISTRY = {
     "claude-3-7-sonnet-20250219": "anthropic",
     
     # Google Gemini models
+    "gemini-3-pro-preview": "google",
+    "gemini-3-pro-image-preview": "google",
     "gemini-2.5-pro": "google",
     "gemini-2.5-flash": "google",
     "gemini-2.0-flash-exp": "google",
@@ -650,17 +652,9 @@ class OpenOnionLLM(LLM):
                 "Run 'co init' to get started or set OPENONION_API_KEY in your .env file."
             )
 
-        # Show helpful tip about OpenOnion being for experimentation only
+        # Show tip about free credits
         import sys
-        print(
-            "⚠️  OPENONION_API_KEY detected - This is for experimentation only.\n"
-            "   We provide free credits to help you get started, but this is NOT for production.\n"
-            "   For production, please switch to stable LLM providers:\n"
-            "   • Anthropic (Claude): Set ANTHROPIC_API_KEY\n"
-            "   • OpenAI (GPT): Set OPENAI_API_KEY\n"
-            "   • Google (Gemini): Set GEMINI_API_KEY\n",
-            file=sys.stderr
-        )
+        print(f"🎁 Using {model} with free credits. Run `co status` to check balance.", file=sys.stderr)
 
         # Strip co/ prefix - it's only for client-side routing
         self.model = model.removeprefix("co/")

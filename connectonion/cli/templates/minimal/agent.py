@@ -1,4 +1,15 @@
-"""Minimal ConnectOnion agent with a simple calculator tool."""
+"""
+Purpose: Minimal agent template demonstrating basic ConnectOnion usage with a calculator tool
+LLM-Note:
+  Dependencies: imports from [connectonion.Agent] | template file copied by [cli/commands/init.py, cli/commands/create.py] | default template for 'co create' and 'co init'
+  Data flow: user query → Agent.input() → calculator tool called if math expression → eval() computes result → returns answer
+  State/Effects: no persistent state | single Agent.input() call | uses co/gpt-5 model (OpenOnion hosted)
+  Integration: template for 'co create --template minimal' | demonstrates function-as-tool pattern | shows system_prompt and model configuration
+  Performance: single LLM call | eval() is fast
+  Errors: ⚠️ Security: uses eval() - for demo only, not production safe
+
+Minimal ConnectOnion agent with a simple calculator tool.
+"""
 
 from connectonion import Agent
 

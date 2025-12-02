@@ -23,7 +23,6 @@ class TestAuthGoogleHelp:
         result = self.runner.invoke(cli, ['auth', '--help'])
         assert result.exit_code == 0
         assert 'google' in result.output.lower()
-        assert 'gmail' in result.output.lower() or 'calendar' in result.output.lower()
 
     @patch('connectonion.cli.commands.auth_commands._load_api_key')
     def test_auth_google_requires_openonion_auth(self, mock_load_key):

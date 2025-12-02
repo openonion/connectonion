@@ -1,4 +1,15 @@
-"""Meta-Agent - Your ConnectOnion development assistant with documentation expertise"""
+"""
+Purpose: Development assistant agent with ConnectOnion documentation knowledge and shell execution
+LLM-Note:
+  Dependencies: imports from [connectonion.Agent, connectonion.xray, connectonion.llm_do, json, pathlib, subprocess, platform, shutil] | template file copied by [cli/commands/init.py, cli/commands/create.py]
+  Data flow: user question → Agent.input() → answer_connectonion_question (reads .co/docs/connectonion.md → llm_do extracts relevant text → llm_do generates answer) | run_shell executes commands | todo tools manage todo.md
+  State/Effects: reads/writes todo.md | executes shell commands (cross-platform) | reads documentation files | uses co/gemini-2.5-pro model
+  Integration: template for 'co create --template meta-agent' | tools: answer_connectonion_question, think, add_todo, delete_todo, list_todos, run_shell | uses external prompt files in prompts/
+  Performance: llm_do calls for doc retrieval and answers | shell timeout 120s | max_iterations=15
+  Errors: graceful handling for missing docs | shell command timeout/errors caught | @xray decorator for debugging
+
+Meta-Agent - Your ConnectOnion development assistant with documentation expertise
+"""
 
 from connectonion import Agent, xray
 from connectonion import llm_do

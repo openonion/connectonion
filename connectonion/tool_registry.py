@@ -1,4 +1,13 @@
 """
+Purpose: Store and manage agent tools and class instances with O(1) lookup and conflict detection
+LLM-Note:
+  Dependencies: None (standalone module) | imported by [agent.py] | tested by [tests/unit/test_tool_registry.py]
+  Data flow: Agent.__init__() creates ToolRegistry → .add(tool) stores tool with tool.name key → .add_instance(name, instance) stores class instances → .get(name) returns tool or None → __getattr__ enables agent.tools.send() attribute access → __iter__ yields tools for LLM schema generation
+  State/Effects: stores tools in _tools dict and instances in _instances dict | no file I/O or external effects | raises ValueError on duplicate names or conflicts between tool/instance names
+  Integration: exposes ToolRegistry class with add(), add_instance(), get(), get_instance(), remove(), names() | supports iteration (for tool in registry) | supports len() and bool | supports 'in' operator | attribute access checks instances first, then tools
+  Performance: O(1) dict-based lookup for all operations | iteration yields tools only (not instances) | memory proportional to number of tools/instances
+  Errors: raises ValueError for duplicate tool names | raises ValueError if tool name conflicts with instance name | raises AttributeError for unknown tool/instance names via __getattr__
+
 Agent tools and instances with attribute access and conflict detection.
 
 Usage:

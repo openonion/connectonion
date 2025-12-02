@@ -138,8 +138,8 @@ class TestExampleAgent:
         # Test 5: Check history persistence
 
         # Test 6: Check log file was created
-        if isinstance(agent.logger.log_file, Path):
-            assert agent.logger.log_file.exists()
+        if isinstance(agent.logger.log_file_path, Path):
+            assert agent.logger.log_file_path.exists()
 
     def test_agent_with_real_conversation(self, temp_dir):
         """

@@ -4,6 +4,8 @@ Clean, minimal design that works on light and dark terminals.
 Inspired by powerlevel10k terminal prompts.
 """
 
+import random
+from typing import Optional
 from rich.console import Console, Group
 from rich.text import Text
 from rich.live import Live
@@ -15,60 +17,65 @@ from .providers import FileProvider
 
 # Color palette - works on both light and dark terminals
 COLORS = {
-    "prompt_arrow": "bold magenta",
-    "prompt_icon": "bold blue",
-    "input_text": "",  # Default terminal color
-    "filter_text": "bold green",
-    "cursor_block": "reverse",
-    "tip": "dim",
+    "prompt": "bold magenta",
+    "text": "default",  # User input in default terminal color
+    "filter": "bold green",
+    "cursor": "reverse",
+    "hint": "dim",
+    "tip": "dim italic",
 }
+
+# Global counter for rotating tips
+_input_count = 0
 
 
 class Input:
     """Smart input with trigger-based autocomplete.
 
-    Styled like modern zsh terminals (powerlevel10k).
-
     Usage:
         from connectonion.tui import Input, FileProvider
 
-        # Simple input
+        # Simple
         text = Input().run()
 
-        # With @ file autocomplete
+        # With autocomplete
         text = Input(triggers={"@": FileProvider()}).run()
 
-        # With multiple triggers
-        text = Input(triggers={
-            "@": FileProvider(),
-            "/": StaticProvider([("/help", "/help"), ("/exit", "/exit")]),
-        }).run()
-
-        # With tip
-        text = Input(tip="@ files, / commands").run()
+        # With hints (always visible) and tips (rotating)
+        text = Input(
+            hints=["/ commands", "@ contacts", "Enter submit"],
+            tips=["Try /today for briefing", "Join our Discord!"],
+            divider=True,
+        ).run()
     """
 
     def __init__(
         self,
         prompt: str = None,
         triggers: dict = None,
-        tip: str = None,
+        hints: list[str] = None,
+        tips: list[str] = None,
+        divider: bool = False,
         max_visible: int = 8,
         console: Console = None,
-        style: str = "modern",  # "modern", "minimal", "classic"
+        style: str = "modern",
     ):
         """
         Args:
-            prompt: Custom prompt (default: modern arrow style)
-            triggers: Dict of {char: Provider} for autocomplete triggers
-            tip: Help text shown below input
-            max_visible: Max dropdown items to show
-            console: Rich console instance
-            style: Visual style - "modern" (default), "minimal", "classic"
+            prompt: Custom prompt text
+            triggers: Dict of {char: Provider} for autocomplete
+            hints: Always-visible keyboard hints (e.g., ["/ commands", "Enter submit"])
+            tips: Rotating tips shown occasionally (e.g., ["Try /today", "Join Discord"])
+            divider: Add horizontal dividers around input
+            max_visible: Max dropdown items
+            console: Rich console
+            style: "modern", "minimal", or "classic"
         """
-        self.custom_prompt = prompt
+        self.prompt = prompt
         self.triggers = triggers or {}
-        self.tip = tip
+        self.hints = hints
+        self.tips = tips
+        self.divider = divider
         self.max_visible = max_visible
         self.console = console or Console()
         self.style = style
@@ -79,179 +86,164 @@ class Input:
         self.filter_text = ""
         self.dropdown = Dropdown(max_visible=max_visible)
 
-    def _get_provider(self):
-        """Get provider for active trigger."""
-        if self.active_trigger:
-            return self.triggers.get(self.active_trigger)
+    def _render_prompt(self) -> Text:
+        """Render prompt based on style."""
+        if self.prompt:
+            return Text(self.prompt)
+
+        prompts = {"modern": "❯ ", "minimal": "> ", "classic": "$ "}
+        return Text(prompts.get(self.style, "❯ "), style=COLORS["prompt"])
+
+    def _get_rotating_tip(self) -> str | None:
+        """Get a rotating tip (shows every 4 inputs, 60% chance)."""
+        global _input_count
+        if not self.tips:
+            return None
+        # Show tip every 4 rounds with 60% probability
+        if _input_count % 4 == 0 and random.random() < 0.6:
+            return self.tips[(_input_count // 4) % len(self.tips)]
         return None
 
-    def _update_dropdown(self):
-        """Update dropdown items from provider."""
-        provider = self._get_provider()
-        if provider:
-            results = provider.search(self.filter_text)
-            self.dropdown.set_items(results)
-        else:
-            self.dropdown.clear()
-
-    def _render_prompt(self) -> Text:
-        """Render the prompt part based on style."""
-        prompt = Text()
-
-        if self.custom_prompt:
-            prompt.append(self.custom_prompt)
-            return prompt
-
-        if self.style == "modern":
-            # Powerlevel10k-like: ❯ or arrow
-            prompt.append("❯ ", style=COLORS["prompt_arrow"])
-        elif self.style == "minimal":
-            # Simple arrow
-            prompt.append("> ", style=COLORS["prompt_arrow"])
-        else:  # classic
-            prompt.append("$ ", style=COLORS["prompt_icon"])
-
-        return prompt
-
-    def _render(self):
-        """Render input line and dropdown.
-
-        No Panel wrapping - clean minimal design like powerlevel10k.
-        """
+    def _render(self) -> Group:
+        """Render the input UI."""
         parts = []
 
-        # Build input line
-        input_line = Text()
+        # Top divider (very dim solid line, full width)
+        if self.divider:
+            width = self.console.width or 80
+            parts.append(Text("─" * width, style="dim bright_black"))
 
-        # Prompt
-        input_line.append_text(self._render_prompt())
-
-        # Buffer text
-        input_line.append(self.buffer, style=COLORS["input_text"])
-
-        # Filter text (when in autocomplete mode)
+        # Input line: prompt + buffer + filter + cursor
+        line = self._render_prompt()
+        if self.buffer:
+            line.append(self.buffer)  # Default terminal color
         if self.active_trigger:
-            input_line.append(self.filter_text, style=COLORS["filter_text"])
+            line.append(self.filter_text, style=COLORS["filter"])
+        line.append(" ", style=COLORS["cursor"])
+        parts.append(line)
 
-        # Cursor (block style)
-        input_line.append(" ", style=COLORS["cursor_block"])
-
-        parts.append(input_line)
-
-        # Dropdown (if active and has items)
+        # Dropdown
         if self.active_trigger and not self.dropdown.is_empty:
-            # Add spacing before dropdown
             parts.append(Text())
             parts.append(self.dropdown.render())
 
-        # Tip (if no dropdown and tip provided)
-        elif self.tip and not self.active_trigger and not self.buffer:
-            tip_text = Text()
-            tip_text.append("  ")
-            tip_text.append(self.tip, style=COLORS["tip"])
-            parts.append(tip_text)
+        # Bottom divider (very dim solid line, full width)
+        if self.divider:
+            width = self.console.width or 80
+            parts.append(Text("─" * width, style="dim bright_black"))
+
+        # Hints (always visible, under divider)
+        if self.hints:
+            hint_line = Text()
+            for i, hint in enumerate(self.hints):
+                hint_line.append(hint, style=COLORS["hint"])
+                if i < len(self.hints) - 1:
+                    hint_line.append("  ")
+            parts.append(hint_line)
+
+        # Rotating tip (occasional, under hints)
+        tip = self._get_rotating_tip()
+        if tip:
+            parts.append(Text(tip, style=COLORS["tip"]))
 
         return Group(*parts)
 
     def _accept_selection(self) -> bool:
-        """Accept current dropdown selection. Returns True if handled directory navigation."""
+        """Accept dropdown selection. Returns True if navigating directory."""
         value = self.dropdown.selected_value
         if value is None:
             return False
 
-        # Handle directory navigation for FileProvider
+        # Directory navigation for FileProvider
         if isinstance(value, str) and value.endswith('/'):
-            provider = self._get_provider()
+            provider = self.triggers.get(self.active_trigger)
             if isinstance(provider, FileProvider):
                 provider.enter(value)
                 self.filter_text = ""
                 self._update_dropdown()
                 return True
 
-        # Accept the selection
-        # Remove trigger from buffer (it was just the activation point, not data)
-        # Provider controls the final value (include trigger if needed)
+        # Accept selection
         if self.active_trigger and self.buffer.endswith(self.active_trigger):
             self.buffer = self.buffer[:-len(self.active_trigger)]
         self.buffer += str(value)
         self._exit_autocomplete()
         return False
 
+    def _update_dropdown(self):
+        """Update dropdown from provider."""
+        provider = self.triggers.get(self.active_trigger)
+        if provider:
+            self.dropdown.set_items(provider.search(self.filter_text))
+        else:
+            self.dropdown.clear()
+
     def _exit_autocomplete(self):
         """Exit autocomplete mode."""
         self.active_trigger = None
         self.filter_text = ""
         self.dropdown.clear()
-        # Reset FileProvider context
         for provider in self.triggers.values():
             if isinstance(provider, FileProvider):
                 provider.context = ""
 
     def run(self) -> str:
-        """Run input and return entered text.
+        """Run input loop. Returns entered text."""
+        global _input_count
+        _input_count += 1
 
-        fzf-style keybindings:
-        - Enter: confirm selection (accepts first/selected match), or submit if no dropdown
-        - Tab: reserved for future multi-select toggle
-        - Up/Down: navigate (optional, typing to filter is primary)
-        - Escape: cancel autocomplete
-        """
-        with Live(self._render(), console=self.console, refresh_per_second=20, auto_refresh=False) as live:
+        with Live(self._render(), console=self.console, auto_refresh=False) as live:
             while True:
                 key = read_key()
 
-                if key in ('\r', '\n'):  # Enter - confirm selection or submit
+                # Enter - submit or accept selection
+                if key in ('\r', '\n'):
                     if self.active_trigger:
                         if not self.dropdown.is_empty:
-                            # Accept current selection (first match if not navigated)
                             if self._accept_selection():
-                                # Directory navigation - stay in autocomplete
                                 live.update(self._render(), refresh=True)
                                 continue
-                            # File selected - exit autocomplete, continue typing
                             live.update(self._render(), refresh=True)
                         else:
-                            # No matches - exit autocomplete mode
                             self._exit_autocomplete()
                             live.update(self._render(), refresh=True)
                     else:
-                        # Not in autocomplete - submit input
                         return self.buffer
 
-                elif key == '\t':  # Tab - reserved for multi-select toggle
-                    # For now, same as Enter for single select
+                # Tab - accept selection
+                elif key == '\t':
                     if self.active_trigger and not self.dropdown.is_empty:
                         if self._accept_selection():
                             live.update(self._render(), refresh=True)
                             continue
                         live.update(self._render(), refresh=True)
 
-                elif key == 'esc':  # ESC - cancel autocomplete
+                # Escape - cancel autocomplete
+                elif key == 'esc':
                     if self.active_trigger:
-                        # Remove trigger char from buffer
                         if self.buffer.endswith(self.active_trigger):
                             self.buffer = self.buffer[:-1]
                         self._exit_autocomplete()
                         live.update(self._render(), refresh=True)
 
-                elif key == '\x03':  # Ctrl+C
+                # Ctrl+C / Ctrl+D
+                elif key == '\x03':
                     raise KeyboardInterrupt()
-                elif key == '\x04':  # Ctrl+D
+                elif key == '\x04':
                     raise EOFError()
 
-                elif key in ('\x7f', '\x08'):  # Backspace
+                # Backspace
+                elif key in ('\x7f', '\x08'):
                     if self.active_trigger:
                         if self.filter_text:
                             self.filter_text = self.filter_text[:-1]
                             self._update_dropdown()
                         else:
-                            # Try to go back in FileProvider
-                            provider = self._get_provider()
+                            provider = self.triggers.get(self.active_trigger)
                             if isinstance(provider, FileProvider) and provider.context:
                                 provider.back()
                                 self._update_dropdown()
                             else:
-                                # Exit autocomplete, remove trigger
                                 if self.buffer.endswith(self.active_trigger):
                                     self.buffer = self.buffer[:-1]
                                 self._exit_autocomplete()
@@ -260,23 +252,23 @@ class Input:
                         self.buffer = self.buffer[:-1]
                         live.update(self._render(), refresh=True)
 
-                elif key == 'up':
-                    if self.active_trigger:
-                        self.dropdown.up()
-                        live.update(self._render(), refresh=True)
+                # Arrow keys
+                elif key == 'up' and self.active_trigger:
+                    self.dropdown.up()
+                    live.update(self._render(), refresh=True)
+                elif key == 'down' and self.active_trigger:
+                    self.dropdown.down()
+                    live.update(self._render(), refresh=True)
 
-                elif key == 'down':
-                    if self.active_trigger:
-                        self.dropdown.down()
-                        live.update(self._render(), refresh=True)
-
-                elif key in self.triggers:  # Trigger char
+                # Trigger char
+                elif key in self.triggers:
                     self.active_trigger = key
                     self.filter_text = ""
                     self.buffer += key
                     self._update_dropdown()
                     live.update(self._render(), refresh=True)
 
+                # Regular input
                 elif key.isprintable():
                     if self.active_trigger:
                         self.filter_text += key

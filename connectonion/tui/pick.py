@@ -1,5 +1,12 @@
 """
-Pick - Single-select menu component.
+Purpose: Single-select menu component with keyboard navigation for terminal-based option selection
+LLM-Note:
+  Dependencies: imports from [sys, rich.console, rich.live, rich.text, .keys] | imported by [tui/__init__.py, useful_tools/__init__.py] | used in CLI menus and agent tool confirmations
+  Data flow: caller invokes pick(title, options, other) → renders menu with Rich Live → reads keyboard via read_key() → up/down arrows move selection → Enter confirms → returns selected label string | if other=True and "Other..." selected, prompts for custom text input
+  State/Effects: uses Rich Live for in-place rendering | manages cursor position state | reads raw keyboard input | no file I/O
+  Integration: exposes pick(title, options, other, console) → str | options can be strings or (label, description) tuples | optional "Other..." for custom input | returns selected label or custom text
+  Performance: O(n) options rendering | single keystroke per action | real-time re-render on selection change
+  Errors: KeyboardInterrupt returns None or empty string | terminal restored on exit
 
 Usage:
     from connectonion.tui import pick
