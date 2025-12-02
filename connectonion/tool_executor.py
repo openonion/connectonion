@@ -230,6 +230,10 @@ def execute_single_tool(
 def _add_assistant_message(messages: List[Dict], tool_calls: List) -> None:
     """Format and add assistant message with tool calls.
 
+    Preserves extra_content (e.g., Gemini 3 thought_signature) which must be
+    echoed back to the LLM for certain providers to work correctly.
+    See: https://ai.google.dev/gemini-api/docs/thinking#openai-sdk
+
     Args:
         messages: Conversation messages list (will be mutated)
         tool_calls: Tool calls from LLM response
@@ -242,7 +246,8 @@ def _add_assistant_message(messages: List[Dict], tool_calls: List) -> None:
             "function": {
                 "name": tool_call.name,
                 "arguments": json.dumps(tool_call.arguments)
-            }
+            },
+            "extra_content": tool_call.extra_content
         })
 
     messages.append({

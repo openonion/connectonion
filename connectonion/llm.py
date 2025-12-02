@@ -157,10 +157,20 @@ from pydantic import BaseModel
 
 @dataclass
 class ToolCall:
-    """Represents a tool call from the LLM."""
+    """Represents a tool call from the LLM.
+
+    Attributes:
+        name: The function name to call
+        arguments: Dict of arguments to pass to the function
+        id: Unique identifier for this tool call
+        extra_content: Provider-specific metadata (e.g., Gemini 3 thought_signature).
+            Must be echoed back in the assistant message for models that require it.
+            See: https://ai.google.dev/gemini-api/docs/thinking#openai-sdk
+    """
     name: str
     arguments: Dict[str, Any]
     id: str
+    extra_content: Optional[Dict[str, Any]] = None
 
 
 # Import TokenUsage from usage module
@@ -541,13 +551,16 @@ class GeminiLLM(LLM):
         message = response.choices[0].message
 
         # Parse tool calls if present
+        # Preserve extra_content for providers that need it (e.g., Gemini 3 thought_signature)
         tool_calls = []
         if hasattr(message, 'tool_calls') and message.tool_calls:
             for tc in message.tool_calls:
+                extra = getattr(tc, 'extra_content', None)
                 tool_calls.append(ToolCall(
                     name=tc.function.name,
                     arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
-                    id=tc.id
+                    id=tc.id,
+                    extra_content=extra
                 ))
 
         # Extract token usage (OpenAI-compatible format)
@@ -688,13 +701,16 @@ class OpenOnionLLM(LLM):
         message = response.choices[0].message
 
         # Parse tool calls if present
+        # Preserve extra_content for providers that need it (e.g., Gemini 3 thought_signature)
         tool_calls = []
         if hasattr(message, 'tool_calls') and message.tool_calls:
             for tc in message.tool_calls:
+                extra = getattr(tc, 'extra_content', None)
                 tool_calls.append(ToolCall(
                     name=tc.function.name,
                     arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
-                    id=tc.id
+                    id=tc.id,
+                    extra_content=extra
                 ))
 
         # Extract token usage (OpenAI-compatible format)
