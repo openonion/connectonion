@@ -47,6 +47,7 @@ Agent(
     api_key="sk-...",                     # Optional: override environment variable
     llm=custom_llm,                       # Optional: bring your own LLM instance
     trust="tested",                       # Optional: security verification
+    quiet=False,                          # Optional: suppress console output
     log=True                              # Optional: logging configuration
 )
 ```
@@ -601,9 +602,9 @@ Unknown models use default pricing estimates.
 
 ### Automatic Logging
 
-All agent activity is automatically logged to two places:
+All agent activity is automatically logged to three places:
 
-**1. Console (always on):**
+**1. Console (default on, use `quiet=True` to suppress):**
 ```
 INPUT: What is 2+2?
   Iteration 1/10
@@ -614,28 +615,73 @@ INPUT: What is 2+2?
 ✓ Complete (0.4s)
 ```
 
-**2. File (configurable):**
+**2. Plain text logs (`.co/logs/{name}.log`):**
+```
+============================================================
+Session started: 2024-12-02 10:32:14
+============================================================
+
+[10:32:14] INPUT: What is 2+2?
+[10:32:14] -> LLM Request (gpt-4o-mini) • 2 msgs • 1 tools
+[10:32:15] <- LLM Response (234ms) • 1 tools • 156 tokens • $0.0001
+[10:32:15] -> Tool: calculator({"expression": "2+2"})
+[10:32:15] <- Result (1ms): 4
+[10:32:15] [OK] Complete (0.4s)
+```
+
+**3. Session YAML (`.co/sessions/{name}_{timestamp}.yaml`):**
+```yaml
+name: bot
+timestamp: 2024-12-02 10:32:14
+
+turns:
+  - input: "What is 2+2?"
+    model: "gpt-4o-mini"
+    duration_ms: 400
+    tokens: 156
+    cost: 0.0001
+    tools_called: [calculator]
+    result: "The answer is 4"
+    messages: '[{"role":"system",...}]'
+```
+
+### Logging Parameters
 
 ```python
-# Default: .co/logs/{name}.log
-agent = Agent("bot")  # Logs to .co/logs/bot.log
+# Default: everything on (console + logs + sessions)
+agent = Agent("bot")
 
-# Current directory: bot.log
-agent = Agent("bot", log=True)
+# Quiet mode: suppress console, keep sessions for eval
+agent = Agent("bot", quiet=True)
 
-# Disable file logging (console only)
+# Disable all file logging (console only)
 agent = Agent("bot", log=False)
 
-# Custom path
+# Custom log path
 agent = Agent("bot", log="logs/my-agent.log")
 ```
+
+### Logging Modes Summary
+
+| quiet | log | Console | Plain Text | Sessions | Use Case |
+|-------|-----|---------|------------|----------|----------|
+| False | True/None | ✓ | ✓ | ✓ | Development (default) |
+| True | True/None | ✗ | ✗ | ✓ | Eval/testing |
+| False | False | ✓ | ✗ | ✗ | Benchmarking |
+| False | "path" | ✓ | custom | ✓ | Custom log path |
 
 ### Environment Override
 
 ```bash
-# All agents log to same file
-export CONNECTONION_LOG=/var/logs/all-agents.log
+# Override log file via environment (highest priority)
+CONNECTONION_LOG=debug.log python agent.py
 ```
+
+### Session Use Cases
+
+- **Session replay**: Restore context from saved sessions
+- **Regression testing**: Compare expected vs actual results
+- **Development comparison**: See what changed after prompt edits
 
 ### Debug with @xray
 

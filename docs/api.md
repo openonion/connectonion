@@ -130,42 +130,74 @@ tool = create_tool_from_function(simple_function)
 
 ## Logging
 
-Automatic activity logging for agents.
+Automatic activity logging for agents. Three output destinations:
+- **Console**: Rich-formatted terminal output
+- **Plain text**: `.co/logs/{name}.log`
+- **Session YAML**: `.co/sessions/{name}_{timestamp}.yaml`
 
 ### Configuration
 
-Control logging via the `log` parameter in Agent initialization:
+Control logging via `quiet` and `log` parameters:
 
 ```python
-# Default: logs to .co/logs/{name}.log
+# Default: everything on (console + logs + sessions)
 agent = Agent("assistant")
 
-# Log to current directory
-agent = Agent("assistant", log=True)  # → assistant.log
+# Quiet mode: suppress console, keep sessions for eval
+agent = Agent("assistant", quiet=True)
 
-# Disable logging
+# Disable all file logging (console only)
 agent = Agent("assistant", log=False)
 
-# Custom log file
+# Custom log file path
 agent = Agent("assistant", log="my_logs/custom.log")
 ```
 
+### Logging Modes
+
+| quiet | log | Console | Plain Text | Sessions | Use Case |
+|-------|-----|---------|------------|----------|----------|
+| False | True/None | ✓ | ✓ | ✓ | Development (default) |
+| True | True/None | ✗ | ✗ | ✓ | Eval/testing |
+| False | False | ✓ | ✗ | ✗ | Benchmarking |
+| False | "path" | ✓ | custom | ✓ | Custom log path |
+
 ### Log Format
 
-Each log entry includes:
+Plain text logs include:
 - Timestamp
 - User input
-- LLM calls with timing
+- LLM calls with timing, tokens, cost
 - Tool executions with parameters and results
 - Final agent responses
 
 Example log output:
 ```
-10:30:15 INPUT: Calculate 2 + 2
-10:30:15 → LLM call (gpt-4o-mini)
-10:30:16 → Tool: calculator(expression="2 + 2")
-10:30:16   Result: 4
-10:30:16 ✓ Complete (1.2s)
+[10:30:15] INPUT: Calculate 2 + 2
+[10:30:15] -> LLM Request (gpt-4o-mini) • 2 msgs • 1 tools
+[10:30:16] <- LLM Response (234ms) • 1 tools • 156 tokens • $0.0001
+[10:30:16] -> Tool: calculator({"expression": "2+2"})
+[10:30:16] <- Result (1ms): 4
+[10:30:16] [OK] Complete (1.2s)
+```
+
+### Session YAML Format
+
+Sessions are saved for replay and eval:
+
+```yaml
+name: assistant
+timestamp: 2024-12-02 10:30:15
+
+turns:
+  - input: "Calculate 2 + 2"
+    model: "gpt-4o-mini"
+    duration_ms: 1200
+    tokens: 156
+    cost: 0.0001
+    tools_called: [calculator]
+    result: "The answer is 4"
+    messages: '[{"role":"system",...}]'
 ```
 
 ## LLM

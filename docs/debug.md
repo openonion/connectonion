@@ -56,19 +56,41 @@ Output includes a beautiful table:
 ╰────────────────────────────────────────────────────────╯
 ```
 
-## Optional File Logging
+## File Logging
 
-Want to keep logs? Use the `log` parameter:
+ConnectOnion automatically logs to three places:
 
 ```python
-# Log to file (console still shows output)
+# Default: console + plain text + session YAML
+agent = Agent("assistant")
+
+# Custom log file path
 agent = Agent("assistant", log="agent.log")
 
-# Or use environment variable
+# Or use environment variable (highest priority)
 # CONNECTONION_LOG=agent.log python agent.py
 ```
 
-## Why Console is Always On
+Log locations:
+- Plain text: `.co/logs/{name}.log`
+- Session YAML: `.co/sessions/{name}_{timestamp}.yaml`
+
+## Quiet Mode
+
+For eval/testing, suppress console but keep session logging:
+
+```python
+# Quiet mode: no console, but sessions recorded for replay
+agent = Agent("assistant", quiet=True)
+```
+
+| quiet | log | Console | Plain Text | Sessions | Use Case |
+|-------|-----|---------|------------|----------|----------|
+| False | True/None | ✓ | ✓ | ✓ | Development (default) |
+| True | True/None | ✗ | ✗ | ✓ | Eval/testing |
+| False | False | ✓ | ✗ | ✗ | Benchmarking |
+
+## Why Console is On by Default
 
 **Design Philosophy:** Good UX means showing what's happening by default.
 
@@ -87,9 +109,9 @@ Why should agents be silent? ConnectOnion follows the same principle - **visibil
 - Confusing - output wasn't "debugging", it was normal operation
 
 **Current design (0.0.7+):**
-- Console is always on
+- Console is on by default (use `quiet=True` to suppress)
 - Shows what's happening (like FastAPI, npm, cargo)
 - `@xray` decorator adds enhanced Rich tables for specific tools
-- No `debug` parameter - it's not debugging, it's just good UX
+- Session YAML logging for eval and replay
 
 **Rationale:** The console output isn't "debug" information - it's useful operation visibility that users expect. Hiding it by default created confusion and poor developer experience.

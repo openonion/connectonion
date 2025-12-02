@@ -1,6 +1,6 @@
 """ConnectOnion - A simple agent framework with behavior tracking."""
 
-__version__ = "0.4.9"
+__version__ = "0.5.0"
 
 # Auto-load .env files for the entire framework
 from dotenv import load_dotenv
@@ -13,10 +13,12 @@ load_dotenv(_Path.cwd() / ".env")
 from .agent import Agent
 from .tool_factory import create_tool_from_function
 from .llm import LLM
+from .logger import Logger
 from .llm_do import llm_do
+from .prompts import load_system_prompt
 from .xray import xray
 from .decorators import replay, xray_replay
-from .useful_tools import send_email, get_emails, mark_read, mark_unread, Memory, Gmail, GoogleCalendar, WebFetch, Shell, DiffWriter, pick, yes_no, autocomplete, TodoList, SlashCommand
+from .useful_tools import send_email, get_emails, mark_read, mark_unread, Memory, Gmail, GoogleCalendar, Outlook, MicrosoftCalendar, WebFetch, Shell, DiffWriter, pick, yes_no, autocomplete, TodoList, SlashCommand
 from .auto_debug_exception import auto_debug_exception
 from .connect import connect, RemoteAgent
 from .events import (
@@ -32,8 +34,10 @@ from .events import (
 __all__ = [
     "Agent",
     "LLM",
+    "Logger",
     "create_tool_from_function",
     "llm_do",
+    "load_system_prompt",
     "xray",
     "replay",
     "xray_replay",
@@ -44,6 +48,8 @@ __all__ = [
     "Memory",
     "Gmail",
     "GoogleCalendar",
+    "Outlook",
+    "MicrosoftCalendar",
     "WebFetch",
     "Shell",
     "DiffWriter",

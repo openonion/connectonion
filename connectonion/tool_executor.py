@@ -1,19 +1,18 @@
 """
 Purpose: Execute agent tools with xray context injection, timing, error handling, and trace recording
 LLM-Note:
-  Dependencies: imports from [time, json, typing, console.py, xray.py] | imported by [agent.py] | tested by [tests/test_tool_executor.py]
-  Data flow: receives from Agent → tool_calls: List[ToolCall], tools: ToolRegistry, agent: Agent, console: Console → for each tool: injects xray context via inject_xray_context() → executes tool_func(**tool_args) → records timing and result → appends to agent.current_session['trace'] → clears xray context → adds tool result to messages
-  State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_execution entries | calls console.print() for user feedback | calls console.print_xray_table() if @xray enabled | injects/clears xray context via thread-local storage
-  Integration: exposes execute_and_record_tools(tool_calls, tools, agent, console), execute_single_tool(...) | checks is_xray_enabled() on tool functions | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp | status values: success, error, not_found
+  Dependencies: imports from [time, json, typing, xray.py] | imported by [agent.py] | tested by [tests/test_tool_executor.py]
+  Data flow: receives from Agent → tool_calls: List[ToolCall], tools: ToolRegistry, agent: Agent, logger: Logger → for each tool: injects xray context via inject_xray_context() → executes tool_func(**tool_args) → records timing and result → appends to agent.current_session['trace'] → clears xray context → adds tool result to messages
+  State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_execution entries | calls logger.print() for user feedback | calls logger.print_xray_table() if @xray enabled | injects/clears xray context via thread-local storage
+  Integration: exposes execute_and_record_tools(tool_calls, tools, agent, logger), execute_single_tool(...) | checks is_xray_enabled() on tool functions | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp | status values: success, error, not_found
   Performance: times each tool execution in milliseconds | executes tools sequentially (not parallel) | trace entry added BEFORE auto-trace so xray.trace() sees it
-  Errors: catches all tool execution exceptions | wraps errors in trace_entry with error, error_type fields | returns error message to LLM for retry | prints error to console with red ✗
+  Errors: catches all tool execution exceptions | wraps errors in trace_entry with error, error_type fields | returns error message to LLM for retry | prints error to logger with red ✗
 """
 
 import time
 import json
 from typing import List, Dict, Any, Optional, Callable
 
-from .console import Console
 from .xray import (
     inject_xray_context,
     clear_xray_context,
@@ -25,7 +24,7 @@ def execute_and_record_tools(
     tool_calls: List,
     tools: Any,  # ToolRegistry
     agent: Any,
-    console: Console
+    logger: Any  # Logger instance
 ) -> None:
     """Execute requested tools and update conversation messages.
 
@@ -35,7 +34,7 @@ def execute_and_record_tools(
         tool_calls: List of tool calls from LLM response
         tools: ToolRegistry containing tools
         agent: Agent instance with current_session containing messages and trace
-        console: Console for output (always provided by Agent)
+        logger: Logger for output (always provided by Agent)
     """
     # Format and add assistant message with tool calls
     _add_assistant_message(agent.current_session['messages'], tool_calls)
@@ -49,7 +48,7 @@ def execute_and_record_tools(
             tool_id=tool_call.id,
             tools=tools,
             agent=agent,
-            console=console
+            logger=logger
         )
 
         # Add result to conversation messages
@@ -77,7 +76,7 @@ def execute_single_tool(
     tool_id: str,
     tools: Any,  # ToolRegistry
     agent: Any,
-    console: Console
+    logger: Any  # Logger instance
 ) -> Dict[str, Any]:
     """Execute a single tool and return trace entry.
 
@@ -90,14 +89,14 @@ def execute_single_tool(
         tool_id: ID of the tool call
         tools: ToolRegistry containing tools
         agent: Agent instance with current_session
-        console: Console for output (always provided by Agent)
+        logger: Logger for output (always provided by Agent)
 
     Returns:
         Dict trace entry with: type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp
     """
-    # Console output
+    # Logger output
     args_str = str(tool_args)[:50] + "..." if len(str(tool_args)) > 50 else str(tool_args)
-    console.print(f"[blue]→[/blue] Tool: {tool_name}({args_str})")
+    logger.print(f"[blue]→[/blue] Tool: {tool_name}({args_str})")
 
     # Create single trace entry
     trace_entry = {
@@ -125,8 +124,8 @@ def execute_single_tool(
         # Add trace entry to session (so on_error handlers can see it)
         agent.current_session['trace'].append(trace_entry)
 
-        # Console output
-        console.print(f"[red]✗[/red] {error_msg}")
+        # Logger output
+        logger.print(f"[red]✗[/red] {error_msg}")
 
         # Note: on_error event will fire in execute_and_record_tools after result message added
 
@@ -181,15 +180,15 @@ def execute_single_tool(
         # (so it shows up in xray.trace() output)
         agent.current_session['trace'].append(trace_entry)
 
-        # Console output
+        # Logger output
         result_str = str(result)[:50] + "..." if len(str(result)) > 50 else str(result)
         # Show more precision for fast operations (<0.1s), less for slow ones
         time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
-        console.print(f"[green]←[/green] Result ({time_str}): {result_str}")
+        logger.print(f"[green]←[/green] Result ({time_str}): {result_str}")
 
         # Auto-print Rich table if @xray enabled
         if xray_enabled:
-            console.print_xray_table(
+            logger.print_xray_table(
                 tool_name=tool_name,
                 tool_args=tool_args,
                 result=result,
@@ -215,9 +214,9 @@ def execute_single_tool(
         # Add error trace entry to session (so on_error handlers can see it)
         agent.current_session['trace'].append(trace_entry)
 
-        # Console output
+        # Logger output
         time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
-        console.print(f"[red]✗[/red] Error ({time_str}): {str(e)}")
+        logger.print(f"[red]✗[/red] Error ({time_str}): {str(e)}")
 
         # Note: on_error event will fire in execute_and_record_tools after result message added
 

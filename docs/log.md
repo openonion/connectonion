@@ -1,65 +1,117 @@
 # Logging
 
-Save agent activity to files with `log` parameter.
+ConnectOnion automatically logs agent activity to files for debugging and analysis.
 
 ## Quick Start
 
 ```python
-# No logging (default)
+# Default: logs to .co/logs/{name}.log + .co/sessions/{name}_{timestamp}.yaml
 agent = Agent("assistant")
 
-# Log to assistant.log
-agent = Agent("assistant", log=True)
+# Quiet mode: no console output, but sessions still recorded
+agent = Agent("assistant", quiet=True)
 
-# Log to custom file
+# Disable all logging
+agent = Agent("assistant", log=False)
+
+# Custom log file path
 agent = Agent("assistant", log="debug.log")
 ```
 
-## Log Format
+## Logging Modes
+
+| quiet | log | Console | Plain Text | Sessions | Use Case |
+|-------|-----|---------|------------|----------|----------|
+| False | True/None | ✓ | ✓ | ✓ | Development (default) |
+| True | True/None | ✗ | ✗ | ✓ | Eval/testing |
+| False | False | ✓ | ✗ | ✗ | Benchmarking |
+| False | "path" | ✓ | custom | ✓ | Custom log path |
+
+## Log Locations
 
 ```
-[2025-09-25 10:32:14.123] INPUT: Generate a Python function
-[2025-09-25 10:32:14.127] LLM_REQUEST: model=gpt-4 messages=2
-[2025-09-25 10:32:15.235] LLM_RESPONSE: duration=1.1s
-[2025-09-25 10:32:15.238] TOOL_CALL: generate_code(language="python")
-[2025-09-25 10:32:15.286] TOOL_RESULT: success (0.05s)
-[2025-09-25 10:32:16.458] RESULT: Task completed
-[2025-09-25 10:32:16.461] DURATION: 2.3s
+.co/
+├── logs/
+│   └── assistant.log        # Plain text logs
+└── sessions/
+    └── assistant_2024-12-02_10-30-00.yaml  # Session YAML
 ```
+
+## Plain Text Format (.co/logs/)
+
+```
+============================================================
+Session started: 2024-12-02 10:32:14
+============================================================
+
+[10:32:14] INPUT: Generate a Python function...
+[10:32:14] -> LLM Request (co/o4-mini) • 2 msgs • 3 tools
+[10:32:15] <- LLM Response (1.1s) • 1 tools • 1.2k tokens • $0.0012
+[10:32:15] -> Tool: generate_code({"language": "python"})
+[10:32:15] <- Result (0.05s): def hello(): print("Hi")...
+[10:32:16] [OK] Complete (2.3s)
+```
+
+## Session YAML Format (.co/sessions/)
+
+Sessions are saved as YAML for replay and eval:
+
+```yaml
+name: assistant
+timestamp: 2024-12-02 10:32:14
+
+turns:
+  - input: "Generate a Python function"
+    model: "co/o4-mini"
+    duration_ms: 2300
+    tokens: 1234
+    cost: 0.0012
+    tools_called: [generate_code]
+    result: "Here's a Python function..."
+    messages: '[{"role":"system",...}]'
+```
+
+Use cases:
+- **Session replay**: Restore context from saved sessions
+- **Regression testing**: Compare expected vs actual results
+- **Development comparison**: See what changed after prompt edits
 
 ## View Logs
 
 ```bash
-# Watch in real-time
-tail -f assistant.log
+# Watch plain text logs in real-time
+tail -f .co/logs/assistant.log
 
 # Search for errors
-grep ERROR assistant.log
+grep ERROR .co/logs/assistant.log
 
 # See all tool calls
-grep TOOL assistant.log
+grep "Tool:" .co/logs/assistant.log
+
+# List sessions
+ls -la .co/sessions/
 ```
 
 ## Environment Variable
 
 ```bash
-# Set log file via environment
+# Override log file via environment (highest priority)
 CONNECTONION_LOG=debug.log python agent.py
-```
-
-## Auto Rotation
-
-Logs rotate automatically when > 10MB:
-```
-assistant.log           # Current
-assistant_20250925.log  # Rotated
 ```
 
 ## Git Ignore
 
 Add to `.gitignore`:
 ```
+.co/logs/
+.co/sessions/
 *.log
 ```
 
-That's it. Use `log=True` when you need persistent records.
+## Parameters
+
+- **`quiet`** (bool): Suppress console output. Sessions still recorded. Default: `False`
+- **`log`** (bool|str|Path): Control file logging
+  - `None`/`True`: Default `.co/logs/{name}.log`
+  - `False`: Disable all logging
+  - `"path/to/file.log"`: Custom log path

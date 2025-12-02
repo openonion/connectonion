@@ -27,7 +27,7 @@ from connectonion.tool_executor import (
     _add_tool_result_message
 )
 from connectonion.llm import ToolCall
-from connectonion.console import Console
+from connectonion.logger import Logger
 
 
 class TestToolNotFound:
@@ -42,7 +42,7 @@ class TestToolNotFound:
             'trace': [],
             'iteration': 1
         }
-        console = Console()
+        logger = Logger("test", log=False)
         tools = {"existing_tool": lambda x: "result"}
 
         # Execute non-existent tool
@@ -52,7 +52,7 @@ class TestToolNotFound:
             tool_id="call_123",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify trace entry structure
@@ -71,7 +71,7 @@ class TestToolNotFound:
             'trace': [],
             'iteration': 1
         }
-        console = Console()
+        logger = Logger("test", log=False)
 
         # Tool that should never be called
         mock_tool = Mock(return_value="should not see this")
@@ -84,7 +84,7 @@ class TestToolNotFound:
             tool_id="call_xyz",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify mock tool was never called
@@ -101,14 +101,14 @@ class TestToolNotFound:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
         tools = {"calc": lambda x: x * 2}
 
         tool_calls = [
             ToolCall(name="unknown_tool", arguments={"x": 5}, id="call_1")
         ]
 
-        execute_and_record_tools(tool_calls, tools, mock_agent, console)
+        execute_and_record_tools(tool_calls, tools, mock_agent, logger)
 
         # Verify messages were added
         assert len(mock_agent.current_session['messages']) == 2  # assistant + tool result
@@ -131,7 +131,7 @@ class TestToolExecutionExceptions:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def failing_tool(x):
             raise ValueError("Invalid input value")
@@ -144,7 +144,7 @@ class TestToolExecutionExceptions:
             tool_id="call_456",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify error trace structure
@@ -164,7 +164,7 @@ class TestToolExecutionExceptions:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def crashing_tool():
             raise RuntimeError("Tool crashed!")
@@ -177,7 +177,7 @@ class TestToolExecutionExceptions:
             tool_calls=tool_calls,
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify on_error event was invoked
@@ -187,7 +187,7 @@ class TestToolExecutionExceptions:
         """Test that different exception types are all captured correctly."""
         mock_agent = Mock()
         mock_agent._invoke_events = Mock()
-        console = Console()
+        logger = Logger("test", log=False)
 
         # Test different exception types
         exceptions_to_test = [
@@ -216,7 +216,7 @@ class TestToolExecutionExceptions:
                 tool_id="call_test",
                 tools=tools,
                 agent=mock_agent,
-                console=console
+                logger=logger
             )
 
             assert trace_entry["status"] == "error"
@@ -233,7 +233,7 @@ class TestToolExecutionExceptions:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def slow_failing_tool():
             time.sleep(0.01)  # Sleep 10ms
@@ -247,7 +247,7 @@ class TestToolExecutionExceptions:
             tool_id="call_slow",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Timing should be at least 10ms
@@ -264,7 +264,7 @@ class TestToolExecutionExceptions:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def error_tool():
             raise ValueError("Test error")
@@ -277,7 +277,7 @@ class TestToolExecutionExceptions:
             tool_id="call_err",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify trace entry was added to session
@@ -303,7 +303,7 @@ class TestXrayContextHandling:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def success_tool():
             return "success"
@@ -316,7 +316,7 @@ class TestXrayContextHandling:
             tool_id="call_ok",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify context was injected and cleared
@@ -336,7 +336,7 @@ class TestXrayContextHandling:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def failing_tool():
             raise Exception("Tool failed")
@@ -349,7 +349,7 @@ class TestXrayContextHandling:
             tool_id="call_fail",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify context was still cleared (finally block)
@@ -368,7 +368,7 @@ class TestXrayContextHandling:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
         tools = {}
 
         execute_single_tool(
@@ -377,7 +377,7 @@ class TestXrayContextHandling:
             tool_id="call_miss",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Tool not found - should return early without xray injection
@@ -398,7 +398,7 @@ class TestEventInvocation:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def simple_tool():
             # Verify before_tool was already called
@@ -413,7 +413,7 @@ class TestEventInvocation:
             tool_id="call_before",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify before_tool was invoked
@@ -429,7 +429,7 @@ class TestEventInvocation:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def success_tool():
             return "success"
@@ -442,7 +442,7 @@ class TestEventInvocation:
             tool_calls=tool_calls,
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify after_tool was invoked
@@ -458,7 +458,7 @@ class TestEventInvocation:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def failing_tool():
             raise RuntimeError("Failure")
@@ -471,7 +471,7 @@ class TestEventInvocation:
             tool_calls=tool_calls,
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify on_error was invoked and after_tool also fires for all executions
@@ -537,7 +537,7 @@ class TestTraceEntryStructure:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def test_tool(x, y):
             return f"{x} + {y} = {x+y}"
@@ -550,7 +550,7 @@ class TestTraceEntryStructure:
             tool_id="call_success",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify all required fields
@@ -577,7 +577,7 @@ class TestTraceEntryStructure:
         }
         mock_agent._invoke_events = Mock()
 
-        console = Console()
+        logger = Logger("test", log=False)
 
         def error_tool():
             raise ValueError("Invalid value")
@@ -590,7 +590,7 @@ class TestTraceEntryStructure:
             tool_id="call_error",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify error-specific fields
@@ -608,7 +608,7 @@ class TestTraceEntryStructure:
             'iteration': 1
         }
 
-        console = Console()
+        logger = Logger("test", log=False)
         tools = {}
 
         trace_entry = execute_single_tool(
@@ -617,7 +617,7 @@ class TestTraceEntryStructure:
             tool_id="call_notfound",
             tools=tools,
             agent=mock_agent,
-            console=console
+            logger=logger
         )
 
         # Verify not_found specific fields

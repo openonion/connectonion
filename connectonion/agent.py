@@ -1,10 +1,10 @@
 """
 Purpose: Orchestrate AI agent execution with LLM calls, tool execution, and automatic logging
 LLM-Note:
-  Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, console.py, tool_executor.py, trust.py, tool_registry.py] | imported by [__init__.py, trust.py, debug_agent/__init__.py] | tested by [tests/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py]
-  Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → console logs to .co/logs/{name}.log → returns final response: str
-  State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log via console.py (default) or custom log path | initializes trust agent if trust parameter provided
-  Integration: exposes Agent(name, tools, system_prompt, model, trust, log), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | trust system via trust.create_trust_agent() | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path
+  Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, logger.py, tool_executor.py, trust.py, tool_registry.py] | imported by [__init__.py, trust.py, debug_agent/__init__.py] | tested by [tests/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py]
+  Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → logger logs to .co/logs/{name}.log and .co/sessions/{name}_{timestamp}.yaml → returns final response: str
+  State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log and .co/sessions/ via logger.py | initializes trust agent if trust parameter provided
+  Integration: exposes Agent(name, tools, system_prompt, model, trust, log, quiet), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | trust system via trust.create_trust_agent() | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path | quiet=True suppresses console but keeps session logging
   Performance: max_iterations=10 default (configurable per-input) | session state persists across turns for multi-turn conversations | ToolRegistry provides O(1) tool lookup via .get() or attribute access
   Errors: LLM errors bubble up | tool execution errors captured in trace and returned to LLM for retry | trust agent creation can fail if invalid trust parameter
 """
@@ -22,7 +22,7 @@ from .prompts import load_system_prompt
 from .decorators import (
     _is_replay_enabled  # Only need this for replay check
 )
-from .console import Console
+from .logger import Logger
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .events import EventHandler
 
@@ -42,6 +42,7 @@ class Agent:
         max_iterations: int = 10,
         trust: Optional[Union[str, Path, 'Agent']] = None,
         log: Optional[Union[bool, str, Path]] = None,
+        quiet: bool = False,
         plugins: Optional[List[List[EventHandler]]] = None,
         on_events: Optional[List[EventHandler]] = None
     ):
@@ -56,27 +57,13 @@ class Agent:
         self.total_cost: float = 0.0  # Cumulative cost in USD
         self.last_usage: Optional[TokenUsage] = None  # From most recent LLM call
 
-        # Setup file logging (default to .co/logs/)
-        log_file = None
-        if log is None:
-            # NEW: Default to .co/logs/ for automatic audit trail
-            log_file = Path.cwd() / '.co' / 'logs' / f'{name}.log'
-        elif log is True:
-            # Explicit True: {name}.log in current directory
-            log_file = Path(f"{name}.log")
-        elif log is False:
-            # Explicit opt-out: no logging
-            log_file = None
-        elif log:
-            # Custom log file path
-            log_file = Path(log)
-
+        # Initialize logger (unified: terminal + file + YAML sessions)
         # Environment variable override (highest priority)
+        effective_log = log
         if os.getenv('CONNECTONION_LOG'):
-            log_file = Path(os.getenv('CONNECTONION_LOG'))
+            effective_log = Path(os.getenv('CONNECTONION_LOG'))
 
-        # Initialize console (always shows output, optional file logging)
-        self.console = Console(log_file=log_file)
+        self.logger = Logger(agent_name=name, quiet=quiet, log=effective_log)
         
 
         
@@ -200,7 +187,7 @@ class Agent:
             The agent's response after processing the input
         """
         start_time = time.time()
-        self.console.print(f"[bold]INPUT:[/bold] {prompt[:100]}...")
+        self.logger.print(f"[bold]INPUT:[/bold] {prompt[:100]}...")
 
         # Initialize session on first input, or continue existing conversation
         if self.current_session is None:
@@ -209,6 +196,8 @@ class Agent:
                 'trace': [],
                 'turn': 0  # Track conversation turns
             }
+            # Start YAML session logging
+            self.logger.start_session()
 
         # Add user message to conversation
         self.current_session['messages'].append({
@@ -238,16 +227,58 @@ class Agent:
             max_iterations or self.max_iterations
         )
 
-        # Calculate duration (console already logged everything)
+        # Calculate duration
         duration = time.time() - turn_start
 
-        self.console.print(f"[green]✓ Complete[/green] ({duration:.1f}s)")
+        # Log turn to YAML session
+        turn_data = self._aggregate_turn(prompt, result, duration * 1000)
+        self.logger.log_turn(turn_data)
+
+        self.logger.print(f"[green]✓ Complete[/green] ({duration:.1f}s)")
         self._invoke_events('on_complete')
         return result
 
     def reset_conversation(self):
         """Reset the conversation session. Start fresh."""
         self.current_session = None
+
+    def _aggregate_turn(self, user_input: str, result: str, duration_ms: float) -> dict:
+        """Aggregate trace entries into a turn summary for YAML session log.
+
+        Args:
+            user_input: The user's input prompt
+            result: The agent's final response
+            duration_ms: Total duration in milliseconds
+
+        Returns:
+            Dict with: input, model, duration_ms, tokens, cost, tools_called, result, messages
+        """
+        import json
+
+        trace = self.current_session.get('trace', [])
+        llm_calls = [t for t in trace if t.get('type') == 'llm_call']
+        tool_calls = [t for t in trace if t.get('type') == 'tool_execution']
+
+        # Aggregate token usage from all LLM calls in this turn
+        total_tokens = sum(
+            (t.get('usage').input_tokens + t.get('usage').output_tokens)
+            for t in llm_calls if t.get('usage')
+        )
+        total_cost = sum(
+            t.get('usage').cost
+            for t in llm_calls if t.get('usage')
+        )
+
+        return {
+            'input': user_input,
+            'model': str(self.llm.model) if self.llm else 'unknown',
+            'duration_ms': int(duration_ms),
+            'tokens': total_tokens,
+            'cost': round(total_cost, 4),
+            'tools_called': [t['tool_name'] for t in tool_calls],
+            'result': result,
+            'messages': json.dumps(self.current_session['messages'])
+        }
 
     def execute_tool(self, tool_name: str, arguments: Optional[Dict] = None) -> Dict[str, Any]:
         """Execute a single tool by name. Useful for testing and debugging.
@@ -278,7 +309,7 @@ class Agent:
             tool_id=f"manual_{tool_name}_{time.time()}",
             tools=self.tools,
             agent=self,
-            console=self.console
+            logger=self.logger
         )
 
         # Note: trace_entry already added to session in execute_single_tool
@@ -313,7 +344,7 @@ class Agent:
             self.current_session['iteration'] += 1
             iteration = self.current_session['iteration']
 
-            self.console.print(f"[dim]Iteration {iteration}/{max_iterations}[/dim]")
+            self.logger.print(f"[dim]Iteration {iteration}/{max_iterations}[/dim]")
 
             # Get LLM response
             response = self._get_llm_decision()
@@ -339,7 +370,7 @@ class Agent:
         # Show request info
         msg_count = len(self.current_session['messages'])
         tool_count = len(self.tools) if self.tools else 0
-        self.console.print(f"[yellow]→[/yellow] LLM Request ({self.llm.model}) • {msg_count} msgs • {tool_count} tools")
+        self.logger.print(f"[yellow]→[/yellow] LLM Request ({self.llm.model}) • {msg_count} msgs • {tool_count} tools")
 
         # Invoke before_llm events
         self._invoke_events('before_llm')
@@ -367,7 +398,7 @@ class Agent:
         # Invoke after_llm events (after trace entry is added)
         self._invoke_events('after_llm')
 
-        self.console.log_llm_response(duration, len(response.tool_calls), response.usage)
+        self.logger.log_llm_response(duration, len(response.tool_calls), response.usage)
 
         return response
 
@@ -377,7 +408,7 @@ class Agent:
             tool_calls=tool_calls,
             tools=self.tools,
             agent=self,
-            console=self.console
+            logger=self.logger
         )
 
     def add_tool(self, tool: Callable):
@@ -467,10 +498,10 @@ class Agent:
         addr_data = address.load(co_dir)
 
         if addr_data is None:
-            self.console.print("[yellow]No keys found, generating new identity...[/yellow]")
+            self.logger.print("[yellow]No keys found, generating new identity...[/yellow]")
             addr_data = address.generate()
             address.save(addr_data, co_dir)
-            self.console.print(f"[green]✓ Keys saved to {co_dir / 'keys'}[/green]")
+            self.logger.print(f"[green]✓ Keys saved to {co_dir / 'keys'}[/green]")
 
         # Create ANNOUNCE message
         # Use system_prompt as summary (first 1000 chars)
@@ -481,9 +512,9 @@ class Agent:
             endpoints=[]  # MVP: No direct endpoints yet
         )
 
-        self.console.print(f"\n[bold]Starting agent: {self.name}[/bold]")
-        self.console.print(f"Address: {addr_data['address']}")
-        self.console.print(f"Debug: https://oo.openonion.ai/agent/{addr_data['address']}\n")
+        self.logger.print(f"\n[bold]Starting agent: {self.name}[/bold]")
+        self.logger.print(f"Address: {addr_data['address']}")
+        self.logger.print(f"Debug: https://oo.openonion.ai/agent/{addr_data['address']}\n")
 
         # Define async task handler
         async def task_handler(prompt: str) -> str:

@@ -373,8 +373,8 @@ class TestAgentServeConsoleOutput:
                 with patch('connectonion.announce.create_announce_message', return_value={'type': 'ANNOUNCE'}):
                     with patch('asyncio.run'):
                         with patch('connectonion.relay.connect', new_callable=AsyncMock):
-                            # Capture console output
-                            with patch.object(agent.console, 'print') as mock_print:
+                            # Capture logger output
+                            with patch.object(agent.logger, 'print') as mock_print:
                                 try:
                                     agent.serve()
                                 except:

@@ -5,7 +5,7 @@ from unittest.mock import Mock
 from connectonion.tool_executor import execute_single_tool
 from connectonion.tool_registry import ToolRegistry
 from connectonion.tool_factory import create_tool_from_function
-from connectonion.console import Console
+from connectonion.logger import Logger
 
 
 class FakeAgent:
@@ -29,14 +29,14 @@ class TestToolExecutor:
         tools.add(create_tool_from_function(sample_tool))
 
         agent = FakeAgent()
-        console = Console()
+        logger = Logger("test-agent", log=False)
         trace = execute_single_tool(
             tool_name="sample_tool",
             tool_args={"x": 5},
             tool_id="call_1",
             tools=tools,
             agent=agent,
-            console=console,
+            logger=logger,
         )
         assert trace["status"] == "success"
         # execute_single_tool stores the raw result as string in trace['result']
@@ -46,13 +46,13 @@ class TestToolExecutor:
         """Unknown tool returns not_found status."""
         tools = ToolRegistry()
         agent = FakeAgent()
-        console = Console()
+        logger = Logger("test-agent", log=False)
         trace = execute_single_tool(
             tool_name="missing",
             tool_args={},
             tool_id="call_2",
             tools=tools,
             agent=agent,
-            console=console,
+            logger=logger,
         )
         assert trace["status"] == "not_found"

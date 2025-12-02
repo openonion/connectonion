@@ -14,7 +14,8 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
 - **LLM** (`connectonion/llm.py:11`): Unified abstraction supporting OpenAI, Anthropic, Gemini, and managed keys via factory pattern
 - **Tool Executor** (`connectonion/tool_executor.py:24`): Executes tools with xray context injection, timing, error handling, and trace recording
 - **Tool Factory** (`connectonion/tool_factory.py`): Converts Python functions to OpenAI-compatible tool schemas automatically
-- **Console** (`connectonion/console.py`): Terminal output and file logging to `.co/logs/` by default
+- **Logger** (`connectonion/logger.py`): Unified logging facade (terminal + plain text + YAML sessions) with `quiet` and `log` parameters
+- **Console** (`connectonion/console.py`): Low-level terminal output with Rich formatting (used internally by Logger)
 - **Events** (`connectonion/events.py:11`): Lifecycle hooks (after_user_input, before_llm, after_llm, before_tool, after_tool, on_error)
 - **Trust System** (`connectonion/trust.py:42`): Three-level verification (open/careful/strict) with custom policy support
 - **XRay Debug** (`connectonion/xray.py:32`): Runtime context injection for interactive debugging with `@xray` decorator
@@ -110,6 +111,10 @@ co auth login                         # Interactive login
 co auth status                        # Check auth status
 co auth logout                        # Logout
 
+# OAuth integrations (for email/calendar tools)
+co auth google                        # Connect Google (Gmail, Calendar)
+co auth microsoft                     # Connect Microsoft (Outlook, Calendar)
+
 # Browser automation
 co browser                            # Launch browser agent
 
@@ -141,7 +146,8 @@ connectonion/
 │   ├── llm.py                      # Multi-provider LLM abstraction
 │   ├── tool_executor.py            # Tool execution with xray
 │   ├── tool_factory.py             # Function → tool conversion
-│   ├── console.py                  # Logging and output
+│   ├── logger.py                   # Unified logging facade (terminal + file + YAML sessions)
+│   ├── console.py                  # Low-level terminal output with Rich
 │   ├── events.py                   # Event system
 │   ├── trust.py                    # Trust system coordinator
 │   ├── trust_agents.py             # Trust prompts
@@ -231,11 +237,21 @@ connectonion/
 - Tools access: `xray.agent`, `xray.task`, `xray.messages`, `xray.iteration`, `xray.previous_tools`
 - `xray.trace()` displays Rich-formatted execution history
 
-### Logging System (`connectonion/console.py`)
-- Default: `.co/logs/{agent_name}.log` (automatic audit trail)
-- Override: `log=True` (current dir), `log=False` (disabled), `log="path/to/file.log"` (custom)
+### Logging System (`connectonion/logger.py`)
+- **Logger class**: Unified facade for terminal output + plain text + YAML sessions
+- **Console output**: Rich-formatted terminal output (unless `quiet=True`)
+- **Plain text logs**: `.co/logs/{agent_name}.log` (automatic audit trail)
+- **YAML sessions**: `.co/sessions/{agent_name}_{timestamp}.yaml` (for eval/replay)
+- **Parameters**:
+  - `quiet=True`: Suppress console output, keep session logging
+  - `log=False`: Disable all logging (console still shows)
+  - `log="path/to/file.log"`: Custom log file path
 - Environment variable: `CONNECTONION_LOG` (highest priority)
-- Logs: timestamps, user input, LLM calls with timing, tool executions, results
+- Session format: Per-turn tracking with input, model, duration_ms, tokens, cost, tools_called, result, messages (JSON)
+- Use cases:
+  - Development (default): `Agent("name")` - everything on
+  - Eval/testing: `Agent("name", quiet=True)` - sessions only
+  - Benchmarking: `Agent("name", log=False)` - nothing
 
 ## Test Organization
 
