@@ -21,7 +21,7 @@ if TYPE_CHECKING:
     from ..agent import Agent
 
 # Path to reflect prompt (inside connectonion package for proper packaging)
-REFLECT_PROMPT = Path(__file__).parent.parent / "prompts" / "reflect.md"
+REFLECT_PROMPT = Path(__file__).parent.parent / "prompt_files" / "reflect.md"
 
 
 def _compress_messages(messages: List[Dict], tool_result_limit: int = 150) -> str:
@@ -104,7 +104,7 @@ Error: {error}"""
         system_prompt=REFLECT_PROMPT
     )
 
-    agent.console.print("[dim]/reflecting...[/dim]")
+    agent.logger.print("[dim]/reflecting...[/dim]")
 
     agent.current_session['messages'].append({
         'role': 'assistant',

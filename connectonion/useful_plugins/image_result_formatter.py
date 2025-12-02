@@ -106,7 +106,7 @@ def _format_image_result(agent: 'Agent') -> None:
                 ]
             })
 
-            agent.console.print(f"[dim]🖼️  Formatted '{tool_name}' result as image[/dim]")
+            agent.logger.print(f"[dim]🖼️  Formatted '{tool_name}' result as image[/dim]")
             break
 
     # Update trace result to short message (avoids token overflow in other plugins like ReAct)

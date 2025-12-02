@@ -23,8 +23,8 @@ if TYPE_CHECKING:
     from ..agent import Agent
 
 # Prompts
-PLAN_PROMPT = Path(__file__).parent.parent / "prompts" / "react_plan.md"
-EVALUATE_PROMPT = Path(__file__).parent.parent / "prompts" / "react_evaluate.md"
+PLAN_PROMPT = Path(__file__).parent.parent / "prompt_files" / "react_plan.md"
+EVALUATE_PROMPT = Path(__file__).parent.parent / "prompt_files" / "react_evaluate.md"
 
 
 @after_user_input
@@ -44,7 +44,7 @@ Available tools: {tools_str}
 
 Brief plan (1-2 sentences): what to do first?"""
 
-    agent.console.print("[dim]/planning...[/dim]")
+    agent.logger.print("[dim]/planning...[/dim]")
 
     plan = llm_do(
         prompt,
@@ -91,7 +91,7 @@ Actions taken:
 
 Is this task truly complete? What was achieved or what's missing?"""
 
-    agent.console.print("[dim]/evaluating...[/dim]")
+    agent.logger.print("[dim]/evaluating...[/dim]")
 
     evaluation = llm_do(
         prompt,
@@ -100,7 +100,7 @@ Is this task truly complete? What was achieved or what's missing?"""
         system_prompt=EVALUATE_PROMPT
     )
 
-    agent.console.print(f"[dim]✓ {evaluation}[/dim]")
+    agent.logger.print(f"[dim]✓ {evaluation}[/dim]")
 
 
 # Bundle as plugin: plan (after_user_input) + reflect (after_tool) + evaluate (on_complete)
