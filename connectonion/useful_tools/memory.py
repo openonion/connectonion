@@ -295,6 +295,7 @@ class Memory:
     # Directory implementation
     def _write_directory(self, key: str, content: str) -> str:
         """Write to directory structure."""
+        os.makedirs(self.memory_dir, exist_ok=True)
         filepath = os.path.join(self.memory_dir, f"{key}.md")
         with open(filepath, 'w') as f:
             f.write(content)
@@ -302,6 +303,9 @@ class Memory:
 
     def _read_directory(self, key: str) -> str:
         """Read from directory structure."""
+        if not os.path.exists(self.memory_dir):
+            return f"Memory not found: {key}\nNo memories stored yet"
+
         filepath = os.path.join(self.memory_dir, f"{key}.md")
 
         if not os.path.exists(filepath):

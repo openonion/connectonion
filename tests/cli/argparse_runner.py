@@ -25,7 +25,11 @@ class ArgparseCliRunner:
     """Test runner for Typer CLIs, backwards compatible with old interface."""
 
     def __init__(self):
-        self._runner = TyperCliRunner(mix_stderr=False)
+        # Try with mix_stderr for newer Typer versions, fallback for older versions
+        try:
+            self._runner = TyperCliRunner(mix_stderr=False)
+        except TypeError:
+            self._runner = TyperCliRunner()
 
     @contextmanager
     def isolated_filesystem(self, temp_dir=None):
