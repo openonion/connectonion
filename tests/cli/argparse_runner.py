@@ -1,6 +1,7 @@
 """Test runner for Typer-based CLIs - wraps typer.testing.CliRunner."""
 
 import os
+import re
 import tempfile
 import shutil
 from contextlib import contextmanager
@@ -10,14 +11,21 @@ from typer.testing import CliRunner as TyperCliRunner
 from connectonion.cli.main import app
 
 
+def _strip_ansi(text: str) -> str:
+    """Remove ANSI escape codes from text."""
+    ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
+    return ansi_escape.sub('', text)
+
+
 class Result:
     """Result object compatible with old ArgparseCliRunner."""
 
     def __init__(self, typer_result):
         self.exit_code = typer_result.exit_code
-        self.output = typer_result.stdout or ""
-        self.stdout = typer_result.stdout or ""
-        self.stderr = typer_result.stderr or ""
+        # Strip ANSI codes for easier assertions
+        self.output = _strip_ansi(typer_result.stdout or "")
+        self.stdout = _strip_ansi(typer_result.stdout or "")
+        self.stderr = _strip_ansi(typer_result.stderr or "")
         self.exception = typer_result.exception
 
 
