@@ -27,7 +27,7 @@ agent = Agent(
 **Group multiple handlers:**
 
 ```python
-from connectonion import Agent, before_tool
+from connectonion import Agent, before_each_tool
 
 def check_shell(agent):
     ...
@@ -38,7 +38,7 @@ def check_email(agent):
 agent = Agent(
     "assistant",
     on_events=[
-        before_tool(check_shell, check_email),  # both handlers for same event
+        before_each_tool(check_shell, check_email),  # both handlers for same event
     ]
 )
 ```
@@ -47,15 +47,15 @@ agent = Agent(
 
 > **Note: Alternative Decorator Syntax**
 >
-> You can also use decorator syntax: `@before_tool` instead of `before_tool(fn)`.
+> You can also use decorator syntax: `@before_each_tool` instead of `before_each_tool(fn)`.
 > ```python
-> @before_tool
+> @before_each_tool
 > def check_shell(agent):
 >     ...
 >
 > on_events=[check_shell]  # works!
 > ```
-> We recommend the wrapper style `before_tool(fn)` because it's easier for LLMs to understand when reading your code. But if you find decorators more elegant, feel free to use them.
+> We recommend the wrapper style `before_each_tool(fn)` because it's easier for LLMs to understand when reading your code. But if you find decorators more elegant, feel free to use them.
 
 ---
 
@@ -66,10 +66,13 @@ agent = Agent(
 | `after_user_input` | After user provides input | Once per turn | Add context, timestamps, initialize turn state |
 | `before_llm` | Before each LLM call | Multiple per turn | Modify messages for each LLM call |
 | `after_llm` | After LLM responds | Multiple per turn | Log LLM calls, analyze responses |
-| `before_tool` | Before tool execution | Per tool call | Validate args, add logging |
-| `after_tool` | After tool succeeds | Per tool call | Add reflection, log performance |
+| `before_each_tool` | Before tool execution | Per tool call | Validate args, add logging |
+| `after_each_tool` | After each tool completes | Per tool call | Log performance, track individual tools |
+| `after_tool_round` | After ALL tools in round | Once per round | Add reflection, inject messages safely |
 | `on_error` | When tool fails | Per tool error | Custom error handling, retries |
 | `on_complete` | After agent finishes | Once per input() | Metrics, cleanup, final summary |
+
+> **Note on message injection:** Use `after_tool_round` (not `after_each_tool`) when adding messages to ensure compatibility with all LLM providers. Anthropic Claude requires tool results to immediately follow tool_calls.
 
 ---
 
@@ -86,7 +89,7 @@ def my_event(agent):
     agent.current_session['turn']      # Current turn number
     agent.current_session['user_prompt'] # Current user input
 
-    # Only in before_tool events:
+    # Only in before_each_tool events:
     agent.current_session['pending_tool']  # Tool about to execute
     # {'name': 'bash', 'arguments': {'command': 'ls'}, 'id': 'call_123'}
 
@@ -139,12 +142,12 @@ def my_event(agent):
 
 ## Examples
 
-### Approve Dangerous Commands (before_tool)
+### Approve Dangerous Commands (before_each_tool)
 
-Use `before_tool` to intercept and approve tool calls before execution:
+Use `before_each_tool` to intercept and approve tool calls before execution:
 
 ```python
-from connectonion import Agent, before_tool
+from connectonion import Agent, before_each_tool
 
 def approve_dangerous_commands(agent):
     """Ask for approval before dangerous bash commands"""
@@ -168,11 +171,11 @@ def approve_dangerous_commands(agent):
 agent = Agent(
     "assistant",
     tools=[bash],
-    on_events=[before_tool(approve_dangerous_commands)]
+    on_events=[before_each_tool(approve_dangerous_commands)]
 )
 ```
 
-**Note:** `pending_tool` is only available during `before_tool` events. It contains:
+**Note:** `pending_tool` is only available during `before_each_tool` events. It contains:
 - `name`: Tool name (e.g., "bash")
 - `arguments`: Tool arguments (e.g., `{'command': 'rm -rf /tmp'}`)
 - `id`: Tool call ID
@@ -199,13 +202,13 @@ agent = Agent("assistant", tools=[search], on_events=[after_user_input(add_times
 
 ### Add Reflection After Tools
 
-Use `llm_do` to make the agent reflect on tool results and plan next steps:
+Use `llm_do` to make the agent reflect on tool results and plan next steps. **Important:** Use `after_tool_round` when adding messages to ensure compatibility with all LLM providers:
 
 ```python
-from connectonion import Agent, after_tool, llm_do
+from connectonion import Agent, after_tool_round, llm_do
 
 def add_reflection(agent):
-    """Add reasoning after each tool execution"""
+    """Add reasoning after all tools in a round complete"""
     trace = agent.current_session['trace'][-1]
 
     if trace['type'] == 'tool_execution' and trace['status'] == 'success':
@@ -230,7 +233,7 @@ Provide a brief reflection:
             temperature=0.3
         )
 
-        # Add reflection to conversation
+        # Add reflection to conversation (safe in after_tool_round)
         agent.current_session['messages'].append({
             'role': 'assistant',
             'content': f"🤔 Reflection: {reflection}"
@@ -241,19 +244,18 @@ Provide a brief reflection:
 agent = Agent(
     "researcher",
     tools=[search, analyze],
-    on_events=[after_tool(add_reflection)]
+    on_events=[after_tool_round(add_reflection)]  # Use after_tool_round for message injection
 )
 
-# Now the agent will reflect after each tool use!
+# Now the agent will reflect after each round of tool use!
 agent.input("Research the latest AI trends and analyze their impact")
 # 💭 Reflection: We learned about transformer models. Next, we should analyze...
-# 💭 Reflection: The analysis shows strong growth. We should search for...
 ```
 
 ### Performance Monitoring
 
 ```python
-from connectonion import Agent, after_llm, after_tool
+from connectonion import Agent, after_llm, after_each_tool
 
 def monitor_llm_performance(agent):
     """Track LLM call performance"""
@@ -279,7 +281,7 @@ agent = Agent(
     tools=[search],
     on_events=[
         after_llm(monitor_llm_performance),
-        after_tool(monitor_tool_performance)
+        after_each_tool(monitor_tool_performance)  # per-tool monitoring
     ]
 )
 ```
@@ -362,7 +364,7 @@ agent = Agent("assistant", tools=[search], on_events=[after_llm(session_stats)])
 Help the agent think about which tool to use next:
 
 ```python
-from connectonion import Agent, after_tool, llm_do
+from connectonion import Agent, after_tool_round, llm_do
 from pydantic import BaseModel
 
 class ToolRecommendation(BaseModel):
@@ -397,7 +399,7 @@ What tool should we use next and why?
             temperature=0.2
         )
 
-        # Add suggestion as a system message
+        # Add suggestion as a system message (safe in after_tool_round)
         agent.current_session['messages'].append({
             'role': 'system',
             'content': f"Suggestion: Use {suggestion.next_tool}. {suggestion.reasoning}"
@@ -408,7 +410,7 @@ What tool should we use next and why?
 agent = Agent(
     "strategist",
     tools=[search, analyze, summarize],
-    on_events=[after_tool(suggest_next_tool)]
+    on_events=[after_tool_round(suggest_next_tool)]  # Use after_tool_round for message injection
 )
 ```
 
@@ -461,25 +463,30 @@ Then compose them in your event handler with explicit order:
 ```python
 # main.py
 from my_events import log_llm_timing, log_tool_timing, add_reflection
-from connectonion import Agent, after_llm, after_tool
+from connectonion import Agent, after_llm, after_each_tool, after_tool_round
 
 def handle_after_llm(agent):
     """Compose multiple concerns in explicit order"""
     log_llm_timing(agent)       # 1. Log timing
     # Order is clear and explicit!
 
-def handle_after_tool(agent):
-    """Compose tool event concerns"""
-    log_tool_timing(agent)      # 1. Log timing
-    add_reflection(agent)       # 2. Add reflection
+def handle_after_each_tool(agent):
+    """Handle per-tool concerns (no message injection)"""
+    log_tool_timing(agent)      # Log timing for each tool
     # Clear execution order
+
+def handle_after_tool_round(agent):
+    """Handle batch concerns (safe for message injection)"""
+    add_reflection(agent)       # Add reflection after all tools complete
+    # Safe to add messages here
 
 agent = Agent(
     "assistant",
     tools=[search],
     on_events=[
         after_llm(handle_after_llm),
-        after_tool(handle_after_tool)
+        after_each_tool(handle_after_each_tool),     # per-tool
+        after_tool_round(handle_after_tool_round)    # batch
     ]
 )
 ```
@@ -597,11 +604,15 @@ def handle_after_llm(agent):
     log_llm_call(agent)        # 1. Log LLM calls
     # Order is explicit and easy to modify
 
-def handle_after_tool(agent):
-    """Handle all after_tool concerns"""
-    log_tool_execution(agent)  # 1. Log execution
-    add_tool_reflection(agent) # 2. Add reflection
+def handle_after_each_tool(agent):
+    """Handle per-tool concerns (no message injection)"""
+    log_tool_execution(agent)  # Log execution timing
     # Clear execution order
+
+def handle_after_tool_round(agent):
+    """Handle batch concerns (safe for message injection)"""
+    add_tool_reflection(agent) # Add reflection after all tools
+    # Safe to add messages here
 
 def handle_on_error(agent):
     """Handle all error concerns"""
@@ -613,25 +624,26 @@ def handle_on_error(agent):
 
 ```python
 """Export event handlers for easy import"""
-from .handlers import handle_after_llm, handle_after_tool, handle_on_error
+from .handlers import handle_after_llm, handle_after_each_tool, handle_after_tool_round, handle_on_error
 
-__all__ = ['handle_after_llm', 'handle_after_tool', 'handle_on_error']
+__all__ = ['handle_after_llm', 'handle_after_each_tool', 'handle_after_tool_round', 'handle_on_error']
 ```
 
 ### Example: `main.py`
 
 ```python
 """Main agent - clean and focused"""
-from connectonion import Agent, after_llm, after_tool, on_error
+from connectonion import Agent, after_llm, after_each_tool, after_tool_round, on_error
 from tools import search, calculate
-from events import handle_after_llm, handle_after_tool, handle_on_error
+from events import handle_after_llm, handle_after_each_tool, handle_after_tool_round, handle_on_error
 
 agent = Agent(
     "assistant",
     tools=[search, calculate],
     on_events=[
         after_llm(handle_after_llm),
-        after_tool(handle_after_tool),
+        after_each_tool(handle_after_each_tool),        # per-tool
+        after_tool_round(handle_after_tool_round),      # batch
         on_error(handle_on_error)
     ]
 )
@@ -692,7 +704,7 @@ def strict_validator(agent):
 agent = Agent(
     "assistant",
     tools=[search],
-    on_events=[after_tool(strict_validator)]
+    on_events=[after_each_tool(strict_validator)]  # per-tool validation
 )
 ```
 

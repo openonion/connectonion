@@ -30,13 +30,13 @@ That's it!
 **A plugin is an event list:**
 
 ```python
-from connectonion import after_user_input, after_tool
+from connectonion import after_user_input, after_tool_round, after_each_tool
 
 # This is a plugin (one event list)
-re_act = [after_user_input(plan), after_tool(reflect)]
+re_act = [after_user_input(plan), after_tool_round(reflect)]  # after_tool_round for message injection
 
 # This is also a plugin (one event list with multiple events)
-logger = [after_tool(log_tool)]
+logger = [after_each_tool(log_tool)]  # after_each_tool for per-tool logging
 
 # Use them (plugins takes a list of plugins)
 agent = Agent("assistant", tools=[search], plugins=[re_act, logger])
@@ -64,8 +64,8 @@ logger = [after_llm(log_llm)]
 agent = Agent(
     "assistant",
     tools=[search],
-    plugins=[logger],                                          # List of event lists
-    on_events=[after_llm(add_timestamp), after_tool(log_tool)] # One event list
+    plugins=[logger],                                                    # List of event lists
+    on_events=[after_llm(add_timestamp), after_each_tool(log_tool)]     # One event list
 )
 ```
 
@@ -169,7 +169,7 @@ agent.input("Clean up temp files")
 │       ↓                                                         │
 │  Sets current_session['pending_tool'] = {name, arguments, id}   │
 │       ↓                                                         │
-│  agent._invoke_events('before_tool')                            │
+│  agent._invoke_events('before_each_tool')                       │
 │       ↓                                                         │
 │  shell_approval._check_approval(agent)                          │
 │       ↓                                                         │
@@ -260,11 +260,11 @@ def _compress_messages(messages: List[Dict], tool_result_limit: int = 150) -> st
 ### Step 2: Event Handler Function
 
 ```python
-from connectonion.events import after_tool
+from connectonion.events import after_tool_round  # Use after_tool_round for message injection
 from connectonion.llm_do import llm_do
 
 def _add_reflection(agent) -> None:
-    """Reflect on tool execution result"""
+    """Reflect on tool execution result (fires after all tools in round complete)"""
     trace = agent.current_session['trace'][-1]
 
     if trace['type'] == 'tool_execution' and trace['status'] == 'success':
@@ -295,7 +295,7 @@ Reflect in 1-2 sentences on what we learned:"""
             system_prompt="You reflect on tool execution results to generate insights about what was learned and why it's useful for answering the user's question."
         )
 
-        # Add reflection as assistant message
+        # Add reflection as assistant message (safe in after_tool_round)
         agent.current_session['messages'].append({
             'role': 'assistant',
             'content': f"💭 {reflection_text}"
@@ -314,7 +314,7 @@ Reflect in 1-2 sentences on what we learned:"""
 
 ```python
 # Plugin is an event list
-reflection = [after_tool(_add_reflection)]
+reflection = [after_tool_round(_add_reflection)]  # Use after_tool_round for message injection
 ```
 
 **That's it!** A plugin is just an event list.
@@ -332,14 +332,14 @@ agent = Agent("assistant", tools=[search], plugins=[reflection])
 Build a simple plugin in 3 lines:
 
 ```python
-from connectonion import Agent, after_tool
+from connectonion import Agent, after_each_tool
 
 def log_tool(agent):
     trace = agent.current_session['trace'][-1]
     print(f"✓ {trace['tool_name']} completed in {trace['timing']}ms")
 
 # Plugin is an event list
-logger = [after_tool(log_tool)]
+logger = [after_each_tool(log_tool)]  # per-tool logging
 
 # Use it
 agent = Agent("assistant", tools=[search], plugins=[logger])
@@ -350,7 +350,7 @@ agent = Agent("assistant", tools=[search], plugins=[logger])
 ## Example: Todo Plugin
 
 ```python
-from connectonion import Agent, after_user_input, after_tool, llm_do
+from connectonion import Agent, after_user_input, after_tool_round, llm_do
 from pydantic import BaseModel
 from typing import List
 
@@ -392,7 +392,7 @@ def check_todos(agent):
                 print(f"✅ {task}")
 
 # Plugin is an event list
-todo = [after_user_input(create_todos), after_tool(check_todos)]
+todo = [after_user_input(create_todos), after_tool_round(check_todos)]  # after_tool_round fires once per round
 
 # Use it
 agent = Agent("assistant", tools=[search, analyze], plugins=[todo])
@@ -413,8 +413,8 @@ Use the same plugin across agents:
 
 ```python
 # Define once
-reflection = [after_tool(add_reflection)]
-logger = [after_llm(log_llm), after_tool(log_tool)]
+reflection = [after_tool_round(add_reflection)]  # message injection → after_tool_round
+logger = [after_llm(log_llm), after_each_tool(log_tool)]  # per-tool logging → after_each_tool
 
 # Use in multiple agents
 researcher = Agent("researcher", tools=[search], plugins=[reflection, logger])
@@ -430,15 +430,19 @@ analyst = Agent("analyst", tools=[calculate], plugins=[logger])
 
 ```python
 # Define a plugin (an event list)
-my_plugin = [after_llm(handler1), after_tool(handler2)]
+my_plugin = [after_llm(handler1), after_tool_round(handler2)]  # Use after_tool_round for message injection
 
 # Use it (plugins takes a list of event lists)
 agent = Agent("assistant", tools=[search], plugins=[my_plugin])
 ```
 
 **on_events vs plugins:**
-- `on_events=[after_llm(h1), after_tool(h2)]` → one event list
+- `on_events=[after_llm(h1), after_each_tool(h2)]` → one event list
 - `plugins=[plugin1, plugin2]` → list of event lists
+
+**Event naming:**
+- `after_each_tool` → fires for EACH tool (per-tool logging/monitoring)
+- `after_tool_round` → fires ONCE after all tools (safe for message injection)
 
 ---
 

@@ -229,7 +229,7 @@ class TestReflectEventRegistration:
     def test_reflect_has_event_type(self):
         """Test that reflect has correct event type."""
         assert hasattr(reflect, '_event_type')
-        assert reflect._event_type == 'after_tool'
+        assert reflect._event_type == 'after_tool_round'
 
     def test_reflect_integrates_with_agent(self):
         """Test that reflect can be registered with agent."""
@@ -253,5 +253,5 @@ class TestReflectEventRegistration:
             log=False,
         )
 
-        assert 'after_tool' in agent.events
-        assert len(agent.events['after_tool']) >= 1
+        assert 'after_tool_round' in agent.events
+        assert len(agent.events['after_tool_round']) >= 1

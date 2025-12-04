@@ -3,8 +3,8 @@ Purpose: Execute agent tools with xray context injection, timing, error handling
 LLM-Note:
   Dependencies: imports from [time, json, typing, xray.py] | imported by [agent.py] | tested by [tests/test_tool_executor.py]
   Data flow: receives from Agent → tool_calls: List[ToolCall], tools: ToolRegistry, agent: Agent, logger: Logger → for each tool: injects xray context via inject_xray_context() → executes tool_func(**tool_args) → records timing and result → appends to agent.current_session['trace'] → clears xray context → adds tool result to messages
-  State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_execution entries | calls logger.print() for user feedback | calls logger.print_xray_table() if @xray enabled | injects/clears xray context via thread-local storage
-  Integration: exposes execute_and_record_tools(tool_calls, tools, agent, logger), execute_single_tool(...) | checks is_xray_enabled() on tool functions | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp | status values: success, error, not_found
+  State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_execution entries | calls logger.log_tool_call() and logger.log_tool_result() for user feedback | injects/clears xray context via thread-local storage
+  Integration: exposes execute_and_record_tools(tool_calls, tools, agent, logger), execute_single_tool(...) | uses logger.log_tool_call(name, args) for natural function-call style output: greet(name='Alice') | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp
   Performance: times each tool execution in milliseconds | executes tools sequentially (not parallel) | trace entry added BEFORE auto-trace so xray.trace() sees it
   Errors: catches all tool execution exceptions | wraps errors in trace_entry with error, error_type fields | returns error message to LLM for retry | prints error to logger with red ✗
 """
@@ -39,6 +39,9 @@ def execute_and_record_tools(
     # Format and add assistant message with tool calls
     _add_assistant_message(agent.current_session['messages'], tool_calls)
 
+    # before_tool_round fires ONCE before ALL tools in the round execute
+    agent._invoke_events('before_tool_round')
+
     # Execute each tool
     for tool_call in tool_calls:
         # Execute the tool and get trace entry
@@ -62,12 +65,18 @@ def execute_and_record_tools(
         # (before auto-trace, so it shows up in xray.trace() output)
 
         # Fire events AFTER tool result message is added (proper message ordering)
-        # on_error fires first for errors/not_found, then after_tool always fires
+        # on_error fires first for errors/not_found
         if trace_entry["status"] in ("error", "not_found"):
             agent._invoke_events('on_error')
 
-        # after_tool fires for ALL tool executions (success, error, not_found)
-        agent._invoke_events('after_tool')
+        # after_each_tool fires for EACH tool execution (success, error, not_found)
+        # WARNING: Do NOT add messages here - it breaks Anthropic's message ordering
+        agent._invoke_events('after_each_tool')
+
+    # after_tool_round fires ONCE after ALL tools in the round complete
+    # This is the safe place to add messages (e.g., reflection) because all
+    # tool_results have been added and message ordering is correct for all LLMs
+    agent._invoke_events('after_tool_round')
 
 
 def execute_single_tool(
@@ -94,9 +103,8 @@ def execute_single_tool(
     Returns:
         Dict trace entry with: type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp
     """
-    # Logger output
-    args_str = str(tool_args)[:50] + "..." if len(str(tool_args)) > 50 else str(tool_args)
-    logger.print(f"[blue]→[/blue] Tool: {tool_name}({args_str})")
+    # Log tool call before execution
+    logger.log_tool_call(tool_name, tool_args)
 
     # Create single trace entry
     trace_entry = {
@@ -160,8 +168,8 @@ def execute_single_tool(
             'id': tool_id
         }
 
-        # Invoke before_tool events
-        agent._invoke_events('before_tool')
+        # Invoke before_each_tool events
+        agent._invoke_events('before_each_tool')
 
         # Clear pending_tool after event (it's only valid during before_tool)
         agent.current_session.pop('pending_tool', None)
@@ -180,11 +188,8 @@ def execute_single_tool(
         # (so it shows up in xray.trace() output)
         agent.current_session['trace'].append(trace_entry)
 
-        # Logger output
-        result_str = str(result)[:50] + "..." if len(str(result)) > 50 else str(result)
-        # Show more precision for fast operations (<0.1s), less for slow ones
-        time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
-        logger.print(f"[green]←[/green] Result ({time_str}): {result_str}")
+        # Logger output - result on separate line
+        logger.log_tool_result(str(result), tool_duration)
 
         # Auto-print Rich table if @xray enabled
         if xray_enabled:
@@ -240,19 +245,21 @@ def _add_assistant_message(messages: List[Dict], tool_calls: List) -> None:
     """
     assistant_tool_calls = []
     for tool_call in tool_calls:
-        assistant_tool_calls.append({
+        tc_dict = {
             "id": tool_call.id,
             "type": "function",
             "function": {
                 "name": tool_call.name,
                 "arguments": json.dumps(tool_call.arguments)
-            },
-            "extra_content": tool_call.extra_content
-        })
+            }
+        }
+        # Only include extra_content if present (Gemini rejects null values)
+        if tool_call.extra_content:
+            tc_dict["extra_content"] = tool_call.extra_content
+        assistant_tool_calls.append(tc_dict)
 
     messages.append({
         "role": "assistant",
-        "content": None,
         "tool_calls": assistant_tool_calls
     })
 

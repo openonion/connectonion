@@ -1,20 +1,25 @@
 """
 Example demonstrating the event system (on_events parameter).
 
-This example shows all 7 event types:
+This example shows all event types:
 1. after_user_input - fires once per turn
 2. before_llm - fires before each LLM call
 3. after_llm - fires after each LLM response
-4. before_tool - fires before each tool execution
-5. after_tool - fires after successful tool execution
-6. on_error - fires when tool execution fails
-7. on_complete - fires once after agent completes task
+4. before_each_tool - fires before each tool execution
+5. after_each_tool - fires after each tool execution (per-tool)
+6. after_tool_round - fires once after ALL tools in a round complete (batch)
+7. on_error - fires when tool execution fails
+8. on_complete - fires once after agent completes task
+
+Note: Use after_tool_round (not after_each_tool) when adding messages to ensure
+compatibility with all LLM providers (Anthropic Claude requires tool results to
+immediately follow tool_calls).
 
 Run with:
     python examples/events_example.py
 """
 
-from connectonion import Agent, after_user_input, before_llm, after_llm, before_tool, after_tool, on_error, on_complete, llm_do
+from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, after_each_tool, after_tool_round, on_error, on_complete, llm_do
 from datetime import datetime
 
 
@@ -70,9 +75,9 @@ def log_completion(agent: Agent) -> None:
     print(f"✅ Task complete: {llm_calls} LLM calls, {tool_calls} tools, {errors} errors")
 
 
-# Example 2: AI-powered reflection after tool execution
+# Example 2: AI-powered reflection after tool round
 def add_reflection(agent: Agent) -> None:
-    """Use llm_do to generate reflection after each tool completes (fires after_tool)"""
+    """Use llm_do to generate reflection after all tools complete (uses after_tool_round)"""
     # Get the last tool execution from trace
     trace = agent.current_session['trace'][-1]
 
@@ -131,7 +136,7 @@ def main():
         on_events=[
             after_user_input(log_user_input),
             after_llm(track_llm_calls),
-            after_tool(monitor_tool_performance)
+            after_each_tool(monitor_tool_performance)  # per-tool monitoring
         ]
     )
 
@@ -143,13 +148,14 @@ def main():
     print("Example 2: AI-Powered Reflection")
     print("="*60 + "\n")
 
-    # Create agent with reflection (use after_tool to reflect on each tool execution)
+    # Create agent with reflection (use after_tool_round to add messages safely)
+    # Using after_tool_round ensures compatibility with all LLM providers
     agent2 = Agent(
         name="reflective_agent",
         tools=[search],
         model="gpt-4o-mini",
         on_events=[
-            after_tool(add_reflection)
+            after_tool_round(add_reflection)  # batch event - safe to add messages
         ]
     )
 
@@ -176,11 +182,12 @@ def main():
 
 
     print("\n" + "="*60)
-    print("Example 4: Grouping Multiple Handlers")
+    print("Example 4: Combining Per-Tool and Batch Events")
     print("="*60 + "\n")
 
-    # You can group multiple handlers for the same event type
-    # This is cleaner than listing them separately
+    # Combine per-tool events (after_each_tool) with batch events (after_tool_round)
+    # - after_each_tool: fires for EACH tool (good for monitoring)
+    # - after_tool_round: fires ONCE after all tools (good for adding messages)
     agent4 = Agent(
         name="full_featured_agent",
         tools=[search, slow_analysis, failing_tool],
@@ -188,7 +195,8 @@ def main():
         on_events=[
             after_user_input(log_user_input),
             after_llm(track_llm_calls),
-            after_tool(monitor_tool_performance, add_reflection),  # grouped handlers
+            after_each_tool(monitor_tool_performance),  # per-tool monitoring
+            after_tool_round(add_reflection),           # batch reflection (adds message)
             on_error(handle_errors)
         ]
     )

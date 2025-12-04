@@ -251,7 +251,7 @@ Perfect for:
 Package reusable capabilities as plugins and use them across multiple agents:
 
 ```python
-from connectonion import Agent, after_tool, llm_do
+from connectonion import Agent, after_tool_round, llm_do
 
 # Define a reflection plugin
 def add_reflection(agent):
@@ -269,7 +269,7 @@ def add_reflection(agent):
         })
 
 # Plugin is just a list of event handlers
-reflection = [after_tool(add_reflection)]
+reflection = [after_tool_round(add_reflection)]  # after_tool_round fires once after all tools
 
 # Use across multiple agents
 researcher = Agent("researcher", tools=[search], plugins=[reflection])

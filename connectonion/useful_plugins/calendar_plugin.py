@@ -10,7 +10,7 @@ Usage:
 """
 
 from typing import TYPE_CHECKING
-from ..events import before_tool
+from ..events import before_each_tool
 from ..tui import pick
 from rich.console import Console
 from rich.panel import Panel
@@ -25,7 +25,7 @@ _console = Console()
 WRITE_METHODS = ('create_event', 'create_meet', 'update_event', 'delete_event')
 
 
-@before_tool
+@before_each_tool
 def check_calendar_approval(agent: 'Agent') -> None:
     """Ask user approval before modifying calendar.
 

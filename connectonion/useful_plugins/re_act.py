@@ -83,11 +83,15 @@ def evaluate_completion(agent: 'Agent') -> None:
 
     trace = agent.current_session.get('trace', [])
     actions_summary = _summarize_trace(trace)
+    result = agent.current_session.get('result', 'No response generated.')
 
     prompt = f"""User's original request: {user_prompt}
 
 Actions taken:
 {actions_summary}
+
+Agent's response:
+{result}
 
 Is this task truly complete? What was achieved or what's missing?"""
 
@@ -103,7 +107,7 @@ Is this task truly complete? What was achieved or what's missing?"""
     agent.logger.print(f"[dim]✓ {evaluation}[/dim]")
 
 
-# Bundle as plugin: plan (after_user_input) + reflect (after_tool) + evaluate (on_complete)
+# Bundle as plugin: plan (after_user_input) + reflect (after_tool_round) + evaluate (on_complete)
 re_act = [
     plan_task,
     reflect,

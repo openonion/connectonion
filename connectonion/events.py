@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: None (standalone module) | imported by [agent.py, __init__.py] | tested by [tests/test_events.py]
   Data flow: Wrapper functions tag event handlers with _event_type attribute → Agent organizes handlers by type → Agent invokes handlers at specific lifecycle points passing agent instance
   State/Effects: Event handlers receive agent instance and can modify agent.current_session (messages, trace, etc.)
-  Integration: exposes after_user_input(), before_llm(), after_llm(), before_tool(), after_tool(), on_error(), on_complete() | supports both decorator (@before_tool) and wrapper (before_tool(fn1, fn2)) syntax
+  Integration: exposes after_user_input(), before_llm(), after_llm(), before_each_tool(), before_tool_round(), after_each_tool(), after_tool_round(), on_error(), on_complete()
   Performance: Minimal overhead - just function attribute checking and iteration over handler lists
   Errors: Event handler exceptions propagate and stop agent execution (fail fast)
 """
@@ -79,11 +79,11 @@ def after_llm(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
     return funcs[0] if len(funcs) == 1 else list(funcs)
 
 
-def before_tool(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+def before_each_tool(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
     """
-    Mark function(s) as before_tool event handlers.
+    Mark function(s) as before_each_tool event handlers.
 
-    Fires before each tool execution.
+    Fires before EACH individual tool execution.
     Use for: validating arguments, approval prompts, logging.
 
     Access pending tool via agent.current_session['pending_tool']:
@@ -94,36 +94,97 @@ def before_tool(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]
     Raise an exception to cancel the tool execution.
 
     Supports both decorator and wrapper syntax:
-        @before_tool
+        @before_each_tool
         def approve_dangerous(agent):
             ...
 
         # Multiple handlers
-        on_events=[before_tool(check_shell, check_email)]
+        on_events=[before_each_tool(check_shell, check_email)]
     """
     for fn in funcs:
-        fn._event_type = 'before_tool'  # type: ignore
+        fn._event_type = 'before_each_tool'  # type: ignore
     return funcs[0] if len(funcs) == 1 else list(funcs)
 
 
-def after_tool(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+def before_tool_round(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
     """
-    Mark function(s) as after_tool event handlers.
+    Mark function(s) as before_tool_round event handlers.
 
-    Fires after each tool execution (success, error, or not_found).
-    Use for: adding reflection, logging performance.
+    Fires ONCE before ALL tools in a round execute (when LLM returns multiple tool_calls).
+    Use for: batch validation, logging start of tool execution round.
 
     Supports both decorator and wrapper syntax:
-        @after_tool
-        def add_reflection(agent):
-            trace = agent.current_session['trace'][-1]
-            if trace['type'] == 'tool_execution' and trace['status'] == 'success':
-                print(f"Tool completed: {trace['tool_name']}")
+        @before_tool_round
+        def log_round_start(agent):
+            ...
 
-        on_events=[after_tool(handler1, handler2)]
+        on_events=[before_tool_round(handler)]
     """
     for fn in funcs:
-        fn._event_type = 'after_tool'  # type: ignore
+        fn._event_type = 'before_tool_round'  # type: ignore
+    return funcs[0] if len(funcs) == 1 else list(funcs)
+
+
+def after_each_tool(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+    """
+    Mark function(s) as after_each_tool event handlers.
+
+    Fires after EACH individual tool execution (success, error, or not_found).
+    Use for: logging individual tool performance, debugging.
+
+    ⚠️  WARNING: Do NOT add messages to agent.current_session['messages'] here!
+    When LLM returns multiple tool_calls, this fires after EACH tool, which would
+    interleave messages between tool results. This breaks Anthropic Claude's API
+    which requires all tool_results to immediately follow the tool_use message.
+
+    If you need to add messages after tools complete, use `after_tool_round` instead.
+
+    Supports both decorator and wrapper syntax:
+        @after_each_tool
+        def log_tool(agent):
+            trace = agent.current_session['trace'][-1]
+            if trace['type'] == 'tool_execution':
+                print(f"Tool: {trace['tool_name']} in {trace['timing']:.0f}ms")
+
+        on_events=[after_each_tool(handler1, handler2)]
+    """
+    for fn in funcs:
+        fn._event_type = 'after_each_tool'  # type: ignore
+    return funcs[0] if len(funcs) == 1 else list(funcs)
+
+
+def after_tool_round(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+    """
+    Mark function(s) as after_tool_round event handlers.
+
+    Fires ONCE after ALL tools in a round complete (when LLM returns multiple tool_calls).
+    Use for: adding reflection messages, summarizing tool results.
+
+    This is the safe place to add messages to agent.current_session['messages']
+    after tool execution, because all tool_results have been added and message
+    ordering is correct for all LLM providers (including Anthropic Claude).
+
+    Message ordering when this event fires:
+        - assistant (with tool_calls)
+        - tool result 1
+        - tool result 2
+        - tool result N
+        - [YOUR MESSAGE HERE - safe to add]
+
+    Supports both decorator and wrapper syntax:
+        @after_tool_round
+        def add_reflection(agent):
+            trace = agent.current_session['trace']
+            recent = [t for t in trace if t['type'] == 'tool_execution'][-3:]
+            agent.current_session['messages'].append({
+                'role': 'assistant',
+                'content': f"Completed {len(recent)} tools"
+            })
+
+        on_events=[after_tool_round(add_reflection)]
+    """
+    for fn in funcs:
+        fn._event_type = 'after_tool_round'  # type: ignore
     return funcs[0] if len(funcs) == 1 else list(funcs)
 
 

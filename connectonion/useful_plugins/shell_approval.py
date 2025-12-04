@@ -13,7 +13,7 @@ Usage:
 
 import re
 from typing import TYPE_CHECKING
-from ..events import before_tool
+from ..events import before_each_tool
 from ..tui import pick
 from rich.console import Console
 
@@ -147,4 +147,4 @@ def _check_approval(agent: 'Agent') -> None:
 
 
 # Plugin is an event list
-shell_approval = [before_tool(_check_approval)]
+shell_approval = [before_each_tool(_check_approval)]

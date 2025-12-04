@@ -94,3 +94,104 @@ class TestRealGemini:
         response = agent.input("What is 2 + 2?")
         assert response is not None
         assert "4" in response or "four" in response.lower()
+
+
+class TestRealGemini3:
+    """Test real Gemini 3 API integration (thinking models).
+
+    Gemini 3 models use dynamic thinking by default and may return
+    thought_signatures that must be echoed back for tool calling.
+    See: https://ai.google.dev/gemini-api/docs/thinking
+    """
+
+    def test_gemini3_basic_completion(self):
+        """Test basic completion with Gemini 3 Pro Preview."""
+        agent = Agent(
+            name="gemini3_basic",
+            model="gemini-3-pro-preview"
+        )
+
+        response = agent.input("Say 'Hello from Gemini 3' exactly")
+        assert response is not None
+        assert "Hello" in response or "Gemini" in response
+
+    def test_gemini3_with_tools_single_call(self):
+        """Test Gemini 3 with single tool call.
+
+        Verifies that null extra_content doesn't break tool calling.
+        """
+        agent = Agent(
+            name="gemini3_tools_single",
+            model="gemini-3-pro-preview",
+            tools=[word_counter]
+        )
+
+        response = agent.input("Count words in 'one two three'")
+        assert response is not None
+        assert "3" in response or "three" in response.lower()
+
+    def test_gemini3_with_tools_multi_turn(self):
+        """Test Gemini 3 multi-turn tool calling.
+
+        This specifically tests the fix for null value handling.
+        The second turn requires messages from first turn to be
+        sent back correctly without null values.
+        """
+        agent = Agent(
+            name="gemini3_tools_multi",
+            model="gemini-3-pro-preview",
+            tools=[word_counter],
+            max_iterations=5
+        )
+
+        # First turn - tool call
+        response = agent.input("Count words in 'hello world'")
+        assert response is not None
+        assert "2" in response or "two" in response.lower()
+
+        # Second turn - another tool call (tests message history handling)
+        response = agent.input("Now count words in 'a b c d e'")
+        assert response is not None
+        assert "5" in response or "five" in response.lower()
+
+    def test_gemini3_all_models(self):
+        """Test all Gemini 3 model variants."""
+        models = [
+            "gemini-3-pro-preview",
+            # "gemini-3-pro-image-preview",  # May have different capabilities
+        ]
+
+        for model in models:
+            agent = Agent(
+                name=f"gemini3_{model.replace('-', '_')}",
+                model=model
+            )
+
+            response = agent.input("Reply with OK")
+            assert response is not None
+            assert len(response) > 0
+
+
+class TestAllGeminiModelsWithTools:
+    """Comprehensive test for all Gemini models with tool calling.
+
+    These tests verify that null value handling works across all models.
+    """
+
+    @pytest.mark.parametrize("model", [
+        "gemini-2.5-flash",
+        "gemini-2.5-pro",
+        "gemini-3-pro-preview",
+    ])
+    def test_model_with_tool_calling(self, model):
+        """Test each model can handle tool calling without null value errors."""
+        agent = Agent(
+            name=f"test_{model.replace('-', '_').replace('.', '_')}",
+            model=model,
+            tools=[word_counter],
+            max_iterations=3
+        )
+
+        response = agent.input("Use the word_counter tool to count words in 'test'")
+        assert response is not None
+        # Should complete without "Value is not a struct: null" error

@@ -1,5 +1,5 @@
 """Test the plugin system implementation."""
-from connectonion import Agent, after_llm, after_tool
+from connectonion import Agent, after_llm, after_tool_round
 
 # Simple plugin - just a list
 def log_llm(agent):
@@ -21,7 +21,7 @@ def make_counter():
 
     return [
         after_llm(count_llm),
-        after_tool(count_tool)
+        after_tool_round(count_tool)
     ]
 
 
@@ -49,9 +49,9 @@ def test_factory_plugin():
         log=False
     )
 
-    # Should have 1 after_llm and 1 after_tool handler
+    # Should have 1 after_llm and 1 after_tool_round handler
     assert len(agent.events['after_llm']) == 1
-    assert len(agent.events['after_tool']) == 1
+    assert len(agent.events['after_tool_round']) == 1
     # Total events should be 2
     total_events = sum(len(handlers) for handlers in agent.events.values())
     assert total_events == 2
@@ -68,8 +68,8 @@ def test_multiple_plugins():
 
     # Should have 2 after_llm handlers (one from each plugin)
     assert len(agent.events['after_llm']) == 2
-    # Should have 1 after_tool handler (from counter)
-    assert len(agent.events['after_tool']) == 1
+    # Should have 1 after_tool_round handler (from counter)
+    assert len(agent.events['after_tool_round']) == 1
     # Total events should be 3
     total_events = sum(len(handlers) for handlers in agent.events.values())
     assert total_events == 3
@@ -83,14 +83,14 @@ def test_plugins_with_on_events():
     agent = Agent(
         "test_combined",
         plugins=[simple_logger],
-        on_events=[after_tool(custom_event)],
+        on_events=[after_tool_round(custom_event)],
         log=False
     )
 
     # Should have 1 after_llm from plugin
     assert len(agent.events['after_llm']) == 1
-    # Should have 1 after_tool from on_events
-    assert len(agent.events['after_tool']) == 1
+    # Should have 1 after_tool_round from on_events
+    assert len(agent.events['after_tool_round']) == 1
     # Total events should be 2
     total_events = sum(len(handlers) for handlers in agent.events.values())
     assert total_events == 2

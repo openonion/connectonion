@@ -155,14 +155,14 @@ agent.input("Search for Python and calculate 15 * 8")
 
 **Create Custom Plugins:**
 ```python
-from connectonion import after_tool
+from connectonion import after_each_tool
 
 def log_tool(agent):
     trace = agent.current_session['trace'][-1]
     print(f"✓ {trace['tool_name']} completed")
 
 # Plugin is just an event list
-logger = [after_tool(log_tool)]
+logger = [after_each_tool(log_tool)]  # per-tool logging
 
 # Use it!
 agent = Agent("assistant", tools=[search], plugins=[logger])

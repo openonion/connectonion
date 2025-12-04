@@ -268,7 +268,7 @@ class TestImageResultFormatterPlugin:
         """Test that handler has correct event type."""
         handler = image_result_formatter[0]
         assert hasattr(handler, '_event_type')
-        assert handler._event_type == 'after_tool'
+        assert handler._event_type == 'after_each_tool'
 
     def test_plugin_integrates_with_agent(self):
         """Test that plugin can be registered with agent."""
@@ -292,4 +292,4 @@ class TestImageResultFormatterPlugin:
             log=False,
         )
 
-        assert 'after_tool' in agent.events
+        assert 'after_each_tool' in agent.events

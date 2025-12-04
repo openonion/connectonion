@@ -11,7 +11,7 @@ Usage:
 
 from datetime import datetime
 from typing import TYPE_CHECKING
-from ..events import before_tool, after_tool
+from ..events import before_each_tool, after_each_tool
 from ..tui import pick
 from rich.console import Console
 from rich.panel import Panel
@@ -26,7 +26,7 @@ _console = Console()
 SEND_METHODS = ('send', 'reply')
 
 
-@before_tool
+@before_each_tool
 def check_email_approval(agent: 'Agent') -> None:
     """Ask user approval before sending emails via Gmail.
 
@@ -122,9 +122,9 @@ def check_email_approval(agent: 'Agent') -> None:
     raise ValueError(f"User feedback: {choice}")
 
 
-@after_tool
+@after_each_tool
 def sync_crm_after_send(agent: 'Agent') -> None:
-    """Update CRM data after sending email - last_contact, clear next_contact_date."""
+    """Update CRM data after each email send - last_contact, clear next_contact_date."""
     trace = agent.current_session['trace'][-1]
     if trace['type'] != 'tool_execution':
         return

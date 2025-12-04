@@ -16,7 +16,7 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
 - **Tool Factory** (`connectonion/tool_factory.py`): Converts Python functions to OpenAI-compatible tool schemas automatically
 - **Logger** (`connectonion/logger.py`): Unified logging facade (terminal + plain text + YAML sessions) with `quiet` and `log` parameters
 - **Console** (`connectonion/console.py`): Low-level terminal output with Rich formatting (used internally by Logger)
-- **Events** (`connectonion/events.py:11`): Lifecycle hooks (after_user_input, before_llm, after_llm, before_tool, after_tool, on_error)
+- **Events** (`connectonion/events.py:11`): Lifecycle hooks (after_user_input, before_llm, after_llm, before_each_tool, before_tool_round, after_each_tool, after_tool_round, on_error, on_complete)
 - **Trust System** (`connectonion/trust.py:42`): Three-level verification (open/careful/strict) with custom policy support
 - **XRay Debug** (`connectonion/xray.py:32`): Runtime context injection for interactive debugging with `@xray` decorator
 
@@ -35,7 +35,9 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
    - Call LLM with messages and tool schemas
    - Fire `after_llm` event
    - If tool_calls: execute via `tool_executor.execute_and_record_tools()`
-   - Fire `before_tool` and `after_tool` events per tool
+   - Fire `before_tool_round` event ONCE before ALL tools execute
+   - Fire `before_each_tool` and `after_each_tool` events per individual tool
+   - Fire `after_tool_round` event ONCE after ALL tools complete (safe for adding messages)
    - Add results to messages, continue
 4. Return final response or iteration limit message
 
@@ -222,7 +224,7 @@ connectonion/
    - Record timing and result in trace
    - Clear xray context
    - Add tool result message
-3. Fire `before_tool` and `after_tool` events
+3. Fire `before_each_tool` and `after_each_tool` events per tool, then `after_tool_round` once after all
 4. Handle errors: capture in trace, return to LLM for retry
 
 ### Trust Verification (`connectonion/trust.py`)
@@ -334,13 +336,13 @@ git push
 3. Tool auto-converts via `create_tool_from_function()`
 
 ### Adding a New Event Handler
-1. Import wrapper: `from connectonion import after_tool`
+1. Import wrapper: `from connectonion import after_tool_round`
 2. Define handler: `def my_handler(agent): ...`
-3. Register: `agent = Agent("name", on_events=[after_tool(my_handler)])`
+3. Register: `agent = Agent("name", on_events=[after_tool_round(my_handler)])`
 
 ### Creating a Plugin
 1. Define event handlers
-2. Bundle in list: `my_plugin = [after_tool(handler1), before_llm(handler2)]`
+2. Bundle in list: `my_plugin = [after_tool_round(handler1), before_llm(handler2)]`
 3. Use: `agent = Agent("name", plugins=[my_plugin])`
 
 ### Adding a CLI Command

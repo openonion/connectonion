@@ -25,8 +25,10 @@ from .events import (
     after_user_input,
     before_llm,
     after_llm,
-    before_tool,
-    after_tool,
+    before_each_tool,
+    before_tool_round,
+    after_each_tool,
+    after_tool_round,
     on_error,
     on_complete
 )
@@ -64,8 +66,10 @@ __all__ = [
     "after_user_input",
     "before_llm",
     "after_llm",
-    "before_tool",
-    "after_tool",
+    "before_each_tool",
+    "before_tool_round",
+    "after_each_tool",
+    "after_tool_round",
     "on_error",
     "on_complete"
 ]

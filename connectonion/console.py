@@ -1,10 +1,10 @@
 """
 Purpose: Handle agent terminal output with Rich formatting and optional file logging
 LLM-Note:
-  Dependencies: imports from [sys, datetime, pathlib, typing, rich.console, rich.panel, rich.text] | imported by [agent.py, tool_executor.py, auto_debug_exception.py] | tested by [tests/test_console.py]
-  Data flow: receives from Agent/tool_executor → .print(message, style) → formats with timestamp → prints to stderr via RichConsole → optionally appends to log_file as plain text
+  Dependencies: imports from [sys, datetime, pathlib, typing, rich.console, rich.panel, rich.text] | imported by [logger.py, tool_executor.py] | tested by [tests/test_console.py]
+  Data flow: receives from Logger/tool_executor → .print(), .log_tool_call(), .log_tool_result() → formats with timestamp → prints to stderr via RichConsole → optionally appends to log_file as plain text
   State/Effects: writes to stderr (not stdout, to avoid mixing with agent results) | writes to log_file if provided (plain text with timestamps) | creates log file parent directories if needed | appends session separator on init
-  Integration: exposes Console(log_file), .print(message, style), .print_xray_table(tool_name, tool_args, result, timing, agent) | used by Agent to show LLM/tool execution progress | tool_executor calls print_xray_table for @xray decorated tools
+  Integration: exposes Console(log_file), .print(message, style), .log_tool_call(name, args), .log_tool_result(result, timing), .log_llm_response(), .print_xray_table() | tool calls formatted as natural function-call style: greet(name='Alice')
   Performance: direct stderr writes (no buffering delays) | Rich formatting uses stderr (separate from stdout results) | regex-based markup removal for log files
   Errors: no error handling (let I/O errors bubble up) | assumes log_file parent can be created | assumes stderr is available
 """
@@ -158,6 +158,58 @@ class Console:
                     f.write(f"  {k}: {val_str}\n")
                 f.write(f"  result: {result_str}\n")
                 f.write(f"  Execution time: {timing/1000:.4f}s | Iteration: {iteration}/{max_iterations} | Breakpoint: @xray\n\n")
+
+    def log_tool_call(self, tool_name: str, tool_args: Dict[str, Any]) -> None:
+        """Log tool call - separate from result for clarity.
+
+        Short: → Tool: greet(name='Alice')
+        Long:  → Tool: write_file(path='test.py',
+                   content='...'
+                 )
+        """
+        formatted_args = self._format_tool_args_list(tool_args)
+        single_line = ", ".join(formatted_args)
+
+        if len(single_line) < 60 and len(formatted_args) <= 2:
+            self.print(f"[blue]→[/blue] Tool: {tool_name}({single_line})")
+        elif len(formatted_args) == 1:
+            # Single long arg: put on same line, will wrap naturally
+            self.print(f"[blue]→[/blue] Tool: {tool_name}({formatted_args[0]})")
+        else:
+            # Multi-line: first arg on same line as bracket, rest indented
+            base_indent = " " * (9 + len(tool_name) + 1)  # align with after "("
+            lines = [f"[blue]→[/blue] Tool: {tool_name}({formatted_args[0]},"]
+            for arg in formatted_args[1:-1]:
+                lines.append(f"{base_indent}{arg},")
+            lines.append(f"{base_indent}{formatted_args[-1]})")
+            self.print("\n".join(lines))
+
+    def log_tool_result(self, result: str, timing_ms: float) -> None:
+        """Log tool result - separate line for clarity."""
+        result_preview = result[:80] + "..." if len(result) > 80 else result
+        result_preview = result_preview.replace('\n', '\\n')
+        time_str = f"{timing_ms/1000:.4f}s" if timing_ms < 100 else f"{timing_ms/1000:.1f}s"
+        self.print(f"[green]←[/green] Tool Result ({time_str}): {result_preview}")
+
+    def _format_tool_args_list(self, args: Dict[str, Any]) -> list:
+        """Format each arg as key='value' with 150 char limit per value.
+
+        Escapes newlines so each arg stays on one line.
+        """
+        parts = []
+        for k, v in args.items():
+            if isinstance(v, str):
+                # Escape newlines for single-line display
+                v_str = v.replace('\n', '\\n').replace('\r', '\\r')
+                if len(v_str) > 150:
+                    v_str = v_str[:150] + "..."
+                parts.append(f"{k}='{v_str}'")
+            else:
+                v_str = str(v)
+                if len(v_str) > 150:
+                    v_str = v_str[:150] + "..."
+                parts.append(f"{k}={v_str}")
+        return parts
 
     def log_llm_response(self, duration_ms: float, tool_count: int, usage) -> None:
         """Log LLM response with token usage."""

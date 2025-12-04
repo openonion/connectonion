@@ -80,12 +80,16 @@ class Agent:
             self.trust = create_trust_agent(trust, api_key=api_key, model=model)
 
         # Initialize event registry
+        # Note: before_each_tool/after_each_tool fire for EACH tool
+        # before_tool_round/after_tool_round fire ONCE per round (safe for adding messages)
         self.events = {
             'after_user_input': [],
             'before_llm': [],
             'after_llm': [],
-            'before_tool': [],
-            'after_tool': [],
+            'before_each_tool': [],    # Fires before EACH tool
+            'before_tool_round': [],   # Fires ONCE before ALL tools in a round
+            'after_each_tool': [],     # Fires after EACH tool (don't add messages here!)
+            'after_tool_round': [],    # Fires ONCE after ALL tools (safe for messages)
             'on_error': [],
             'on_complete': []
         }
@@ -197,7 +201,7 @@ class Agent:
                 'turn': 0  # Track conversation turns
             }
             # Start YAML session logging
-            self.logger.start_session()
+            self.logger.start_session(self.system_prompt)
 
         # Add user message to conversation
         self.current_session['messages'].append({
@@ -230,55 +234,19 @@ class Agent:
         # Calculate duration
         duration = time.time() - turn_start
 
-        # Log turn to YAML session
-        turn_data = self._aggregate_turn(prompt, result, duration * 1000)
-        self.logger.log_turn(turn_data)
+        self.current_session['result'] = result
 
         self.logger.print(f"[green]✓ Complete[/green] ({duration:.1f}s)")
         self._invoke_events('on_complete')
+
+        # Log turn to YAML session (after on_complete so handlers can modify state)
+        self.logger.log_turn(prompt, result, duration * 1000, self.current_session, self.llm.model)
+
         return result
 
     def reset_conversation(self):
         """Reset the conversation session. Start fresh."""
         self.current_session = None
-
-    def _aggregate_turn(self, user_input: str, result: str, duration_ms: float) -> dict:
-        """Aggregate trace entries into a turn summary for YAML session log.
-
-        Args:
-            user_input: The user's input prompt
-            result: The agent's final response
-            duration_ms: Total duration in milliseconds
-
-        Returns:
-            Dict with: input, model, duration_ms, tokens, cost, tools_called, result, messages
-        """
-        import json
-
-        trace = self.current_session.get('trace', [])
-        llm_calls = [t for t in trace if t.get('type') == 'llm_call']
-        tool_calls = [t for t in trace if t.get('type') == 'tool_execution']
-
-        # Aggregate token usage from all LLM calls in this turn
-        total_tokens = sum(
-            (t.get('usage').input_tokens + t.get('usage').output_tokens)
-            for t in llm_calls if t.get('usage')
-        )
-        total_cost = sum(
-            t.get('usage').cost
-            for t in llm_calls if t.get('usage')
-        )
-
-        return {
-            'input': user_input,
-            'model': str(self.llm.model) if self.llm else 'unknown',
-            'duration_ms': int(duration_ms),
-            'tokens': total_tokens,
-            'cost': round(total_cost, 4),
-            'tools_called': [t['tool_name'] for t in tool_calls],
-            'result': result,
-            'messages': json.dumps(self.current_session['messages'])
-        }
 
     def execute_tool(self, tool_name: str, arguments: Optional[Dict] = None) -> Dict[str, Any]:
         """Execute a single tool by name. Useful for testing and debugging.
@@ -315,12 +283,15 @@ class Agent:
         # Note: trace_entry already added to session in execute_single_tool
 
         # Fire events (same as execute_and_record_tools)
-        # on_error fires first for errors/not_found, then after_tool always fires
+        # on_error fires first for errors/not_found
         if trace_entry["status"] in ("error", "not_found"):
             self._invoke_events('on_error')
 
-        # after_tool fires for ALL tool executions (success, error, not_found)
-        self._invoke_events('after_tool')
+        # after_each_tool fires for this tool execution
+        self._invoke_events('after_each_tool')
+
+        # after_tool_round fires after all tools in round (for single execution, fires once)
+        self._invoke_events('after_tool_round')
 
         # Return simplified result (omit internal fields)
         return {
