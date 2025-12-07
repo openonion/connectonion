@@ -36,6 +36,16 @@ Start here to understand ConnectOnion:
 - [co init](cli/init.md) - Initialize existing projects
 - [co auth](cli/auth.md) - Authentication
 
+## Templates
+
+Pre-built agent templates for common use cases:
+
+- [Templates Overview](templates/) - Selection guide
+- [minimal](templates/minimal.md) - Basic starter
+- [playwright](templates/playwright.md) - Browser automation
+- [meta-agent](templates/meta-agent.md) - Development assistant
+- [web-research](templates/web-research.md) - Web research
+
 ## Built-in Components
 
 - [Built-in Tools](useful_tools/) - Shell, Gmail, Calendar, Memory
@@ -73,6 +83,7 @@ Start here to understand ConnectOnion:
 docs/
 ├── concepts/          # Core concepts (READ THESE)
 ├── cli/               # CLI commands
+├── templates/         # Project templates
 ├── debug/             # Debugging & logging
 ├── network/           # Multi-agent networking
 ├── integrations/      # OAuth & external services
@@ -87,6 +98,7 @@ docs/
 | I want to... | Go to |
 |--------------|-------|
 | Create my first agent | [Quick Start](quickstart.md) |
+| Use a project template | [Templates](templates/) |
 | Add tools to my agent | [Tools](concepts/tools.md) |
 | Use managed API keys | [Authentication](integrations/auth.md) |
 | Debug my agent | [Debugging](debug/) |

@@ -60,6 +60,8 @@ Enable AI agents to automatically write, debug, and improve code.
 - [ ] Create tutorial video series
 - [ ] Update docs website with current features
 - [ ] Create comprehensive auto-debug documentation
+- [ ] Create templates/ documentation folder with individual template guides
+- [ ] Document Claude Code plugin templates for AI vibe coding
 
 ### Platform
 - [ ] Add Microsoft OAuth integration (`co auth microsoft`)

@@ -192,14 +192,14 @@ my-agent/
         └── co-vibecoding-principles-docs-contexts-all-in-one.md
 ```
 
-Learn more about templates in the [Templates Documentation](templates.md).
+Learn more about templates in the [Templates Documentation](templates/).
 
 ## Next Steps
 
 Ready for more?
 
 - **[CLI Reference](cli/)** - All CLI commands and options
-- **[Templates](templates.md)** - Pre-built agent templates
+- **[Templates](templates/)** - Pre-built agent templates
 - **[Agent Guide](concepts/agent.md)** - How agents work
 - **[Tools Guide](concepts/tools.md)** - How tools work
 - **[Examples](examples.md)** - Copy-paste ready code
