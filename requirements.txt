@@ -1,7 +1,0 @@
-openai>=1.0.0
-pydantic>=2.0.0
-python-dotenv>=1.0.0
-toml>=0.10.2
-rich>=13.7.0
-questionary>=2.0.0
-PyJWT>=2.0.0

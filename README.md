@@ -493,7 +493,7 @@ connectonion/
 │   └── basic_example.py
 ├── tests/
 │   └── test_agent.py
-└── requirements.txt
+└── pyproject.toml
 ```
 
 ## 🧪 Running Tests
