@@ -1,6 +1,6 @@
 """ConnectOnion - A simple agent framework with behavior tracking."""
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 # Auto-load .env files for the entire framework
 from dotenv import load_dotenv
