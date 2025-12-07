@@ -4,18 +4,23 @@ ReAct plugin - Reasoning and Acting pattern for AI agents.
 Implements the ReAct (Reason + Act) pattern:
 1. After user input: Plan what to do
 2. After tool execution: Reflect on results and plan next step
-3. On complete: Evaluate if task is truly done or needs more work
+
+For evaluation/debugging, use the separate `eval` plugin.
 
 Usage:
     from connectonion import Agent
     from connectonion.useful_plugins import re_act
 
     agent = Agent("assistant", tools=[...], plugins=[re_act])
+
+    # With evaluation for debugging:
+    from connectonion.useful_plugins import re_act, eval
+    agent = Agent("assistant", tools=[...], plugins=[re_act, eval])
 """
 
 from pathlib import Path
-from typing import TYPE_CHECKING, List, Dict
-from ..events import after_user_input, on_complete
+from typing import TYPE_CHECKING
+from ..events import after_user_input
 from ..llm_do import llm_do
 from ..useful_events_handlers.reflect import reflect
 
@@ -24,7 +29,6 @@ if TYPE_CHECKING:
 
 # Prompts
 PLAN_PROMPT = Path(__file__).parent.parent / "prompt_files" / "react_plan.md"
-EVALUATE_PROMPT = Path(__file__).parent.parent / "prompt_files" / "react_evaluate.md"
 
 
 @after_user_input
@@ -34,7 +38,6 @@ def plan_task(agent: 'Agent') -> None:
     if not user_prompt:
         return
 
-    # Get available tools for context
     tool_names = agent.tools.names() if agent.tools else []
     tools_str = ", ".join(tool_names) if tool_names else "no tools"
 
@@ -53,63 +56,14 @@ Brief plan (1-2 sentences): what to do first?"""
         system_prompt=PLAN_PROMPT
     )
 
+    # Store plan as expected outcome (used by eval plugin if present)
+    agent.current_session['expected'] = plan
+
     agent.current_session['messages'].append({
         'role': 'assistant',
         'content': f"💭 {plan}"
     })
 
 
-def _summarize_trace(trace: List[Dict]) -> str:
-    """Summarize what actions were taken."""
-    actions = []
-    for entry in trace:
-        if entry['type'] == 'tool_execution':
-            status = entry['status']
-            tool = entry['tool_name']
-            if status == 'success':
-                result = str(entry.get('result', ''))[:100]
-                actions.append(f"- {tool}: {result}")
-            else:
-                actions.append(f"- {tool}: failed ({entry.get('error', 'unknown')})")
-    return "\n".join(actions) if actions else "No tools were used."
-
-
-@on_complete
-def evaluate_completion(agent: 'Agent') -> None:
-    """Evaluate if the task is truly complete or needs more work."""
-    user_prompt = agent.current_session.get('user_prompt', '')
-    if not user_prompt:
-        return
-
-    trace = agent.current_session.get('trace', [])
-    actions_summary = _summarize_trace(trace)
-    result = agent.current_session.get('result', 'No response generated.')
-
-    prompt = f"""User's original request: {user_prompt}
-
-Actions taken:
-{actions_summary}
-
-Agent's response:
-{result}
-
-Is this task truly complete? What was achieved or what's missing?"""
-
-    agent.logger.print("[dim]/evaluating...[/dim]")
-
-    evaluation = llm_do(
-        prompt,
-        model="co/gemini-2.5-flash",
-        temperature=0.2,
-        system_prompt=EVALUATE_PROMPT
-    )
-
-    agent.logger.print(f"[dim]✓ {evaluation}[/dim]")
-
-
-# Bundle as plugin: plan (after_user_input) + reflect (after_tool_round) + evaluate (on_complete)
-re_act = [
-    plan_task,
-    reflect,
-    evaluate_completion,
-]
+# Bundle as plugin: plan (after_user_input) + reflect (after_tools)
+re_act = [plan_task, reflect]

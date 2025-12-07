@@ -1530,10 +1530,10 @@ agent.input("Search for Python and calculate 15 * 8")
 **A plugin is an event list** - just like `on_events`, but reusable across agents:
 
 ```python
-from connectonion import after_tool_round, after_each_tool, after_llm
+from connectonion import after_tools, after_each_tool, after_llm
 
 # This is a plugin (one event list)
-reflection = [after_tool_round(add_reflection)]  # after_tool_round for message injection
+reflection = [after_tools(add_reflection)]  # after_tools for message injection
 
 # This is also a plugin (multiple events in one list)
 logger = [after_llm(log_llm), after_each_tool(log_tool)]  # after_each_tool for per-tool logging
@@ -1734,7 +1734,7 @@ Reflect in 1-2 sentences on what we learned:"""
 
 ```python
 # Plugin is an event list
-reflection = [after_tool_round(_add_reflection)]  # after_tool_round for message injection
+reflection = [after_tools(_add_reflection)]  # after_tools for message injection
 ```
 
 **That's it!** A plugin is just an event list.
@@ -1769,7 +1769,7 @@ Use the same plugin across multiple agents:
 
 ```python
 # Define once
-reflection = [after_tool_round(add_reflection)]  # after_tool_round for message injection
+reflection = [after_tools(add_reflection)]  # after_tools for message injection
 logger = [after_llm(log_llm), after_each_tool(log_tool)]  # after_each_tool for per-tool logging
 
 # Use in multiple agents
@@ -1784,7 +1784,7 @@ analyst = Agent("analyst", tools=[calculate], plugins=[logger])
 
 ```python
 # Define a plugin (an event list)
-my_plugin = [after_llm(handler1), after_tool_round(handler2)]  # after_tool_round for message injection
+my_plugin = [after_llm(handler1), after_tools(handler2)]  # after_tools for message injection
 
 # Use it (plugins takes a list of event lists)
 agent = Agent("assistant", tools=[search], plugins=[my_plugin])
@@ -1796,7 +1796,7 @@ agent = Agent("assistant", tools=[search], plugins=[my_plugin])
 
 **Event naming:**
 - `after_each_tool` → fires for EACH tool (per-tool logging/monitoring)
-- `after_tool_round` → fires ONCE after all tools (safe for message injection)
+- `after_tools` → fires ONCE after all tools (safe for message injection)
 
 ---
 

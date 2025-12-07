@@ -534,7 +534,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
     configs = {
         'openai': {
             'var': 'OPENAI_API_KEY',
-            'model': 'o4-mini'
+            'model': 'gpt-4o-mini'
         },
         'anthropic': {
             'var': 'ANTHROPIC_API_KEY',
@@ -624,8 +624,8 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
         try:
             from ...llm import create_llm
 
-            # Use the model specified or default to gpt-4o-mini
-            llm_model = model if model else "gpt-4o-mini"
+            # Use the model specified or default to co/gemini-2.5-pro
+            llm_model = model if model else "co/gemini-2.5-pro"
 
             if loading_animation:
                 loading_animation.update(f"Connecting to {llm_model}...")
@@ -710,7 +710,7 @@ def process_request(query: str) -> str:
 # Create agent
 agent = Agent(
     name="{suggested_name.replace('-', '_')}",
-    model="{'co/gpt-4o-mini' if model and model.startswith('co/') else 'gpt-4o-mini'}",
+    model="{'co/gemini-2.5-pro' if model and model.startswith('co/') else 'co/gemini-2.5-pro'}",
     system_prompt=\"\"\"You are an AI agent designed to: {description}
 
     Provide helpful, accurate, and concise responses.\"\"\",

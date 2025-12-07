@@ -2,14 +2,15 @@
 import os
 import time
 import requests
+import pytest
 from pydantic import BaseModel
 from nacl.signing import SigningKey
 from nacl.encoding import HexEncoder
 from connectonion import llm_do
 
 
-# Production URL
-PRODUCTION_URL = "http://3.24.102.245"
+# Production URL - use domain, allow override via env
+PRODUCTION_URL = os.environ.get("PRODUCTION_URL", "https://oo.openonion.ai")
 
 
 class EmailDraft(BaseModel):
@@ -41,6 +42,7 @@ def get_test_token():
     return response.json()["token"]
 
 
+@pytest.mark.real_api
 def test_production_llm_do_structured():
     """Test llm_do() with structured output against production API"""
     print("\n" + "=" * 80)

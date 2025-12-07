@@ -26,9 +26,9 @@ from .events import (
     before_llm,
     after_llm,
     before_each_tool,
-    before_tool_round,
+    before_tools,
     after_each_tool,
-    after_tool_round,
+    after_tools,
     on_error,
     on_complete
 )
@@ -67,9 +67,9 @@ __all__ = [
     "before_llm",
     "after_llm",
     "before_each_tool",
-    "before_tool_round",
+    "before_tools",
     "after_each_tool",
-    "after_tool_round",
+    "after_tools",
     "on_error",
     "on_complete"
 ]

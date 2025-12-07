@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: None (standalone module) | imported by [agent.py, __init__.py] | tested by [tests/test_events.py]
   Data flow: Wrapper functions tag event handlers with _event_type attribute → Agent organizes handlers by type → Agent invokes handlers at specific lifecycle points passing agent instance
   State/Effects: Event handlers receive agent instance and can modify agent.current_session (messages, trace, etc.)
-  Integration: exposes after_user_input(), before_llm(), after_llm(), before_each_tool(), before_tool_round(), after_each_tool(), after_tool_round(), on_error(), on_complete()
+  Integration: exposes after_user_input(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete()
   Performance: Minimal overhead - just function attribute checking and iteration over handler lists
   Errors: Event handler exceptions propagate and stop agent execution (fail fast)
 """
@@ -106,22 +106,31 @@ def before_each_tool(*funcs: EventHandler) -> Union[EventHandler, List[EventHand
     return funcs[0] if len(funcs) == 1 else list(funcs)
 
 
-def before_tool_round(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+def before_tools(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
     """
-    Mark function(s) as before_tool_round event handlers.
+    Mark function(s) as before_tools event handlers.
 
-    Fires ONCE before ALL tools in a round execute (when LLM returns multiple tool_calls).
-    Use for: batch validation, logging start of tool execution round.
+    Fires ONCE before ALL tools in a batch execute.
+
+    What is a "tools batch"?
+    When the LLM responds, it can request multiple tools at once. For example:
+        LLM Response: tool_calls = [search("python"), read_file("docs.md"), calculate(2+2)]
+
+    This group of tools from ONE LLM response is called a "tools batch".
+    - before_tools fires ONCE before the batch starts
+    - after_tools fires ONCE after ALL tools in the batch complete
+
+    Use for: batch validation, user approval before execution, setup.
 
     Supports both decorator and wrapper syntax:
-        @before_tool_round
-        def log_round_start(agent):
+        @before_tools
+        def log_batch_start(agent):
             ...
 
-        on_events=[before_tool_round(handler)]
+        on_events=[before_tools(handler)]
     """
     for fn in funcs:
-        fn._event_type = 'before_tool_round'  # type: ignore
+        fn._event_type = 'before_tools'  # type: ignore
     return funcs[0] if len(funcs) == 1 else list(funcs)
 
 
@@ -137,7 +146,7 @@ def after_each_tool(*funcs: EventHandler) -> Union[EventHandler, List[EventHandl
     interleave messages between tool results. This breaks Anthropic Claude's API
     which requires all tool_results to immediately follow the tool_use message.
 
-    If you need to add messages after tools complete, use `after_tool_round` instead.
+    If you need to add messages after tools complete, use `after_tools` instead.
 
     Supports both decorator and wrapper syntax:
         @after_each_tool
@@ -153,14 +162,21 @@ def after_each_tool(*funcs: EventHandler) -> Union[EventHandler, List[EventHandl
     return funcs[0] if len(funcs) == 1 else list(funcs)
 
 
-def after_tool_round(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+def after_tools(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
     """
-    Mark function(s) as after_tool_round event handlers.
+    Mark function(s) as after_tools event handlers.
 
-    Fires ONCE after ALL tools in a round complete (when LLM returns multiple tool_calls).
-    Use for: adding reflection messages, summarizing tool results.
+    Fires ONCE after ALL tools in a batch complete.
 
-    This is the safe place to add messages to agent.current_session['messages']
+    What is a "tools batch"?
+    When the LLM responds, it can request multiple tools at once. For example:
+        LLM Response: tool_calls = [search("python"), read_file("docs.md"), calculate(2+2)]
+
+    This group of tools from ONE LLM response is called a "tools batch".
+    - before_tools fires ONCE before the batch starts
+    - after_tools fires ONCE after ALL tools in the batch complete
+
+    This is the SAFE place to add messages to agent.current_session['messages']
     after tool execution, because all tool_results have been added and message
     ordering is correct for all LLM providers (including Anthropic Claude).
 
@@ -171,8 +187,10 @@ def after_tool_round(*funcs: EventHandler) -> Union[EventHandler, List[EventHand
         - tool result N
         - [YOUR MESSAGE HERE - safe to add]
 
+    Use for: reflection/reasoning injection, ReAct pattern, batch cleanup.
+
     Supports both decorator and wrapper syntax:
-        @after_tool_round
+        @after_tools
         def add_reflection(agent):
             trace = agent.current_session['trace']
             recent = [t for t in trace if t['type'] == 'tool_execution'][-3:]
@@ -181,10 +199,10 @@ def after_tool_round(*funcs: EventHandler) -> Union[EventHandler, List[EventHand
                 'content': f"Completed {len(recent)} tools"
             })
 
-        on_events=[after_tool_round(add_reflection)]
+        on_events=[after_tools(add_reflection)]
     """
     for fn in funcs:
-        fn._event_type = 'after_tool_round'  # type: ignore
+        fn._event_type = 'after_tools'  # type: ignore
     return funcs[0] if len(funcs) == 1 else list(funcs)
 
 

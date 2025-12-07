@@ -1,7 +1,7 @@
 """Unit tests for connectonion/tool_executor.py"""
 
 import pytest
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 from connectonion.tool_executor import execute_single_tool, _add_assistant_message
 from connectonion.tool_registry import ToolRegistry
 from connectonion.tool_factory import create_tool_from_function
@@ -11,6 +11,7 @@ from connectonion.llm import ToolCall
 
 class FakeAgent:
     def __init__(self):
+        self.name = "test-agent"
         self.current_session = {"messages": [], "trace": [], "iteration": 1}
 
     def _invoke_events(self, event_type: str):
@@ -129,3 +130,108 @@ class TestAddAssistantMessage:
         assistant_msg = messages[0]
         # content key should not be present (or if present, not None)
         assert "content" not in assistant_msg or assistant_msg.get("content") is not None
+
+
+class TestLoggerIntegration:
+    """Tests for logger integration in tool executor."""
+
+    def test_log_tool_call_invoked_before_execution(self):
+        """Logger.log_tool_call is called before tool execution."""
+        def sample_tool(x: int) -> int:
+            return x * 2
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(sample_tool))
+
+        agent = FakeAgent()
+        logger = Mock()
+
+        execute_single_tool(
+            tool_name="sample_tool",
+            tool_args={"x": 5},
+            tool_id="call_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+
+        # Verify log_tool_call was called with correct args
+        logger.log_tool_call.assert_called_once_with("sample_tool", {"x": 5})
+
+    def test_log_tool_result_invoked_after_success(self):
+        """Logger.log_tool_result is called after successful execution."""
+        def sample_tool(x: int) -> int:
+            return x * 2
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(sample_tool))
+
+        agent = FakeAgent()
+        logger = Mock()
+
+        execute_single_tool(
+            tool_name="sample_tool",
+            tool_args={"x": 5},
+            tool_id="call_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+
+        # Verify log_tool_result was called with result and timing
+        logger.log_tool_result.assert_called_once()
+        args, kwargs = logger.log_tool_result.call_args
+        assert args[0] == "10"  # Result as string
+        assert isinstance(args[1], float)  # Timing in ms
+        assert args[1] >= 0  # Non-negative timing
+
+    def test_log_tool_call_invoked_for_not_found(self):
+        """Logger.log_tool_call is called even when tool not found."""
+        tools = ToolRegistry()
+        agent = FakeAgent()
+        logger = Mock()
+
+        execute_single_tool(
+            tool_name="missing_tool",
+            tool_args={"x": 1},
+            tool_id="call_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+
+        # log_tool_call still called
+        logger.log_tool_call.assert_called_once_with("missing_tool", {"x": 1})
+        # log_tool_result NOT called for not_found
+        logger.log_tool_result.assert_not_called()
+        # Error message printed
+        logger.print.assert_called_once()
+        assert "not found" in logger.print.call_args[0][0]
+
+    def test_logger_print_called_on_error(self):
+        """Logger.print is called with error message when tool raises."""
+        def failing_tool() -> str:
+            raise ValueError("Something went wrong")
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(failing_tool))
+
+        agent = FakeAgent()
+        logger = Mock()
+
+        trace = execute_single_tool(
+            tool_name="failing_tool",
+            tool_args={},
+            tool_id="call_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+
+        # Verify error handling
+        assert trace["status"] == "error"
+        logger.log_tool_call.assert_called_once()
+        logger.print.assert_called_once()
+        error_output = logger.print.call_args[0][0]
+        assert "Error" in error_output or "✗" in error_output
+        assert "Something went wrong" in error_output

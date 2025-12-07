@@ -116,7 +116,7 @@ def handle_reset():
             "email_active": False,
             "created_at": datetime.now().isoformat(),
             "algorithm": "ed25519",
-            "default_model": "gpt-4o-mini",
+            "default_model": "co/gemini-2.5-pro",
             "max_iterations": 10,
         },
     }

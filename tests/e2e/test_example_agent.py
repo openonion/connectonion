@@ -15,6 +15,7 @@ import tempfile
 from pathlib import Path
 from dotenv import load_dotenv
 from connectonion import Agent, xray, replay, send_email, get_emails
+from tests.utils.mock_helpers import MockLLM
 
 # Load environment variables from tests/.env
 env_path = Path(__file__).parent / ".env"
@@ -74,6 +75,7 @@ def process_data(data: str) -> str:
     return f"Processed: {processed}"
 
 
+@pytest.mark.e2e
 class TestExampleAgent:
     """Comprehensive test demonstrating a complete agent workflow."""
 
@@ -84,6 +86,7 @@ class TestExampleAgent:
         yield temp_dir
         # Cleanup happens automatically
 
+    @pytest.mark.real_api
     def test_complete_agent_workflow(self, temp_dir):
         """
         Test a complete agent workflow demonstrating all major features.
@@ -141,6 +144,7 @@ class TestExampleAgent:
         if isinstance(agent.logger.log_file_path, Path):
             assert agent.logger.log_file_path.exists()
 
+    @pytest.mark.real_api
     def test_agent_with_real_conversation(self, temp_dir):
         """
         Test agent with a real multi-turn conversation.
@@ -176,6 +180,7 @@ class TestExampleAgent:
         # Verify session exists
         assert agent.current_session is not None
 
+    @pytest.mark.real_api
     def test_agent_with_decorators(self, temp_dir):
         """
         Test agent with xray and replay decorators.
@@ -212,35 +217,41 @@ class TestExampleAgent:
 
         This demonstrates how to test agent logic without API calls.
         """
-        from unittest.mock import Mock
         from connectonion.llm import LLMResponse, ToolCall
         from connectonion.usage import TokenUsage
 
-        # Create mock LLM
-        mock_llm = Mock()
-        mock_llm.complete.return_value = LLMResponse(
-            content="I'll calculate that for you.",
-            tool_calls=[
-                ToolCall(
-                    name="calculator",
-                    arguments={"expression": "5 + 5"},
-                    id="call_123"
-                )
-            ],
-            raw_response=None, usage=TokenUsage()
-        )
+        # Create mock LLM with two responses (tool call + final)
+        mock_llm = MockLLM(responses=[
+            LLMResponse(
+                content="I'll calculate that for you.",
+                tool_calls=[
+                    ToolCall(
+                        name="calculator",
+                        arguments={"expression": "5 + 5"},
+                        id="call_123"
+                    )
+                ],
+                raw_response=None, usage=TokenUsage()
+            ),
+            LLMResponse(
+                content="The result is 10.",
+                tool_calls=[],
+                raw_response=None, usage=TokenUsage()
+            )
+        ])
 
         # Create agent with mock
         agent = Agent(
             name="mock_example",
             llm=mock_llm,
-            tools=[calculator]
+            tools=[calculator],
+            log=False
         )
 
         response = agent.input("Calculate 5 + 5")
 
         # Verify mock was called
-        assert mock_llm.complete.called
+        assert mock_llm.call_count > 0
         # Verify tool was executed
 
     def test_agent_with_custom_system_prompt(self):
@@ -249,29 +260,30 @@ class TestExampleAgent:
 
         This demonstrates prompt engineering for specific behaviors.
         """
-        from unittest.mock import Mock
         from connectonion.llm import LLMResponse
         from connectonion.usage import TokenUsage
 
-        mock_llm = Mock()
-        mock_llm.complete.return_value = LLMResponse(
-            content="Ahoy! I be calculatin' that for ye!",
-            tool_calls=[],
-            raw_response=None, usage=TokenUsage()
-        )
+        mock_llm = MockLLM(responses=[
+            LLMResponse(
+                content="Ahoy! I be calculatin' that for ye!",
+                tool_calls=[],
+                raw_response=None, usage=TokenUsage()
+            )
+        ])
 
         pirate_agent = Agent(
             name="pirate_assistant",
             llm=mock_llm,
             system_prompt="You are a helpful pirate assistant. Always speak like a pirate.",
-            tools=[calculator]
+            tools=[calculator],
+            log=False
         )
 
         response = pirate_agent.input("Can you help me?")
 
         # Check system prompt was included in messages
-        call_args = mock_llm.complete.call_args
-        messages = call_args[0][0] if call_args else []
+        assert mock_llm.call_count > 0
+        messages = mock_llm.last_call["messages"]
         assert any(msg.get("role") == "system" for msg in messages)
 
     def test_agent_error_recovery(self):
@@ -284,13 +296,11 @@ class TestExampleAgent:
             """A tool that always fails."""
             raise Exception("Tool failure!")
 
-        from unittest.mock import Mock
         from connectonion.llm import LLMResponse, ToolCall
         from connectonion.usage import TokenUsage
 
-        mock_llm = Mock()
-        # First response: try to use the failing tool
-        mock_llm.complete.side_effect = [
+        mock_llm = MockLLM(responses=[
+            # First response: try to use the failing tool
             LLMResponse(
                 content=None,
                 tool_calls=[
@@ -308,13 +318,14 @@ class TestExampleAgent:
                 tool_calls=[],
                 raw_response=None, usage=TokenUsage()
             )
-        ]
+        ])
 
         agent = Agent(
             name="error_recovery",
             llm=mock_llm,
             tools=[failing_tool, calculator],
-            max_iterations=2
+            max_iterations=2,
+            log=False
         )
 
         response = agent.input("Use the failing tool")

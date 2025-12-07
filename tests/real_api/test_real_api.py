@@ -109,5 +109,3 @@ def test_deployed_api():
     print("  2. Test with real authentication flow")
     print("  3. Verify email retrieval and marking as read")
 
-if __name__ == "__main__":
-    test_deployed_api()

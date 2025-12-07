@@ -10,6 +10,7 @@ from connectonion import Agent
 # No need to import tools - they're just functions
 from connectonion.llm import LLMResponse, ToolCall, OpenAILLM
 from connectonion.usage import TokenUsage
+from tests.utils.mock_helpers import MockLLM
 import os
 from dotenv import load_dotenv
 
@@ -43,14 +44,14 @@ def mock_openai_client():
 @pytest.fixture
 def mock_llm():
     """Create a mock LLM instance."""
-    mock = Mock(spec=OpenAILLM)
-    mock.complete.return_value = LLMResponse(
-        content="Mock response",
-        tool_calls=[],
-        raw_response=None,
-        usage=TokenUsage(),
-    )
-    return mock
+    return MockLLM(responses=[
+        LLMResponse(
+            content="Mock response",
+            tool_calls=[],
+            raw_response=None,
+            usage=TokenUsage(),
+        )
+    ])
 
 
 # Tool functions for testing

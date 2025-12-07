@@ -13,6 +13,7 @@ from connectonion.useful_plugins.image_result_formatter import (
     _format_image_result,
     image_result_formatter,
 )
+from tests.utils.mock_helpers import MockLLM
 
 
 class FakeAgent:
@@ -268,7 +269,7 @@ class TestImageResultFormatterPlugin:
         """Test that handler has correct event type."""
         handler = image_result_formatter[0]
         assert hasattr(handler, '_event_type')
-        assert handler._event_type == 'after_each_tool'
+        assert handler._event_type == 'after_tools'
 
     def test_plugin_integrates_with_agent(self):
         """Test that plugin can be registered with agent."""
@@ -276,13 +277,14 @@ class TestImageResultFormatterPlugin:
         from connectonion.llm import LLMResponse
         from connectonion.usage import TokenUsage
 
-        mock_llm = Mock()
-        mock_llm.complete.return_value = LLMResponse(
-            content="Test",
-            tool_calls=[],
-            raw_response=None,
-            usage=TokenUsage(),
-        )
+        mock_llm = MockLLM(responses=[
+            LLMResponse(
+                content="Test",
+                tool_calls=[],
+                raw_response=None,
+                usage=TokenUsage(),
+            )
+        ])
 
         # Should not raise
         agent = Agent(
@@ -292,4 +294,4 @@ class TestImageResultFormatterPlugin:
             log=False,
         )
 
-        assert 'after_each_tool' in agent.events
+        assert 'after_tools' in agent.events

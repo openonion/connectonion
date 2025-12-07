@@ -152,7 +152,15 @@ class Logger:
         if self.session_file.exists():
             with open(self.session_file, 'r') as f:
                 self.session_data = yaml.safe_load(f) or {}
-            # Ensure required fields exist
+            # Ensure ALL required fields exist (handles empty/corrupted files)
+            if 'name' not in self.session_data:
+                self.session_data['name'] = self.agent_name
+            if 'created' not in self.session_data:
+                self.session_data['created'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            if 'total_cost' not in self.session_data:
+                self.session_data['total_cost'] = 0.0
+            if 'total_tokens' not in self.session_data:
+                self.session_data['total_tokens'] = 0
             if 'turns' not in self.session_data:
                 self.session_data['turns'] = []
             if 'messages' not in self.session_data:
@@ -200,12 +208,14 @@ class Logger:
 
         turn_data = {
             'input': user_input,
+            'expected': session.get('expected', ''),
             'model': model,
             'duration_ms': int(duration_ms),
             'tokens': total_tokens,
             'cost': round(total_cost, 4),
             'tools_called': [self._format_tool_call(t) for t in tool_calls],
-            'result': result
+            'result': result,
+            'evaluation': session.get('evaluation', '')
         }
 
         # Update session aggregates

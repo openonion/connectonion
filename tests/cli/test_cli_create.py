@@ -254,30 +254,31 @@ class TestCliCreate:
 
     def test_create_adds_agent_address_explanation_to_global_keys(self):
         """Test that create adds explanatory comments to global keys.env when first created."""
-        with self.runner.isolated_filesystem():
-            from connectonion.cli.main import cli
-            from pathlib import Path
-            import shutil
+        import tempfile
+        from pathlib import Path
 
-            # Remove existing ~/.co to ensure fresh creation
-            global_co_dir = Path.home() / ".co"
-            if global_co_dir.exists():
-                shutil.rmtree(global_co_dir)
+        # Use temp directory as fake home to avoid touching real ~/.co
+        with tempfile.TemporaryDirectory() as fake_home:
+            fake_home_path = Path(fake_home)
 
-            result = self.runner.invoke(cli, ['create', 'explain-test-agent',
-                                              '--yes',
-                                              '--template', 'minimal'])
+            with patch('pathlib.Path.home', return_value=fake_home_path):
+                with self.runner.isolated_filesystem():
+                    from connectonion.cli.main import cli
 
-            assert result.exit_code == 0
+                    result = self.runner.invoke(cli, ['create', 'explain-test-agent',
+                                                      '--yes',
+                                                      '--template', 'minimal'])
 
-            # Check global keys.env (should exist now since we removed it)
-            global_keys_env = Path.home() / ".co" / "keys.env"
-            assert global_keys_env.exists()
+                    assert result.exit_code == 0
 
-            with open(global_keys_env) as f:
-                content = f.read()
-                # Should have explanatory comment about agent address (only on first creation)
-                assert "Your agent address (Ed25519 public key) is used for:" in content
-                assert "Secure agent communication" in content
-                assert "Authentication with OpenOnion" in content
-                assert "@mail.openonion.ai" in content
+                    # Check global keys.env in fake home
+                    global_keys_env = fake_home_path / ".co" / "keys.env"
+                    assert global_keys_env.exists()
+
+                    with open(global_keys_env) as f:
+                        content = f.read()
+                        # Should have explanatory comment about agent address (only on first creation)
+                        assert "Your agent address (Ed25519 public key) is used for:" in content
+                        assert "Secure agent communication" in content
+                        assert "Authentication with OpenOnion" in content
+                        assert "@mail.openonion.ai" in content

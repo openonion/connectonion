@@ -14,7 +14,7 @@ Usage:
 
 import re
 from typing import TYPE_CHECKING
-from ..events import after_each_tool
+from ..events import after_tools
 
 if TYPE_CHECKING:
     from ..agent import Agent
@@ -114,5 +114,5 @@ def _format_image_result(agent: 'Agent') -> None:
 
 
 # Plugin is an event list
-# Uses after_each_tool because each image result needs individual formatting
-image_result_formatter = [after_each_tool(_format_image_result)]
+# Uses after_tools because message modification can only happen after all tools finish
+image_result_formatter = [after_tools(_format_image_result)]

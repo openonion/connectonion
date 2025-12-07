@@ -290,23 +290,25 @@ class TestCliInit:
                 assert "# Default model: co/gemini-2.5-pro" in content
                 assert "managed keys with free credits" in content
 
-    def test_init_creates_agent_address_explanation_in_global_keys(self):
+    def test_init_creates_agent_address_explanation_in_global_keys(self, tmp_path, monkeypatch):
         """Test that init creates explanatory comments in global keys.env when first created."""
+        from connectonion.cli.main import cli
+        from pathlib import Path
+        import os
+
+        # Use temp directory as fake home to avoid modifying real ~/.co
+        fake_home = tmp_path / "fake_home"
+        fake_home.mkdir()
+        monkeypatch.setenv("HOME", str(fake_home))
+        # Also patch Path.home() for cross-platform support
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
         with self.runner.isolated_filesystem():
-            from connectonion.cli.main import cli
-            from pathlib import Path
-            import shutil
-
-            # Remove existing ~/.co to ensure fresh creation
-            global_co_dir = Path.home() / ".co"
-            if global_co_dir.exists():
-                shutil.rmtree(global_co_dir)
-
             result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
             assert result.exit_code == 0
 
-            # Check global keys.env (should exist now since we removed it)
-            global_keys_env = Path.home() / ".co" / "keys.env"
+            # Check global keys.env in our fake home
+            global_keys_env = fake_home / ".co" / "keys.env"
             assert global_keys_env.exists()
 
             with open(global_keys_env) as f:

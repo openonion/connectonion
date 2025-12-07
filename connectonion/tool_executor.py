@@ -39,8 +39,8 @@ def execute_and_record_tools(
     # Format and add assistant message with tool calls
     _add_assistant_message(agent.current_session['messages'], tool_calls)
 
-    # before_tool_round fires ONCE before ALL tools in the round execute
-    agent._invoke_events('before_tool_round')
+    # before_tools fires ONCE before ALL tools in the batch execute
+    agent._invoke_events('before_tools')
 
     # Execute each tool
     for tool_call in tool_calls:
@@ -73,10 +73,10 @@ def execute_and_record_tools(
         # WARNING: Do NOT add messages here - it breaks Anthropic's message ordering
         agent._invoke_events('after_each_tool')
 
-    # after_tool_round fires ONCE after ALL tools in the round complete
+    # after_tools fires ONCE after ALL tools in the batch complete
     # This is the safe place to add messages (e.g., reflection) because all
     # tool_results have been added and message ordering is correct for all LLMs
-    agent._invoke_events('after_tool_round')
+    agent._invoke_events('after_tools')
 
 
 def execute_single_tool(

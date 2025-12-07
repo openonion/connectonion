@@ -113,18 +113,3 @@ def test_llm_models_endpoint():
         return False
 
 
-if __name__ == "__main__":
-    print("ConnectOnion <-> OpenOnion Production API Test\n")
-    
-    auth_ok = test_production_auth()
-    models_ok = test_llm_models_endpoint()
-    
-    print("\n" + "="*50)
-    print("Test Results:")
-    print(f"  Authentication: {'✅ PASSED' if auth_ok else '❌ FAILED'}")
-    print(f"  LLM Models: {'✅ PASSED' if models_ok else '❌ FAILED'}")
-    
-    if auth_ok and models_ok:
-        print("\n🎉 All tests passed! Integration is working.")
-    else:
-        print("\n⚠️  Some tests failed. Check the logs above.")

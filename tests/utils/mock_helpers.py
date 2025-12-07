@@ -2,9 +2,72 @@
 
 import json
 from unittest.mock import Mock, MagicMock
-from typing import Dict, List, Any, Optional
-from connectonion.llm import LLMResponse, ToolCall
+from typing import Dict, List, Any, Optional, Type
+from connectonion.llm import LLM, LLMResponse, ToolCall
 from connectonion.usage import TokenUsage
+from pydantic import BaseModel
+
+
+class MockLLM(LLM):
+    """Mock LLM that returns pre-configured responses.
+
+    This class implements the LLM interface properly, making it YAML-serializable
+    and compatible with the Agent's logging system.
+
+    Usage:
+        # Single response
+        mock_llm = MockLLM(responses=[LLMResponseBuilder.text_response("Hello")])
+
+        # Multiple responses (like side_effect)
+        mock_llm = MockLLM(responses=[
+            LLMResponseBuilder.tool_call_response("calculator", {"expression": "2+2"}),
+            LLMResponseBuilder.text_response("The result is 4")
+        ])
+
+        # With custom model name
+        mock_llm = MockLLM(responses=[...], model="gpt-4o-mini")
+    """
+
+    def __init__(self, responses: List[LLMResponse] = None, model: str = "mock-llm"):
+        self.model = model
+        self._responses = list(responses) if responses else []
+        self._call_count = 0
+        self._calls = []  # Track all calls for assertions
+
+    def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
+        """Return next response from the queue."""
+        self._calls.append({"messages": messages, "tools": tools, "kwargs": kwargs})
+        self._call_count += 1
+
+        if not self._responses:
+            return LLMResponse(content="Mock response", tool_calls=[], raw_response={}, usage=TokenUsage())
+
+        return self._responses.pop(0)
+
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
+        """Return a basic instance of the schema."""
+        return output_schema()
+
+    @property
+    def call_count(self) -> int:
+        """Number of times complete() was called."""
+        return self._call_count
+
+    @property
+    def calls(self) -> List[Dict]:
+        """All calls made to complete()."""
+        return self._calls
+
+    @property
+    def last_call(self) -> Optional[Dict]:
+        """Last call made to complete()."""
+        return self._calls[-1] if self._calls else None
+
+    def reset(self, responses: List[LLMResponse] = None):
+        """Reset the mock with new responses."""
+        self._responses = list(responses) if responses else []
+        self._call_count = 0
+        self._calls = []
 
 
 class OpenAIMockBuilder:

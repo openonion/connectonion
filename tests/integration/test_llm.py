@@ -16,9 +16,6 @@ if env_path.exists():
 else:
     load_dotenv()
 
-# Import will be updated when implementation is ready
-# from connectonion import llm_do
-
 
 # Test models for structured output
 class SimpleModel(BaseModel):
@@ -54,168 +51,11 @@ class TestLLMFunction:
         # Teardown
         import shutil
         shutil.rmtree(self.temp_dir)
-    
-    # -------------------------------------------------------------------------
-    # Basic Functionality Tests (Mocked)
-    # -------------------------------------------------------------------------
-    
-    @patch('openai.OpenAI')
-    def test_simple_string_input_output(self, mock_openai_class):
-        """Test basic string input returns string output."""
-        # Skip until we update mocking
-        pytest.skip("Need to update mocking for new implementation")
 
-        # Mock the LLM response
-        mock_llm = Mock()
-        mock_llm.complete.return_value = Mock(content="4", tool_calls=[])
-        mock_llm_class.return_value = mock_llm
-
-        from connectonion import llm_do
-        result = llm_do("What's 2+2?")
-
-        assert result == "4"
-        mock_llm.complete.assert_called_once()
-    
-    @patch('openai.OpenAI')
-    def test_structured_output_with_pydantic(self, mock_openai_class):
-        """Test structured output using Pydantic model."""
-        pytest.skip("Need to update mocking for new implementation")
-
-        # Mock LLM to return JSON that matches the model
-        mock_llm = Mock()
-        mock_llm.complete.return_value = Mock(
-            content='{"value": "test", "count": 42}',
-            tool_calls=[]
-        )
-        mock_llm_class.return_value = mock_llm
-
-        from connectonion import llm_do
-        result = llm_do("Extract data", output=SimpleModel)
-
-        assert isinstance(result, SimpleModel)
-        assert result.value == "test"
-        assert result.count == 42
-    
-    @patch('openai.OpenAI')
-    def test_system_prompt_as_string(self, mock_openai_class):
-        """Test using a string system prompt."""
-        pytest.skip("Need to update mocking for new implementation")
-
-        mock_llm = Mock()
-        mock_llm.complete.return_value = Mock(content="Translated", tool_calls=[])
-        mock_llm_class.return_value = mock_llm
-
-        from connectonion import llm_do
-        result = llm_do(
-            "Hello",
-            system_prompt="You are a translator. Translate to Spanish."
-        )
-
-        # Verify the prompt was included in the system message
-        call_args = mock_llm.complete.call_args[0][0]  # messages
-        system_msg = call_args[0]
-        assert system_msg["role"] == "system"
-        assert "translator" in system_msg["content"]
-    
-    def test_system_prompt_as_file(self):
-        """Test loading system prompt from file."""
-        pytest.skip("Need to update mocking for new implementation")
-
-        # Create a temporary prompt file
-        prompt_file = Path(self.temp_dir) / "test_prompt.md"
-        prompt_file.write_text("You are a helpful assistant.")
-
-        with patch('openai.OpenAI') as mock_openai_class:
-            mock_llm = Mock()
-            mock_llm.complete.return_value = Mock(content="Response", tool_calls=[])
-            mock_openai_class.return_value = mock_llm
-
-            from connectonion import llm_do
-            result = llm_do("Test", system_prompt=str(prompt_file))
-
-            # Verify file content was loaded
-            call_args = mock_llm.complete.call_args[0][0]
-            system_msg = call_args[0]
-            assert "helpful assistant" in system_msg["content"]
-    
-    @patch('openai.OpenAI')
-    def test_custom_model_parameter(self, mock_openai_class):
-        """Test using custom model parameter."""
-        pytest.skip("Need to update mocking for new implementation")
-
-        from connectonion import llm_do
-        result = llm_do("Test", model="gpt-4")
-
-        # Verify model was passed to OpenAILLM
-        from unittest.mock import ANY
-        mock_llm_class.assert_called_with(
-            api_key=ANY,
-            model="gpt-4"
-        )
-    
-    @patch('openai.OpenAI')
-    def test_temperature_parameter(self, mock_openai_class):
-        """Test temperature parameter affects LLM call."""
-        pytest.skip("Need to update mocking for new implementation")
-
-        mock_llm = Mock()
-        mock_llm.complete.return_value = Mock(content="Creative", tool_calls=[])
-        mock_llm_class.return_value = mock_llm
-
-        from connectonion import llm_do
-        result = llm_do("Write a poem", temperature=1.5)
-
-        # Temperature should be passed through to the LLM call
-        # This would depend on implementation details
-        assert result == "Creative"
-    
-    # -------------------------------------------------------------------------
-    # Error Handling Tests
-    # -------------------------------------------------------------------------
-    
-    def test_invalid_pydantic_model_output(self):
-        """Test handling when LLM output doesn't match Pydantic model."""
-        pytest.skip("Waiting for implementation")
-
-        with patch('openai.OpenAI') as mock_openai_class:
-            mock_llm = Mock()
-            # Return invalid JSON for the model
-            mock_llm.complete.return_value = Mock(
-                content='{"wrong": "fields"}',
-                tool_calls=[]
-            )
-            mock_openai_class.return_value = mock_llm
-
-            from connectonion import llm_do
-            with pytest.raises(ValidationError):
-                llm_do("Extract", output=SimpleModel)
-    
-    def test_system_prompt_file_not_found(self):
-        """Test error when system prompt file doesn't exist."""
-        pytest.skip("Waiting for implementation")
-
-        from connectonion import llm_do
-        with pytest.raises(FileNotFoundError):
-            llm_do("Test", system_prompt="nonexistent_file.md")
-    
-    def test_api_error_handling(self):
-        """Test handling of API errors."""
-        pytest.skip("Waiting for implementation")
-
-        with patch('openai.OpenAI') as mock_openai_class:
-            mock_llm = Mock()
-            mock_llm.complete.side_effect = Exception("API Error")
-            mock_openai_class.return_value = mock_llm
-
-            from connectonion import llm_do
-            with pytest.raises(Exception) as exc_info:
-                llm_do("Test")
-            assert "API Error" in str(exc_info.value)
-    
     # -------------------------------------------------------------------------
     # Real API Tests (marked for separate execution)
     # -------------------------------------------------------------------------
-    
+
     @pytest.mark.real_api
     def test_real_api_simple_call(self):
         """Test real API call with simple string."""
@@ -227,7 +67,7 @@ class TestLLMFunction:
 
         assert result is not None
         assert "4" in result
-    
+
     @pytest.mark.real_api
     def test_real_api_structured_output(self):
         """Test real API with structured Pydantic output."""
@@ -249,7 +89,7 @@ class TestLLMFunction:
         assert isinstance(result, TestResult)
         assert result.answer == 50
         assert result.explanation is not None
-    
+
     @pytest.mark.real_api
     def test_real_api_with_system_prompt(self):
         """Test real API with custom system prompt."""
@@ -267,120 +107,16 @@ class TestLLMFunction:
         # Check for common translations
         result_lower = result.lower()
         assert "hello" in result_lower or "good" in result_lower
-    
+
     # -------------------------------------------------------------------------
-    # Integration Tests
+    # Edge Cases
     # -------------------------------------------------------------------------
-    
-    def test_llm_function_in_agent_tool(self):
-        """Test using llm_do() inside an Agent tool."""
-        pytest.skip("Waiting for implementation")
 
-        from connectonion import Agent, llm
-
-        def analyze_text(text: str) -> str:
-            """Tool that uses llm_do() internally."""
-            class Result(BaseModel):
-                summary: str
-                word_count: int
-
-            analysis = llm_do(f"Analyze: {text}", output=Result)
-            return f"Summary: {analysis.summary} ({analysis.word_count} words)"
-
-        with patch('openai.OpenAI') as mock_openai_class:
-            mock_llm = Mock()
-            mock_llm.complete.return_value = Mock(
-                content='{"summary": "Test summary", "word_count": 10}',
-                tool_calls=[]
-            )
-            mock_openai_class.return_value = mock_llm
-
-            agent = Agent("test", tools=[analyze_text])
-            # This would need more mocking for the agent's LLM calls
-            assert agent is not None
-    
-    def test_complex_nested_model(self):
-        """Test with complex nested Pydantic model."""
-        pytest.skip("Waiting for implementation")
-
-        with patch('openai.OpenAI') as mock_openai_class:
-            mock_llm = Mock()
-            mock_llm.complete.return_value = Mock(
-                content='''{
-                    "title": "Test",
-                    "metadata": {"key": "value"},
-                    "items": ["a", "b", "c"],
-                    "score": 0.95
-                }''',
-                tool_calls=[]
-            )
-            mock_openai_class.return_value = mock_llm
-
-            from connectonion import llm_do
-            result = llm_do("Generate complex data", output=ComplexModel)
-
-            assert isinstance(result, ComplexModel)
-            assert result.title == "Test"
-            assert result.metadata["key"] == "value"
-            assert len(result.items) == 3
-            assert result.score == 0.95
-    
-    # -------------------------------------------------------------------------
-    # Performance and Edge Cases
-    # -------------------------------------------------------------------------
-    
     def test_empty_input(self):
         """Test handling of empty input."""
         from connectonion import llm_do
         with pytest.raises(ValueError):
             llm_do("")
-    
-    def test_very_long_input(self):
-        """Test handling of very long input."""
-        pytest.skip("Waiting for implementation")
-
-        with patch('openai.OpenAI') as mock_openai_class:
-            mock_llm = Mock()
-            mock_llm.complete.return_value = Mock(content="Summary", tool_calls=[])
-            mock_openai_class.return_value = mock_llm
-
-            from connectonion import llm_do
-            long_text = "word " * 10000  # Very long input
-            result = llm_do(long_text)
-
-            assert result == "Summary"
-    
-    def test_concurrent_calls(self):
-        """Test thread safety of concurrent llm_do() calls."""
-        pytest.skip("Waiting for implementation")
-
-        import threading
-        from connectonion import llm_do
-
-        results = []
-
-        def make_call(prompt, index):
-            with patch('openai.OpenAI') as mock_openai_class:
-                mock_llm = Mock()
-                mock_llm.complete.return_value = Mock(
-                    content=f"Response {index}",
-                    tool_calls=[]
-                )
-                mock_openai_class.return_value = mock_llm
-
-                result = llm_do(prompt)
-                results.append(result)
-
-        threads = []
-        for i in range(5):
-            t = threading.Thread(target=make_call, args=(f"Test {i}", i))
-            threads.append(t)
-            t.start()
-
-        for t in threads:
-            t.join()
-
-        assert len(results) == 5
 
 
 class TestMultiLLMSupport:
@@ -392,7 +128,7 @@ class TestMultiLLMSupport:
         self.has_openai = bool(os.getenv("OPENAI_API_KEY"))
         self.has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
         self.has_google = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-    
+
     @pytest.mark.real_api
     def test_openai_model(self):
         """Test OpenAI model integration."""
@@ -406,7 +142,7 @@ class TestMultiLLMSupport:
         assert response is not None
         assert isinstance(response, str)
         assert len(response.split()) <= 10  # Allow some flexibility
-    
+
     @pytest.mark.real_api
     def test_anthropic_model(self):
         """Test Anthropic Claude model integration."""
@@ -419,7 +155,7 @@ class TestMultiLLMSupport:
 
         assert response is not None
         assert isinstance(response, str)
-    
+
     @pytest.mark.real_api
     def test_google_gemini_model(self):
         """Test Google Gemini model integration."""
@@ -432,7 +168,7 @@ class TestMultiLLMSupport:
 
         assert response is not None
         assert isinstance(response, str)
-    
+
     @pytest.mark.real_api
     def test_tool_use_across_models(self):
         """Test tool use functionality across different LLM providers."""
@@ -460,7 +196,7 @@ class TestMultiLLMSupport:
             agent = Agent("gemini_tools", model="gemini-2.5-flash", tools=[add_numbers])
             response = agent.input("What is 25 plus 17?")
             assert "42" in str(response)
-    
+
     def test_model_registry(self):
         """Test that model registry correctly maps models to providers."""
         from connectonion.llm import MODEL_REGISTRY
@@ -480,7 +216,7 @@ class TestMultiLLMSupport:
         assert MODEL_REGISTRY["gemini-3-pro-preview"] == "google"
         assert MODEL_REGISTRY["gemini-3-pro-image-preview"] == "google"
         assert MODEL_REGISTRY["gemini-2.5-flash"] == "google"
-    
+
     def test_create_llm_factory(self):
         """Test the create_llm factory function."""
         from connectonion.llm import create_llm, OpenAILLM, AnthropicLLM, GeminiLLM
@@ -499,7 +235,7 @@ class TestMultiLLMSupport:
         if self.has_google:
             llm = create_llm("gemini-2.5-flash")
             assert isinstance(llm, GeminiLLM)
-    
+
     def test_model_inference_from_name(self):
         """Test that model provider is correctly inferred from model name."""
         from connectonion.llm import create_llm
@@ -528,7 +264,7 @@ class TestGeminiTools:
     def setup_method(self):
         """Set up test fixtures."""
         self.has_google = bool(os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"))
-    
+
     @pytest.mark.real_api
     def test_gemini_simple_tool_call(self):
         """Test simple tool call with Gemini."""
@@ -546,7 +282,7 @@ class TestGeminiTools:
 
         assert response is not None
         assert "42" in str(response)
-    
+
     @pytest.mark.real_api
     def test_gemini_multiple_tools(self):
         """Test Gemini with multiple tools available."""
@@ -571,7 +307,7 @@ class TestGeminiTools:
         # Should mention both results
         response_str = str(response)
         assert "30" in response_str or "30.0" in response_str
-    
+
     @pytest.mark.real_api
     def test_gemini_without_tools(self):
         """Test Gemini response without tools."""

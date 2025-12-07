@@ -3,7 +3,7 @@ Tests for the event system (on_events parameter)
 """
 import pytest
 from unittest.mock import Mock
-from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, before_tool_round, after_each_tool, after_tool_round, on_error, on_complete
+from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete
 
 
 def search(query: str) -> str:
@@ -109,12 +109,12 @@ class TestEventSystem:
         # Should fire at least once (when search tool is called)
         assert len(calls) >= 1
 
-    def test_after_tool_round_fires_after_success(self):
-        """Test after_tool_round fires after successful tool execution"""
+    def test_after_tools_fires_after_success(self):
+        """Test after_tools fires after successful tool execution"""
         calls = []
 
-        def track_after_tool_round(agent):
-            calls.append('after_tool_round')
+        def track_after_tools(agent):
+            calls.append('after_tools')
             # Verify we can access tool result
             trace = agent.current_session['trace']
             tool_executions = [t for t in trace if t['type'] == 'tool_execution']
@@ -127,7 +127,7 @@ class TestEventSystem:
             "test",
             tools=[search],
             model="gpt-4o-mini",
-            on_events=[after_tool_round(track_after_tool_round)]
+            on_events=[after_tools(track_after_tools)]
         )
 
         agent.input("Search for Python")
@@ -239,8 +239,8 @@ class TestEventSystem:
         def track_llm(agent):
             calls.append('after_llm')
 
-        def track_tool_round(agent):
-            calls.append('after_tool_round')
+        def track_tools(agent):
+            calls.append('after_tools')
 
         agent = Agent(
             "test",
@@ -249,7 +249,7 @@ class TestEventSystem:
             on_events=[
                 after_user_input(track_user),
                 after_llm(track_llm),
-                after_tool_round(track_tool_round)
+                after_tools(track_tools)
             ]
         )
 
@@ -258,7 +258,7 @@ class TestEventSystem:
         # All event types should fire
         assert 'after_user_input' in calls
         assert 'after_llm' in calls
-        assert 'after_tool_round' in calls
+        assert 'after_tools' in calls
 
         # after_user_input should fire exactly once
         assert calls.count('after_user_input') == 1
@@ -317,9 +317,9 @@ class TestEventSystem:
         assert before_llm(handler)._event_type == 'before_llm'
         assert after_llm(handler)._event_type == 'after_llm'
         assert before_each_tool(handler)._event_type == 'before_each_tool'
-        assert before_tool_round(handler)._event_type == 'before_tool_round'
+        assert before_tools(handler)._event_type == 'before_tools'
         assert after_each_tool(handler)._event_type == 'after_each_tool'
-        assert after_tool_round(handler)._event_type == 'after_tool_round'
+        assert after_tools(handler)._event_type == 'after_tools'
         assert on_error(handler)._event_type == 'on_error'
         assert on_complete(handler)._event_type == 'on_complete'
 
@@ -418,8 +418,8 @@ class TestEventSystem:
         """Test on_complete fires after all tools have completed"""
         event_order = []
 
-        def track_after_tool_round(agent):
-            event_order.append('after_tool_round')
+        def track_after_tools(agent):
+            event_order.append('after_tools')
 
         def track_complete(agent):
             event_order.append('on_complete')
@@ -429,7 +429,7 @@ class TestEventSystem:
             tools=[search],
             model="gpt-4o-mini",
             on_events=[
-                after_tool_round(track_after_tool_round),
+                after_tools(track_after_tools),
                 on_complete(track_complete)
             ]
         )
@@ -438,17 +438,17 @@ class TestEventSystem:
 
         # on_complete should be the last event
         assert event_order[-1] == 'on_complete'
-        # after_tool_round should fire before on_complete
-        assert 'after_tool_round' in event_order
-        assert event_order.index('after_tool_round') < event_order.index('on_complete')
+        # after_tools should fire before on_complete
+        assert 'after_tools' in event_order
+        assert event_order.index('after_tools') < event_order.index('on_complete')
 
-    def test_after_tool_round_fires_for_all_executions(self):
-        """Test after_tool_round fires for ALL tool executions (success, error, not_found)"""
-        after_tool_round_calls = []
+    def test_after_tools_fires_for_all_executions(self):
+        """Test after_tools fires for ALL tool executions (success, error, not_found)"""
+        after_tools_calls = []
         on_error_calls = []
 
-        def track_after_tool_round(agent):
-            after_tool_round_calls.append(agent.current_session['trace'][-1]['status'])
+        def track_after_tools(agent):
+            after_tools_calls.append(agent.current_session['trace'][-1]['status'])
 
         def track_error(agent):
             on_error_calls.append(agent.current_session['trace'][-1]['status'])
@@ -457,7 +457,7 @@ class TestEventSystem:
             "test",
             tools=[search, failing_tool],
             model="gpt-4o-mini",
-            on_events=[after_tool_round(track_after_tool_round), on_error(track_error)]
+            on_events=[after_tools(track_after_tools), on_error(track_error)]
         )
 
         # Success case
@@ -469,9 +469,9 @@ class TestEventSystem:
         # Not found case
         agent.execute_tool("nonexistent", {})
 
-        # after_tool_round should fire for all 3 executions
-        assert len(after_tool_round_calls) == 3
-        assert after_tool_round_calls == ['success', 'error', 'not_found']
+        # after_tools should fire for all 3 executions
+        assert len(after_tools_calls) == 3
+        assert after_tools_calls == ['success', 'error', 'not_found']
 
         # on_error should fire only for error and not_found (2 times)
         assert len(on_error_calls) == 2
@@ -512,7 +512,7 @@ class TestNewEventSyntax:
         def handler4(agent):
             pass
 
-        @after_tool_round
+        @after_tools
         def handler5(agent):
             pass
 
@@ -538,7 +538,7 @@ class TestNewEventSyntax:
         assert handler2._event_type == 'before_llm'
         assert handler3._event_type == 'after_llm'
         assert handler4._event_type == 'before_each_tool'
-        assert handler5._event_type == 'after_tool_round'
+        assert handler5._event_type == 'after_tools'
         assert handler6._event_type == 'on_error'
         assert handler7._event_type == 'on_complete'
 
@@ -581,7 +581,7 @@ class TestNewEventSyntax:
         def check_tool(agent):
             pass
 
-        @after_tool_round
+        @after_tools
         def log_tool(agent):
             pass
 
@@ -593,7 +593,7 @@ class TestNewEventSyntax:
         )
 
         assert len(agent.events['before_each_tool']) == 1
-        assert len(agent.events['after_tool_round']) == 1
+        assert len(agent.events['after_tools']) == 1
 
     def test_agent_accepts_multiple_args_wrapper(self):
         """Test Agent accepts before_each_tool(fn1, fn2) in on_events"""
@@ -612,14 +612,14 @@ class TestNewEventSyntax:
             model="gpt-4o-mini",
             on_events=[
                 before_each_tool(handler1, handler2),  # returns [fn, fn]
-                after_tool_round(handler3),             # returns fn
+                after_tools(handler3),                 # returns fn
             ],
             log=False
         )
 
-        # Should have 2 before_each_tool handlers and 1 after_tool_round handler
+        # Should have 2 before_each_tool handlers and 1 after_tools handler
         assert len(agent.events['before_each_tool']) == 2
-        assert len(agent.events['after_tool_round']) == 1
+        assert len(agent.events['after_tools']) == 1
 
     def test_mixed_decorator_and_wrapper_syntax(self):
         """Test mixing @decorator and wrapper(fn1, fn2) syntax"""

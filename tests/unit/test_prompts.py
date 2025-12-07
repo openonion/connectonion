@@ -148,7 +148,10 @@ class TestLoadSystemPrompt:
         try:
             with pytest.raises(ValueError) as exc_info:
                 load_system_prompt(temp_path)
-            assert "UTF-8" in str(exc_info.value) or "text file" in str(exc_info.value)
+            error_msg = str(exc_info.value)
+            # Error should mention encoding issue - either "UTF-8" or "text file"
+            assert "UTF-8" in error_msg or "text file" in error_msg, \
+                f"Expected encoding error, got: {error_msg}"
         finally:
             os.unlink(temp_path)
     

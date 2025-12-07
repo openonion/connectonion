@@ -79,7 +79,7 @@ def ensure_global_config() -> Dict[str, Any]:
         },
         "agent": {
             "algorithm": "ed25519",
-            "default_model": "gpt-4o-mini",
+            "default_model": "co/gemini-2.5-pro",
             "max_iterations": 10,
             "created_at": datetime.now().isoformat(),
         },

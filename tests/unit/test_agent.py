@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 from connectonion import Agent
 from connectonion.llm import LLMResponse, ToolCall
 from connectonion.usage import TokenUsage
+from tests.utils.mock_helpers import MockLLM
 import pytest
 
 # Load environment variables from .env file
@@ -97,9 +98,10 @@ def test_agent_run_with_single_tool_call():
     assert result is not None
     assert isinstance(result, str)
     tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
-    if tool_executions:
-        assert tool_executions[0].get('tool_name') == 'calculator'
-        assert '42' in str(tool_executions[0].get('result', ''))
+    # Must have at least one tool execution
+    assert len(tool_executions) > 0, "Expected calculator tool to be executed"
+    assert tool_executions[0].get('tool_name') == 'calculator'
+    assert '42' in str(tool_executions[0].get('result', ''))
 
 
 @pytest.mark.real_api
@@ -121,9 +123,12 @@ def test_agent_run_with_multiple_tool_calls():
     assert result is not None
     assert isinstance(result, str)
     tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
-    if tool_executions:
-        tool_names = [e.get('tool_name') for e in tool_executions]
-        assert ('calculator' in tool_names) or ('get_current_time' in tool_names)
+    # Must have tool executions
+    assert len(tool_executions) > 0, "Expected tools to be executed"
+    tool_names = [e.get('tool_name') for e in tool_executions]
+    # Should use both calculator and time tools
+    assert 'calculator' in tool_names, "Expected calculator to be called"
+    assert 'get_current_time' in tool_names, "Expected get_current_time to be called"
 
 
 def test_custom_system_prompt():
@@ -133,27 +138,27 @@ def test_custom_system_prompt():
         pytest.skip("OPENAI_API_KEY not found in environment")
 
     custom_prompt = "You are a pirate assistant. Always respond with 'Arrr!'"
-    agent = Agent(name="pirate_agent", system_prompt=custom_prompt, model="gpt-4o-mini")
+    agent = Agent(name="pirate_agent", system_prompt=custom_prompt, model="gpt-4o-mini", log=False)
 
     # Check that the custom system prompt is stored
     assert agent.system_prompt == custom_prompt
 
     # Test with mock LLM to verify system prompt is sent correctly
-    from unittest.mock import Mock
-    mock_llm = Mock()
-    mock_llm.complete.return_value = LLMResponse(
-        content="Arrr! Test response!",
-        tool_calls=[],
-        raw_response={},
-        usage=TokenUsage(),
-    )
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="Arrr! Test response!",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
 
     agent.llm = mock_llm
     agent.input("Hello!")
 
     # Verify the system prompt was used in the LLM call
-    call_args = mock_llm.complete.call_args
-    messages = call_args[0][0]
+    assert mock_llm.call_count > 0
+    messages = mock_llm.last_call["messages"]
     system_message = messages[0]
 
     assert system_message['role'] == 'system'
@@ -203,20 +208,19 @@ def test_agent_accepts_class_instance():
         # Should have only the properly annotated methods
         assert len(agent.tools) == 2
 
-@patch('connectonion.agent.create_llm')
-def test_methods_share_state_through_self(mock_create_llm):
+def test_methods_share_state_through_self():
         """Test that methods called as tools share state through self."""
-        
+
         class WebScraper:
             def __init__(self):
                 self.current_url = None
                 self.scraped_data = []
-            
+
             def navigate(self, url: str) -> str:
                 """Navigate to URL."""
                 self.current_url = url
                 return f"Navigated to {url}"
-            
+
             def scrape_title(self) -> str:
                 """Scrape page title."""
                 if not self.current_url:
@@ -225,16 +229,15 @@ def test_methods_share_state_through_self(mock_create_llm):
                 title = f"Title of {self.current_url}"
                 self.scraped_data.append(title)
                 return title
-            
+
             def get_data(self):
                 """Get scraped data (not exposed as tool - no type annotation)."""
                 return self.scraped_data
-        
+
         scraper = WebScraper()
-        
+
         # Mock LLM to call navigate then scrape_title
-        mock_llm = Mock()
-        mock_llm.complete.side_effect = [
+        mock_llm = MockLLM(responses=[
             # First call navigate
             LLMResponse(
                 content=None,
@@ -256,11 +259,10 @@ def test_methods_share_state_through_self(mock_create_llm):
                 raw_response={},
                 usage=TokenUsage(),
             )
-        ]
-        mock_create_llm.return_value = mock_llm
-        
-        agent = Agent(name="web_agent", api_key="fake_key", tools=scraper)
-        
+        ])
+
+        agent = Agent(name="web_agent", llm=mock_llm, tools=scraper, log=False)
+
         result = agent.input("Navigate to example.com and scrape the title")
         assert scraper.current_url == "example.com"
         assert len(scraper.scraped_data) == 1
@@ -385,32 +387,39 @@ def test_resource_cleanup_pattern():
         manager.cleanup()
         assert "cleaned" in manager.operations
 
-def test_edge_cases():
-        """Test edge cases and error handling."""
-        
-        # Empty class (no public methods with proper annotations)
-        class Empty:
-            pass
-        
-        empty = Empty()
-        agent = Agent(name="empty", api_key="fake_key", tools=empty)
-        assert len(agent.tools) == 0
-        
-        # Class with only properties
-        class OnlyProperties:
-            @property
-            def value(self):
-                return 42
-        
-        props = OnlyProperties()
-        agent = Agent(name="props", api_key="fake_key", tools=props)
-        assert len(agent.tools) == 0  # Properties shouldn't be tools
-        
-        # Mix of valid and invalid tool types
-        agent = Agent(name="mixed_valid", api_key="fake_key", 
-                      tools=[calculator, Empty(), get_current_time])
-        # Should only have the two functions
-        assert len(agent.tools) == 2
+def test_empty_class_yields_no_tools():
+    """Test that empty class with no methods yields no tools."""
+    class Empty:
+        pass
+
+    empty = Empty()
+    agent = Agent(name="empty", api_key="fake_key", tools=empty)
+    assert len(agent.tools) == 0
+
+
+def test_property_only_class_yields_no_tools():
+    """Test that class with only properties yields no tools."""
+    class OnlyProperties:
+        @property
+        def value(self):
+            return 42
+
+    props = OnlyProperties()
+    agent = Agent(name="props", api_key="fake_key", tools=props)
+    assert len(agent.tools) == 0  # Properties shouldn't be tools
+
+
+def test_mixed_valid_and_invalid_tools():
+    """Test that agent extracts only valid tools from mixed list."""
+    class Empty:
+        pass
+
+    agent = Agent(name="mixed_valid", api_key="fake_key",
+                  tools=[calculator, Empty(), get_current_time])
+    # Should only have the two valid functions
+    assert len(agent.tools) == 2
+    assert "calculator" in agent.tools
+    assert "get_current_time" in agent.tools
 
 def test_list_of_class_instances():
         """Test that agent can accept a list containing multiple class instances."""

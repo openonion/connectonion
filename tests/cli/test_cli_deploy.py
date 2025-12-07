@@ -1,6 +1,7 @@
 """Tests for CLI deploy command."""
 
 import os
+import shutil
 import tempfile
 import subprocess
 from pathlib import Path
@@ -8,6 +9,12 @@ from unittest.mock import patch, MagicMock
 import pytest
 
 from .argparse_runner import ArgparseCliRunner
+
+# Skip tests if git is not installed
+SKIP_NO_GIT = pytest.mark.skipif(
+    shutil.which("git") is None,
+    reason="git not installed"
+)
 
 
 class TestCliDeploy:
@@ -40,6 +47,7 @@ class TestCliDeploy:
             result = self.runner.invoke(cli, ['deploy'])
             assert "Not a ConnectOnion project" in result.output
 
+    @SKIP_NO_GIT
     @pytest.mark.skip(reason="API key check depends on dotenv loading from system files")
     def test_deploy_requires_api_key(self):
         """Test that deploy fails if no API key."""
@@ -59,6 +67,7 @@ class TestCliDeploy:
                 result = self.runner.invoke(cli, ['deploy'])
                 assert "No API key" in result.output
 
+    @SKIP_NO_GIT
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
     @patch('connectonion.cli.commands.deploy_commands.requests.get')
     @patch('connectonion.cli.commands.deploy_commands.subprocess.run')
@@ -101,6 +110,7 @@ class TestCliDeploy:
 
             assert "Deployed!" in result.output or result.exit_code == 0
 
+    @SKIP_NO_GIT
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
     def test_deploy_api_error(self, mock_post):
         """Test deploy handles API errors."""

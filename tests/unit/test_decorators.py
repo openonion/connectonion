@@ -233,8 +233,10 @@ def test_thread_local_context_isolation():
         threads.append(t)
         t.start()
 
+    # Join with timeout to prevent CI hangs
     for t in threads:
-        t.join()
+        t.join(timeout=5.0)
+        assert not t.is_alive(), f"Thread timed out - possible deadlock"
 
     assert len(results) == 3
     for i in range(3):

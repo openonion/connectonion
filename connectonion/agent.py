@@ -38,7 +38,7 @@ class Agent:
         tools: Optional[Union[List[Callable], Callable, Any]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "co/o4-mini",
+        model: str = "co/gemini-2.5-pro",
         max_iterations: int = 10,
         trust: Optional[Union[str, Path, 'Agent']] = None,
         log: Optional[Union[bool, str, Path]] = None,
@@ -81,15 +81,15 @@ class Agent:
 
         # Initialize event registry
         # Note: before_each_tool/after_each_tool fire for EACH tool
-        # before_tool_round/after_tool_round fire ONCE per round (safe for adding messages)
+        # before_tools/after_tools fire ONCE per batch (safe for adding messages)
         self.events = {
             'after_user_input': [],
             'before_llm': [],
             'after_llm': [],
             'before_each_tool': [],    # Fires before EACH tool
-            'before_tool_round': [],   # Fires ONCE before ALL tools in a round
+            'before_tools': [],        # Fires ONCE before ALL tools in a batch
             'after_each_tool': [],     # Fires after EACH tool (don't add messages here!)
-            'after_tool_round': [],    # Fires ONCE after ALL tools (safe for messages)
+            'after_tools': [],         # Fires ONCE after ALL tools (safe for messages)
             'on_error': [],
             'on_complete': []
         }
@@ -290,8 +290,8 @@ class Agent:
         # after_each_tool fires for this tool execution
         self._invoke_events('after_each_tool')
 
-        # after_tool_round fires after all tools in round (for single execution, fires once)
-        self._invoke_events('after_tool_round')
+        # after_tools fires after all tools in batch (for single execution, fires once)
+        self._invoke_events('after_tools')
 
         # Return simplified result (omit internal fields)
         return {

@@ -416,8 +416,8 @@ class TestEventInvocation:
             logger=logger
         )
 
-        # Verify before_tool was invoked
-        mock_agent._invoke_events.assert_any_call('before_tool')
+        # Verify before_each_tool was invoked
+        mock_agent._invoke_events.assert_any_call('before_each_tool')
 
     def test_after_tool_event_invoked_on_success(self):
         """Test that after_tool event is invoked after successful execution."""
@@ -445,8 +445,8 @@ class TestEventInvocation:
             logger=logger
         )
 
-        # Verify after_tool was invoked
-        mock_agent._invoke_events.assert_any_call('after_tool')
+        # Verify after_each_tool was invoked
+        mock_agent._invoke_events.assert_any_call('after_each_tool')
 
     def test_on_error_event_invoked_on_failure(self):
         """Test that on_error event is invoked when tool fails."""
@@ -474,10 +474,9 @@ class TestEventInvocation:
             logger=logger
         )
 
-        # Verify on_error was invoked and after_tool also fires for all executions
+        # Verify on_error was invoked and after_each_tool also fires for all executions
         mock_agent._invoke_events.assert_any_call('on_error')
-        mock_agent._invoke_events.assert_any_call('after_tool')
-        # Note: after_tool might still be in calls depending on implementation
+        mock_agent._invoke_events.assert_any_call('after_each_tool')
 
 
 class TestMessageFormatting:
@@ -496,7 +495,7 @@ class TestMessageFormatting:
         assert len(messages) == 1
         msg = messages[0]
         assert msg["role"] == "assistant"
-        assert msg["content"] is None
+        assert msg.get("content") is None  # content key may be omitted when tool_calls present
         assert len(msg["tool_calls"]) == 2
         assert msg["tool_calls"][0]["id"] == "call_1"
         assert msg["tool_calls"][0]["function"]["name"] == "tool1"

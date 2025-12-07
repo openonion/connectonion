@@ -52,17 +52,17 @@ def get_test_token():
     os.getenv("CI") or os.getenv("GITHUB_ACTIONS") or not _is_localhost_available(),
     reason="Skipped in CI or when localhost:8000 is not available"
 )
-def test_structured_output_with_managed_keys():
+def test_structured_output_with_managed_keys(monkeypatch):
     """Test that llm_do() with Pydantic output works with co/ models.
 
     This tests the /v1/responses/parse endpoint on the backend.
     """
-    # Use local backend for testing
-    os.environ["OPENONION_DEV"] = "1"
+    # Use local backend for testing (monkeypatch ensures cleanup)
+    monkeypatch.setenv("OPENONION_DEV", "1")
 
     # Get auth token
     token = get_test_token()
-    os.environ["OPENONION_API_KEY"] = token
+    monkeypatch.setenv("OPENONION_API_KEY", token)
 
     draft = llm_do(
         "Write a friendly hello email to a new colleague",
@@ -83,6 +83,3 @@ def test_structured_output_with_managed_keys():
     print(f"Body: {draft.body[:100]}...")
 
 
-if __name__ == "__main__":
-    # Allow running directly for quick testing
-    test_structured_output_with_managed_keys()

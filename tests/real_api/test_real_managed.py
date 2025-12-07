@@ -296,33 +296,3 @@ def test_gemini3_multi_turn_tools_managed():
         return False
 
 
-if __name__ == "__main__":
-    print("ConnectOnion co/ Models Test Suite\n")
-
-    # Run tests
-    test1 = test_co_model_direct_api()
-    test2 = test_llm_do_function()
-    test3 = test_model_name_variations()
-    test4 = test_all_managed_models_with_tools()
-    test5 = test_gemini3_multi_turn_tools_managed()
-
-    # Summary
-    print("\n" + "="*50)
-    print("Test Summary:")
-    print(f"  Direct API Call: {'✅ PASSED' if test1 else '❌ FAILED'}")
-
-    if test2 is None:
-        print(f"  llm_do Function: ⏭️  SKIPPED (no token)")
-    else:
-        print(f"  llm_do Function: {'✅ PASSED' if test2 else '❌ FAILED'}")
-
-    print(f"  Model Name Variations: {'✅ PASSED' if test3 else '❌ FAILED'}")
-    print(f"  Managed Models + Tools: {'✅ PASSED' if test4 else '❌ FAILED'}")
-    print(f"  Gemini 3 Multi-Turn: {'✅ PASSED' if test5 else '❌ FAILED'}")
-
-    if test1 and test3 and test4 and test5:
-        print("\n🎉 All core functionality working!")
-        if test2 is None:
-            print("   Run 'co auth' to test llm_do function")
-    else:
-        print("\n⚠️  Some tests failed")

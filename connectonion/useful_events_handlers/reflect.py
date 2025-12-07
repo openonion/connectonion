@@ -1,10 +1,10 @@
 """
 Reflect event handler - Adds reflection after tool execution.
 
-Fires ONCE after ALL tools in a round complete (when LLM returns multiple tool_calls).
+Fires ONCE after ALL tools in a batch complete (when LLM returns multiple tool_calls).
 Generates reasoning about what we learned and what to do next.
 
-This uses `after_tool_round` (not `after_each_tool`) intentionally because:
+This uses `after_tools` (not `after_each_tool`) intentionally because:
 1. Adding messages after EACH tool breaks Anthropic Claude's message ordering
 2. Reflecting once after all tools provides better context for next steps
 3. Fewer LLM calls = faster execution
@@ -18,7 +18,7 @@ Usage:
 
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Dict
-from ..events import after_tool_round
+from ..events import after_tools
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
@@ -61,12 +61,12 @@ def _compress_messages(messages: List[Dict], tool_result_limit: int = 150) -> st
     return "\n".join(lines)
 
 
-@after_tool_round
+@after_tools
 def reflect(agent: 'Agent') -> None:
     """
     Reflection after tool execution.
 
-    Fires ONCE after ALL tools in a round complete. Generates reasoning about:
+    Fires ONCE after ALL tools in a batch complete. Generates reasoning about:
     - What we learned from the most recent action
     - What we should do next
     """
