@@ -1,4 +1,13 @@
 """
+Purpose: Human-in-the-loop file writing tool with diff preview and approval workflow
+LLM-Note:
+  Dependencies: imports from [difflib, pathlib, rich.console, rich.panel, rich.text, connectonion.tui.pick] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_diff_writer.py, tests/unit/test_diff_writer_tool.py]
+  Data flow: Agent calls DiffWriter.write(path, content) → reads existing file → generates unified diff → displays via Rich panel → pick() prompts for approval → writes if approved → returns status string
+  State/Effects: reads and writes files on filesystem | displays Rich-formatted diff in terminal | blocks for user input (unless auto_approve=True) | creates new files if path doesn't exist
+  Integration: exposes DiffWriter class with write(path, content), diff(path, content), read(path) | used as agent tool via Agent(tools=[DiffWriter()]) | auto_approve=True for automation
+  Performance: file I/O per operation | difflib is O(n) for diff generation | Rich rendering is fast | blocks on user input
+  Errors: returns error string if file unreadable | returns "Cancelled" if user rejects | no exceptions raised
+
 DiffWriter - Human-in-the-loop file writing with diff display.
 
 Usage:

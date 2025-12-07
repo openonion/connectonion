@@ -1,4 +1,13 @@
 """
+Purpose: Automatically format base64 image tool results for multimodal LLM consumption
+LLM-Note:
+  Dependencies: imports from [re, typing, events.after_tools] | imported by [useful_plugins/__init__.py] | tested by [tests/unit/test_image_result_formatter.py]
+  Data flow: after_tools event → scans tool result messages for base64 images → detects data URL or raw base64 patterns → converts tool result message content to OpenAI vision API format with image_url type → allows LLM to visually interpret screenshots/images
+  State/Effects: modifies agent.current_session['messages'] in place | replaces text content with image content blocks | no file I/O | no network
+  Integration: exposes image_result_formatter plugin list with [format_images] handler | used via Agent(plugins=[image_result_formatter]) | works with screenshot tools, image generators
+  Performance: O(n) message scanning | regex pattern matching | no LLM calls
+  Errors: silent skip if no base64 images detected | malformed base64 may cause LLM confusion
+
 Image Result Formatter Plugin - Automatically formats base64 image results for model consumption.
 
 When a tool returns a base64 encoded image (screenshot, generated image, etc.), this plugin

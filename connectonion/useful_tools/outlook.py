@@ -1,4 +1,13 @@
 """
+Purpose: Outlook integration tool for reading, sending, and managing emails via Microsoft Graph API
+LLM-Note:
+  Dependencies: imports from [os, datetime, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
+  Data flow: Agent calls Outlook methods → _get_headers() loads MICROSOFT_ACCESS_TOKEN from env → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns formatted results (email summaries, bodies, send confirmations)
+  State/Effects: reads MICROSOFT_* env vars for OAuth tokens | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails) | no local file persistence
+  Integration: exposes Outlook class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), send(), reply(), mark_read(), archive_email() | used as agent tool via Agent(tools=[Outlook()])
+  Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
+  Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | returns error strings for display to user
+
 Outlook tool for reading and managing Outlook emails via Microsoft Graph API.
 
 Usage:

@@ -1,4 +1,13 @@
 """
+Purpose: CLI input utilities for single keypress selection, file browsing, and @ autocomplete
+LLM-Note:
+  Dependencies: imports from [sys, typing, rich.console, termios/tty (Unix), msvcrt (Windows)] | imported by [useful_tools/__init__.py, tui/__init__.py] | tested by [tests/unit/test_terminal.py]
+  Data flow: pick(prompt, options) → displays numbered options → _getch()/_read_key() waits for keypress → returns selected option text or key | browse_files() → displays directory listing with rich.live → arrow keys navigate → returns selected file path | input_with_at() → standard input with @ triggering file browser
+  State/Effects: blocks on user input | uses raw terminal mode via termios/tty (Unix) or msvcrt (Windows) | no persistent state | no network I/O
+  Integration: exposes pick(), yes_no(), browse_files(), input_with_at(), autocomplete() | pick() accepts list (numbered) or dict (custom keys) | used for human-in-the-loop agent tools
+  Performance: instant response after keypress | no computation overhead | blocks on user input
+  Errors: returns None if user cancels | handles keyboard interrupts gracefully | no exceptions raised
+
 CLI input utilities - single keypress select, file browser, and @ autocomplete.
 
 Usage:

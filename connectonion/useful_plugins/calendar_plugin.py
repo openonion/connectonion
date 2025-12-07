@@ -1,4 +1,13 @@
 """
+Purpose: Human-in-the-loop approval plugin for Google Calendar write operations
+LLM-Note:
+  Dependencies: imports from [typing, events.before_each_tool, tui.pick, rich.console, rich.panel, rich.text] | imported by [useful_plugins/__init__.py] | tested by [tests/unit/test_calendar_plugin.py]
+  Data flow: before_each_tool → check_calendar_approval() checks if tool is create_event/create_meet/update_event/delete_event → displays event preview with Rich panel → pick() prompts for user approval → raises ValueError to cancel if rejected
+  State/Effects: blocks on user input | displays Rich-formatted event preview | raises exception to cancel tool execution | no file I/O | no network
+  Integration: exposes calendar_plugin list with [check_calendar_approval] handler | used via Agent(plugins=[calendar_plugin]) | works with GoogleCalendar tool
+  Performance: instant display | blocks on user input | no LLM calls
+  Errors: raises ValueError on rejection | keyboard interrupts handled gracefully
+
 Calendar plugin - Approval for Google Calendar operations.
 
 Usage:

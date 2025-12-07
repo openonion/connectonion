@@ -1,4 +1,13 @@
 """
+Purpose: Microsoft Calendar integration tool for managing events via Microsoft Graph API
+LLM-Note:
+  Dependencies: imports from [os, datetime, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_microsoft_calendar.py]
+  Data flow: Agent calls MicrosoftCalendar methods → _get_headers() loads MICROSOFT_ACCESS_TOKEN from env → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns formatted results (event lists, confirmations, free slots)
+  State/Effects: reads MICROSOFT_* env vars for OAuth tokens | makes HTTP calls to Microsoft Graph API | can create/update/delete events, create Teams meetings | no local file persistence
+  Integration: exposes MicrosoftCalendar class with list_events(), get_today_events(), get_event(), create_event(), update_event(), delete_event(), create_teams_meeting(), get_upcoming_meetings(), find_free_slots(), check_availability() | used as agent tool via Agent(tools=[MicrosoftCalendar()])
+  Performance: network I/O per API call | batch fetching for list operations | date parsing for queries
+  Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | returns error strings for display
+
 Microsoft Calendar tool for managing calendar events via Microsoft Graph API.
 
 Usage:

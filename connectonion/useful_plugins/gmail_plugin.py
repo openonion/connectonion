@@ -1,4 +1,13 @@
 """
+Purpose: Human-in-the-loop approval plugin for Gmail send operations with email preview
+LLM-Note:
+  Dependencies: imports from [datetime, typing, events.before_each_tool, events.after_each_tool, tui.pick, rich.console, rich.panel, rich.text] | imported by [useful_plugins/__init__.py] | tested by [tests/unit/test_gmail_plugin.py]
+  Data flow: before_each_tool → check_email_approval() checks if tool is Gmail.send/reply → displays email preview with Rich panel → pick() prompts for user approval → raises ValueError to cancel if rejected
+  State/Effects: blocks on user input | displays Rich-formatted email preview | raises exception to cancel tool execution | no file I/O | no network
+  Integration: exposes gmail_plugin list with [check_email_approval, log_email] handlers | used via Agent(plugins=[gmail_plugin]) | works with Gmail tool
+  Performance: instant display | blocks on user input | no LLM calls
+  Errors: raises ValueError on rejection | keyboard interrupts handled gracefully
+
 Gmail plugin - Approval and CRM sync for Gmail operations.
 
 Usage:

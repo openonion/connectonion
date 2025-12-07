@@ -1,4 +1,13 @@
 """
+Purpose: Web page fetching and parsing tool for HTTP requests and HTML analysis
+LLM-Note:
+  Dependencies: imports from [httpx] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_web_fetch.py]
+  Data flow: Agent calls WebFetch methods → httpx.get() fetches URL → returns raw HTML or parsed content (title, links, emails, social links) | analyze_page() and get_contact_info() use LLM for interpretation
+  State/Effects: makes HTTP GET requests | no local file persistence | no authentication required | respects timeout setting
+  Integration: exposes WebFetch class with fetch(url), strip_tags(html), get_title(html), get_links(html), get_emails(html), get_social_links(html), analyze_page(url), get_contact_info(url) | used as agent tool via Agent(tools=[WebFetch()])
+  Performance: network I/O per request | configurable timeout (default 15s) | no caching | high-level methods may call LLM
+  Errors: httpx exceptions propagate on network errors | returns error strings for display to user
+
 WebFetch tool for fetching web pages.
 
 Usage:

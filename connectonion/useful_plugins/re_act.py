@@ -1,4 +1,13 @@
 """
+Purpose: ReAct (Reasoning + Acting) plugin that adds planning and reflection to agent execution
+LLM-Note:
+  Dependencies: imports from [pathlib, typing, events.after_user_input, llm_do, useful_events_handlers.reflect] | imported by [useful_plugins/__init__.py] | uses prompt file [prompt_files/react_plan.md] | tested by [tests/unit/test_re_act_plugin.py]
+  Data flow: after_user_input → plan_task() generates a plan using llm_do() → stores in agent.current_session['plan'] → after_tools → reflect() from useful_events_handlers evaluates results → generates reflection for next step
+  State/Effects: modifies agent.current_session['plan'] and ['expected'] | makes LLM calls for planning and reflection | no file I/O | no network besides LLM
+  Integration: exposes re_act plugin list with [plan_task, reflect] event handlers | used via Agent(plugins=[re_act]) | works with eval plugin for debugging
+  Performance: 1-2 LLM calls per turn (plan + reflect) | adds latency but improves agent reasoning
+  Errors: no explicit error handling | LLM failures propagate | silent skip if no user_prompt
+
 ReAct plugin - Reasoning and Acting pattern for AI agents.
 
 Implements the ReAct (Reason + Act) pattern:

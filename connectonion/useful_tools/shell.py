@@ -1,4 +1,13 @@
 """
+Purpose: Shell command execution tool for running terminal commands from agent context
+LLM-Note:
+  Dependencies: imports from [subprocess] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_shell_tool.py]
+  Data flow: Agent calls Shell.run(command) → subprocess.run() executes in shell → captures stdout+stderr → returns combined output string
+  State/Effects: executes shell commands on host system | can modify filesystem, install packages, run programs | uses working directory specified in constructor | no persistent state
+  Integration: exposes Shell class with run(command), run_in_dir(command, directory) | used as agent tool via Agent(tools=[Shell()])
+  Performance: process spawn overhead per command | command execution time varies | no caching
+  Errors: returns error message if command fails | captures stderr in output | no exceptions raised (returns error strings)
+
 Shell tool for executing terminal commands.
 
 Usage:

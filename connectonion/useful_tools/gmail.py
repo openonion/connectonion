@@ -1,4 +1,13 @@
 """
+Purpose: Gmail integration tool for reading, sending, and managing emails via Google API
+LLM-Note:
+  Dependencies: imports from [os, base64, google.oauth2.credentials, googleapiclient.discovery, googleapiclient.errors] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_gmail.py]
+  Data flow: Agent calls Gmail methods → _get_credentials() loads tokens from env → builds Gmail API service → API calls to Gmail REST endpoints → returns formatted results (email summaries, bodies, send confirmations)
+  State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to Gmail API | can modify mailbox state (mark read/unread, archive, star, send emails) | no local file persistence
+  Integration: exposes Gmail class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), send(), reply(), mark_read(), mark_unread(), archive_email(), star_email(), get_labels(), add_label(), count_unread(), get_all_contacts(), analyze_contact(), get_unanswered_emails(), update_contact() | used as agent tool via Agent(tools=[Gmail()])
+  Performance: network I/O per API call | batch fetching for list operations | email body fetched separately (lazy loading)
+  Errors: raises ValueError if OAuth not configured | HttpError from Google API propagates | returns error strings for display to user
+
 Gmail tool for reading and managing Gmail emails.
 
 Usage:

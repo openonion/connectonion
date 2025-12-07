@@ -1,4 +1,14 @@
-"""SlashCommand - Load and execute slash commands from markdown files.
+"""
+Purpose: Load and execute slash commands from markdown files with YAML frontmatter
+LLM-Note:
+  Dependencies: imports from [yaml, pathlib, typing] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_slash_command.py]
+  Data flow: SlashCommand.load(name) → searches .co/commands/*.md and commands/*.md → parses YAML frontmatter for metadata → extracts prompt body → SlashCommand.filter_tools() filters available tools → returns filtered tool list
+  State/Effects: reads markdown files from filesystem | no persistent state | no network I/O | command files can specify tool restrictions
+  Integration: exposes SlashCommand class with load(name), list_all(), filter_tools(tools) | command format: YAML frontmatter (name, description, tools) + markdown prompt body | used by CLI and agent for custom commands
+  Performance: file I/O per load | YAML parsing is fast | list_all() scans directories once
+  Errors: returns None if command not found | raises ValueError for invalid YAML | no other exceptions
+
+SlashCommand - Load and execute slash commands from markdown files.
 
 Usage:
     from connectonion import SlashCommand

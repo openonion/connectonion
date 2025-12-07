@@ -1,4 +1,14 @@
-"""TodoList - Task tracking for agents."""
+"""
+Purpose: Task tracking tool for agents to manage multi-step task progress with visual display
+LLM-Note:
+  Dependencies: imports from [typing, dataclasses, rich.console, rich.table, rich.panel] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_todo_list_tool.py]
+  Data flow: Agent calls TodoList methods → modifies internal _todos list → _display() renders Rich table with status indicators → returns confirmation string
+  State/Effects: maintains in-memory list of TodoItem objects | displays Rich-formatted table in terminal | no file persistence | no network I/O
+  Integration: exposes TodoList class with add(content, active_form), start(content), complete(content), remove(content), list_todos() | used as agent tool via Agent(tools=[TodoList()])
+  Performance: O(n) list operations | Rich rendering per state change | no caching
+  Errors: returns "Not found" if todo doesn't exist | no exceptions raised
+
+TodoList - Task tracking for agents."""
 
 from typing import List, Literal, Optional
 from dataclasses import dataclass, field

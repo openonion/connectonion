@@ -1,4 +1,13 @@
 """
+Purpose: Google Calendar integration tool for managing events and meetings via Google API
+LLM-Note:
+  Dependencies: imports from [os, datetime, google.oauth2.credentials, googleapiclient.discovery] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth google' | tested by [tests/unit/test_google_calendar.py]
+  Data flow: Agent calls GoogleCalendar methods → _get_credentials() loads tokens from env → builds Calendar API service → API calls to Calendar REST endpoints → returns formatted results (event lists, confirmations, free slots)
+  State/Effects: reads GOOGLE_* env vars for OAuth tokens | makes HTTP calls to Google Calendar API | can create/update/delete events | no local file persistence
+  Integration: exposes GoogleCalendar class with list_events(), get_today_events(), get_event(), create_event(), update_event(), delete_event(), create_meet(), get_upcoming_meetings(), find_free_slots() | used as agent tool via Agent(tools=[GoogleCalendar()])
+  Performance: network I/O per API call | batch fetching for list operations | date parsing for queries
+  Errors: raises ValueError if OAuth not configured | Google API errors propagate | returns error strings for display
+
 Google Calendar tool for managing calendar events and meetings.
 
 Usage:

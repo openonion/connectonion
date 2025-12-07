@@ -1,4 +1,13 @@
 """
+Purpose: Evaluation plugin for testing and debugging agent prompts and tools
+LLM-Note:
+  Dependencies: imports from [pathlib, typing, events.after_user_input, events.on_complete, llm_do] | imported by [useful_plugins/__init__.py] | uses prompt files [prompt_files/eval_expected.md, prompt_files/react_evaluate.md] | tested by [tests/unit/test_eval_plugin.py]
+  Data flow: after_user_input → generate_expected() creates expected outcome using llm_do() → stores in agent.current_session['expected'] | on_complete → evaluate_result() compares actual vs expected using llm_do() → stores evaluation in agent.current_session['evaluation']
+  State/Effects: modifies agent.current_session['expected'] and ['evaluation'] | makes LLM calls for expectation generation and evaluation | no file I/O | no network besides LLM
+  Integration: exposes eval plugin list with [generate_expected, evaluate_result] handlers | used via Agent(plugins=[eval]) | combines with re_act for full debugging
+  Performance: 2 LLM calls per task (generate + evaluate) | adds latency but enables automated testing
+  Errors: no explicit error handling | LLM failures propagate | skips if expected already set by re_act
+
 Eval plugin - Debug and test AI agent prompts and tools.
 
 Generates expected outcomes and evaluates if tasks completed correctly.

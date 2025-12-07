@@ -1,4 +1,13 @@
 """
+Purpose: Human-in-the-loop approval plugin for shell commands with safe command bypass
+LLM-Note:
+  Dependencies: imports from [re, typing, events.before_each_tool, tui.pick, rich.console] | imported by [useful_plugins/__init__.py] | tested by [tests/unit/test_shell_approval.py]
+  Data flow: before_each_tool event → checks if tool is Shell.run → matches command against SAFE_PATTERNS (ls, cat, grep, git status, etc.) → if not safe, displays command with pick() for user approval → raises exception to cancel if rejected
+  State/Effects: blocks on user input | displays Rich-formatted command preview | raises exception to cancel tool execution | no file I/O | no network
+  Integration: exposes shell_approval plugin list with [approve_shell] handler | used via Agent(plugins=[shell_approval]) | works with Shell tool
+  Performance: O(n) regex pattern matching | blocks on user input | instant for safe commands
+  Errors: raises ToolCancelled exception on rejection | keyboard interrupts handled gracefully
+
 Shell Approval plugin - Asks user approval for shell commands.
 
 All shell commands require approval EXCEPT safe read-only commands
