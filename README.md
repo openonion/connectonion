@@ -251,7 +251,7 @@ Perfect for:
 Package reusable capabilities as plugins and use them across multiple agents:
 
 ```python
-from connectonion import Agent, after_tool_round, llm_do
+from connectonion import Agent, after_tools, llm_do
 
 # Define a reflection plugin
 def add_reflection(agent):
@@ -269,7 +269,7 @@ def add_reflection(agent):
         })
 
 # Plugin is just a list of event handlers
-reflection = [after_tool_round(add_reflection)]  # after_tool_round fires once after all tools
+reflection = [after_tools(add_reflection)]  # after_tools fires once after all tools
 
 # Use across multiple agents
 researcher = Agent("researcher", tools=[search], plugins=[reflection])
@@ -413,6 +413,8 @@ co init --template playwright  # Adds full template
 **Available Templates:**
 - `minimal` (default) - Simple agent starter
 - `playwright` - Web automation with browser tools
+- `meta-agent` - Development assistant with docs search
+- `web-research` - Web research and data extraction
 
 Each template includes:
 - Pre-configured agent ready to run
@@ -420,7 +422,7 @@ Each template includes:
 - Embedded ConnectOnion documentation
 - Git-ready `.gitignore`
 
-Learn more in the [CLI Documentation](docs/cli.md) and [Templates Guide](docs/templates.md).
+Learn more in the [CLI Documentation](docs/cli/) and [Templates Guide](docs/templates/).
 
 ## 🔨 Creating Custom Tools
 
@@ -482,9 +484,10 @@ connectonion/
 │           ├── data_agent.py
 │           └── *.md        # Prompt templates
 ├── docs/                   # Documentation
-│   ├── getting-started.md
-│   ├── cli.md
-│   ├── templates.md
+│   ├── quickstart.md
+│   ├── concepts/           # Core concepts
+│   ├── cli/                # CLI commands
+│   ├── templates/          # Project templates
 │   └── ...
 ├── examples/
 │   └── basic_example.py
@@ -614,24 +617,21 @@ class CustomLLM(LLM):
 agent = Agent(name="test", llm=CustomLLM())
 ```
 
-## 🚧 Current Limitations (MVP)
+## 🗺️ Roadmap
 
-This is an MVP version with intentional limitations:
-- Single LLM provider (OpenAI)
-- Synchronous execution only
-- JSON file storage only
-- Basic error handling
-- No multi-agent collaboration
+**Current Focus:**
+- Multi-agent networking (serve/connect)
+- Trust system for agent collaboration
+- `co deploy` for one-command deployment
 
-## 🗺️ Future Roadmap
+**Recently Completed:**
+- Multiple LLM providers (OpenAI, Anthropic, Gemini)
+- Managed API keys (`co/` prefix)
+- Plugin system
+- Google OAuth integration
+- Interactive debugging (`@xray`, `auto_debug`)
 
-- Multiple LLM provider support (Anthropic, Local models)
-- Async/await support
-- Database storage options
-- Advanced memory systems
-- Multi-agent collaboration
-- Web interface for behavior monitoring
-- Plugin system for tools
+See [full roadmap](docs/roadmap.md) for details.
 
 ## 🔗 Connect With Us
 
