@@ -51,9 +51,10 @@ async def test_announce():
     print(f"  Timestamp: {announce_msg['timestamp']}")
     print(f"  Signature: {announce_msg['signature'][:16]}...\n")
 
-    # Connect to relay
-    print("Connecting to ws://localhost:8000/ws/announce...")
-    ws = await relay.connect("ws://localhost:8000/ws/announce")
+    # Connect to relay (production)
+    relay_url = os.getenv("RELAY_URL", "wss://oo.openonion.ai/ws/announce")
+    print(f"Connecting to {relay_url}...")
+    ws = await relay.connect(relay_url)
     print("✓ Connected\n")
 
     # Send ANNOUNCE
