@@ -211,7 +211,7 @@ Choose your template based on your needs:
 
 ## Next Steps
 
-- Read the [CLI Documentation](cli.md) to learn about `co init`
-- See [Tools Documentation](tools.md) for creating custom tools
-- Check [Prompts Documentation](prompts.md) for prompt engineering
+- Read the [CLI Documentation](cli/) to learn about `co init`
+- See [Tools Documentation](concepts/tools.md) for creating custom tools
+- Check [Prompts Documentation](concepts/prompts.md) for prompt engineering
 - View [Examples](examples.md) for more complex agents

@@ -4,7 +4,7 @@ Four different API styles for hooks in ConnectOnion.
 
 > **Note:** This document is historical. The final API uses event wrappers (Option 2 style) with updated naming:
 > - `before_each_tool` / `after_each_tool` - per-tool events
-> - `before_tool_round` / `after_tool_round` - batch events (fire once per round)
+> - `before_tools` / `after_tools` - batch events (fire once per round)
 >
 > See [014-event-api-naming.md](./design-decisions/014-event-api-naming.md) for the rationale.
 

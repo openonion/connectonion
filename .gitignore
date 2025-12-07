@@ -105,6 +105,7 @@ pip-wheel-metadata/
 
 # Documentation
 docs/_build/
+docs/archive/
 site/
 
 # Wiki (separate Git repository)

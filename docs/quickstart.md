@@ -1,14 +1,16 @@
-# Quick Start Guide
+# Quick Start
 
-Get up and running with ConnectOnion in under 2 minutes.
+Build your first AI agent in 60 seconds.
 
-## 1. Install ConnectOnion
+## Install
 
 ```bash
 pip install connectonion
 ```
 
-## 2. Create Your First Agent
+## Quick Start with CLI
+
+The fastest way to start is with the ConnectOnion CLI:
 
 ```bash
 # Create a new agent project
@@ -16,236 +18,208 @@ co create my-agent
 
 # Navigate to the project
 cd my-agent
-```
 
-This creates a minimal agent with everything you need:
-- `agent.py` - Ready-to-run agent with example tools
-- `.env` - API keys (set up during creation)
-- `.co/` - Configuration and embedded ConnectOnion documentation
-- `.gitignore` - Pre-configured to exclude sensitive files
-- `co-vibecoding-principles-docs-contexts-all-in-one.md` - Complete framework docs
-
-*The CLI guides you through API key setup automatically!*
-
-## 3. Run Your Agent
-
-```bash
+# Run your agent (API key setup is automatic!)
 python agent.py
 ```
 
-Your meta-agent comes with powerful built-in tools:
-- **answer_connectonion_question()** - Expert answers from embedded docs
-- **create_agent_from_template()** - Generate complete agent code
-- **generate_tool_code()** - Create tool functions
-- **create_test_for_agent()** - Generate pytest test suites
-- **think()** - Self-reflection to analyze task completion
-- **generate_todo_list()** - Create structured plans (uses GPT-4o-mini)
-- **suggest_project_structure()** - Architecture recommendations
+That's it! You now have a working agent ready to use. 🎉
 
-## Try These Commands
-
-Once your meta-agent is running, try these:
-
-```python
-# Learn about ConnectOnion
-result = agent.input("What is ConnectOnion and how do tools work?")
-
-# Generate agent code
-result = agent.input("Create a web scraper agent")
-
-# Create tool functions
-result = agent.input("Generate a tool for sending emails")
-
-# Get project structure advice
-result = agent.input("Suggest structure for a multi-agent system")
-
-# Generate a structured plan
-result = agent.input("Create a to-do list for building a REST API")
-```
-
-## 🔍 Debug Your Agent Interactively
-
-ConnectOnion includes powerful interactive debugging with `@xray` breakpoints:
+## Manual Setup (Alternative)
 
 ```python
 from connectonion import Agent
-from connectonion.decorators import xray
 
-# Mark tools you want to debug
-@xray
-def search_data(query: str) -> str:
-    """Search for information."""
-    return f"Found results for: {query}"
+# Define what your agent can do
+def calculate(expression: str) -> str:
+    """Do math calculations."""
+    return str(eval(expression))
 
-# Create agent
+# Create your agent
 agent = Agent(
-    name="debug_demo",
-    tools=[search_data]
+    "assistant", 
+    tools=[calculate],
+    max_iterations=5  # Simple calculations don't need many iterations
 )
-
-# Start interactive debugging
-agent.auto_debug()
-```
-
-**What you'll see at each `@xray` breakpoint:**
-
-```
-@xray BREAKPOINT: search_data
-
-Local Variables:
-  query = "Python tutorials"
-  result = "Found results for: Python tutorials"
-
-What do you want to do?
-  → Continue execution       [c or Enter]
-    Edit values (Python)     [e]
-    Quit debugging          [q]
->
-```
-
-**Try it yourself:**
-```bash
-# Create a new project with the minimal template
-co create my-debug-agent --template minimal
-
-cd my-debug-agent
-python agent.py
-```
-
-**What you can do:**
-- **Continue** (`c` or Enter): Resume execution
-- **Edit** (`e`): Open Python REPL to modify variables
-- **Quit** (`q`): Stop debugging
-
-Perfect for:
-- Understanding agent decisions
-- Testing edge cases
-- Exploring "what if" scenarios
-- Learning how agents work
-
-[Full debugging guide](auto_debug.md)
-
-## 🔌 Add Plugins for Planning & Reasoning
-
-ConnectOnion includes built-in plugins that add powerful capabilities to any agent:
-
-```python
-from connectonion import Agent
-from connectonion.useful_plugins import re_act
-
-# Add ReAct reasoning (planning + reflection)
-agent = Agent(
-    name="assistant",
-    tools=[search, calculate],
-    plugins=[re_act]
-)
-
-agent.input("Search for Python and calculate 15 * 8")
-
-# You'll see:
-# /planning...
-# 💭 Will search for Python first, then calculate.
-# ... tool executes ...
-# /reflecting...
-# 🤔 Got Python info, now calculating 15 * 8.
-```
-
-**Built-in Plugins:**
-- **re_act**: ReAct pattern - plans after user input, reflects after each tool
-
-**Create Custom Plugins:**
-```python
-from connectonion import after_each_tool
-
-def log_tool(agent):
-    trace = agent.current_session['trace'][-1]
-    print(f"✓ {trace['tool_name']} completed")
-
-# Plugin is just an event list
-logger = [after_each_tool(log_tool)]  # per-tool logging
 
 # Use it!
-agent = Agent("assistant", tools=[search], plugins=[logger])
+result = agent.input("What is 42 * 17?")
+print(result)
 ```
 
-[Learn more about plugins](plugin.md)
+**Output:**
 
-## Choose a Different Template
+```
+To calculate 42 * 17, I'll use the calculator tool.
 
-ConnectOnion offers specialized templates:
-
-### Playwright Agent (Web Automation)
-```bash
-co create my-browser-bot --template playwright
-cd my-browser-bot
+The result is 714.
 ```
 
-Perfect for:
-- Web scraping and data extraction
-- Browser automation and testing
-- Form filling and submission
-- Screenshot capture
-- Link crawling
+That's it! You just built an AI agent that can use tools. 🎉
 
-Comes with stateful browser tools:
-- `start_browser()` - Launch browser instance
-- `navigate()` - Go to URLs
-- `scrape_content()` - Extract page content
-- `fill_form()` - Fill and submit forms
-- `take_screenshot()` - Capture pages
-- And many more browser automation tools
+## Add More Tools
 
-Note: Requires `pip install playwright && playwright install`
-
-## What's Next?
-
-### Customize Your Agent
-
-Edit `prompt.md` to change your agent's personality:
-
-```markdown
-# Expert Assistant
-
-You are a knowledgeable expert who provides detailed, accurate information.
-
-## Your Style
-- Professional and thorough
-- Use examples to illustrate points
-- Cite sources when possible
-```
-
-### Add Custom Tools
-
-Add any Python function as a tool:
+Want your agent to do more? Just add more functions:
 
 ```python
-# In agent.py
-def send_email(to: str, subject: str, body: str) -> str:
-    """Send an email to someone."""
-    # Your email logic here
-    return f"Email sent to {to}"
+def search(query: str) -> str:
+    """Search the web."""
+    return f"Results for {query}: [simulated results]"
 
-# Add to your agent
+def get_time() -> str:
+    """Get current time."""
+    from datetime import datetime
+    return datetime.now().strftime("%I:%M %p")
+
+# Create a more capable agent
 agent = Agent(
-    name="my_agent",
-    system_prompt="prompt.md",
-    tools=[answer_connectonion_question, think, send_email]  # Mix built-in and custom
+    name="assistant",
+    tools=[calculate, search, get_time],
+    max_iterations=10  # Default for general purpose agents
 )
+
+# It can use multiple tools in one request!
+result = agent.input("Search for Python tutorials and tell me what time it is")
+print(result)
 ```
 
-### Explore More
+## Make It Yours
 
-- [CLI Reference](cli.md) - All CLI commands
-- [Templates Guide](templates.md) - Template details
-- [Tools Documentation](tools.md) - Creating tools
-- [Examples](examples.md) - Full examples
+Give your agent a personality with flexible system prompts:
+
+```python
+# Option 1: Direct string
+agent = Agent(
+    name="friendly_bot",
+    system_prompt="You are a cheerful assistant who loves to help!",
+    tools=[calculate, search, get_time]
+)
+
+# Option 2: Load from file (auto-detected)
+agent = Agent(
+    name="expert_bot",
+    system_prompt="prompts/expert.md",  # Loads from file
+    tools=[calculate, search, get_time]
+)
+
+# Option 3: Using Path object
+from pathlib import Path
+agent = Agent(
+    name="custom_bot",
+    system_prompt=Path("prompts/custom_personality.txt"),
+    tools=[calculate, search, get_time]
+)
+
+result = agent.input("Hello!")
+# Response will reflect the personality defined in your prompt
+```
+
+## Track Everything (Automatic!)
+
+ConnectOnion tracks all agent behavior automatically:
+
+```python
+# See what your agent has been doing
+print(agent.history.summary())
+```
+
+**Output:**
+
+```
+Agent: assistant
+Total tasks: 3
+Tools used: calculate (2), search (1), get_time (1)
+Activity logged to: .co/logs/assistant.log
+```
+
+## Real Example
+
+Here's a practical agent in ~10 lines:
+
+```python
+from connectonion import Agent
+
+def write_file(filename: str, content: str) -> str:
+    """Save content to a file."""
+    with open(filename, 'w') as f:
+        f.write(content)
+    return f"Saved to {filename}"
+
+def read_file(filename: str) -> str:
+    """Read a file."""
+    with open(filename, 'r') as f:
+        return f.read()
+
+# Create a file assistant
+assistant = Agent(
+    "file_helper", 
+    tools=[write_file, read_file],
+    max_iterations=8  # File operations are usually straightforward
+)
+
+# Use it
+assistant.input("Save 'Hello World' to greeting.txt")
+assistant.input("What's in greeting.txt?")
+```
+
+## CLI Templates
+
+ConnectOnion provides different templates for common use cases:
+
+```bash
+# Create with minimal template (default)
+co create my-agent
+
+# Create with playwright template
+co create my-browser-bot --template playwright
+
+# Initialize in existing directory
+co init  # Adds .co folder only
+co init --template playwright  # Adds full template
+```
+
+### What Gets Created
+
+```
+my-agent/
+├── agent.py                                              # Main agent implementation
+├── .env                                                  # API keys (auto-configured)
+├── co-vibecoding-principles-docs-contexts-all-in-one.md  # Complete framework docs
+├── .gitignore                                            # Git configuration
+└── .co/                                                  # ConnectOnion metadata
+    ├── config.toml
+    └── docs/
+        └── co-vibecoding-principles-docs-contexts-all-in-one.md
+```
+
+Learn more about templates in the [Templates Documentation](templates.md).
+
+## Next Steps
+
+Ready for more?
+
+- **[CLI Reference](cli/)** - All CLI commands and options
+- **[Templates](templates.md)** - Pre-built agent templates
+- **[Agent Guide](concepts/agent.md)** - How agents work
+- **[Tools Guide](concepts/tools.md)** - How tools work
+- **[Examples](examples.md)** - Copy-paste ready code
+- **[API Reference](api.md)** - Detailed documentation
+
+## Quick Tips
+
+1. **Functions = Tools** (no classes needed!)
+2. **Docstrings = Descriptions** (agent reads these)
+3. **Type hints = Better results** (helps agent understand)
+4. **Logging = Free** (automatic activity tracking to `.co/logs/`)
+
+---
 
 ## Troubleshooting
 
 ### "API key not found"
 Make sure you:
 1. Copied `.env.example` to `.env`
-2. Added your actual OpenAI API key
+2. Added your actual API key
 3. Are running from the project directory
 
 ### "Permission denied"
@@ -254,8 +228,6 @@ Ensure you have write permissions in the current directory.
 ### "Module not found"
 Install ConnectOnion: `pip install connectonion`
 
-## Get Help
+---
 
-- [Documentation](https://github.com/connectonion/connectonion)
-- [Join Waitlist](https://connectonion.com) for support
-- [Report Issues](https://github.com/connectonion/connectonion/issues)
+**Need help?** Check our [examples](examples.md) or [join Discord](https://discord.gg/4xfD9k8AUF) for support.

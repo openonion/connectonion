@@ -13,7 +13,7 @@ Agent(
     tools: Optional[List[Callable]] = None,
     system_prompt: Union[str, Path, None] = None,
     api_key: Optional[str] = None,
-    model: str = "gpt-5-mini"
+    model: str = "co/gemini-2.5-pro"
 )
 ```
 
@@ -27,8 +27,9 @@ Agent(
   - `Path`: Path object pointing to a prompt file
   - `None`: Uses default prompt
 - **api_key** (`Optional[str]`): OpenAI API key (if not using custom LLM)
-- **model** (`str`): Model name for OpenAI (default: "gpt-5-mini")
-  - Available models: `gpt-5-nano`, `gpt-5-mini`, `gpt-5`
+- **model** (`str`): Model to use (default: "co/gemini-2.5-pro")
+  - Managed keys: `co/gemini-2.5-pro`, `co/gpt-4o-mini`, `co/claude-3-5-sonnet`
+  - Your own key: `gpt-4o-mini`, `claude-3-5-sonnet`, `gemini-1.5-pro`
 
 ### System Prompt Options
 
@@ -58,12 +59,19 @@ agent = Agent(name="bot")  # Default: "You are a helpful assistant..."
 
 ### Methods
 
-#### `input(prompt: str) -> str`
+#### `input(prompt: str, max_iterations: Optional[int] = None) -> str`
 
 Provide input to the agent and get response.
 
+**Parameters:**
+- `prompt` - User input/task for the agent
+- `max_iterations` - Override agent's default max_iterations for this task only
+
 ```python
 result = agent.input("Calculate 2 + 2")
+
+# Override iterations for complex tasks
+result = agent.input("Complex multi-step task", max_iterations=25)
 ```
 
 #### `add_tool(tool: Callable) -> None`

@@ -1,47 +1,60 @@
 # The .co Directory Structure
 
-The `.co` directory is the heart of every ConnectOnion project. It contains project metadata, agent identity, and runtime information. This document explains what's inside and why.
+ConnectOnion uses two `.co/` directories: a global one (`~/.co/`) for shared settings and a project one for local config.
 
-## Directory Overview
+## Global Directory (`~/.co/`)
+
+Created automatically on first `co` command. Stores your identity and shared API keys.
+
+```
+~/.co/
+├── config.toml          # Global configuration (address, default model)
+├── keys.env             # Shared API keys (.env format)
+├── keys/                # Cryptographic identity
+│   ├── agent.key        # Ed25519 private key (NEVER SHARE)
+│   ├── recovery.txt     # 12-word recovery phrase
+│   └── DO_NOT_SHARE     # Warning file
+├── logs/                # Agent activity logs ({agent_name}.log)
+└── sessions/            # YAML session logs for eval/replay
+```
+
+## Project Directory (`.co/`)
+
+Created by `co create` or `co init`. Contains project-specific runtime data.
 
 ```
 .co/
-├── config.toml          # Project and agent configuration
-├── keys/                # Agent cryptographic keys (git-ignored)
+├── keys/                # Project keys (if independent identity)
 │   ├── agent.key        # Private signing key (Ed25519)
 │   ├── recovery.txt     # 12-word recovery phrase
-│   └── DO_NOT_SHARE     # Warning file about key security
-├── docs/                # Embedded documentation
-│   └── connectonion.md  # Framework reference (offline access)
-└── history/             # Agent behavior logs (created at runtime)
-    └── behavior.json    # Execution history and metrics
+│   └── DO_NOT_SHARE     # Warning file
+├── logs/                # Agent activity logs ({agent_name}.log)
+└── sessions/            # YAML session logs for eval/replay
 ```
 
 ## config.toml Reference
 
-The `config.toml` file contains all project and agent configuration:
+The `config.toml` file exists only in the global `~/.co/` directory:
 
 ```toml
-# Project metadata
-[project]
-name = "my-agent"                           # Project name (defaults to directory name)
-created = "2025-01-03T10:00:00Z"           # ISO 8601 creation timestamp
-framework_version = "0.0.2"               # ConnectOnion version used
+[connectonion]
+framework_version = "0.0.7"
+created = "2025-01-15T10:30:00.000000"
 
-# CLI information
 [cli]
-version = "1.0.0"                           # CLI version
-command = "co init --template meta-agent"   # Command used to create project
-template = "meta-agent"                     # Template type (meta-agent, playwright)
+version = "1.0.0"
 
-# Agent configuration
 [agent]
-address = "0x3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c"
-short_address = "0x3d40...660c"            # Truncated for display
-created_at = "2025-01-03T10:00:00Z"        # When keys were generated
-algorithm = "ed25519"                       # Cryptographic algorithm
-default_model = "gpt-4o-mini"              # Default LLM model
-max_iterations = 10                         # Max tool-calling iterations
+address = "0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
+short_address = "0x7a9f...7f8a"
+email = "0x7a9f3b2c@mail.openonion.ai"
+created_at = "2025-01-15T10:30:00.000000"
+algorithm = "ed25519"
+default_model = "co/gemini-2.5-pro"
+max_iterations = 10
+
+[auth]
+token = "eyJhbGciOiJI..."  # JWT for network auth
 ```
 
 ## Keys Directory
@@ -91,26 +104,35 @@ The agent address is a hex-encoded Ed25519 public key:
 3. **Familiar Format**: Developers recognize the 0x prefix
 4. **Fast Signatures**: Ed25519 provides 70,000 signatures/second
 
-## History Directory
+## Logs and Sessions
 
-Created at runtime when the agent executes:
+Created at runtime when agents execute.
 
-### behavior.json
-```json
-{
-  "agent_name": "my-agent",
-  "sessions": [
-    {
-      "started_at": "2025-01-03T10:30:00Z",
-      "messages": [...],
-      "tool_calls": [...],
-      "ended_at": "2025-01-03T10:35:00Z"
-    }
-  ]
-}
+### `logs/` - Plain Text Activity Logs
+
+Each agent writes to `{agent_name}.log`:
+
+```
+2025-01-15 10:30:00 [assistant] Task: What is 2+2?
+2025-01-15 10:30:01 [assistant] Tool: calculate("2+2") -> 4
+2025-01-15 10:30:02 [assistant] Result: The answer is 4
 ```
 
-Tracks all agent interactions for debugging and analysis.
+### `sessions/` - YAML Session Logs
+
+Detailed per-session logs for eval and replay:
+
+```yaml
+# sessions/assistant_2025-01-15_103000.yaml
+agent: assistant
+model: co/gemini-2.5-pro
+started_at: "2025-01-15T10:30:00Z"
+turns:
+  - input: "What is 2+2?"
+    tools_called: ["calculate"]
+    result: "The answer is 4"
+    duration_ms: 1234
+```
 
 ## Security Considerations
 
@@ -121,18 +143,14 @@ The following should ALWAYS be in `.gitignore`:
 ```gitignore
 # ConnectOnion sensitive files
 .co/keys/          # Private keys - NEVER commit
-.co/history/       # May contain sensitive data
-.co/cache/         # Temporary files
+.co/logs/          # May contain sensitive data
+.co/sessions/      # Session data
 .env               # API keys
 ```
 
 ### What's Safe to Commit
 
-These files are safe to version control:
-
-- `.co/config.toml` - Contains public address, not private keys
-- `.co/docs/` - Reference documentation
-- Everything else in the project
+Project `.co/` directories typically contain only runtime data (keys, logs, sessions) which should all be git-ignored. The project code itself is safe to commit.
 
 ## Progressive Disclosure
 
@@ -147,25 +165,24 @@ The `.co` directory follows ConnectOnion's philosophy of progressive disclosure:
 
 ### View Your Agent Address
 ```bash
-$ cat .co/config.toml | grep address
-address = "0x3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c"
+cat ~/.co/config.toml | grep address
 ```
 
-### Backup Your Agent Identity
+### Backup Your Identity
 ```bash
-$ cp -r .co/keys ~/secure-backup/
+cp -r ~/.co/keys ~/secure-backup/
+# Or just save the recovery phrase
+cat ~/.co/keys/recovery.txt
 ```
 
-### Recover Agent on New Machine
+### Add API Key
 ```bash
-$ co init
-$ co recover --phrase "your twelve word recovery phrase here"
+echo "NEW_API_KEY=xxx" >> ~/.co/keys.env
 ```
 
 ### Check Framework Version
 ```bash
-$ cat .co/config.toml | grep framework_version
-framework_version = "0.0.2"
+cat ~/.co/config.toml | grep framework_version
 ```
 
 ## FAQ
