@@ -24,8 +24,7 @@
 ## Quick Start
 
 ```python
-from connectonion import Agent
-from connectonion.decorators import xray
+from connectonion import Agent, xray
 
 @xray  # Tools with @xray become breakpoints
 def search_emails(query: str):
