@@ -5,7 +5,7 @@ See what your AI agent is thinking.
 ## Quick Start
 
 ```python
-from connectonion.decorators import xray
+from connectonion import xray
 
 @xray
 def my_tool(text: str) -> str:
