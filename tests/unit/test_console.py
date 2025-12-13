@@ -27,124 +27,101 @@ class TestConsole:
         assert "Error occurred" in args[0]
 
 
-class TestLogToolCall:
-    """Tests for Console.log_tool_call() formatting."""
-
-    @patch('connectonion.console._rich_console.print')
-    def test_log_tool_call_short_single_line(self, mock_print):
-        """Short tool call stays on single line: → Tool: greet(name='Alice')"""
-        c = console_mod.Console()
-        c.log_tool_call("greet", {"name": "Alice"})
-
-        mock_print.assert_called_once()
-        output = mock_print.call_args[0][0]
-        assert "greet(name='Alice')" in output
-        assert "→" in output or "->" in output
-
-    @patch('connectonion.console._rich_console.print')
-    def test_log_tool_call_multi_arg_short(self, mock_print):
-        """Two short args stay on single line."""
-        c = console_mod.Console()
-        c.log_tool_call("add", {"a": 1, "b": 2})
-
-        mock_print.assert_called_once()
-        output = mock_print.call_args[0][0]
-        assert "add(a=1, b=2)" in output
-
-    @patch('connectonion.console._rich_console.print')
-    def test_log_tool_call_single_long_arg(self, mock_print):
-        """Single long arg stays on same line (will wrap naturally)."""
-        c = console_mod.Console()
-        long_content = "x" * 100
-        c.log_tool_call("write_file", {"content": long_content})
-
-        mock_print.assert_called_once()
-        output = mock_print.call_args[0][0]
-        # Should be on one line, content truncated at 150 chars
-        assert "write_file(" in output
-        assert "content=" in output
-
-    @patch('connectonion.console._rich_console.print')
-    def test_log_tool_call_multi_line_format(self, mock_print):
-        """Multi-arg with long values uses multi-line format."""
-        c = console_mod.Console()
-        c.log_tool_call("complex_tool", {
-            "path": "/some/long/path/to/file.txt",
-            "content": "line1\nline2\nline3",
-            "mode": "write"
-        })
-
-        mock_print.assert_called_once()
-        output = mock_print.call_args[0][0]
-        assert "complex_tool(" in output
-        # Newlines escaped
-        assert "\\n" in output or "line1" in output
-
-
 class TestLogToolResult:
-    """Tests for Console.log_tool_result() formatting."""
+    """Tests for Console tool logging (log_tool_call + log_tool_result).
+
+    New design: log_tool_call stores info, log_tool_result prints full line.
+    Output format: [co]   ▸ greet(name="Alice")             ✓ 0.8s
+    """
 
     @patch('connectonion.console._rich_console.print')
     def test_log_tool_result_basic(self, mock_print):
-        """Basic result shows timing and content."""
+        """Tool result shows triangle, tool call, checkmark, and timing."""
         c = console_mod.Console()
-        c.log_tool_result("Success!", 123.45)
+        c.log_tool_call("greet", {"name": "Alice"})
+        c.log_tool_result("Hello!", 123.45)
 
         mock_print.assert_called_once()
         output = mock_print.call_args[0][0]
-        assert "Success!" in output
-        assert "←" in output or "<-" in output
-        # 123.45ms >= 100ms uses 1 decimal place: 0.1s
+        # Triangle symbol for tool action
+        assert "▸" in output
+        # Tool name and args
+        assert "greet" in output
+        assert "Alice" in output
+        # Success checkmark
+        assert "✓" in output
+        # Timing (123.45ms >= 100ms shows 0.1s)
         assert "0.1s" in output
-
-    @patch('connectonion.console._rich_console.print')
-    def test_log_tool_result_escapes_newlines(self, mock_print):
-        """Newlines in result are escaped."""
-        c = console_mod.Console()
-        c.log_tool_result("line1\nline2\nline3", 50.0)
-
-        mock_print.assert_called_once()
-        output = mock_print.call_args[0][0]
-        assert "\\n" in output
-        # Left arrow (←) must be present for tool results, and result portion must not contain literal newlines
-        assert "←" in output, "Expected left arrow symbol in output"
-        result_portion = output.split("←")[-1]
-        assert "\n" not in result_portion, "Result portion should not contain literal newlines"
-
-    @patch('connectonion.console._rich_console.print')
-    def test_log_tool_result_truncates_long(self, mock_print):
-        """Results > 80 chars are truncated with ..."""
-        c = console_mod.Console()
-        long_result = "x" * 100
-        c.log_tool_result(long_result, 50.0)
-
-        mock_print.assert_called_once()
-        output = mock_print.call_args[0][0]
-        assert "..." in output
-        # Should not contain full 100 chars
-        assert "x" * 100 not in output
 
     @patch('connectonion.console._rich_console.print')
     def test_log_tool_result_fast_timing(self, mock_print):
         """Fast operations (<100ms) show more precision."""
         c = console_mod.Console()
-        c.log_tool_result("quick result", 12.5)
+        c.log_tool_call("quick", {})
+        c.log_tool_result("done", 12.5)
 
         mock_print.assert_called_once()
         output = mock_print.call_args[0][0]
-        # Should show 4 decimal places for fast operations
-        assert "0.0125s" in output
+        # Fast timing shows 2 decimal places
+        assert "0.01s" in output
 
     @patch('connectonion.console._rich_console.print')
     def test_log_tool_result_slow_timing(self, mock_print):
         """Slow operations (>=100ms) show less precision."""
         c = console_mod.Console()
-        c.log_tool_result("slow result", 1500.0)
+        c.log_tool_call("slow", {})
+        c.log_tool_result("done", 1500.0)
 
         mock_print.assert_called_once()
         output = mock_print.call_args[0][0]
-        # Should show 1 decimal place for slow operations
+        # Slow timing shows 1 decimal place
         assert "1.5s" in output
+
+    @patch('connectonion.console._rich_console.print')
+    def test_log_tool_result_error(self, mock_print):
+        """Failed tool shows error symbol instead of checkmark."""
+        c = console_mod.Console()
+        c.log_tool_call("fail", {})
+        c.log_tool_result("error", 50.0, success=False)
+
+        mock_print.assert_called_once()
+        output = mock_print.call_args[0][0]
+        # Error symbol
+        assert "✗" in output
+
+
+class TestFormatToolDisplay:
+    """Tests for Console._format_tool_display() smart truncation."""
+
+    def test_format_tool_display_no_args(self):
+        """Tool with no args: tool()"""
+        c = console_mod.Console()
+        result = c._format_tool_display("search", {})
+        assert result == "search()"
+
+    def test_format_tool_display_short_args(self):
+        """Short args show full values."""
+        c = console_mod.Console()
+        result = c._format_tool_display("greet", {"name": "Alice"})
+        assert result == 'greet(name="Alice")'
+
+    def test_format_tool_display_multi_args(self):
+        """Multiple short args show all."""
+        c = console_mod.Console()
+        result = c._format_tool_display("add", {"a": 1, "b": 2})
+        assert "a=1" in result
+        assert "b=2" in result
+
+    def test_format_tool_display_truncates_long_value(self):
+        """Long values get truncated."""
+        c = console_mod.Console()
+        long_val = "x" * 100
+        result = c._format_tool_display("write", {"content": long_val})
+        assert "write(" in result
+        assert "content=" in result
+        assert "..." in result
+        # Should not contain full 100 chars
+        assert "x" * 100 not in result
 
 
 class TestFormatToolArgsList:
@@ -228,7 +205,7 @@ class TestToPlainText:
     def test_removes_rich_markup(self):
         """Removes Rich markup tags like [blue] and [/blue]."""
         c = console_mod.Console()
-        result = c._to_plain_text("[blue]→[/blue] Tool: test")
+        result = c._to_plain_text("[blue]▸[/blue] Tool: test")
         assert "[blue]" not in result
         assert "[/blue]" not in result
         assert "Tool: test" in result
@@ -278,3 +255,110 @@ class TestLogFile:
         assert "Test message" in content
         # Timestamp present
         assert "]" in content  # [HH:MM:SS]
+
+
+def _collect_print_output(mock_print):
+    """Collect all printed output, handling empty print() calls."""
+    parts = []
+    for call in mock_print.call_args_list:
+        if call[0]:  # Has positional args
+            parts.append(str(call[0][0]))
+    return "".join(parts)
+
+
+class TestPrintBanner:
+    """Tests for Console.print_banner() banner output."""
+
+    @patch('connectonion.console._rich_console.print')
+    def test_print_banner_shows_agent_name(self, mock_print):
+        """Banner shows agent name."""
+        c = console_mod.Console()
+        c.print_banner(agent_name="test-agent", model="gpt-4", tools=3)
+
+        output = _collect_print_output(mock_print)
+        assert "test-agent" in output
+
+    @patch('connectonion.console._rich_console.print')
+    def test_print_banner_shows_onion_circles(self, mock_print):
+        """Banner shows onion layer circles."""
+        c = console_mod.Console()
+        c.print_banner(agent_name="test", model="gpt-4", tools=1)
+
+        output = _collect_print_output(mock_print)
+        # Onion circles
+        assert "○" in output
+        assert "◎" in output
+        assert "●" in output
+
+    @patch('connectonion.console._rich_console.print')
+    def test_print_banner_shows_tools_count(self, mock_print):
+        """Banner shows correct tools count with proper pluralization."""
+        c = console_mod.Console()
+        c.print_banner(agent_name="test", model="gpt-4", tools=5)
+
+        output = _collect_print_output(mock_print)
+        assert "5 tools" in output
+
+    @patch('connectonion.console._rich_console.print')
+    def test_print_banner_singular_tool(self, mock_print):
+        """Banner shows '1 tool' not '1 tools'."""
+        c = console_mod.Console()
+        c.print_banner(agent_name="test", model="gpt-4", tools=1)
+
+        output = _collect_print_output(mock_print)
+        assert "1 tool" in output
+        assert "1 tools" not in output
+
+    @patch('connectonion.console._rich_console.print')
+    def test_print_banner_shows_log_dir(self, mock_print):
+        """Banner shows log directory paths when provided."""
+        c = console_mod.Console()
+        c.print_banner(agent_name="test", model="gpt-4", tools=1, log_dir=".co/")
+
+        output = _collect_print_output(mock_print)
+        assert ".co/logs/" in output
+        assert ".co/sessions/" in output
+
+    @patch('connectonion.console._rich_console.print')
+    def test_print_banner_shows_separator(self, mock_print):
+        """Banner shows separator lines."""
+        c = console_mod.Console()
+        c.print_banner(agent_name="test", model="gpt-4", tools=1)
+
+        output = _collect_print_output(mock_print)
+        # Separator uses box drawing character
+        assert "─" in output
+
+
+class TestLLMLogging:
+    """Tests for LLM request/response logging."""
+
+    @patch('connectonion.console._rich_console.print')
+    def test_log_llm_request_shows_circle(self, mock_print):
+        """LLM request shows empty circle (AI thinking)."""
+        c = console_mod.Console()
+        session = {'messages': [], 'iteration': 1}
+        c.print_llm_request("gpt-4", session, max_iterations=10)
+
+        output = mock_print.call_args[0][0]
+        # Empty circle for request
+        assert "○" in output
+        assert "gpt-4" in output
+
+    @patch('connectonion.console._rich_console.print')
+    def test_log_llm_response_shows_flash(self, mock_print):
+        """LLM response shows flash symbol (thinking complete)."""
+        c = console_mod.Console()
+        # Create mock usage object
+        usage = Mock()
+        usage.input_tokens = 100
+        usage.output_tokens = 50
+        usage.cost = 0.001
+
+        c.log_llm_response("gpt-4", duration_ms=1000.0, tool_count=0, usage=usage)
+
+        output = mock_print.call_args[0][0]
+        # Flash symbol for LLM completion
+        assert "⚡" in output
+        # Model name
+        assert "gpt-4" in output

@@ -12,13 +12,57 @@ LLM-Note:
 import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List, Union
 from rich.console import Console as RichConsole
 from rich.panel import Panel
 from rich.text import Text
+from rich.markup import escape as rich_escape
 
 # Use stderr so console output doesn't mix with agent results
 _rich_console = RichConsole(stderr=True)
+
+# Brand constants
+BRAND_COLOR = "cyan"
+PREFIX = "[co]"
+
+# Onion layer symbols (ties to banner ○ ◎ ●)
+CIRCLE_EMPTY = "○"      # Request/waiting
+CIRCLE_FILLED = "●"     # Response/complete
+
+# Other symbols
+TOOL_SYMBOL = "▸"       # Tool execution
+SUCCESS_SYMBOL = "✓"    # Action success (tools)
+LLM_DONE_SYMBOL = "⚡"   # LLM thinking complete (flash)
+ERROR_SYMBOL = "✗"      # Error
+
+# Color scheme - brand + semantic
+# Cyan = brand identity ([co], banner)
+# Violet = LLM/AI thinking (○ ●)
+# Green = tool action (▸) and success (✓)
+LLM_COLOR = "magenta"       # Violet for LLM thinking
+TOOL_COLOR = "green"        # Green for tool action
+SUCCESS_COLOR = "green"     # Success indicators
+ERROR_COLOR = "red"         # Errors
+DIM_COLOR = "dim"           # Metadata (tokens, cost, time)
+
+
+def _get_version() -> str:
+    """Get version from package, with fallback."""
+    from . import __version__
+    return __version__
+
+
+def _prefix() -> str:
+    """Get formatted [co] prefix.
+
+    Uses rich_escape to render literal [co] brackets in cyan.
+    """
+    return f"[{BRAND_COLOR}]{rich_escape(PREFIX)}[/{BRAND_COLOR}]"
+
+
+def _plain_prefix() -> str:
+    """Get plain text prefix for log files."""
+    return PREFIX
 
 
 class Console:
@@ -51,19 +95,121 @@ class Console:
             f.write(f"Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"{'='*60}\n\n")
 
-    def print(self, message: str, style: str = None):
-        """Print message to console and/or log file.
+    def print_banner(
+        self,
+        agent_name: str,
+        model: str = "",
+        tools: Union[List[str], int] = 0,
+        log_dir: Optional[str] = None,
+        llm: Any = None
+    ) -> None:
+        """Print the ConnectOnion banner (Onion Stack style).
 
-        Always shows output to terminal. Optionally logs to file.
+          ○
+         ◎    research-assistant
+        ●     ─────────────────────
+              connectonion v0.5.1
+              o4-mini · 3 tools
+              .co/logs/ · .co/sessions/
+
+        Args:
+            agent_name: Name of the agent
+            model: Model name (e.g., "co/o4-mini")
+            tools: List of tool names or count of tools
+            log_dir: Log directory path (e.g., ".co/")
+            llm: LLM instance to check for free tier
+        """
+        version = _get_version()
+
+        # Calculate tools display
+        if isinstance(tools, list):
+            tools_count = len(tools)
+        else:
+            tools_count = tools
+        tools_str = f"{tools_count} tool{'s' if tools_count != 1 else ''}" if tools_count else ""
+
+        # Build meta line: model · tools
+        meta_parts = [p for p in [model, tools_str] if p]
+        meta_line = " · ".join(meta_parts)
+
+        # Check if using OpenOnion managed keys (free credits from Aaron)
+        is_free_tier = False
+        if llm is not None:
+            is_free_tier = type(llm).__name__ == "OpenOnionLLM"
+        aaron_message = "credits on me, go build —aaron" if is_free_tier else None
+
+        # Calculate separator length (at least as long as agent name, min 20)
+        separator_len = max(len(agent_name), 20)
+        separator = "─" * separator_len
+
+        # Build the banner lines with Rich markup (Onion Stack - descending layers)
+        lines = [
+            f"  [{BRAND_COLOR}]{CIRCLE_EMPTY}[/{BRAND_COLOR}]",
+            f" [{BRAND_COLOR}]◎[/{BRAND_COLOR}]    [bold]{agent_name}[/bold]",
+            f"[{BRAND_COLOR}]{CIRCLE_FILLED}[/{BRAND_COLOR}]     [{DIM_COLOR}]{separator}[/{DIM_COLOR}]",
+            f"      [{BRAND_COLOR}]connectonion[/{BRAND_COLOR}] [{DIM_COLOR}]v{version}[/{DIM_COLOR}]",
+        ]
+
+        # Add meta line if there's content
+        if meta_line:
+            lines.append(f"      [{DIM_COLOR}]{meta_line}[/{DIM_COLOR}]")
+
+        # Add log paths if logging is enabled
+        if log_dir:
+            lines.append(f"      [{DIM_COLOR}]{log_dir}logs/ · {log_dir}sessions/[/{DIM_COLOR}]")
+
+        # Add Aaron's message for free tier users
+        if aaron_message:
+            lines.append(f"      [{DIM_COLOR}]{aaron_message}[/{DIM_COLOR}]")
+
+        # Add closing separator
+        lines.append(f"      [{DIM_COLOR}]{separator}[/{DIM_COLOR}]")
+
+        # Print with empty line before and after for breathing room
+        _rich_console.print()
+        for line in lines:
+            _rich_console.print(line)
+        _rich_console.print()
+
+        # Log to file (plain text version)
+        if self.log_file:
+            plain_lines = [
+                f"  {CIRCLE_EMPTY}",
+                f" ◎    {agent_name}",
+                f"{CIRCLE_FILLED}     {separator}",
+                f"      connectonion v{version}",
+            ]
+            if meta_line:
+                plain_lines.append(f"      {meta_line}")
+            if log_dir:
+                plain_lines.append(f"      {log_dir}logs/ · {log_dir}sessions/")
+            if aaron_message:
+                plain_lines.append(f"      {aaron_message}")
+            plain_lines.append(f"      {separator}")
+
+            with open(self.log_file, 'a', encoding='utf-8') as f:
+                f.write("\n")
+                for line in plain_lines:
+                    f.write(f"{line}\n")
+                f.write("\n")
+
+    def print(self, message: str, style: str = None, use_prefix: bool = True):
+        """Print message to console and/or log file.
 
         Args:
             message: The message (can include Rich markup for console)
             style: Additional Rich style for console only
+            use_prefix: Whether to include [co] prefix (default True)
         """
-        timestamp = datetime.now().strftime("%H:%M:%S")
+        # Build formatted message with [co] prefix
+        if use_prefix:
+            formatted = f"{_prefix()} {message}"
+            plain = f"{_plain_prefix()} {self._to_plain_text(message)}"
+        else:
+            formatted = message
+            plain = self._to_plain_text(message)
 
-        # Always show terminal output with Rich formatting
-        formatted = f"[dim]{timestamp}[/dim] {message}"
+        # Print to terminal
         if style:
             _rich_console.print(formatted, style=style)
         else:
@@ -71,9 +217,20 @@ class Console:
 
         # Log file output (plain text) if enabled
         if self.log_file:
-            plain = self._to_plain_text(message)
+            timestamp = datetime.now().strftime("%H:%M:%S")
             with open(self.log_file, 'a', encoding='utf-8') as f:
                 f.write(f"[{timestamp}] {plain}\n")
+
+    def print_task(self, task: str) -> None:
+        """Print the user's task/input.
+
+        [co] > "find the latest AI papers"
+        """
+        # Truncate long tasks for display
+        display_task = task[:100] + "..." if len(task) > 100 else task
+        _rich_console.print()  # Empty line before
+        self.print(f'> "{display_task}"')
+        _rich_console.print()  # Empty line after
 
     def print_xray_table(
         self,
@@ -160,36 +317,99 @@ class Console:
                 f.write(f"  Execution time: {timing/1000:.4f}s | Iteration: {iteration}/{max_iterations} | Breakpoint: @xray\n\n")
 
     def log_tool_call(self, tool_name: str, tool_args: Dict[str, Any]) -> None:
-        """Log tool call - separate from result for clarity.
+        """Log tool call start - stores info for log_tool_result.
 
-        Short: → Tool: greet(name='Alice')
-        Long:  → Tool: write_file(path='test.py',
-                   content='...'
-                 )
+        [co]   ▸ search(query="AI papers")             ✓ 0.8s
         """
-        formatted_args = self._format_tool_args_list(tool_args)
-        single_line = ", ".join(formatted_args)
+        # Store for later completion by log_tool_result
+        self._current_tool = {
+            'name': tool_name,
+            'args': tool_args
+        }
 
-        if len(single_line) < 60 and len(formatted_args) <= 2:
-            self.print(f"[blue]→[/blue] Tool: {tool_name}({single_line})")
-        elif len(formatted_args) == 1:
-            # Single long arg: put on same line, will wrap naturally
-            self.print(f"[blue]→[/blue] Tool: {tool_name}({formatted_args[0]})")
+    def log_tool_result(self, result: str, timing_ms: float, success: bool = True) -> None:
+        """Log tool completion with timing.
+
+        [co]   ▸ search(query="AI papers")             ✓ 0.8s
+        """
+        tool_name = getattr(self, '_current_tool', {}).get('name', 'tool')
+        tool_args = getattr(self, '_current_tool', {}).get('args', {})
+
+        # Format tool call with smart truncation
+        tool_str = self._format_tool_display(tool_name, tool_args)
+
+        # Format timing
+        time_str = f"{timing_ms/1000:.1f}s" if timing_ms >= 100 else f"{timing_ms/1000:.2f}s"
+
+        # Build status indicator
+        if success:
+            status = f"[{SUCCESS_COLOR}]{SUCCESS_SYMBOL}[/{SUCCESS_COLOR}] [{DIM_COLOR}]{time_str}[/{DIM_COLOR}]"
         else:
-            # Multi-line: first arg on same line as bracket, rest indented
-            base_indent = " " * (9 + len(tool_name) + 1)  # align with after "("
-            lines = [f"[blue]→[/blue] Tool: {tool_name}({formatted_args[0]},"]
-            for arg in formatted_args[1:-1]:
-                lines.append(f"{base_indent}{arg},")
-            lines.append(f"{base_indent}{formatted_args[-1]})")
-            self.print("\n".join(lines))
+            status = f"[{ERROR_COLOR}]{ERROR_SYMBOL}[/{ERROR_COLOR}] [{DIM_COLOR}]{time_str}[/{DIM_COLOR}]"
 
-    def log_tool_result(self, result: str, timing_ms: float) -> None:
-        """Log tool result - separate line for clarity."""
-        result_preview = result[:80] + "..." if len(result) > 80 else result
-        result_preview = result_preview.replace('\n', '\\n')
-        time_str = f"{timing_ms/1000:.4f}s" if timing_ms < 100 else f"{timing_ms/1000:.1f}s"
-        self.print(f"[green]←[/green] Tool Result ({time_str}): {result_preview}")
+        # Right-align the status (target ~55 chars for tool part)
+        # Green theme for tool action (triangle + tool name)
+        tool_display = f"  [{TOOL_COLOR}]{TOOL_SYMBOL} {tool_str}[/{TOOL_COLOR}]"
+        # Calculate padding (account for markup being removed in display)
+        visible_len = len(f"  {TOOL_SYMBOL} {tool_str}")
+        padding = max(1, 50 - visible_len)
+
+        self.print(f"{tool_display}{' ' * padding}{status}")
+
+    def _format_tool_display(self, name: str, args: Dict[str, Any], max_width: int = 45) -> str:
+        """Format tool call with smart truncation.
+
+        Rules:
+        1. Max ~45 chars for tool display
+        2. Show all param names when possible
+        3. Use ... when truncation needed
+        """
+        if not args:
+            return f"{name}()"
+
+        # Calculate available space for args
+        base_len = len(name) + 2  # name + ()
+        available = max_width - base_len
+
+        # Format each arg
+        formatted = []
+        for key, val in args.items():
+            if isinstance(val, str):
+                formatted.append((key, f'"{val}"'))
+            else:
+                formatted.append((key, str(val)))
+
+        # Try to fit all args
+        def build_args(items, max_val_len=None):
+            parts = []
+            for key, val in items:
+                if max_val_len and len(val) > max_val_len:
+                    val = val[:max_val_len-3] + '..."' if val.startswith('"') else val[:max_val_len-3] + "..."
+                parts.append(f"{key}={val}")
+            return ", ".join(parts)
+
+        # First try: full values
+        args_str = build_args(formatted)
+        if len(args_str) <= available:
+            return f"{name}({args_str})"
+
+        # Second try: truncate values to 20 chars each
+        args_str = build_args(formatted, max_val_len=20)
+        if len(args_str) <= available:
+            return f"{name}({args_str})"
+
+        # Third try: truncate values to 10 chars each
+        args_str = build_args(formatted, max_val_len=10)
+        if len(args_str) <= available:
+            return f"{name}({args_str})"
+
+        # Last resort: first 2 args truncated + ...
+        if len(formatted) > 2:
+            args_str = build_args(formatted[:2], max_val_len=10) + ", ..."
+        else:
+            args_str = build_args(formatted, max_val_len=8)
+
+        return f"{name}({args_str})"
 
     def _format_tool_args_list(self, args: Dict[str, Any]) -> list:
         """Format each arg as key='value' with 150 char limit per value.
@@ -211,19 +431,124 @@ class Console:
                 parts.append(f"{k}={v_str}")
         return parts
 
-    def log_llm_response(self, duration_ms: float, tool_count: int, usage) -> None:
-        """Log LLM response with token usage."""
+    def print_llm_request(self, model: str, session: Dict[str, Any], max_iterations: int) -> None:
+        """Print LLM request with violet empty circle (AI thinking).
+
+        [co] ○ gemini-2.5-flash                              1/10
+
+        Args:
+            model: Model name
+            session: Agent's current_session dict
+            max_iterations: Agent's max_iterations setting
+        """
+        msg_count = len(session.get('messages', []))
+        iteration = session.get('iteration', 1)
+
+        # Build the line: violet circle, white model, dim metadata
+        main_part = f"[{LLM_COLOR}]{CIRCLE_EMPTY}[/{LLM_COLOR}] {model}"
+        meta_part = f"[{DIM_COLOR}]{iteration}/{max_iterations}[/{DIM_COLOR}]"
+
+        # Right-align the iteration
+        visible_len = len(f"{CIRCLE_EMPTY} {model}")
+        padding = max(1, 50 - visible_len)
+
+        self.print(f"{main_part}{' ' * padding}{meta_part}")
+
+    def log_llm_response(self, model: str, duration_ms: float, tool_count: int, usage) -> None:
+        """Log LLM response with violet filled circle (AI done thinking).
+
+        [co] ● gemini-2.5-flash · 1 tools · 66 tok (42 cached) · $0.00   ✓ 1.8s
+
+        Args:
+            model: Model name
+            duration_ms: Response time in milliseconds
+            tool_count: Number of tool calls requested
+            usage: TokenUsage object with input_tokens, output_tokens, cached_tokens, cost
+        """
+        # Format tokens with cache info
         total_tokens = usage.input_tokens + usage.output_tokens
+        tokens_str = f"{total_tokens/1000:.1f}k tok" if total_tokens >= 1000 else f"{total_tokens} tok"
+        cached = getattr(usage, 'cached_tokens', 0)
+        if cached:
+            tokens_str = f"{tokens_str} ({cached} cached)"
+
+        # Format cost
+        cost_str = f"${usage.cost:.4f}" if usage.cost < 0.01 else f"${usage.cost:.2f}"
+
+        # Format timing
+        time_str = f"{duration_ms/1000:.1f}s" if duration_ms >= 100 else f"{duration_ms/1000:.2f}s"
+
+        # Build main part: violet circle, white model, white tools, dim metadata
+        circle = f"[{LLM_COLOR}]{CIRCLE_FILLED}[/{LLM_COLOR}]"
+        info_parts = [model]
+        if tool_count:
+            tool_word = "tool" if tool_count == 1 else "tools"
+            info_parts.append(f"{tool_count} {tool_word}")
+        info_parts.append(f"[{DIM_COLOR}]{tokens_str} · {cost_str}[/{DIM_COLOR}]")
+        main_part = f"{circle} " + " · ".join(info_parts)
+
+        # Build status: flash symbol for LLM completion, dim time
+        status = f"[{LLM_COLOR}]{LLM_DONE_SYMBOL}[/{LLM_COLOR}] [{DIM_COLOR}]{time_str}[/{DIM_COLOR}]"
+
+        # Calculate visible length for padding
+        visible_text = f"{CIRCLE_FILLED} {model}"
+        if tool_count:
+            visible_text += f" · {tool_count} tools"
+        visible_text += f" · {tokens_str} · {cost_str}"
+        padding = max(1, 55 - len(visible_text))
+
+        self.print(f"{main_part}{' ' * padding}{status}")
+
+    def print_completion(
+        self,
+        duration_s: float,
+        session: Dict[str, Any],
+        session_path: Optional[str] = None
+    ) -> None:
+        """Print completion summary.
+
+        [co] ═══════════════════════════════════════
+        [co] ✓ done · 2.3k tokens · $0.005 · 3.4s
+        [co]   saved → .co/sessions/research-assistant.yaml
+
+        Args:
+            duration_s: Total duration in seconds
+            session: Agent's current_session dict (contains trace with usage)
+            session_path: Optional path to session file
+        """
+        # Calculate totals from trace
+        trace = session.get('trace', [])
+        llm_calls = [t for t in trace if t.get('type') == 'llm_call']
+        total_tokens = sum(
+            (t.get('usage').input_tokens + t.get('usage').output_tokens)
+            for t in llm_calls if t.get('usage')
+        )
+        total_cost = sum(
+            t.get('usage').cost
+            for t in llm_calls if t.get('usage')
+        )
+
+        # Format tokens
         tokens_str = f"{total_tokens/1000:.1f}k" if total_tokens >= 1000 else str(total_tokens)
-        tools_str = f" • {tool_count} tools" if tool_count else ""
-        msg = f"LLM Response ({duration_ms/1000:.1f}s){tools_str} • {tokens_str} tokens • ${usage.cost:.4f}"
 
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        _rich_console.print(f"[dim]{timestamp}[/dim] [green]←[/green] {msg}")
+        # Format cost
+        cost_str = f"${total_cost:.4f}" if total_cost < 0.01 else f"${total_cost:.3f}"
 
-        if self.log_file:
-            with open(self.log_file, 'a', encoding='utf-8') as f:
-                f.write(f"[{timestamp}] <- {msg}\n")
+        # Format time
+        time_str = f"{duration_s:.1f}s"
+
+        # Print separator
+        _rich_console.print()
+        self.print(f"[{DIM_COLOR}]═══════════════════════════════════════════════[/{DIM_COLOR}]")
+
+        # Print summary: green check, white "complete", dim metadata
+        self.print(f"[{SUCCESS_COLOR}]{SUCCESS_SYMBOL}[/{SUCCESS_COLOR}] complete [{DIM_COLOR}]· {tokens_str} tokens · {cost_str} · {time_str}[/{DIM_COLOR}]")
+
+        # Print session path if provided (dim)
+        if session_path:
+            self.print(f"  [{DIM_COLOR}]{session_path}[/{DIM_COLOR}]")
+
+        _rich_console.print()
 
     def _to_plain_text(self, message: str) -> str:
         """Convert Rich markup to plain text for log file."""
