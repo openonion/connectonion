@@ -9,7 +9,7 @@ LLM-Note:
   Errors: no error handling (let I/O errors bubble up) | assumes log_file parent can be created | assumes stderr is available
 """
 
-import sys
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
@@ -252,10 +252,6 @@ class Console:
             agent: Agent instance with current_session
         """
         from rich.table import Table
-        from rich.panel import Panel
-
-        # Always print - console is always active
-        from rich.text import Text
         from rich.console import Group
 
         table = Table(show_header=False, box=None, padding=(0, 1))
@@ -411,26 +407,6 @@ class Console:
 
         return f"{name}({args_str})"
 
-    def _format_tool_args_list(self, args: Dict[str, Any]) -> list:
-        """Format each arg as key='value' with 150 char limit per value.
-
-        Escapes newlines so each arg stays on one line.
-        """
-        parts = []
-        for k, v in args.items():
-            if isinstance(v, str):
-                # Escape newlines for single-line display
-                v_str = v.replace('\n', '\\n').replace('\r', '\\r')
-                if len(v_str) > 150:
-                    v_str = v_str[:150] + "..."
-                parts.append(f"{k}='{v_str}'")
-            else:
-                v_str = str(v)
-                if len(v_str) > 150:
-                    v_str = v_str[:150] + "..."
-                parts.append(f"{k}={v_str}")
-        return parts
-
     def print_llm_request(self, model: str, session: Dict[str, Any], max_iterations: int) -> None:
         """Print LLM request with violet empty circle (AI thinking).
 
@@ -441,7 +417,6 @@ class Console:
             session: Agent's current_session dict
             max_iterations: Agent's max_iterations setting
         """
-        msg_count = len(session.get('messages', []))
         iteration = session.get('iteration', 1)
 
         # Build the line: violet circle, white model, dim metadata
@@ -552,9 +527,8 @@ class Console:
 
     def _to_plain_text(self, message: str) -> str:
         """Convert Rich markup to plain text for log file."""
-        # Remove Rich markup tags
-        import re
-        text = re.sub(r'\[/?\w+\]', '', message)
+        # Remove Rich markup tags (matches anything in brackets: [bold cyan], [#FF0000], etc.)
+        text = re.sub(r'\[[^\]]*\]', '', message)
 
         # Convert common symbols
         text = text.replace('→', '->')

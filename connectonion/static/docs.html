@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ConnectOnion API</title>
+  <style>
+    :root{
+      --bg: #1a1a1a;
+      --panel: #1c1c1e;
+      --panel-border: #2d2d2d;
+      --text: #e6edf3;
+      --muted: #8b98a5;
+      --accent: #49cc90;
+      --accent-hover: #3db37c;
+      --get: #61affe;
+      --post: #49cc90;
+      --delete: #f93e3e;
+      --ws: #9b59b6;
+      --code: #0d0d0d;
+      --chip: #2a2a2a;
+      --shadow: 0 1px 2px rgba(0,0,0,0.3);
+    }
+    @media (prefers-color-scheme: light){
+      :root{
+        --bg: #fafafa;
+        --panel: #ffffff;
+        --panel-border: #e0e0e0;
+        --text: #3b4151;
+        --muted: #6b7280;
+        --code: #f5f5f5;
+        --chip: #f0f0f0;
+        --shadow: 0 1px 2px rgba(0,0,0,0.1);
+      }
+    }
+    *{ box-sizing: border-box; }
+    html, body { height: 100%; }
+    body { margin: 0; background: var(--bg); color: var(--text); font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+
+    /* Header - Swagger style */
+    header { background: #1f1f1f; border-bottom: 1px solid #333; padding: 12px 20px; }
+    header .container { max-width: 1200px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .brand .logo { width: 32px; height: 32px; background: linear-gradient(135deg, #49cc90, #38a169); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-weight: bold; color: #fff; font-size: 16px; }
+    .brand .title { color: #fff; font-size: 18px; font-weight: 600; }
+    .brand .version { background: #49cc90; color: #000; font-size: 11px; padding: 2px 8px; border-radius: 10px; font-weight: 600; }
+    .server-form { display: flex; align-items: center; gap: 8px; }
+    .server-form input { height: 40px; background: #333; border: 1px solid #444; border-radius: 4px; color: #fff; padding: 0 12px; min-width: 280px; font-size: 13px; transition: border-color 0.15s ease; }
+    .server-form input:focus { outline: none; border-color: #49cc90; }
+    .server-form button { height: 40px; min-height: 40px; background: #4990e2; border: none; border-radius: 4px; color: #fff; padding: 0 16px; cursor: pointer; font-weight: 500; transition: background 0.15s ease; }
+    .server-form button:hover { background: #3a7bc8; }
+    .server-form button:focus { outline: 2px solid #49cc90; outline-offset: 2px; }
+
+    /* Main content */
+    main { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+    /* Info bar */
+    .info-bar { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 4px; margin-bottom: 20px; }
+    .info-bar summary { padding: 12px 16px; cursor: pointer; font-weight: 600; display: flex; align-items: center; gap: 12px; }
+    .info-bar summary::-webkit-details-marker { display: none; }
+    .info-bar summary::before { content: "▶"; font-size: 10px; transition: transform 0.2s; }
+    .info-bar[open] summary::before { transform: rotate(90deg); }
+    .info-bar .content { padding: 0 16px 16px; border-top: 1px solid var(--panel-border); }
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-top: 12px; }
+    .info-item { display: flex; flex-direction: column; gap: 2px; }
+    .info-item .label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; }
+    .info-item .value { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    .trust-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 11px; font-weight: 600; }
+    .trust-badge.open { background: #61affe20; color: #61affe; }
+    .trust-badge.careful { background: #f59e0b20; color: #f59e0b; }
+    .trust-badge.strict { background: #f93e3e20; color: #f93e3e; }
+
+    /* Endpoint cards - Swagger style */
+    .endpoint { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 4px; margin-bottom: 12px; overflow: hidden; transition: border-color 0.15s ease; }
+    .endpoint:hover { border-color: var(--muted); }
+    .endpoint-header { display: flex; align-items: center; gap: 12px; padding: 10px 16px; cursor: pointer; min-height: 48px; transition: background 0.15s ease; }
+    .endpoint-header:hover { background: rgba(255,255,255,0.03); }
+    .method { padding: 6px 12px; border-radius: 3px; font-size: 12px; font-weight: 700; text-transform: uppercase; min-width: 70px; text-align: center; }
+    .method.get { background: var(--get); color: #fff; }
+    .method.post { background: var(--post); color: #fff; }
+    .method.delete { background: var(--delete); color: #fff; }
+    .method.ws { background: var(--ws); color: #fff; }
+    .endpoint-path { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 14px; font-weight: 600; }
+    .endpoint-desc { color: var(--muted); font-size: 13px; margin-left: auto; }
+    .endpoint-expand { color: var(--muted); font-size: 18px; margin-left: 8px; transition: transform 0.2s; }
+    .endpoint[open] .endpoint-expand { transform: rotate(180deg); }
+
+    .endpoint-body { border-top: 1px solid var(--panel-border); padding: 16px; background: rgba(0,0,0,0.1); }
+    .endpoint-section { margin-bottom: 16px; }
+    .endpoint-section:last-child { margin-bottom: 0; }
+    .endpoint-section h4 { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 8px; }
+
+    /* Form elements */
+    label { font-size: 12px; color: var(--muted); margin-bottom: 4px; display: block; }
+    textarea, input[type="text"] { width: 100%; background: var(--code); border: 1px solid var(--panel-border); color: var(--text); border-radius: 4px; padding: 10px 12px; outline: none; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 13px; }
+    textarea { min-height: 100px; resize: vertical; }
+    textarea:focus, input[type="text"]:focus { border-color: var(--accent); }
+
+    /* Buttons */
+    .btn { padding: 10px 16px; min-height: 44px; border-radius: 4px; border: 1px solid var(--panel-border); background: var(--chip); color: var(--text); cursor: pointer; font-size: 13px; font-weight: 500; transition: all 0.15s ease; }
+    .btn:hover { filter: brightness(1.1); }
+    .btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .btn.execute { background: var(--accent); color: #000; border: none; font-weight: 600; }
+    .btn.execute:hover { background: var(--accent-hover); }
+    .btn.connect { background: var(--ws); color: #fff; border: none; }
+    .btn.connect:hover { background: #8e44ad; }
+
+    /* Response area */
+    pre { background: var(--code); padding: 12px; border-radius: 4px; overflow: auto; border: 1px solid var(--panel-border); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; margin: 0; max-height: 300px; }
+
+    /* Row helpers */
+    .row { display: flex; gap: 8px; align-items: center; }
+    .row.between { justify-content: space-between; }
+
+    /* Schema section */
+    .schema { background: var(--code); border: 1px solid var(--panel-border); border-radius: 4px; padding: 12px; margin-top: 8px; }
+    .schema-title { font-size: 11px; color: var(--muted); text-transform: uppercase; margin-bottom: 8px; }
+    .schema-content { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; white-space: pre-wrap; }
+
+    /* WebSocket log */
+    #ws-log { height: 200px; overflow: auto; background: #0a0a0a; color: #e6e6e6; padding: 12px; border-radius: 4px; border: 1px solid var(--panel-border); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+
+    /* Notes section */
+    .notes { background: var(--panel); border: 1px solid var(--panel-border); border-radius: 4px; padding: 16px; margin-top: 20px; }
+    .notes h3 { margin: 0 0 12px; font-size: 14px; }
+    .notes ul { margin: 0; padding-left: 20px; color: var(--muted); font-size: 13px; }
+    .notes li { margin-bottom: 4px; }
+    .notes code { background: var(--code); padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+
+    /* Status indicator */
+    .status { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; }
+    .status .dot { width: 8px; height: 8px; border-radius: 50%; }
+    .status .dot.connected { background: #49cc90; box-shadow: 0 0 8px #49cc90; }
+    .status .dot.disconnected { background: #666; }
+
+    /* Curl box - Swagger style */
+    .curl-box { position: relative; background: #333; border-radius: 4px; }
+    .curl-box pre { background: #333; color: #fff; border: none; margin: 0; padding: 12px 70px 12px 12px; white-space: pre-wrap; word-break: break-all; }
+    .curl-box .copy-btn { position: absolute; top: 50%; right: 8px; transform: translateY(-50%); background: #444; border: 1px solid #555; color: #ccc; padding: 8px 12px; min-height: 36px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500; transition: all 0.15s ease; }
+    .curl-box .copy-btn:hover { background: #555; color: #fff; }
+    .curl-box .copy-btn:focus { outline: 2px solid var(--accent); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container">
+      <div class="brand">
+        <div class="logo">CO</div>
+        <span class="title">ConnectOnion</span>
+        <span class="version" id="hdr-version">v0.0.0</span>
+      </div>
+      <div class="server-form">
+        <input id="server-url" placeholder="Server URL (e.g. http://localhost:8000)" />
+        <button onclick="applyServerUrl()">Explore</button>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <!-- Agent Info Bar -->
+    <details class="info-bar" open>
+      <summary>
+        <span id="hdr-name">Agent</span>
+        <span class="trust-badge open" id="hdr-trust">open</span>
+      </summary>
+      <div class="content">
+        <div class="info-grid">
+          <div class="info-item">
+            <span class="label">Name</span>
+            <span class="value" id="agent-name">-</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Trust Level</span>
+            <span class="value" id="agent-trust">-</span>
+          </div>
+          <div class="info-item">
+            <span class="label">Address</span>
+            <span class="value"><code id="agent-address">-</code> <button class="btn" style="padding:6px 10px;font-size:11px;min-height:32px;" onclick="copyText('agent-address')">Copy</button></span>
+          </div>
+          <div class="info-item">
+            <span class="label">Tools</span>
+            <span class="value" id="agent-tools">-</span>
+          </div>
+        </div>
+      </div>
+    </details>
+
+    <!-- POST /input -->
+    <details class="endpoint" open>
+      <summary class="endpoint-header">
+        <span class="method post">POST</span>
+        <span class="endpoint-path">/input</span>
+        <span class="endpoint-desc">Send a prompt to the agent</span>
+        <span class="endpoint-expand">▾</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="endpoint-section">
+          <h4>Request Body</h4>
+          <label for="prompt">prompt <span style="color:var(--muted)">string</span></label>
+          <textarea id="prompt" placeholder="Type your prompt here..."></textarea>
+        </div>
+
+        <details style="margin-bottom:16px;">
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted);">▶ Signed Request (optional)</summary>
+          <div style="padding-top:12px;">
+            <div class="schema">
+              <div class="schema-title">Payload Preview</div>
+              <pre id="payload-preview" style="border:none;padding:0;background:transparent;"></pre>
+            </div>
+            <div class="row" style="margin:12px 0;">
+              <button class="btn" onclick="copyPayload()">Copy Payload</button>
+              <span style="font-size:11px;color:var(--muted);">Sign externally. Never paste private keys here.</span>
+            </div>
+            <label for="from">from <span style="color:var(--muted)">string - public key</span></label>
+            <input type="text" id="from" placeholder="0xPublicKey" style="margin-bottom:8px;" />
+            <label for="signature">signature <span style="color:var(--muted)">string</span></label>
+            <input type="text" id="signature" placeholder="0xSignature" />
+          </div>
+        </details>
+
+        <div class="row">
+          <button class="btn execute" onclick="submitHttp()">Execute</button>
+        </div>
+
+        <div class="endpoint-section" style="margin-top:16px;">
+          <h4>Curl</h4>
+          <div class="curl-box">
+            <pre id="input-curl">curl -X POST "http://localhost:8000/input" \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "hello"}'</pre>
+            <button class="copy-btn" onclick="copyCurl('input-curl')">Copy</button>
+          </div>
+        </div>
+
+        <div class="endpoint-section">
+          <h4>Response</h4>
+          <pre id="http-result">{ }</pre>
+        </div>
+      </div>
+    </details>
+
+    <!-- GET /sessions -->
+    <details class="endpoint">
+      <summary class="endpoint-header">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/sessions</span>
+        <span class="endpoint-desc">List all sessions</span>
+        <span class="endpoint-expand">▾</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="row between" style="margin-bottom:12px;">
+          <button class="btn execute" onclick="refreshSessions()">Execute</button>
+          <label class="row" style="gap:6px;margin:0;">
+            <input type="checkbox" id="auto" onchange="toggleAuto()" /> Auto-refresh
+          </label>
+        </div>
+        <div class="endpoint-section">
+          <h4>Curl</h4>
+          <div class="curl-box">
+            <pre id="sessions-curl">curl -X GET "http://localhost:8000/sessions"</pre>
+            <button class="copy-btn" onclick="copyCurl('sessions-curl')">Copy</button>
+          </div>
+        </div>
+        <div class="endpoint-section">
+          <h4>Response</h4>
+          <pre id="sessions">{ }</pre>
+        </div>
+      </div>
+    </details>
+
+    <!-- GET /sessions/{session_id} -->
+    <details class="endpoint">
+      <summary class="endpoint-header">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/sessions/{session_id}</span>
+        <span class="endpoint-desc">Get single session by ID</span>
+        <span class="endpoint-expand">▾</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="endpoint-section">
+          <h4>Parameters</h4>
+          <label for="session-id">session_id <span style="color:var(--muted)">string (path)</span></label>
+          <input type="text" id="session-id" placeholder="Enter session ID..." style="margin-bottom:12px;" />
+        </div>
+        <button class="btn execute" onclick="fetchSession()">Execute</button>
+        <div class="endpoint-section" style="margin-top:12px;">
+          <h4>Curl</h4>
+          <div class="curl-box">
+            <pre id="session-curl">curl -X GET "http://localhost:8000/sessions/{session_id}"</pre>
+            <button class="copy-btn" onclick="copyCurl('session-curl')">Copy</button>
+          </div>
+        </div>
+        <div class="endpoint-section">
+          <h4>Response</h4>
+          <pre id="session-result">{ }</pre>
+        </div>
+      </div>
+    </details>
+
+    <!-- GET /info -->
+    <details class="endpoint">
+      <summary class="endpoint-header">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/info</span>
+        <span class="endpoint-desc">Get agent metadata</span>
+        <span class="endpoint-expand">▾</span>
+      </summary>
+      <div class="endpoint-body">
+        <button class="btn execute" onclick="fetchInfo()">Execute</button>
+        <div class="endpoint-section" style="margin-top:12px;">
+          <h4>Curl</h4>
+          <div class="curl-box">
+            <pre id="info-curl">curl -X GET "http://localhost:8000/info"</pre>
+            <button class="copy-btn" onclick="copyCurl('info-curl')">Copy</button>
+          </div>
+        </div>
+        <div class="endpoint-section">
+          <h4>Response</h4>
+          <pre id="info-result">{ }</pre>
+        </div>
+      </div>
+    </details>
+
+    <!-- GET /health -->
+    <details class="endpoint">
+      <summary class="endpoint-header">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/health</span>
+        <span class="endpoint-desc">Health check endpoint</span>
+        <span class="endpoint-expand">▾</span>
+      </summary>
+      <div class="endpoint-body">
+        <button class="btn execute" onclick="fetchHealth()">Execute</button>
+        <div class="endpoint-section" style="margin-top:12px;">
+          <h4>Curl</h4>
+          <div class="curl-box">
+            <pre id="health-curl">curl -X GET "http://localhost:8000/health"</pre>
+            <button class="copy-btn" onclick="copyCurl('health-curl')">Copy</button>
+          </div>
+        </div>
+        <div class="endpoint-section">
+          <h4>Response</h4>
+          <pre id="health-result">{ }</pre>
+        </div>
+      </div>
+    </details>
+
+    <!-- GET /docs -->
+    <details class="endpoint">
+      <summary class="endpoint-header">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/docs</span>
+        <span class="endpoint-desc">This documentation page</span>
+        <span class="endpoint-expand">▾</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="endpoint-section">
+          <h4>Curl</h4>
+          <div class="curl-box">
+            <pre id="docs-curl">curl -X GET "http://localhost:8000/docs"</pre>
+            <button class="copy-btn" onclick="copyCurl('docs-curl')">Copy</button>
+          </div>
+        </div>
+        <p style="color:var(--muted);font-size:13px;margin:8px 0 0;">Returns this HTML page.</p>
+      </div>
+    </details>
+
+    <!-- WebSocket /ws -->
+    <details class="endpoint">
+      <summary class="endpoint-header">
+        <span class="method ws">WS</span>
+        <span class="endpoint-path">/ws</span>
+        <span class="endpoint-desc">WebSocket streaming connection</span>
+        <span class="endpoint-expand">▾</span>
+      </summary>
+      <div class="endpoint-body">
+        <div class="row between" style="margin-bottom:12px;">
+          <div class="row">
+            <button class="btn connect" onclick="openWs()" id="ws-open">Connect</button>
+            <button class="btn" onclick="closeWs()" id="ws-close" disabled>Disconnect</button>
+          </div>
+          <span class="status">
+            <span class="dot disconnected" id="ws-status"></span>
+            <span id="ws-status-text">Disconnected</span>
+          </span>
+        </div>
+
+        <div class="endpoint-section">
+          <h4>Send Message</h4>
+          <div class="row">
+            <input type="text" id="ws-prompt" placeholder="Type message..." style="flex:1;" />
+            <button class="btn execute" onclick="sendWs()" id="ws-send" disabled>Send</button>
+          </div>
+        </div>
+
+        <div class="endpoint-section" style="margin-top:12px;">
+          <h4>Connection</h4>
+          <div class="curl-box">
+            <pre id="ws-curl">websocat ws://localhost:8000/ws</pre>
+            <button class="copy-btn" onclick="copyCurl('ws-curl')">Copy</button>
+          </div>
+        </div>
+
+        <div class="endpoint-section" style="margin-top:12px;">
+          <h4>Messages</h4>
+          <div id="ws-log"></div>
+        </div>
+      </div>
+    </details>
+
+    <!-- Notes -->
+    <div class="notes">
+      <h3>Trust Levels</h3>
+      <ul>
+        <li><code>open</code> - Unsigned requests accepted (development)</li>
+        <li><code>careful</code> - If signature present, must be valid</li>
+        <li><code>strict</code> - Signature required (production)</li>
+      </ul>
+      <p style="margin:12px 0 0;font-size:12px;color:var(--muted);">
+        For signed requests: <code>payload.to</code> should match agent address, <code>payload.timestamp</code> should be within 5 minutes.
+      </p>
+    </div>
+  </main>
+
+  <script>
+    let ws; let autoTimer; let BASE = '';
+    function $(id){ return document.getElementById(id); }
+    function now(){ return new Date().toLocaleTimeString(); }
+    function log(msg){ const el=$('ws-log'); el.textContent += `[${now()}] ${msg}\n`; el.scrollTop = el.scrollHeight; }
+    function copyText(id){ navigator.clipboard.writeText($(id).textContent); }
+    function copyPayload(){ navigator.clipboard.writeText($('payload-preview').textContent); }
+    function copyCurl(id){ navigator.clipboard.writeText($(id).textContent); }
+
+    function originBase(){ try { return location.origin; } catch { return ''; } }
+
+    async function loadInfo(){
+      try {
+        const res = await fetch(buildUrl('/info'));
+        const info = await res.json();
+        $('agent-name').textContent = info.name;
+        $('agent-trust').textContent = info.trust;
+        $('agent-address').textContent = info.address || '-';
+        $('agent-tools').textContent = (info.tools||[]).join(', ') || '-';
+        // Header
+        $('hdr-name').textContent = info.name;
+        $('hdr-version').textContent = 'v' + info.version;
+        const trustEl = $('hdr-trust');
+        trustEl.textContent = info.trust;
+        trustEl.className = 'trust-badge ' + (info.trust||'').toLowerCase();
+        updatePayloadPreview();
+      } catch(e) { console.error(e); }
+    }
+
+    async function fetchInfo(){
+      const res = await fetch(buildUrl('/info'));
+      const data = await res.json();
+      $('info-result').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function fetchSession(){
+      const sessionId = $('session-id').value.trim();
+      if (!sessionId) {
+        $('session-result').textContent = '{"error": "Please enter a session ID"}';
+        return;
+      }
+      const res = await fetch(buildUrl('/sessions/' + sessionId));
+      const data = await res.json();
+      $('session-result').textContent = JSON.stringify(data, null, 2);
+    }
+
+    async function fetchHealth(){
+      const res = await fetch(buildUrl('/health'));
+      const data = await res.json();
+      $('health-result').textContent = JSON.stringify(data, null, 2);
+    }
+
+    function updatePayloadPreview(){
+      const to = $('agent-address').textContent;
+      const payload = {
+        prompt: $('prompt').value || 'hello',
+        to: to && to !== '-' ? to : undefined,
+        timestamp: Math.floor(Date.now()/1000)
+      };
+      $('payload-preview').textContent = JSON.stringify(payload, null, 2);
+      updateCurlCommands();
+    }
+
+    function updateCurlCommands(){
+      const base = buildUrl('');
+      const prompt = $('prompt').value || 'hello';
+      const from = $('from').value.trim();
+      const signature = $('signature').value.trim();
+
+      // POST /input curl
+      let inputBody;
+      if (from && signature) {
+        const payload = JSON.parse($('payload-preview').textContent);
+        inputBody = JSON.stringify({ payload, from, signature });
+      } else {
+        inputBody = JSON.stringify({ prompt });
+      }
+      $('input-curl').textContent = `curl -X POST "${base}/input" \\
+  -H "Content-Type: application/json" \\
+  -d '${inputBody}'`;
+
+      // GET /sessions curl
+      $('sessions-curl').textContent = `curl -X GET "${base}/sessions"`;
+
+      // GET /sessions/{session_id} curl
+      const sessionId = $('session-id').value.trim() || '{session_id}';
+      $('session-curl').textContent = `curl -X GET "${base}/sessions/${sessionId}"`;
+
+      // GET /info curl
+      $('info-curl').textContent = `curl -X GET "${base}/info"`;
+
+      // GET /health curl
+      $('health-curl').textContent = `curl -X GET "${base}/health"`;
+
+      // GET /docs curl
+      $('docs-curl').textContent = `curl -X GET "${base}/docs"`;
+
+      // WebSocket connection
+      const wsBase = base.replace(/^http/, 'ws');
+      $('ws-curl').textContent = `websocat ${wsBase}/ws`;
+    }
+
+    async function submitHttp(){
+      const from = $('from').value.trim();
+      const signature = $('signature').value.trim();
+      let body;
+      if (from && signature){
+        body = { payload: JSON.parse($('payload-preview').textContent), from, signature };
+      } else {
+        body = { prompt: $('prompt').value };
+      }
+      $('http-result').textContent = 'Loading...';
+      const res = await fetch(buildUrl('/input'), { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)});
+      const data = await res.json();
+      $('http-result').textContent = JSON.stringify(data, null, 2);
+      refreshSessions();
+    }
+
+    function openWs(){
+      const u = new URL(BASE || originBase() || window.location.origin);
+      const wsScheme = u.protocol === 'https:' ? 'wss:' : 'ws:';
+      ws = new WebSocket(wsScheme + '//' + u.host + '/ws');
+      ws.onopen = ()=>{
+        $('ws-open').disabled=true; $('ws-close').disabled=false; $('ws-send').disabled=false;
+        $('ws-status').className='dot connected'; $('ws-status-text').textContent='Connected';
+        log('Connected');
+      };
+      ws.onclose= ()=>{
+        $('ws-open').disabled=false; $('ws-close').disabled=true; $('ws-send').disabled=true;
+        $('ws-status').className='dot disconnected'; $('ws-status-text').textContent='Disconnected';
+        log('Disconnected');
+      };
+      ws.onmessage = (ev)=>{ log(ev.data); };
+    }
+    function closeWs(){ if(ws){ ws.close(); } }
+    function sendWs(){ if(!ws) return; const msg = { type:'INPUT', prompt: $('ws-prompt').value }; ws.send(JSON.stringify(msg)); log('→ ' + JSON.stringify(msg)); }
+
+    async function refreshSessions(){
+      const res = await fetch(buildUrl('/sessions'));
+      const data = await res.json();
+      $('sessions').textContent = JSON.stringify(data, null, 2);
+    }
+    function toggleAuto(){ if($('auto').checked){ autoTimer=setInterval(refreshSessions, 5000); } else { clearInterval(autoTimer); } }
+
+    function buildUrl(path){
+      const base = (BASE || originBase() || '').replace(/\/$/, '');
+      return base + path;
+    }
+
+    function applyServerUrl(){
+      const v = $('server-url').value.trim();
+      if(!v) { BASE = ''; $('server-url').value = originBase(); }
+      else { try { const u = new URL(v); BASE = u.origin; } catch { BASE = v; } }
+      updateCurlCommands();
+      loadInfo(); refreshSessions();
+    }
+
+    $('prompt').addEventListener('input', updatePayloadPreview);
+    $('from').addEventListener('input', updateCurlCommands);
+    $('signature').addEventListener('input', updateCurlCommands);
+    $('session-id').addEventListener('input', updateCurlCommands);
+    $('server-url').value = originBase();
+    applyServerUrl();
+  </script>
+</body>
+</html>

@@ -12,13 +12,25 @@ result = agent.input("Do something")
 
 ## What You See
 
+When you run an agent, you'll see the onion stack banner and execution flow:
+
 ```
-[10:32:14] INPUT: Generate a Python function
-[10:32:14] → LLM Request (gpt-4)
-[10:32:15] ← LLM Response (850ms): 1 tool calls
-[10:32:15] → Tool: generate_code({'language': 'python'})
-[10:32:15] ← Result (120ms): def sort_numbers...
-[10:32:16] ✓ Complete (2.3s)
+  ○
+ ◎    my-assistant
+●     ────────────────────
+      connectonion v0.5.1
+      co/o4-mini · 3 tools
+      .co/logs/ · .co/sessions/
+      ────────────────────
+
+[co] > "Generate a Python function"
+
+[co] ○ o4-mini                                    1/10
+[co] ● o4-mini · 1 tool · 150 tok · $0.0012       ⚡ 1.2s
+[co]   ▸ generate_code(language="python")         ✓ 0.12s
+
+[co] ═══════════════════════════════════════════════
+[co] ✓ complete · 150 tokens · $0.0012 · 2.3s
 ```
 
 Console output helps you understand:
@@ -73,7 +85,7 @@ agent = Agent("assistant", log="agent.log")
 
 Log locations:
 - Plain text: `.co/logs/{name}.log`
-- Session YAML: `.co/sessions/{name}_{timestamp}.yaml`
+- Session YAML: `.co/sessions/{name}.yaml`
 
 ## Quiet Mode
 

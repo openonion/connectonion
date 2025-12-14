@@ -700,6 +700,40 @@ co init  # Updates .co/docs/ without changing code
 
 ---
 
+#### `co deploy` - Deploy to Cloud
+
+Deploy your agent to ConnectOnion Cloud.
+
+**Basic usage:**
+```bash
+co deploy
+```
+
+**Requirements:**
+- Git repository with committed code
+- `.co/config.toml` (created by `co create` or `co init`)
+- Authenticated (`co auth`)
+
+**Example:**
+```bash
+$ co deploy
+
+Deploying to ConnectOnion Cloud...
+
+  Project: my-agent
+  Secrets: 3 keys
+
+Uploading...
+Building...
+
+Deployed!
+Agent URL: https://my-agent-abc123.agents.openonion.ai
+```
+
+> **Beta**: This feature is in beta. See [Deploy Guide](../network/deploy.md) for details.
+
+---
+
 ## Command Reference Summary
 
 | Command | Purpose | Interactive | Safe for Existing |
@@ -708,6 +742,7 @@ co init  # Updates .co/docs/ without changing code
 | `co init` | Add to existing | Yes | ✅ Yes |
 | `co auth` | Get managed keys | No | ✅ Yes |
 | `co status` | Check balance | No | ✅ Yes |
+| `co deploy` | Deploy to cloud | No | ✅ Yes |
 | `co reset` | Reset account | Yes | ⚠️ Destructive |
 | `co doctor` | Diagnose issues | No | ✅ Yes |
 | `co browser` | Browser command | No | ✅ Yes |

@@ -4,9 +4,8 @@ Connect and collaborate between agents.
 
 ## Core Concepts
 
+- [host.md](host.md) - Make agents network-accessible with `host()`
 - [connect.md](connect.md) - Connect to remote agents with `connect()`
-- [serve.md](serve.md) - Make agents network-accessible with `serve()`
-- [agent-serving.md](agent-serving.md) - Agent serving patterns
 
 ## Protocol Specifications
 

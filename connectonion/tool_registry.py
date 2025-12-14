@@ -60,7 +60,9 @@ class ToolRegistry:
         return self._tools.get(name, default)
 
     def get_instance(self, name, default=None):
-        """Get instance by name."""
+        """
+        this will be called like agent.tools.get_instance('deep_research_agent').tools.get_instance('web')
+        Get instance by name."""
         return self._instances.get(name, default)
 
     def remove(self, name) -> bool:

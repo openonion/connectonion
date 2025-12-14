@@ -90,7 +90,7 @@ $ co create another-agent
 🔑 Agent address: 0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a (global)
 🔑 API keys: Copied from global config
 
-💡 Using global email/address. Run 'co address' to create project-specific.
+💡 Using global email/address. Run 'co status' to view.
 
 🚀 Next steps:
 ────────────────────────────────────────
@@ -182,8 +182,6 @@ email_active = true
 algorithm = "ed25519"
 default_model = "co/gemini-2.5-pro"
 max_iterations = 10
-# Note: This is copied from global, not project-specific
-# Run 'co address' to generate project-specific identity
 ```
 
 ### API Keys (`.env`)
@@ -199,7 +197,7 @@ ANTHROPIC_API_KEY=sk-ant-xxx
 
 ## Address and Email Management
 
-Projects use the global identity (address + email) from `~/.co` by default. Project-specific identities will be documented when available.
+All projects use the global identity (address + email) from `~/.co`. Run `co status` to view your address and email.
 
 ## Templates
 
@@ -272,14 +270,6 @@ By default, all projects share:
 
 This keeps things simple - one identity for all your agents.
 
-### Project-Specific Identity (When Needed)
-
-For projects requiring their own identity:
-```bash
-$ cd my-special-project
-$ co address  # Generate project-specific address/email
-```
-
 ## Examples
 
 ### Quick Start
@@ -308,48 +298,20 @@ $ co create --template custom
 $ co create slack-bot -t custom -d "Slack bot for answering questions"
 ```
 
-### Creating Independent Project
-
-```bash
-# Create with global identity
-$ co create special-agent
-
-# Then make it independent
-$ cd special-agent
-$ co address  # Generate project-specific address/email
-```
-
 ## Identity Flow Summary
 
 1. **First `co create`**: Generates global address/email
-2. **All projects**: Use same global address/email by default
-3. **Special projects**: Can run `co address` for their own identity
-4. **API keys**: Always copied from global `keys.env`
+2. **All projects**: Use same global address/email
+3. **API keys**: Copied from global `keys.env`
 
-This design means:
-- Simple projects share one identity (like using same email for all repos)
-- Special projects can have their own (like project-specific email)
-- API keys are always shared (convenience)
+This keeps things simple - one identity for all your agents (like using same email for all repos).
 
 ## Troubleshooting
 
-### Wrong Email/Address
+### Check Your Address
 
 ```bash
-# Check what project is using
-$ cd my-project
-$ co address --show
-
-# Generate project-specific if needed
-$ co address
-```
-
-### Reset to Global
-
-```bash
-# Remove project-specific identity
-$ co address --reset
-✓ Now using global address/email
+$ co status
 ```
 
 ### Permission Errors
@@ -368,58 +330,6 @@ $ chmod 700 my-agent/.co
 1. **First time**: Creates global address/email
 2. **Every project**: Uses same global address/email
 3. **API keys**: Copied from global to each project
-4. **Special cases**: Run `co address` for project-specific
-5. **Ready to run**: Complete agent with identity
+4. **Ready to run**: Complete agent with identity
 
-The design ensures consistency (one identity) while allowing flexibility (project-specific when needed).
-# ConnectOnion Create (co create)
-
-Create a new agent project in seconds.
-
-## Quick Start
-
-```bash
-co create my-agent
-```
-
-## What You Get
-
-```
-my-agent/
-├── agent.py            # Main agent
-├── .env                # API keys (from ~/.co/keys.env if available)
-├── .co/
-│   ├── config.toml     # Project config (uses global identity)
-│   └── docs/           # Helpful docs
-└── .gitignore          # Safe defaults
-```
-
-## Templates
-
-- minimal: basic agent structure
-- playwright: browser automation agent
-- custom: describe it, we generate it with AI
-
-```bash
-co create my-agent -t minimal
-co create browser-bot -t playwright
-co create email-helper -t custom --description "Write and triage emails"
-```
-
-## Options (the useful bits)
-
-- `--template, -t`: `minimal` | `playwright` | `custom`
-- `--key`: paste an API key (auto-detects provider and saves for reuse)
-- `--yes, -y`: accept defaults and skip prompts
-
-Notes:
-- Uses global identity from `~/.co` (address + email)
-- Copies API keys from `~/.co/keys.env` when available
-- On success, it attempts to authenticate managed keys (you can always run `co auth` later)
-
-## Next Steps
-
-```bash
-cd my-agent
-python agent.py
-```
+Simple and consistent - one identity for all your agents.

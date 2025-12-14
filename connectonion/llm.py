@@ -665,10 +665,6 @@ class OpenOnionLLM(LLM):
                 "Run 'co init' to get started or set OPENONION_API_KEY in your .env file."
             )
 
-        # Show tip about free credits
-        import sys
-        print(f"🎁 Using {model} with free credits. Run `co status` to check balance.", file=sys.stderr)
-
         # Strip co/ prefix - it's only for client-side routing
         self.model = model.removeprefix("co/")
 

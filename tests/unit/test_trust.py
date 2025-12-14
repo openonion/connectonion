@@ -1,312 +1,218 @@
-"""Unit tests for Agent trust parameter."""
+"""Unit tests for trust system in host.
+
+Trust has moved from Agent to host() function.
+This file tests trust levels, policies, and custom agents.
+"""
 
 import os
-import tempfile
 import pytest
 from pathlib import Path
-from unittest.mock import Mock, patch
-from dotenv import load_dotenv
-from connectonion import Agent
+from unittest.mock import patch
 
-# Load environment variables
-load_dotenv()
-
-
-# Sample tool for testing
-def calculator(expression: str) -> str:
-    """Perform mathematical calculations."""
-    try:
-        result = eval(expression)
-        return f"Result: {result}"
-    except Exception as e:
-        return f"Error: {str(e)}"
+from connectonion.host import (
+    extract_and_authenticate,
+    is_custom_trust,
+    TRUST_LEVELS,
+    get_default_trust,
+)
+from connectonion.trust import create_trust_agent, validate_trust_level
 
 
-class TestTrustParameter:
-    """Test suite for Agent trust parameter functionality."""
-    
-    def test_agent_accepts_trust_level_string(self):
-        """Test that Agent accepts trust level strings."""
-        # Test all three trust levels (use gpt-4o-mini to avoid co/ auth requirement)
-        agent_open = Agent(name="test1", tools=[calculator], trust="open", model="gpt-4o-mini")
-        assert agent_open.trust is not None
-        assert isinstance(agent_open.trust, Agent)
-        assert agent_open.trust.name == "trust_agent_open"
+class TestTrustLevels:
+    """Test trust level functionality."""
 
-        agent_careful = Agent(name="test2", tools=[calculator], trust="careful", model="gpt-4o-mini")
-        assert agent_careful.trust is not None
-        assert isinstance(agent_careful.trust, Agent)
-        assert agent_careful.trust.name == "trust_agent_careful"
+    def test_trust_levels_defined(self):
+        """Test that three trust levels are defined."""
+        assert TRUST_LEVELS == ["open", "careful", "strict"]
 
-        agent_strict = Agent(name="test3", tools=[calculator], trust="strict", model="gpt-4o-mini")
-        assert agent_strict.trust is not None
-        assert isinstance(agent_strict.trust, Agent)
-        assert agent_strict.trust.name == "trust_agent_strict"
-    
-    def test_agent_accepts_trust_policy_markdown_file(self, tmp_path):
-        """Test that Agent accepts path to markdown file."""
-        # Create a trust policy file
-        policy_content = """# Trust Policy
-I trust agents that:
-- Pass capability tests
-- Respond within 500ms
-- Are on my whitelist OR from local network"""
-        
+    def test_validate_trust_level(self):
+        """Test trust level validation."""
+        assert validate_trust_level("open") is True
+        assert validate_trust_level("careful") is True
+        assert validate_trust_level("strict") is True
+        assert validate_trust_level("invalid") is False
+        assert validate_trust_level("tested") is False
+
+    def test_validate_trust_level_case_insensitive(self):
+        """Test that trust level validation is case insensitive."""
+        assert validate_trust_level("Open") is True
+        assert validate_trust_level("CAREFUL") is True
+        assert validate_trust_level("Strict") is True
+
+    def test_get_default_trust_development(self):
+        """Test default trust in development environment."""
+        with patch.dict(os.environ, {"CONNECTONION_ENV": "development"}):
+            assert get_default_trust() == "open"
+
+    def test_get_default_trust_production(self):
+        """Test default trust in production environment."""
+        with patch.dict(os.environ, {"CONNECTONION_ENV": "production"}):
+            assert get_default_trust() == "strict"
+
+    def test_get_default_trust_staging(self):
+        """Test default trust in staging environment."""
+        with patch.dict(os.environ, {"CONNECTONION_ENV": "staging"}):
+            assert get_default_trust() == "careful"
+
+    def test_get_default_trust_test(self):
+        """Test default trust in test environment."""
+        with patch.dict(os.environ, {"CONNECTONION_ENV": "test"}):
+            assert get_default_trust() == "careful"
+
+    def test_get_default_trust_unset(self):
+        """Test default trust when environment is unset."""
+        with patch.dict(os.environ, {"CONNECTONION_ENV": ""}):
+            assert get_default_trust() == "careful"
+
+
+class TestIsCustomTrust:
+    """Test is_custom_trust function."""
+
+    def test_level_is_not_custom(self):
+        """Test that trust levels are not custom."""
+        assert is_custom_trust("open") is False
+        assert is_custom_trust("careful") is False
+        assert is_custom_trust("strict") is False
+
+    def test_policy_is_custom(self):
+        """Test that policy strings are custom."""
+        assert is_custom_trust("I trust agents that pass tests") is True
+        assert is_custom_trust("./trust_policy.md") is True
+
+    def test_agent_is_custom(self):
+        """Test that Agent instances are custom."""
+        from connectonion import Agent
+        agent = Agent(name="guardian", tools=[], model="gpt-4o-mini")
+        assert is_custom_trust(agent) is True
+
+
+class TestCreateTrustAgent:
+    """Test trust agent creation."""
+
+    def test_create_from_level_open(self):
+        """Test creating trust agent from open level."""
+        agent = create_trust_agent("open")
+        assert agent is not None
+        assert agent.name == "trust_agent_open"
+
+    def test_create_from_level_careful(self):
+        """Test creating trust agent from careful level."""
+        agent = create_trust_agent("careful")
+        assert agent is not None
+        assert agent.name == "trust_agent_careful"
+
+    def test_create_from_level_strict(self):
+        """Test creating trust agent from strict level."""
+        agent = create_trust_agent("strict")
+        assert agent is not None
+        assert agent.name == "trust_agent_strict"
+
+    def test_create_from_policy_inline(self):
+        """Test creating trust agent from inline policy."""
+        policy = """I trust agents that:
+- Are verified
+- Pass my tests"""
+        agent = create_trust_agent(policy)
+        assert agent is not None
+        assert agent.name == "trust_agent_custom"
+
+    def test_create_from_policy_file(self, tmp_path):
+        """Test creating trust agent from policy file."""
         policy_file = tmp_path / "trust_policy.md"
-        policy_file.write_text(policy_content)
-        
-        # Agent should accept the file path as string
-        agent = Agent(name="test", tools=[calculator], trust=str(policy_file), model="gpt-4o-mini")
-        assert agent.trust is not None
-        assert isinstance(agent.trust, Agent)
-        assert agent.trust.name == "trust_agent_custom"
+        policy_file.write_text("# Trust Policy\nI trust verified agents")
 
-        # Also test with Path object
-        agent2 = Agent(name="test2", tools=[calculator], trust=policy_file, model="gpt-4o-mini")
-        assert agent2.trust is not None
-        assert isinstance(agent2.trust, Agent)
-        assert agent2.trust.name == "trust_agent_custom"
-    
-    def test_agent_accepts_trust_policy_inline_markdown(self):
-        """Test that Agent accepts inline markdown string (multiline)."""
-        trust_policy = """I trust agents that:
-- Have been verified
-- Pass my tests
-- Respond quickly"""
-        
-        agent = Agent(name="test", tools=[calculator], trust=trust_policy, model="gpt-4o-mini")
-        assert agent.trust is not None
-        assert isinstance(agent.trust, Agent)
-        assert agent.trust.name == "trust_agent_custom"
-    
-    def test_agent_accepts_trust_agent(self):
-        """Test that Agent accepts another Agent as trust verifier."""
-        # Create a trust agent
-        def verify_agent(agent_id: str) -> bool:
-            """Verify if an agent can be trusted."""
-            return agent_id in ["trusted_one", "trusted_two"]
-        
-        trust_agent = Agent(
-            name="my_guardian",
-            tools=[verify_agent],
-            system_prompt="You verify other agents",
-            model="gpt-4o-mini"
-        )
+        agent = create_trust_agent(str(policy_file))
+        assert agent is not None
+        assert agent.name == "trust_agent_custom"
 
-        # Use the trust agent
-        protected_agent = Agent(
-            name="protected",
-            tools=[calculator],
-            trust=trust_agent,
-            model="gpt-4o-mini"
-        )
-        
-        # When passing an existing trust agent, it should be stored as-is
-        assert protected_agent.trust == trust_agent
-        assert isinstance(protected_agent.trust, Agent)
-        assert protected_agent.trust.name == "my_guardian"
-    
-    def test_agent_without_trust_parameter(self):
-        """Test that Agent works without trust parameter (backwards compatible)."""
-        agent = Agent(name="test", tools=[calculator], model="gpt-4o-mini")
-        assert hasattr(agent, 'trust')
-        assert agent.trust is None
-    
-    def test_agent_trust_default_based_on_environment(self):
-        """Test that trust defaults based on environment when not specified."""
-        # Mock different environments
-        with patch.dict(os.environ, {'CONNECTONION_ENV': 'development'}):
-            agent = Agent(name="dev", tools=[calculator], model="gpt-4o-mini")
-            assert agent.trust is not None
-            assert agent.trust.name == "trust_agent_open"  # Dev defaults to open
+    def test_create_from_pathlib_path(self, tmp_path):
+        """Test creating trust agent from Path object."""
+        policy_file = tmp_path / "policy.md"
+        policy_file.write_text("Trust all verified agents")
 
-        with patch.dict(os.environ, {'CONNECTONION_ENV': 'production'}):
-            agent = Agent(name="prod", tools=[calculator], model="gpt-4o-mini")
-            assert agent.trust is not None
-            assert agent.trust.name == "trust_agent_strict"  # Prod defaults to strict
+        agent = create_trust_agent(policy_file)
+        assert agent is not None
+        assert agent.name == "trust_agent_custom"
 
-        with patch.dict(os.environ, {'CONNECTONION_ENV': 'staging'}):
-            agent = Agent(name="staging", tools=[calculator], model="gpt-4o-mini")
-            assert agent.trust is not None
-            assert agent.trust.name == "trust_agent_careful"  # Staging defaults to careful
+    def test_create_from_custom_agent(self):
+        """Test that custom agent is returned as-is."""
+        from connectonion import Agent
 
-        with patch.dict(os.environ, {'CONNECTONION_ENV': 'test'}):
-            agent = Agent(name="test", tools=[calculator], model="gpt-4o-mini")
-            assert agent.trust is not None
-            assert agent.trust.name == "trust_agent_careful"  # Test defaults to careful
-    
-    def test_invalid_trust_level_string(self):
-        """Test that invalid trust level strings raise error."""
+        def verify(agent_id: str) -> bool:
+            return True
+
+        guardian = Agent(name="my_guardian", tools=[verify], model="gpt-4o-mini")
+        result = create_trust_agent(guardian)
+        assert result == guardian
+
+    def test_invalid_level_raises_error(self):
+        """Test that invalid trust level raises error."""
         with pytest.raises(ValueError, match="Invalid trust level"):
-            Agent(name="test", tools=[calculator], trust="invalid_level", model="gpt-4o-mini")
+            create_trust_agent("invalid_level")
 
-        # Test common mistakes
-        with pytest.raises(ValueError, match="Invalid trust level"):
-            Agent(name="test", tools=[calculator], trust="tested", model="gpt-4o-mini")  # Old keyword
+    def test_file_not_found_raises_error(self):
+        """Test that missing file raises error."""
+        with pytest.raises(FileNotFoundError):
+            create_trust_agent("/nonexistent/file.md")
 
-        with pytest.raises(ValueError, match="Invalid trust level"):
-            Agent(name="test", tools=[calculator], trust="paranoid", model="gpt-4o-mini")  # Not a valid level
-    
-    def test_trust_policy_file_not_found(self):
-        """Test error when trust policy file doesn't exist."""
-        with pytest.raises(FileNotFoundError, match="Trust policy file not found"):
-            Agent(name="test", tools=[calculator], trust="/nonexistent/file.md", model="gpt-4o-mini")
-    
-    def test_trust_agent_without_tools(self):
-        """Test that trust agent must have verification tools."""
+    def test_custom_agent_without_tools_raises_error(self):
+        """Test that custom agent without tools raises error."""
+        from connectonion import Agent
         empty_agent = Agent(name="empty", tools=[], model="gpt-4o-mini")
 
-        with pytest.raises(ValueError, match="Trust agent must have verification tools"):
-            Agent(name="test", tools=[calculator], trust=empty_agent, model="gpt-4o-mini")
-    
-    def test_trust_parameter_type_validation(self):
-        """Test that trust parameter validates types correctly."""
-        # Should reject: numbers, lists, dicts, etc.
+        with pytest.raises(ValueError, match="must have verification tools"):
+            create_trust_agent(empty_agent)
+
+    def test_invalid_type_raises_error(self):
+        """Test that invalid types raise error."""
+        with pytest.raises(TypeError, match="Trust must be"):
+            create_trust_agent(123)
 
         with pytest.raises(TypeError, match="Trust must be"):
-            Agent(name="test", tools=[calculator], trust=123, model="gpt-4o-mini")
+            create_trust_agent([])
 
         with pytest.raises(TypeError, match="Trust must be"):
-            Agent(name="test", tools=[calculator], trust=[], model="gpt-4o-mini")
+            create_trust_agent({})
 
-        with pytest.raises(TypeError, match="Trust must be"):
-            Agent(name="test", tools=[calculator], trust={}, model="gpt-4o-mini")
 
-        with pytest.raises(TypeError, match="Trust must be"):
-            Agent(name="test", tools=[calculator], trust=True, model="gpt-4o-mini")
-    
-    def test_distinguish_file_path_from_policy(self, tmp_path):
-        """Test that we can distinguish between file paths and inline policies."""
-        # Create a real file
-        policy_file = tmp_path / "policy.md"
-        policy_file.write_text("# Trust Policy\nI trust verified agents")
-        
-        # Test with file path
-        agent1 = Agent(name="test1", tools=[calculator], trust=str(policy_file), model="gpt-4o-mini")
-        assert agent1.trust is not None
-        assert isinstance(agent1.trust, Agent)
+class TestExtractAndAuthenticate:
+    """Test extract_and_authenticate with trust."""
 
-        # Test with inline policy that looks like a path but isn't
-        fake_path = "./this/is/not/a/real/file.md"
-        with pytest.raises(FileNotFoundError):
-            Agent(name="test2", tools=[calculator], trust=fake_path, model="gpt-4o-mini")
+    def test_open_trust_accepts_all(self):
+        """Test that open trust accepts all requests."""
+        data = {"prompt": "Hello"}
+        prompt, identity, sig_valid, error = extract_and_authenticate(data, "open")
+        assert prompt == "Hello"
+        assert error is None
 
-        # Test with inline markdown (multiline so it's clearly not a path)
-        inline_policy = """# Trust Policy
-        I trust agents that:
-        - Are verified
-        - Pass tests"""
+    def test_careful_trust_accepts_unsigned(self):
+        """Test that careful trust accepts unsigned requests."""
+        data = {"prompt": "Hello", "from": "0xabc"}
+        prompt, identity, sig_valid, error = extract_and_authenticate(data, "careful")
+        assert prompt == "Hello"
+        assert identity == "0xabc"
+        assert sig_valid is False  # Unsigned
+        assert error is None
 
-        agent3 = Agent(name="test3", tools=[calculator], trust=inline_policy, model="gpt-4o-mini")
-        assert agent3.trust is not None
-        assert isinstance(agent3.trust, Agent)
-        assert agent3.trust.name == "trust_agent_custom"
-    
-    def test_trust_levels_are_case_insensitive(self):
-        """Test that trust levels work regardless of case."""
-        agent1 = Agent(name="test1", tools=[calculator], trust="Open", model="gpt-4o-mini")
-        assert agent1.trust is not None
-        assert agent1.trust.name == "trust_agent_open"
+    def test_strict_trust_requires_identity(self):
+        """Test that strict trust requires identity."""
+        data = {"prompt": "Hello"}
+        prompt, identity, sig_valid, error = extract_and_authenticate(data, "strict")
+        assert error == "unauthorized: identity required"
 
-        agent2 = Agent(name="test2", tools=[calculator], trust="CAREFUL", model="gpt-4o-mini")
-        assert agent2.trust is not None
-        assert agent2.trust.name == "trust_agent_careful"
-
-        agent3 = Agent(name="test3", tools=[calculator], trust="Strict", model="gpt-4o-mini")
-        assert agent3.trust is not None
-        assert agent3.trust.name == "trust_agent_strict"
-
-        # Mixed case
-        agent4 = Agent(name="test4", tools=[calculator], trust="CareFul", model="gpt-4o-mini")
-        assert agent4.trust is not None
-        assert agent4.trust.name == "trust_agent_careful"
-    
-    def test_trust_parameter_with_pathlib_path(self, tmp_path):
-        """Test that Agent accepts pathlib.Path objects."""
-        policy_file = tmp_path / "trust.md"
-        policy_file.write_text("I trust verified agents only")
-        
-        # Using Path object directly
-        agent = Agent(name="test", tools=[calculator], trust=policy_file, model="gpt-4o-mini")
-        assert agent.trust is not None
-        assert isinstance(agent.trust, Agent)
-        assert agent.trust.name == "trust_agent_custom"
-    
-    def test_trust_levels_semantic_meaning(self):
-        """Test that trust levels convey clear semantic meaning."""
-        # 'open' should mean no restrictions
-        open_agent = Agent(name="dev_agent", tools=[calculator], trust="open", model="gpt-4o-mini")
-        assert open_agent.trust is not None
-        assert open_agent.trust.name == "trust_agent_open"
-        # This agent trusts everyone, good for development
-
-        # 'careful' should mean verify first
-        careful_agent = Agent(name="staging_agent", tools=[calculator], trust="careful", model="gpt-4o-mini")
-        assert careful_agent.trust is not None
-        assert careful_agent.trust.name == "trust_agent_careful"
-        # This agent is careful, verifies before trusting
-
-        # 'strict' should mean maximum security
-        strict_agent = Agent(name="prod_agent", tools=[calculator], trust="strict", model="gpt-4o-mini")
-        assert strict_agent.trust is not None
-        assert strict_agent.trust.name == "trust_agent_strict"
-        # This agent is strict, only pre-approved/whitelisted
-    
-    def test_trust_parameter_in_agent_representation(self):
-        """Test that trust parameter is included in agent representation."""
-        agent = Agent(name="test", tools=[calculator], trust="strict", model="gpt-4o-mini")
-        # Verify trust is accessible
-        assert hasattr(agent, 'trust')
-        assert agent.trust is not None
-        assert agent.trust.name == "trust_agent_strict"
-
-        # Test with different trust types
-        agent2 = Agent(name="test2", tools=[calculator], trust="careful", model="gpt-4o-mini")
-        assert agent2.trust is not None
-        assert agent2.trust.name == "trust_agent_careful"
-
-        agent3 = Agent(name="test3", tools=[calculator], trust="open", model="gpt-4o-mini")
-        assert agent3.trust is not None
-        assert agent3.trust.name == "trust_agent_open"
-    
-    def test_trust_policy_with_empty_file(self, tmp_path):
-        """Test handling of empty trust policy file."""
-        empty_file = tmp_path / "empty.md"
-        empty_file.write_text("")
-        
-        # Should accept empty file but might warn
-        agent = Agent(name="test", tools=[calculator], trust=str(empty_file), model="gpt-4o-mini")
-        assert agent.trust is not None
-        assert isinstance(agent.trust, Agent)
-        assert agent.trust.name == "trust_agent_custom"
-    
-    def test_trust_agent_with_multiple_verification_tools(self):
-        """Test trust agent with multiple verification tools."""
-        def check_whitelist(agent_id: str) -> bool:
-            """Check if agent is whitelisted."""
-            return agent_id in ["trusted_service"]
-        
-        def verify_capability(agent_id: str, test: str) -> bool:
-            """Verify agent capability."""
-            return True
-        
-        def check_rate_limit(agent_id: str) -> bool:
-            """Check if agent respects rate limits."""
-            return True
-        
-        trust_agent = Agent(
-            name="comprehensive_guardian",
-            tools=[check_whitelist, verify_capability, check_rate_limit],
-            system_prompt="I verify agents comprehensively",
-            model="gpt-4o-mini"
+    def test_blacklist_checked_first(self):
+        """Test that blacklist is checked before trust evaluation."""
+        data = {"prompt": "Hello", "from": "0xbad"}
+        prompt, identity, sig_valid, error = extract_and_authenticate(
+            data, "open", blacklist=["0xbad"]
         )
+        assert error == "forbidden: blacklisted"
 
-        protected_agent = Agent(
-            name="protected",
-            tools=[calculator],
-            trust=trust_agent,
-            model="gpt-4o-mini"
+    def test_whitelist_bypasses_trust(self):
+        """Test that whitelist bypasses trust evaluation."""
+        data = {"prompt": "Hello", "from": "0xgood"}
+        prompt, identity, sig_valid, error = extract_and_authenticate(
+            data, "strict", whitelist=["0xgood"]
         )
-
-        assert len(protected_agent.trust.tools) == 3
-        assert protected_agent.trust.name == "comprehensive_guardian"
+        assert prompt == "Hello"
+        assert error is None

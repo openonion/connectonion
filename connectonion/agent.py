@@ -176,12 +176,19 @@ class Agent:
 
         self.events[event_type].append(event_func)
 
-    def input(self, prompt: str, max_iterations: Optional[int] = None) -> str:
+    def input(self, prompt: str, max_iterations: Optional[int] = None,
+              session: Optional[Dict] = None) -> str:
         """Provide input to the agent and get response.
 
         Args:
             prompt: The input prompt or data to process
             max_iterations: Override agent's max_iterations for this request
+            session: Optional session to continue a conversation. Pass the session
+                    from a previous response to maintain context. Contains:
+                    - session_id: Conversation identifier
+                    - messages: Conversation history
+                    - trace: Execution trace for debugging
+                    - turn: Turn counter
 
         Returns:
             The agent's response after processing the input
@@ -190,8 +197,18 @@ class Agent:
         if self.logger.console:
             self.logger.console.print_task(prompt)
 
-        # Initialize session on first input, or continue existing conversation
-        if self.current_session is None:
+        # Session restoration: if session passed, restore it (stateless API continuation)
+        if session is not None:
+            self.current_session = {
+                'session_id': session.get('session_id'),
+                'messages': list(session.get('messages', [])),
+                'trace': list(session.get('trace', [])),
+                'turn': session.get('turn', 0)
+            }
+            # Start YAML session logging with session_id for thread safety
+            self.logger.start_session(self.system_prompt, session_id=session.get('session_id'))
+        elif self.current_session is None:
+            # Initialize new session
             self.current_session = {
                 'messages': [{"role": "system", "content": self.system_prompt}],
                 'trace': [],

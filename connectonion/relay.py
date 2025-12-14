@@ -1,10 +1,10 @@
 """
 Purpose: WebSocket relay client for agent-to-agent communication via central relay server using INPUT/OUTPUT protocol
 LLM-Note:
-  Dependencies: imports from [json, asyncio, typing, websockets] | imported by [agent.py] | tested by [tests/test_relay.py]
-  Data flow: Agent.serve() → connect(relay_url) → WebSocket established → send_announce(ws, announce_msg) → serve_loop() → wait_for_task(ws) receives INPUT message from relay → task_handler(prompt) executes → send OUTPUT response via WebSocket → heartbeat re-announces every 60s
+  Dependencies: imports from [json, asyncio, typing, websockets] | imported by [host.py] | tested by [tests/test_relay.py]
+  Data flow: host() with relay_url → connect(relay_url) → WebSocket established → send_announce(ws, announce_msg) → serve_loop() → wait_for_task(ws) receives INPUT message from relay → task_handler(prompt) executes → send OUTPUT response via WebSocket → heartbeat re-announces every 60s
   State/Effects: maintains WebSocket connection to relay | reads incoming JSON messages (INPUT type) | writes outgoing JSON messages (OUTPUT type) | prints status to stdout | asyncio timeout for heartbeat | no file I/O
-  Integration: exposes connect(relay_url), send_announce(ws, msg), wait_for_task(ws, timeout), send_response(ws, input_id, result), serve_loop(ws, announce_msg, task_handler, heartbeat_interval) | used by Agent.serve() to make agent discoverable on relay network | task_handler is async function (prompt: str) -> str | Protocol: INPUT/OUTPUT messages (not TASK/RESPONSE)
+  Integration: exposes connect(relay_url), send_announce(ws, msg), wait_for_task(ws, timeout), send_response(ws, input_id, result), serve_loop(ws, announce_msg, task_handler, heartbeat_interval) | used by host() with relay_url to make agent discoverable on relay network | task_handler is async function (prompt: str) -> str | Protocol: INPUT/OUTPUT messages (not TASK/RESPONSE)
   Performance: async/await non-blocking I/O | heartbeat_interval=60s default (configurable) | timeout-based heartbeat scheduling | WebSocket maintains persistent connection
   Errors: let it crash - ImportError if websockets missing | asyncio.TimeoutError used for heartbeat timing | websockets.ConnectionClosed exits serve loop gracefully
 

@@ -1,10 +1,10 @@
 """
 Purpose: Build and sign ANNOUNCE messages for agent relay network registration
 LLM-Note:
-  Dependencies: imports from [json, time, typing, address.py] | imported by [agent.py] | tested by [tests/test_announce.py]
-  Data flow: receives from Agent.serve() → create_announce_message(address_data, summary, endpoints) → builds message dict without signature → serializes to deterministic JSON (sort_keys=True) → calls address.sign() to create Ed25519 signature → returns signed message ready for relay
+  Dependencies: imports from [json, time, typing, address.py] | imported by [host.py] | tested by [tests/test_announce.py]
+  Data flow: receives from host() → create_announce_message(address_data, summary, endpoints) → builds message dict without signature → serializes to deterministic JSON (sort_keys=True) → calls address.sign() to create Ed25519 signature → returns signed message ready for relay
   State/Effects: no side effects | pure function | deterministic JSON serialization (matches server verification) | signature is hex string without 0x prefix
-  Integration: exposes create_announce_message(address_data, summary, endpoints) | used by Agent.serve() to announce agent presence to relay network | relay server verifies signature using address (public key) | heartbeat re-sends with updated timestamp
+  Integration: exposes create_announce_message(address_data, summary, endpoints) | used by host() to announce agent presence to relay network | relay server verifies signature using address (public key) | heartbeat re-sends with updated timestamp
   Performance: Ed25519 signing is fast (sub-millisecond) | JSON serialization minimal overhead | no I/O or network calls
   Errors: raises KeyError if address_data missing required keys | address.sign() errors bubble up | no validation of summary length or endpoint format
 

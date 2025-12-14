@@ -46,7 +46,7 @@ All of this happens transparently. The remote agent looks and acts like a local 
 
 ```python
 # serve_agent.py
-from connectonion import Agent
+from connectonion import Agent, host
 
 def calculate(expression: str) -> str:
     """Perform calculations."""
@@ -63,15 +63,17 @@ agent = Agent(
 )
 
 print("Starting agent...")
-agent.serve()
+host(agent)  # HTTP server + P2P relay
 ```
 
 **Output:**
 ```
 Starting agent...
-Agent 'assistant' serving at: 0x7a8f9d4c2b1e3f5a6c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b
-Connected to relay: wss://oo.openonion.ai/ws/announce
-Waiting for connections...
+╭──────────── Agent 'assistant' ────────────╮
+│ POST http://localhost:8000/input          │
+│ Address: 0x7a8f9d4c...                    │
+│ Relay:   wss://oo.openonion.ai/ws/announce│
+╰───────────────────────────────────────────╯
 ```
 
 ### Terminal 2: Connect and Use
@@ -359,7 +361,7 @@ test_connection("0x7a8f...")
 
 ```python
 import pytest
-from connectonion import Agent, connect
+from connectonion import Agent, connect, host
 import threading
 import time
 
@@ -369,7 +371,7 @@ def test_network_connection():
     # Create and serve agent in background
     def serve():
         agent = Agent("test", tools=[lambda x: f"Echo: {x}"])
-        agent.serve(relay_url="ws://localhost:8000/ws/announce")
+        host(agent, relay_url="ws://localhost:8000/ws/announce")
 
     thread = threading.Thread(target=serve, daemon=True)
     thread.start()
@@ -485,7 +487,7 @@ result = agent.input("Search and calculate")
 
 ## Learn More
 
-- **[serve.md](serve.md)** - Make your agents network-accessible
+- **[host.md](host.md)** - Make your agents network-accessible with `host()`
 - **[Agent](concepts/agent.md)** - Core Agent documentation
 - **[protocol/agent-relay-protocol.md](protocol/agent-relay-protocol.md)** - Protocol specification
 

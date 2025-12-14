@@ -130,14 +130,17 @@ class Logger:
         return f"{tool_name}({', '.join(parts)})"
 
     # Session logging (YAML)
-    def start_session(self, system_prompt: str = ""):
+    def start_session(self, system_prompt: str = "", session_id: Optional[str] = None):
         """Initialize session YAML file.
 
-        Uses one file per agent (not per session) to reduce file clutter.
+        Uses one file per session_id (for HTTP API) or per agent (for interactive).
         Loads existing session data if file exists, appends new turns.
 
         Args:
             system_prompt: The system prompt for this session
+            session_id: Optional session identifier. If provided, logs to
+                       .co/sessions/{session_id}.yaml for thread-safe HTTP API.
+                       If None, uses agent name for interactive mode.
         """
         if not self.enable_sessions:
             return
@@ -145,8 +148,12 @@ class Logger:
         sessions_dir = Path(".co/sessions")
         sessions_dir.mkdir(parents=True, exist_ok=True)
 
-        # One file per agent (no timestamp in filename)
-        self.session_file = sessions_dir / f"{self.agent_name}.yaml"
+        # Use session_id if provided (HTTP API), otherwise use agent_name (interactive)
+        filename = session_id if session_id else self.agent_name
+        # Sanitize: keep only safe characters (alphanumeric, dash, underscore)
+        import re
+        filename = re.sub(r'[^a-zA-Z0-9_-]', '_', filename)[:255] or 'default'
+        self.session_file = sessions_dir / f"{filename}.yaml"
 
         # Load existing session or create new
         if self.session_file.exists():
@@ -155,6 +162,8 @@ class Logger:
             # Ensure ALL required fields exist (handles empty/corrupted files)
             if 'name' not in self.session_data:
                 self.session_data['name'] = self.agent_name
+            if 'session_id' not in self.session_data and session_id:
+                self.session_data['session_id'] = session_id
             if 'created' not in self.session_data:
                 self.session_data['created'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             if 'total_cost' not in self.session_data:
@@ -171,6 +180,7 @@ class Logger:
         else:
             self.session_data = {
                 "name": self.agent_name,
+                "session_id": session_id,
                 "created": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "total_cost": 0.0,
                 "total_tokens": 0,
@@ -247,6 +257,7 @@ class Logger:
         # Build ordered dict: compact metadata → turns → detail (system_prompt + messages)
         ordered = {
             'name': self.session_data['name'],
+            'session_id': self.session_data.get('session_id'),
             'created': self.session_data['created'],
             'updated': self.session_data.get('updated', ''),
             'total_cost': self.session_data.get('total_cost', 0),

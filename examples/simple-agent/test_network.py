@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Test network features: agent.serve() and connect()
+Test network features: host() with relay and connect()
 
 This script tests:
-1. Agent can announce to relay and serve requests
+1. Agent can be hosted with HTTP + relay and serve requests
 2. RemoteAgent can connect and send input
 """
 
 import sys
-from connectonion import Agent, connect
+from connectonion import Agent, connect, host
 
 
 def greet(name: str) -> str:
@@ -17,8 +17,8 @@ def greet(name: str) -> str:
 
 
 def test_serve():
-    """Test agent.serve() - makes agent available on network."""
-    print("=== Testing agent.serve() ===\n")
+    """Test host() with relay - makes agent available on network."""
+    print("=== Testing host() with relay ===\n")
 
     # Create agent with tool
     agent = Agent(
@@ -27,17 +27,16 @@ def test_serve():
         system_prompt="You are a friendly greeting agent that uses the greet tool."
     )
 
-    print("Starting agent on relay network...")
+    print("Starting agent on HTTP + relay network...")
     print("This will:")
     print("  1. Load or generate Ed25519 keys from .co/")
-    print("  2. Connect to relay server")
-    print("  3. Send ANNOUNCE message")
-    print("  4. Wait for INPUT messages")
-    print("  5. Send heartbeat every 60s")
+    print("  2. Start HTTP server on port 8000")
+    print("  3. Connect to relay server in background")
+    print("  4. Wait for HTTP or relay requests")
     print("\nPress Ctrl+C to stop\n")
 
     # This blocks forever until Ctrl+C
-    agent.serve(relay_url="ws://localhost:8000/ws/announce")
+    host(agent, port=8000, relay_url="ws://localhost:8000/ws/announce")
 
 
 def test_connect():

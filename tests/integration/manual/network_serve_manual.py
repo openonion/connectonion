@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""Test agent.serve() - Run an agent on the relay network."""
+"""Test host() with relay - Run an agent on HTTP + relay network."""
 
 from dotenv import load_dotenv
 
 # Load .env file for API keys
 load_dotenv()
 
-from connectonion import Agent
+from connectonion import Agent, host
 
 def search(query: str) -> str:
     """Search the web for information."""
@@ -19,14 +19,13 @@ agent = Agent(
     system_prompt="You are a helpful assistant."
 )
 
-print("=== Testing agent.serve() ===\n")
-print("Starting agent on relay network...")
+print("=== Testing host() with relay ===\n")
+print("Starting agent on HTTP + relay network...")
 print("This will:")
 print("  1. Load or generate Ed25519 keys from .co/")
-print("  2. Connect to relay server")
-print("  3. Send ANNOUNCE message")
-print("  4. Wait for INPUT messages")
-print("  5. Send heartbeat every 60s")
+print("  2. Start HTTP server on port 8000")
+print("  3. Connect to relay server in background")
+print("  4. Accept requests via HTTP or relay")
 print("\nPress Ctrl+C to stop\n")
 
 # Use production relay by default
@@ -35,5 +34,5 @@ relay_url = os.getenv("RELAY_URL", "wss://oo.openonion.ai/ws/announce")
 
 print(f"Using relay: {relay_url}\n")
 
-# Start serving (blocks until Ctrl+C)
-agent.serve(relay_url=relay_url)
+# Start hosting (HTTP + relay)
+host(agent, port=8000, relay_url=relay_url)

@@ -2,7 +2,7 @@
 Purpose: Deploy agent projects to ConnectOnion Cloud with git archive packaging and secrets management
 LLM-Note:
   Dependencies: imports from [os, subprocess, tempfile, time, toml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
-  Data flow: handle_deploy() → validates git repo and .co/config.toml → _get_api_key() loads OPENONION_API_KEY → reads config.toml for project name and secrets path → dotenv_values() loads secrets from .env → git archive creates tarball of HEAD → POST to /api/v1/deploy with tarball + secrets → polls /api/v1/deploy/status/{id} until running/error → displays agent URL
+  Data flow: handle_deploy() → validates git repo and .co/config.toml → _get_api_key() loads OPENONION_API_KEY → reads config.toml for project name and secrets path → dotenv_values() loads secrets from .env → git archive creates tarball of HEAD → POST to /api/v1/deploy with tarball + project_name + secrets → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
   State/Effects: creates temporary tarball file in tempdir | reads .co/config.toml, .env files | makes network POST request | prints progress to stdout via rich.Console | does not modify project files
   Integration: exposes handle_deploy() for CLI | expects git repo with .co/config.toml containing project.name, project.secrets, deploy.entrypoint | uses Bearer token auth | returns void (prints results)
   Performance: git archive is fast | network timeout 60s for upload, 10s for status checks | polls every 3s up to 100 times (~5 min)
@@ -87,6 +87,7 @@ def handle_deploy():
             f"{API_BASE}/api/v1/deploy",
             files={"package": ("agent.tar.gz", f, "application/gzip")},
             data={
+                "project_name": project_name,
                 "secrets": str(secrets),
                 "entrypoint": entrypoint,
             },
@@ -98,13 +99,13 @@ def handle_deploy():
         console.print(f"[red]Deploy failed: {response.text}[/red]")
         return
 
-    deployment_id = response.json().get("deployment_id")
+    deployment_id = response.json().get("id")
 
     # Wait for deployment
     console.print("Building...")
     for _ in range(100):
         status_resp = requests.get(
-            f"{API_BASE}/api/v1/deploy/status/{deployment_id}",
+            f"{API_BASE}/api/v1/deploy/{deployment_id}/status",
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=10,
         )
@@ -118,8 +119,8 @@ def handle_deploy():
             return
         time.sleep(3)
 
-    agent_url = response.json().get("agent_url", "")
+    url = response.json().get("url", "")
     console.print()
     console.print("[bold green]Deployed![/bold green]")
-    console.print(f"Agent URL: {agent_url}")
+    console.print(f"Agent URL: {url}")
     console.print()

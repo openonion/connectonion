@@ -64,7 +64,8 @@ agent.input("Complex production task")
 
 ### Step 5: Multi-Agent - Make it Remotely Callable
 ```python
-agent.serve()  # Other agents can now discover and call this agent
+from connectonion import host
+host(agent)  # HTTP server + P2P relay - other agents can now discover and call this agent
 ```
 
 ## ✨ Why ConnectOnion?
