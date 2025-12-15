@@ -16,10 +16,10 @@ import logging
 import os
 import time
 import uuid
-from dataclasses import dataclass, asdict
 from pathlib import Path
-from typing import Union
+from typing import Optional, Union
 
+from pydantic import BaseModel
 from rich.console import Console
 from rich.panel import Panel
 
@@ -38,15 +38,21 @@ def get_default_trust() -> str:
 
 # === Types ===
 
-@dataclass
-class Session:
+class Session(BaseModel):
+    """Session record for tracking agent requests.
+
+    Uses Pydantic BaseModel for:
+    - Native JSON serialization via .model_dump()
+    - Type validation
+    - API response compatibility
+    """
     session_id: str
     status: str
     prompt: str
-    result: str = None
-    created: float = None
-    expires: float = None
-    duration_ms: int = None
+    result: Optional[str] = None
+    created: Optional[float] = None
+    expires: Optional[float] = None
+    duration_ms: Optional[int] = None
 
 
 # === Storage ===
@@ -60,7 +66,7 @@ class SessionStorage:
 
     def save(self, session: Session):
         with open(self.path, "a") as f:
-            f.write(json.dumps(asdict(session)) + "\n")
+            f.write(session.model_dump_json() + "\n")
 
     def get(self, session_id: str) -> Session | None:
         if not self.path.exists():
@@ -149,12 +155,12 @@ def input_handler(agent, storage: SessionStorage, prompt: str, result_ttl: int,
 def session_handler(storage: SessionStorage, session_id: str) -> dict | None:
     """GET /sessions/{id}"""
     session = storage.get(session_id)
-    return asdict(session) if session else None
+    return session.model_dump() if session else None
 
 
 def sessions_handler(storage: SessionStorage) -> dict:
     """GET /sessions"""
-    return {"sessions": [asdict(s) for s in storage.list()]}
+    return {"sessions": [s.model_dump() for s in storage.list()]}
 
 
 def health_handler(agent, start_time: float) -> dict:
@@ -375,6 +381,35 @@ def is_custom_trust(trust) -> bool:
     return trust not in TRUST_LEVELS  # It's a policy string
 
 
+# === Admin Handlers ===
+
+def admin_logs_handler(agent_name: str) -> dict:
+    """GET /admin/logs - return plain text activity log file."""
+    log_path = Path(f".co/logs/{agent_name}.log")
+    if log_path.exists():
+        return {"content": log_path.read_text()}
+    return {"error": "No logs found"}
+
+
+def admin_sessions_handler() -> dict:
+    """GET /admin/sessions - return all activity sessions as JSON array."""
+    import yaml
+    sessions_dir = Path(".co/sessions")
+    if not sessions_dir.exists():
+        return {"sessions": []}
+
+    sessions = []
+    for session_file in sessions_dir.glob("*.yaml"):
+        with open(session_file) as f:
+            session_data = yaml.safe_load(f)
+            if session_data:
+                sessions.append(session_data)
+
+    # Sort by created date descending (newest first)
+    sessions.sort(key=lambda s: s.get("created", ""), reverse=True)
+    return {"sessions": sessions}
+
+
 # === Entry Point ===
 
 def _create_handlers(agent, result_ttl: int):
@@ -387,6 +422,9 @@ def _create_handlers(agent, result_ttl: int):
         "info": lambda trust: info_handler(agent, trust),
         "auth": extract_and_authenticate,
         "ws_input": agent.input,
+        # Admin endpoints (auth required via OPENONION_API_KEY)
+        "admin_logs": lambda: admin_logs_handler(agent.name),
+        "admin_sessions": admin_sessions_handler,
     }
 
 
@@ -422,7 +460,7 @@ def _start_relay_background(agent, relay_url: str, addr_data: dict):
 
 def host(
     agent,
-    port: int = 8000,
+    port: int = None,
     trust: Union[str, "Agent"] = "careful",
     result_ttl: int = 86400,
     workers: int = 1,
@@ -437,7 +475,7 @@ def host(
 
     Args:
         agent: Agent to host
-        port: HTTP port (default 8000)
+        port: HTTP port (default: PORT env var or 8000)
         trust: Trust level, policy, or Agent:
             - Level: "open", "careful", "strict"
             - Policy: Natural language or file path
@@ -457,9 +495,15 @@ def host(
         GET  /health        - Health check
         GET  /info          - Agent info
         WS   /ws            - WebSocket
+        GET  /logs          - Activity log (requires OPENONION_API_KEY)
+        GET  /logs/sessions - Activity sessions (requires OPENONION_API_KEY)
     """
     import uvicorn
     from . import address
+
+    # Use PORT env var if port not specified (for container deployments)
+    if port is None:
+        port = int(os.environ.get("PORT", 8000))
 
     # Load or generate agent identity
     co_dir = Path.cwd() / '.co'
