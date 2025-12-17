@@ -6,8 +6,23 @@ requests. Separated from host.py for better testing and smaller file size.
 Design decision: Raw ASGI instead of Starlette/FastAPI for full protocol control.
 See: docs/design-decisions/022-raw-asgi-implementation.md
 """
+import hmac
 import json
+import os
 from pathlib import Path
+
+from pydantic import BaseModel
+
+
+def _json_default(obj):
+    """Handle non-serializable objects like Pydantic models.
+
+    This enables native JSON serialization for Pydantic BaseModel instances
+    nested in API response dicts, following FastAPI's pattern.
+    """
+    if isinstance(obj, BaseModel):
+        return obj.model_dump()
+    raise TypeError(f"Object of type {type(obj).__name__} is not JSON serializable")
 
 
 async def read_body(receive) -> bytes:
@@ -21,11 +36,18 @@ async def read_body(receive) -> bytes:
     return body
 
 
+CORS_HEADERS = [
+    [b"access-control-allow-origin", b"*"],
+    [b"access-control-allow-methods", b"GET, POST, OPTIONS"],
+    [b"access-control-allow-headers", b"authorization, content-type"],
+]
+
+
 async def send_json(send, data: dict, status: int = 200):
     """Send JSON response via ASGI send."""
-    body = json.dumps(data).encode()
-    await send({"type": "http.response.start", "status": status,
-               "headers": [[b"content-type", b"application/json"]]})
+    body = json.dumps(data, default=_json_default).encode()
+    headers = [[b"content-type", b"application/json"]] + CORS_HEADERS
+    await send({"type": "http.response.start", "status": status, "headers": headers})
     await send({"type": "http.response.body", "body": body})
 
 
@@ -37,6 +59,13 @@ async def send_html(send, html: bytes, status: int = 200):
         "headers": [[b"content-type", b"text/html; charset=utf-8"]],
     })
     await send({"type": "http.response.body", "body": html})
+
+
+async def send_text(send, text: str, status: int = 200):
+    """Send plain text response via ASGI send."""
+    headers = [[b"content-type", b"text/plain; charset=utf-8"]] + CORS_HEADERS
+    await send({"type": "http.response.start", "status": status, "headers": headers})
+    await send({"type": "http.response.body", "body": text.encode()})
 
 
 async def handle_http(
@@ -67,6 +96,37 @@ async def handle_http(
         whitelist: Allowed identities
     """
     method, path = scope["method"], scope["path"]
+
+    # Handle CORS preflight requests
+    if method == "OPTIONS":
+        headers = CORS_HEADERS + [[b"content-length", b"0"]]
+        await send({"type": "http.response.start", "status": 204, "headers": headers})
+        await send({"type": "http.response.body", "body": b""})
+        return
+
+    # Admin endpoints require API key auth
+    if path.startswith("/admin"):
+        headers = dict(scope.get("headers", []))
+        auth = headers.get(b"authorization", b"").decode()
+        expected = os.environ.get("OPENONION_API_KEY", "")
+        if not expected or not auth.startswith("Bearer ") or not hmac.compare_digest(auth[7:], expected):
+            await send_json(send, {"error": "unauthorized"}, 401)
+            return
+
+        if method == "GET" and path == "/admin/logs":
+            result = handlers["admin_logs"]()
+            if "error" in result:
+                await send_json(send, result, 404)
+            else:
+                await send_text(send, result["content"])
+            return
+
+        if method == "GET" and path == "/admin/sessions":
+            await send_json(send, handlers["admin_sessions"]())
+            return
+
+        await send_json(send, {"error": "not found"}, 404)
+        return
 
     if method == "POST" and path == "/input":
         body = await read_body(receive)
