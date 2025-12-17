@@ -366,6 +366,70 @@
       </div>
     </details>
 
+    <!-- Admin Endpoints Header -->
+    <div style="margin:24px 0 12px;padding:12px 16px;background:var(--panel);border:1px solid var(--panel-border);border-radius:4px;">
+      <div class="row between">
+        <div>
+          <h3 style="margin:0;font-size:14px;">Admin Endpoints</h3>
+          <p style="margin:4px 0 0;font-size:12px;color:var(--muted);">Requires OPENONION_API_KEY authorization</p>
+        </div>
+        <div class="row" style="gap:8px;">
+          <label for="api-key" style="font-size:12px;margin:0;">API Key:</label>
+          <input type="password" id="api-key" placeholder="Enter API key..." style="width:200px;height:36px;font-size:12px;" />
+        </div>
+      </div>
+    </div>
+
+    <!-- GET /admin/logs -->
+    <details class="endpoint">
+      <summary class="endpoint-header">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/admin/logs</span>
+        <span class="endpoint-desc">Get agent activity logs (auth required)</span>
+        <span class="endpoint-expand">▾</span>
+      </summary>
+      <div class="endpoint-body">
+        <button class="btn execute" onclick="fetchAdminLogs()">Execute</button>
+        <div class="endpoint-section" style="margin-top:12px;">
+          <h4>Curl</h4>
+          <div class="curl-box">
+            <pre id="admin-logs-curl">curl -X GET "http://localhost:8000/admin/logs" \
+  -H "Authorization: Bearer YOUR_API_KEY"</pre>
+            <button class="copy-btn" onclick="copyCurl('admin-logs-curl')">Copy</button>
+          </div>
+        </div>
+        <div class="endpoint-section">
+          <h4>Response</h4>
+          <pre id="admin-logs-result" style="max-height:400px;">{ }</pre>
+        </div>
+      </div>
+    </details>
+
+    <!-- GET /admin/sessions -->
+    <details class="endpoint">
+      <summary class="endpoint-header">
+        <span class="method get">GET</span>
+        <span class="endpoint-path">/admin/sessions</span>
+        <span class="endpoint-desc">Get all activity sessions (auth required)</span>
+        <span class="endpoint-expand">▾</span>
+      </summary>
+      <div class="endpoint-body">
+        <button class="btn execute" onclick="fetchAdminSessions()">Execute</button>
+        <div class="endpoint-section" style="margin-top:12px;">
+          <h4>Curl</h4>
+          <div class="curl-box">
+            <pre id="admin-sessions-curl">curl -X GET "http://localhost:8000/admin/sessions" \
+  -H "Authorization: Bearer YOUR_API_KEY"</pre>
+            <button class="copy-btn" onclick="copyCurl('admin-sessions-curl')">Copy</button>
+          </div>
+        </div>
+        <div class="endpoint-section">
+          <h4>Response</h4>
+          <pre id="admin-sessions-result" style="max-height:400px;">{ }</pre>
+        </div>
+      </div>
+    </details>
+
     <!-- WebSocket /ws -->
     <details class="endpoint">
       <summary class="endpoint-header">
@@ -578,6 +642,39 @@
       else { try { const u = new URL(v); BASE = u.origin; } catch { BASE = v; } }
       updateCurlCommands();
       loadInfo(); refreshSessions();
+    }
+
+    async function fetchAdminLogs(){
+      const apiKey = $('api-key').value.trim();
+      if (!apiKey) {
+        $('admin-logs-result').textContent = '{"error": "Please enter API key"}';
+        return;
+      }
+      $('admin-logs-result').textContent = 'Loading...';
+      const res = await fetch(buildUrl('/admin/logs'), {
+        headers: { 'Authorization': 'Bearer ' + apiKey }
+      });
+      if (res.ok) {
+        const text = await res.text();
+        $('admin-logs-result').textContent = text || '(empty)';
+      } else {
+        const data = await res.json().catch(() => ({ error: res.statusText }));
+        $('admin-logs-result').textContent = JSON.stringify(data, null, 2);
+      }
+    }
+
+    async function fetchAdminSessions(){
+      const apiKey = $('api-key').value.trim();
+      if (!apiKey) {
+        $('admin-sessions-result').textContent = '{"error": "Please enter API key"}';
+        return;
+      }
+      $('admin-sessions-result').textContent = 'Loading...';
+      const res = await fetch(buildUrl('/admin/sessions'), {
+        headers: { 'Authorization': 'Bearer ' + apiKey }
+      });
+      const data = await res.json();
+      $('admin-sessions-result').textContent = JSON.stringify(data, null, 2);
     }
 
     $('prompt').addEventListener('input', updatePayloadPreview);
