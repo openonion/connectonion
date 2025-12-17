@@ -284,10 +284,12 @@ def _authenticate_simple(data: dict, trust: str, *, blacklist=None, whitelist=No
         return prompt, identity, True, None
 
     # Trust level enforcement
-    if trust == "strict" and not identity:
-        return None, None, False, "unauthorized: identity required"
+    # strict: REQUIRES signed request - reject all simple/unsigned requests
+    if trust == "strict":
+        return None, identity, False, "unauthorized: signed request required (trust=strict)"
 
-    # For careful/strict without signature, mark sig_valid=False
+    # For careful without signature, mark sig_valid=False
+    # For open, anyone can use without identity
     sig_valid = trust == "open"
     return prompt, identity, sig_valid, None
 
