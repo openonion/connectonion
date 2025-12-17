@@ -97,7 +97,7 @@ if __name__ == "__main__":
         info.size = len(content)
         tar.addfile(info, io.BytesIO(content))
 
-        req = b"connectonion\n"
+        req = b"connectonion>=0.5.5\n"
         info = tarfile.TarInfo(name="requirements.txt")
         info.size = len(req)
         tar.addfile(info, io.BytesIO(req))
@@ -188,7 +188,7 @@ def test_deploy_manual(api_url):
 
 
 def test_deploy_and_cleanup(api_url):
-    """Full E2E: deploy → verify → delete → verify gone."""
+    """Full E2E: deploy → verify health → verify input → delete → verify gone."""
     # Get auth token - this is also the OPENONION_API_KEY
     auth_token = get_auth_token(api_url)
     auth_headers = {"Authorization": f"Bearer {auth_token}"}
@@ -226,8 +226,30 @@ def test_deploy_and_cleanup(api_url):
     wait_for_running(api_url, deployment_id, auth_headers)
     print(" OK")
 
-    # 3. Delete
-    print("3. Deleting...")
+    # 3. Verify agent health endpoint (confirms Caddy routing works)
+    print("3. Verifying agent health...")
+    # Wait a bit for Caddy SSL cert + container startup
+    time.sleep(5)
+    response = requests.get(f"{url}/health", timeout=30)
+    assert response.status_code == 200, f"Health check failed: {response.text}"
+    health = response.json()
+    assert health.get("status") == "healthy", f"Unhealthy: {health}"
+    print(f"   Healthy: {health}")
+
+    # 4. Verify agent input endpoint (confirms full agent works)
+    print("4. Verifying agent input...")
+    response = requests.post(
+        f"{url}/input",
+        json={"prompt": "what is 5*5?"},
+        timeout=60,
+    )
+    assert response.status_code == 200, f"Input failed: {response.text}"
+    result = response.json()
+    assert "session_id" in result, f"No session_id: {result}"
+    print(f"   Input OK: session_id={result.get('session_id')}")
+
+    # 5. Delete
+    print("5. Deleting...")
     response = requests.delete(
         f"{api_url}/api/v1/deploy/{deployment_id}",
         headers=auth_headers,
@@ -236,8 +258,8 @@ def test_deploy_and_cleanup(api_url):
     assert response.status_code == 200, f"Delete failed: {response.text}"
     print("   Deleted")
 
-    # 4. Verify gone
-    print("4. Verifying cleanup...")
+    # 6. Verify gone from API
+    print("6. Verifying cleanup from API...")
     response = requests.get(
         f"{api_url}/api/v1/deploy/{deployment_id}",
         headers=auth_headers,
@@ -245,5 +267,17 @@ def test_deploy_and_cleanup(api_url):
     )
     assert response.status_code == 404, f"Still exists: {response.text}"
     print("   Verified (404)")
+
+    # 7. Verify Caddy route removed (agent URL should fail)
+    print("7. Verifying Caddy route removed...")
+    time.sleep(2)  # Give Caddy time to update
+    try:
+        response = requests.get(f"{url}/health", timeout=10)
+        # If we get a response, it should NOT be 200 (maybe 502 or 404)
+        assert response.status_code != 200, f"Agent still accessible after delete: {response.status_code}"
+        print(f"   Route removed (got {response.status_code})")
+    except requests.exceptions.RequestException as e:
+        # Connection refused or timeout = route is gone (expected)
+        print(f"   Route removed (connection failed: {type(e).__name__})")
 
     print("\nE2E deploy test passed!")

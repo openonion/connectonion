@@ -31,6 +31,8 @@ host(agent)
 │    GET  http://localhost:8000/sessions                  │
 │    GET  http://localhost:8000/health                    │
 │    GET  http://localhost:8000/info                      │
+│    GET  http://localhost:8000/admin/logs     (API key)  │
+│    GET  http://localhost:8000/admin/sessions (API key)  │
 │    WS   ws://localhost:8000/ws                          │
 │                                                         │
 │  Interactive UI:                                        │
@@ -266,6 +268,50 @@ Interactive UI to test your agent in the browser.
 http://localhost:8000/docs
 ```
 
+### GET /admin/logs (Requires API Key)
+
+Fetch agent activity logs (plain text). Requires `OPENONION_API_KEY` authentication.
+
+```bash
+curl http://localhost:8000/admin/logs \
+  -H "Authorization: Bearer YOUR_OPENONION_API_KEY"
+```
+
+**Response:**
+```
+2024-01-15 10:23:45 [translator] Processing: Translate hello
+2024-01-15 10:23:46 [translator] Tool: translate_text executed (450ms)
+2024-01-15 10:23:46 [translator] Result: Hola
+```
+
+### GET /admin/sessions (Requires API Key)
+
+Fetch all activity sessions as JSON array. Requires `OPENONION_API_KEY` authentication.
+
+```bash
+curl http://localhost:8000/admin/sessions \
+  -H "Authorization: Bearer YOUR_OPENONION_API_KEY"
+```
+
+**Response:**
+```json
+{
+  "sessions": [
+    {
+      "id": "translator_20240115_102345",
+      "created": "2024-01-15T10:23:45",
+      "agent": "translator",
+      "input": "Translate hello to Spanish",
+      "result": "Hola",
+      "tools_called": ["translate_text"],
+      "duration_ms": 1250
+    }
+  ]
+}
+```
+
+**Note:** These endpoints require setting `OPENONION_API_KEY` as an environment variable when running your agent. The same key must be used to authenticate requests.
+
 ---
 
 ## WebSocket API
@@ -425,6 +471,8 @@ your-project/
 │   ├── GET  /health         ← Health check                    │
 │   ├── GET  /info           ← Agent info                      │
 │   ├── GET  /docs           ← Interactive UI                  │
+│   ├── GET  /admin/logs     ← Activity logs (API key auth)    │
+│   ├── GET  /admin/sessions ← Session logs (API key auth)     │
 │   └── WS   /ws             ← Real-time WebSocket             │
 │                                                              │
 │   P2P Relay Connection                                       │

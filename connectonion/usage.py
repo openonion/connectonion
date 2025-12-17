@@ -1,17 +1,22 @@
 """
 Purpose: Token usage tracking and cost calculation for LLM calls
 LLM-Note:
-  Dependencies: none | imported by [llm.py, agent.py]
+  Dependencies: pydantic | imported by [llm.py, agent.py]
   Data flow: receives model name + token counts → returns cost in USD
   Integration: exposes TokenUsage, MODEL_PRICING, MODEL_CONTEXT_LIMITS, calculate_cost(), get_context_limit()
 """
 
-from dataclasses import dataclass
+from pydantic import BaseModel
 
 
-@dataclass
-class TokenUsage:
-    """Token usage from a single LLM call."""
+class TokenUsage(BaseModel):
+    """Token usage from a single LLM call.
+
+    Uses Pydantic BaseModel for:
+    - Native JSON serialization via .model_dump()
+    - Type validation at runtime
+    - Future-proof API response compatibility
+    """
     input_tokens: int = 0
     output_tokens: int = 0
     cached_tokens: int = 0      # Tokens read from cache (subset of input_tokens)

@@ -36,6 +36,8 @@ async def read_body(receive) -> bytes:
     return body
 
 
+# CORS headers for cross-origin requests (e.g., frontend at o.openonion.ai
+# calling deployed agents at *.agents.openonion.ai)
 CORS_HEADERS = [
     [b"access-control-allow-origin", b"*"],
     [b"access-control-allow-methods", b"GET, POST, OPTIONS"],
