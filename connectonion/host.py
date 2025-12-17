@@ -221,81 +221,55 @@ def verify_signature(payload: dict, signature: str, public_key: str) -> bool:
 def extract_and_authenticate(data: dict, trust, *, blacklist=None, whitelist=None, agent_address=None):
     """Extract prompt and authenticate request.
 
-    Supports two request formats:
+    ALL requests must be signed - this is a protocol requirement.
 
-    Simple (unsigned):
-        {"prompt": "...", "from": "0x..."}
-
-    Signed (Ed25519):
+    Required format (Ed25519 signed):
         {
-            "payload": {"prompt": "...", "to": "0x...", "timestamp": 123},
-            "from": "0xClientPublicKey",
-            "signature": "0x..."
+            "payload": {"prompt": "...", "to": "0xAgentAddress", "timestamp": 123},
+            "from": "0xCallerPublicKey",
+            "signature": "0xEd25519Signature..."
         }
 
-    Trust can be:
-        - Level: "open", "careful", "strict" (code-based checks)
-        - Policy: Natural language string (LLM evaluation)
-        - Agent: Custom Agent instance (LLM evaluation)
+    Trust levels control additional policies AFTER signature verification:
+        - "open": Any valid signer allowed
+        - "careful": Warnings for unknown signers (default)
+        - "strict": Whitelist only
+        - Custom policy/Agent: LLM evaluation
 
     Returns: (prompt, identity, sig_valid, error)
     """
-    # Determine trust level for basic auth
-    if isinstance(trust, str) and trust not in TRUST_LEVELS:
-        logging.warning(f"Unknown trust level '{trust}', defaulting to 'careful'. Valid: {TRUST_LEVELS}")
-    trust_level = trust if isinstance(trust, str) and trust in TRUST_LEVELS else "careful"
+    # Protocol requirement: ALL requests must be signed
+    if "payload" not in data or "signature" not in data:
+        return None, None, False, "unauthorized: signed request required"
 
-    # Check for signed request format
-    if "payload" in data and "signature" in data:
-        prompt, identity, sig_valid, error = _authenticate_signed(
-            data, trust_level, blacklist=blacklist, whitelist=whitelist, agent_address=agent_address
-        )
-    else:
-        prompt, identity, sig_valid, error = _authenticate_simple(
-            data, trust_level, blacklist=blacklist, whitelist=whitelist
-        )
-
-    # If basic auth failed, return error
+    # Verify signature (protocol level - always required)
+    prompt, identity, error = _authenticate_signed(
+        data, blacklist=blacklist, whitelist=whitelist, agent_address=agent_address
+    )
     if error:
-        return prompt, identity, sig_valid, error
+        return prompt, identity, False, error
 
-    # If trust is a policy or custom agent, evaluate with LLM
-    # Use original trust for custom check (Agent or policy string), but skip if it was a typo'd level
-    if is_custom_trust(trust) and not (isinstance(trust, str) and trust not in TRUST_LEVELS and trust_level in TRUST_LEVELS):
+    # Trust level: additional policies AFTER signature verification
+    if trust == "strict" and whitelist and identity not in whitelist:
+        return None, identity, True, "forbidden: not in whitelist"
+
+    # Custom trust policy/agent evaluation
+    if is_custom_trust(trust):
         trust_agent = create_trust_agent(trust)
-        accepted, reason = evaluate_with_trust_agent(trust_agent, prompt, identity, sig_valid)
+        accepted, reason = evaluate_with_trust_agent(trust_agent, prompt, identity, True)
         if not accepted:
-            return None, identity, sig_valid, f"rejected: {reason}"
+            return None, identity, True, f"rejected: {reason}"
 
-    return prompt, identity, sig_valid, None
-
-
-def _authenticate_simple(data: dict, trust: str, *, blacklist=None, whitelist=None):
-    """Authenticate simple unsigned request."""
-    prompt = data.get("prompt", "")
-    identity = data.get("from")
-
-    # Check blacklist
-    if blacklist and identity in blacklist:
-        return None, identity, False, "forbidden: blacklisted"
-
-    # Check whitelist (bypass other checks)
-    if whitelist and identity in whitelist:
-        return prompt, identity, True, None
-
-    # Trust level enforcement
-    # strict: REQUIRES signed request - reject all simple/unsigned requests
-    if trust == "strict":
-        return None, identity, False, "unauthorized: signed request required (trust=strict)"
-
-    # For careful without signature, mark sig_valid=False
-    # For open, anyone can use without identity
-    sig_valid = trust == "open"
-    return prompt, identity, sig_valid, None
+    return prompt, identity, True, None
 
 
-def _authenticate_signed(data: dict, trust: str, *, blacklist=None, whitelist=None, agent_address=None):
-    """Authenticate signed request with Ed25519."""
+def _authenticate_signed(data: dict, *, blacklist=None, whitelist=None, agent_address=None):
+    """Authenticate signed request with Ed25519 - ALWAYS REQUIRED.
+
+    Protocol-level signature verification. All requests must be signed.
+
+    Returns: (prompt, identity, error) - error is None on success
+    """
     payload = data.get("payload", {})
     identity = data.get("from")
     signature = data.get("signature")
@@ -306,34 +280,34 @@ def _authenticate_signed(data: dict, trust: str, *, blacklist=None, whitelist=No
 
     # Check blacklist first
     if blacklist and identity in blacklist:
-        return None, identity, False, "forbidden: blacklisted"
+        return None, identity, "forbidden: blacklisted"
 
-    # Check whitelist (bypass signature check)
+    # Check whitelist (bypass signature check - trusted caller)
     if whitelist and identity in whitelist:
-        return prompt, identity, True, None
+        return prompt, identity, None
 
-    # Validate required fields for signed request
+    # Validate required fields
     if not identity:
-        return None, None, False, "unauthorized: 'from' field required for signed request"
+        return None, None, "unauthorized: 'from' field required"
     if not signature:
-        return None, identity, False, "unauthorized: signature required"
+        return None, identity, "unauthorized: signature required"
     if not timestamp:
-        return None, identity, False, "unauthorized: timestamp required in payload"
+        return None, identity, "unauthorized: timestamp required in payload"
 
     # Check timestamp expiry (5 minute window)
     now = time.time()
     if abs(now - timestamp) > SIGNATURE_EXPIRY_SECONDS:
-        return None, identity, False, "unauthorized: signature expired"
+        return None, identity, "unauthorized: signature expired"
 
     # Optionally verify 'to' matches agent address
     if agent_address and to_address and to_address != agent_address:
-        return None, identity, False, "unauthorized: wrong recipient"
+        return None, identity, "unauthorized: wrong recipient"
 
     # Verify signature
     if not verify_signature(payload, signature, identity):
-        return None, identity, False, "unauthorized: invalid signature"
+        return None, identity, "unauthorized: invalid signature"
 
-    return prompt, identity, True, None
+    return prompt, identity, None
 
 
 def get_agent_address(agent) -> str:

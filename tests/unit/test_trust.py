@@ -176,43 +176,55 @@ class TestCreateTrustAgent:
 
 
 class TestExtractAndAuthenticate:
-    """Test extract_and_authenticate with trust."""
+    """Test extract_and_authenticate with trust.
 
-    def test_open_trust_accepts_all(self):
-        """Test that open trust accepts all requests."""
+    Protocol requirement: ALL requests must be signed.
+    Trust levels only apply AFTER signature verification.
+    """
+
+    def test_unsigned_request_rejected(self):
+        """Test that unsigned requests are always rejected (protocol requirement)."""
         data = {"prompt": "Hello"}
         prompt, identity, sig_valid, error = extract_and_authenticate(data, "open")
-        assert prompt == "Hello"
-        assert error is None
+        assert error == "unauthorized: signed request required"
 
-    def test_careful_trust_accepts_unsigned(self):
-        """Test that careful trust accepts unsigned requests."""
+    def test_unsigned_request_rejected_even_with_from(self):
+        """Test that requests without signature are rejected even with 'from' field."""
         data = {"prompt": "Hello", "from": "0xabc"}
         prompt, identity, sig_valid, error = extract_and_authenticate(data, "careful")
-        assert prompt == "Hello"
-        assert identity == "0xabc"
-        assert sig_valid is False  # Unsigned
-        assert error is None
+        assert error == "unauthorized: signed request required"
 
-    def test_strict_trust_requires_identity(self):
-        """Test that strict trust requires identity."""
-        data = {"prompt": "Hello"}
-        prompt, identity, sig_valid, error = extract_and_authenticate(data, "strict")
-        assert error == "unauthorized: identity required"
+    def test_unsigned_request_rejected_for_all_trust_levels(self):
+        """Test that all trust levels require signed requests."""
+        data = {"prompt": "Hello", "from": "0xabc"}
+        for trust in ["open", "careful", "strict"]:
+            prompt, identity, sig_valid, error = extract_and_authenticate(data, trust)
+            assert error == "unauthorized: signed request required", f"Trust={trust} should reject unsigned"
 
-    def test_blacklist_checked_first(self):
-        """Test that blacklist is checked before trust evaluation."""
-        data = {"prompt": "Hello", "from": "0xbad"}
+    def test_blacklist_checked_on_signed_request(self):
+        """Test that blacklist is checked on signed requests."""
+        import time
+        data = {
+            "payload": {"prompt": "Hello", "timestamp": time.time()},
+            "from": "0xbad",
+            "signature": "0x1234"
+        }
         prompt, identity, sig_valid, error = extract_and_authenticate(
             data, "open", blacklist=["0xbad"]
         )
         assert error == "forbidden: blacklisted"
 
-    def test_whitelist_bypasses_trust(self):
-        """Test that whitelist bypasses trust evaluation."""
-        data = {"prompt": "Hello", "from": "0xgood"}
+    def test_whitelist_bypasses_signature_verification(self):
+        """Test that whitelisted callers bypass signature verification."""
+        import time
+        data = {
+            "payload": {"prompt": "Hello", "timestamp": time.time()},
+            "from": "0xgood",
+            "signature": "invalid_sig"  # Would fail verification
+        }
         prompt, identity, sig_valid, error = extract_and_authenticate(
             data, "strict", whitelist=["0xgood"]
         )
         assert prompt == "Hello"
         assert error is None
+        assert sig_valid is True  # Whitelisted = trusted
