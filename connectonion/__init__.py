@@ -15,6 +15,7 @@ from .tool_factory import create_tool_from_function
 from .llm import LLM
 from .logger import Logger
 from .llm_do import llm_do
+from .transcribe import transcribe
 from .prompts import load_system_prompt
 from .xray import xray
 from .decorators import replay, xray_replay
@@ -40,6 +41,7 @@ __all__ = [
     "Logger",
     "create_tool_from_function",
     "llm_do",
+    "transcribe",
     "load_system_prompt",
     "xray",
     "replay",
