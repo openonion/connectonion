@@ -78,3 +78,18 @@ shell.run("pwd")
 shell.run("whoami")
 shell.run("df -h")
 ```
+
+## Customizing
+
+Need to modify Shell's behavior? Copy the source to your project:
+
+```bash
+co copy shell
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import Shell  # Before
+from tools.shell import Shell      # After - customize freely!
+```

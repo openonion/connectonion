@@ -113,6 +113,21 @@ agent.input("Check unread emails and save important deadlines to memory")
 agent.input("Archive all newsletter emails from this week")
 ```
 
+## Customizing
+
+Need to modify Gmail's behavior? Copy the source to your project:
+
+```bash
+co copy gmail
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import Gmail  # Before
+from tools.gmail import Gmail      # After - customize freely!
+```
+
 ## Troubleshooting
 
 **Missing gmail.readonly scope**: Run `co auth google`

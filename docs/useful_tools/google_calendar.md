@@ -89,3 +89,18 @@ from connectonion.useful_plugins import calendar_plugin
 
 agent = Agent("assistant", tools=[calendar], plugins=[calendar_plugin])
 ```
+
+## Customizing
+
+Need to modify GoogleCalendar's behavior? Copy the source to your project:
+
+```bash
+co copy google_calendar
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import GoogleCalendar  # Before
+from tools.google_calendar import GoogleCalendar  # After - customize freely!
+```

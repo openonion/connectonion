@@ -344,6 +344,52 @@ Run 'co auth' if you need to authenticate
 
 ---
 
+#### `co copy <name>` - Copy Tools & Plugins
+
+Copy built-in tools and plugins to your project for customization.
+
+**Basic usage:**
+```bash
+co copy --list              # See available items
+co copy Gmail               # Copy to ./tools/
+co copy re_act              # Copy to ./plugins/
+```
+
+**Options:**
+- `--list, -l` - List available tools and plugins
+- `--path, -p` - Custom destination path
+- `--force, -f` - Overwrite existing files
+
+**Examples:**
+```bash
+# Copy a tool
+co copy Gmail
+# Creates: ./tools/gmail.py
+
+# Copy a plugin
+co copy re_act
+# Creates: ./plugins/re_act.py
+
+# Copy multiple items
+co copy Gmail Shell memory
+
+# Custom destination
+co copy Gmail --path ./my_tools/
+```
+
+**After copying:**
+```python
+# Before (from package)
+from connectonion import Gmail
+
+# After (from your copy)
+from tools.gmail import Gmail  # Now customize it!
+```
+
+See [copy documentation](copy.md) for full details.
+
+---
+
 #### `co browser <command>` - Browser Automation
 
 Execute browser commands quickly.
@@ -740,6 +786,7 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 |---------|---------|-------------|-------------------|
 | `co create` | New project | Yes | N/A (creates new dir) |
 | `co init` | Add to existing | Yes | ✅ Yes |
+| `co copy` | Copy tools/plugins | No | ✅ Yes |
 | `co auth` | Get managed keys | No | ✅ Yes |
 | `co status` | Check balance | No | ✅ Yes |
 | `co deploy` | Deploy to cloud | No | ✅ Yes |

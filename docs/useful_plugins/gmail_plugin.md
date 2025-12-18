@@ -51,3 +51,18 @@ agent.input("Send email to alice@example.com")
 After sending, the plugin auto-updates:
 - `last_contact` → Today's date
 - `next_contact_date` → Cleared
+
+## Customizing
+
+Need to modify gmail_plugin's behavior? Copy the source to your project:
+
+```bash
+co copy gmail_plugin
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion.useful_plugins import gmail_plugin  # Before
+from plugins.gmail_plugin import gmail_plugin            # After - customize freely!
+```

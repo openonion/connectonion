@@ -26,6 +26,30 @@ agent = Agent(
 )
 ```
 
+## Customizing Plugins
+
+Need to modify a built-in plugin? Copy it to your project:
+
+```bash
+# Copy plugin source to ./plugins/
+co copy re_act
+
+# Copy multiple plugins
+co copy re_act shell_approval
+```
+
+Then import from your local copy:
+
+```python
+# Before (from package)
+from connectonion.useful_plugins import re_act
+
+# After (from your copy)
+from plugins.re_act import re_act  # Customize freely!
+```
+
+See [co copy](../cli/copy.md) for full details.
+
 ## Categories
 
 ### Reasoning

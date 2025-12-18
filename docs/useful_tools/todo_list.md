@@ -235,3 +235,18 @@ agent.input("Create a REST API with user CRUD operations")
 # 7. todo.start("Add GET /users endpoint")
 # ...
 ```
+
+## Customizing
+
+Need to modify TodoList's behavior? Copy the source to your project:
+
+```bash
+co copy todo_list
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import TodoList  # Before
+from tools.todo_list import TodoList  # After - customize freely!
+```

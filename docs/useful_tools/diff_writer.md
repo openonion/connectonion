@@ -121,3 +121,18 @@ agent = Agent("automation", tools=[writer])
 diff = writer.diff("config.py", new_config)
 print(diff)
 ```
+
+## Customizing
+
+Need to modify DiffWriter's behavior? Copy the source to your project:
+
+```bash
+co copy diff_writer
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import DiffWriter  # Before
+from tools.diff_writer import DiffWriter  # After - customize freely!
+```

@@ -72,3 +72,18 @@ The plugin stores:
 - Debugging agent behavior
 - Validating task completion
 - Development and experimentation
+
+## Customizing
+
+Need to modify eval's behavior? Copy the source to your project:
+
+```bash
+co copy eval
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion.useful_plugins import eval  # Before
+from plugins.eval import eval                    # After - customize freely!
+```

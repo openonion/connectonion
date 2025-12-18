@@ -11,7 +11,7 @@ LLM-Note:
 
 import typer
 from rich.console import Console
-from typing import Optional
+from typing import Optional, List
 
 from .. import __version__
 
@@ -54,6 +54,7 @@ def _show_help():
     console.print("[bold]Commands:[/bold]")
     console.print("  [green]create[/green]  <name>     Create new project")
     console.print("  [green]init[/green]              Initialize in current directory")
+    console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]status[/green]            Check account balance")
@@ -137,6 +138,18 @@ def browser(command: str = typer.Argument(..., help="Browser command")):
     """Browser automation."""
     from .commands.browser_commands import handle_browser
     handle_browser(command)
+
+
+@app.command()
+def copy(
+    names: List[str] = typer.Argument(None, help="Tool or plugin names to copy"),
+    list_all: bool = typer.Option(False, "--list", "-l", help="List available items"),
+    path: Optional[str] = typer.Option(None, "--path", "-p", help="Custom destination path"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing files"),
+):
+    """Copy built-in tools/plugins to customize."""
+    from .commands.copy_commands import handle_copy
+    handle_copy(names=names or [], list_all=list_all, path=path, force=force)
 
 
 def cli():

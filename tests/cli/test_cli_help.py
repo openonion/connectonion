@@ -25,6 +25,7 @@ class TestCliHelp:
         assert "Commands:" in result.output
         assert "init" in result.output
         assert "create" in result.output
+        assert "copy" in result.output
         assert "auth" in result.output
         assert "docs.connectonion.com" in result.output
 
@@ -38,6 +39,7 @@ class TestCliHelp:
         assert "Usage:" in result.output
         assert "init" in result.output
         assert "create" in result.output
+        assert "copy" in result.output
         assert "auth" in result.output
         assert "status" in result.output
         assert "reset" in result.output
@@ -110,6 +112,18 @@ class TestCliHelp:
         assert result.exit_code == 0
         assert "Usage:" in result.output
 
+    def test_copy_help(self):
+        """Test 'co copy --help' shows command-specific help."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ['copy', '--help'])
+
+        assert result.exit_code == 0
+        assert "Usage:" in result.output
+        assert "--list" in result.output or "-l" in result.output
+        assert "--path" in result.output or "-p" in result.output
+        assert "--force" in result.output or "-f" in result.output
+
     def test_help_shows_common_options_clearly(self):
         """Test that help clearly shows commonly used options."""
         from connectonion.cli.main import cli
@@ -142,7 +156,7 @@ class TestCliHelp:
         """Test that help format is consistent across all commands."""
         from connectonion.cli.main import cli
 
-        commands = ['init', 'create', 'auth', 'status', 'reset']
+        commands = ['init', 'create', 'auth', 'status', 'reset', 'copy']
 
         for command in commands:
             result = self.runner.invoke(cli, [command, '--help'])

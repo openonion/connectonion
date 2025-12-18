@@ -51,3 +51,18 @@ The plugin highlights when attendees will be notified:
 ```
 Attendees: alice@example.com (will receive invite!)
 ```
+
+## Customizing
+
+Need to modify calendar_plugin's behavior? Copy the source to your project:
+
+```bash
+co copy calendar_plugin
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion.useful_plugins import calendar_plugin  # Before
+from plugins.calendar_plugin import calendar_plugin        # After - customize freely!
+```

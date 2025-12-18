@@ -35,6 +35,30 @@ agent = Agent("coder", tools=[shell, writer])
 agent.input("Create a hello.py file that prints 'Hello World'")
 ```
 
+## Customizing Tools
+
+Need to modify a built-in tool? Copy it to your project:
+
+```bash
+# Copy tool source to ./tools/
+co copy Gmail
+
+# Copy multiple tools
+co copy Gmail Shell memory
+```
+
+Then import from your local copy:
+
+```python
+# Before (from package)
+from connectonion import Gmail
+
+# After (from your copy)
+from tools.gmail import Gmail  # Customize freely!
+```
+
+See [co copy](../cli/copy.md) for full details.
+
 ## Categories
 
 ### File Operations

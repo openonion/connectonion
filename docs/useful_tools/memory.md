@@ -464,6 +464,21 @@ print(os.path.exists("memory.md"))  # Should be True
 - Learn about [Plugins](./plugin.md) for automatic memory behaviors
 - Explore [Multi-Agent Systems](./multi-agent.md) with shared memory
 
+## Customizing
+
+Need to modify Memory's behavior? Copy the source to your project:
+
+```bash
+co copy memory
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import Memory  # Before
+from tools.memory import Memory      # After - customize freely!
+```
+
 ## Related Documentation
 
 - [Agent Basics](./agent.md)

@@ -68,6 +68,19 @@ agent = Agent("assistant", tools=[search], plugins=[re_act, eval])
 # eval evaluates if task completed correctly
 ```
 
-## Customization
+## Customizing
+
+Need to modify re_act's behavior? Copy the source to your project:
+
+```bash
+co copy re_act
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion.useful_plugins import re_act  # Before
+from plugins.re_act import re_act                  # After - customize freely!
+```
 
 The plan is stored in `agent.current_session['expected']` and can be used by other plugins.

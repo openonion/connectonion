@@ -57,3 +57,18 @@ Uses `after_tools` because it modifies messages (see [Event Lifecycle](README.md
 - Camera/webcam capture
 - PDF to image conversion
 - Any tool returning visual data
+
+## Customizing
+
+Need to modify image_result_formatter's behavior? Copy the source to your project:
+
+```bash
+co copy image_result_formatter
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion.useful_plugins import image_result_formatter  # Before
+from plugins.image_result_formatter import image_result_formatter  # After
+```

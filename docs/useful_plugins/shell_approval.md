@@ -52,3 +52,18 @@ When prompted, you can:
 ## Session Data
 
 - `agent.current_session['shell_approved_cmds']` - Set of auto-approved command types
+
+## Customizing
+
+Need to modify shell_approval's behavior? Copy the source to your project:
+
+```bash
+co copy shell_approval
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion.useful_plugins import shell_approval  # Before
+from plugins.shell_approval import shell_approval          # After - customize freely!
+```

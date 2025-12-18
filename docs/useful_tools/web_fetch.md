@@ -113,3 +113,18 @@ agent = Agent("researcher", tools=[web])
 
 agent.input("What does stripe.com do?")
 ```
+
+## Customizing
+
+Need to modify WebFetch's behavior? Copy the source to your project:
+
+```bash
+co copy web_fetch
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import WebFetch  # Before
+from tools.web_fetch import WebFetch  # After - customize freely!
+```

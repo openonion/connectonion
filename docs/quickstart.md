@@ -178,6 +178,34 @@ co init  # Adds .co folder only
 co init --template playwright  # Adds full template
 ```
 
+## Copy & Customize Built-in Tools
+
+Want to customize a built-in tool? Copy it to your project:
+
+```bash
+# See what's available
+co copy --list
+
+# Copy a tool to ./tools/
+co copy Gmail
+
+# Copy a plugin to ./plugins/
+co copy re_act
+
+# Copy multiple items
+co copy Gmail Shell memory
+```
+
+Then import from your local copy instead:
+
+```python
+# Before (from package)
+from connectonion import Gmail
+
+# After (from your copy)
+from tools.gmail import Gmail  # Now you can customize it!
+```
+
 ### What Gets Created
 
 ```

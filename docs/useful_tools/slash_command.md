@@ -79,3 +79,18 @@ commands = SlashCommand.list_all()
 for cmd in commands:
     print(f"/{cmd.name} - {cmd.description}")
 ```
+
+## Customizing
+
+Need to modify SlashCommand's behavior? Copy the source to your project:
+
+```bash
+co copy slash_command
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import SlashCommand  # Before
+from tools.slash_command import SlashCommand  # After - customize freely!
+```

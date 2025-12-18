@@ -96,6 +96,21 @@ agent.input("Send an email to alice@example.com about the project update")
 agent.input("Find all emails about the quarterly report")
 ```
 
+## Customizing
+
+Need to modify Outlook's behavior? Copy the source to your project:
+
+```bash
+co copy outlook
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import Outlook  # Before
+from tools.outlook import Outlook    # After - customize freely!
+```
+
 ## Troubleshooting
 
 **Missing Microsoft Mail scopes**: Run `co auth microsoft`

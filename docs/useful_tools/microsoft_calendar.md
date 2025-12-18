@@ -89,3 +89,18 @@ calendar.delete_event(event_id="abc123")
 | Video calls | Teams | Google Meet |
 | Auth | `co auth microsoft` | `co auth google` |
 | API | Microsoft Graph | Google Calendar API |
+
+## Customizing
+
+Need to modify MicrosoftCalendar's behavior? Copy the source to your project:
+
+```bash
+co copy microsoft_calendar
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import MicrosoftCalendar  # Before
+from tools.microsoft_calendar import MicrosoftCalendar  # After - customize freely!
+```

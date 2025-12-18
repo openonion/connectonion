@@ -80,3 +80,18 @@ cmd = input_with_at("> ")
 | Enter | Confirm selection |
 | Esc | Cancel |
 | @ | Trigger file autocomplete |
+
+## Customizing
+
+Need to modify terminal utilities? Copy the source to your project:
+
+```bash
+co copy terminal
+```
+
+Then import from your local copy:
+
+```python
+# from connectonion import pick, yes_no  # Before
+from tools.terminal import pick, yes_no   # After - customize freely!
+```
