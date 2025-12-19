@@ -3,17 +3,40 @@ WebSocket tests for host() endpoints using raw ASGI.
 
 Covers:
 - Path restriction (/ws only)
-- INPUT handling in open trust mode
+- INPUT handling with signed requests
 - Strict trust with signed payloads (accept/reject)
 - Blacklist/whitelist enforcement
 - Invalid JSON handling
+
+All requests require signatures (protocol requirement).
 """
 
 import asyncio
 import json
 import time
 import pytest
-from unittest.mock import MagicMock
+from nacl.signing import SigningKey
+
+from connectonion import Agent
+from tests.utils.mock_helpers import MockLLM, LLMResponseBuilder
+
+
+def sign_request(prompt: str, signing_key: SigningKey = None):
+    """Helper to create a signed WebSocket INPUT request."""
+    if signing_key is None:
+        signing_key = SigningKey.generate()
+
+    public_key = f"0x{signing_key.verify_key.encode().hex()}"
+    payload = {"prompt": prompt, "timestamp": time.time()}
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    signature = f"0x{signing_key.sign(canonical.encode()).signature.hex()}"
+
+    return {
+        "type": "INPUT",
+        "payload": payload,
+        "from": public_key,
+        "signature": signature
+    }
 
 
 class ASGIWebSocketClient:
@@ -40,7 +63,6 @@ class ASGIWebSocketClient:
         async def receive():
             if messages:
                 return messages.pop(0)
-            # Default to disconnect if no further messages
             return {"type": "websocket.disconnect"}
 
         async def send(message):
@@ -52,19 +74,16 @@ class ASGIWebSocketClient:
 
 @pytest.fixture
 def mock_agent():
-    agent = MagicMock()
-    agent.name = "ws-agent"
-    agent.tools = MagicMock()
-    agent.tools.list_names = MagicMock(return_value=[])
-    agent.input = MagicMock(side_effect=lambda prompt: f"out:{prompt}")
-    agent.current_session = {"messages": [], "trace": [], "turn": 1}
-    return agent
+    """Create a real Agent with MockLLM that can be deep copied."""
+    mock_llm = MockLLM(responses=[
+        LLMResponseBuilder.text_response("out:hi"),
+    ])
+    return Agent(name="ws-agent", llm=mock_llm, log=False, quiet=True)
 
 
 @pytest.fixture
 def app(mock_agent, tmp_path):
-    from connectonion.host import _make_app, SessionStorage
-    storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
+    from connectonion.host import _make_app
     return _make_app(mock_agent, trust="open", result_ttl=3600)
 
 
@@ -76,16 +95,25 @@ class TestWebSocket:
         assert any(m.get("type") == "websocket.close" and m.get("code") == 4004 for m in sent)
 
     def test_open_trust_input(self, app):
+        """All requests require signatures (protocol requirement)."""
         client = ASGIWebSocketClient(app, path="/ws")
-        msg = json.dumps({"type": "INPUT", "prompt": "hi"})
+        msg = json.dumps(sign_request("hi"))
         sent = client.send_text(msg)
-        # Expect accept + OUTPUT
+
         assert any(m.get("type") == "websocket.accept" for m in sent)
         outputs = [m for m in sent if m.get("type") == "websocket.send"]
         assert outputs, "expected websocket.send messages"
-        data = json.loads(outputs[-1]["text"])  # last send should be OUTPUT
+        data = json.loads(outputs[-1]["text"])
         assert data["type"] == "OUTPUT"
         assert data["result"] == "out:hi"
+
+    def test_unsigned_request_rejected(self, app):
+        """Unsigned requests are always rejected."""
+        client = ASGIWebSocketClient(app, path="/ws")
+        msg = json.dumps({"type": "INPUT", "prompt": "hi"})
+        sent = client.send_text(msg)
+        errs = [json.loads(m["text"]) for m in sent if m.get("type") == "websocket.send"]
+        assert any(e.get("type") == "ERROR" and "unauthorized" in e.get("message", "") for e in errs)
 
     def test_invalid_json(self, app):
         client = ASGIWebSocketClient(app, path="/ws")
@@ -96,10 +124,17 @@ class TestWebSocket:
 
 class TestWebSocketStrict:
     @pytest.fixture
-    def app_strict(self, mock_agent, tmp_path):
-        from connectonion.host import _make_app, SessionStorage
-        storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
-        return _make_app(mock_agent, trust="strict", result_ttl=3600)
+    def mock_agent_strict(self):
+        """Fresh agent for strict tests."""
+        mock_llm = MockLLM(responses=[
+            LLMResponseBuilder.text_response("out:hi"),
+        ])
+        return Agent(name="ws-agent", llm=mock_llm, log=False, quiet=True)
+
+    @pytest.fixture
+    def app_strict(self, mock_agent_strict, tmp_path):
+        from connectonion.host import _make_app
+        return _make_app(mock_agent_strict, trust="strict", result_ttl=3600)
 
     def test_strict_requires_signature(self, app_strict):
         client = ASGIWebSocketClient(app_strict)
@@ -109,22 +144,12 @@ class TestWebSocketStrict:
         assert any(e.get("type") == "ERROR" and e.get("message", "").startswith("unauthorized") for e in errs)
 
     def test_strict_valid_signature(self, app_strict):
-        from nacl.signing import SigningKey
-        signing_key = SigningKey.generate()
-        public_key = f"0x{signing_key.verify_key.encode().hex()}"
-        payload = {"prompt": "hi", "timestamp": time.time()}
-        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
-        signature = f"0x{signing_key.sign(canonical.encode()).signature.hex()}"
-
-        data = {"type": "INPUT", "payload": payload, "from": public_key, "signature": signature}
-
         client = ASGIWebSocketClient(app_strict)
-        sent = client.send_text(json.dumps(data))
+        sent = client.send_text(json.dumps(sign_request("hi")))
         outputs = [json.loads(m["text"]) for m in sent if m.get("type") == "websocket.send"]
         assert any(o.get("type") == "OUTPUT" and o.get("result") == "out:hi" for o in outputs)
 
     def test_strict_invalid_signature(self, app_strict):
-        from nacl.signing import SigningKey
         signing_key = SigningKey.generate()
         public_key = f"0x{signing_key.verify_key.encode().hex()}"
         payload = {"prompt": "hi", "timestamp": time.time()}
@@ -138,10 +163,17 @@ class TestWebSocketStrict:
 
 class TestWebSocketAccessLists:
     @pytest.fixture
-    def app_strict_bw(self, mock_agent, tmp_path):
-        from connectonion.host import _make_app, SessionStorage
-        storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
-        return _make_app(mock_agent, trust="strict", result_ttl=3600, blacklist=["0xbad"], whitelist=["0xgood"])
+    def mock_agent_bw(self):
+        """Fresh agent for access list tests."""
+        mock_llm = MockLLM(responses=[
+            LLMResponseBuilder.text_response("out:hi"),
+        ])
+        return Agent(name="ws-agent", llm=mock_llm, log=False, quiet=True)
+
+    @pytest.fixture
+    def app_strict_bw(self, mock_agent_bw, tmp_path):
+        from connectonion.host import _make_app
+        return _make_app(mock_agent_bw, trust="strict", result_ttl=3600, blacklist=["0xbad"], whitelist=["0xgood"])
 
     def test_blacklisted(self, app_strict_bw):
         data = {
@@ -166,4 +198,3 @@ class TestWebSocketAccessLists:
         sent = client.send_text(json.dumps(data))
         outs = [json.loads(m["text"]) for m in sent if m.get("type") == "websocket.send"]
         assert any(o.get("type") == "OUTPUT" and o.get("result") == "out:hi" for o in outs)
-

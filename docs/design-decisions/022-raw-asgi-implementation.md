@@ -181,7 +181,7 @@ async def post_input(request):
 We give up:
 - Clean `Route("/path", handler)` syntax
 - Built-in test client
-- Middleware helpers (CORS, GZip)
+- ~~Middleware helpers (CORS, GZip)~~ (we implemented CORS manually)
 - ~40 lines of code
 
 We gain:
@@ -189,6 +189,27 @@ We gain:
 - No framework lock-in
 - Ability to implement custom protocols
 - Clear understanding of what happens
+
+### CORS Implementation (Added Dec 2025)
+
+We implemented CORS manually in `asgi.py` with ~15 lines:
+
+```python
+CORS_HEADERS = [
+    [b"access-control-allow-origin", b"*"],
+    [b"access-control-allow-methods", b"GET, POST, OPTIONS"],
+    [b"access-control-allow-headers", b"authorization, content-type"],
+]
+
+# Handle OPTIONS preflight
+if method == "OPTIONS":
+    headers = CORS_HEADERS + [[b"content-length", b"0"]]
+    await send({"type": "http.response.start", "status": 204, "headers": headers})
+    await send({"type": "http.response.body", "body": b""})
+    return
+```
+
+This enables cross-origin requests from frontend (o.openonion.ai) to deployed agents (*.agents.openonion.ai).
 
 ---
 

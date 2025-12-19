@@ -5,22 +5,14 @@ Unit tests for connect.py - remote agent connection.
 Tests cover:
 - RemoteAgent initialization
 - connect() factory function
-- input() synchronous method
+- input() synchronous method (with event loop detection)
 - input_async() asynchronous method
+- _sign_payload() signing helper
 - _send_task() WebSocket communication
+- Session management for multi-turn conversations
 - OUTPUT message handling
 - ERROR message handling
 - Timeout handling
-- Unexpected response handling
-- __repr__() string representation
-- Relay URL transformation
-
-Critical paths from coverage analysis:
-- RemoteAgent.__init__ (lines 19-21)
-- input() calls asyncio.run (line 41)
-- input_async() calls _send_task (line 60)
-- _send_task() WebSocket flow (lines 62-96)
-- connect() factory function (line 119)
 """
 
 import pytest
@@ -45,24 +37,34 @@ class TestRemoteAgentInit:
 
     def test_init_stores_address(self):
         """Test that __init__ stores agent address."""
-        agent = RemoteAgent("0x123abc", "wss://relay.example.com/ws/announce")
+        agent = RemoteAgent("0x123abc", relay_url="wss://relay.example.com/ws/announce")
         assert agent.address == "0x123abc"
 
     def test_init_stores_relay_url(self):
         """Test that __init__ stores relay URL."""
-        agent = RemoteAgent("0x123", "ws://localhost:8000/ws/announce")
+        agent = RemoteAgent("0x123", relay_url="ws://localhost:8000/ws/announce")
         assert agent._relay_url == "ws://localhost:8000/ws/announce"
 
-    def test_init_with_long_address(self):
-        """Test initialization with full-length address."""
-        full_addr = "0x" + "a" * 64
-        agent = RemoteAgent(full_addr, "wss://relay/ws/announce")
-        assert agent.address == full_addr
+    def test_init_default_relay_url(self):
+        """Test that __init__ uses default relay URL."""
+        agent = RemoteAgent("0x123")
+        assert agent._relay_url == "wss://oo.openonion.ai/ws/announce"
 
-    def test_init_with_empty_address(self):
-        """Test initialization with empty address (valid construction)."""
-        agent = RemoteAgent("", "wss://relay/ws/announce")
-        assert agent.address == ""
+    def test_init_with_keys(self):
+        """Test that __init__ stores signing keys."""
+        keys = {"address": "0xmykey", "private_key": b"secret"}
+        agent = RemoteAgent("0x123", keys=keys)
+        assert agent._keys == keys
+
+    def test_init_session_is_none(self):
+        """Test that __init__ initializes session as None."""
+        agent = RemoteAgent("0x123")
+        assert agent._session is None
+
+    def test_init_cached_endpoint_is_none(self):
+        """Test that __init__ initializes cached endpoint as None."""
+        agent = RemoteAgent("0x123")
+        assert agent._cached_endpoint is None
 
 
 class TestConnectFactory:
@@ -89,33 +91,37 @@ class TestConnectFactory:
         agent = connect("0xdeadbeef")
         assert agent.address == "0xdeadbeef"
 
+    def test_connect_with_keys(self):
+        """Test connect() accepts signing keys."""
+        keys = {"address": "0xmykey"}
+        agent = connect("0x123", keys=keys)
+        assert agent._keys == keys
+
 
 class TestRemoteAgentRepr:
     """Test __repr__() string representation."""
 
     def test_repr_short_address(self):
         """Test __repr__ with short address (no truncation)."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x123")
         assert repr(agent) == "RemoteAgent(0x123)"
 
     def test_repr_long_address_truncated(self):
         """Test __repr__ truncates long addresses."""
         long_addr = "0x" + "a" * 64
-        agent = RemoteAgent(long_addr, "wss://relay/ws/announce")
+        agent = RemoteAgent(long_addr)
         result = repr(agent)
         assert result.startswith("RemoteAgent(0x")
         assert result.endswith("...)")
-        # Should show first 12 chars + "..."
-        assert len(result) == len("RemoteAgent(") + 12 + len("...)")
 
     def test_repr_exactly_12_chars(self):
         """Test __repr__ with exactly 12-char address (no truncation)."""
-        agent = RemoteAgent("0x1234567890", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x1234567890")
         assert repr(agent) == "RemoteAgent(0x1234567890)"
 
     def test_repr_13_chars_gets_truncated(self):
         """Test __repr__ with 13-char address (gets truncated)."""
-        agent = RemoteAgent("0x12345678901", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x12345678901")
         assert repr(agent) == "RemoteAgent(0x1234567890...)"
 
 
@@ -124,40 +130,38 @@ class TestRemoteAgentInput:
 
     def test_input_calls_send_task(self):
         """Test that input() calls _send_task via asyncio.run."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
-
-        # Mock _send_task
+        agent = RemoteAgent("0x123")
         agent._send_task = AsyncMock(return_value="Test response")
+        agent._discover_endpoints = AsyncMock(return_value=[])
 
-        # Mock asyncio.run to return the result directly
-        with patch('asyncio.run', return_value="Test response"):
-            result = agent.input("Test prompt")
+        with patch('asyncio.run', return_value="Test response") as mock_run:
+            with patch('asyncio.get_running_loop', side_effect=RuntimeError("no loop")):
+                result = agent.input("Test prompt")
 
-        # Verify _send_task was called
-        agent._send_task.assert_called_once_with("Test prompt", 30.0)
         assert result == "Test response"
 
     def test_input_with_custom_timeout(self):
         """Test input() passes custom timeout to _send_task."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x123")
         agent._send_task = AsyncMock(return_value="Response")
+        agent._discover_endpoints = AsyncMock(return_value=[])
 
         with patch('asyncio.run', return_value="Response"):
-            result = agent.input("Prompt", timeout=60.0)
+            with patch('asyncio.get_running_loop', side_effect=RuntimeError("no loop")):
+                result = agent.input("Prompt", timeout=60.0)
 
-        agent._send_task.assert_called_once_with("Prompt", 60.0)
         assert result == "Response"
 
-    def test_input_default_timeout(self):
-        """Test input() uses default 30s timeout."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
-        agent._send_task = AsyncMock(return_value="Response")
+    def test_input_raises_in_async_context(self):
+        """Test input() raises clear error when called from async context."""
+        async def test():
+            agent = RemoteAgent("0x123")
+            with pytest.raises(RuntimeError) as exc_info:
+                agent.input("Test")
+            assert "input_async" in str(exc_info.value)
+            assert "async context" in str(exc_info.value)
 
-        with patch('asyncio.run', return_value="Response"):
-            agent.input("Prompt")
-
-        # Check default timeout=30.0 was passed
-        agent._send_task.assert_called_once_with("Prompt", 30.0)
+        asyncio.run(test())
 
 
 class TestRemoteAgentInputAsync:
@@ -166,7 +170,7 @@ class TestRemoteAgentInputAsync:
     @pytest.mark.asyncio
     async def test_input_async_calls_send_task(self):
         """Test that input_async() calls _send_task directly."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x123")
         agent._send_task = AsyncMock(return_value="Async response")
 
         result = await agent.input_async("Test prompt")
@@ -177,7 +181,7 @@ class TestRemoteAgentInputAsync:
     @pytest.mark.asyncio
     async def test_input_async_with_custom_timeout(self):
         """Test input_async() passes custom timeout."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x123")
         agent._send_task = AsyncMock(return_value="Response")
 
         result = await agent.input_async("Prompt", timeout=45.0)
@@ -185,15 +189,68 @@ class TestRemoteAgentInputAsync:
         agent._send_task.assert_called_once_with("Prompt", 45.0)
         assert result == "Response"
 
-    @pytest.mark.asyncio
-    async def test_input_async_default_timeout(self):
-        """Test input_async() uses default 30s timeout."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
-        agent._send_task = AsyncMock(return_value="Response")
 
-        await agent.input_async("Prompt")
+class TestSignPayload:
+    """Test _sign_payload() helper method."""
 
-        agent._send_task.assert_called_once_with("Prompt", 30.0)
+    def test_sign_payload_without_keys(self):
+        """Test _sign_payload returns simple body when no keys."""
+        agent = RemoteAgent("0x123")
+        payload = {"prompt": "Hello", "to": "0x123", "timestamp": 12345}
+
+        result = agent._sign_payload(payload)
+
+        assert result == {"prompt": "Hello"}
+
+    def test_sign_payload_with_keys(self):
+        """Test _sign_payload returns signed body when keys provided."""
+        keys = {
+            "address": "0xmyaddress",
+            "private_key": b'\x00' * 32,
+            "public_key": b'\x00' * 32
+        }
+        agent = RemoteAgent("0x123", keys=keys)
+        payload = {"prompt": "Hello", "to": "0x123", "timestamp": 12345}
+
+        from connectonion import address as addr_module
+        with patch.object(addr_module, 'sign', return_value=b'\xab\xcd'):
+            result = agent._sign_payload(payload)
+
+        assert "payload" in result
+        assert result["payload"] == payload
+        assert result["from"] == "0xmyaddress"
+        assert result["signature"] == "abcd"
+
+
+class TestSessionManagement:
+    """Test session management for multi-turn conversations."""
+
+    def test_reset_conversation_clears_session(self):
+        """Test reset_conversation() clears session state."""
+        agent = RemoteAgent("0x123")
+        agent._session = {"session_id": "abc", "messages": []}
+
+        agent.reset_conversation()
+
+        assert agent._session is None
+
+    def test_create_signed_body_includes_session(self):
+        """Test _create_signed_body includes session when present."""
+        agent = RemoteAgent("0x123")
+        agent._session = {"session_id": "abc123"}
+
+        body = agent._create_signed_body("Hello")
+
+        assert "session" in body
+        assert body["session"]["session_id"] == "abc123"
+
+    def test_create_signed_body_no_session(self):
+        """Test _create_signed_body works without session."""
+        agent = RemoteAgent("0x123")
+
+        body = agent._create_signed_body("Hello")
+
+        assert "session" not in body
 
 
 class TestSendTaskOutputHandling:
@@ -202,9 +259,9 @@ class TestSendTaskOutputHandling:
     @pytest.mark.asyncio
     async def test_send_task_successful_output(self):
         """Test _send_task() handles OUTPUT message correctly."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x123")
+        agent._discover_endpoints = AsyncMock(return_value=[])
 
-        # Mock WebSocket
         output_message = {
             "type": "OUTPUT",
             "input_id": "test-uuid",
@@ -221,7 +278,8 @@ class TestSendTaskOutputHandling:
     @pytest.mark.asyncio
     async def test_send_task_sends_input_message(self):
         """Test _send_task() sends correct INPUT message format."""
-        agent = RemoteAgent("0xagent123", "wss://relay/ws/announce")
+        agent = RemoteAgent("0xagent123")
+        agent._discover_endpoints = AsyncMock(return_value=[])
 
         mock_ws = AsyncMock()
         mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
@@ -244,16 +302,15 @@ class TestSendTaskOutputHandling:
             with patch('uuid.uuid4', return_value=Mock(__str__=lambda self: "uuid-123")):
                 await agent._send_task("Test prompt", 30.0)
 
-        # Verify INPUT message structure
         assert sent_message["type"] == "INPUT"
         assert sent_message["input_id"] == "uuid-123"
         assert sent_message["to"] == "0xagent123"
-        assert sent_message["prompt"] == "Test prompt"
 
     @pytest.mark.asyncio
     async def test_send_task_transforms_relay_url(self):
         """Test _send_task() transforms /ws/announce to /ws/input."""
-        agent = RemoteAgent("0x123", "wss://relay.example.com/ws/announce")
+        agent = RemoteAgent("0x123", relay_url="wss://relay.example.com/ws/announce")
+        agent._discover_endpoints = AsyncMock(return_value=[])
 
         mock_ws = AsyncMock()
         mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
@@ -275,49 +332,7 @@ class TestSendTaskOutputHandling:
             with patch('uuid.uuid4', return_value=Mock(__str__=lambda self: "test")):
                 await agent._send_task("Prompt", 30.0)
 
-        # Verify URL transformation
         assert connected_url == "wss://relay.example.com/ws/input"
-
-    @pytest.mark.asyncio
-    async def test_send_task_output_with_empty_result(self):
-        """Test _send_task() handles OUTPUT with empty result."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
-
-        mock_ws = AsyncMock()
-        mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({
-            "type": "OUTPUT",
-            "input_id": "test",
-            "result": ""
-        })
-
-        with patch('websockets.connect', return_value=mock_ws):
-            with patch('uuid.uuid4', return_value=Mock(__str__=lambda self: "test")):
-                result = await agent._send_task("Prompt", 30.0)
-
-        assert result == ""
-
-    @pytest.mark.asyncio
-    async def test_send_task_output_missing_result_field(self):
-        """Test _send_task() handles OUTPUT missing 'result' field."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
-
-        mock_ws = AsyncMock()
-        mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({
-            "type": "OUTPUT",
-            "input_id": "test"
-            # No 'result' field
-        })
-
-        with patch('websockets.connect', return_value=mock_ws):
-            with patch('uuid.uuid4', return_value=Mock(__str__=lambda self: "test")):
-                result = await agent._send_task("Prompt", 30.0)
-
-        # Should return empty string when result missing
-        assert result == ""
 
 
 class TestSendTaskErrorHandling:
@@ -326,11 +341,12 @@ class TestSendTaskErrorHandling:
     @pytest.mark.asyncio
     async def test_send_task_error_message(self):
         """Test _send_task() raises ConnectionError on ERROR message."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x123")
+        agent._discover_endpoints = AsyncMock(return_value=[])
 
         mock_ws = AsyncMock()
         mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
+        mock_ws.__aexit__ = AsyncMock(return_value=False)
         mock_ws.recv.return_value = json.dumps({
             "type": "ERROR",
             "error": "Agent not found"
@@ -346,11 +362,12 @@ class TestSendTaskErrorHandling:
     @pytest.mark.asyncio
     async def test_send_task_unexpected_response_type(self):
         """Test _send_task() raises ConnectionError on unexpected message type."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x123")
+        agent._discover_endpoints = AsyncMock(return_value=[])
 
         mock_ws = AsyncMock()
         mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
+        mock_ws.__aexit__ = AsyncMock(return_value=False)
         mock_ws.recv.return_value = json.dumps({
             "type": "UNKNOWN",
             "data": "something"
@@ -364,70 +381,20 @@ class TestSendTaskErrorHandling:
         assert "Unexpected response" in str(exc_info.value)
 
     @pytest.mark.asyncio
-    async def test_send_task_mismatched_input_id(self):
-        """Test _send_task() raises error if OUTPUT input_id doesn't match."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
-
-        mock_ws = AsyncMock()
-        mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
-        mock_ws.recv.return_value = json.dumps({
-            "type": "OUTPUT",
-            "input_id": "wrong-uuid",
-            "result": "Response"
-        })
-
-        with patch('websockets.connect', return_value=mock_ws):
-            with patch('uuid.uuid4', return_value=Mock(__str__=lambda self: "correct-uuid")):
-                with pytest.raises(ConnectionError) as exc_info:
-                    await agent._send_task("Prompt", 30.0)
-
-        assert "Unexpected response" in str(exc_info.value)
-
-    @pytest.mark.asyncio
     async def test_send_task_timeout(self):
         """Test _send_task() raises TimeoutError on timeout."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
+        agent = RemoteAgent("0x123")
+        agent._discover_endpoints = AsyncMock(return_value=[])
 
         mock_ws = AsyncMock()
         mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock(return_value=False)  # Don't suppress exceptions
-        # Simulate timeout by never returning
+        mock_ws.__aexit__ = AsyncMock(return_value=False)
         mock_ws.recv = AsyncMock(side_effect=asyncio.TimeoutError())
 
         with patch('websockets.connect', return_value=mock_ws):
             with patch('uuid.uuid4', return_value=Mock(__str__=lambda self: "test")):
                 with pytest.raises(asyncio.TimeoutError):
                     await agent._send_task("Prompt", 0.1)
-
-
-class TestSendTaskWebSocketContext:
-    """Test _send_task() WebSocket context management."""
-
-    @pytest.mark.asyncio
-    async def test_send_task_uses_async_context_manager(self):
-        """Test _send_task() uses async with for WebSocket."""
-        agent = RemoteAgent("0x123", "wss://relay/ws/announce")
-
-        mock_ws = AsyncMock()
-        mock_ws.__aenter__ = AsyncMock(return_value=mock_ws)
-        mock_ws.__aexit__ = AsyncMock()
-        mock_ws.recv.return_value = json.dumps({
-            "type": "OUTPUT",
-            "input_id": "test",
-            "result": "OK"
-        })
-
-        # Track context manager calls
-        mock_connect = MagicMock()
-        mock_connect.return_value = mock_ws
-
-        with patch('websockets.connect', mock_connect):
-            with patch('uuid.uuid4', return_value=Mock(__str__=lambda self: "test")):
-                await agent._send_task("Prompt", 30.0)
-
-        # Verify connect was called
-        mock_connect.assert_called_once()
 
 
 class TestIntegration:

@@ -99,12 +99,13 @@ print(result2)
 
 ## API Reference
 
-### connect(agent_address, relay_url)
+### connect(agent_address, keys, relay_url)
 
 Connect to a remote serving agent.
 
 **Parameters:**
 - `agent_address` (str, required): Ed25519 public key of the remote agent (hex format with 0x prefix)
+- `keys` (dict, optional): Signing keys from `address.load()` - required for `trust="strict"` agents
 - `relay_url` (str, optional): Relay server URL. Defaults to `"wss://oo.openonion.ai/ws/announce"`
 
 **Returns:**
@@ -112,14 +113,38 @@ Connect to a remote serving agent.
 
 **Example:**
 ```python
-from connectonion import connect
+from connectonion import connect, address
 
 # Connect with default relay
 agent = connect("0x7a8f...")
 
+# Connect with signing (for strict trust agents)
+keys = address.load(Path(".co"))
+agent = connect("0x7a8f...", keys=keys)
+
 # Connect with custom relay
 agent = connect("0x7a8f...", relay_url="ws://localhost:8000/ws/announce")
 ```
+
+### RemoteAgent Methods
+
+**`input(prompt, timeout=30.0)`** - Sync version (standard Python scripts)
+```python
+result = agent.input("Hello")
+```
+
+**`input_async(prompt, timeout=30.0)`** - Async version (Jupyter notebooks, async code)
+```python
+result = await agent.input_async("Hello")
+```
+
+**`reset_conversation()`** - Clear session and start fresh
+```python
+agent.reset_conversation()
+```
+
+> **Note:** `input()` cannot be used inside async contexts (Jupyter notebooks, async functions).
+> Use `await agent.input_async()` instead. You'll get a clear error message if you try.
 
 ---
 

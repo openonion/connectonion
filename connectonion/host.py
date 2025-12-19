@@ -9,7 +9,13 @@ Trust parameter accepts three forms:
 3. Agent: Custom Agent instance for verification
 
 All forms create a trust agent behind the scenes.
+
+Worker Isolation:
+Each request gets a fresh deep copy of the agent template.
+This ensures complete isolation - tools with state (like BrowserTool)
+don't interfere between concurrent requests.
 """
+import copy
 import hashlib
 import json
 import logging
@@ -102,17 +108,18 @@ class SessionStorage:
 
 # === Handlers (pure functions) ===
 
-def input_handler(agent, storage: SessionStorage, prompt: str, result_ttl: int,
+def input_handler(agent_template, storage: SessionStorage, prompt: str, result_ttl: int,
                   session: dict | None = None) -> dict:
     """POST /input
 
     Args:
-        agent: The agent to process the request
+        agent_template: The agent template (deep copied per request for isolation)
         storage: SessionStorage for persisting results
         prompt: The user's prompt
         result_ttl: How long to keep the result on server
         session: Optional conversation session for continuation
     """
+    agent = copy.deepcopy(agent_template)
     now = time.time()
 
     # Get or generate session_id
@@ -368,7 +375,12 @@ def admin_logs_handler(agent_name: str) -> dict:
 
 
 def admin_sessions_handler() -> dict:
-    """GET /admin/sessions - return all activity sessions as JSON array."""
+    """GET /admin/sessions - return raw session YAML files as JSON.
+
+    Returns session files as-is (converted from YAML to JSON). Each session
+    contains: name, created, updated, total_cost, total_tokens, turns array.
+    Frontend handles the display logic.
+    """
     import yaml
     sessions_dir = Path(".co/sessions")
     if not sessions_dir.exists():
@@ -381,30 +393,34 @@ def admin_sessions_handler() -> dict:
             if session_data:
                 sessions.append(session_data)
 
-    # Sort by created date descending (newest first)
-    sessions.sort(key=lambda s: s.get("created", ""), reverse=True)
+    # Sort by updated date descending (newest first)
+    sessions.sort(key=lambda s: s.get("updated", s.get("created", "")), reverse=True)
     return {"sessions": sessions}
 
 
 # === Entry Point ===
 
-def _create_handlers(agent, result_ttl: int):
+def _create_handlers(agent_template, result_ttl: int):
     """Create handler dict for ASGI app."""
+    def ws_input(prompt: str) -> str:
+        agent = copy.deepcopy(agent_template)
+        return agent.input(prompt)
+
     return {
-        "input": lambda storage, prompt, ttl, session=None: input_handler(agent, storage, prompt, ttl, session),
+        "input": lambda storage, prompt, ttl, session=None: input_handler(agent_template, storage, prompt, ttl, session),
         "session": session_handler,
         "sessions": sessions_handler,
-        "health": lambda start_time: health_handler(agent, start_time),
-        "info": lambda trust: info_handler(agent, trust),
+        "health": lambda start_time: health_handler(agent_template, start_time),
+        "info": lambda trust: info_handler(agent_template, trust),
         "auth": extract_and_authenticate,
-        "ws_input": agent.input,
+        "ws_input": ws_input,
         # Admin endpoints (auth required via OPENONION_API_KEY)
-        "admin_logs": lambda: admin_logs_handler(agent.name),
+        "admin_logs": lambda: admin_logs_handler(agent_template.name),
         "admin_sessions": admin_sessions_handler,
     }
 
 
-def _start_relay_background(agent, relay_url: str, addr_data: dict):
+def _start_relay_background(agent_template, relay_url: str, addr_data: dict):
     """Start relay connection in background thread.
 
     The relay connection runs alongside the HTTP server, allowing the agent
@@ -415,11 +431,12 @@ def _start_relay_background(agent, relay_url: str, addr_data: dict):
     from . import announce, relay
 
     # Create ANNOUNCE message
-    summary = agent.system_prompt[:1000] if agent.system_prompt else f"{agent.name} agent"
+    summary = agent_template.system_prompt[:1000] if agent_template.system_prompt else f"{agent_template.name} agent"
     announce_msg = announce.create_announce_message(addr_data, summary, endpoints=[])
 
-    # Task handler that routes to agent.input()
+    # Task handler - deep copy for each request
     async def task_handler(prompt: str) -> str:
+        agent = copy.deepcopy(agent_template)
         return agent.input(prompt)
 
     async def relay_loop():
