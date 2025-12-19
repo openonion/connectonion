@@ -217,4 +217,19 @@ def handle_deploy():
     # Always show URL if we have one
     if url:
         console.print(f"Agent URL: {url}")
+
+    # Always fetch and display container logs
+    if deployment_id:
+        logs_resp = requests.get(
+            f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+        if logs_resp.status_code == 200:
+            logs = logs_resp.json().get("logs", "")
+            if logs:
+                console.print()
+                console.print("[dim]Container logs:[/dim]")
+                console.print(f"[dim]{logs}[/dim]")
+
     console.print()
