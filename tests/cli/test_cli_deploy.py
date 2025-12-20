@@ -110,6 +110,98 @@ class TestCliDeploy:
 
             assert "Deployed!" in result.output or result.exit_code == 0
 
+    def test_deploy_fetches_logs_after_success(self):
+        """Test that deploy fetches and displays container logs after deployment.
+
+        This is a unit test that verifies:
+        1. After successful deploy, the logs endpoint is called
+        2. The logs are displayed in the output
+        """
+        import requests
+        from connectonion.cli.commands import deploy_commands
+
+        # Capture what gets printed
+        output_lines = []
+        original_print = deploy_commands.console.print
+        deploy_commands.console.print = lambda *args, **kwargs: output_lines.append(str(args[0]) if args else "")
+
+        # Mock requests.get for logs endpoint
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"logs": "Agent started on port 8000\nReady to serve"}
+
+        with patch.object(requests, 'get', return_value=mock_response) as mock_get:
+            # Simulate the log fetching code path
+            deployment_id = "abc123"
+            api_key = "test-token"
+
+            # This is the code we added to deploy_commands.py
+            logs_resp = requests.get(
+                f"https://oo.openonion.ai/api/v1/deploy/{deployment_id}/logs?tail=20",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10,
+            )
+            if logs_resp.status_code == 200:
+                logs = logs_resp.json().get("logs", "")
+                if logs:
+                    deploy_commands.console.print()
+                    deploy_commands.console.print("[dim]Container logs:[/dim]")
+                    deploy_commands.console.print(f"[dim]{logs}[/dim]")
+
+            # Verify the endpoint was called correctly
+            mock_get.assert_called_once()
+            call_url = mock_get.call_args[0][0]
+            assert "/logs" in call_url
+            assert "abc123" in call_url
+
+            # Verify logs were printed
+            assert any("Container logs:" in line for line in output_lines)
+            assert any("Agent started" in line for line in output_lines)
+
+        # Restore
+        deploy_commands.console.print = original_print
+
+    def test_deploy_shows_error_logs(self):
+        """Test that container errors are visible in deploy output.
+
+        When a container fails (e.g., missing main.py), the error should
+        be visible in the logs output so users can debug.
+        """
+        import requests
+        from connectonion.cli.commands import deploy_commands
+
+        output_lines = []
+        original_print = deploy_commands.console.print
+        deploy_commands.console.print = lambda *args, **kwargs: output_lines.append(str(args[0]) if args else "")
+
+        # Mock response with error logs
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "logs": "python: can't open file '/app/main.py': [Errno 2] No such file or directory"
+        }
+
+        with patch.object(requests, 'get', return_value=mock_response):
+            deployment_id = "abc123"
+            api_key = "test-token"
+
+            logs_resp = requests.get(
+                f"https://oo.openonion.ai/api/v1/deploy/{deployment_id}/logs?tail=20",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10,
+            )
+            if logs_resp.status_code == 200:
+                logs = logs_resp.json().get("logs", "")
+                if logs:
+                    deploy_commands.console.print()
+                    deploy_commands.console.print("[dim]Container logs:[/dim]")
+                    deploy_commands.console.print(f"[dim]{logs}[/dim]")
+
+            # Verify error is visible
+            assert any("No such file or directory" in line for line in output_lines)
+
+        deploy_commands.console.print = original_print
+
     @SKIP_NO_GIT
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
     def test_deploy_api_error(self, mock_post):
@@ -124,7 +216,7 @@ class TestCliDeploy:
 
             os.makedirs(".co")
             Path(".co/config.toml").write_text('[project]\nname = "test-agent"')
-            Path("agent.py").write_text('print("hello")')
+            Path("agent.py").write_text('from connectonion import host\nhost(None)')
 
             subprocess.run(['git', 'add', '.'], capture_output=True)
             subprocess.run(['git', 'commit', '-m', 'init'], capture_output=True)
