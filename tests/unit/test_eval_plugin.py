@@ -243,6 +243,7 @@ class TestEvalPlugin:
 
         # Create mock LLM
         mock_llm = Mock()
+        mock_llm.model = "test-model"
         mock_llm.complete.return_value = LLMResponse(
             content="Test response",
             tool_calls=[],

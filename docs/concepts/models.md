@@ -57,13 +57,6 @@ agent = Agent("assistant", model="co/gpt-5-nano")   # Managed
 agent = Agent("assistant", model="gpt-5-nano")      # Your key
 ```
 
-#### GPT-4.1
-```python
-# Smartest non-reasoning model
-agent = Agent("assistant", model="co/gpt-4.1")      # Managed
-agent = Agent("assistant", model="gpt-4.1")         # Your key
-```
-
 #### GPT-4o Series (Previous Generation)
 ```python
 # Multimodal model with vision capabilities
@@ -75,15 +68,11 @@ agent = Agent("assistant", model="co/gpt-4o-mini")  # Managed
 agent = Agent("assistant", model="gpt-4o-mini")     # Your key
 ```
 
-#### o1 Reasoning Models
+#### o4-mini Reasoning Model
 ```python
-# Advanced reasoning and problem solving
-agent = Agent("assistant", model="co/o1")           # Managed
-agent = Agent("assistant", model="o1")              # Your key
-
-# Fast reasoning, cost-effective
-agent = Agent("assistant", model="co/o1-mini")      # Managed
-agent = Agent("assistant", model="o1-mini")         # Your key
+# OpenAI's newest reasoning model
+agent = Agent("assistant", model="co/o4-mini")      # Managed
+agent = Agent("assistant", model="o4-mini")         # Your key
 ```
 
 ### Google Gemini Models
@@ -91,9 +80,12 @@ agent = Agent("assistant", model="o1-mini")         # Your key
 #### Gemini 3 (Newest - State-of-the-Art Reasoning)
 ```python
 # Most intelligent model family with state-of-the-art reasoning
-# 1M token context, dynamic thinking levels (low/medium/high)
 agent = Agent("assistant", model="co/gemini-3-pro-preview")  # Managed
 agent = Agent("assistant", model="gemini-3-pro-preview")     # Your key
+
+# Fastest Gemini 3 model
+agent = Agent("assistant", model="co/gemini-3-flash-preview")  # Managed
+agent = Agent("assistant", model="gemini-3-flash-preview")     # Your key
 
 # Image generation model with grounded generation
 agent = Agent("assistant", model="co/gemini-3-pro-image-preview")  # Managed
@@ -106,38 +98,35 @@ agent = Agent("assistant", model="gemini-3-pro-image-preview")     # Your key
 # Supports: Audio, images, videos, text, and PDF
 agent = Agent("assistant", model="co/gemini-2.5-pro")  # Managed
 agent = Agent("assistant", model="gemini-2.5-pro")     # Your key
+
+# Best price-performance ratio
+agent = Agent("assistant", model="co/gemini-2.5-flash")  # Managed
+agent = Agent("assistant", model="gemini-2.5-flash")     # Your key
+
+# Ultra fast, cheapest Gemini option
+agent = Agent("assistant", model="co/gemini-2.5-flash-lite")  # Managed
+agent = Agent("assistant", model="gemini-2.5-flash-lite")     # Your key
 ```
 
 #### Gemini 2.0
 ```python
-# Experimental multimodal model with native tool use
-agent = Agent("assistant", model="co/gemini-2.0-flash-exp")  # Managed
-agent = Agent("assistant", model="gemini-2.0-flash-exp")     # Your key
+# Previous gen workhorse
+agent = Agent("assistant", model="co/gemini-2.0-flash")  # Managed
+agent = Agent("assistant", model="gemini-2.0-flash")     # Your key
 
-# With thinking/reasoning capabilities
-agent = Agent("assistant", model="co/gemini-2.0-flash-thinking-exp")  # Managed
-agent = Agent("assistant", model="gemini-2.0-flash-thinking-exp")     # Your key
-```
-
-#### Gemini 1.5
-```python
-# 2M token context window
-agent = Agent("assistant", model="co/gemini-1.5-pro")    # Managed
-agent = Agent("assistant", model="gemini-1.5-pro")       # Your key
-
-# Fast and versatile, 1M token context
-agent = Agent("assistant", model="co/gemini-1.5-flash")  # Managed
-agent = Agent("assistant", model="gemini-1.5-flash")     # Your key
-
-# High-volume tasks, lower cost
-agent = Agent("assistant", model="co/gemini-1.5-flash-8b")  # Managed
-agent = Agent("assistant", model="gemini-1.5-flash-8b")     # Your key
+# Previous gen lite version
+agent = Agent("assistant", model="co/gemini-2.0-flash-lite")  # Managed
+agent = Agent("assistant", model="gemini-2.0-flash-lite")     # Your key
 ```
 
 ### Anthropic Claude Models
 
 #### Claude 4.5 Series (Latest)
 ```python
+# Claude Opus 4.5 - Most capable model
+agent = Agent("assistant", model="co/claude-opus-4-5")    # Managed
+agent = Agent("assistant", model="claude-opus-4-5")       # Your key
+
 # Claude Sonnet 4.5 - Best balance of intelligence and speed
 agent = Agent("assistant", model="co/claude-sonnet-4-5")  # Managed
 agent = Agent("assistant", model="claude-sonnet-4-5")     # Your key
@@ -147,22 +136,19 @@ agent = Agent("assistant", model="co/claude-haiku-4-5")   # Managed
 agent = Agent("assistant", model="claude-haiku-4-5")      # Your key
 ```
 
-#### Claude Opus 4 Series
+#### Claude 4 Series (Previous Generation)
 ```python
 # Claude Opus 4.1 - Specialized reasoning
 agent = Agent("assistant", model="co/claude-opus-4-1")    # Managed
 agent = Agent("assistant", model="claude-opus-4-1")       # Your key
 
-# Claude Opus 4 - Previous version
-agent = Agent("assistant", model="co/claude-opus-4")      # Managed
-agent = Agent("assistant", model="claude-opus-4")         # Your key
-```
-
-#### Claude Sonnet 4
-```python
-# Balanced performance model
+# Claude Sonnet 4 - Balanced performance
 agent = Agent("assistant", model="co/claude-sonnet-4")    # Managed
 agent = Agent("assistant", model="claude-sonnet-4")       # Your key
+
+# Claude Opus 4 - Legacy version
+agent = Agent("assistant", model="co/claude-opus-4")      # Managed
+agent = Agent("assistant", model="claude-opus-4")         # Your key
 ```
 
 ## Model Capabilities Comparison
@@ -172,7 +158,8 @@ agent = Agent("assistant", model="claude-sonnet-4")       # Your key
 | Model | Provider | Key Strengths | Multimodal |
 |-------|----------|---------------|------------|
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
-| gemini-3-pro-preview | Google | State-of-the-art reasoning, dynamic thinking | ✅ |
+| gemini-2.5-pro | Google | Default model, best price-performance for agents | ✅ |
+| gemini-3-pro-preview | Google | State-of-the-art reasoning | ✅ |
 | claude-sonnet-4-5 | Anthropic | Best balance of intelligence and speed | ✅ |
 
 ### Context Windows
@@ -183,17 +170,17 @@ agent = Agent("assistant", model="claude-sonnet-4")       # Your key
 | gpt-5 | 200K tokens |
 | gpt-5-mini | 200K tokens |
 | gpt-5-nano | 128K tokens |
-| gpt-4.1 | 128K tokens |
+| gpt-4o | 128K tokens |
+| o4-mini | 128K tokens |
 | **Google** | |
 | gemini-3-pro-preview | 1M tokens |
-| gemini-3-pro-image-preview | 65K tokens |
+| gemini-3-flash-preview | 1M tokens |
 | gemini-2.5-pro | 2M tokens |
-| gemini-1.5-pro | 2M tokens |
-| gemini-1.5-flash | 1M tokens |
+| gemini-2.5-flash | 1M tokens |
 | **Anthropic** | |
+| claude-opus-4-5 | 200K tokens |
 | claude-sonnet-4-5 | 200K tokens |
 | claude-haiku-4-5 | 200K tokens |
-| claude-opus-4-1 | 200K tokens |
 
 ## Pricing (Managed Keys)
 
@@ -205,7 +192,7 @@ All prices are **per 1M tokens** and match official provider pricing:
 |-------|-------|--------|-------|
 | gpt-5 | $1.25 | $10.00 | Best overall |
 | gpt-5-mini | $0.25 | $2.00 | Fast, cost-effective |
-| gpt-5-nano | $0.05 | $0.40 | Cheapest |
+| gpt-5-nano | $0.05 | $0.40 | Cheapest OpenAI |
 | gpt-4o | $2.50 | $10.00 | Previous gen flagship |
 | gpt-4o-mini | $0.15 | $0.60 | Most cost-effective |
 | o4-mini | $3.00 | $12.00 | Reasoning model |
@@ -215,16 +202,19 @@ All prices are **per 1M tokens** and match official provider pricing:
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
 | gemini-3-pro-preview | $2.00 | $12.00 | State-of-the-art reasoning |
+| gemini-3-flash-preview | $0.50 | $3.00 | Fastest Gemini 3 |
 | gemini-3-pro-image-preview | $2.00 | $0.134 | Image generation |
-| gemini-2.5-pro | $1.25 | $10.00 | Advanced thinking |
+| gemini-2.5-pro | $1.25 | $10.00 | **Default model** - best for agents |
 | gemini-2.5-flash | $0.30 | $2.50 | Best price-performance |
 | gemini-2.5-flash-lite | $0.10 | $0.40 | Ultra fast, cheapest |
 | gemini-2.0-flash | $0.10 | $0.40 | Previous gen |
+| gemini-2.0-flash-lite | $0.075 | $0.30 | Previous gen lite |
 
 ### Anthropic Claude Models
 
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
+| claude-opus-4-5 | $5.00 | $25.00 | Most capable |
 | claude-sonnet-4-5 | $3.00 | $15.00 | Best intelligence/speed balance |
 | claude-haiku-4-5 | $1.00 | $5.00 | Fastest Claude |
 | claude-opus-4-1 | $15.00 | $75.00 | Specialized reasoning |

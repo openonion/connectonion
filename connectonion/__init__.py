@@ -17,12 +17,11 @@ from .logger import Logger
 from .llm_do import llm_do
 from .transcribe import transcribe
 from .prompts import load_system_prompt
-from .xray import xray
-from .decorators import replay, xray_replay
+from .debug import xray, auto_debug_exception, replay, xray_replay
 from .useful_tools import send_email, get_emails, mark_read, mark_unread, Memory, Gmail, GoogleCalendar, Outlook, MicrosoftCalendar, WebFetch, Shell, DiffWriter, pick, yes_no, autocomplete, TodoList, SlashCommand
-from .auto_debug_exception import auto_debug_exception
-from .connect import connect, RemoteAgent
-from .host import host, create_app
+from .network import connect, RemoteAgent, host, create_app
+from .network import relay, announce
+from . import address
 from .events import (
     after_user_input,
     before_llm,
@@ -68,6 +67,9 @@ __all__ = [
     "RemoteAgent",
     "host",
     "create_app",
+    "relay",
+    "announce",
+    "address",
     "after_user_input",
     "before_llm",
     "after_llm",

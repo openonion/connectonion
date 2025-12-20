@@ -45,7 +45,7 @@ class ASGITestClient:
 
 def test_docs_served(tmp_path):
     from unittest.mock import MagicMock
-    from connectonion.host import _make_app
+    from connectonion.network.host import _make_app
 
     agent = MagicMock()
     agent.name = "docs-agent"

@@ -23,8 +23,8 @@ from connectonion.llm import LLMResponse
 from connectonion.usage import TokenUsage
 
 # Get the actual module, not the function (which shadows it in __init__.py)
-import connectonion.host  # This imports the module before __init__ shadows it
-host_module = sys.modules['connectonion.host']
+import connectonion.network.host  # This imports the module before __init__ shadows it
+host_module = sys.modules['connectonion.network.host']
 
 
 @pytest.fixture

@@ -7,7 +7,7 @@ from pathlib import Path
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from connectonion.debug_agent.runtime_inspector import RuntimeInspector
+from connectonion.debug.runtime_inspector.runtime_inspector import RuntimeInspector
 
 
 class TestRuntimeInspector:

@@ -10,7 +10,7 @@ LLM-Note:
 """
 
 from pathlib import Path
-from ..agent import Agent
+from ...agent import Agent
 from .runtime_inspector import RuntimeInspector
 
 

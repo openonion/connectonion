@@ -177,7 +177,7 @@ def health_handler(agent, start_time: float) -> dict:
 
 def info_handler(agent, trust: str) -> dict:
     """GET /info"""
-    from . import __version__
+    from .. import __version__
     tools = agent.tools.list_names() if hasattr(agent.tools, "list_names") else []
     return {
         "name": agent.name,
@@ -338,7 +338,7 @@ def evaluate_with_trust_agent(trust_agent, prompt: str, identity: str, sig_valid
         (accepted, reason) tuple
     """
     from pydantic import BaseModel
-    from .llm_do import llm_do
+    from ..llm_do import llm_do
 
     class TrustDecision(BaseModel):
         accept: bool
@@ -401,7 +401,12 @@ def admin_sessions_handler() -> dict:
 # === Entry Point ===
 
 def _create_handlers(agent_template, result_ttl: int):
-    """Create handler dict for ASGI app."""
+    """Create handler dict for ASGI app.
+
+    Args:
+        agent_template: Agent used as template (deep-copied per request for isolation)
+        result_ttl: How long to keep results on server in seconds
+    """
     def ws_input(prompt: str) -> str:
         agent = copy.deepcopy(agent_template)
         return agent.input(prompt)
@@ -425,6 +430,11 @@ def _start_relay_background(agent_template, relay_url: str, addr_data: dict):
 
     The relay connection runs alongside the HTTP server, allowing the agent
     to be discovered via P2P network while also serving HTTP requests.
+
+    Args:
+        agent_template: Agent used as template (deep-copied per request for isolation)
+        relay_url: WebSocket URL for P2P relay
+        addr_data: Agent address data (public key, address)
     """
     import asyncio
     import threading
@@ -466,8 +476,12 @@ def host(
     """
     Host an agent over HTTP/WebSocket with optional P2P relay discovery.
 
+    The agent is used as a template - each request gets a fresh deep copy
+    for complete isolation. This ensures tools with state (like BrowserTool)
+    don't interfere between concurrent requests.
+
     Args:
-        agent: Agent to host
+        agent: Agent template (deep-copied per request for isolation)
         port: HTTP port (default: PORT env var or 8000)
         trust: Trust level, policy, or Agent:
             - Level: "open", "careful", "strict"
@@ -492,7 +506,7 @@ def host(
         GET  /logs/sessions - Activity sessions (requires OPENONION_API_KEY)
     """
     import uvicorn
-    from . import address
+    from .. import address
 
     # Use PORT env var if port not specified (for container deployments)
     if port is None:
@@ -543,8 +557,11 @@ def host(
 def _make_app(agent, trust: Union[str, "Agent"] = "careful", result_ttl=86400, *, blacklist=None, whitelist=None):
     """Create ASGI app for external uvicorn/gunicorn usage.
 
+    The agent is used as a template - each request gets a fresh deep copy
+    for complete isolation.
+
     Args:
-        agent: Agent to host
+        agent: Agent template (deep-copied per request for isolation)
         trust: Trust level, policy, or Agent
         result_ttl: How long to keep results on server in seconds
         blacklist: Blocked identities
@@ -579,6 +596,7 @@ host.app = _make_app
 def create_app_compat(agent, storage, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None):
     """Create ASGI app (backward-compatible wrapper).
 
+    The agent is used as a template (deep-copied per request for isolation).
     Prefer using host.app(agent) for new code.
     """
     handlers = _create_handlers(agent, result_ttl)

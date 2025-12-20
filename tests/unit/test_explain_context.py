@@ -19,7 +19,7 @@ class TestRootCauseAnalysisModel:
 
     def test_root_cause_analysis_creation(self):
         """Test creating RootCauseAnalysis with all fields."""
-        from connectonion.debug_explainer.explain_context import RootCauseAnalysis
+        from connectonion.debug.debug_explainer.explain_context import RootCauseAnalysis
 
         analysis = RootCauseAnalysis(
             primary_cause_source="system_prompt",
@@ -35,7 +35,7 @@ class TestRootCauseAnalysisModel:
 
     def test_root_cause_analysis_fields(self):
         """Test RootCauseAnalysis has all required fields."""
-        from connectonion.debug_explainer.explain_context import RootCauseAnalysis
+        from connectonion.debug.debug_explainer.explain_context import RootCauseAnalysis
 
         assert 'primary_cause_source' in RootCauseAnalysis.__annotations__
         assert 'influential_text' in RootCauseAnalysis.__annotations__
@@ -49,7 +49,7 @@ class TestRuntimeContextInit:
 
     def test_runtime_context_init(self):
         """Test RuntimeContext stores breakpoint and agent."""
-        from connectonion.debug_explainer.explain_context import RuntimeContext
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext
 
         mock_bp = Mock()
         mock_bp.tool_name = "search"
@@ -66,7 +66,7 @@ class TestRuntimeContextSystemPrompt:
 
     def test_system_prompt_modification(self):
         """Test testing with different system prompt."""
-        from connectonion.debug_explainer.explain_context import RuntimeContext
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext
 
         # Set up mocks
         mock_bp = Mock()
@@ -97,7 +97,7 @@ class TestRuntimeContextSystemPrompt:
 
     def test_system_prompt_still_calls_tool(self):
         """Test when new prompt still calls the same tool."""
-        from connectonion.debug_explainer.explain_context import RuntimeContext
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext
 
         mock_bp = Mock()
         mock_bp.tool_name = "search"
@@ -126,7 +126,7 @@ class TestRuntimeContextStability:
 
     def test_stability_stable_decision(self):
         """Test stability check with consistent decisions."""
-        from connectonion.debug_explainer.explain_context import RuntimeContext
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext
 
         mock_bp = Mock()
         mock_agent = Mock()
@@ -147,7 +147,7 @@ class TestRuntimeContextStability:
 
     def test_stability_unstable_decision(self):
         """Test stability check with varying decisions."""
-        from connectonion.debug_explainer.explain_context import RuntimeContext
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext
 
         mock_bp = Mock()
         mock_agent = Mock()
@@ -176,7 +176,7 @@ class TestRuntimeContextDifferentResult:
 
     def test_different_result(self):
         """Test with hypothetical different result."""
-        from connectonion.debug_explainer.explain_context import RuntimeContext
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext
 
         mock_bp = Mock()
         mock_bp.tool_name = "search"
@@ -209,7 +209,7 @@ class TestRuntimeContextAnalyzeWhy:
 
     def test_analyze_why(self):
         """Test asking agent why it chose the tool."""
-        from connectonion.debug_explainer.explain_context import RuntimeContext
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext
 
         mock_bp = Mock()
         mock_bp.tool_name = "search"
@@ -232,10 +232,10 @@ class TestRuntimeContextAnalyzeWhy:
 class TestRuntimeContextRootCause:
     """Tests for analyze_root_cause method."""
 
-    @patch('connectonion.debug_explainer.explain_context.llm_do')
+    @patch('connectonion.debug.debug_explainer.explain_context.llm_do')
     def test_analyze_root_cause(self, mock_llm_do):
         """Test root cause analysis."""
-        from connectonion.debug_explainer.explain_context import RuntimeContext, RootCauseAnalysis
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext, RootCauseAnalysis
 
         mock_llm_do.return_value = RootCauseAnalysis(
             primary_cause_source="system_prompt",
@@ -265,10 +265,10 @@ class TestRuntimeContextRootCause:
         assert result.primary_cause_source == "system_prompt"
         assert mock_llm_do.called
 
-    @patch('connectonion.debug_explainer.explain_context.llm_do')
+    @patch('connectonion.debug.debug_explainer.explain_context.llm_do')
     def test_analyze_root_cause_uses_agent_model(self, mock_llm_do):
         """Test root cause analysis uses agent's model."""
-        from connectonion.debug_explainer.explain_context import RuntimeContext, RootCauseAnalysis
+        from connectonion.debug.debug_explainer.explain_context import RuntimeContext, RootCauseAnalysis
 
         mock_llm_do.return_value = RootCauseAnalysis(
             primary_cause_source="user_message",

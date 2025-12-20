@@ -3,7 +3,7 @@
 Tests cover:
 - BreakpointAction enum
 - BreakpointContext dataclass
-- DebuggerUI class methods:
+- AutoDebugUI class methods:
   - show_welcome
   - get_user_prompt
   - show_executing
@@ -29,7 +29,7 @@ class TestBreakpointAction:
 
     def test_breakpoint_action_values(self):
         """Test BreakpointAction has correct values."""
-        from connectonion.debugger_ui import BreakpointAction
+        from connectonion.debug.auto_debug_ui import BreakpointAction
 
         assert BreakpointAction.CONTINUE.value == "continue"
         assert BreakpointAction.EDIT.value == "edit"
@@ -38,7 +38,7 @@ class TestBreakpointAction:
 
     def test_breakpoint_action_is_enum(self):
         """Test BreakpointAction is an Enum."""
-        from connectonion.debugger_ui import BreakpointAction
+        from connectonion.debug.auto_debug_ui import BreakpointAction
         from enum import Enum
 
         assert issubclass(BreakpointAction, Enum)
@@ -49,7 +49,7 @@ class TestBreakpointContext:
 
     def test_breakpoint_context_creation(self):
         """Test creating BreakpointContext with required fields."""
-        from connectonion.debugger_ui import BreakpointContext
+        from connectonion.debug.auto_debug_ui import BreakpointContext
 
         context = BreakpointContext(
             tool_name="search",
@@ -70,7 +70,7 @@ class TestBreakpointContext:
 
     def test_breakpoint_context_optional_fields(self):
         """Test BreakpointContext optional fields default to None."""
-        from connectonion.debugger_ui import BreakpointContext
+        from connectonion.debug.auto_debug_ui import BreakpointContext
 
         context = BreakpointContext(
             tool_name="search",
@@ -86,28 +86,28 @@ class TestBreakpointContext:
         assert context.tool_function is None
 
 
-class TestDebuggerUIInit:
-    """Tests for DebuggerUI initialization."""
+class TestAutoDebugUIInit:
+    """Tests for AutoDebugUI initialization."""
 
     def test_debugger_ui_init(self):
-        """Test DebuggerUI initializes with console and style."""
-        from connectonion.debugger_ui import DebuggerUI
+        """Test AutoDebugUI initializes with console and style."""
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
 
         assert ui.console is not None
         assert ui.style is not None
 
 
-class TestDebuggerUIShowWelcome:
+class TestAutoDebugUIShowWelcome:
     """Tests for show_welcome method."""
 
     def test_show_welcome_displays_agent_name(self):
         """Test show_welcome displays agent name in panel."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
         from rich.panel import Panel
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         ui.show_welcome("test-agent")
@@ -118,16 +118,16 @@ class TestDebuggerUIShowWelcome:
         assert isinstance(call_args, Panel)
 
 
-class TestDebuggerUIGetUserPrompt:
+class TestAutoDebugUIGetUserPrompt:
     """Tests for get_user_prompt method."""
 
     @patch('builtins.input')
     def test_get_user_prompt_returns_input(self, mock_input):
         """Test get_user_prompt returns user input."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
         mock_input.return_value = "Find something"
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
 
         result = ui.get_user_prompt()
 
@@ -136,10 +136,10 @@ class TestDebuggerUIGetUserPrompt:
     @patch('builtins.input')
     def test_get_user_prompt_quit_returns_none(self, mock_input):
         """Test get_user_prompt returns None on quit."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
         mock_input.return_value = "quit"
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         result = ui.get_user_prompt()
@@ -149,10 +149,10 @@ class TestDebuggerUIGetUserPrompt:
     @patch('builtins.input')
     def test_get_user_prompt_exit_returns_none(self, mock_input):
         """Test get_user_prompt returns None on exit."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
         mock_input.return_value = "exit"
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         result = ui.get_user_prompt()
@@ -160,14 +160,14 @@ class TestDebuggerUIGetUserPrompt:
         assert result is None
 
 
-class TestDebuggerUIShowExecuting:
+class TestAutoDebugUIShowExecuting:
     """Tests for show_executing method."""
 
     def test_show_executing_displays_prompt(self):
         """Test show_executing displays the prompt."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         ui.show_executing("Find something")
@@ -177,14 +177,14 @@ class TestDebuggerUIShowExecuting:
         assert "Find something" in call_args
 
 
-class TestDebuggerUIShowResult:
+class TestAutoDebugUIShowResult:
     """Tests for show_result method."""
 
     def test_show_result_displays_result(self):
         """Test show_result displays the result."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         ui.show_result("Found it!")
@@ -194,14 +194,14 @@ class TestDebuggerUIShowResult:
         assert "Found it!" in call_args
 
 
-class TestDebuggerUIShowInterrupted:
+class TestAutoDebugUIShowInterrupted:
     """Tests for show_interrupted method."""
 
     def test_show_interrupted_displays_message(self):
         """Test show_interrupted displays interrupted message."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         ui.show_interrupted()
@@ -211,50 +211,50 @@ class TestDebuggerUIShowInterrupted:
         assert "interrupted" in call_args.lower()
 
 
-class TestDebuggerUIFormatValueForRepl:
+class TestAutoDebugUIFormatValueForRepl:
     """Tests for _format_value_for_repl method."""
 
     def test_format_none_value(self):
         """Test formatting None value."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         result = ui._format_value_for_repl(None)
 
         assert "None" in result
 
     def test_format_bool_value(self):
         """Test formatting boolean value."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         result = ui._format_value_for_repl(True)
 
         assert "True" in result
 
     def test_format_int_value(self):
         """Test formatting integer value."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         result = ui._format_value_for_repl(42)
 
         assert "42" in result
 
     def test_format_short_string(self):
         """Test formatting short string."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         result = ui._format_value_for_repl("hello")
 
         assert "hello" in result
 
     def test_format_long_string_truncated(self):
         """Test formatting long string is truncated."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         long_string = "x" * 200
         result = ui._format_value_for_repl(long_string)
 
@@ -263,51 +263,51 @@ class TestDebuggerUIFormatValueForRepl:
 
     def test_format_empty_dict(self):
         """Test formatting empty dict."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         result = ui._format_value_for_repl({})
 
         assert "{}" in result or "dim" in result
 
     def test_format_small_dict(self):
         """Test formatting small dict."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         result = ui._format_value_for_repl({"a": 1})
 
         assert "a" in result or "1" in result
 
     def test_format_empty_list(self):
         """Test formatting empty list."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         result = ui._format_value_for_repl([])
 
         assert "[]" in result or "dim" in result
 
     def test_format_callable(self):
         """Test formatting callable shows function indicator."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         result = ui._format_value_for_repl(lambda x: x)
 
         assert "function" in result
 
 
-class TestDebuggerUIDisplayExplanation:
+class TestAutoDebugUIDisplayExplanation:
     """Tests for display_explanation method."""
 
     @patch('builtins.input')
     def test_display_explanation_shows_panel(self, mock_input):
         """Test display_explanation shows explanation in panel."""
-        from connectonion.debugger_ui import DebuggerUI, BreakpointContext
+        from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointContext
 
         mock_input.return_value = ""  # Press enter to continue
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         context = BreakpointContext(
@@ -326,16 +326,16 @@ class TestDebuggerUIDisplayExplanation:
         assert ui.console.print.called
 
 
-class TestDebuggerUIDisplayExecutionAnalysis:
+class TestAutoDebugUIDisplayExecutionAnalysis:
     """Tests for display_execution_analysis method."""
 
     @patch('builtins.input')
     def test_display_execution_analysis_shows_analysis(self, mock_input):
         """Test display_execution_analysis shows analysis details."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
         mock_input.return_value = ""  # Press enter to continue
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         # Create mock analysis object
@@ -353,16 +353,16 @@ class TestDebuggerUIDisplayExecutionAnalysis:
         assert ui.console.print.called
 
 
-class TestDebuggerUIEditValue:
+class TestAutoDebugUIEditValue:
     """Tests for edit_value method."""
 
     @patch('sys.stdin')
     def test_edit_value_no_stdin_returns_empty(self, mock_stdin):
         """Test edit_value returns empty dict when no stdin."""
-        from connectonion.debugger_ui import DebuggerUI, BreakpointContext
+        from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointContext
 
         mock_stdin.isatty.return_value = False
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         context = BreakpointContext(
@@ -380,16 +380,16 @@ class TestDebuggerUIEditValue:
         assert result == {}
 
 
-class TestDebuggerUIActionMenu:
+class TestAutoDebugUIActionMenu:
     """Tests for _show_action_menu method."""
 
     @patch('builtins.input')
     def test_simple_input_fallback_continue(self, mock_input):
         """Test simple input fallback returns CONTINUE on 'c'."""
-        from connectonion.debugger_ui import DebuggerUI, BreakpointAction
+        from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointAction
 
         mock_input.return_value = "c"
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         result = ui._simple_input_fallback()
@@ -399,10 +399,10 @@ class TestDebuggerUIActionMenu:
     @patch('builtins.input')
     def test_simple_input_fallback_edit(self, mock_input):
         """Test simple input fallback returns EDIT on 'e'."""
-        from connectonion.debugger_ui import DebuggerUI, BreakpointAction
+        from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointAction
 
         mock_input.return_value = "e"
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         result = ui._simple_input_fallback()
@@ -412,10 +412,10 @@ class TestDebuggerUIActionMenu:
     @patch('builtins.input')
     def test_simple_input_fallback_why(self, mock_input):
         """Test simple input fallback returns WHY on 'w'."""
-        from connectonion.debugger_ui import DebuggerUI, BreakpointAction
+        from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointAction
 
         mock_input.return_value = "w"
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         result = ui._simple_input_fallback()
@@ -425,10 +425,10 @@ class TestDebuggerUIActionMenu:
     @patch('builtins.input')
     def test_simple_input_fallback_quit(self, mock_input):
         """Test simple input fallback returns QUIT on 'q'."""
-        from connectonion.debugger_ui import DebuggerUI, BreakpointAction
+        from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointAction
 
         mock_input.return_value = "q"
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         result = ui._simple_input_fallback()
@@ -438,10 +438,10 @@ class TestDebuggerUIActionMenu:
     @patch('builtins.input')
     def test_simple_input_fallback_keyboard_interrupt(self, mock_input):
         """Test simple input fallback returns QUIT on KeyboardInterrupt."""
-        from connectonion.debugger_ui import DebuggerUI, BreakpointAction
+        from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointAction
 
         mock_input.side_effect = KeyboardInterrupt
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         result = ui._simple_input_fallback()
@@ -449,14 +449,14 @@ class TestDebuggerUIActionMenu:
         assert result == BreakpointAction.QUIT
 
 
-class TestDebuggerUIGetToolSource:
+class TestAutoDebugUIGetToolSource:
     """Tests for _get_tool_source method."""
 
     def test_get_tool_source_no_function(self):
         """Test _get_tool_source returns None when no function."""
-        from connectonion.debugger_ui import DebuggerUI, BreakpointContext
+        from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointContext
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
 
         context = BreakpointContext(
             tool_name="search",
@@ -476,9 +476,9 @@ class TestDebuggerUIGetToolSource:
 
     def test_get_tool_source_with_function(self):
         """Test _get_tool_source returns source for valid function."""
-        from connectonion.debugger_ui import DebuggerUI, BreakpointContext
+        from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointContext
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
 
         def sample_tool():
             """A sample tool."""
@@ -502,14 +502,14 @@ class TestDebuggerUIGetToolSource:
         assert line > 0
 
 
-class TestDebuggerUIDisplayModifications:
+class TestAutoDebugUIDisplayModifications:
     """Tests for _display_modifications method."""
 
     def test_display_modifications_shows_changes(self):
         """Test _display_modifications shows modified values."""
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
-        ui = DebuggerUI()
+        ui = AutoDebugUI()
         ui.console = Mock()
 
         modifications = {

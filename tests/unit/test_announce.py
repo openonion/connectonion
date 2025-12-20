@@ -5,7 +5,7 @@ import time
 import pytest
 from unittest.mock import patch, Mock
 
-from connectonion.announce import create_announce_message
+from connectonion.network.announce import create_announce_message
 
 
 class TestCreateAnnounceMessage:

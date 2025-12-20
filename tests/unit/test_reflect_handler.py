@@ -238,6 +238,7 @@ class TestReflectEventRegistration:
         from connectonion.usage import TokenUsage
 
         mock_llm = Mock()
+        mock_llm.model = "test-model"
         mock_llm.complete.return_value = LLMResponse(
             content="Test",
             tool_calls=[],

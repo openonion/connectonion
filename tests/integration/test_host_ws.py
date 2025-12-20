@@ -83,7 +83,7 @@ def mock_agent():
 
 @pytest.fixture
 def app(mock_agent, tmp_path):
-    from connectonion.host import _make_app
+    from connectonion.network.host import _make_app
     return _make_app(mock_agent, trust="open", result_ttl=3600)
 
 
@@ -133,7 +133,7 @@ class TestWebSocketStrict:
 
     @pytest.fixture
     def app_strict(self, mock_agent_strict, tmp_path):
-        from connectonion.host import _make_app
+        from connectonion.network.host import _make_app
         return _make_app(mock_agent_strict, trust="strict", result_ttl=3600)
 
     def test_strict_requires_signature(self, app_strict):
@@ -172,7 +172,7 @@ class TestWebSocketAccessLists:
 
     @pytest.fixture
     def app_strict_bw(self, mock_agent_bw, tmp_path):
-        from connectonion.host import _make_app
+        from connectonion.network.host import _make_app
         return _make_app(mock_agent_bw, trust="strict", result_ttl=3600, blacklist=["0xbad"], whitelist=["0xgood"])
 
     def test_blacklisted(self, app_strict_bw):

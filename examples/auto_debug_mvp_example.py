@@ -13,7 +13,7 @@ Run this example:
 """
 
 from connectonion import Agent
-from connectonion.decorators import xray
+from connectonion import xray
 
 
 # Create some tools - one with @xray, one without

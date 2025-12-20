@@ -19,7 +19,7 @@ import time
 import uuid
 from typing import Any, Dict, List, Optional
 
-from . import address as addr
+from .. import address as addr
 
 
 class RemoteAgent:

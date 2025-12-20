@@ -17,7 +17,7 @@ import pytest
 import json
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from connectonion import relay
+from connectonion.network import relay
 import websockets
 
 

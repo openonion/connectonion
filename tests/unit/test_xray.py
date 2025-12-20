@@ -4,7 +4,7 @@ import builtins
 import pytest
 from unittest.mock import Mock, patch
 
-from connectonion.xray import (
+from connectonion.debug.xray import (
     XrayDecorator,
     xray,
     inject_xray_context,

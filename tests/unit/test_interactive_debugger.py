@@ -1,7 +1,7 @@
 """Unit tests for connectonion/interactive_debugger.py
 
 Tests cover:
-- InteractiveDebugger initialization
+- AutoDebugger initialization
 - start_debug_session: Single prompt and interactive modes
 - _execute_debug_task: Task execution with debugging
 - _attach_debugger_to_tool_execution: Monkey-patching tool executor
@@ -28,15 +28,15 @@ def restore_tool_executor():
     tool_executor.execute_single_tool = original
 
 
-class TestInteractiveDebuggerInit:
-    """Tests for InteractiveDebugger initialization."""
+class TestAutoDebuggerInit:
+    """Tests for AutoDebugger initialization."""
 
     def test_init_with_agent(self):
         """Test initializing with an agent creates default UI."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         mock_agent = Mock()
-        debugger = InteractiveDebugger(mock_agent)
+        debugger = AutoDebugger(mock_agent)
 
         assert debugger.agent == mock_agent
         assert debugger.ui is not None
@@ -44,13 +44,13 @@ class TestInteractiveDebuggerInit:
 
     def test_init_with_custom_ui(self):
         """Test initializing with custom UI."""
-        from connectonion.interactive_debugger import InteractiveDebugger
-        from connectonion.debugger_ui import DebuggerUI
+        from connectonion.debug.auto_debug import AutoDebugger
+        from connectonion.debug.auto_debug_ui import AutoDebugUI
 
         mock_agent = Mock()
-        mock_ui = Mock(spec=DebuggerUI)
+        mock_ui = Mock(spec=AutoDebugUI)
 
-        debugger = InteractiveDebugger(mock_agent, ui=mock_ui)
+        debugger = AutoDebugger(mock_agent, ui=mock_ui)
 
         assert debugger.ui == mock_ui
 
@@ -60,13 +60,13 @@ class TestStartDebugSession:
 
     def test_start_debug_session_single_prompt(self):
         """Test start_debug_session with single prompt executes once."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         mock_agent = Mock()
         mock_agent.name = "test-agent"
         mock_ui = Mock()
 
-        debugger = InteractiveDebugger(mock_agent, ui=mock_ui)
+        debugger = AutoDebugger(mock_agent, ui=mock_ui)
         debugger._execute_debug_task = Mock()
 
         debugger.start_debug_session("Find something")
@@ -76,7 +76,7 @@ class TestStartDebugSession:
 
     def test_start_debug_session_interactive_mode(self):
         """Test start_debug_session interactive mode loops until quit."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         mock_agent = Mock()
         mock_agent.name = "test-agent"
@@ -84,7 +84,7 @@ class TestStartDebugSession:
         # Return prompt, then None to quit
         mock_ui.get_user_prompt.side_effect = ["First task", None]
 
-        debugger = InteractiveDebugger(mock_agent, ui=mock_ui)
+        debugger = AutoDebugger(mock_agent, ui=mock_ui)
         debugger._execute_debug_task = Mock()
 
         debugger.start_debug_session()  # No prompt = interactive mode
@@ -98,7 +98,7 @@ class TestExecuteDebugTask:
 
     def test_execute_debug_task_attaches_and_detaches(self):
         """Test _execute_debug_task attaches and detaches debugger."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         mock_agent = Mock()
         mock_agent.input.return_value = "Result"
@@ -106,7 +106,7 @@ class TestExecuteDebugTask:
         mock_agent.max_iterations = 10
         mock_ui = Mock()
 
-        debugger = InteractiveDebugger(mock_agent, ui=mock_ui)
+        debugger = AutoDebugger(mock_agent, ui=mock_ui)
         debugger._attach_debugger_to_tool_execution = Mock()
         debugger._detach_debugger_from_tool_execution = Mock()
         debugger._show_execution_analysis = Mock()
@@ -120,13 +120,13 @@ class TestExecuteDebugTask:
 
     def test_execute_debug_task_handles_keyboard_interrupt(self):
         """Test _execute_debug_task handles KeyboardInterrupt gracefully."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         mock_agent = Mock()
         mock_agent.input.side_effect = KeyboardInterrupt
         mock_ui = Mock()
 
-        debugger = InteractiveDebugger(mock_agent, ui=mock_ui)
+        debugger = AutoDebugger(mock_agent, ui=mock_ui)
         debugger._attach_debugger_to_tool_execution = Mock()
         debugger._detach_debugger_from_tool_execution = Mock()
 
@@ -142,25 +142,25 @@ class TestAttachDebugger:
 
     def test_attach_stores_original_function(self, restore_tool_executor):
         """Test attaching stores original execute_single_tool."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         original_func = restore_tool_executor
 
         mock_agent = Mock()
-        debugger = InteractiveDebugger(mock_agent)
+        debugger = AutoDebugger(mock_agent)
         debugger._attach_debugger_to_tool_execution()
 
         assert debugger.original_execute_single_tool == original_func
 
     def test_attach_replaces_function(self, restore_tool_executor):
         """Test attaching replaces execute_single_tool."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
         from connectonion import tool_executor
 
         original_func = restore_tool_executor
 
         mock_agent = Mock()
-        debugger = InteractiveDebugger(mock_agent)
+        debugger = AutoDebugger(mock_agent)
         debugger._attach_debugger_to_tool_execution()
 
         assert tool_executor.execute_single_tool != original_func
@@ -171,13 +171,13 @@ class TestDetachDebugger:
 
     def test_detach_restores_original_function(self, restore_tool_executor):
         """Test detaching restores original execute_single_tool."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
         from connectonion import tool_executor
 
         original_func = restore_tool_executor
 
         mock_agent = Mock()
-        debugger = InteractiveDebugger(mock_agent)
+        debugger = AutoDebugger(mock_agent)
         debugger._attach_debugger_to_tool_execution()
         debugger._detach_debugger_from_tool_execution()
 
@@ -185,10 +185,10 @@ class TestDetachDebugger:
 
     def test_detach_does_nothing_when_not_attached(self, restore_tool_executor):
         """Test detaching when not attached does nothing."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         mock_agent = Mock()
-        debugger = InteractiveDebugger(mock_agent)
+        debugger = AutoDebugger(mock_agent)
 
         # Should not raise
         debugger._detach_debugger_from_tool_execution()
@@ -199,8 +199,8 @@ class TestShowBreakpointUI:
 
     def test_breakpoint_ui_continue_action(self):
         """Test breakpoint UI returns on CONTINUE action."""
-        from connectonion.interactive_debugger import InteractiveDebugger
-        from connectonion.debugger_ui import BreakpointAction
+        from connectonion.debug.auto_debug import AutoDebugger
+        from connectonion.debug.auto_debug_ui import BreakpointAction
 
         mock_agent = Mock()
         mock_agent.current_session = {'trace': [], 'user_prompt': 'Find'}
@@ -211,7 +211,7 @@ class TestShowBreakpointUI:
         mock_ui = Mock()
         mock_ui.show_breakpoint.return_value = BreakpointAction.CONTINUE
 
-        debugger = InteractiveDebugger(mock_agent, ui=mock_ui)
+        debugger = AutoDebugger(mock_agent, ui=mock_ui)
         debugger._get_llm_next_action_preview = Mock(return_value=[])
 
         # Should not raise, just return
@@ -223,8 +223,8 @@ class TestShowBreakpointUI:
 
     def test_breakpoint_ui_quit_raises_interrupt(self):
         """Test breakpoint UI raises KeyboardInterrupt on QUIT."""
-        from connectonion.interactive_debugger import InteractiveDebugger
-        from connectonion.debugger_ui import BreakpointAction
+        from connectonion.debug.auto_debug import AutoDebugger
+        from connectonion.debug.auto_debug_ui import BreakpointAction
 
         mock_agent = Mock()
         mock_agent.current_session = {'trace': [], 'user_prompt': 'Find'}
@@ -235,7 +235,7 @@ class TestShowBreakpointUI:
         mock_ui = Mock()
         mock_ui.show_breakpoint.return_value = BreakpointAction.QUIT
 
-        debugger = InteractiveDebugger(mock_agent, ui=mock_ui)
+        debugger = AutoDebugger(mock_agent, ui=mock_ui)
         debugger._get_llm_next_action_preview = Mock(return_value=[])
 
         with pytest.raises(KeyboardInterrupt):
@@ -245,8 +245,8 @@ class TestShowBreakpointUI:
 
     def test_breakpoint_ui_edit_applies_modifications(self):
         """Test breakpoint UI applies modifications from EDIT."""
-        from connectonion.interactive_debugger import InteractiveDebugger
-        from connectonion.debugger_ui import BreakpointAction
+        from connectonion.debug.auto_debug import AutoDebugger
+        from connectonion.debug.auto_debug_ui import BreakpointAction
 
         mock_agent = Mock()
         mock_agent.current_session = {'trace': [], 'user_prompt': 'Find'}
@@ -262,7 +262,7 @@ class TestShowBreakpointUI:
         ]
         mock_ui.edit_value.return_value = {'result': 'Modified result'}
 
-        debugger = InteractiveDebugger(mock_agent, ui=mock_ui)
+        debugger = AutoDebugger(mock_agent, ui=mock_ui)
         debugger._get_llm_next_action_preview = Mock(return_value=[])
 
         trace_entry = {"result": "Original"}
@@ -279,7 +279,7 @@ class TestGetLLMNextActionPreview:
 
     def test_preview_returns_tool_calls(self):
         """Test preview returns next planned tool calls."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         mock_tool_call = Mock()
         mock_tool_call.name = "save"
@@ -306,7 +306,7 @@ class TestGetLLMNextActionPreview:
         mock_agent.llm = mock_llm
         mock_agent.tools = [mock_tool]
 
-        debugger = InteractiveDebugger(mock_agent)
+        debugger = AutoDebugger(mock_agent)
         result = debugger._get_llm_next_action_preview(
             "search", {"result": "Found data"}
         )
@@ -317,7 +317,7 @@ class TestGetLLMNextActionPreview:
 
     def test_preview_returns_empty_list_when_no_tools(self):
         """Test preview returns empty list when no tools planned."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         mock_response = Mock()
         mock_response.tool_calls = None
@@ -337,7 +337,7 @@ class TestGetLLMNextActionPreview:
         mock_agent.llm = mock_llm
         mock_agent.tools = []
 
-        debugger = InteractiveDebugger(mock_agent)
+        debugger = AutoDebugger(mock_agent)
         result = debugger._get_llm_next_action_preview(
             "search", {"result": "Found"}
         )
@@ -346,7 +346,7 @@ class TestGetLLMNextActionPreview:
 
     def test_preview_returns_none_on_error(self):
         """Test preview returns None on error."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         mock_llm = Mock()
         mock_llm.complete.side_effect = Exception("LLM error")
@@ -356,7 +356,7 @@ class TestGetLLMNextActionPreview:
         mock_agent.llm = mock_llm
         mock_agent.tools = []
 
-        debugger = InteractiveDebugger(mock_agent)
+        debugger = AutoDebugger(mock_agent)
         result = debugger._get_llm_next_action_preview(
             "search", {"result": "Found"}
         )
@@ -367,12 +367,12 @@ class TestGetLLMNextActionPreview:
 class TestShowExecutionAnalysis:
     """Tests for _show_execution_analysis method."""
 
-    @patch('connectonion.execution_analyzer.execution_analysis.llm_do')
+    @patch('connectonion.debug.execution_analyzer.execution_analysis.llm_do')
     @patch('rich.console.Console')
     def test_show_execution_analysis_calls_ui(self, mock_console_class, mock_llm_do):
         """Test _show_execution_analysis calls display_execution_analysis on UI."""
-        from connectonion.interactive_debugger import InteractiveDebugger
-        from connectonion.execution_analyzer.execution_analysis import ExecutionAnalysis
+        from connectonion.debug.auto_debug import AutoDebugger
+        from connectonion.debug.execution_analyzer.execution_analysis import ExecutionAnalysis
 
         # Mock llm_do to return an ExecutionAnalysis
         mock_llm_do.return_value = ExecutionAnalysis(
@@ -402,7 +402,7 @@ class TestShowExecutionAnalysis:
         mock_agent.llm.model = "gpt-4"
 
         mock_ui = Mock()
-        debugger = InteractiveDebugger(mock_agent, ui=mock_ui)
+        debugger = AutoDebugger(mock_agent, ui=mock_ui)
 
         debugger._show_execution_analysis("Find something", "Found it!")
 
@@ -414,14 +414,14 @@ class TestInterceptorOnlyAffectsOwnAgent:
 
     def test_interceptor_returns_trace_entry_for_other_agents(self, restore_tool_executor):
         """Test interceptor returns trace entry for other agents without pausing."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
         from connectonion import tool_executor
 
         # Create two agents
         agent1 = Mock()
         agent2 = Mock()
 
-        debugger = InteractiveDebugger(agent1)
+        debugger = AutoDebugger(agent1)
         debugger._attach_debugger_to_tool_execution()
 
         # Store the interceptor's original_execute to mock it
@@ -441,13 +441,13 @@ class TestInterceptorOnlyAffectsOwnAgent:
 
     def test_interceptor_identity_check(self):
         """Test that debugger has identity check for agent."""
-        from connectonion.interactive_debugger import InteractiveDebugger
+        from connectonion.debug.auto_debug import AutoDebugger
 
         agent1 = Mock()
         agent2 = Mock()
 
         # Different agent instances should not be equal
-        debugger = InteractiveDebugger(agent1)
+        debugger = AutoDebugger(agent1)
 
         # The debugger should only debug agent1, not agent2
         assert debugger.agent is agent1

@@ -59,7 +59,7 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
         ValueError: If trust level is invalid
         FileNotFoundError: If trust policy file doesn't exist
     """
-    from .agent import Agent  # Import here to avoid circular dependency
+    from ..agent import Agent  # Import here to avoid circular dependency
     
     # If None, check for environment default
     if trust is None:

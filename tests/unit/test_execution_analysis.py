@@ -14,7 +14,7 @@ class TestExecutionAnalysisModel:
 
     def test_execution_analysis_model_creation(self):
         """Test creating ExecutionAnalysis with all fields."""
-        from connectonion.execution_analyzer.execution_analysis import ExecutionAnalysis
+        from connectonion.debug.execution_analyzer.execution_analysis import ExecutionAnalysis
 
         analysis = ExecutionAnalysis(
             task_completed=True,
@@ -33,7 +33,7 @@ class TestExecutionAnalysisModel:
 
     def test_execution_analysis_model_fields(self):
         """Test ExecutionAnalysis has all required fields."""
-        from connectonion.execution_analyzer.execution_analysis import ExecutionAnalysis
+        from connectonion.debug.execution_analyzer.execution_analysis import ExecutionAnalysis
 
         # Check field names exist
         assert 'task_completed' in ExecutionAnalysis.__annotations__
@@ -45,7 +45,7 @@ class TestExecutionAnalysisModel:
 
     def test_execution_analysis_with_empty_lists(self):
         """Test creating ExecutionAnalysis with empty lists."""
-        from connectonion.execution_analyzer.execution_analysis import ExecutionAnalysis
+        from connectonion.debug.execution_analyzer.execution_analysis import ExecutionAnalysis
 
         analysis = ExecutionAnalysis(
             task_completed=False,
@@ -64,10 +64,10 @@ class TestExecutionAnalysisModel:
 class TestAnalyzeExecution:
     """Tests for analyze_execution function."""
 
-    @patch('connectonion.execution_analyzer.execution_analysis.llm_do')
+    @patch('connectonion.debug.execution_analyzer.execution_analysis.llm_do')
     def test_analyze_execution_basic(self, mock_llm_do):
         """Test analyze_execution with basic inputs."""
-        from connectonion.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
+        from connectonion.debug.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
 
         # Mock the LLM response
         mock_llm_do.return_value = ExecutionAnalysis(
@@ -97,10 +97,10 @@ class TestAnalyzeExecution:
         assert result.task_completed is True
         assert mock_llm_do.called
 
-    @patch('connectonion.execution_analyzer.execution_analysis.llm_do')
+    @patch('connectonion.debug.execution_analyzer.execution_analysis.llm_do')
     def test_analyze_execution_with_tool_trace(self, mock_llm_do):
         """Test analyze_execution with tool execution trace."""
-        from connectonion.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
+        from connectonion.debug.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
 
         mock_llm_do.return_value = ExecutionAnalysis(
             task_completed=True,
@@ -135,10 +135,10 @@ class TestAnalyzeExecution:
         call_args = mock_llm_do.call_args
         assert call_args is not None
 
-    @patch('connectonion.execution_analyzer.execution_analysis.llm_do')
+    @patch('connectonion.debug.execution_analyzer.execution_analysis.llm_do')
     def test_analyze_execution_max_iterations_reached(self, mock_llm_do):
         """Test analyze_execution when max iterations reached."""
-        from connectonion.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
+        from connectonion.debug.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
 
         mock_llm_do.return_value = ExecutionAnalysis(
             task_completed=False,
@@ -169,10 +169,10 @@ class TestAnalyzeExecution:
         data_arg = call_args[0][0]
         assert 'Max iterations reached: True' in data_arg
 
-    @patch('connectonion.execution_analyzer.execution_analysis.llm_do')
+    @patch('connectonion.debug.execution_analyzer.execution_analysis.llm_do')
     def test_analyze_execution_with_tools_list(self, mock_llm_do):
         """Test analyze_execution includes available tools in prompt."""
-        from connectonion.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
+        from connectonion.debug.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
 
         mock_llm_do.return_value = ExecutionAnalysis(
             task_completed=True,
@@ -209,10 +209,10 @@ class TestAnalyzeExecution:
         assert 'search' in data_arg
         assert 'calculate' in data_arg
 
-    @patch('connectonion.execution_analyzer.execution_analysis.llm_do')
+    @patch('connectonion.debug.execution_analyzer.execution_analysis.llm_do')
     def test_analyze_execution_uses_agent_model(self, mock_llm_do):
         """Test analyze_execution uses the same model as the agent."""
-        from connectonion.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
+        from connectonion.debug.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
 
         mock_llm_do.return_value = ExecutionAnalysis(
             task_completed=True,
@@ -241,10 +241,10 @@ class TestAnalyzeExecution:
         call_args = mock_llm_do.call_args
         assert call_args.kwargs.get('model') == "claude-3-sonnet"
 
-    @patch('connectonion.execution_analyzer.execution_analysis.llm_do')
+    @patch('connectonion.debug.execution_analyzer.execution_analysis.llm_do')
     def test_analyze_execution_failed_tool(self, mock_llm_do):
         """Test analyze_execution with failed tool execution."""
-        from connectonion.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
+        from connectonion.debug.execution_analyzer.execution_analysis import analyze_execution, ExecutionAnalysis
 
         mock_llm_do.return_value = ExecutionAnalysis(
             task_completed=False,

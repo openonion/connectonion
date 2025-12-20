@@ -72,7 +72,7 @@ def create_announce_message(
     message_bytes = message_json.encode('utf-8')
 
     # Sign with Ed25519
-    from . import address
+    from .. import address
     signature_bytes = address.sign(address_data, message_bytes)
 
     # Convert to hex string (NO 0x prefix - matches auth system convention)

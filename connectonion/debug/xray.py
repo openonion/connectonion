@@ -14,7 +14,7 @@ This module provides the @xray decorator and xray context for debugging AI agent
 See everything your agent is thinking during tool execution.
 
 Usage:
-    from connectonion.xray import xray
+    from connectonion import xray  # or: from connectonion.debug import xray
 
     @xray
     def my_tool(query: str):

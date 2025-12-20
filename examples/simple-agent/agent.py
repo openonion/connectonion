@@ -4,7 +4,7 @@
 import os
 import sys
 from connectonion import Agent, llm_do
-from connectonion.xray import xray
+from connectonion import xray
 
 
 @xray  # Add @xray to see debugging in action

@@ -57,7 +57,7 @@ def auto_debug_exception(model: str = "o4-mini"):
         original_hook(exc_type, exc_value, exception_traceback)
 
         # Then add our AI analysis
-        from .console import Console
+        from ..console import Console
         console = Console()
 
         # Find the most relevant frame (last user code, not library)
@@ -125,7 +125,7 @@ def auto_debug_exception(model: str = "o4-mini"):
 
         try:
             # Use debug agent with runtime inspection tools
-            from .debug_agent import create_debug_agent
+            from .runtime_inspector import create_debug_agent
 
             # Pass the actual frame and traceback for runtime inspection!
             agent = create_debug_agent(
@@ -176,6 +176,6 @@ You have LIVE ACCESS to the crashed program's state! Use your tools to investiga
     sys.excepthook = handle_exception
 
     # Simple confirmation
-    from .console import Console
+    from ..console import Console
     console = Console()
     console.print(f"[green]✅ Exception debugging enabled[/green] - AI will analyze uncaught exceptions with runtime inspection")

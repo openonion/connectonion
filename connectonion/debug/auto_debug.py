@@ -13,25 +13,25 @@ LLM-Note:
 """
 
 from typing import Any, Dict, Optional, List
-from .debugger_ui import DebuggerUI, BreakpointContext, BreakpointAction
+from .auto_debug_ui import AutoDebugUI, BreakpointContext, BreakpointAction
 
 
-class InteractiveDebugger:
+class AutoDebugger:
     """Orchestrates debugging sessions for AI agents.
 
     This class handles the debugging logic and intercepts tool execution,
     delegating all UI interactions to the DebuggerUI class.
     """
 
-    def __init__(self, agent: Any, ui: Optional[DebuggerUI] = None):
+    def __init__(self, agent: Any, ui: Optional[AutoDebugUI] = None):
         """Initialize debugger with an agent instance and optional UI.
 
         Args:
             agent: The Agent instance to debug
-            ui: Optional DebuggerUI instance (creates default if None)
+            ui: Optional AutoDebugUI instance (creates default if None)
         """
         self.agent = agent
-        self.ui = ui or DebuggerUI()
+        self.ui = ui or AutoDebugUI()
         self.original_execute_single_tool = None
 
     def start_debug_session(self, prompt: Optional[str] = None):
@@ -99,7 +99,7 @@ class InteractiveDebugger:
         - Pause execution and show UI if breakpoint conditions are met
         - Only affect this specific agent instance
         """
-        from . import tool_executor
+        from .. import tool_executor
         from .xray import is_xray_enabled
 
         # Store original function for restoration later
@@ -141,7 +141,7 @@ class InteractiveDebugger:
         tool execution function.
         """
         if self.original_execute_single_tool:
-            from . import tool_executor
+            from .. import tool_executor
             tool_executor.execute_single_tool = self.original_execute_single_tool
 
     def _show_breakpoint_ui_and_wait_for_continue(self, tool_name: str, tool_args: Dict, trace_entry: Dict):

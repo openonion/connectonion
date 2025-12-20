@@ -19,7 +19,7 @@ import pytest
 import asyncio
 import json
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from connectonion.connect import RemoteAgent, connect
+from connectonion.network.connect import RemoteAgent, connect
 
 
 def create_mock_websocket(recv_data=None):

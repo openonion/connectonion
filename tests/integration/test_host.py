@@ -112,7 +112,7 @@ class TestHostEndpoints:
     @pytest.fixture
     def app(self, mock_agent, tmp_path):
         """Create test ASGI app."""
-        from connectonion.host import create_app, SessionStorage
+        from connectonion.network.host import create_app, SessionStorage
 
         storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
         return create_app(agent=mock_agent, storage=storage, trust="open", result_ttl=3600)
@@ -312,7 +312,7 @@ class TestSessionStorage:
 
     def test_save_and_get(self, tmp_path):
         """SessionStorage should save and retrieve sessions."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         session = Session(session_id="abc123", status="done", prompt="test", result="result", created=time.time())
@@ -325,7 +325,7 @@ class TestSessionStorage:
 
     def test_get_requires_exact_id(self, tmp_path):
         """SessionStorage should require exact session_id match (security fix)."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         session = Session(session_id="abc12345-6789", status="done", prompt="test", created=time.time())
@@ -338,7 +338,7 @@ class TestSessionStorage:
 
     def test_list_sessions(self, tmp_path):
         """SessionStorage should list all sessions (latest state)."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         storage.save(Session(session_id="a", status="running", prompt="1", created=1))
@@ -353,7 +353,7 @@ class TestSessionStorage:
 
     def test_list_sorted_by_created_desc(self, tmp_path):
         """SessionStorage.list() should return sessions sorted by created desc."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         storage.save(Session(session_id="old", status="done", prompt="1", created=100))
@@ -366,7 +366,7 @@ class TestSessionStorage:
 
     def test_session_with_expires(self, tmp_path):
         """Session should support expires field."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         now = time.time()
@@ -379,7 +379,7 @@ class TestSessionStorage:
 
     def test_session_with_duration_ms(self, tmp_path):
         """Session should support duration_ms field."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         session = Session(session_id="abc", status="done", prompt="test", created=time.time(), duration_ms=1234)
@@ -391,7 +391,7 @@ class TestSessionStorage:
 
     def test_get_expired_session_returns_none(self, tmp_path):
         """SessionStorage.get() should return None for expired done sessions."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         now = time.time()
@@ -404,7 +404,7 @@ class TestSessionStorage:
 
     def test_get_expired_running_session_still_returns(self, tmp_path):
         """SessionStorage.get() should return running sessions even if expired."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         now = time.time()
@@ -418,7 +418,7 @@ class TestSessionStorage:
 
     def test_list_excludes_expired_done_sessions(self, tmp_path):
         """SessionStorage.list() should exclude expired done sessions."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         now = time.time()
@@ -432,7 +432,7 @@ class TestSessionStorage:
 
     def test_list_includes_expired_running_sessions(self, tmp_path):
         """SessionStorage.list() should include running sessions even if expired."""
-        from connectonion.host import SessionStorage, Session
+        from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
         now = time.time()
@@ -449,7 +449,7 @@ class TestAgentAddress:
 
     def test_get_agent_address(self):
         """get_agent_address should return deterministic 0x-prefixed hash."""
-        from connectonion.host import get_agent_address
+        from connectonion.network.host import get_agent_address
 
         class MockAgent:
             name = "test-agent"
@@ -461,7 +461,7 @@ class TestAgentAddress:
 
     def test_agent_address_is_deterministic(self):
         """Same agent name should produce same address."""
-        from connectonion.host import get_agent_address
+        from connectonion.network.host import get_agent_address
 
         class MockAgent:
             name = "translator"
@@ -487,7 +487,7 @@ class TestInfoAddress:
 
     @pytest.fixture
     def app(self, mock_agent, tmp_path):
-        from connectonion.host import create_app, SessionStorage
+        from connectonion.network.host import create_app, SessionStorage
         storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
         return create_app(agent=mock_agent, storage=storage, trust="open", result_ttl=3600)
 
@@ -533,7 +533,7 @@ class TestAuthentication:
 
     def test_extract_and_authenticate_requires_signed_request(self):
         """extract_and_authenticate should require signed requests."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
 
         # Unsigned request should fail
         prompt, identity, valid, err = extract_and_authenticate(
@@ -545,7 +545,7 @@ class TestAuthentication:
 
     def test_extract_and_authenticate_blacklist_blocks(self):
         """extract_and_authenticate should block blacklisted identities."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
         from nacl.signing import SigningKey
         import time
 
@@ -567,7 +567,7 @@ class TestAuthentication:
 
     def test_extract_and_authenticate_whitelist_allows(self):
         """extract_and_authenticate should allow whitelisted identities (bypass signature check)."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
         import time
 
         # Whitelisted identity bypasses signature verification
@@ -585,7 +585,7 @@ class TestAuthentication:
 
     def test_extract_and_authenticate_strict_without_whitelist(self):
         """extract_and_authenticate strict mode without whitelist requires valid signature."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
         from nacl.signing import SigningKey
         import time
 
@@ -607,7 +607,7 @@ class TestAuthentication:
 
     def test_extract_and_authenticate_missing_from_field(self):
         """extract_and_authenticate should reject request without 'from' field."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
         import time
 
         payload = {"prompt": "hello", "timestamp": time.time()}
@@ -626,7 +626,7 @@ class TestSignatureVerification:
 
     def test_verify_signature_valid(self):
         """verify_signature should return True for valid signature."""
-        from connectonion.host import verify_signature
+        from connectonion.network.host import verify_signature
         from nacl.signing import SigningKey
         import json
 
@@ -650,7 +650,7 @@ class TestSignatureVerification:
 
     def test_verify_signature_invalid(self):
         """verify_signature should return False for invalid signature."""
-        from connectonion.host import verify_signature
+        from connectonion.network.host import verify_signature
         from nacl.signing import SigningKey
 
         # Generate keypair
@@ -670,7 +670,7 @@ class TestSignatureVerification:
 
     def test_verify_signature_tampered_payload(self):
         """verify_signature should return False if payload was tampered."""
-        from connectonion.host import verify_signature
+        from connectonion.network.host import verify_signature
         from nacl.signing import SigningKey
         import json
 
@@ -694,7 +694,7 @@ class TestSignatureVerification:
 
     def test_authenticate_signed_request_valid(self):
         """extract_and_authenticate should accept valid signed request."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
         from nacl.signing import SigningKey
         import json
         import time
@@ -721,7 +721,7 @@ class TestSignatureVerification:
 
     def test_authenticate_signed_request_expired(self):
         """extract_and_authenticate should reject expired signed request."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
         from nacl.signing import SigningKey
         import json
         import time
@@ -747,7 +747,7 @@ class TestSignatureVerification:
 
     def test_authenticate_signed_request_invalid_signature(self):
         """extract_and_authenticate should reject invalid signature."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
         from nacl.signing import SigningKey
         import time
 
@@ -769,7 +769,7 @@ class TestSignatureVerification:
 
     def test_authenticate_signed_request_wrong_recipient(self):
         """extract_and_authenticate should reject if 'to' doesn't match agent."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
         from nacl.signing import SigningKey
         import json
         import time
@@ -796,7 +796,7 @@ class TestSignatureVerification:
 
     def test_authenticate_signed_blacklist_checked_first(self):
         """Blacklist should be checked before signature verification."""
-        from connectonion.host import extract_and_authenticate
+        from connectonion.network.host import extract_and_authenticate
         import time
 
         data = {
@@ -817,14 +817,14 @@ class TestHostApp:
 
     def test_host_has_app_attribute(self):
         """host function should have app attribute."""
-        from connectonion.host import host
+        from connectonion.network.host import host
 
         assert hasattr(host, "app")
         assert callable(host.app)
 
     def test_host_app_creates_asgi_app(self):
         """host.app should create ASGI app."""
-        from connectonion.host import host
+        from connectonion.network.host import host
 
         class MockAgent:
             name = "test"
@@ -854,7 +854,7 @@ class TestCORS:
     @pytest.fixture
     def app(self, mock_agent, tmp_path):
         """Create test ASGI app."""
-        from connectonion.host import create_app, SessionStorage
+        from connectonion.network.host import create_app, SessionStorage
         storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
         return create_app(agent=mock_agent, storage=storage, trust="open", result_ttl=3600)
 
@@ -944,7 +944,7 @@ class TestAdminEndpoints:
     @pytest.fixture
     def app(self, mock_agent, tmp_path):
         """Create test ASGI app."""
-        from connectonion.host import create_app, SessionStorage
+        from connectonion.network.host import create_app, SessionStorage
         storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
         return create_app(agent=mock_agent, storage=storage, trust="open", result_ttl=3600)
 

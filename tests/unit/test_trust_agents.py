@@ -2,7 +2,7 @@
 
 import pytest
 
-from connectonion.trust_agents import (
+from connectonion.network.trust_agents import (
     TRUST_PROMPTS,
     get_trust_prompt,
     get_open_trust_prompt,

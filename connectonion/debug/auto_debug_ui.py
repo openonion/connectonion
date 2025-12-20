@@ -51,7 +51,7 @@ class BreakpointContext:
     tool_function: Optional[Any] = None  # The actual tool function for source inspection
 
 
-class DebuggerUI:
+class AutoDebugUI:
     """Handles all user interaction and display for the debugger."""
 
     def __init__(self):

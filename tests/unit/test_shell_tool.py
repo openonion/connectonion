@@ -116,6 +116,7 @@ class TestShellIntegration:
         from unittest.mock import Mock
 
         mock_llm = Mock()
+        mock_llm.model = "test-model"
         mock_llm.complete.return_value = LLMResponse(
             content="Test",
             tool_calls=[],

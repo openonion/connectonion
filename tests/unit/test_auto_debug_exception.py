@@ -10,7 +10,7 @@ from io import StringIO
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from connectonion.auto_debug_exception import auto_debug_exception
+from connectonion.debug.auto_debug_exception import auto_debug_exception
 
 
 class TestAutoDebugException:
@@ -72,7 +72,7 @@ class TestAutoDebugException:
     @patch('connectonion.console.Console')
     def test_exception_handling_with_runtime_tools(self, mock_console_class):
         """Test that exceptions trigger runtime debug analysis."""
-        with patch('connectonion.debug_agent.create_debug_agent') as mock_create_agent:
+        with patch('connectonion.debug.runtime_inspector.create_debug_agent') as mock_create_agent:
             # Setup mocks
             mock_console = Mock()
             mock_console_class.return_value = mock_console
@@ -120,7 +120,7 @@ class TestAutoDebugException:
     def test_auto_debug_exception_handles_ai_failure_gracefully(self):
         """Test that auto_debug_exception handles AI analysis failure gracefully."""
         with patch('connectonion.console.Console') as mock_console_class:
-            with patch('connectonion.debug_agent.create_debug_agent') as mock_create_agent:
+            with patch('connectonion.debug.runtime_inspector.create_debug_agent') as mock_create_agent:
                 # Setup mock to raise an exception
                 mock_create_agent.side_effect = Exception("AI service unavailable")
 
@@ -145,7 +145,7 @@ class TestAutoDebugException:
     def test_auto_debug_exception_model_parameter(self):
         """Test that auto_debug_exception respects the model parameter."""
         with patch('connectonion.console.Console'):
-            with patch('connectonion.debug_agent.create_debug_agent') as mock_create_agent:
+            with patch('connectonion.debug.runtime_inspector.create_debug_agent') as mock_create_agent:
                 mock_agent = Mock()
                 mock_agent.input.return_value = "Analysis"
                 mock_create_agent.return_value = mock_agent
@@ -168,7 +168,7 @@ class TestAutoDebugException:
     def test_exception_with_complex_data(self):
         """Test exception handling with complex nested data structures."""
         with patch('connectonion.console.Console') as mock_console_class:
-            with patch('connectonion.debug_agent.create_debug_agent') as mock_create_agent:
+            with patch('connectonion.debug.runtime_inspector.create_debug_agent') as mock_create_agent:
                 mock_console = Mock()
                 mock_console_class.return_value = mock_console
 

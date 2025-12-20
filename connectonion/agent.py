@@ -19,7 +19,7 @@ from .usage import get_context_limit
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .tool_registry import ToolRegistry
 from .prompts import load_system_prompt
-from .decorators import (
+from .debug.decorators import (
     _is_replay_enabled  # Only need this for replay check
 )
 from .logger import Logger
@@ -444,7 +444,7 @@ class Agent:
             # Single prompt mode
             agent.auto_debug("Find information about Python")
         """
-        from .interactive_debugger import InteractiveDebugger
-        debugger = InteractiveDebugger(self)
+        from .debug import AutoDebugger
+        debugger = AutoDebugger(self)
         debugger.start_debug_session(prompt)
 

@@ -32,8 +32,8 @@ import pytest
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from connectonion import Agent, xray
-from connectonion.debugger_ui import DebuggerUI, BreakpointAction, BreakpointContext
-from connectonion.interactive_debugger import InteractiveDebugger
+from connectonion.debug.auto_debug_ui import AutoDebugUI, BreakpointAction, BreakpointContext
+from connectonion.debug.auto_debug import AutoDebugger
 
 
 # ============================================================================
@@ -186,7 +186,7 @@ def test_menu_display():
     print("  • Visual selection indicator (»)\n")
 
     # Create UI and test context
-    ui = DebuggerUI()
+    ui = AutoDebugUI()
 
     context = BreakpointContext(
         tool_name="test_tool",
@@ -245,7 +245,7 @@ def test_llm_preview():
     )
 
     # Create debugger
-    debugger = InteractiveDebugger(agent)
+    debugger = AutoDebugger(agent)
 
     # Simulate a tool execution
     trace_entry = {

@@ -9,13 +9,12 @@ import pytest
 from pathlib import Path
 from unittest.mock import patch
 
-from connectonion.host import (
+from connectonion.network.host import (
     extract_and_authenticate,
     is_custom_trust,
-    TRUST_LEVELS,
     get_default_trust,
 )
-from connectonion.trust import create_trust_agent, validate_trust_level
+from connectonion.network.trust import create_trust_agent, validate_trust_level, TRUST_LEVELS
 
 
 class TestTrustLevels:

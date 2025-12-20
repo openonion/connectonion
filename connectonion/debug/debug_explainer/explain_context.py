@@ -12,7 +12,7 @@ LLM-Note:
 from typing import Dict, List, Any
 from pathlib import Path
 from pydantic import BaseModel
-from ..llm_do import llm_do
+from ...llm_do import llm_do
 
 
 class RootCauseAnalysis(BaseModel):

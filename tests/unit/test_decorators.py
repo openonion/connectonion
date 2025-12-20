@@ -9,8 +9,8 @@ import sys
 import os
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from connectonion.decorators import (replay, xray_replay, _is_replay_enabled)
-from connectonion.xray import (
+from connectonion.debug.decorators import (replay, xray_replay, _is_replay_enabled)
+from connectonion.debug.xray import (
     xray,
     inject_xray_context as _inject_context_for_tool,
     clear_xray_context as _clear_context_after_tool,

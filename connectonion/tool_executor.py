@@ -13,7 +13,7 @@ import time
 import json
 from typing import List, Dict, Any, Optional, Callable
 
-from .xray import (
+from .debug.xray import (
     inject_xray_context,
     clear_xray_context,
     is_xray_enabled
