@@ -29,7 +29,9 @@ def create_tool_from_function(func: Callable) -> Callable:
     by inspecting its signature and docstring.
     """
     name = func.__name__
-    description = inspect.getdoc(func) or f"Execute the {name} tool."
+    raw_doc = inspect.getdoc(func)
+    # Extract summary only (first paragraph) - Args/Returns sections are not sent to LLM
+    description = raw_doc.split('\n\n')[0].strip() if raw_doc else f"Execute the {name} tool."
 
     # Build the parameters schema from the function signature
     sig = inspect.signature(func)

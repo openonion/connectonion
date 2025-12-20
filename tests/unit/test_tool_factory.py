@@ -56,4 +56,43 @@ class TestToolFactory:
         tool = create_tool_from_function(no_doc)
 
         assert tool.name == "no_doc"
-        assert tool.description is not None
+        assert tool.description == "Execute the no_doc tool."
+
+    def test_docstring_extracts_first_paragraph_only(self):
+        """Test that only first paragraph of docstring is used (Args/Returns excluded)."""
+        def search(query: str, limit: int = 10) -> str:
+            """Search the web for information.
+
+            Args:
+                query: The search query string.
+                limit: Maximum results to return.
+
+            Returns:
+                Search results as text.
+            """
+            return f"Results for {query}"
+
+        tool = create_tool_from_function(search)
+
+        # Should only have first paragraph, not Args/Returns
+        assert tool.description == "Search the web for information."
+        assert "Args" not in tool.description
+        assert "Returns" not in tool.description
+
+    def test_multiline_summary_extracted(self):
+        """Test that multi-line first paragraph is preserved."""
+        def complex_tool(data: str) -> str:
+            """Process complex data with multiple steps.
+This includes validation, transformation, and output formatting.
+
+            Args:
+                data: Input data to process.
+            """
+            return data
+
+        tool = create_tool_from_function(complex_tool)
+
+        # Multi-line summary should be joined
+        assert "Process complex data" in tool.description
+        assert "validation" in tool.description
+        assert "Args" not in tool.description

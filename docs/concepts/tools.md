@@ -97,15 +97,65 @@ def search_hits(query: str, k: int = 3) -> List[SearchHit]:
 ]
 ```
 
-### Docstrings become descriptions
+### How Tool Schemas Are Generated
 
-Write the first line as the one‑liner users will read.
+ConnectOnion automatically converts Python functions into tool schemas for the LLM.
+
+**Your Python function:**
 
 ```python
-def embed(text: str) -> list[float]:
-    """Compute a 384-dimensional embedding for text."""
-    # ...
+def search(query: str, limit: int = 10) -> list[str]:
+#   ^^^^^^  ^^^^^  ^^^  ^^^^^  ^^^  ^^
+#     |       |     |     |     |   └── has default → not required
+#     |       |     |     |     └────── int → "integer"
+#     |       |     |     └──────────── parameter name
+#     |       |     └────────────────── str → "string"
+#     |       └──────────────────────── parameter name
+#     └──────────────────────────────── function name
+    """Search the web for information.
+#   ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+#   └── first paragraph → description
+
+    Args:
+        query: The search query string.
+        limit: Maximum results to return.
+
+    Returns:
+        List of search result titles.
+    """
+#   ↑ Args and Returns sections are NOT sent to LLM (saves tokens)
 ```
+
+**JSON schema sent to LLM:**
+
+```
+{
+  "name": "search",                    ← function.__name__
+  "description": "Search the web...",  ← first paragraph of docstring
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {"type": "string"},     ← query: str
+      "limit": {"type": "integer"}     ← limit: int
+    },
+    "required": ["query"]              ← no default value
+  }
+}
+```
+
+**Why this minimal approach?**
+- Docstrings serve many purposes (IDE hints, Sphinx docs, etc.)
+- We only extract what the LLM needs - no confusion, fewer tokens
+- Everything is optional - no docstring is fine too
+
+**No docstring? Also fine:**
+
+```python
+def add(a: int, b: int) -> int:
+    return a + b
+```
+
+Description defaults to `"Execute the add tool."`
 
 ---
 
@@ -404,10 +454,10 @@ agent = Agent(
 
 ## FAQ: How tools are discovered and used
 
-- The agent inspects function signatures and docstrings to build schemas automatically.
-- **✅ For class-based tools: Pass the instance directly (not individual methods)!** ConnectOnion automatically extracts all public methods with type hints.
-- The first docstring line is used as the one-liner description in UIs.
-- Prefer explicit types on parameters and returns so tools are eligible and discoverable.
+- Tool schemas are built from function name, type hints, and first paragraph of docstring
+- Args/Returns sections in docstrings are NOT sent to LLM (saves tokens)
+- No docstring? That's fine - description defaults to "Execute the {name} tool."
+- **✅ For class-based tools: Pass the instance directly!** ConnectOnion auto-discovers all public methods with type hints
 - You can always call `agent.tools.tool_name.run(**kwargs)` to run tools without an LLM.
 
 ## Class Instance vs Individual Methods

@@ -110,16 +110,28 @@ Any Python function can be used as a tool:
 
 ```python
 def my_tool(param: str, optional: int = 10) -> str:
-    """Tool description from docstring."""
+    """Tool description from docstring.
+
+    Args:
+        param: The main parameter.
+
+    Returns:
+        Formatted result.
+    """
     return f"Result: {param} with {optional}"
 
 agent = Agent("bot", tools=[my_tool])
 ```
 
-**Requirements:**
-- Must have a docstring (becomes tool description)
-- Type hints recommended (improves schema generation)
-- Return value should be serializable to string
+**How schemas are generated:**
+- `name` ← function name
+- `description` ← first paragraph of docstring (Args/Returns NOT included)
+- `parameters` ← from Python type hints
+- `required` ← parameters without default values
+
+**Everything is optional:**
+- No docstring? Description defaults to "Execute the {name} tool."
+- No type hints? Defaults to string type
 
 ### Tool Conversion
 
