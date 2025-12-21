@@ -10,7 +10,7 @@ import pytest
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from connectonion.llm import OpenOnionLLM, create_llm
+from connectonion.core.llm import OpenOnionLLM, create_llm
 
 
 class TestOpenOnionLLM:

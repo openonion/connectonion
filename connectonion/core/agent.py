@@ -18,11 +18,11 @@ from .llm import LLM, create_llm, TokenUsage
 from .usage import get_context_limit
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .tool_registry import ToolRegistry
-from .prompts import load_system_prompt
-from .debug.decorators import (
+from ..prompts import load_system_prompt
+from ..debug.decorators import (
     _is_replay_enabled  # Only need this for replay check
 )
-from .logger import Logger
+from ..logger import Logger
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .events import EventHandler
 

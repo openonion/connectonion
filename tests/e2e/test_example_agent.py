@@ -217,8 +217,8 @@ class TestExampleAgent:
 
         This demonstrates how to test agent logic without API calls.
         """
-        from connectonion.llm import LLMResponse, ToolCall
-        from connectonion.usage import TokenUsage
+        from connectonion.core.llm import LLMResponse, ToolCall
+        from connectonion.core.usage import TokenUsage
 
         # Create mock LLM with two responses (tool call + final)
         mock_llm = MockLLM(responses=[
@@ -260,8 +260,8 @@ class TestExampleAgent:
 
         This demonstrates prompt engineering for specific behaviors.
         """
-        from connectonion.llm import LLMResponse
-        from connectonion.usage import TokenUsage
+        from connectonion.core.llm import LLMResponse
+        from connectonion.core.usage import TokenUsage
 
         mock_llm = MockLLM(responses=[
             LLMResponse(
@@ -296,8 +296,8 @@ class TestExampleAgent:
             """A tool that always fails."""
             raise Exception("Tool failure!")
 
-        from connectonion.llm import LLMResponse, ToolCall
-        from connectonion.usage import TokenUsage
+        from connectonion.core.llm import LLMResponse, ToolCall
+        from connectonion.core.usage import TokenUsage
 
         mock_llm = MockLLM(responses=[
             # First response: try to use the failing tool

@@ -10,9 +10,18 @@ from pathlib import Path as _Path
 # NOT from the module's location (framework directory)
 load_dotenv(_Path.cwd() / ".env")
 
-from .agent import Agent
-from .tool_factory import create_tool_from_function
-from .llm import LLM
+from .core import Agent, LLM, create_tool_from_function
+from .core import (
+    after_user_input,
+    before_llm,
+    after_llm,
+    before_each_tool,
+    before_tools,
+    after_each_tool,
+    after_tools,
+    on_error,
+    on_complete,
+)
 from .logger import Logger
 from .llm_do import llm_do
 from .transcribe import transcribe
@@ -22,17 +31,6 @@ from .useful_tools import send_email, get_emails, mark_read, mark_unread, Memory
 from .network import connect, RemoteAgent, host, create_app
 from .network import relay, announce
 from . import address
-from .events import (
-    after_user_input,
-    before_llm,
-    after_llm,
-    before_each_tool,
-    before_tools,
-    after_each_tool,
-    after_tools,
-    on_error,
-    on_complete
-)
 
 __all__ = [
     "Agent",

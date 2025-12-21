@@ -909,8 +909,8 @@ class TestGmailIntegration:
     def test_gmail_integrates_with_agent(self):
         """Test that Gmail can be used as an agent tool."""
         from connectonion import Agent
-        from connectonion.llm import LLMResponse
-        from connectonion.usage import TokenUsage
+        from connectonion.core.llm import LLMResponse
+        from connectonion.core.usage import TokenUsage
         from connectonion.useful_tools.gmail import Gmail
 
         # Create mock LLM

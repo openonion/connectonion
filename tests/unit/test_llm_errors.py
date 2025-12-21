@@ -21,7 +21,7 @@ import pytest
 import os
 from unittest.mock import Mock, MagicMock, patch
 from pydantic import BaseModel
-from connectonion.llm import (
+from connectonion.core.llm import (
     create_llm,
     OpenAILLM,
     AnthropicLLM,

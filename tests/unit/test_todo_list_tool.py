@@ -292,8 +292,8 @@ class TestTodoListIntegration:
     def test_todo_list_can_be_used_as_agent_tool(self):
         """Test that TodoList can be registered with agent."""
         from connectonion import Agent
-        from connectonion.llm import LLMResponse
-        from connectonion.usage import TokenUsage
+        from connectonion.core.llm import LLMResponse
+        from connectonion.core.usage import TokenUsage
 
         mock_llm = Mock()
         mock_llm.model = "test-model"

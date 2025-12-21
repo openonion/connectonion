@@ -59,10 +59,12 @@ dependencies = [
     "typer>=0.20.0",
     "PyJWT>=2.0.0",
     "uvicorn>=0.20.0",
+    "textual>=0.86.0",
+    "textual-autocomplete>=3.0.0",
+    "playwright>=1.40.0",
 ]
 
 [project.optional-dependencies]
-browser = ["playwright>=1.40.0"]
 dev = [
     "pytest>=7.0.0",
     "pytest-asyncio>=0.21.0",

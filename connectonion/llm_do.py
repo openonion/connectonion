@@ -222,7 +222,7 @@ from typing import Union, Type, Optional, TypeVar
 from pathlib import Path
 from pydantic import BaseModel
 from .prompts import load_system_prompt
-from .llm import create_llm
+from .core.llm import create_llm
 
 T = TypeVar('T', bound=BaseModel)
 

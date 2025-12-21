@@ -199,7 +199,7 @@ class TestMultiLLMSupport:
 
     def test_model_registry(self):
         """Test that model registry correctly maps models to providers."""
-        from connectonion.llm import MODEL_REGISTRY
+        from connectonion.core.llm import MODEL_REGISTRY
 
         # Test OpenAI models
         assert MODEL_REGISTRY["gpt-4o"] == "openai"
@@ -219,7 +219,7 @@ class TestMultiLLMSupport:
 
     def test_create_llm_factory(self):
         """Test the create_llm factory function."""
-        from connectonion.llm import create_llm, OpenAILLM, AnthropicLLM, GeminiLLM
+        from connectonion.core.llm import create_llm, OpenAILLM, AnthropicLLM, GeminiLLM
 
         # Test OpenAI model creation
         if self.has_openai:
@@ -238,22 +238,22 @@ class TestMultiLLMSupport:
 
     def test_model_inference_from_name(self):
         """Test that model provider is correctly inferred from model name."""
-        from connectonion.llm import create_llm
+        from connectonion.core.llm import create_llm
 
         # Test inference for models not in registry
         if self.has_openai:
             llm = create_llm("gpt-new-model-xyz")  # Starts with 'gpt'
-            from connectonion.llm import OpenAILLM
+            from connectonion.core.llm import OpenAILLM
             assert isinstance(llm, OpenAILLM)
 
         if self.has_anthropic:
             llm = create_llm("claude-future-model")  # Starts with 'claude'
-            from connectonion.llm import AnthropicLLM
+            from connectonion.core.llm import AnthropicLLM
             assert isinstance(llm, AnthropicLLM)
 
         if self.has_google:
             llm = create_llm("gemini-next-gen")  # Starts with 'gemini'
-            from connectonion.llm import GeminiLLM
+            from connectonion.core.llm import GeminiLLM
             assert isinstance(llm, GeminiLLM)
 
 

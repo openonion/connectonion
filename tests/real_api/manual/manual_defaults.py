@@ -23,7 +23,7 @@ print("=" * 60)
 
 # Import to check defaults
 import inspect
-from connectonion.agent import Agent as AgentClass
+from connectonion.core.agent import Agent as AgentClass
 from connectonion.llm_do import llm_do as llm_do_func
 
 agent_sig = inspect.signature(AgentClass.__init__)

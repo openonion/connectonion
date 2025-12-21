@@ -1,7 +1,7 @@
 """Unit tests for connectonion/usage.py"""
 
 import pytest
-from connectonion.usage import (
+from connectonion.core.usage import (
     TokenUsage,
     MODEL_PRICING,
     MODEL_CONTEXT_LIMITS,

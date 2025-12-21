@@ -23,10 +23,10 @@ Usage:
 
 import re
 from typing import TYPE_CHECKING
-from ..events import after_tools
+from ..core.events import after_tools
 
 if TYPE_CHECKING:
-    from ..agent import Agent
+    from ..core.agent import Agent
 
 
 def _is_base64_image(text: str) -> tuple[bool, str, str]:

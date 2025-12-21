@@ -3,8 +3,8 @@
 import json
 from unittest.mock import Mock, MagicMock
 from typing import Dict, List, Any, Optional, Type
-from connectonion.llm import LLM, LLMResponse, ToolCall
-from connectonion.usage import TokenUsage
+from connectonion.core.llm import LLM, LLMResponse, ToolCall
+from connectonion.core.usage import TokenUsage
 from pydantic import BaseModel
 
 

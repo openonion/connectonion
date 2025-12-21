@@ -18,11 +18,11 @@ Usage:
 
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Dict
-from ..events import after_tools
+from ..core.events import after_tools
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
-    from ..agent import Agent
+    from ..core.agent import Agent
 
 # Path to reflect prompt (inside connectonion package for proper packaging)
 REFLECT_PROMPT = Path(__file__).parent.parent / "prompt_files" / "reflect.md"

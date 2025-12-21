@@ -2,7 +2,7 @@
 
 import pytest
 from unittest.mock import Mock
-from connectonion.tool_factory import create_tool_from_function
+from connectonion.core.tool_factory import create_tool_from_function
 
 
 class TestToolFactory:

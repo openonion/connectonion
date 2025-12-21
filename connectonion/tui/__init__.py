@@ -37,8 +37,20 @@ from .status_bar import StatusBar, SimpleStatusBar, ProgressSegment
 from .divider import Divider
 from .pick import pick
 from .footer import Footer
+from .chat import (
+    Chat,
+    TriggerAutoComplete,
+    ChatStatusBar,
+    HintsFooter,
+    WelcomeMessage,
+    UserMessage,
+    AssistantMessage,
+    ThinkingIndicator,
+)
+from textual_autocomplete import DropdownItem as CommandItem
 
 __all__ = [
+    # Rich-based TUI (legacy)
     "Input",
     "Dropdown",
     "DropdownItem",
@@ -54,4 +66,14 @@ __all__ = [
     "Divider",
     "pick",
     "Footer",
+    # Textual-based Chat
+    "Chat",
+    "TriggerAutoComplete",
+    "CommandItem",
+    "ChatStatusBar",
+    "HintsFooter",
+    "WelcomeMessage",
+    "UserMessage",
+    "AssistantMessage",
+    "ThinkingIndicator",
 ]

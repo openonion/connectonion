@@ -20,13 +20,13 @@ Critical error paths from coverage analysis:
 import pytest
 import time
 from unittest.mock import Mock, MagicMock, patch
-from connectonion.tool_executor import (
+from connectonion.core.tool_executor import (
     execute_and_record_tools,
     execute_single_tool,
     _add_assistant_message,
     _add_tool_result_message
 )
-from connectonion.llm import ToolCall
+from connectonion.core.llm import ToolCall
 from connectonion.logger import Logger
 
 
@@ -290,8 +290,8 @@ class TestToolExecutionExceptions:
 class TestXrayContextHandling:
     """Test xray context injection and cleanup on errors."""
 
-    @patch('connectonion.tool_executor.inject_xray_context')
-    @patch('connectonion.tool_executor.clear_xray_context')
+    @patch('connectonion.core.tool_executor.inject_xray_context')
+    @patch('connectonion.core.tool_executor.clear_xray_context')
     def test_xray_context_cleared_on_success(self, mock_clear, mock_inject):
         """Test that xray context is cleared after successful tool execution."""
         mock_agent = Mock()
@@ -323,8 +323,8 @@ class TestXrayContextHandling:
         mock_inject.assert_called_once()
         mock_clear.assert_called_once()
 
-    @patch('connectonion.tool_executor.inject_xray_context')
-    @patch('connectonion.tool_executor.clear_xray_context')
+    @patch('connectonion.core.tool_executor.inject_xray_context')
+    @patch('connectonion.core.tool_executor.clear_xray_context')
     def test_xray_context_cleared_on_error(self, mock_clear, mock_inject):
         """Test that xray context is cleared even when tool fails."""
         mock_agent = Mock()
@@ -356,8 +356,8 @@ class TestXrayContextHandling:
         mock_inject.assert_called_once()
         mock_clear.assert_called_once()
 
-    @patch('connectonion.tool_executor.inject_xray_context')
-    @patch('connectonion.tool_executor.clear_xray_context')
+    @patch('connectonion.core.tool_executor.inject_xray_context')
+    @patch('connectonion.core.tool_executor.clear_xray_context')
     def test_xray_context_not_cleared_if_not_found(self, mock_clear, mock_inject):
         """Test that xray context injection doesn't happen for non-existent tools."""
         mock_agent = Mock()

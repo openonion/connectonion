@@ -12,7 +12,7 @@ import pytest
 from pathlib import Path
 from dotenv import load_dotenv
 from connectonion import Agent
-from connectonion.llm import GeminiLLM
+from connectonion.core.llm import GeminiLLM
 
 # Load environment variables from tests/.env
 env_path = Path(__file__).parent / ".env"

@@ -13,7 +13,7 @@ import time
 import json
 from typing import List, Dict, Any, Optional, Callable
 
-from .debug.xray import (
+from ..debug.xray import (
     inject_xray_context,
     clear_xray_context,
     is_xray_enabled
@@ -165,7 +165,8 @@ def execute_single_tool(
         agent.current_session['pending_tool'] = {
             'name': tool_name,
             'arguments': tool_args,
-            'id': tool_id
+            'id': tool_id,
+            'description': getattr(tool_func, 'description', '')
         }
 
         # Invoke before_each_tool events

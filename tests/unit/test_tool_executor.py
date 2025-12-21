@@ -2,11 +2,11 @@
 
 import pytest
 from unittest.mock import Mock, patch
-from connectonion.tool_executor import execute_single_tool, _add_assistant_message
-from connectonion.tool_registry import ToolRegistry
-from connectonion.tool_factory import create_tool_from_function
+from connectonion.core.tool_executor import execute_single_tool, _add_assistant_message
+from connectonion.core.tool_registry import ToolRegistry
+from connectonion.core.tool_factory import create_tool_from_function
 from connectonion.logger import Logger
-from connectonion.llm import ToolCall
+from connectonion.core.llm import ToolCall
 
 
 class FakeAgent:

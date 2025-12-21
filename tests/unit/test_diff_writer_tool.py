@@ -224,8 +224,8 @@ class TestDiffWriterIntegration:
     def test_diff_writer_can_be_used_as_agent_tool(self):
         """Test that DiffWriter can be registered with agent."""
         from connectonion import Agent
-        from connectonion.llm import LLMResponse
-        from connectonion.usage import TokenUsage
+        from connectonion.core.llm import LLMResponse
+        from connectonion.core.usage import TokenUsage
 
         mock_llm = Mock()
         mock_llm.model = "test-model"

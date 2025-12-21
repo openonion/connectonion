@@ -143,7 +143,7 @@ class TestLLMProviderEnvVars(unittest.TestCase):
 
     def test_openai_llm_uses_openai_api_key(self):
         """Test that OpenAILLM checks OPENAI_API_KEY env var."""
-        from connectonion.llm import OpenAILLM
+        from connectonion.core.llm import OpenAILLM
 
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
             llm = OpenAILLM(model="gpt-4o")
@@ -151,7 +151,7 @@ class TestLLMProviderEnvVars(unittest.TestCase):
 
     def test_anthropic_llm_uses_anthropic_api_key(self):
         """Test that AnthropicLLM checks ANTHROPIC_API_KEY env var."""
-        from connectonion.llm import AnthropicLLM
+        from connectonion.core.llm import AnthropicLLM
 
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
             llm = AnthropicLLM(model="claude-3-5-sonnet-20241022")
@@ -159,7 +159,7 @@ class TestLLMProviderEnvVars(unittest.TestCase):
 
     def test_gemini_llm_uses_google_api_key(self):
         """Test that GeminiLLM checks GOOGLE_API_KEY env var."""
-        from connectonion.llm import GeminiLLM
+        from connectonion.core.llm import GeminiLLM
 
         # Save original values (GeminiLLM checks both GEMINI_API_KEY and GOOGLE_API_KEY)
         original_gemini = os.environ.get("GEMINI_API_KEY")
@@ -181,7 +181,7 @@ class TestLLMProviderEnvVars(unittest.TestCase):
 
     def test_openonion_llm_uses_openonion_api_key(self):
         """Test that OpenOnionLLM checks OPENONION_API_KEY env var."""
-        from connectonion.llm import OpenOnionLLM
+        from connectonion.core.llm import OpenOnionLLM
 
         with patch.dict(os.environ, {"OPENONION_API_KEY": "test-key"}):
             llm = OpenOnionLLM(model="co/gpt-5")
@@ -189,7 +189,7 @@ class TestLLMProviderEnvVars(unittest.TestCase):
 
     def test_explicit_api_key_overrides_env(self):
         """Test that explicit api_key parameter overrides env var."""
-        from connectonion.llm import OpenAILLM
+        from connectonion.core.llm import OpenAILLM
 
         with patch.dict(os.environ, {"OPENAI_API_KEY": "env-key"}):
             llm = OpenAILLM(api_key="explicit-key", model="gpt-4o")

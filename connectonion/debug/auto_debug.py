@@ -99,7 +99,7 @@ class AutoDebugger:
         - Pause execution and show UI if breakpoint conditions are met
         - Only affect this specific agent instance
         """
-        from .. import tool_executor
+        from ..core import tool_executor
         from .xray import is_xray_enabled
 
         # Store original function for restoration later
@@ -141,7 +141,7 @@ class AutoDebugger:
         tool execution function.
         """
         if self.original_execute_single_tool:
-            from .. import tool_executor
+            from ..core import tool_executor
             tool_executor.execute_single_tool = self.original_execute_single_tool
 
     def _show_breakpoint_ui_and_wait_for_continue(self, tool_name: str, tool_args: Dict, trace_entry: Dict):

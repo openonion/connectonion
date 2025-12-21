@@ -111,8 +111,8 @@ class TestShellIntegration:
     def test_shell_can_be_used_as_agent_tool(self):
         """Test that Shell can be registered with agent."""
         from connectonion import Agent
-        from connectonion.llm import LLMResponse
-        from connectonion.usage import TokenUsage
+        from connectonion.core.llm import LLMResponse
+        from connectonion.core.usage import TokenUsage
         from unittest.mock import Mock
 
         mock_llm = Mock()
@@ -138,7 +138,7 @@ class TestShellIntegration:
 
     def test_shell_methods_have_correct_schema(self):
         """Test that shell methods generate correct tool schemas."""
-        from connectonion.tool_factory import create_tool_from_function
+        from connectonion.core.tool_factory import create_tool_from_function
 
         shell = Shell()
         run_tool = create_tool_from_function(shell.run)

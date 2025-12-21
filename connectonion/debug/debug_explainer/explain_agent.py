@@ -31,7 +31,7 @@ def explain_tool_choice(
     Returns:
         Explanation string from the AI agent
     """
-    from ...agent import Agent
+    from ...core.agent import Agent
     import inspect
 
     # Get all the information we need

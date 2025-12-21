@@ -3,8 +3,8 @@ import os
 from unittest.mock import Mock, patch
 from dotenv import load_dotenv
 from connectonion import Agent
-from connectonion.llm import LLMResponse, ToolCall
-from connectonion.usage import TokenUsage
+from connectonion.core.llm import LLMResponse, ToolCall
+from connectonion.core.usage import TokenUsage
 from tests.utils.mock_helpers import MockLLM
 import pytest
 

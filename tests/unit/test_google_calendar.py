@@ -597,8 +597,8 @@ class TestGoogleCalendarIntegration:
     def test_google_calendar_integrates_with_agent(self):
         """Test that GoogleCalendar can be used as an agent tool."""
         from connectonion import Agent
-        from connectonion.llm import LLMResponse
-        from connectonion.usage import TokenUsage
+        from connectonion.core.llm import LLMResponse
+        from connectonion.core.usage import TokenUsage
         from connectonion.useful_tools.google_calendar import GoogleCalendar
 
         # Create mock LLM

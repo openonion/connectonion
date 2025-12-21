@@ -446,8 +446,8 @@ class TestWebFetchIntegration:
     def test_webfetch_integrates_with_agent(self):
         """Test that WebFetch can be used as an agent tool."""
         from connectonion import Agent
-        from connectonion.llm import LLMResponse
-        from connectonion.usage import TokenUsage
+        from connectonion.core.llm import LLMResponse
+        from connectonion.core.usage import TokenUsage
 
         # Create mock LLM
         mock_llm = Mock()

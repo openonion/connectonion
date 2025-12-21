@@ -29,12 +29,12 @@ Usage:
 
 from pathlib import Path
 from typing import TYPE_CHECKING
-from ..events import after_user_input
+from ..core.events import after_user_input
 from ..llm_do import llm_do
 from ..useful_events_handlers.reflect import reflect
 
 if TYPE_CHECKING:
-    from ..agent import Agent
+    from ..core.agent import Agent
 
 # Prompts
 PLAN_PROMPT = Path(__file__).parent.parent / "prompt_files" / "react_plan.md"

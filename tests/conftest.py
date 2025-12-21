@@ -8,8 +8,8 @@ from pathlib import Path
 from unittest.mock import Mock, MagicMock
 from connectonion import Agent
 # No need to import tools - they're just functions
-from connectonion.llm import LLMResponse, ToolCall, OpenAILLM
-from connectonion.usage import TokenUsage
+from connectonion.core.llm import LLMResponse, ToolCall, OpenAILLM
+from connectonion.core.usage import TokenUsage
 from tests.utils.mock_helpers import MockLLM
 import os
 from dotenv import load_dotenv

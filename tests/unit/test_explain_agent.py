@@ -11,7 +11,7 @@ from unittest.mock import patch, Mock, MagicMock
 class TestExplainToolChoice:
     """Tests for explain_tool_choice function."""
 
-    @patch('connectonion.agent.Agent')
+    @patch('connectonion.core.agent.Agent')
     def test_explain_tool_choice_basic(self, mock_agent_class):
         """Test basic explain_tool_choice call."""
         from connectonion.debug.debug_explainer.explain_agent import explain_tool_choice
@@ -50,7 +50,7 @@ class TestExplainToolChoice:
         mock_agent_class.assert_called_once()
         mock_explainer.input.assert_called_once()
 
-    @patch('connectonion.agent.Agent')
+    @patch('connectonion.core.agent.Agent')
     def test_explain_tool_choice_creates_explainer_agent(self, mock_agent_class):
         """Test that explain_tool_choice creates an explainer agent with correct params."""
         from connectonion.debug.debug_explainer.explain_agent import explain_tool_choice
@@ -89,7 +89,7 @@ class TestExplainToolChoice:
         assert call_kwargs['max_iterations'] == 5
         assert call_kwargs['log'] is False
 
-    @patch('connectonion.agent.Agent')
+    @patch('connectonion.core.agent.Agent')
     def test_explain_tool_choice_includes_context(self, mock_agent_class):
         """Test that explain_tool_choice includes all context in prompt."""
         from connectonion.debug.debug_explainer.explain_agent import explain_tool_choice
@@ -132,7 +132,7 @@ class TestExplainToolChoice:
         assert "math-agent" in input_call
         assert "You are a math helper" in input_call
 
-    @patch('connectonion.agent.Agent')
+    @patch('connectonion.core.agent.Agent')
     def test_explain_tool_choice_no_system_prompt(self, mock_agent_class):
         """Test explain_tool_choice when agent has no system prompt."""
         from connectonion.debug.debug_explainer.explain_agent import explain_tool_choice
@@ -168,7 +168,7 @@ class TestExplainToolChoice:
         input_call = mock_explainer.input.call_args[0][0]
         assert "No system prompt" in input_call
 
-    @patch('connectonion.agent.Agent')
+    @patch('connectonion.core.agent.Agent')
     def test_explain_tool_choice_empty_tools(self, mock_agent_class):
         """Test explain_tool_choice when agent has empty tools."""
         from connectonion.debug.debug_explainer.explain_agent import explain_tool_choice
@@ -204,7 +204,7 @@ class TestExplainToolChoice:
         input_call = mock_explainer.input.call_args[0][0]
         assert "Available tools: []" in input_call
 
-    @patch('connectonion.agent.Agent')
+    @patch('connectonion.core.agent.Agent')
     def test_explain_tool_choice_with_previous_tools(self, mock_agent_class):
         """Test explain_tool_choice shows previous tools called."""
         from connectonion.debug.debug_explainer.explain_agent import explain_tool_choice

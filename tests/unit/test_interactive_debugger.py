@@ -22,7 +22,7 @@ def restore_tool_executor():
 
     This prevents test pollution when tests modify global state.
     """
-    from connectonion import tool_executor
+    from connectonion.core import tool_executor
     original = tool_executor.execute_single_tool
     yield original
     tool_executor.execute_single_tool = original
@@ -155,7 +155,7 @@ class TestAttachDebugger:
     def test_attach_replaces_function(self, restore_tool_executor):
         """Test attaching replaces execute_single_tool."""
         from connectonion.debug.auto_debug import AutoDebugger
-        from connectonion import tool_executor
+        from connectonion.core import tool_executor
 
         original_func = restore_tool_executor
 
@@ -172,7 +172,7 @@ class TestDetachDebugger:
     def test_detach_restores_original_function(self, restore_tool_executor):
         """Test detaching restores original execute_single_tool."""
         from connectonion.debug.auto_debug import AutoDebugger
-        from connectonion import tool_executor
+        from connectonion.core import tool_executor
 
         original_func = restore_tool_executor
 
@@ -415,7 +415,7 @@ class TestInterceptorOnlyAffectsOwnAgent:
     def test_interceptor_returns_trace_entry_for_other_agents(self, restore_tool_executor):
         """Test interceptor returns trace entry for other agents without pausing."""
         from connectonion.debug.auto_debug import AutoDebugger
-        from connectonion import tool_executor
+        from connectonion.core import tool_executor
 
         # Create two agents
         agent1 = Mock()

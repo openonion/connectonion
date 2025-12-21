@@ -622,7 +622,7 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
     # Try to use AI to generate name and code
     if model or api_key:
         try:
-            from ...llm import create_llm
+            from ...core.llm import create_llm
 
             # Use the model specified or default to co/gemini-2.5-pro
             llm_model = model if model else "co/gemini-2.5-pro"

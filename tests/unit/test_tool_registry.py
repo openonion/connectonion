@@ -3,7 +3,7 @@
 import pytest
 from unittest.mock import Mock
 
-from connectonion.tool_registry import ToolRegistry
+from connectonion.core.tool_registry import ToolRegistry
 
 
 class TestToolRegistryAdd:

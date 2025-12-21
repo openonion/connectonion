@@ -27,11 +27,11 @@ Usage:
 
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Dict
-from ..events import after_user_input, on_complete
+from ..core.events import after_user_input, on_complete
 from ..llm_do import llm_do
 
 if TYPE_CHECKING:
-    from ..agent import Agent
+    from ..core.agent import Agent
 
 # Prompts
 EXPECTED_PROMPT = Path(__file__).parent.parent / "prompt_files" / "eval_expected.md"

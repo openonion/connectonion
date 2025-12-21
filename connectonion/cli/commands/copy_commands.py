@@ -39,6 +39,18 @@ PLUGINS = {
     "calendar_plugin": "calendar_plugin.py",
 }
 
+# Registry of copyable TUI components
+TUI = {
+    "chat": "chat.py",
+    "fuzzy": "fuzzy.py",
+    "divider": "divider.py",
+    "footer": "footer.py",
+    "status_bar": "status_bar.py",
+    "dropdown": "dropdown.py",
+    "pick": "pick.py",
+    "keys": "keys.py",
+}
+
 
 def handle_copy(
     names: List[str],
@@ -56,9 +68,11 @@ def handle_copy(
     # Get source directories using import system (works for installed packages)
     import connectonion.useful_tools as tools_module
     import connectonion.useful_plugins as plugins_module
+    import connectonion.tui as tui_module
 
     useful_tools_dir = Path(tools_module.__file__).parent
     useful_plugins_dir = Path(plugins_module.__file__).parent
+    tui_dir = Path(tui_module.__file__).parent
 
     current_dir = Path.cwd()
 
@@ -75,6 +89,12 @@ def handle_copy(
         elif name_lower in PLUGINS:
             source = useful_plugins_dir / PLUGINS[name_lower]
             dest_dir = Path(path) if path else current_dir / "plugins"
+            copy_file(source, dest_dir, force)
+
+        # Check if it's a TUI component
+        elif name_lower in TUI:
+            source = tui_dir / TUI[name_lower]
+            dest_dir = Path(path) if path else current_dir / "tui"
             copy_file(source, dest_dir, force)
 
         else:
@@ -100,7 +120,7 @@ def copy_file(source: Path, dest_dir: Path, force: bool):
 
 
 def show_available_items():
-    """Display available tools and plugins."""
+    """Display available tools, plugins, and TUI components."""
     table = Table(title="Available Items to Copy")
     table.add_column("Name", style="cyan")
     table.add_column("Type", style="green")
@@ -111,6 +131,9 @@ def show_available_items():
 
     for name, file in sorted(PLUGINS.items()):
         table.add_row(name, "plugin", file)
+
+    for name, file in sorted(TUI.items()):
+        table.add_row(name, "tui", file)
 
     console.print(table)
     console.print("\n[dim]Usage: co copy <name> [--path ./custom/][/dim]")

@@ -19,8 +19,8 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from connectonion import Agent
-from connectonion.llm import LLMResponse
-from connectonion.usage import TokenUsage
+from connectonion.core.llm import LLMResponse
+from connectonion.core.usage import TokenUsage
 
 # Get the actual module, not the function (which shadows it in __init__.py)
 import connectonion.network.host  # This imports the module before __init__ shadows it

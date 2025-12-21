@@ -6,6 +6,7 @@ Terminal UI components for interactive agent interfaces.
 
 | Component | Purpose | Import |
 |-----------|---------|--------|
+| [Chat](chat.md) | Full chat interface with agent | `from connectonion.tui import Chat` |
 | [Input](input.md) | Text input with autocomplete | `from connectonion.tui import Input` |
 | [pick](pick.md) | Single-select menu | `from connectonion.tui import pick` |
 | [Dropdown](dropdown.md) | Dropdown menus | `from connectonion.tui import Dropdown` |
@@ -19,38 +20,76 @@ Terminal UI components for interactive agent interfaces.
 ## Quick Start
 
 ```python
-from connectonion.tui import pick, Input, StatusBar
-from rich.console import Console
+from connectonion import Agent
+from connectonion.tui import Chat
 
-console = Console()
+# Create agent
+agent = Agent("assistant", tools=[...])
 
-# Single-select menu
-choice = pick(
-    "Select model:",
-    ["gpt-4", "claude-3", "gemini-pro"]
+# Launch chat interface
+chat = Chat(
+    agent=agent,
+    title="My Assistant",
+    welcome="Hello! How can I help?",
+    hints=["/ commands", "Enter send", "Ctrl+D quit"],
 )
+chat.run()
+```
 
-# Text input with file autocomplete
-from connectonion.tui import FileProvider
-text = Input(triggers={"@": FileProvider()}).run()
+## Customizing Components
 
-# Status bar
-status = StatusBar([
-    ("model", "gpt-4", "magenta"),
-    ("tokens", "1.2k", "green"),
-])
-console.print(status.render())
+Need to modify a TUI component? Copy it to your project:
+
+```bash
+# Copy Chat interface to ./tui/
+co copy chat
+
+# Copy other components
+co copy chat fuzzy dropdown
+
+# See all available
+co copy --list
+```
+
+Then import from your local copy:
+
+```python
+# Before (from package)
+from connectonion.tui import Chat
+
+# After (from your copy)
+from tui.chat import Chat  # Customize freely!
+```
+
+## Chat Features
+
+The `Chat` component includes:
+- **Status bar** - Agent name, status, model, tokens, cost
+- **Message history** - Scrollable conversation
+- **Thinking indicator** - Shows LLM thinking and tool calls
+- **Autocomplete** - Trigger-based (/, @) command completion
+- **Input locking** - Prevents multiple submissions
+
+### Thinking Indicator
+
+Shows real-time progress:
+
+```
+⠹ Thinking... 5s (usually 3-10s)    # During LLM call
+
+⠹ Search emails in inbox            # During tool call
+  └─ search_emails("aaron")
 ```
 
 ## Architecture
 
 ```
-User Input → TUI Component → Terminal (Rich) → User
+User Input → TUI Component → Terminal (Rich/Textual) → User
      ↑                              ↓
      └──── Keyboard Events ────────┘
 ```
 
 Components use:
-- **Rich** for terminal rendering
+- **Textual** for full interactive apps (Chat)
+- **Rich** for simple terminal rendering
 - **Raw mode** for keyboard capture
-- **ANSI codes** for styling
