@@ -1,22 +1,32 @@
 """Browser Agent for CLI - Natural language browser automation.
 
 This module provides a browser automation agent that understands natural language
-requests for taking screenshots and other browser operations via the ConnectOnion CLI.
+requests for browser operations via the ConnectOnion CLI.
+
+Features:
+- Chrome profile support for persistent sessions (cookies, logins)
+- AI-powered element finding using natural language
+- Form handling: find, fill, submit
+- Screenshot with viewport presets
+- Universal scroll with AI strategy selection
+- Manual login pause for 2FA/CAPTCHA
 """
 
 import os
+import base64
 from pathlib import Path
 from datetime import datetime
-from connectonion import Agent, llm_do, xray
+from typing import Optional, List, Dict, Any
+from connectonion import Agent, llm_do
 from dotenv import load_dotenv
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-# Default screenshots directory in current working directory
+# Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
 
 # Check Playwright availability
 try:
-    from playwright.sync_api import sync_playwright
+    from playwright.sync_api import sync_playwright, Page, Browser, Playwright
     PLAYWRIGHT_AVAILABLE = True
 except ImportError:
     PLAYWRIGHT_AVAILABLE = False
@@ -25,190 +35,527 @@ except ImportError:
 PROMPT_PATH = Path(__file__).parent / "prompt.md"
 
 
+class FormField(BaseModel):
+    """A form field on a web page."""
+    name: str = Field(..., description="Field name or identifier")
+    label: str = Field(..., description="User-facing label")
+    type: str = Field(..., description="Input type (text, email, select, etc.)")
+    value: Optional[str] = Field(None, description="Current value")
+    required: bool = Field(False, description="Is this field required?")
+    options: List[str] = Field(default_factory=list, description="Available options for select/radio")
+
+
 class BrowserAutomation:
-    """Browser automation for screenshots and interactions."""
-    
-    def __init__(self):
+    """Browser automation with natural language support.
+
+    Simple interface for complex web interactions.
+    Auto-initializes browser on creation for immediate use.
+    Supports Chrome profile for persistent sessions.
+    """
+
+    def __init__(self, use_chrome_profile: bool = False, headless: bool = True):
+        """Initialize browser automation.
+
+        Args:
+            use_chrome_profile: If True, uses your Chrome cookies/sessions.
+                               Chrome must be closed before running.
+            headless: If True, browser runs without visible window (default True).
+        """
+        self.playwright: Optional[Playwright] = None
+        self.browser: Optional[Browser] = None
+        self.page: Optional[Page] = None
+        self.current_url: str = ""
+        self.form_data: Dict[str, Any] = {}
+        self.use_chrome_profile = use_chrome_profile
         self._screenshots = []
-        self._playwright = None
-        self._browser = None
-        self._page = None
+        self._headless = headless
+        # Auto-initialize browser so it's ready immediately
         self._initialize_browser()
-    
+
     def _initialize_browser(self):
-        """Initialize the browser instance."""
+        """Initialize the browser instance on startup."""
         if not PLAYWRIGHT_AVAILABLE:
             return
-        from playwright.sync_api import sync_playwright
-        self._playwright = sync_playwright().start()
-        self._browser = self._playwright.chromium.launch(headless=True)
-        self._page = self._browser.new_page()
-    
-    def navigate_to(self, url: str) -> str:
-        """Navigate to a URL."""
-        if not url.startswith(('http://', 'https://')):
-            url = f'https://{url}' if '.' in url else f'http://{url}'
-        self._page.goto(url, wait_until='networkidle', timeout=30000)
-        # Sleep for 2 seconds to ensure page is fully loaded
-        self._page.wait_for_timeout(2000)
-        return f"Navigated to {url}"
-    
-    def set_viewport(self, width: int, height: int) -> str:
-        """Set the browser viewport size.
-        
+        self.open_browser(headless=self._headless)
+
+    def open_browser(self, headless: bool = True) -> str:
+        """Open a new browser window.
+
         Args:
-            width: Viewport width in pixels
-            height: Viewport height in pixels
-            
-        Returns:
-            Success message
+            headless: If True, browser runs without visible window.
+
+        Note: If use_chrome_profile=True, Chrome must be completely closed.
         """
         if not PLAYWRIGHT_AVAILABLE:
-            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
-        self._page.set_viewport_size({"width": width, "height": height})
-        return f"Viewport set to {width}x{height}"
-    
-    def take_screenshot(self, url: str, path: str = "", 
+            return "Browser tools not installed. Run: pip install playwright && playwright install chromium"
+
+        if self.browser:
+            return "Browser already open"
+
+        self.playwright = sync_playwright().start()
+
+        if self.use_chrome_profile:
+            # Use Chromium with Chrome profile copy
+            chromium_profile = Path.cwd() / "chromium_automation_profile"
+
+            if not chromium_profile.exists():
+                import shutil
+                home = Path.home()
+                if os.name == 'nt':  # Windows
+                    source_profile = home / "AppData/Local/Google/Chrome/User Data"
+                elif os.uname().sysname == 'Darwin':  # macOS
+                    source_profile = home / "Library/Application Support/Google/Chrome"
+                else:  # Linux
+                    source_profile = home / ".config/google-chrome"
+
+                if source_profile.exists():
+                    shutil.copytree(
+                        source_profile,
+                        chromium_profile,
+                        ignore=shutil.ignore_patterns('*Cache*', '*cache*', 'Service Worker', 'ShaderCache'),
+                        dirs_exist_ok=True
+                    )
+
+            self.browser = self.playwright.chromium.launch_persistent_context(
+                str(chromium_profile),
+                headless=headless,
+                args=['--disable-blink-features=AutomationControlled'],
+                ignore_default_args=['--enable-automation'],
+                timeout=120000,
+            )
+            self.page = self.browser.pages[0] if self.browser.pages else self.browser.new_page()
+            self.page.add_init_script("""
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+            """)
+            return f"Browser opened with Chrome profile: {chromium_profile}"
+        else:
+            self.browser = self.playwright.chromium.launch(headless=headless)
+            self.page = self.browser.new_page()
+            return "Browser opened successfully"
+
+    def go_to(self, url: str) -> str:
+        """Navigate to a URL."""
+        if not self.page:
+            self.open_browser()
+
+        if not url.startswith(('http://', 'https://')):
+            url = f'https://{url}' if '.' in url else f'http://{url}'
+
+        self.page.goto(url, wait_until='networkidle', timeout=30000)
+        self.page.wait_for_timeout(2000)
+        self.current_url = self.page.url
+        return f"Navigated to {self.current_url}"
+
+    def find_element_by_description(self, description: str) -> str:
+        """Find element using natural language description.
+
+        Uses AI to analyze HTML and find the best matching element.
+
+        Args:
+            description: e.g., "the submit button", "email input field"
+
+        Returns:
+            CSS selector for the element, or error message
+        """
+        if not self.page:
+            return "Browser not open"
+
+        html = self.page.content()
+
+        class ElementSelector(BaseModel):
+            selector: str = Field(..., description="CSS selector for the element")
+            confidence: float = Field(..., description="Confidence score 0-1")
+            explanation: str = Field(..., description="Why this element matches")
+
+        result = llm_do(
+            f"""Analyze this HTML and find the CSS selector for: "{description}"
+
+            HTML (first 15000 chars): {html[:15000]}
+
+            Return the most specific CSS selector that uniquely identifies this element.
+            """,
+            output=ElementSelector,
+            model="gpt-4o",
+            temperature=0.1
+        )
+
+        if self.page.locator(result.selector).count() > 0:
+            return result.selector
+        else:
+            return f"Found selector {result.selector} but element not on page"
+
+    def click(self, description: str) -> str:
+        """Click on an element using natural language description.
+
+        Args:
+            description: e.g., "the blue submit button", "link to contact page"
+        """
+        if not self.page:
+            return "Browser not open"
+
+        selector = self.find_element_by_description(description)
+
+        if selector.startswith("Could not") or selector.startswith("Found selector"):
+            if self.page.locator(f"text='{description}'").count() > 0:
+                self.page.click(f"text='{description}'")
+                return f"Clicked on '{description}' (by text)"
+            return selector
+
+        self.page.click(selector)
+        return f"Clicked on '{description}'"
+
+    def type_text(self, field_description: str, text: str) -> str:
+        """Type text into a form field.
+
+        Args:
+            field_description: e.g., "email field", "password input"
+            text: The text to type
+        """
+        if not self.page:
+            return "Browser not open"
+
+        selector = self.find_element_by_description(field_description)
+
+        if selector.startswith("Could not") or selector.startswith("Found selector"):
+            for fallback in [
+                f"input[placeholder*='{field_description}' i]",
+                f"[aria-label*='{field_description}' i]",
+                f"input[name*='{field_description}' i]"
+            ]:
+                if self.page.locator(fallback).count() > 0:
+                    self.page.fill(fallback, text)
+                    self.form_data[field_description] = text
+                    return f"Typed into {field_description}"
+            return f"Could not find field '{field_description}'"
+
+        self.page.fill(selector, text)
+        self.form_data[field_description] = text
+        return f"Typed into {field_description}"
+
+    def get_text(self) -> str:
+        """Get all visible text from the page."""
+        if not self.page:
+            return "Browser not open"
+        return self.page.inner_text("body")
+
+    def get_current_url(self) -> str:
+        """Get the current page URL."""
+        if not self.page:
+            return "Browser not open"
+        return self.page.url
+
+    def get_current_page_html(self) -> str:
+        """Get the HTML content of the current page."""
+        if not self.page:
+            return "Browser not open"
+        return self.page.content()
+
+    def take_screenshot(self, url: str = None, path: str = "",
                        width: int = 1920, height: int = 1080,
                        full_page: bool = False) -> str:
-        """Take a screenshot of the specified URL.
-        
+        """Take a screenshot of a URL or current page.
+
         Args:
-            url: The URL to screenshot (e.g., "localhost:3000", "example.com")
-            path: Optional path to save the screenshot (auto-generates if empty)
+            url: URL to screenshot (optional - uses current page if not provided)
+            path: Optional path to save (auto-generates if empty)
             width: Viewport width in pixels (default 1920)
             height: Viewport height in pixels (default 1080)
             full_page: If True, captures entire page height
-            
+
         Returns:
-            Success or error message
+            Path to saved screenshot
         """
         if not PLAYWRIGHT_AVAILABLE:
             return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
-        
-        # Navigate to URL
-        self.navigate_to(url)
-        
+
+        if not self.page:
+            return "Browser not open"
+
+        # Navigate if URL provided
+        if url:
+            self.go_to(url)
+
         # Set viewport size
-        self._page.set_viewport_size({"width": width, "height": height})
-        
+        self.page.set_viewport_size({"width": width, "height": height})
+
         # Generate filename if needed
         if not path:
-            # Ensure screenshots directory exists
             SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
             timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
             path = str(SCREENSHOTS_DIR / f'screenshot_{timestamp}.png')
-        elif not path.startswith('/'):  # Relative path
-            # If relative path given, save to screenshots dir
+        elif not path.startswith('/'):
             SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
             if not path.endswith(('.png', '.jpg', '.jpeg')):
                 path += '.png'
             path = str(SCREENSHOTS_DIR / path)
         elif not path.endswith(('.png', '.jpg', '.jpeg')):
-            # Absolute path without extension
             path += '.png'
-        
+
         # Ensure directory exists
         Path(path).parent.mkdir(parents=True, exist_ok=True)
-        
+
         # Take screenshot
-        self._page.screenshot(path=path, full_page=full_page)
-        
+        self.page.screenshot(path=path, full_page=full_page)
         self._screenshots.append(path)
         return f'Screenshot saved: {path}'
-    
-    def screenshot_with_iphone_viewport(self, url: str, path: str = "") -> str:
-        """Take a screenshot with iPhone viewport (390x844)."""
-        return self.take_screenshot(url, path, width=390, height=844)
-    
-    def screenshot_with_ipad_viewport(self, url: str, path: str = "") -> str:
-        """Take a screenshot with iPad viewport (768x1024)."""
-        return self.take_screenshot(url, path, width=768, height=1024)
-    
-    def screenshot_with_desktop_viewport(self, url: str, path: str = "") -> str:
-        """Take a screenshot with desktop viewport (1920x1080)."""
-        return self.take_screenshot(url, path, width=1920, height=1080)
-    
-    def get_current_page_html(self) -> str:
-        """Get the HTML content of the current page.
-        
-        Returns:
-            The HTML content of the current page
-        """
-        if not PLAYWRIGHT_AVAILABLE:
-            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
-        return self._page.content()
-    
-    def get_current_url(self) -> str:
-        """Get the current page URL.
-        
-        Returns:
-            The current URL
-        """
-        if not PLAYWRIGHT_AVAILABLE:
-            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
-        return self._page.url
-    
-    def wait(self, seconds: float) -> str:
-        """Wait for a specified number of seconds.
-        
-        Args:
-            seconds: Number of seconds to wait
-            
-        Returns:
-            Success message
-        """
-        if not PLAYWRIGHT_AVAILABLE:
-            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
-        self._page.wait_for_timeout(seconds * 1000)  # Convert to milliseconds
-        return f"Waited for {seconds} seconds"
-    
-    @xray
-    def get_debug_trace(self) -> str:
-        """Get execution trace for debugging.
-        
-        Returns:
-            Execution trace showing what happened
-        """
-        if hasattr(xray, 'trace'):
-            return xray.trace()
-        return "No trace available"
-    
-    def click_element_by_description(self, description: str) -> str:
-        """Click an element on the current page based on natural language description.
-        
-        Args:
-            description: Natural language description of what to click
-            
-        Returns:
-            Result message
-        """
-        if not PLAYWRIGHT_AVAILABLE:
-            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
-        
-        html_content = self._page.content()
-        
-        # Use llm_do to determine the selector
-        class ElementSelector(BaseModel):
-            selector: str
-            method: str  # "text" or "css"
-        
-        result = llm_do(
-            f"Find selector for: {description}\n\nHTML:\n{html_content[:5000]}",
-            output=ElementSelector,
-            system_prompt="Return the best selector to click the element. Use method='text' for button text, method='css' for CSS selectors."
-        )
-        
-        if result.method == "text":
-            self._page.get_by_text(result.selector).click()
+
+    def set_viewport(self, width: int, height: int) -> str:
+        """Set the browser viewport size."""
+        if not self.page:
+            return "Browser not open"
+        self.page.set_viewport_size({"width": width, "height": height})
+        return f"Viewport set to {width}x{height}"
+
+    def screenshot_mobile(self, url: str = None) -> str:
+        """Take screenshot with iPhone viewport (390x844)."""
+        if url:
+            self.go_to(url)
+        self.set_viewport(390, 844)
+        return self.take_screenshot()
+
+    def screenshot_tablet(self, url: str = None) -> str:
+        """Take screenshot with iPad viewport (768x1024)."""
+        if url:
+            self.go_to(url)
+        self.set_viewport(768, 1024)
+        return self.take_screenshot()
+
+    def screenshot_desktop(self, url: str = None) -> str:
+        """Take screenshot with desktop viewport (1920x1080)."""
+        if url:
+            self.go_to(url)
+        self.set_viewport(1920, 1080)
+        return self.take_screenshot()
+
+    def find_forms(self) -> List[FormField]:
+        """Find all form fields on the current page."""
+        if not self.page:
+            return []
+
+        fields_data = self.page.evaluate("""
+            () => {
+                const fields = [];
+                document.querySelectorAll('input, textarea, select').forEach(input => {
+                    const label = input.labels?.[0]?.textContent ||
+                                input.placeholder || input.name || input.id || 'Unknown';
+                    fields.push({
+                        name: input.name || input.id || label,
+                        label: label.trim(),
+                        type: input.type || input.tagName.toLowerCase(),
+                        value: input.value || '',
+                        required: input.required || false,
+                        options: input.tagName === 'SELECT' ?
+                                Array.from(input.options).map(o => o.text) : []
+                    });
+                });
+                return fields;
+            }
+        """)
+        return [FormField(**field) for field in fields_data]
+
+    def fill_form(self, data: Dict[str, str]) -> str:
+        """Fill multiple form fields at once."""
+        if not self.page:
+            return "Browser not open"
+
+        results = []
+        for field_name, value in data.items():
+            result = self.type_text(field_name, value)
+            results.append(f"{field_name}: {result}")
+        return "\n".join(results)
+
+    def submit_form(self) -> str:
+        """Submit the current form."""
+        if not self.page:
+            return "Browser not open"
+
+        for selector in [
+            "button[type='submit']",
+            "input[type='submit']",
+            "button:has-text('Submit')",
+            "button:has-text('Send')",
+            "button:has-text('Continue')",
+            "button:has-text('Next')"
+        ]:
+            if self.page.locator(selector).count() > 0:
+                self.page.click(selector)
+                return "Form submitted"
+
+        return "Could not find submit button"
+
+    def select_option(self, field_description: str, option: str) -> str:
+        """Select an option from a dropdown."""
+        if not self.page:
+            return "Browser not open"
+
+        selector = self.find_element_by_description(field_description)
+        if selector.startswith("Could not"):
+            return selector
+
+        self.page.select_option(selector, label=option)
+        return f"Selected '{option}' in {field_description}"
+
+    def check_checkbox(self, description: str, checked: bool = True) -> str:
+        """Check or uncheck a checkbox."""
+        if not self.page:
+            return "Browser not open"
+
+        selector = self.find_element_by_description(description)
+        if selector.startswith("Could not"):
+            return selector
+
+        if checked:
+            self.page.check(selector)
+            return f"Checked {description}"
         else:
-            self._page.locator(result.selector).click()
-        
-        self._page.wait_for_timeout(1000)
-        return f"Clicked: {result.selector}"
+            self.page.uncheck(selector)
+            return f"Unchecked {description}"
 
+    def wait_for_element(self, description: str, timeout: int = 30) -> str:
+        """Wait for an element to appear."""
+        if not self.page:
+            return "Browser not open"
 
+        selector = self.find_element_by_description(description)
+        if selector.startswith("Could not"):
+            self.page.wait_for_selector(f"text='{description}'", timeout=timeout * 1000)
+            return f"Found text: '{description}'"
 
+        self.page.wait_for_selector(selector, timeout=timeout * 1000)
+        return f"Element appeared: {description}"
+
+    def wait_for_text(self, text: str, timeout: int = 30) -> str:
+        """Wait for specific text to appear on the page."""
+        if not self.page:
+            return "Browser not open"
+
+        self.page.wait_for_selector(f"text='{text}'", timeout=timeout * 1000)
+        return f"Found text: '{text}'"
+
+    def wait(self, seconds: float) -> str:
+        """Wait for a specified number of seconds."""
+        if not self.page:
+            return "Browser not open"
+        self.page.wait_for_timeout(seconds * 1000)
+        return f"Waited for {seconds} seconds"
+
+    def scroll(self, times: int = 5, description: str = "the main content area") -> str:
+        """Universal scroll with automatic strategy selection.
+
+        Tries multiple strategies until one works:
+        1. AI-generated strategy (analyzes page structure)
+        2. Element scrolling
+        3. Page scrolling
+
+        Args:
+            times: Number of scroll iterations
+            description: What to scroll (e.g., "the email list")
+
+        Returns:
+            Status message with successful strategy
+        """
+        from . import scroll_strategies
+        return scroll_strategies.scroll_with_verification(
+            page=self.page,
+            take_screenshot=self.take_screenshot,
+            times=times,
+            description=description
+        )
+
+    def scroll_page(self, direction: str = "down", amount: int = 1000) -> str:
+        """Scroll the page in a direction.
+
+        Args:
+            direction: "down", "up", "top", or "bottom"
+            amount: Pixels to scroll (ignored for "bottom"/"top")
+        """
+        if not self.page:
+            return "Browser not open"
+
+        if direction == "bottom":
+            self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+            return "Scrolled to bottom of page"
+        elif direction == "top":
+            self.page.evaluate("window.scrollTo(0, 0)")
+            return "Scrolled to top of page"
+        elif direction == "down":
+            self.page.evaluate(f"window.scrollBy(0, {amount})")
+            return f"Scrolled down {amount} pixels"
+        elif direction == "up":
+            self.page.evaluate(f"window.scrollBy(0, -{amount})")
+            return f"Scrolled up {amount} pixels"
+        else:
+            return f"Unknown direction: {direction}"
+
+    def scroll_element(self, selector: str, amount: int = 1000) -> str:
+        """Scroll a specific element by CSS selector."""
+        if not self.page:
+            return "Browser not open"
+
+        result = self.page.evaluate(f"""
+            (() => {{
+                const element = document.querySelector('{selector}');
+                if (!element) return 'Element not found: {selector}';
+                const beforeScroll = element.scrollTop;
+                element.scrollTop += {amount};
+                const afterScroll = element.scrollTop;
+                return `Scrolled from ${{beforeScroll}}px to ${{afterScroll}}px`;
+            }})()
+        """)
+        return result
+
+    def wait_for_manual_login(self, site_name: str = "the website") -> str:
+        """Pause automation for user to login manually.
+
+        Useful for sites with 2FA or CAPTCHA.
+
+        Args:
+            site_name: Name of the site (e.g., "Gmail")
+
+        Returns:
+            Confirmation when user is ready to continue
+        """
+        if not self.page:
+            return "Browser not open"
+
+        print(f"\n{'='*60}")
+        print(f"  MANUAL LOGIN REQUIRED")
+        print(f"{'='*60}")
+        print(f"Please login to {site_name} in the browser window.")
+        print(f"Once you're logged in and ready to continue:")
+        print(f"  Type 'yes' or 'Y' and press Enter")
+        print(f"{'='*60}\n")
+
+        while True:
+            response = input("Ready to continue? (yes/Y): ").strip().lower()
+            if response in ['yes', 'y']:
+                print("Continuing automation...\n")
+                return f"User confirmed login to {site_name} - continuing"
+            else:
+                print("Please type 'yes' or 'Y' when ready.")
+
+    def extract_data(self, selector: str) -> List[str]:
+        """Extract text from elements matching a selector."""
+        if not self.page:
+            return []
+
+        elements = self.page.locator(selector)
+        count = elements.count()
+        return [elements.nth(i).inner_text() for i in range(count)]
+
+    def close(self) -> str:
+        """Close the browser."""
+        if self.page:
+            self.page.close()
+        if self.browser:
+            self.browser.close()
+        if self.playwright:
+            self.playwright.stop()
+
+        self.page = None
+        self.browser = None
+        self.playwright = None
+        return "Browser closed"
 
 
 def execute_browser_command(command: str) -> str:
@@ -216,11 +563,8 @@ def execute_browser_command(command: str) -> str:
 
     Returns the agent's natural language response directly.
     """
-    # Framework auto-loads local .env, but CLI commands need global fallback
-    # Check for API key in environment first
     api_key = os.getenv('OPENONION_API_KEY')
 
-    # If not found, try loading from global config
     if not api_key:
         global_env = Path.home() / ".co" / "keys.env"
         if global_env.exists():
@@ -228,7 +572,7 @@ def execute_browser_command(command: str) -> str:
             api_key = os.getenv('OPENONION_API_KEY')
 
     if not api_key:
-        return '❌ Browser agent requires authentication. Run: co auth'
+        return 'Browser agent requires authentication. Run: co auth'
 
     browser = BrowserAutomation()
     agent = Agent(
@@ -237,7 +581,6 @@ def execute_browser_command(command: str) -> str:
         api_key=api_key,
         system_prompt=PROMPT_PATH,
         tools=[browser],
-        max_iterations=10
+        max_iterations=20
     )
     return agent.input(command)
-
