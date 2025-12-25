@@ -1,85 +1,114 @@
-"""Test for issue #9 - structured output with managed keys using responses.parse endpoint"""
-import os
+"""Test structured output with managed keys for ALL models from billing.py.
+
+This ensures llm_do() with Pydantic output works for all providers via OpenOnion proxy.
+Uses beta.chat.completions.parse() which routes through /v1/chat/completions.
+
+Run selectively:
+    pytest tests/real_api/test_responses_parse.py -v                    # All models
+    pytest tests/real_api/test_responses_parse.py -k "openai" -v        # OpenAI only
+    pytest tests/real_api/test_responses_parse.py -k "gemini" -v        # Gemini only
+    pytest tests/real_api/test_responses_parse.py -k "anthropic" -v     # Anthropic only
+"""
+
 import pytest
-import time
-import requests
 from pydantic import BaseModel
-from nacl.signing import SigningKey
-from nacl.encoding import HexEncoder
 from connectonion import llm_do
 
 
-class EmailDraft(BaseModel):
-    """Email draft with subject and body"""
-    subject: str
-    body: str
+class MathAnswer(BaseModel):
+    """Simple structured output for testing."""
+    result: int
+    explanation: str
 
 
-def _is_localhost_available():
-    """Check if localhost:8000 is reachable."""
-    try:
-        requests.get("http://localhost:8000/health", timeout=2)
-        return True
-    except (requests.exceptions.ConnectionError, requests.exceptions.Timeout):
-        return False
+# =============================================================================
+# Model Lists from billing.py (grouped by provider)
+# =============================================================================
+
+OPENAI_MODELS = [
+    "co/gpt-4o-mini",
+    "co/gpt-4o",
+    "co/gpt-5",
+    "co/gpt-5-mini",
+    "co/gpt-5-nano",
+    "co/o4-mini",
+]
+
+GEMINI_MODELS = [
+    "co/gemini-2.5-flash",
+    "co/gemini-2.5-flash-lite",
+    "co/gemini-2.5-pro",
+    "co/gemini-2.0-flash",
+    "co/gemini-2.0-flash-lite",
+    "co/gemini-3-flash-preview",
+    "co/gemini-3-pro-preview",
+]
+
+# Note: Only Claude 4.5/4.1 models support structured outputs (per Anthropic docs Dec 2025)
+# Legacy models (claude-sonnet-4, claude-opus-4) do NOT support structured outputs
+ANTHROPIC_MODELS = [
+    "co/claude-haiku-4-5",
+    "co/claude-sonnet-4-5",
+    "co/claude-opus-4-5",
+    "co/claude-opus-4-1",
+]
+
+# Combine all models for comprehensive testing
+ALL_MANAGED_MODELS = OPENAI_MODELS + GEMINI_MODELS + ANTHROPIC_MODELS
 
 
-def get_test_token():
-    """Generate test auth token for local backend"""
-    signing_key = SigningKey.generate()
-    public_key = "0x" + signing_key.verify_key.encode(encoder=HexEncoder).decode()
-    timestamp = int(time.time())
-    message = f"ConnectOnion-Auth-{public_key}-{timestamp}"
-    signature = signing_key.sign(message.encode()).signature.hex()
+# =============================================================================
+# Parametrized Tests for Each Provider
+# =============================================================================
 
-    # Authenticate with local backend
-    response = requests.post(
-        "http://localhost:8000/api/v1/auth",
-        json={
-            "public_key": public_key,
-            "message": message,
-            "signature": signature
-        }
+@pytest.mark.parametrize("model", OPENAI_MODELS, ids=lambda m: m.replace("co/", ""))
+def test_openai_structured_output(model, auth_token, monkeypatch):
+    """Test structured output with OpenAI models via managed keys."""
+    monkeypatch.setenv("OPENONION_API_KEY", auth_token)
+
+    result = llm_do(
+        "What is 2 + 2? Give the result and a brief explanation.",
+        output=MathAnswer,
+        model=model
     )
 
-    if response.status_code != 200:
-        raise Exception(f"Auth failed: {response.status_code} - {response.text}")
+    assert isinstance(result, MathAnswer)
+    assert result.result == 4
+    assert len(result.explanation) > 0
+    print(f"\n✓ {model}: result={result.result}, explanation={result.explanation[:50]}...")
 
-    return response.json()["token"]
 
+@pytest.mark.parametrize("model", GEMINI_MODELS, ids=lambda m: m.replace("co/", ""))
+def test_gemini_structured_output(model, auth_token, monkeypatch):
+    """Test structured output with Gemini models via managed keys."""
+    monkeypatch.setenv("OPENONION_API_KEY", auth_token)
 
-@pytest.mark.skipif(
-    os.getenv("CI") or os.getenv("GITHUB_ACTIONS") or not _is_localhost_available(),
-    reason="Skipped in CI or when localhost:8000 is not available"
-)
-def test_structured_output_with_managed_keys(monkeypatch):
-    """Test that llm_do() with Pydantic output works with co/ models.
-
-    This tests the /v1/responses/parse endpoint on the backend.
-    """
-    # Use local backend for testing (monkeypatch ensures cleanup)
-    monkeypatch.setenv("OPENONION_DEV", "1")
-
-    # Get auth token
-    token = get_test_token()
-    monkeypatch.setenv("OPENONION_API_KEY", token)
-
-    draft = llm_do(
-        "Write a friendly hello email to a new colleague",
-        output=EmailDraft,
-        temperature=0.7,
-        model="co/gpt-4o-mini"
+    result = llm_do(
+        "What is 2 + 2? Give the result and a brief explanation.",
+        output=MathAnswer,
+        model=model
     )
 
-    # Verify we got a valid Pydantic model
-    assert isinstance(draft, EmailDraft)
-    assert isinstance(draft.subject, str)
-    assert isinstance(draft.body, str)
-    assert len(draft.subject) > 0
-    assert len(draft.body) > 0
+    assert isinstance(result, MathAnswer)
+    assert result.result == 4
+    assert len(result.explanation) > 0
+    print(f"\n✓ {model}: result={result.result}, explanation={result.explanation[:50]}...")
 
-    print(f"\n✓ Structured output test passed!")
-    print(f"Subject: {draft.subject}")
-    print(f"Body: {draft.body[:100]}...")
+
+@pytest.mark.parametrize("model", ANTHROPIC_MODELS, ids=lambda m: m.replace("co/", ""))
+def test_anthropic_structured_output(model, auth_token, monkeypatch):
+    """Test structured output with Anthropic models via managed keys."""
+    monkeypatch.setenv("OPENONION_API_KEY", auth_token)
+
+    result = llm_do(
+        "What is 2 + 2? Give the result and a brief explanation.",
+        output=MathAnswer,
+        model=model
+    )
+
+    assert isinstance(result, MathAnswer)
+    assert result.result == 4
+    assert len(result.explanation) > 0
+    print(f"\n✓ {model}: result={result.result}, explanation={result.explanation[:50]}...")
 
 

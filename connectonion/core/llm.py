@@ -734,28 +734,18 @@ class OpenOnionLLM(LLM):
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
-        """Get structured Pydantic output using OpenAI-compatible API."""
-        response = self.client.responses.parse(
+        """Get structured Pydantic output using OpenAI-compatible chat completions API.
+
+        Uses beta.chat.completions.parse() which routes through /v1/chat/completions,
+        allowing proper provider routing for Gemini, OpenAI, and other models.
+        """
+        completion = self.client.beta.chat.completions.parse(
             model=self.model,
-            input=messages,
-            text_format=output_schema,
+            messages=messages,
+            response_format=output_schema,
             **kwargs
         )
-
-        # Handle edge cases
-        if response.status == "incomplete":
-            if response.incomplete_details.reason == "max_output_tokens":
-                raise ValueError("Response incomplete: maximum output tokens reached")
-            elif response.incomplete_details.reason == "content_filter":
-                raise ValueError("Response incomplete: content filtered")
-
-        # Check for refusal
-        if response.output and len(response.output) > 0:
-            first_content = response.output[0].content[0] if response.output[0].content else None
-            if first_content and hasattr(first_content, 'type') and first_content.type == "refusal":
-                raise ValueError(f"Model refused to respond: {first_content.refusal}")
-
-        return response.output_parsed
+        return completion.choices[0].message.parsed
 
 
 def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:

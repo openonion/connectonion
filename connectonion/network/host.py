@@ -178,7 +178,7 @@ def health_handler(agent, start_time: float) -> dict:
 def info_handler(agent, trust: str) -> dict:
     """GET /info"""
     from .. import __version__
-    tools = agent.tools.list_names() if hasattr(agent.tools, "list_names") else []
+    tools = agent.tools.names() if hasattr(agent.tools, "names") else []
     return {
         "name": agent.name,
         "address": get_agent_address(agent),
@@ -382,7 +382,7 @@ def admin_sessions_handler() -> dict:
     Frontend handles the display logic.
     """
     import yaml
-    sessions_dir = Path(".co/sessions")
+    sessions_dir = Path(".co/evals")
     if not sessions_dir.exists():
         return {"sessions": []}
 
@@ -407,9 +407,11 @@ def _create_handlers(agent_template, result_ttl: int):
         agent_template: Agent used as template (deep-copied per request for isolation)
         result_ttl: How long to keep results on server in seconds
     """
-    def ws_input(prompt: str) -> str:
-        agent = copy.deepcopy(agent_template)
-        return agent.input(prompt)
+    def ws_input(prompt: str, connection) -> str:
+        """WebSocket input with bidirectional connection support."""
+        agent_template.reset_conversation()
+        agent_template.connection = connection
+        return agent_template.input(prompt)
 
     return {
         "input": lambda storage, prompt, ttl, session=None: input_handler(agent_template, storage, prompt, ttl, session),

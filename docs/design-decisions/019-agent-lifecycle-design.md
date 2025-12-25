@@ -23,7 +23,7 @@ This document describes the complete lifecycle of an Agent from initialization t
 │  Agent(name, tools, system_prompt, model, trust, ...)           │
 │                                                                  │
 │  1. Load system prompt (from string, file, or prompts/ folder)  │
-│  2. Create Logger (terminal + .co/logs/ + .co/sessions/)        │
+│  2. Create Logger (terminal + .co/logs/ + .co/evals/)        │
 │  3. Create trust agent (if trust parameter provided)            │
 │  4. Initialize event registry                                    │
 │  5. Register plugins and on_events handlers                      │
@@ -245,7 +245,7 @@ This document describes the complete lifecycle of an Agent from initialization t
               │  When LLM returns without tool_calls:            │
               │    1. Calculate turn duration                    │
               │    2. Aggregate turn data for YAML session       │
-              │    3. Log turn to .co/sessions/                  │
+              │    3. Log turn to .co/evals/                  │
               │    4. Fire @on_complete event                    │
               │    5. Return final response string               │
               └─────────────────────────────────────────────────┘
@@ -570,7 +570,7 @@ Agent(name="my_agent")
      │    └── .co/logs/my_agent.log (always, unless log=False)
      │
      └─── YAML Session Log
-          └── .co/sessions/my_agent_2025-12-03T10-30-00.yaml
+          └── .co/evals/my_agent_2025-12-03T10-30-00.yaml
 
 YAML Session Structure:
 ─────────────────────────

@@ -1,12 +1,40 @@
 """Unit tests for connectonion/logger.py"""
 
+import json
 import pytest
 import yaml
 from pathlib import Path
 from unittest.mock import patch, MagicMock, Mock
 
 import connectonion.logger as logger_mod
-from connectonion.logger import Logger
+from connectonion.logger import Logger, _slugify
+
+
+class TestSlugify:
+    """Test _slugify function for file naming."""
+
+    def test_simple_text(self):
+        assert _slugify("Say hello to Alice") == "say_hello_to_alice"
+
+    def test_special_characters(self):
+        assert _slugify("What's 2+2?") == "what_s_2_2"
+
+    def test_truncates_long_text(self):
+        long_text = "a" * 100
+        result = _slugify(long_text, max_length=50)
+        assert len(result) <= 50
+
+    def test_truncates_at_word_boundary(self):
+        result = _slugify("this is a very long sentence that exceeds limit", max_length=20)
+        # Should truncate at underscore boundary
+        assert "_" not in result[-1:]  # Doesn't end with underscore
+
+    def test_empty_returns_default(self):
+        assert _slugify("!!!") == "default"
+        assert _slugify("") == "default"
+
+    def test_strips_underscores(self):
+        assert _slugify("  hello  ") == "hello"
 
 
 class TestLoggerInit:
@@ -185,31 +213,19 @@ class TestFormatToolCall:
         assert result == "get_time()"
 
 
-class TestSessionLogging:
-    """Test YAML session logging."""
+class TestEvalLogging:
+    """Test YAML eval logging with new format."""
 
-    def test_start_session_creates_file(self, tmp_path, monkeypatch):
-        """Test start_session creates session file in .co/sessions/."""
+    def test_start_session_initializes_state(self, tmp_path, monkeypatch):
+        """Test start_session initializes state but doesn't create file yet."""
         monkeypatch.chdir(tmp_path)
 
         logger = Logger("test-agent", quiet=True)
         logger.start_session()
 
-        assert logger.session_file is not None
-        assert logger.session_file.parent == Path(".co/sessions")
-        assert "test-agent" in logger.session_file.name
-        assert logger.session_data is not None
-        assert logger.session_data["name"] == "test-agent"
-        assert logger.session_data["turns"] == []
-
-    def test_start_session_with_system_prompt(self, tmp_path, monkeypatch):
-        """Test start_session stores system prompt."""
-        monkeypatch.chdir(tmp_path)
-
-        logger = Logger("test-agent", quiet=True)
-        logger.start_session("You are a helpful assistant")
-
-        assert logger.session_data["system_prompt"] == "You are a helpful assistant"
+        # File not created until log_turn (lazy init)
+        assert logger.eval_file is None
+        assert logger.eval_data is None
 
     def test_start_session_disabled_when_log_false(self, tmp_path, monkeypatch):
         """Test start_session does nothing when log=False."""
@@ -218,10 +234,10 @@ class TestSessionLogging:
         logger = Logger("test-agent", log=False)
         logger.start_session()
 
-        assert logger.session_file is None
-        assert logger.session_data is None
+        assert logger.eval_file is None
+        assert logger.eval_data is None
 
-    def _create_mock_session(self, tool_calls=None):
+    def _create_mock_session(self, tool_calls=None, turn=1):
         """Helper to create mock session dict for log_turn."""
         mock_usage = Mock()
         mock_usage.input_tokens = 100
@@ -241,12 +257,54 @@ class TestSessionLogging:
 
         return {
             'trace': trace,
+            'turn': turn,
             'messages': [
                 {'role': 'system', 'content': 'You are helpful'},
                 {'role': 'user', 'content': 'test query'},
                 {'role': 'assistant', 'content': 'test result'}
             ]
         }
+
+    def test_log_turn_creates_file_from_input(self, tmp_path, monkeypatch):
+        """Test log_turn creates eval file named from first input."""
+        monkeypatch.chdir(tmp_path)
+
+        logger = Logger("test-agent", quiet=True)
+        logger.start_session()
+
+        session = self._create_mock_session()
+        logger.log_turn("Say hello to Alice", "Hello, Alice!", 1000, session, "gpt-4")
+
+        # File should be created with slugified input name
+        assert logger.eval_file == Path(".co/evals/say_hello_to_alice.yaml")
+        assert logger.eval_file.exists()
+
+    def test_log_turn_creates_run_yaml_for_messages(self, tmp_path, monkeypatch):
+        """Test log_turn creates run YAML file with messages."""
+        monkeypatch.chdir(tmp_path)
+
+        logger = Logger("test-agent", quiet=True)
+        logger.start_session()
+
+        session = self._create_mock_session()
+        logger.log_turn("Say hello", "Hello!", 100, session, "gpt-4")
+
+        # Run YAML file should exist
+        run_file = Path(".co/evals/say_hello/run_1.yaml")
+        assert run_file.exists()
+
+        # Verify content
+        with open(run_file) as f:
+            data = yaml.safe_load(f)
+
+        # Check metadata fields
+        assert data['model'] == 'gpt-4'
+        assert data['system_prompt'] == 'You are helpful'
+        assert 'messages' in data
+
+        # Messages should be parseable JSON
+        messages = json.loads(data['messages'])
+        assert len(messages) == 3  # system, user, assistant
 
     def test_log_turn_writes_yaml(self, tmp_path, monkeypatch):
         """Test log_turn writes turn data to YAML file."""
@@ -258,19 +316,22 @@ class TestSessionLogging:
         session = self._create_mock_session([{'name': 'search', 'args': {'query': 'test'}}])
         logger.log_turn("test query", "test result", 1000, session, "gpt-4")
 
-        # Verify file was written
-        assert logger.session_file.exists()
-
         # Verify content
-        with open(logger.session_file) as f:
+        with open(logger.eval_file) as f:
             data = yaml.safe_load(f)
 
-        assert data["name"] == "test-agent"
+        assert data["name"] == "test_query"
+        assert data["runs"] == 1
+        assert data["model"] == "gpt-4"
         assert len(data["turns"]) == 1
         assert data["turns"][0]["input"] == "test query"
-        assert data["turns"][0]["result"] == "test result"
-        assert data["turns"][0]["model"] == "gpt-4"
-        assert data["turns"][0]["duration_ms"] == 1000
+        assert data["turns"][0]["output"] == "test result"
+        assert data["turns"][0]["run"] == 1
+        # Metadata is now in compact JSON format
+        meta = json.loads(data["turns"][0]["meta"])
+        assert meta["duration_ms"] == 1000
+        assert meta["tokens"] == 150
+        assert meta["cost"] == 0.01
 
     def test_log_turn_tools_called_format(self, tmp_path, monkeypatch):
         """Test tools_called uses natural function-call format."""
@@ -285,7 +346,7 @@ class TestSessionLogging:
         ])
         logger.log_turn("test", "result", 100, session, "gpt-4")
 
-        with open(logger.session_file) as f:
+        with open(logger.eval_file) as f:
             data = yaml.safe_load(f)
 
         tools = data["turns"][0]["tools_called"]
@@ -299,56 +360,117 @@ class TestSessionLogging:
         logger = Logger("test-agent", quiet=True)
         logger.start_session()
 
-        session1 = self._create_mock_session()
-        session2 = self._create_mock_session()
+        session1 = self._create_mock_session(turn=1)
+        session2 = self._create_mock_session(turn=2)
 
         logger.log_turn("turn 1", "result 1", 100, session1, "gpt-4")
         logger.log_turn("turn 2", "result 2", 200, session2, "gpt-4")
 
-        with open(logger.session_file) as f:
+        with open(logger.eval_file) as f:
             data = yaml.safe_load(f)
 
         assert len(data["turns"]) == 2
         assert data["turns"][0]["input"] == "turn 1"
-        assert data["turns"][0]["turn"] == 1
         assert data["turns"][1]["input"] == "turn 2"
-        assert data["turns"][1]["turn"] == 2
-
-    def test_log_turn_aggregates_cost_and_tokens(self, tmp_path, monkeypatch):
-        """Test total_cost and total_tokens are aggregated across turns."""
-        monkeypatch.chdir(tmp_path)
-
-        logger = Logger("test-agent", quiet=True)
-        logger.start_session()
-
-        session1 = self._create_mock_session()  # cost=0.01, tokens=150
-        session2 = self._create_mock_session()  # cost=0.01, tokens=150
-
-        logger.log_turn("turn 1", "result 1", 100, session1, "gpt-4")
-        logger.log_turn("turn 2", "result 2", 200, session2, "gpt-4")
-
-        with open(logger.session_file) as f:
-            data = yaml.safe_load(f)
-
-        assert data["total_cost"] == 0.02
-        assert data["total_tokens"] == 300
 
     def test_log_turn_without_start_session(self, tmp_path, monkeypatch):
-        """Test log_turn does nothing if start_session not called."""
+        """Test log_turn does nothing if enable_sessions is False."""
         monkeypatch.chdir(tmp_path)
 
-        logger = Logger("test-agent", quiet=True)
-        # Don't call start_session
+        logger = Logger("test-agent", log=False)
 
         session = self._create_mock_session()
         # Should not raise error
         logger.log_turn("test", "result", 100, session, "gpt-4")
 
-        assert logger.session_file is None
+        assert logger.eval_file is None
 
 
-class TestSessionYAMLFormat:
-    """Test session YAML format matches design spec."""
+class TestRunTracking:
+    """Test run tracking for same input sequences."""
+
+    def _create_mock_session(self, turn=1):
+        """Helper to create mock session dict."""
+        mock_usage = Mock()
+        mock_usage.input_tokens = 100
+        mock_usage.output_tokens = 50
+        mock_usage.cost = 0.01
+
+        return {
+            'trace': [{'type': 'llm_call', 'usage': mock_usage}],
+            'turn': turn,
+            'messages': [
+                {'role': 'system', 'content': 'You are helpful'},
+                {'role': 'user', 'content': 'hello'},
+                {'role': 'assistant', 'content': 'Hi there!'}
+            ]
+        }
+
+    def test_same_input_increments_run(self, tmp_path, monkeypatch):
+        """Test same input sequence increments run counter."""
+        monkeypatch.chdir(tmp_path)
+
+        # First run
+        logger1 = Logger("test-agent", quiet=True)
+        logger1.start_session()
+        logger1.log_turn("hello", "Hi!", 100, self._create_mock_session(), "gpt-4")
+
+        # Second run (same input)
+        logger2 = Logger("test-agent", quiet=True)
+        logger2.start_session()
+        logger2.log_turn("hello", "Hello!", 150, self._create_mock_session(), "gpt-4")
+
+        # Verify runs counter
+        with open(Path(".co/evals/hello.yaml")) as f:
+            data = yaml.safe_load(f)
+
+        assert data["runs"] == 2
+
+    def test_history_tracking(self, tmp_path, monkeypatch):
+        """Test previous runs are moved to history."""
+        monkeypatch.chdir(tmp_path)
+
+        # First run
+        logger1 = Logger("test-agent", quiet=True)
+        logger1.start_session()
+        logger1.log_turn("hello", "First response", 100, self._create_mock_session(), "gpt-4")
+
+        # Second run
+        logger2 = Logger("test-agent", quiet=True)
+        logger2.start_session()
+        logger2.log_turn("hello", "Second response", 150, self._create_mock_session(), "gpt-4")
+
+        with open(Path(".co/evals/hello.yaml")) as f:
+            data = yaml.safe_load(f)
+
+        turn = data["turns"][0]
+        assert turn["output"] == "Second response"
+        assert turn["run"] == 2
+        assert len(turn["history"]) == 1
+        assert turn["history"][0]["output"] == "First response"
+        assert turn["history"][0]["run"] == 1
+
+    def test_multiple_run_yaml_files(self, tmp_path, monkeypatch):
+        """Test each run creates separate run YAML file."""
+        monkeypatch.chdir(tmp_path)
+
+        # First run
+        logger1 = Logger("test-agent", quiet=True)
+        logger1.start_session()
+        logger1.log_turn("hello", "Hi!", 100, self._create_mock_session(), "gpt-4")
+
+        # Second run
+        logger2 = Logger("test-agent", quiet=True)
+        logger2.start_session()
+        logger2.log_turn("hello", "Hello!", 150, self._create_mock_session(), "gpt-4")
+
+        # Both run YAML files should exist
+        assert Path(".co/evals/hello/run_1.yaml").exists()
+        assert Path(".co/evals/hello/run_2.yaml").exists()
+
+
+class TestEvalYAMLFormat:
+    """Test eval YAML format matches design spec."""
 
     def _create_mock_session(self):
         """Helper to create mock session dict."""
@@ -359,6 +481,7 @@ class TestSessionYAMLFormat:
 
         return {
             'trace': [{'type': 'llm_call', 'usage': mock_usage}],
+            'turn': 1,
             'messages': [
                 {'role': 'system', 'content': 'System prompt'},
                 {'role': 'user', 'content': 'test query'},
@@ -367,7 +490,7 @@ class TestSessionYAMLFormat:
         }
 
     def test_yaml_field_order(self, tmp_path, monkeypatch):
-        """Test YAML fields are in correct order: metadata, turns, system_prompt, messages."""
+        """Test YAML fields are in correct order."""
         monkeypatch.chdir(tmp_path)
 
         logger = Logger("test-agent", quiet=True)
@@ -375,42 +498,24 @@ class TestSessionYAMLFormat:
         logger.log_turn("test", "result", 100, self._create_mock_session(), "gpt-4")
 
         # Read raw file to check order
-        with open(logger.session_file) as f:
+        with open(logger.eval_file) as f:
             content = f.read()
 
         # Check order by finding positions
         name_pos = content.find("name:")
+        created_pos = content.find("created:")
+        runs_pos = content.find("runs:")
+        model_pos = content.find("model:")
         turns_pos = content.find("turns:")
-        system_prompt_pos = content.find("system_prompt:")
-        messages_pos = content.find("messages:")
 
-        assert name_pos < turns_pos < system_prompt_pos < messages_pos
-
-    def test_messages_keyed_by_turn_number(self, tmp_path, monkeypatch):
-        """Test messages are keyed by turn number (1, 2, 3...)."""
-        monkeypatch.chdir(tmp_path)
-
-        logger = Logger("test-agent", quiet=True)
-        logger.start_session()
-
-        session = self._create_mock_session()
-        logger.log_turn("turn 1", "result 1", 100, session, "gpt-4")
-        logger.log_turn("turn 2", "result 2", 200, session, "gpt-4")
-
-        with open(logger.session_file) as f:
-            data = yaml.safe_load(f)
-
-        assert 1 in data["messages"]
-        assert 2 in data["messages"]
-        assert isinstance(data["messages"][1], list)
-        assert isinstance(data["messages"][2], list)
+        assert name_pos < created_pos < runs_pos < model_pos < turns_pos
 
 
 class TestLoadMethods:
     """Test load_messages and load_session methods."""
 
-    def _setup_session_file(self, tmp_path, monkeypatch):
-        """Helper to set up a session file with test data."""
+    def _setup_eval_file(self, tmp_path, monkeypatch):
+        """Helper to set up an eval file with test data."""
         monkeypatch.chdir(tmp_path)
 
         logger = Logger("test-agent", quiet=True)
@@ -423,6 +528,7 @@ class TestLoadMethods:
 
         session = {
             'trace': [{'type': 'llm_call', 'usage': mock_usage}],
+            'turn': 1,
             'messages': [
                 {'role': 'system', 'content': 'You are a helpful assistant'},
                 {'role': 'user', 'content': 'hello'},
@@ -432,18 +538,52 @@ class TestLoadMethods:
         logger.log_turn("hello", "Hi there!", 100, session, "gpt-4")
         return logger
 
-    def test_load_messages_reconstructs_history(self, tmp_path, monkeypatch):
-        """Test load_messages reconstructs full message history."""
-        logger = self._setup_session_file(tmp_path, monkeypatch)
+    def test_load_messages_from_jsonl(self, tmp_path, monkeypatch):
+        """Test load_messages reads from JSONL file."""
+        logger = self._setup_eval_file(tmp_path, monkeypatch)
 
         messages = logger.load_messages()
 
-        assert len(messages) >= 1
+        assert len(messages) == 3
         assert messages[0]["role"] == "system"
         assert messages[0]["content"] == "You are a helpful assistant"
+        assert messages[1]["role"] == "user"
+        assert messages[2]["role"] == "assistant"
+
+    def test_load_messages_specific_run(self, tmp_path, monkeypatch):
+        """Test load_messages can load specific run."""
+        monkeypatch.chdir(tmp_path)
+
+        # First run
+        logger1 = Logger("test-agent", quiet=True)
+        logger1.start_session()
+        session1 = {
+            'trace': [{'type': 'llm_call', 'usage': Mock(input_tokens=100, output_tokens=50, cost=0.01)}],
+            'turn': 1,
+            'messages': [{'role': 'user', 'content': 'run 1'}]
+        }
+        logger1.log_turn("hello", "response 1", 100, session1, "gpt-4")
+
+        # Second run
+        logger2 = Logger("test-agent", quiet=True)
+        logger2.start_session()
+        session2 = {
+            'trace': [{'type': 'llm_call', 'usage': Mock(input_tokens=100, output_tokens=50, cost=0.01)}],
+            'turn': 1,
+            'messages': [{'role': 'user', 'content': 'run 2'}]
+        }
+        logger2.log_turn("hello", "response 2", 100, session2, "gpt-4")
+
+        # Load run 1
+        messages = logger2.load_messages(run=1)
+        assert messages[0]["content"] == "run 1"
+
+        # Load run 2
+        messages = logger2.load_messages(run=2)
+        assert messages[0]["content"] == "run 2"
 
     def test_load_messages_empty_when_no_file(self, tmp_path, monkeypatch):
-        """Test load_messages returns empty list when no session file."""
+        """Test load_messages returns empty list when no eval file."""
         monkeypatch.chdir(tmp_path)
         logger = Logger("test-agent", quiet=True)
         # Don't call start_session
@@ -452,13 +592,13 @@ class TestLoadMethods:
         assert messages == []
 
     def test_load_session_returns_data(self, tmp_path, monkeypatch):
-        """Test load_session returns session data dict."""
-        logger = self._setup_session_file(tmp_path, monkeypatch)
+        """Test load_session returns eval data dict."""
+        logger = self._setup_eval_file(tmp_path, monkeypatch)
 
         data = logger.load_session()
 
-        assert data["name"] == "test-agent"
-        assert data["system_prompt"] == "You are a helpful assistant"
+        assert data["name"] == "hello"
+        assert data["runs"] == 1
         assert len(data["turns"]) == 1
         assert data["turns"][0]["input"] == "hello"
 
@@ -470,4 +610,40 @@ class TestLoadMethods:
 
         data = logger.load_session()
 
-        assert data == {'system_prompt': '', 'turns': [], 'messages': {}}
+        assert data == {'turns': [], 'runs': 0}
+
+
+class TestGetEvalPath:
+    """Test get_eval_path method."""
+
+    def test_returns_path_after_log_turn(self, tmp_path, monkeypatch):
+        """Test get_eval_path returns path after logging."""
+        monkeypatch.chdir(tmp_path)
+
+        logger = Logger("test-agent", quiet=True)
+        logger.start_session()
+
+        mock_usage = Mock()
+        mock_usage.input_tokens = 100
+        mock_usage.output_tokens = 50
+        mock_usage.cost = 0.01
+
+        session = {
+            'trace': [{'type': 'llm_call', 'usage': mock_usage}],
+            'turn': 1,
+            'messages': []
+        }
+        logger.log_turn("hello", "hi", 100, session, "gpt-4")
+
+        path = logger.get_eval_path()
+        assert path == ".co/evals/hello.yaml"
+
+    def test_returns_none_before_log_turn(self, tmp_path, monkeypatch):
+        """Test get_eval_path returns None before first log."""
+        monkeypatch.chdir(tmp_path)
+
+        logger = Logger("test-agent", quiet=True)
+        logger.start_session()
+
+        path = logger.get_eval_path()
+        assert path is None

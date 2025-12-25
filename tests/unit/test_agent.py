@@ -482,3 +482,78 @@ def test_method_with_complex_parameters():
         assert "multiplier" in schema["parameters"]["properties"]
         assert schema["parameters"]["properties"]["data"]["type"] == "array"
         assert schema["parameters"]["properties"]["multiplier"]["type"] == "integer"
+
+
+class TestAgentConnection:
+    """Test agent.connection property for hosted execution."""
+
+    def test_connection_defaults_to_none(self):
+        """Agent.connection should be None by default (local execution)."""
+        agent = Agent(name="test", api_key="fake")
+        assert agent.connection is None
+
+    def test_connection_can_be_set(self):
+        """Agent.connection can be set to a Connection instance."""
+        from connectonion.network.connection import Connection
+        from unittest.mock import Mock
+
+        agent = Agent(name="test", api_key="fake")
+        mock_connection = Mock(spec=Connection)
+
+        agent.connection = mock_connection
+
+        assert agent.connection == mock_connection
+
+    def test_connection_available_in_event_handlers(self):
+        """Agent.connection should be accessible in event handlers."""
+        from connectonion import after_llm
+        from unittest.mock import Mock
+
+        connection_in_handler = [None]
+
+        @after_llm
+        def capture_connection(agent):
+            connection_in_handler[0] = agent.connection
+
+        mock_llm = Mock()
+        mock_llm.model = "test"
+        mock_llm.complete.return_value = LLMResponse(
+            content="test",
+            tool_calls=[],
+            raw_response=None,
+            usage=TokenUsage()
+        )
+
+        mock_connection = Mock()
+        agent = Agent(name="test", llm=mock_llm, on_events=[capture_connection], quiet=True, log=False)
+        agent.connection = mock_connection
+
+        agent.input("test")
+
+        assert connection_in_handler[0] == mock_connection
+
+    def test_connection_none_in_local_execution(self):
+        """Agent.connection should remain None during local execution."""
+        from connectonion import after_llm
+
+        connection_in_handler = [None]
+
+        @after_llm
+        def capture_connection(agent):
+            connection_in_handler[0] = agent.connection
+
+        mock_llm = Mock()
+        mock_llm.model = "test"
+        mock_llm.complete.return_value = LLMResponse(
+            content="test",
+            tool_calls=[],
+            raw_response=None,
+            usage=TokenUsage()
+        )
+
+        agent = Agent(name="test", llm=mock_llm, on_events=[capture_connection], quiet=True, log=False)
+        # Don't set connection (local execution)
+
+        agent.input("test")
+
+        assert connection_in_handler[0] is None

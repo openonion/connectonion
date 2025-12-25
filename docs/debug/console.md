@@ -20,7 +20,7 @@ When you run an agent, you'll see the onion stack banner and execution flow:
 ●     ────────────────────
       connectonion v0.5.1
       co/o4-mini · 3 tools
-      .co/logs/ · .co/sessions/
+      .co/logs/ · .co/evals/
       ────────────────────
 
 [co] > "Generate a Python function"
@@ -85,7 +85,7 @@ agent = Agent("assistant", log="agent.log")
 
 Log locations:
 - Plain text: `.co/logs/{name}.log`
-- Session YAML: `.co/sessions/{name}.yaml`
+- Session YAML: `.co/evals/{name}.yaml`
 
 ## Quiet Mode
 

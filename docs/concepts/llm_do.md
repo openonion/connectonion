@@ -114,19 +114,43 @@ result = llm_do(
 ### Supported Models
 
 ```python
-# OpenAI models
-llm_do("Hello", model="gpt-4o")
-llm_do("Hello", model="gpt-4o-mini")
-llm_do("Hello", model="gpt-3.5-turbo")
+# OpenAI models (via managed keys)
+llm_do("Hello", model="co/gpt-5")
+llm_do("Hello", model="co/gpt-4o-mini")
+llm_do("Hello", model="co/o4-mini")
 
-# Google Gemini models
-llm_do("Hello", model="gemini-1.5-pro")
-llm_do("Hello", model="gemini-1.5-flash")
+# Google Gemini models (via managed keys)
+llm_do("Hello", model="co/gemini-2.5-pro")
+llm_do("Hello", model="co/gemini-2.5-flash")
 
-# Anthropic Claude models  
-llm_do("Hello", model="claude-3-5-sonnet-latest")
-llm_do("Hello", model="claude-3-5-haiku-20241022")
-llm_do("Hello", model="claude-3-opus-latest")
+# Anthropic Claude models (via managed keys)
+llm_do("Hello", model="co/claude-sonnet-4-5")
+llm_do("Hello", model="co/claude-haiku-4-5")
+```
+
+### Structured Output Model Compatibility
+
+When using `output=` with Pydantic models, note these compatibility differences:
+
+| Provider | Structured Output Support |
+|----------|--------------------------|
+| **OpenAI** | All models |
+| **Google Gemini** | All models |
+| **Anthropic Claude** | Only 4.5/4.1 series (claude-sonnet-4-5, claude-opus-4-5, claude-opus-4-1, claude-haiku-4-5) |
+
+```python
+from pydantic import BaseModel
+
+class Answer(BaseModel):
+    result: int
+
+# Works with all providers
+llm_do("What is 2+2?", output=Answer, model="co/gpt-4o-mini")      # ✅
+llm_do("What is 2+2?", output=Answer, model="co/gemini-2.5-flash") # ✅
+llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4-5") # ✅
+
+# Legacy Claude models do NOT support structured output
+# llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4") # ❌
 ```
 
 ## Parameters

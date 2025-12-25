@@ -6,12 +6,47 @@ requests. Separated from host.py for better testing and smaller file size.
 Design decision: Raw ASGI instead of Starlette/FastAPI for full protocol control.
 See: docs/design-decisions/022-raw-asgi-implementation.md
 """
+import asyncio
 import hmac
 import json
 import os
+import queue
+import threading
 from pathlib import Path
+from typing import Any, Dict
 
 from pydantic import BaseModel
+
+from .connection import Connection
+
+
+class AsyncToSyncConnection(Connection):
+    """Bridge async WebSocket to sync Connection interface.
+
+    Uses queues to communicate between async WebSocket handler and sync agent code.
+    The agent runs in a thread, sending/receiving via queues.
+    The async handler pumps messages between WebSocket and queues.
+    """
+
+    def __init__(self):
+        self._outgoing: queue.Queue[Dict[str, Any]] = queue.Queue()
+        self._incoming: queue.Queue[Dict[str, Any]] = queue.Queue()
+        self._closed = False
+
+    def send(self, event: Dict[str, Any]) -> None:
+        """Queue event to be sent to client."""
+        if not self._closed:
+            self._outgoing.put(event)
+
+    def receive(self) -> Dict[str, Any]:
+        """Block until response from client."""
+        return self._incoming.get()
+
+    def close(self):
+        """Mark connection as closed."""
+        self._closed = True
+        # Unblock any waiting receive
+        self._incoming.put({"type": "connection_closed"})
 
 
 def _json_default(obj):
@@ -190,6 +225,11 @@ async def handle_websocket(
 ):
     """Handle WebSocket connections at /ws.
 
+    Supports bidirectional communication via Connection interface:
+    - Agent sends events via connection.log() / connection.send()
+    - Agent requests approval via connection.request_approval()
+    - Client responds to approval requests
+
     Args:
         scope: ASGI scope dict
         receive: ASGI receive callable
@@ -229,9 +269,89 @@ async def handle_websocket(
                     await send({"type": "websocket.send",
                                "text": json.dumps({"type": "ERROR", "message": "prompt required"})})
                     continue
-                result = handlers["ws_input"](prompt)
+
+                # Create connection for bidirectional communication
+                connection = AsyncToSyncConnection()
+                agent_done = threading.Event()
+                result_holder = [None]
+
+                def run_agent():
+                    result_holder[0] = handlers["ws_input"](prompt, connection)
+                    agent_done.set()
+
+                # Start agent in thread
+                agent_thread = threading.Thread(target=run_agent, daemon=True)
+                agent_thread.start()
+
+                # Pump messages between WebSocket and connection
+                await _pump_messages(receive, send, connection, agent_done)
+
+                # Send final result
                 await send({"type": "websocket.send",
-                           "text": json.dumps({"type": "OUTPUT", "result": result})})
+                           "text": json.dumps({"type": "OUTPUT", "result": result_holder[0]})})
+
+
+async def _pump_messages(ws_receive, ws_send, connection: AsyncToSyncConnection, agent_done: threading.Event):
+    """Pump messages between WebSocket and connection queues.
+
+    Runs until agent completes. Handles:
+    - Outgoing: connection._outgoing queue → WebSocket
+    - Incoming: WebSocket → connection._incoming queue (for approval responses)
+    """
+    loop = asyncio.get_event_loop()
+
+    async def send_outgoing():
+        """Send outgoing messages from connection to WebSocket."""
+        while not agent_done.is_set():
+            # Use run_in_executor for blocking queue.get
+            try:
+                event = await loop.run_in_executor(
+                    None, lambda: connection._outgoing.get(timeout=0.05)
+                )
+                await ws_send({"type": "websocket.send", "text": json.dumps(event)})
+            except queue.Empty:
+                pass
+
+        # Drain remaining
+        while True:
+            try:
+                event = connection._outgoing.get_nowait()
+                await ws_send({"type": "websocket.send", "text": json.dumps(event)})
+            except queue.Empty:
+                break
+
+    async def receive_incoming():
+        """Receive incoming messages from WebSocket to connection."""
+        while not agent_done.is_set():
+            try:
+                msg = await asyncio.wait_for(ws_receive(), timeout=0.1)
+                if msg["type"] == "websocket.receive":
+                    try:
+                        data = json.loads(msg.get("text", "{}"))
+                        connection._incoming.put(data)
+                    except json.JSONDecodeError:
+                        pass
+                elif msg["type"] == "websocket.disconnect":
+                    connection.close()
+                    break
+            except asyncio.TimeoutError:
+                continue
+
+    # Run both tasks concurrently
+    send_task = asyncio.create_task(send_outgoing())
+    recv_task = asyncio.create_task(receive_incoming())
+
+    # Wait for agent to complete
+    while not agent_done.is_set():
+        await asyncio.sleep(0.05)
+
+    # Cancel receive task and wait for send to finish draining
+    recv_task.cancel()
+    try:
+        await recv_task
+    except asyncio.CancelledError:
+        pass
+    await send_task
 
 
 def create_app(

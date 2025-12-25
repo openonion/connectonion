@@ -5,7 +5,7 @@ ConnectOnion automatically logs agent activity to files for debugging and analys
 ## Quick Start
 
 ```python
-# Default: logs to .co/logs/{name}.log + .co/sessions/{name}_{timestamp}.yaml
+# Default: logs to .co/logs/{name}.log + .co/evals/{name}_{timestamp}.yaml
 agent = Agent("assistant")
 
 # Quiet mode: no console output, but sessions still recorded
@@ -52,7 +52,7 @@ Session started: 2024-12-02 10:32:14
 [10:32:16] [OK] Complete (2.3s)
 ```
 
-## Session YAML Format (.co/sessions/)
+## Session YAML Format (.co/evals/)
 
 Sessions are saved as YAML for replay and eval:
 
@@ -89,7 +89,7 @@ grep ERROR .co/logs/assistant.log
 grep "Tool:" .co/logs/assistant.log
 
 # List sessions
-ls -la .co/sessions/
+ls -la .co/evals/
 ```
 
 ## Environment Variable
@@ -104,7 +104,7 @@ CONNECTONION_LOG=debug.log python agent.py
 Add to `.gitignore`:
 ```
 .co/logs/
-.co/sessions/
+.co/evals/
 *.log
 ```
 

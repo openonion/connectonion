@@ -110,7 +110,7 @@ class Console:
         ●     ─────────────────────
               connectonion v0.5.1
               o4-mini · 3 tools
-              .co/logs/ · .co/sessions/
+              .co/logs/ · .co/evals/
 
         Args:
             agent_name: Name of the agent
@@ -156,7 +156,7 @@ class Console:
 
         # Add log paths if logging is enabled
         if log_dir:
-            lines.append(f"      [{DIM_COLOR}]{log_dir}logs/ · {log_dir}sessions/[/{DIM_COLOR}]")
+            lines.append(f"      [{DIM_COLOR}]{log_dir}logs/ · {log_dir}evals/[/{DIM_COLOR}]")
 
         # Add Aaron's message for free tier users
         if aaron_message:
@@ -182,7 +182,7 @@ class Console:
             if meta_line:
                 plain_lines.append(f"      {meta_line}")
             if log_dir:
-                plain_lines.append(f"      {log_dir}logs/ · {log_dir}sessions/")
+                plain_lines.append(f"      {log_dir}logs/ · {log_dir}evals/")
             if aaron_message:
                 plain_lines.append(f"      {aaron_message}")
             plain_lines.append(f"      {separator}")
@@ -484,12 +484,12 @@ class Console:
 
         [co] ═══════════════════════════════════════
         [co] ✓ done · 2.3k tokens · $0.005 · 3.4s
-        [co]   saved → .co/sessions/research-assistant.yaml
+        [co]   saved → .co/evals/research-assistant.yaml
 
         Args:
             duration_s: Total duration in seconds
             session: Agent's current_session dict (contains trace with usage)
-            session_path: Optional path to session file
+            session_path: Optional path to eval file
         """
         # Calculate totals from trace
         trace = session.get('trace', [])

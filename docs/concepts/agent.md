@@ -629,7 +629,7 @@ Session started: 2024-12-02 10:32:14
 [10:32:15] [OK] Complete (0.4s)
 ```
 
-**3. Session YAML (`.co/sessions/{name}_{timestamp}.yaml`):**
+**3. Session YAML (`.co/evals/{name}_{timestamp}.yaml`):**
 ```yaml
 name: bot
 timestamp: 2024-12-02 10:32:14

@@ -115,7 +115,7 @@ def auth_payload(signing_keypair):
 def auth_token(auth_payload):
     """Get authentication token from production API. Skips if auth fails."""
     response = requests.post(
-        "https://oo.openonion.ai/auth",
+        "https://oo.openonion.ai/api/v1/auth",
         json=auth_payload,
         timeout=10,
         headers={"Content-Type": "application/json"}

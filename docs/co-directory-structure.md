@@ -144,7 +144,7 @@ The following should ALWAYS be in `.gitignore`:
 # ConnectOnion sensitive files
 .co/keys/          # Private keys - NEVER commit
 .co/logs/          # May contain sensitive data
-.co/sessions/      # Session data
+.co/evals/      # Session data
 .env               # API keys
 ```
 

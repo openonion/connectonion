@@ -514,7 +514,7 @@ Results are stored locally in `.co/session_results.jsonl` (JSON Lines format):
 ```
 
 **Why `.co/` folder?**
-- Consistent with `.co/logs/` and `.co/sessions/` (existing patterns)
+- Consistent with `.co/logs/` and `.co/evals/` (existing patterns)
 - Project-specific (each project has its own results)
 - Already in `.gitignore`
 - Easy to find (in project directory)

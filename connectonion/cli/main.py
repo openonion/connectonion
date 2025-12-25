@@ -55,6 +55,7 @@ def _show_help():
     console.print("  [green]create[/green]  <name>     Create new project")
     console.print("  [green]init[/green]              Initialize in current directory")
     console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
+    console.print("  [green]eval[/green]              Run evals and show status")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]status[/green]            Check account balance")
@@ -150,6 +151,16 @@ def copy(
     """Copy built-in tools/plugins to customize."""
     from .commands.copy_commands import handle_copy
     handle_copy(names=names or [], list_all=list_all, path=path, force=force)
+
+
+@app.command()
+def eval(
+    name: Optional[str] = typer.Argument(None, help="Specific eval name"),
+    agent: Optional[str] = typer.Option(None, "--agent", "-a", help="Agent file (overrides YAML)"),
+):
+    """Run evals and show results."""
+    from .commands.eval_commands import handle_eval
+    handle_eval(name=name, agent_file=agent)
 
 
 def cli():

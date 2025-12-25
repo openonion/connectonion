@@ -256,5 +256,72 @@ class TestHostConsoleOutput:
                                 assert 'disabled' in panel_content
 
 
+class TestCreateHandlers:
+    """Test _create_handlers function."""
+
+    def test_creates_ws_input_handler(self, mock_agent):
+        """Test that _create_handlers creates ws_input handler."""
+        handlers = host_module._create_handlers(mock_agent, result_ttl=3600)
+
+        assert "ws_input" in handlers
+        assert callable(handlers["ws_input"])
+
+    def test_creates_ws_input_with_connection_handler(self, mock_agent):
+        """Test that _create_handlers creates ws_input_with_connection handler."""
+        handlers = host_module._create_handlers(mock_agent, result_ttl=3600)
+
+        assert "ws_input_with_connection" in handlers
+        assert callable(handlers["ws_input_with_connection"])
+
+    def test_ws_input_deep_copies_agent(self, mock_agent):
+        """Test that ws_input creates a deep copy of agent."""
+        handlers = host_module._create_handlers(mock_agent, result_ttl=3600)
+
+        # Track if agent.input was called
+        mock_agent.input = Mock(return_value="result")
+
+        with patch('copy.deepcopy') as mock_copy:
+            mock_copied_agent = Mock()
+            mock_copied_agent.input = Mock(return_value="copied result")
+            mock_copy.return_value = mock_copied_agent
+
+            result = handlers["ws_input"]("test prompt")
+
+            mock_copy.assert_called_once_with(mock_agent)
+            mock_copied_agent.input.assert_called_once_with("test prompt")
+
+    def test_ws_input_with_connection_injects_connection(self, mock_agent):
+        """Test that ws_input_with_connection injects connection into agent."""
+        handlers = host_module._create_handlers(mock_agent, result_ttl=3600)
+
+        mock_connection = Mock()
+
+        with patch('copy.deepcopy') as mock_copy:
+            mock_copied_agent = Mock()
+            mock_copied_agent.input = Mock(return_value="result with connection")
+            mock_copy.return_value = mock_copied_agent
+
+            result = handlers["ws_input_with_connection"]("test prompt", mock_connection)
+
+            # Verify connection was injected
+            assert mock_copied_agent.connection == mock_connection
+            mock_copied_agent.input.assert_called_once_with("test prompt")
+
+    def test_ws_input_with_connection_returns_result(self, mock_agent):
+        """Test that ws_input_with_connection returns agent result."""
+        handlers = host_module._create_handlers(mock_agent, result_ttl=3600)
+
+        mock_connection = Mock()
+
+        with patch('copy.deepcopy') as mock_copy:
+            mock_copied_agent = Mock()
+            mock_copied_agent.input = Mock(return_value="expected result")
+            mock_copy.return_value = mock_copied_agent
+
+            result = handlers["ws_input_with_connection"]("prompt", mock_connection)
+
+            assert result == "expected result"
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

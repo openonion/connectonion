@@ -6,6 +6,7 @@ Connect and collaborate between agents.
 
 - [host.md](host.md) - Make agents network-accessible with `host()`
 - [connect.md](connect.md) - Connect to remote agents with `connect()`
+- [connection.md](connection.md) - Stream events and communicate with clients
 
 ## Protocol Specifications
 

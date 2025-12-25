@@ -242,7 +242,7 @@ class TestPrintBanner:
 
         output = _collect_print_output(mock_print)
         assert ".co/logs/" in output
-        assert ".co/sessions/" in output
+        assert ".co/evals/" in output
 
     @patch('connectonion.console._rich_console.print')
     def test_print_banner_shows_separator(self, mock_print):

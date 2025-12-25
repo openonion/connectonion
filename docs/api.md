@@ -153,7 +153,7 @@ tool = create_tool_from_function(simple_function)
 Automatic activity logging for agents. Three output destinations:
 - **Console**: Rich-formatted terminal output
 - **Plain text**: `.co/logs/{name}.log`
-- **Session YAML**: `.co/sessions/{name}_{timestamp}.yaml`
+- **Session YAML**: `.co/evals/{name}_{timestamp}.yaml`
 
 ### Configuration
 

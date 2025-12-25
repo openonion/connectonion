@@ -2,6 +2,7 @@
 
 This module contains:
 - host: Host an agent over HTTP/WebSocket
+- Connection: Base class for agent-client communication
 - asgi: ASGI app implementation
 - relay: Agent relay server for P2P discovery
 - connect: Multi-agent networking (RemoteAgent)
@@ -10,6 +11,7 @@ This module contains:
 """
 
 from .host import host, create_app, SessionStorage, Session
+from .connection import Connection
 from .connect import connect, RemoteAgent
 from .relay import connect as relay_connect, serve_loop
 from .announce import create_announce_message
@@ -19,6 +21,7 @@ from . import relay, announce
 __all__ = [
     "host",
     "create_app",
+    "Connection",
     "SessionStorage",
     "Session",
     "connect",

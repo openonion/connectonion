@@ -87,7 +87,7 @@ turns:
 
 ## Workflow
 
-1. Run agent → auto-saves to `.co/sessions/`
+1. Run agent → auto-saves to `.co/evals/`
 2. Add `eval:` to turns you want to test
 3. Change prompt → run evals
 4. LLM judges: did tools match? Is result similar?

@@ -235,6 +235,36 @@ All prices are **per 1M tokens** and match official provider pricing:
 # - 66 requests with claude-sonnet-4-5
 ```
 
+### Structured Output Support
+
+Structured outputs (`llm_do` with Pydantic models) work with most models, but with some limitations:
+
+| Provider | Models with Structured Output | Notes |
+|----------|------------------------------|-------|
+| **OpenAI** | All models | Full support |
+| **Google Gemini** | All models | Full support via OpenAI-compatible API |
+| **Anthropic Claude** | claude-sonnet-4-5, claude-opus-4-5, claude-opus-4-1, claude-haiku-4-5 | Uses native structured outputs (Dec 2025) |
+
+**Note:** Legacy Claude models (claude-sonnet-4, claude-opus-4) do NOT support structured outputs. Use Claude 4.5 or 4.1 series for structured output tasks.
+
+```python
+from connectonion import llm_do
+from pydantic import BaseModel
+
+class Result(BaseModel):
+    answer: int
+    explanation: str
+
+# Works with all OpenAI and Gemini models
+result = llm_do("What is 2+2?", output=Result, model="co/gpt-4o-mini")
+result = llm_do("What is 2+2?", output=Result, model="co/gemini-2.5-flash")
+
+# Works with Claude 4.5/4.1 models only
+result = llm_do("What is 2+2?", output=Result, model="co/claude-sonnet-4-5")  # ✅
+result = llm_do("What is 2+2?", output=Result, model="co/claude-haiku-4-5")   # ✅
+# result = llm_do("What is 2+2?", output=Result, model="co/claude-sonnet-4") # ❌ Not supported
+```
+
 ### Tool Use Support
 
 All models support function calling / tool use:

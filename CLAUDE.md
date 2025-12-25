@@ -243,7 +243,7 @@ connectonion/
 - **Logger class**: Unified facade for terminal output + plain text + YAML sessions
 - **Console output**: Rich-formatted terminal output (unless `quiet=True`)
 - **Plain text logs**: `.co/logs/{agent_name}.log` (automatic audit trail)
-- **YAML sessions**: `.co/sessions/{agent_name}_{timestamp}.yaml` (for eval/replay)
+- **YAML sessions**: `.co/evals/{agent_name}_{timestamp}.yaml` (for eval/replay)
 - **Parameters**:
   - `quiet=True`: Suppress console output, keep session logging
   - `log=False`: Disable all logging (console still shows)

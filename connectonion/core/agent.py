@@ -2,9 +2,9 @@
 Purpose: Orchestrate AI agent execution with LLM calls, tool execution, and automatic logging
 LLM-Note:
   Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, logger.py, tool_executor.py, tool_registry.py] | imported by [__init__.py, debug_agent/__init__.py] | tested by [tests/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py]
-  Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → logger logs to .co/logs/{name}.log and .co/sessions/{name}_{timestamp}.yaml → returns final response: str
-  State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log and .co/sessions/ via logger.py
-  Integration: exposes Agent(name, tools, system_prompt, model, log, quiet), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path | quiet=True suppresses console but keeps session logging | trust enforcement moved to host() for network access control
+  Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → logger logs to .co/logs/{name}.log and .co/evals/{name}.yaml → returns final response: str
+  State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log and .co/evals/ via logger.py
+  Integration: exposes Agent(name, tools, system_prompt, model, log, quiet), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path | quiet=True suppresses console but keeps eval logging | trust enforcement moved to host() for network access control
   Performance: max_iterations=10 default (configurable per-input) | session state persists across turns for multi-turn conversations | ToolRegistry provides O(1) tool lookup via .get() or attribute access
   Errors: LLM errors bubble up | tool execution errors captured in trace and returned to LLM for retry
 """
@@ -51,11 +51,14 @@ class Agent:
         # Current session context (runtime only)
         self.current_session = None
 
+        # Connection to client (None locally, injected by host() for WebSocket)
+        self.connection = None
+
         # Token usage tracking
         self.total_cost: float = 0.0  # Cumulative cost in USD
         self.last_usage: Optional[TokenUsage] = None  # From most recent LLM call
 
-        # Initialize logger (unified: terminal + file + YAML sessions)
+        # Initialize logger (unified: terminal + file + YAML evals)
         # Environment variable override (highest priority)
         effective_log = log
         if os.getenv('CONNECTONION_LOG'):
@@ -250,15 +253,15 @@ class Agent:
 
         self.current_session['result'] = result
 
-        # Print completion summary
-        if self.logger.console:
-            session_path = f".co/sessions/{self.name}.yaml" if self.logger.enable_sessions else None
-            self.logger.console.print_completion(duration, self.current_session, session_path)
-
         self._invoke_events('on_complete')
 
-        # Log turn to YAML session (after on_complete so handlers can modify state)
+        # Log turn to YAML eval (after on_complete so handlers can modify state)
         self.logger.log_turn(prompt, result, duration * 1000, self.current_session, self.llm.model)
+
+        # Print completion summary (after log_turn so we have the eval path)
+        if self.logger.console:
+            eval_path = self.logger.get_eval_path()
+            self.logger.console.print_completion(duration, self.current_session, eval_path)
 
         return result
 
