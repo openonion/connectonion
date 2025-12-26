@@ -53,7 +53,7 @@ class BrowserAutomation:
     Supports Chrome profile for persistent sessions.
     """
 
-    def __init__(self, use_chrome_profile: bool = False, headless: bool = True):
+    def __init__(self, use_chrome_profile: bool = True, headless: bool = True):
         """Initialize browser automation.
 
         Args:
@@ -119,7 +119,7 @@ class BrowserAutomation:
             self.browser = self.playwright.chromium.launch_persistent_context(
                 str(chromium_profile),
                 headless=headless,
-                args=['--disable-blink-features=AutomationControlled'],
+                args=['--no-sandbox', '--disable-setuid-sandbox', '--disable-blink-features=AutomationControlled'],
                 ignore_default_args=['--enable-automation'],
                 timeout=120000,
             )
@@ -127,10 +127,12 @@ class BrowserAutomation:
             self.page.add_init_script("""
                 Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
             """)
+            self.page.set_viewport_size({"width": 1920, "height": 1080})
             return f"Browser opened with Chrome profile: {chromium_profile}"
         else:
             self.browser = self.playwright.chromium.launch(headless=headless)
             self.page = self.browser.new_page()
+            self.page.set_viewport_size({"width": 1920, "height": 1080})
             return "Browser opened successfully"
 
     def go_to(self, url: str) -> str:
@@ -306,27 +308,6 @@ class BrowserAutomation:
         self.page.set_viewport_size({"width": width, "height": height})
         return f"Viewport set to {width}x{height}"
 
-    def screenshot_mobile(self, url: str = None) -> str:
-        """Take screenshot with iPhone viewport (390x844)."""
-        if url:
-            self.go_to(url)
-        self.set_viewport(390, 844)
-        return self.take_screenshot()
-
-    def screenshot_tablet(self, url: str = None) -> str:
-        """Take screenshot with iPad viewport (768x1024)."""
-        if url:
-            self.go_to(url)
-        self.set_viewport(768, 1024)
-        return self.take_screenshot()
-
-    def screenshot_desktop(self, url: str = None) -> str:
-        """Take screenshot with desktop viewport (1920x1080)."""
-        if url:
-            self.go_to(url)
-        self.set_viewport(1920, 1080)
-        return self.take_screenshot()
-
     def find_forms(self) -> List[FormField]:
         """Find all form fields on the current page."""
         if not self.page:
@@ -440,69 +421,13 @@ class BrowserAutomation:
         return f"Waited for {seconds} seconds"
 
     def scroll(self, times: int = 5, description: str = "the main content area") -> str:
-        """Universal scroll with automatic strategy selection.
+        """Universal scroll with AI strategy and fallback.
 
-        Tries multiple strategies until one works:
-        1. AI-generated strategy (analyzes page structure)
-        2. Element scrolling
-        3. Page scrolling
-
-        Args:
-            times: Number of scroll iterations
-            description: What to scroll (e.g., "the email list")
-
-        Returns:
-            Status message with successful strategy
+        Tries: AI-generated → Element scroll → Page scroll
+        Verifies success with screenshot comparison.
         """
-        from . import scroll_strategies
-        return scroll_strategies.scroll_with_verification(
-            page=self.page,
-            take_screenshot=self.take_screenshot,
-            times=times,
-            description=description
-        )
-
-    def scroll_page(self, direction: str = "down", amount: int = 1000) -> str:
-        """Scroll the page in a direction.
-
-        Args:
-            direction: "down", "up", "top", or "bottom"
-            amount: Pixels to scroll (ignored for "bottom"/"top")
-        """
-        if not self.page:
-            return "Browser not open"
-
-        if direction == "bottom":
-            self.page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
-            return "Scrolled to bottom of page"
-        elif direction == "top":
-            self.page.evaluate("window.scrollTo(0, 0)")
-            return "Scrolled to top of page"
-        elif direction == "down":
-            self.page.evaluate(f"window.scrollBy(0, {amount})")
-            return f"Scrolled down {amount} pixels"
-        elif direction == "up":
-            self.page.evaluate(f"window.scrollBy(0, -{amount})")
-            return f"Scrolled up {amount} pixels"
-        else:
-            return f"Unknown direction: {direction}"
-
-    def scroll_element(self, selector: str, amount: int = 1000) -> str:
-        """Scroll a specific element by CSS selector."""
-        if not self.page:
-            return "Browser not open"
-
-        result = self.page.evaluate(f"""
-            (() => {{
-                const element = document.querySelector('{selector}');
-                if (!element) return 'Element not found: {selector}';
-                const beforeScroll = element.scrollTop;
-                element.scrollTop += {amount};
-                const afterScroll = element.scrollTop;
-                return `Scrolled from ${{beforeScroll}}px to ${{afterScroll}}px`;
-            }})()
-        """)
-        return result
+        from . import scroll
+        return scroll.scroll(self.page, self.take_screenshot, times, description)
 
     def wait_for_manual_login(self, site_name: str = "the website") -> str:
         """Pause automation for user to login manually.
