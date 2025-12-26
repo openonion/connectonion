@@ -20,6 +20,7 @@ from typing import Optional, List, Dict, Any
 from connectonion import Agent, llm_do
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
+from . import element_finder
 
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
@@ -151,88 +152,94 @@ class BrowserAutomation:
     def find_element_by_description(self, description: str) -> str:
         """Find element using natural language description.
 
-        Uses AI to analyze HTML and find the best matching element.
+        Uses element_finder: LLM selects from indexed list, never generates CSS.
 
         Args:
             description: e.g., "the submit button", "email input field"
 
         Returns:
-            CSS selector for the element, or error message
+            Pre-built locator string, or error message
         """
         if not self.page:
             return "Browser not open"
 
-        html = self.page.content()
-
-        class ElementSelector(BaseModel):
-            selector: str = Field(..., description="CSS selector for the element")
-            confidence: float = Field(..., description="Confidence score 0-1")
-            explanation: str = Field(..., description="Why this element matches")
-
-        result = llm_do(
-            f"""Analyze this HTML and find the CSS selector for: "{description}"
-
-            HTML (first 15000 chars): {html[:15000]}
-
-            Return the most specific CSS selector that uniquely identifies this element.
-            """,
-            output=ElementSelector,
-            model="gpt-4o",
-            temperature=0.1
-        )
-
-        if self.page.locator(result.selector).count() > 0:
-            return result.selector
-        else:
-            return f"Found selector {result.selector} but element not on page"
+        element = element_finder.find_element(self.page, description)
+        if element:
+            return element.locator
+        return f"Could not find element matching: {description}"
 
     def click(self, description: str) -> str:
         """Click on an element using natural language description.
 
-        Args:
-            description: e.g., "the blue submit button", "link to contact page"
+        Uses element_finder: LLM selects from pre-built locators, never generates CSS.
         """
         if not self.page:
             return "Browser not open"
 
-        selector = self.find_element_by_description(description)
+        element = element_finder.find_element(self.page, description)
 
-        if selector.startswith("Could not") or selector.startswith("Found selector"):
-            if self.page.locator(f"text='{description}'").count() > 0:
-                self.page.click(f"text='{description}'")
-                return f"Clicked on '{description}' (by text)"
-            return selector
+        if not element:
+            # Fallback to simple text matching
+            text_locator = self.page.get_by_text(description)
+            if text_locator.count() > 0:
+                text_locator.first.click()
+                return f"Clicked on '{description}' (by text fallback)"
+            return f"Could not find element matching: {description}"
 
-        self.page.click(selector)
-        return f"Clicked on '{description}'"
+        # Try the locator with fresh bounding box
+        locator = self.page.locator(element.locator)
+
+        if locator.count() > 0:
+            box = locator.first.bounding_box()
+            if box:
+                x = box['x'] + box['width'] / 2
+                y = box['y'] + box['height'] / 2
+                self.page.mouse.click(x, y)
+                return f"Clicked [{element.index}] {element.tag} '{element.text}'"
+
+            locator.first.click(force=True)
+            return f"Clicked [{element.index}] {element.tag} '{element.text}' (force)"
+
+        # Fallback: use original coordinates
+        x = element.x + element.width // 2
+        y = element.y + element.height // 2
+        self.page.mouse.click(x, y)
+        return f"Clicked [{element.index}] '{element.text}' at ({x}, {y})"
 
     def type_text(self, field_description: str, text: str) -> str:
         """Type text into a form field.
 
-        Args:
-            field_description: e.g., "email field", "password input"
-            text: The text to type
+        Uses element_finder: LLM selects from pre-built locators, never generates CSS.
         """
         if not self.page:
             return "Browser not open"
 
-        selector = self.find_element_by_description(field_description)
+        element = element_finder.find_element(self.page, field_description)
 
-        if selector.startswith("Could not") or selector.startswith("Found selector"):
-            for fallback in [
-                f"input[placeholder*='{field_description}' i]",
-                f"[aria-label*='{field_description}' i]",
-                f"input[name*='{field_description}' i]"
-            ]:
-                if self.page.locator(fallback).count() > 0:
-                    self.page.fill(fallback, text)
-                    self.form_data[field_description] = text
-                    return f"Typed into {field_description}"
-            return f"Could not find field '{field_description}'"
+        if not element:
+            # Fallback to placeholder matching
+            placeholder_locator = self.page.get_by_placeholder(field_description)
+            if placeholder_locator.count() > 0:
+                placeholder_locator.first.fill(text)
+                self.form_data[field_description] = text
+                return f"Typed into '{field_description}'"
+            return f"Could not find field: {field_description}"
 
-        self.page.fill(selector, text)
+        # Try the pre-built locator
+        locator = self.page.locator(element.locator)
+
+        if locator.count() > 0:
+            locator.first.fill(text)
+            self.form_data[field_description] = text
+            return f"Typed into [{element.index}] {element.tag}"
+
+        # Fallback: click then type
+        x = element.x + element.width // 2
+        y = element.y + element.height // 2
+        self.page.mouse.click(x, y)
+        self.page.keyboard.type(text)
         self.form_data[field_description] = text
-        return f"Typed into {field_description}"
+        return f"Typed into [{element.index}] at ({x}, {y})"
 
     def get_text(self) -> str:
         """Get all visible text from the page."""
