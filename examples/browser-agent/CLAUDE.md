@@ -74,7 +74,7 @@ python tests/direct_test.py
 
 ### Natural Language Element Finding (browser-use inspired)
 
-Architecture in `dom_service.py`:
+Architecture in `element_finder.py`:
 1. JavaScript injects `data-browser-agent-id` attribute into each interactive element
 2. Extract elements with bounding boxes and text content
 3. LLM SELECTS from indexed list (by index), never GENERATES CSS selectors
@@ -101,7 +101,7 @@ path = highlight_screenshot.highlight_current_page(web.page)
 ### AI-Powered Tools Pattern
 
 The agent uses ConnectOnion's `llm_do()` helper for intelligent operations:
-- `dom_service.find_element()`: Find element from indexed list (LLM selects, not generate CSS)
+- `element_finder.find_element()`: Find element from indexed list (LLM selects, not generate CSS)
 - `analyze_page()`: Answer questions about page content
 - `smart_fill_form()`: Generate appropriate form values from user info
 

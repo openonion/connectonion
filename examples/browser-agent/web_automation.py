@@ -68,7 +68,7 @@ class WebAutomation:
         self.use_chrome_profile = use_chrome_profile
 
     def open_browser(self, headless: bool = False) -> str:
-        """Open a new browser wiFalse
+        """Open a new browser window.
 
         Note: If use_chrome_profile=True, Chrome must be completely closed before running.
         """

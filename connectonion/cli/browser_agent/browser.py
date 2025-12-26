@@ -110,10 +110,21 @@ class BrowserAutomation:
                     source_profile = home / ".config/google-chrome"
 
                 if source_profile.exists():
+                    def safe_copy(src, dst):
+                        try:
+                            shutil.copy2(src, dst)
+                        except:
+                            pass  # Skip any file that can't be copied
+
                     shutil.copytree(
                         source_profile,
                         chromium_profile,
-                        ignore=shutil.ignore_patterns('*Cache*', '*cache*', 'Service Worker', 'ShaderCache'),
+                        ignore=shutil.ignore_patterns(
+                            '*Cache*', '*cache*', 'Service Worker', 'ShaderCache',
+                            'Singleton*', '*lock*', '*Lock*', '*.tmp', 'GPUCache',
+                            'Code Cache', 'DawnCache', 'GrShaderCache', 'blob_storage'
+                        ),
+                        copy_function=safe_copy,
                         dirs_exist_ok=True
                     )
 
