@@ -1,9 +1,9 @@
 """
-Purpose: CLI command to copy built-in tools and plugins to user's project for customization
+Purpose: CLI command to copy built-in tools, plugins, and prompts to user's project for customization
 LLM-Note:
   Dependencies: imports from [shutil, pathlib, typing, rich] | imported by [cli/main.py via handle_copy()]
-  Data flow: user runs `co copy <name>` → looks up name in TOOLS/PLUGINS registry → finds source via module.__file__ → copies to ./tools/ or ./plugins/
-  State/Effects: creates tools/ or plugins/ directory if needed | copies .py files from installed package to user's project
+  Data flow: user runs `co copy <name>` → looks up name in TOOLS/PLUGINS/PROMPTS registry → finds source via module.__file__ → copies to ./tools/, ./plugins/, or ./prompts/
+  State/Effects: creates tools/, plugins/, or prompts/ directory if needed | copies files/directories from installed package to user's project
   Integration: exposes handle_copy() for CLI | uses Python import system to find installed package location (cross-platform)
 """
 
@@ -51,6 +51,11 @@ TUI = {
     "keys": "keys.py",
 }
 
+# Registry of copyable prompt templates (directories)
+PROMPTS = {
+    "coding_agent": "coding_agent",
+}
+
 
 def handle_copy(
     names: List[str],
@@ -58,7 +63,7 @@ def handle_copy(
     path: Optional[str] = None,
     force: bool = False
 ):
-    """Copy built-in tools and plugins to user's project."""
+    """Copy built-in tools, plugins, and prompts to user's project."""
 
     # Show list if requested or no names provided
     if list_all or not names:
@@ -69,10 +74,12 @@ def handle_copy(
     import connectonion.useful_tools as tools_module
     import connectonion.useful_plugins as plugins_module
     import connectonion.tui as tui_module
+    import connectonion.useful_prompts as prompts_module
 
     useful_tools_dir = Path(tools_module.__file__).parent
     useful_plugins_dir = Path(plugins_module.__file__).parent
     tui_dir = Path(tui_module.__file__).parent
+    useful_prompts_dir = Path(prompts_module.__file__).parent
 
     current_dir = Path.cwd()
 
@@ -97,6 +104,12 @@ def handle_copy(
             dest_dir = Path(path) if path else current_dir / "tui"
             copy_file(source, dest_dir, force)
 
+        # Check if it's a prompt template
+        elif name_lower in PROMPTS:
+            source = useful_prompts_dir / PROMPTS[name_lower]
+            dest_dir = Path(path) if path else current_dir / "prompts"
+            copy_directory(source, dest_dir, force)
+
         else:
             console.print(f"[red]Unknown: {name}[/red]")
             console.print("Use [cyan]co copy --list[/cyan] to see available items")
@@ -119,12 +132,31 @@ def copy_file(source: Path, dest_dir: Path, force: bool):
     console.print(f"[green]✓ Copied: {dest}[/green]")
 
 
+def copy_directory(source: Path, dest_dir: Path, force: bool):
+    """Copy an entire directory to destination."""
+    if not source.exists():
+        console.print(f"[red]Source not found: {source}[/red]")
+        return
+
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    dest = dest_dir / source.name
+
+    if dest.exists():
+        if not force:
+            console.print(f"[yellow]Skipped: {dest} (exists, use --force)[/yellow]")
+            return
+        shutil.rmtree(dest)
+
+    shutil.copytree(source, dest)
+    console.print(f"[green]✓ Copied: {dest}/[/green]")
+
+
 def show_available_items():
-    """Display available tools, plugins, and TUI components."""
+    """Display available tools, plugins, prompts, and TUI components."""
     table = Table(title="Available Items to Copy")
     table.add_column("Name", style="cyan")
     table.add_column("Type", style="green")
-    table.add_column("File")
+    table.add_column("Path")
 
     for name, file in sorted(TOOLS.items()):
         table.add_row(name, "tool", file)
@@ -132,8 +164,12 @@ def show_available_items():
     for name, file in sorted(PLUGINS.items()):
         table.add_row(name, "plugin", file)
 
+    for name, dir_name in sorted(PROMPTS.items()):
+        table.add_row(name, "prompt", f"{dir_name}/")
+
     for name, file in sorted(TUI.items()):
         table.add_row(name, "tui", file)
 
     console.print(table)
     console.print("\n[dim]Usage: co copy <name> [--path ./custom/][/dim]")
+    console.print("[dim]Prompts are copied as directories to ./prompts/<name>/[/dim]")

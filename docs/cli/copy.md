@@ -1,6 +1,6 @@
-# co copy - Copy Tools & Plugins
+# co copy - Copy Tools, Plugins & Prompts
 
-Copy built-in tools and plugins to your project for customization.
+Copy built-in tools, plugins, and prompt templates to your project for customization.
 
 ## Quick Start
 
@@ -13,6 +13,9 @@ co copy Gmail
 
 # Copy a plugin
 co copy re_act
+
+# Copy a prompt template
+co copy coding_agent
 ```
 
 ## Why Copy?
@@ -38,7 +41,7 @@ Output:
 ```
                     Available Items to Copy
 ┏━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
-┃ Name                   ┃ Type   ┃ File                      ┃
+┃ Name                   ┃ Type   ┃ Path                      ┃
 ┡━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
 │ gmail                  │ tool   │ gmail.py                  │
 │ memory                 │ tool   │ memory.py                 │
@@ -46,6 +49,7 @@ Output:
 │ ...                    │        │                           │
 │ re_act                 │ plugin │ re_act.py                 │
 │ shell_approval         │ plugin │ shell_approval.py         │
+│ coding_agent           │ prompt │ coding_agent/             │
 └────────────────────────┴────────┴───────────────────────────┘
 ```
 
@@ -64,6 +68,26 @@ co copy re_act
 ```
 
 Creates `./plugins/re_act.py` in your project.
+
+### Copy a Prompt Template
+
+```bash
+co copy coding_agent
+```
+
+Creates `./prompts/coding_agent/` directory with:
+```
+prompts/coding_agent/
+├── prompts/
+│   ├── main.md           # Core agent behavior
+│   └── tools/            # Per-tool guidance
+│       ├── shell.md
+│       ├── read.md
+│       ├── write.md
+│       └── todo.md
+├── assembler.py          # Prompt assembly utility
+└── README.md
+```
 
 ### Copy Multiple Items
 
@@ -177,8 +201,15 @@ co copy re_act
 co copy gmail outlook
 ```
 
+## Available Prompts
+
+| Name | Directory | Description |
+|------|-----------|-------------|
+| coding_agent | coding_agent/ | Coding Agent Prompt - modular prompt template for coding assistants |
+
 ## See Also
 
 - [Built-in Tools](../useful_tools/) - Tool documentation
 - [Built-in Plugins](../useful_plugins/) - Plugin documentation
+- [Prompt Templates](../useful_prompts/) - Prompt documentation
 - [Creating Tools](../concepts/tools.md) - Writing custom tools
