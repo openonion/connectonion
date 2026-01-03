@@ -23,13 +23,19 @@ def read_key() -> str:
     """Read key with arrow/escape sequence handling.
 
     Returns:
-        Single char, or 'up'/'down'/'left'/'right' for arrows, 'esc' for escape
+        Single char, or special key names:
+        - 'up'/'down'/'left'/'right' for arrows
+        - 'shift+tab' for Shift+Tab
+        - 'esc' for escape
     """
     ch = getch()
     if ch == '\x1b':
         ch2 = getch()
         if ch2 == '[':
             ch3 = getch()
+            # Shift+Tab is ESC [ Z
+            if ch3 == 'Z':
+                return 'shift+tab'
             return {'A': 'up', 'B': 'down', 'C': 'right', 'D': 'left'}.get(ch3, 'esc')
         return 'esc'
     return ch

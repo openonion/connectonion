@@ -59,6 +59,7 @@ class Input:
         max_visible: int = 8,
         console: Console = None,
         style: str = "modern",
+        on_special_key: callable = None,
     ):
         """
         Args:
@@ -70,6 +71,7 @@ class Input:
             max_visible: Max dropdown items
             console: Rich console
             style: "modern", "minimal", or "classic"
+            on_special_key: Callback for special keys (shift+tab, etc). Return True to consume.
         """
         self.prompt = prompt
         self.triggers = triggers or {}
@@ -79,6 +81,7 @@ class Input:
         self.max_visible = max_visible
         self.console = console or Console()
         self.style = style
+        self.on_special_key = on_special_key
 
         # State
         self.buffer = ""
@@ -195,6 +198,12 @@ class Input:
         with Live(self._render(), console=self.console, auto_refresh=False) as live:
             while True:
                 key = read_key()
+
+                # Special key callback (shift+tab, etc)
+                if self.on_special_key and key in ('shift+tab',):
+                    if self.on_special_key(key):
+                        live.update(self._render(), refresh=True)
+                        continue
 
                 # Enter - submit or accept selection
                 if key in ('\r', '\n'):
