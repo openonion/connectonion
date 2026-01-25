@@ -1,4 +1,13 @@
-"""Browser Agent for CLI - Natural language browser automation.
+"""
+Purpose: Natural language browser automation via Playwright with Chrome profile support
+LLM-Note:
+  Dependencies: imports from [playwright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/cli/test_browser_agent.py]
+  Data flow: BrowserAutomation() initializes Playwright → copies Chrome profile to .browser_agent_profile/ → opens browser with context → provides tools (navigate, find_element, fill_form, screenshot, scroll, wait_for_login) → Agent uses these tools via natural language → element_finder.py uses vision LLM to locate elements | screenshots saved to .tmp/ directory
+  State/Effects: maintains browser/page/context state | copies Chrome profile on first run | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | auto-closes browser in __del__
+  Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), fill_form(field_values), screenshot(viewport), scroll(direction, description), click(description), type_text(description, text), wait_for_login(seconds) | FormField Pydantic model for form parsing | used by `co browser` CLI command
+  Performance: headless by default (faster) | Chrome profile copy (one-time, slow first run) | vision model for element finding (slower but accurate) | screenshots base64-encoded for LLM analysis
+  Errors: returns error string if Playwright not installed | returns "Browser already open" if reinitializing | element not found returns descriptive error | Chrome must be closed when using profile
+Browser Agent for CLI - Natural language browser automation.
 
 This module provides a browser automation agent that understands natural language
 requests for browser operations via the ConnectOnion CLI.
@@ -97,7 +106,7 @@ class BrowserAutomation:
 
         if self.use_chrome_profile:
             # Use Chromium with Chrome profile copy
-            chromium_profile = Path.cwd() / "chromium_automation_profile"
+            chromium_profile = Path.cwd() / ".browser_agent_profile"
 
             if not chromium_profile.exists():
                 import shutil

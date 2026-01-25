@@ -61,6 +61,7 @@ coverage.xml
 .connectonion/
 agent_histories/
 *.agent-history
+.browser_agent_profile/
 
 # IDEs
 .vscode/

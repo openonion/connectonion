@@ -82,7 +82,7 @@ class WebAutomation:
 
         if self.use_chrome_profile:
             # Use Chromium with Chrome profile copy (avoids Chrome 136 restrictions)
-            chromium_profile = Path.cwd() / "chromium_automation_profile"
+            chromium_profile = Path.cwd() / ".browser_agent_profile"
 
             # If profile doesn't exist, copy it from user's Chrome
             if not chromium_profile.exists():
