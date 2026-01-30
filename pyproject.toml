@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "0.6.2"
+version = "0.6.3"
 description = "A simple Python framework for creating AI agents with behavior tracking"
 readme = "README.md"
 license = {text = "MIT"}
@@ -83,13 +83,23 @@ connectonion = "connectonion.cli.main:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["connectonion"]
+exclude = [
+    "connectonion/docs/archive/**",
+]
+
+[tool.hatch.build.targets.wheel.force-include]
+"docs" = "connectonion/docs"
 
 [tool.hatch.build.targets.sdist]
 include = [
     "connectonion/**",
+    "docs/**",
     "README.md",
     "LICENSE",
 ]
+
+[tool.hatch.build.targets.sdist.force-include]
+"docs" = "connectonion/docs"
 
 # Include all non-Python files (md, txt, etc.) in the package
 [tool.hatch.build]
