@@ -281,9 +281,16 @@ analyst = Agent("analyst", tools=[analyze], plugins=[reflection])
 - **Reusable capabilities**: Package event handlers into bundles
 - **Simple pattern**: A plugin is just a list of event handlers
 - **Easy composition**: Combine multiple plugins together
-- **Built-in examples**: Reflection, logging, todo tracking, and more
+- **Built-in plugins**: re_act, eval, system_reminder, image_result_formatter, and more
 
-[Learn more about plugins](docs/plugin.md)
+**Built-in plugins** are ready to use:
+```python
+from connectonion.useful_plugins import re_act, system_reminder
+
+agent = Agent("assistant", tools=[search], plugins=[re_act, system_reminder])
+```
+
+[Learn more about plugins](docs/plugin.md) | [Built-in plugins](docs/useful_plugins/)
 
 ## 🔧 Core Concepts
 

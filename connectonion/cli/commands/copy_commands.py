@@ -17,6 +17,7 @@ console = Console()
 
 # Registry of copyable tools
 TOOLS = {
+    "ask_user": "ask_user.py",
     "gmail": "gmail.py",
     "outlook": "outlook.py",
     "google_calendar": "google_calendar.py",
@@ -37,6 +38,12 @@ PLUGINS = {
     "shell_approval": "shell_approval.py",
     "gmail_plugin": "gmail_plugin.py",
     "calendar_plugin": "calendar_plugin.py",
+    "system_reminder": "system_reminder.py",
+}
+
+# Plugins that also need prompts copied
+PLUGIN_PROMPTS = {
+    "system_reminder": "system-reminders",
 }
 
 # Registry of copyable TUI components
@@ -97,6 +104,12 @@ def handle_copy(
             source = useful_plugins_dir / PLUGINS[name_lower]
             dest_dir = Path(path) if path else current_dir / "plugins"
             copy_file(source, dest_dir, force)
+
+            # Also copy associated prompts if any
+            if name_lower in PLUGIN_PROMPTS:
+                prompt_source = useful_prompts_dir / PLUGIN_PROMPTS[name_lower]
+                prompt_dest = Path(path) if path else current_dir / "prompts"
+                copy_directory(prompt_source, prompt_dest, force)
 
         # Check if it's a TUI component
         elif name_lower in TUI:

@@ -17,5 +17,6 @@ from .shell_approval import shell_approval
 from .gmail_plugin import gmail_plugin
 from .calendar_plugin import calendar_plugin
 from .ui_stream import ui_stream
+from .system_reminder import system_reminder
 
-__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream']
+__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream', 'system_reminder']

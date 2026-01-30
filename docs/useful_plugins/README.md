@@ -8,6 +8,7 @@ Pre-built plugins that extend agent behavior via event hooks.
 |--------|---------|--------|
 | [re_act](re_act.md) | ReAct reasoning pattern | `from connectonion.useful_plugins import re_act` |
 | [eval](eval.md) | Task evaluation/debugging | `from connectonion.useful_plugins import eval` |
+| [system_reminder](system_reminder.md) | Inject contextual guidance | `from connectonion.useful_plugins import system_reminder` |
 | [image_result_formatter](image_result_formatter.md) | Format images for vision | `from connectonion.useful_plugins import image_result_formatter` |
 | [shell_approval](shell_approval.md) | Shell command approval | `from connectonion.useful_plugins import shell_approval` |
 | [gmail_plugin](gmail_plugin.md) | Gmail OAuth flow | `from connectonion.useful_plugins import gmail_plugin` |
@@ -57,6 +58,9 @@ See [co copy](../cli/copy.md) for full details.
 
 ### Debugging
 - **eval** - Generate expected outcomes, evaluate completion
+
+### Guidance
+- **system_reminder** - Inject contextual reminders into tool results
 
 ### Media
 - **image_result_formatter** - Convert base64 images for vision models

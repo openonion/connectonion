@@ -132,6 +132,23 @@ co copy Gmail --force
 | shell_approval | shell_approval.py | User confirmation for shell |
 | gmail_plugin | gmail_plugin.py | Gmail OAuth flow |
 | calendar_plugin | calendar_plugin.py | Google Calendar integration |
+| system_reminder | system_reminder.py | Inject contextual reminders into tool results |
+
+### Plugins with Prompts
+
+Some plugins include prompt files. These are automatically copied together:
+
+```bash
+co copy system_reminder
+```
+
+Creates:
+```
+./plugins/system_reminder.py
+./prompts/system-reminders/
+├── test-reminder.md
+└── security-warning.md
+```
 
 ## After Copying
 
