@@ -107,37 +107,35 @@ The most recent trace entry shows what just happened:
 
 ```python
 def my_event(agent):
-    last_trace = agent.current_session['trace'][-1]
+    trace = agent.current_session['trace'][-1]
 
-    # For user_input events:
-    last_trace['type']           # 'user_input'
-    last_trace['prompt']         # "Search for Python"
-    last_trace['turn']           # 1
-    last_trace['timestamp']      # 1234567890.123
+    # For user_input:
+    trace['type']           # 'user_input'
+    trace['content']        # "Search for Python"
+    trace['turn']           # 1
 
-    # For llm_call events:
-    last_trace['type']           # 'llm_call'
-    last_trace['model']          # 'gpt-4o-mini'
-    last_trace['duration_ms']    # 234.5
-    last_trace['tool_calls_count'] # 2
-    last_trace['iteration']      # 1
-    last_trace['timestamp']      # 1234567890.123
+    # For llm_call:
+    trace['type']           # 'llm_call'
+    trace['model']          # 'gpt-4o-mini'
+    trace['duration_ms']    # 234.5
+    trace['tool_calls_count'] # 2
+    trace['iteration']      # 1
 
-    # For tool_execution events:
-    last_trace['type']           # 'tool_execution'
-    last_trace['tool_name']      # 'search'
-    last_trace['arguments']      # {'query': 'Python'}
-    last_trace['result']         # "Python is a programming language..."
-    last_trace['status']         # 'success' | 'error' | 'not_found'
-    last_trace['timing']         # 123.4 (milliseconds)
-    last_trace['call_id']        # 'call_abc123'
-    last_trace['iteration']      # 1
-    last_trace['timestamp']      # 1234567890.456
+    # For tool_result:
+    trace['type']           # 'tool_result'
+    trace['name']           # 'search'
+    trace['args']           # {'query': 'Python'}
+    trace['result']         # "Python is a programming language..."
+    trace['status']         # 'success' | 'error' | 'not_found'
+    trace['timing_ms']      # 123.4
+    trace['call_id']        # 'call_abc123'
 
     # For error status:
-    last_trace['error']          # "Division by zero"
-    last_trace['error_type']     # "ZeroDivisionError"
+    trace['error']          # "Division by zero"
+    trace['error_type']     # "ZeroDivisionError"
 ```
+
+> See [Session](session.md) for complete trace documentation.
 
 ---
 
@@ -212,9 +210,9 @@ def add_reflection(agent):
     """Add reasoning after all tools in a round complete"""
     trace = agent.current_session['trace'][-1]
 
-    if trace['type'] == 'tool_execution' and trace['status'] == 'success':
-        tool_name = trace['tool_name']
-        tool_args = trace['arguments']
+    if trace['type'] == 'tool_result' and trace['status'] == 'success':
+        tool_name = trace['name']
+        tool_args = trace['args']
         result = trace['result']
 
         # Use llm_do to generate reflection
@@ -270,9 +268,9 @@ def monitor_llm_performance(agent):
 def monitor_tool_performance(agent):
     """Track slow tool executions"""
     trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'tool_execution':
-        timing = trace.get('timing', 0)
-        tool_name = trace['tool_name']
+    if trace['type'] == 'tool_result':
+        timing = trace.get('timing_ms', 0)
+        tool_name = trace['name']
 
         if timing > 1000:  # More than 1 second
             print(f"⚡ Slow tool: {tool_name} took {timing:.0f}ms")
@@ -295,8 +293,8 @@ from connectonion import Agent, on_error
 def handle_tool_error(agent):
     """Log and handle tool failures"""
     trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'tool_execution' and trace['status'] == 'error':
-        tool_name = trace['tool_name']
+    if trace['type'] == 'tool_result' and trace['status'] == 'error':
+        tool_name = trace['name']
         error = trace.get('error', 'Unknown error')
         error_type = trace.get('error_type', 'Unknown')
 
@@ -320,7 +318,7 @@ def log_completion(agent):
     trace = agent.current_session['trace']
 
     llm_calls = sum(1 for t in trace if t['type'] == 'llm_call')
-    tool_calls = sum(1 for t in trace if t['type'] == 'tool_execution')
+    tool_calls = sum(1 for t in trace if t['type'] == 'tool_result')
     errors = sum(1 for t in trace if t.get('status') == 'error')
 
     print(f"✅ Task complete: {llm_calls} LLM calls, {tool_calls} tools, {errors} errors")
@@ -352,7 +350,7 @@ def session_stats(agent):
     trace = agent.current_session['trace']
 
     llm_calls = sum(1 for t in trace if t['type'] == 'llm_call')
-    tool_calls = sum(1 for t in trace if t['type'] == 'tool_execution')
+    tool_calls = sum(1 for t in trace if t['type'] == 'tool_result')
     errors = sum(1 for t in trace if t.get('status') == 'error')
 
     print(f"📊 Stats: {llm_calls} LLM calls | {tool_calls} tool calls | {errors} errors")
@@ -377,8 +375,8 @@ def suggest_next_tool(agent):
     """Suggest which tool to use next based on current progress"""
     trace = agent.current_session['trace'][-1]
 
-    if trace['type'] == 'tool_execution' and trace['status'] == 'success':
-        tool_name = trace['tool_name']
+    if trace['type'] == 'tool_result' and trace['status'] == 'success':
+        tool_name = trace['name']
         result = trace['result']
 
         # Get list of available tools
@@ -445,123 +443,8 @@ def add_reflection(agent):
     from connectonion import llm_do
 
     trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'tool_execution' and trace['status'] == 'success':
-        reflection = llm_do(
-            f"Reflect on this tool result: {trace['result'][:200]}",
-            system_prompt="Be concise. What did we learn?",
-            temperature=0.3
-        )
-        agent.current_session['messages'].append({
-            'role': 'assistant',
-            'content': f"💭 {reflection}"
-        })
-```
-
-### Compose Into Event Handlers
-
-Then compose them in your event handler with explicit order:
-
-```python
-# main.py
-from my_events import log_llm_timing, log_tool_timing, add_reflection
-from connectonion import Agent, after_llm, after_each_tool, after_tools
-
-def handle_after_llm(agent):
-    """Compose multiple concerns in explicit order"""
-    log_llm_timing(agent)       # 1. Log timing
-    # Order is clear and explicit!
-
-def handle_after_each_tool(agent):
-    """Handle per-tool concerns (no message injection)"""
-    log_tool_timing(agent)      # Log timing for each tool
-    # Clear execution order
-
-def handle_after_tools(agent):
-    """Handle batch concerns (safe for message injection)"""
-    add_reflection(agent)       # Add reflection after all tools complete
-    # Safe to add messages here
-
-agent = Agent(
-    "assistant",
-    tools=[search],
-    on_events=[
-        after_llm(handle_after_llm),
-        after_each_tool(handle_after_each_tool),     # per-tool
-        after_tools(handle_after_tools)    # batch
-    ]
-)
-```
-
-**Why this is better:**
-- ✅ **Explicit order** - you see exactly what runs when
-- ✅ **Single responsibility** - each function does one thing
-- ✅ **Easy to test** - test each function independently
-- ✅ **Easy to debug** - clear execution flow
-- ✅ **Reusable** - compose functions differently for different agents
-
----
-
-## Recommended Project Structure
-
-For projects using events, organize your code like this:
-
-```
-my_project/
-├── main.py                 # Main agent setup
-├── tools/
-│   ├── __init__.py
-│   ├── search.py          # search() tool
-│   └── calculate.py       # calculate() tool
-└── events/
-    ├── __init__.py        # Export event handlers
-    ├── handlers.py        # Main event handler functions
-    ├── logging.py         # Logging-related helpers
-    └── reflection.py      # Reflection helpers
-```
-
-### Example: `events/logging.py`
-
-```python
-"""Logging helpers - each function does one thing"""
-
-def log_llm_call(agent):
-    """Log LLM call timing"""
-    trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'llm_call':
-        duration = trace['duration_ms']
-        model = trace['model']
-        print(f"💬 {model}: {duration:.0f}ms")
-
-def log_tool_execution(agent):
-    """Log tool execution details"""
-    trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'tool_execution':
-        tool_name = trace['tool_name']
-        status = trace['status']
-        timing = trace['timing']
-        print(f"🔧 {tool_name}: {status} ({timing:.0f}ms)")
-
-def log_errors(agent):
-    """Log tool errors"""
-    trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'tool_execution' and trace['status'] == 'error':
-        tool_name = trace['tool_name']
-        error = trace['error']
-        print(f"❌ {tool_name}: {error}")
-```
-
-### Example: `events/reflection.py`
-
-```python
-"""Reflection helpers - add thinking between steps"""
-from connectonion import llm_do
-
-def add_tool_reflection(agent):
-    """Add reflection after each tool use"""
-    trace = agent.current_session['trace'][-1]
-
-    if trace['type'] == 'tool_execution' and trace['status'] == 'success':
-        tool_name = trace['tool_name']
+    if trace['type'] == 'tool_result' and trace['status'] == 'success':
+        tool_name = trace['name']
         result = trace['result']
 
         # Use llm_do for quick reflection
@@ -581,11 +464,11 @@ def suggest_next_action(agent):
     """Suggest what to do next"""
     trace = agent.current_session['trace'][-1]
 
-    if trace['type'] == 'tool_execution':
+    if trace['type'] == 'tool_result':
         available_tools = agent.list_tools()
 
         suggestion = llm_do(
-            f"We just used {trace['tool_name']}. Available tools: {available_tools}. What next?",
+            f"We just used {trace['name']}. Available tools: {available_tools}. What next?",
             system_prompt="Be strategic and brief.",
             temperature=0.2
         )

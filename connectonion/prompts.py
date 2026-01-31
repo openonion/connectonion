@@ -19,7 +19,16 @@ DEFAULT_PROMPT = "You are a helpful assistant that can use tools to complete tas
 
 
 def _looks_like_file_path(text: str) -> bool:
-    """Check if a string looks like a file path rather than prompt text."""
+    """Check if a string looks like a file path rather than prompt text.
+
+    Returns False if the text is likely prompt content (contains newlines or is very long).
+    Returns True if the text looks like a file path (has path separators or prompt file extensions).
+    """
+    # Prompt text typically contains newlines and is longer than file paths
+    # File paths are single-line and limited by OS (usually < 1024 chars)
+    if '\n' in text or len(text) > 1024:
+        return False
+
     # Check for file extensions
     has_file_extension = '.' in text and text.split('.')[-1] in ['md', 'txt', 'prompt']
     # Check for path separators

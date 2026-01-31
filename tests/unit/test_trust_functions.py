@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Unit tests for trust_functions.py - trust verification tools.
+Unit tests for network/trust/tools.py - trust verification tools.
 
 Tests cover:
 - Whitelist checking with real file I/O
@@ -26,7 +26,7 @@ from pathlib import Path
 from unittest.mock import patch, mock_open
 
 # Import with aliases to avoid pytest collecting test_capability as a test
-from connectonion.network.trust_functions import (
+from connectonion.network.trust.tools import (
     check_whitelist,
     test_capability as capability_test_func,
     verify_agent,
@@ -43,7 +43,7 @@ class TestCheckWhitelist:
         whitelist_file = tmp_path / "trusted.txt"
         whitelist_file.write_text("agent-123\nagent-456\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path.parent):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path.parent):
             # Mock .connectonion directory structure
             connectonion_dir = tmp_path.parent / ".connectonion"
             connectonion_dir.mkdir(exist_ok=True)
@@ -60,7 +60,7 @@ class TestCheckWhitelist:
         whitelist_file = connectonion_dir / "trusted.txt"
         whitelist_file.write_text("agent-123\nagent-456\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             result = check_whitelist("agent-999")
             assert "NOT on the whitelist" in result
             assert "agent-999" in result
@@ -72,7 +72,7 @@ class TestCheckWhitelist:
         whitelist_file = connectonion_dir / "trusted.txt"
         whitelist_file.write_text("trusted-*\n*.openonion.ai\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             # Test prefix wildcard
             result = check_whitelist("trusted-agent-123")
             assert "matches whitelist pattern" in result
@@ -91,7 +91,7 @@ class TestCheckWhitelist:
         # Wildcard implementation: line.replace('*', '') checks if pattern is substring
         whitelist_file.write_text("agent*123\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             # "agent*123" becomes "agent123" - should match agent_id containing "agent123" as substring
             result = check_whitelist("prefixagent123suffix")
             assert "matches whitelist pattern" in result
@@ -107,7 +107,7 @@ class TestCheckWhitelist:
         whitelist_file = connectonion_dir / "trusted.txt"
         whitelist_file.write_text("# This is a comment\nagent-123\n# Another comment\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             result = check_whitelist("agent-123")
             assert "is on the whitelist" in result
 
@@ -122,7 +122,7 @@ class TestCheckWhitelist:
         whitelist_file = connectonion_dir / "trusted.txt"
         whitelist_file.write_text("\n\nagent-123\n\n\nagent-456\n\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             result = check_whitelist("agent-123")
             assert "is on the whitelist" in result
 
@@ -136,7 +136,7 @@ class TestCheckWhitelist:
         whitelist_file = connectonion_dir / "trusted.txt"
         whitelist_file.write_text("  agent-123  \n\t agent-456 \t\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             result = check_whitelist("agent-123")
             assert "is on the whitelist" in result
 
@@ -146,7 +146,7 @@ class TestCheckWhitelist:
     def test_no_whitelist_file(self, tmp_path):
         """Test behavior when whitelist file doesn't exist."""
         # Point to directory without trusted.txt
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             result = check_whitelist("any-agent")
             assert "No whitelist file found" in result
             assert "~/.connectonion/trusted.txt" in result
@@ -160,7 +160,7 @@ class TestCheckWhitelist:
         # Create file but make it unreadable
         whitelist_file.write_text("agent-123\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             # Mock read_text to raise an exception
             with patch.object(Path, 'read_text', side_effect=PermissionError("Access denied")):
                 result = check_whitelist("agent-123")
@@ -174,7 +174,7 @@ class TestCheckWhitelist:
         whitelist_file = connectonion_dir / "trusted.txt"
         whitelist_file.write_text("")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             result = check_whitelist("any-agent")
             assert "NOT on the whitelist" in result
 
@@ -185,7 +185,7 @@ class TestCheckWhitelist:
         whitelist_file = connectonion_dir / "trusted.txt"
         whitelist_file.write_text("# Comment 1\n\n# Comment 2\n\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             result = check_whitelist("any-agent")
             assert "NOT on the whitelist" in result
 
@@ -196,7 +196,7 @@ class TestCheckWhitelist:
         whitelist_file = connectonion_dir / "trusted.txt"
         whitelist_file.write_text("Agent-123\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             # Exact case should match
             result = check_whitelist("Agent-123")
             assert "is on the whitelist" in result
@@ -212,7 +212,7 @@ class TestCheckWhitelist:
         whitelist_file = connectonion_dir / "trusted.txt"
         whitelist_file.write_text("trusted-*\nverified-*\n*.safe.com\n")
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             result = check_whitelist("trusted-agent-999")
             assert "matches whitelist pattern" in result
             assert "trusted-*" in result
@@ -301,7 +301,7 @@ class TestGetTrustVerificationTools:
         """Test that test_capability is in tools list."""
         tools = get_trust_verification_tools()
         # Check using the actual function from the module
-        from connectonion.network.trust_functions import test_capability
+        from connectonion.network.trust.tools import test_capability
         assert test_capability in tools
 
     def test_contains_verify_agent(self):
@@ -317,7 +317,7 @@ class TestGetTrustVerificationTools:
 
     def test_tools_order(self):
         """Test that tools are in expected order."""
-        from connectonion.network.trust_functions import test_capability
+        from connectonion.network.trust.tools import test_capability
         tools = get_trust_verification_tools()
         assert tools[0] == check_whitelist
         assert tools[1] == test_capability
@@ -339,7 +339,7 @@ class TestIntegration:
         tools = get_trust_verification_tools()
         whitelist_tool = tools[0]
 
-        with patch('connectonion.network.trust_functions.Path.home', return_value=tmp_path):
+        with patch('connectonion.network.trust.tools.Path.home', return_value=tmp_path):
             result = whitelist_tool("agent-123")
             assert "is on the whitelist" in result
 

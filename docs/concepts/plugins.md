@@ -54,9 +54,10 @@ agent = Agent("a", plugins=[re_act, logger])
 | `eval` | Task evaluation for debugging | [eval.md](../useful_plugins/eval.md) |
 | `image_result_formatter` | Format images for vision models | [image_result_formatter.md](../useful_plugins/image_result_formatter.md) |
 | `shell_approval` | Approve shell commands before execution | [shell_approval.md](../useful_plugins/shell_approval.md) |
+| `tool_approval` | Web-based approval for dangerous tools | [tool_approval.md](../useful_plugins/tool_approval.md) |
 
 ```python
-from connectonion.useful_plugins import re_act, eval, image_result_formatter, shell_approval
+from connectonion.useful_plugins import re_act, eval, image_result_formatter, shell_approval, tool_approval
 
 # Combine plugins
 agent = Agent("assistant", plugins=[re_act, image_result_formatter])

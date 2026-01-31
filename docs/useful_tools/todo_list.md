@@ -2,6 +2,26 @@
 
 Task tracking tool for agents to manage complex, multi-step tasks.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import TodoList
+
+agent = Agent("worker", tools=[TodoList()])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy todo_list
+```
+
+```python
+from tools.todo_list import TodoList  # Your local copy
+```
+
 ## Installation
 
 ```python

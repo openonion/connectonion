@@ -88,12 +88,13 @@ Deploy to your own VPS or infrastructure using `host()`.
 
 ```python
 # agent.py
-from connectonion import Agent, host
+from connectonion import Agent
+from connectonion.network import host, create_app
 
 agent = Agent("my-agent", tools=[my_tool])
 
 # Export ASGI app for uvicorn/gunicorn
-app = host.app(agent)
+app = create_app(agent)
 
 if __name__ == "__main__":
     host(agent)

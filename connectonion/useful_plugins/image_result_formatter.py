@@ -74,12 +74,12 @@ def _format_image_result(agent: 'Agent') -> None:
     """
     trace = agent.current_session['trace'][-1]
 
-    if trace['type'] != 'tool_execution' or trace['status'] != 'success':
+    if trace['type'] != 'tool_result' or trace['status'] != 'success':
         return
 
     result = trace['result']
-    tool_call_id = trace.get('call_id')  # Fixed: trace uses 'call_id' not 'tool_call_id'
-    tool_name = trace.get('tool_name', 'unknown')
+    tool_call_id = trace.get('call_id')
+    tool_name = trace.get('name', 'unknown')
 
     # Check if result contains base64 image
     is_image, mime_type, base64_data = _is_base64_image(result)

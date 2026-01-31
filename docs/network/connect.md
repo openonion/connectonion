@@ -1,543 +1,629 @@
 # Connect to Remote Agents
 
-> Use any agent, anywhere, as if it were local.
+> Use any agent, anywhere, as if it were local. Real-time UI updates included.
 
 ---
 
-## Quick Start (60 Seconds)
+## Architecture
+
+```
+┌────────────────────────────────────────────────────────────────────────────┐
+│                            YOUR APPLICATION                                 │
+│  ┌──────────────┐        ┌──────────────┐        ┌──────────────────────┐  │
+│  │ React/Vue    │        │  Python      │        │  Swift/Kotlin        │  │
+│  │ useAgent()   │        │  connect()   │        │  connect()           │  │
+│  └──────┬───────┘        └──────┬───────┘        └──────────┬───────────┘  │
+│         │                       │                           │              │
+└─────────┼───────────────────────┼───────────────────────────┼──────────────┘
+          │                       │                           │
+          └───────────────────────┼───────────────────────────┘
+                                  │
+                                  ▼
+                    ┌─────────────────────────────┐
+                    │  WebSocket /ws/input        │
+                    │  wss://oo.openonion.ai      │
+                    └──────────────┬──────────────┘
+                                   │
+                                   ▼
+          ┌────────────────────────────────────────────────────┐
+          │                   RELAY SERVER                      │
+          │  ┌──────────────┐  ┌──────────────┐  ┌───────────┐ │
+          │  │ /ws/announce │  │ /ws/input    │  │ /ws/lookup│ │
+          │  │ Agents       │  │ Clients      │  │ Discovery │ │
+          │  └──────┬───────┘  └──────┬───────┘  └───────────┘ │
+          │         │                 │                         │
+          │         │  active_connections {address → WebSocket} │
+          │         │  pending_outputs {input_id → Future}      │
+          │         │                                           │
+          └─────────┼─────────────────┼─────────────────────────┘
+                    │                 │
+                    │     ┌───────────┘
+                    │     │
+                    ▼     ▼
+          ┌────────────────────────────────────────────────────┐
+          │                    AGENT                            │
+          │  host(agent) → /ws/announce → ANNOUNCE → ready     │
+          │                                                     │
+          │  INPUT received → agent.input(prompt) → OUTPUT      │
+          └────────────────────────────────────────────────────┘
+```
+
+---
+
+## Lifecycle
+
+### 1. Agent Registers (Server Side)
 
 ```python
-from connectonion import connect
-
-# Connect to a remote agent
-remote_agent = connect("0x3d4017c3e843895a92b70aa74d1b7ebc9c982ccf2ec4968cc0cd55f12af4660c")
-
-# Use it like a local agent
-result = remote_agent.input("Search for Python documentation")
-print(result)
-```
-
-**Output:**
-```
-I found extensive Python documentation at docs.python.org covering tutorials,
-library reference, and language specifications.
-```
-
-**That's it.** Use remote agents with one function call.
-
----
-
-## What Just Happened?
-
-When you called `connect(address)`:
-
-1. **Created proxy agent** → Acts like a local Agent instance
-2. **Connected to relay** → WebSocket at `wss://oo.openonion.ai/ws/announce`
-3. **Sent INPUT message** → Routed to the remote agent
-4. **Received OUTPUT** → Got the result back
-
-All of this happens transparently. The remote agent looks and acts like a local one.
-
----
-
-## Complete Example
-
-### Terminal 1: Start a Serving Agent
-
-```python
-# serve_agent.py
 from connectonion import Agent, host
 
-def calculate(expression: str) -> str:
-    """Perform calculations."""
-    return str(eval(expression))
-
-def get_weather(city: str) -> str:
-    """Get weather information."""
-    return f"Weather in {city}: Sunny, 72°F"
-
-agent = Agent(
-    "assistant",
-    tools=[calculate, get_weather],
-    system_prompt="You are a helpful assistant."
-)
-
-print("Starting agent...")
-host(agent)  # HTTP server + P2P relay
+agent = Agent("my-agent", tools=[...])
+host(agent)  # Connects to /ws/announce, sends ANNOUNCE
 ```
 
-**Output:**
-```
-Starting agent...
-╭──────────── Agent 'assistant' ────────────╮
-│ POST http://localhost:8000/input          │
-│ Address: 0x7a8f9d4c...                    │
-│ Relay:   wss://oo.openonion.ai/ws/announce│
-╰───────────────────────────────────────────╯
-```
+The agent:
+1. Connects WebSocket to `wss://oo.openonion.ai/ws/announce`
+2. Sends ANNOUNCE: `{type, address, summary, endpoints, signature}`
+3. Relay stores in `active_connections[address] = websocket`
+4. Agent waits for INPUT messages
 
-### Terminal 2: Connect and Use
+### 2. Client Connects (Any Platform)
 
 ```python
-# use_agent.py
 from connectonion import connect
 
-# Connect using the agent's address
-assistant = connect("0x7a8f9d4c2b1e3f5a6c8d9e0f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d7e8f9a0b")
+agent = connect("0x123abc...")
+response = agent.input("Hello")
+```
 
-# Use it
-result1 = assistant.input("What is 42 * 17?")
-print(result1)
-# Output: The result of 42 * 17 is 714.
+The client:
+1. `connect(address)` creates RemoteAgent instance
+2. `input(prompt)` opens WebSocket to `/ws/input`
+3. Sends INPUT: `{type: "INPUT", input_id, to: "0x...", prompt, session?}`
+4. Relay looks up `active_connections[to]`
+5. Relay forwards INPUT to agent's WebSocket
 
-result2 = assistant.input("What's the weather in Seattle?")
-print(result2)
-# Output: Weather in Seattle: Sunny, 72°F
+### 3. Agent Processes
+
+```
+Relay → INPUT → Agent
+        │
+        ├─ agent.input(prompt)
+        │
+        ├─ Streaming events (direct /ws only):
+        │  ← tool_call, tool_result, thinking, assistant, ask_user
+        │
+        └─ OUTPUT → Relay → Client
+```
+
+### 4. Client Receives Response
+
+```python
+response = agent.input("Hello")
+
+response.text   # "Hello! How can I help?"
+response.done   # True (complete) or False (needs more input)
+
+agent.ui        # All events for rendering
+agent.status    # 'idle' | 'working' | 'waiting'
+```
+
+---
+
+## Connection Modes
+
+### Via Relay (Default)
+
+Uses agent address to route through relay server:
+
+```python
+# Python
+agent = connect("0x3d4017c3...")
+```
+
+```typescript
+// TypeScript
+const agent = connect("0x3d4017c3...");
+```
+
+### Direct to Deployed Agent
+
+For agents deployed via `co deploy`, connect directly to their URL:
+
+```typescript
+// TypeScript - bypass relay
+const agent = connect("agent-name", {
+  directUrl: "https://my-agent.agents.openonion.ai"
+});
+```
+
+### Discovery & Smart Routing (Recommended for Custom Clients)
+
+The relay stores agent-provided endpoints and can return them for direct connections.
+The SDKs do **not** automatically probe endpoints yet; they use relay by default (Python) or `directUrl` when provided (TypeScript).
+
+To implement smarter routing:
+1. **Lookup endpoints** for the agent via relay:
+   - **WebSocket** `/ws/lookup` with `GET_AGENT`
+   - **HTTP** `/api/relay/agents/{address}`
+2. **Try direct endpoints first** (if any):
+   - Prefer `ws://`/`http://` endpoints that are reachable from your network.
+   - If you are on the same LAN, a private IP (RFC1918) endpoint may be fastest.
+3. **Fallback to relay** `/ws/input` if direct endpoints fail.
+
+The relay does not determine whether an endpoint is “local” or “public”; it simply returns what the agent announced.
+There is no WebRTC support in the relay server today.
+TODO: Add WebRTC-style ICE candidates (host/srflx/relay) and connectivity checks
+so clients can automatically pick the best direct path.
+
+#### Lookup via WebSocket
+
+```json
+// Client → /ws/lookup
+{ "type": "GET_AGENT", "address": "0x3d4017c3..." }
+```
+
+```json
+// Server → client
+{
+  "type": "AGENT_INFO",
+  "agent": {
+    "address": "0x3d4017c3...",
+    "summary": "translator agent",
+    "endpoints": ["ws://192.168.1.10:8000/ws"],
+    "last_announce": "2024-01-15T10:23:45Z",
+    "online": true
+  }
+}
+```
+
+#### Lookup via HTTP
+
+```bash
+curl https://oo.openonion.ai/api/relay/agents/0x3d4017c3...
+```
+
+```json
+{
+  "online": true,
+  "endpoints": ["ws://192.168.1.10:8000/ws"],
+  "last_seen": "2024-01-15T10:23:45Z"
+}
+```
+
+---
+
+## Message Protocol
+
+### INPUT (Client → Relay → Agent)
+
+```json
+{
+  "type": "INPUT",
+  "input_id": "uuid-1234",
+  "to": "0x3d4017c3...",
+  "prompt": "Book a flight to Tokyo",
+  "session": { "messages": [...] }
+}
+```
+
+### OUTPUT (Agent → Relay → Client)
+
+```json
+{
+  "type": "OUTPUT",
+  "input_id": "uuid-1234",
+  "result": "Booked! Confirmation #ABC123",
+  "session": { "messages": [...updated...] }
+}
+```
+
+### Streaming Events (Agent → Client)
+
+| Event | Purpose |
+|-------|---------|
+| `tool_call` | Tool execution started `{id, name, args, status: "running"}` |
+| `tool_result` | Tool completed `{id, result, status: "done"}` |
+| `thinking` | Agent is processing |
+| `ask_user` | Agent needs input `{text, options?}` → `done: false` |
+
+Note: Relay /ws/input does not forward streaming events. Use direct host /ws for real-time events.
+
+---
+
+## Related Files
+
+| File | Purpose |
+|------|---------|
+| `connectonion/network/connect.py` | Python client - RemoteAgent class |
+| `connectonion/network/relay.py` | Agent-side relay connection |
+| `connectonion-ts/src/connect.ts` | TypeScript client - same API |
+| `connectonion-ts/src/react/index.ts` | useAgent React hook |
+| `oo-api/relay/routes.py` | Relay server endpoints |
+
+---
+
+## Quick Start
+
+```python
+from connectonion import connect
+
+agent = connect("0x...")
+
+response = agent.input("Book a flight to Tokyo")
+print(response.text)   # "Which date do you prefer?"
+print(response.done)   # False - agent asked a question
+
+response = agent.input("March 15")
+print(response.text)   # "Booked! Confirmation #ABC123"
+print(response.done)   # True
+```
+
+---
+
+## Response
+
+```python
+response = agent.input("task")
+
+response.text   # Agent's response or question
+response.done   # True = complete, False = needs more input
+```
+
+---
+
+## Session State
+
+`current_session` is synced from the server when the server includes it (direct host /ws).
+Relay /ws/input currently returns only OUTPUT without session data.
+
+```python
+agent.current_session   # Synced from server when available (read-only)
+agent.ui                # Client-side UI event list (input + streamed events)
+agent.status            # 'idle' | 'working' | 'waiting'
+```
+
+---
+
+## UI Rendering
+
+`agent.ui` contains all events for rendering. **One type = one component.**
+Streaming events are delivered only for direct host /ws connections; relay returns only OUTPUT.
+
+```python
+agent.ui = [
+    {"id": "1", "type": "user", "content": "Book a flight"},
+    {"id": "2", "type": "thinking"},
+    {"id": "3", "type": "tool_call", "name": "search_flights", "status": "running"},
+    # ↑ When tool_result arrives, client updates this item to status: "done"
+    {"id": "4", "type": "agent", "content": "Found 3 flights..."},
+    {"id": "5", "type": "ask_user", "text": "Which date?", "options": ["Mar 15", "Mar 16"]},
+]
+```
+
+### Event Types
+
+| Type | Component | Fields |
+|------|-----------|--------|
+| `user` | User chat bubble | `content` |
+| `agent` | Agent chat bubble | `content` |
+| `thinking` | Loading spinner | - |
+| `tool_call` | Tool card | `name`, `status`, `result?` |
+| `ask_user` | Question form | `text`, `options?` |
+
+### Server → Client Mapping
+
+Server sends two events, client merges into one UI item:
+
+```
+Server: tool_call   {id: "3", name: "search"}     → UI: {id: "3", status: "running"}
+Server: tool_result {id: "3", result: "..."}      → UI: {id: "3", status: "done", result: "..."}
+```
+
+---
+
+## Cross-Platform SDKs
+
+### Python
+
+```python
+from connectonion import connect
+
+agent = connect("0x...")
+response = agent.input("Book a flight")
+print(response.text)   # "Which date?"
+print(response.done)   # False
+print(agent.ui)        # All events for rendering
+```
+
+### TypeScript
+
+```typescript
+import { connect } from 'connectonion';
+
+const agent = connect('0x...');
+const response = await agent.input('Book a flight');
+console.log(response.text);   // "Which date?"
+console.log(response.done);   // false
+console.log(agent.ui);        // All events for rendering
+```
+
+### Swift
+
+```swift
+import ConnectOnion
+
+let agent = connect("0x...")
+let response = try await agent.input("Book a flight")
+print(response.text)   // "Which date?"
+print(response.done)   // false
+print(agent.ui)        // All events for rendering
+```
+
+### Kotlin
+
+```kotlin
+import com.connectonion.connect
+
+val agent = connect("0x...")
+val response = agent.input("Book a flight")
+println(response.text)   // "Which date?"
+println(response.done)   // false
+println(agent.ui)        // All events for rendering
+```
+
+---
+
+## React / Vue Integration
+
+For reactive UI updates, use framework-specific hooks:
+
+### React
+
+```tsx
+import { useAgent } from 'connectonion/react';
+
+function ChatUI() {
+    const agent = useAgent('0x...');
+
+    return (
+        <div>
+            {agent.ui.map(item => {
+                switch (item.type) {
+                    case 'user':      return <UserBubble key={item.id} {...item} />;
+                    case 'agent':     return <AgentBubble key={item.id} {...item} />;
+                    case 'thinking':  return <Thinking key={item.id} />;
+                    case 'tool_call': return <ToolCard key={item.id} {...item} />;
+                    case 'ask_user':  return <QuestionForm key={item.id} {...item} onAnswer={agent.send} />;
+                }
+            })}
+            <Input onSend={agent.send} disabled={agent.status === 'working'} />
+        </div>
+    );
+}
+```
+
+### Vue
+
+```vue
+<script setup>
+import { useAgent } from 'connectonion/vue';
+
+const agent = useAgent('0x...');
+</script>
+
+<template>
+    <div v-for="item in agent.ui" :key="item.id">
+        <UserBubble v-if="item.type === 'user'" v-bind="item" />
+        <AgentBubble v-if="item.type === 'agent'" v-bind="item" />
+        <Thinking v-if="item.type === 'thinking'" />
+        <ToolCard v-if="item.type === 'tool_call'" v-bind="item" />
+        <QuestionForm v-if="item.type === 'ask_user'" v-bind="item" @answer="agent.send" />
+    </div>
+    <Input @send="agent.send" :disabled="agent.status === 'working'" />
+</template>
+```
+
+### Hook Interface
+
+All hooks return the same interface:
+
+```ts
+const agent = useAgent('0x...');
+
+agent.ui        // UIEvent[] - reactive, auto updates
+agent.status    // 'idle' | 'working' | 'waiting' - reactive
+agent.send()    // Send message
+agent.reset()   // Clear conversation
 ```
 
 ---
 
 ## API Reference
 
-### connect(agent_address, keys, relay_url)
-
-Connect to a remote serving agent.
-
-**Parameters:**
-- `agent_address` (str, required): Ed25519 public key of the remote agent (hex format with 0x prefix)
-- `keys` (dict, optional): Signing keys from `address.load()` - required for `trust="strict"` agents
-- `relay_url` (str, optional): Relay server URL. Defaults to `"wss://oo.openonion.ai/ws/announce"`
-
-**Returns:**
-- `RemoteAgent`: Proxy object that behaves like a local Agent
-
-**Example:**
-```python
-from connectonion import connect, address
-
-# Connect with default relay
-agent = connect("0x7a8f...")
-
-# Connect with signing (for strict trust agents)
-keys = address.load(Path(".co"))
-agent = connect("0x7a8f...", keys=keys)
-
-# Connect with custom relay
-agent = connect("0x7a8f...", relay_url="ws://localhost:8000/ws/announce")
-```
-
-### RemoteAgent Methods
-
-**`input(prompt, timeout=30.0)`** - Sync version (standard Python scripts)
-```python
-result = agent.input("Hello")
-```
-
-**`input_async(prompt, timeout=30.0)`** - Async version (Jupyter notebooks, async code)
-```python
-result = await agent.input_async("Hello")
-```
-
-**`reset_conversation()`** - Clear session and start fresh
-```python
-agent.reset_conversation()
-```
-
-> **Note:** `input()` cannot be used inside async contexts (Jupyter notebooks, async functions).
-> Use `await agent.input_async()` instead. You'll get a clear error message if you try.
-
----
-
-## Using Remote Agents
-
-Once connected, remote agents work exactly like local ones:
-
-### Single Task
+### connect()
 
 ```python
-remote = connect("0x7a8f...")
-
-result = remote.input("Translate 'hello' to Spanish")
-print(result)
+agent = connect("0x...", relay_url="ws://localhost:8000/ws/announce")
 ```
 
-### Multi-Turn Conversation
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `address` | `str` | required | Agent's address (0x...) |
+| `relay_url` | `str` | production | Relay server URL |
+
+### RemoteAgent
 
 ```python
-remote = connect("0x7a8f...")
+class RemoteAgent:
+    # Actions
+    def input(self, prompt: str) -> Response
+    def reset(self) -> None
 
-# Turn 1
-response1 = remote.input("Calculate 100 + 50")
-# "The result is 150"
-
-# Turn 2 - remembers context
-response2 = remote.input("Multiply that by 2")
-# "The result is 300"
+    # State (read-only)
+    current_session: dict    # Full session data
+    ui: List[UIEvent]        # Shortcut to current_session['trace']
+    status: str              # 'idle' | 'working' | 'waiting'
 ```
 
-The remote agent maintains conversation state across multiple `input()` calls.
+### useAgent() (React/Vue)
 
----
+```ts
+const agent = useAgent('0x...');
 
-## How It Works
-
-### Message Flow
-
-```
-Your Code          Relay Server          Remote Agent
-   |                     |                      |
-   |-- INPUT ----------->|                      |
-   |                     |-- INPUT ------------>|
-   |                     |                      |
-   |                     |             [Process task]
-   |                     |                      |
-   |                     |<-- OUTPUT -----------|
-   |<-- OUTPUT ----------|                      |
-   |                     |                      |
+agent.ui        // Reactive - auto updates when data changes
+agent.status    // Reactive - 'idle' | 'working' | 'waiting'
+agent.send()    // Send message to agent
+agent.reset()   // Clear conversation
 ```
 
-### Under the Hood
+### Data Types
 
 ```python
-# What connect() does internally
-def connect(agent_address, relay_url=DEFAULT_RELAY):
-    # 1. Create WebSocket connection to relay
-    ws = websocket.create_connection(relay_url)
+@dataclass
+class Response:
+    text: str       # Agent's response
+    done: bool      # True = complete, False = needs input
 
-    # 2. Return proxy that forwards input() calls
-    class RemoteAgent:
-        def input(self, prompt):
-            # Send INPUT message
-            msg = {
-                "type": "INPUT",
-                "to": agent_address,
-                "task": prompt
-            }
-            ws.send(json.dumps(msg))
+# Server trace events (what server sends)
+@dataclass
+class ServerEvent:
+    id: str
+    type: str       # 'user' | 'agent' | 'thinking' | 'tool_call' | 'tool_result' | 'ask_user'
 
-            # Wait for OUTPUT response
-            response = ws.recv()
-            return json.loads(response)["result"]
+# UI events (what client renders) - tool_result merged into tool_call
+@dataclass
+class UIEvent:
+    id: str
+    type: str       # 'user' | 'agent' | 'thinking' | 'tool_call' | 'ask_user'
 
-    return RemoteAgent()
+    # For user/agent
+    content: Optional[str]
+
+    # For tool_call (merged from tool_call + tool_result)
+    name: Optional[str]
+    status: Optional[str]    # 'running' | 'done' | 'error'
+    result: Optional[str]
+
+    # For ask_user
+    text: Optional[str]
+    options: Optional[List[str]]
 ```
 
 ---
 
-## Configuration
+## State Machine
 
-### Default Relay (Production)
-
-```python
-# Uses wss://oo.openonion.ai/ws/announce by default
-agent = connect("0x7a8f...")
 ```
-
-### Local Relay (Development)
-
-```python
-# Connect to local relay server
-agent = connect("0x7a8f...", relay_url="ws://localhost:8000/ws/announce")
-```
-
-### Environment-Based
-
-```python
-import os
-
-relay_url = os.getenv(
-    "RELAY_URL",
-    "wss://oo.openonion.ai/ws/announce"
-)
-
-agent = connect("0x7a8f...", relay_url=relay_url)
+                    input()                 response.done=false
+        IDLE ────────────────▶ WORKING ─────────────────────▶ WAITING
+          ▲                       │                              │
+          │                       │ response.done=true           │ input()
+          │                       ▼                              │
+          └───────────────────────────────────────────────────────
 ```
 
 ---
 
 ## Common Patterns
 
-### 1. Connect to Multiple Agents
+### Conversation Loop
 
 ```python
-from connectonion import connect
+agent = connect("0x...")
 
-# Connect to specialized agents
-searcher = connect("0xaaa...")
+response = agent.input("book a flight")
+
+while not response.done:
+    answer = input(f"{response.text}: ")
+    response = agent.input(answer)
+
+print(f"Final: {response.text}")
+```
+
+### Multiple Agents
+
+```python
+researcher = connect("0xaaa...")
 writer = connect("0xbbb...")
-reviewer = connect("0xccc...")
 
-# Use them together
-research = searcher.input("Research AI trends")
-draft = writer.input(f"Write article about: {research}")
-final = reviewer.input(f"Review and improve: {draft}")
-
-print(final)
+research = researcher.input("Research AI trends").text
+article = writer.input(f"Write about: {research}").text
 ```
 
-### 2. Retry on Connection Failure
+### Complete Example
+
+**Terminal 1: Host an Agent**
 
 ```python
-import time
-from connectonion import connect
+from connectonion import Agent, host
 
-def connect_with_retry(address, max_retries=3):
-    for attempt in range(max_retries):
-        try:
-            return connect(address)
-        except Exception as e:
-            if attempt < max_retries - 1:
-                print(f"Connection failed, retrying... ({attempt + 1}/{max_retries})")
-                time.sleep(2)
-            else:
-                raise
+def search(query: str) -> str:
+    return f"Found results for: {query}"
 
-agent = connect_with_retry("0x7a8f...")
+def book_flight(destination: str, date: str) -> str:
+    return f"Booked flight to {destination} on {date}. Confirmation: ABC123"
+
+agent = Agent("travel-assistant", tools=[search, book_flight])
+host(agent)
 ```
 
-### 3. Agent Pool
+**Terminal 2: Connect and Use**
 
 ```python
 from connectonion import connect
 
-# Pool of identical agents for load balancing
-agent_addresses = [
-    "0xaaa...",
-    "0xbbb...",
-    "0xccc..."
-]
+agent = connect("0x7a8f...")
+response = agent.input("Book me a flight to Paris")
 
-agents = [connect(addr) for addr in agent_addresses]
+while not response.done:
+    print(response.text)
+    answer = input("> ")
+    response = agent.input(answer)
 
-# Simple round-robin
-def get_agent():
-    agent = agents.pop(0)
-    agents.append(agent)
-    return agent
-
-# Use different agent each time
-result1 = get_agent().input("Task 1")
-result2 = get_agent().input("Task 2")
-result3 = get_agent().input("Task 3")
-```
-
----
-
-## Real-World Example: Distributed Workflow
-
-```python
-from connectonion import Agent, connect
-
-# Local orchestrator agent
-def run_workflow(task: str) -> str:
-    """Run distributed workflow."""
-
-    # Connect to remote specialized agents
-    researcher = connect("0xaaa...")
-    analyst = connect("0xbbb...")
-    writer = connect("0xccc...")
-
-    # Step 1: Research
-    research = researcher.input(f"Research: {task}")
-
-    # Step 2: Analyze
-    analysis = analyst.input(f"Analyze this data: {research}")
-
-    # Step 3: Write report
-    report = writer.input(f"Write report based on: {analysis}")
-
-    return report
-
-# Local agent with access to remote agents via tool
-orchestrator = Agent("orchestrator", tools=[run_workflow])
-
-# User just talks to local agent, it uses remote ones automatically
-result = orchestrator.input("Create a report on AI market trends")
-print(result)
-```
-
----
-
-## Testing
-
-### Test Remote Connection
-
-```python
-from connectonion import connect
-
-def test_connection(address):
-    """Test if remote agent is reachable."""
-    try:
-        agent = connect(address)
-        response = agent.input("ping")
-        print(f"✓ Connected to {address}")
-        print(f"Response: {response}")
-        return True
-    except Exception as e:
-        print(f"✗ Failed to connect to {address}")
-        print(f"Error: {e}")
-        return False
-
-# Test
-test_connection("0x7a8f...")
-```
-
-### Integration Test
-
-```python
-import pytest
-from connectonion import Agent, connect, host
-import threading
-import time
-
-def test_network_connection():
-    """Test serving and connecting to an agent."""
-
-    # Create and serve agent in background
-    def serve():
-        agent = Agent("test", tools=[lambda x: f"Echo: {x}"])
-        host(agent, relay_url="ws://localhost:8000/ws/announce")
-
-    thread = threading.Thread(target=serve, daemon=True)
-    thread.start()
-
-    # Wait for agent to start
-    time.sleep(2)
-
-    # Connect and test
-    remote = connect(
-        "0x...",  # Agent's public key
-        relay_url="ws://localhost:8000/ws/announce"
-    )
-
-    result = remote.input("test message")
-    assert "Echo: test message" in result
+print(f"Done: {response.text}")
 ```
 
 ---
 
 ## Error Handling
 
-### Agent Not Found
-
 ```python
-from connectonion import connect
+from connectonion import connect, ConnectionError, TimeoutError
 
-try:
-    agent = connect("0xinvalid...")
-except Exception as e:
-    print(f"Agent not found: {e}")
-    # Handle: maybe agent is offline, try later
+agent = connect("0x...")
+response = agent.input("task")
+# Errors raise exceptions - no try/except needed unless you want custom handling
 ```
-
-### Connection Timeout
-
-```python
-import socket
-
-try:
-    agent = connect("0x7a8f...", relay_url="ws://unreachable:8000/ws/announce")
-except socket.timeout:
-    print("Connection timed out")
-    # Handle: use backup relay or local fallback
-```
-
-### Network Errors
-
-```python
-from connectonion import connect
-
-def safe_connect(address):
-    """Connect with error handling."""
-    try:
-        return connect(address)
-    except ConnectionError:
-        print("Network error, using local agent instead")
-        from connectonion import Agent
-        return Agent("fallback", tools=[...])
-
-agent = safe_connect("0x7a8f...")
-```
-
----
-
-## Comparison: Local vs Remote
-
-### Local Agent
-
-```python
-from connectonion import Agent
-
-# Create local agent
-agent = Agent("local", tools=[search, calculate])
-
-# Use it
-result = agent.input("Search and calculate")
-```
-
-**Pros:**
-- No network latency
-- Works offline
-- Full control
-
-**Cons:**
-- Limited to one machine
-- No sharing
-- Scales vertically only
-
-### Remote Agent
-
-```python
-from connectonion import connect
-
-# Connect to remote agent
-agent = connect("0x7a8f...")
-
-# Use it
-result = agent.input("Search and calculate")
-```
-
-**Pros:**
-- Access from anywhere
-- Share across team
-- Scales horizontally
-- Specialized agents
-
-**Cons:**
-- Network latency
-- Requires connectivity
-- Depends on remote availability
-
----
-
-## Learn More
-
-- **[host.md](host.md)** - Make your agents network-accessible with `host()`
-- **[Agent](concepts/agent.md)** - Core Agent documentation
-- **[protocol/agent-relay-protocol.md](protocol/agent-relay-protocol.md)** - Protocol specification
 
 ---
 
 ## Summary
 
-`connect(address)` creates a proxy to a remote agent:
-
-- **One function call** - `connect("0x7a8f...")`
-- **Works like local agents** - Same `.input()` interface
-- **Automatic relay connection** - Defaults to `wss://oo.openonion.ai/ws/announce`
-- **Multi-turn conversations** - Remote agent maintains state
-- **Zero configuration** - Just provide the address
-
-**Simple case:**
 ```python
-agent = connect("0x7a8f...")
-result = agent.input("task")
+# Python / TypeScript / Swift / Kotlin
+agent = connect("0x...")
+response = agent.input("task")
+agent.ui      # All events for UI rendering
+agent.status  # 'idle' | 'working' | 'waiting'
 ```
 
-**Custom relay:**
-```python
-agent = connect("0x7a8f...", relay_url="ws://localhost:8000/ws/announce")
-result = agent.input("task")
+```tsx
+// React / Vue (reactive)
+const agent = useAgent('0x...');
+agent.ui      // Reactive - auto updates
+agent.send()  // Send message
 ```
 
-That's it. Now go use remote agents as if they were local.
+**Server events:** `user`, `agent`, `thinking`, `tool_call`, `tool_result`, `ask_user`
+
+**UI events:** `user`, `agent`, `thinking`, `tool_call`, `ask_user` (tool_result merged into tool_call)
+
+**One UI type = one component.** That's it.
+
+---
+
+## Learn More
+
+- **[host.md](host.md)** - Host agents for remote access
+- **[io.md](io.md)** - IO interface for real-time communication

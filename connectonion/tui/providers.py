@@ -1,4 +1,14 @@
-"""Providers for CommandPalette and Input autocomplete."""
+"""
+Purpose: Autocomplete providers for Input widget with fuzzy search and file/command completion
+LLM-Note:
+  Dependencies: imports from [pathlib, typing.Protocol, tui/fuzzy.py, tui/dropdown.py] | imported by [tui/input.py, tui/chat.py] | tested by [tests/tui/test_providers.py]
+  Data flow: Provider.search(query) → fuzzy_match() filters items → returns list[DropdownItem] sorted by score | StaticProvider for fixed lists | FileProvider for filesystem completion | CommandProvider for slash commands
+  State/Effects: FileProvider reads filesystem via Path.glob() | no persistent state
+  Integration: exposes Provider protocol with search(query) → list[DropdownItem|tuple], StaticProvider(items), FileProvider(base_path), CommandProvider(commands) | used by Input triggers dict (e.g., {"/": CommandProvider, "@": FileProvider})
+  Performance: fuzzy matching is fast for typical item counts (<1000) | file provider lazy-loads on search | sorted by score for relevance
+  Errors: FileProvider handles missing directories gracefully | returns empty list if no matches
+Providers for CommandPalette and Input autocomplete.
+"""
 
 from pathlib import Path
 from typing import Protocol, runtime_checkable, Union

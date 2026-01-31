@@ -11,6 +11,17 @@ import pytest
 from unittest.mock import MagicMock
 
 
+# === Helper for async execution ===
+
+def run_async(coro):
+    """Run async code safely, creating new event loop to avoid pollution from other tests."""
+    loop = asyncio.new_event_loop()
+    try:
+        return loop.run_until_complete(coro)
+    finally:
+        loop.close()
+
+
 # === Simple ASGI Test Client ===
 
 def create_signed_request(prompt: str, timestamp: float = None) -> dict:
@@ -38,7 +49,13 @@ class ASGITestClient:
         self.app = app
 
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        # Use new_event_loop to avoid "no current event loop" error in Python 3.10+
+        # when previous tests have closed or consumed the default event loop
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
 
     def get(self, path: str) -> "Response":
         return self._run(self._request("GET", path))
@@ -99,23 +116,29 @@ class TestHostEndpoints:
     """Test HTTP endpoints for host()."""
 
     @pytest.fixture
-    def mock_agent(self):
-        """Create a mock agent for testing."""
-        agent = MagicMock()
-        agent.name = "test-agent"
-        agent.tools = MagicMock()
-        agent.tools.list_names = MagicMock(return_value=["tool1", "tool2"])
-        agent.input = MagicMock(return_value="Hello response")
-        agent.current_session = {"messages": [], "trace": [], "turn": 1}
-        return agent
+    def create_mock_agent(self):
+        """Create a factory that returns mock agents for testing.
+
+        Each call returns a fresh mock agent instance, matching
+        the factory pattern used by host().
+        """
+        def factory():
+            agent = MagicMock()
+            agent.name = "test-agent"
+            agent.tools = MagicMock()
+            agent.tools.names = MagicMock(return_value=["tool1", "tool2"])
+            agent.input = MagicMock(return_value="Hello response")
+            agent.current_session = {"messages": [], "trace": [], "turn": 1}
+            return agent
+        return factory
 
     @pytest.fixture
-    def app(self, mock_agent, tmp_path):
+    def app(self, create_mock_agent, tmp_path):
         """Create test ASGI app."""
         from connectonion.network.host import create_app, SessionStorage
 
         storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
-        return create_app(agent=mock_agent, storage=storage, trust="open", result_ttl=3600)
+        return create_app(create_agent=create_mock_agent, storage=storage, trust="open", result_ttl=3600)
 
     @pytest.fixture
     def client(self, app):
@@ -133,15 +156,13 @@ class TestHostEndpoints:
         assert "session_id" in data
         assert data["status"] == "done"
 
-    def test_post_input_returns_result(self, client, mock_agent):
+    def test_post_input_returns_result(self, client):
         """POST /input should include result."""
-        mock_agent.input.return_value = "Quick response"
-
         response = client.post_signed("/input", "Hello")
 
         data = response.json()
         assert data["status"] == "done"
-        assert data["result"] == "Quick response"
+        assert data["result"] == "Hello response"
 
     def test_post_input_returns_duration_ms(self, client):
         """POST /input should include duration_ms."""
@@ -186,7 +207,7 @@ class TestHostEndpoints:
             await client.app(scope, receive, send)
             return response
 
-        response = asyncio.get_event_loop().run_until_complete(test())
+        response = run_async(test())
         assert response.status_code == 400
 
     # === GET /sessions/{session_id} tests ===
@@ -476,20 +497,23 @@ class TestInfoAddress:
     """Test /info endpoint includes address."""
 
     @pytest.fixture
-    def mock_agent(self):
-        agent = MagicMock()
-        agent.name = "test-agent"
-        agent.tools = MagicMock()
-        agent.tools.list_names = MagicMock(return_value=["tool1", "tool2"])
-        agent.input = MagicMock(return_value="Hello response")
-        agent.current_session = {"messages": [], "trace": [], "turn": 1}
-        return agent
+    def create_mock_agent(self):
+        """Create a factory that returns mock agents for testing."""
+        def factory():
+            agent = MagicMock()
+            agent.name = "test-agent"
+            agent.tools = MagicMock()
+            agent.tools.names = MagicMock(return_value=["tool1", "tool2"])
+            agent.input = MagicMock(return_value="Hello response")
+            agent.current_session = {"messages": [], "trace": [], "turn": 1}
+            return agent
+        return factory
 
     @pytest.fixture
-    def app(self, mock_agent, tmp_path):
+    def app(self, create_mock_agent, tmp_path):
         from connectonion.network.host import create_app, SessionStorage
         storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
-        return create_app(agent=mock_agent, storage=storage, trust="open", result_ttl=3600)
+        return create_app(create_agent=create_mock_agent, storage=storage, trust="open", result_ttl=3600)
 
     @pytest.fixture
     def client(self, app):
@@ -812,51 +836,28 @@ class TestSignatureVerification:
         assert err == "forbidden: blacklisted"
 
 
-class TestHostApp:
-    """Test host.app export."""
-
-    def test_host_has_app_attribute(self):
-        """host function should have app attribute."""
-        from connectonion.network.host import host
-
-        assert hasattr(host, "app")
-        assert callable(host.app)
-
-    def test_host_app_creates_asgi_app(self):
-        """host.app should create ASGI app."""
-        from connectonion.network.host import host
-
-        class MockAgent:
-            name = "test"
-            tools = MagicMock()
-            tools.list_names = MagicMock(return_value=[])
-            input = MagicMock(return_value="response")
-
-        app = host.app(MockAgent())
-
-        assert callable(app)
-
-
 class TestCORS:
     """Test CORS headers for cross-origin requests."""
 
     @pytest.fixture
-    def mock_agent(self):
-        """Create a mock agent for testing."""
-        agent = MagicMock()
-        agent.name = "test-agent"
-        agent.tools = MagicMock()
-        agent.tools.list_names = MagicMock(return_value=["tool1"])
-        agent.input = MagicMock(return_value="Hello response")
-        agent.current_session = {"messages": [], "trace": [], "turn": 1}
-        return agent
+    def create_mock_agent(self):
+        """Create a factory that returns mock agents for testing."""
+        def factory():
+            agent = MagicMock()
+            agent.name = "test-agent"
+            agent.tools = MagicMock()
+            agent.tools.names = MagicMock(return_value=["tool1"])
+            agent.input = MagicMock(return_value="Hello response")
+            agent.current_session = {"messages": [], "trace": [], "turn": 1}
+            return agent
+        return factory
 
     @pytest.fixture
-    def app(self, mock_agent, tmp_path):
+    def app(self, create_mock_agent, tmp_path):
         """Create test ASGI app."""
         from connectonion.network.host import create_app, SessionStorage
         storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
-        return create_app(agent=mock_agent, storage=storage, trust="open", result_ttl=3600)
+        return create_app(create_agent=create_mock_agent, storage=storage, trust="open", result_ttl=3600)
 
     def test_options_preflight_returns_204(self, app):
         """OPTIONS request should return 204 with CORS headers."""
@@ -884,7 +885,7 @@ class TestCORS:
             await app(scope, receive, send)
             return response
 
-        response = asyncio.get_event_loop().run_until_complete(test())
+        response = run_async(test())
         assert response.status_code == 204
 
         # Check CORS headers
@@ -919,7 +920,7 @@ class TestCORS:
             await app(scope, receive, send)
             return response
 
-        response = asyncio.get_event_loop().run_until_complete(test())
+        response = run_async(test())
         assert response.status_code == 200
 
         # Check CORS headers in response
@@ -931,22 +932,24 @@ class TestAdminEndpoints:
     """Test admin endpoints requiring API key authentication."""
 
     @pytest.fixture
-    def mock_agent(self):
-        """Create a mock agent for testing."""
-        agent = MagicMock()
-        agent.name = "test-agent"
-        agent.tools = MagicMock()
-        agent.tools.list_names = MagicMock(return_value=["tool1"])
-        agent.input = MagicMock(return_value="Hello response")
-        agent.current_session = {"messages": [], "trace": [], "turn": 1}
-        return agent
+    def create_mock_agent(self):
+        """Create a factory that returns mock agents for testing."""
+        def factory():
+            agent = MagicMock()
+            agent.name = "test-agent"
+            agent.tools = MagicMock()
+            agent.tools.names = MagicMock(return_value=["tool1"])
+            agent.input = MagicMock(return_value="Hello response")
+            agent.current_session = {"messages": [], "trace": [], "turn": 1}
+            return agent
+        return factory
 
     @pytest.fixture
-    def app(self, mock_agent, tmp_path):
+    def app(self, create_mock_agent, tmp_path):
         """Create test ASGI app."""
         from connectonion.network.host import create_app, SessionStorage
         storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
-        return create_app(agent=mock_agent, storage=storage, trust="open", result_ttl=3600)
+        return create_app(create_agent=create_mock_agent, storage=storage, trust="open", result_ttl=3600)
 
     def _make_request(self, app, method: str, path: str, headers: list = None):
         """Helper to make async request with headers."""
@@ -972,7 +975,7 @@ class TestAdminEndpoints:
             await app(scope, receive, send)
             return response
 
-        return asyncio.get_event_loop().run_until_complete(test())
+        return run_async(test())
 
     def test_admin_logs_requires_auth(self, app):
         """GET /admin/logs without API key should return 401."""

@@ -2,7 +2,7 @@
 
 import json
 from unittest.mock import Mock, MagicMock
-from typing import Dict, List, Any, Optional, Type
+from typing import Dict, List, Any, Optional, Type, Callable, Union
 from connectonion.core.llm import LLM, LLMResponse, ToolCall
 from connectonion.core.usage import TokenUsage
 from pydantic import BaseModel
@@ -28,24 +28,72 @@ class MockLLM(LLM):
         mock_llm = MockLLM(responses=[...], model="gpt-4o-mini")
     """
 
-    def __init__(self, responses: List[LLMResponse] = None, model: str = "mock-llm"):
+    def __init__(
+        self,
+        responses: Optional[List[LLMResponse]] = None,
+        model: str = "mock-llm",
+        usage_factory: Optional[Callable[[str, List[Dict[str, Any]], List[ToolCall]], TokenUsage]] = None,
+        on_complete: Optional[Callable[[List[Dict[str, Any]], Optional[List[Dict[str, Any]]]], LLMResponse]] = None,
+        on_structured_complete: Optional[Callable[[List[Dict[str, Any]], Type[BaseModel]], BaseModel]] = None,
+        structured_responses: Optional[Union[List[BaseModel], Dict[Type[BaseModel], List[BaseModel]]]] = None,
+    ):
         self.model = model
         self._responses = list(responses) if responses else []
         self._call_count = 0
-        self._calls = []  # Track all calls for assertions
+        self._calls: List[Dict[str, Any]] = []  # Track all calls for assertions
+        self._usage_factory = usage_factory
+        self._on_complete = on_complete
+        self._on_structured_complete = on_structured_complete
+        # Support a global queue or per-schema queues
+        self._structured_responses = structured_responses
 
-    def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
-        """Return next response from the queue."""
+    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
+        """Return next response from the queue or a callback-produced response.
+
+        - Records the call (messages/tools/kwargs)
+        - If `on_complete` is provided, use it to produce the response
+        - Else pop a pre-seeded response
+        - If `usage_factory` is provided and response.usage is None or empty, attach generated TokenUsage
+        """
         self._calls.append({"messages": messages, "tools": tools, "kwargs": kwargs})
         self._call_count += 1
 
-        if not self._responses:
-            return LLMResponse(content="Mock response", tool_calls=[], raw_response={}, usage=TokenUsage())
+        if self._on_complete is not None:
+            resp = self._on_complete(messages, tools)
+        elif self._responses:
+            resp = self._responses.pop(0)
+        else:
+            resp = LLMResponse(content="Mock response", tool_calls=[], raw_response={}, usage=TokenUsage())
 
-        return self._responses.pop(0)
+        if self._usage_factory is not None and (resp.usage is None or isinstance(resp.usage, TokenUsage) and not resp.usage.model_dump()):
+            # Generate usage from messages/tool_calls
+            try:
+                usage = self._usage_factory(self.model, messages, resp.tool_calls)
+                resp.usage = usage
+            except Exception:
+                # Keep tests resilient even if usage_factory throws
+                pass
+
+        return resp
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
-        """Return a basic instance of the schema."""
+        """Return a structured response via callback or queued instances.
+
+        Priority:
+        1) on_structured_complete(messages, output_schema)
+        2) Pop from structured_responses (per-schema dict or global list)
+        3) Return empty instance: output_schema()
+        """
+        if self._on_structured_complete is not None:
+            return self._on_structured_complete(messages, output_schema)
+
+        if isinstance(self._structured_responses, dict):
+            queue = self._structured_responses.get(output_schema, [])
+            if queue:
+                return queue.pop(0)
+        elif isinstance(self._structured_responses, list) and self._structured_responses:
+            return self._structured_responses.pop(0)
+
         return output_schema()
 
     @property
@@ -174,13 +222,15 @@ class LLMResponseBuilder:
     def tool_call_response(
         tool_name: str,
         arguments: Dict[str, Any],
-        call_id: str = "call_test"
+        call_id: str = "call_test",
+        extra_content: Optional[Dict[str, Any]] = None,
     ) -> LLMResponse:
         """Create tool calling LLMResponse."""
         tool_call = ToolCall(
             name=tool_name,
             arguments=arguments,
-            id=call_id
+            id=call_id,
+            extra_content=extra_content,
         )
 
         return LLMResponse(
@@ -287,6 +337,7 @@ def create_successful_agent_mock(responses: List[str]) -> Mock:
     """Create a mock agent that returns successful text responses."""
     mock_agent = Mock()
     mock_agent.run.side_effect = responses
+    mock_agent.input.side_effect = responses
     mock_agent.name = "test_agent"
     mock_agent.list_tools.return_value = ["calculator", "current_time"]
     return mock_agent
@@ -296,5 +347,78 @@ def create_failing_agent_mock(error_message: str = "Agent error") -> Mock:
     """Create a mock agent that fails."""
     mock_agent = Mock()
     mock_agent.run.side_effect = Exception(error_message)
+    mock_agent.input.side_effect = Exception(error_message)
     mock_agent.name = "failing_agent"
     return mock_agent
+
+
+class MockAgent:
+    """Lightweight mock Agent for tests that want a simple, controllable agent.
+
+    Features:
+    - `input()` and `run()` methods returning queued responses or computed via callback
+    - Tracks calls (`calls`, `last_input`) and maintains a minimal `current_session`
+    - Optional `tools` registry for interface parity; does not auto-execute tools
+
+    Usage:
+        agent = MockAgent(responses=["hello", "world"], tools=["calculator"]) 
+        out1 = agent.input("hi")  # "hello"
+        out2 = agent.input("again")  # "world"
+    """
+
+    def __init__(
+        self,
+        name: str = "mock_agent",
+        responses: Optional[List[str]] = None,
+        tools: Optional[Union[List[Union[str, Callable]], Dict[str, Callable]]] = None,
+        on_input: Optional[Callable[[str, "MockAgent"], str]] = None,
+    ):
+        self.name = name
+        self._responses: List[str] = list(responses) if responses else []
+        self._on_input = on_input
+        self._calls: List[Dict[str, Any]] = []
+        self.last_input: Optional[str] = None
+
+        # Minimal session state for parity with real Agent
+        self.current_session: Dict[str, Any] = {
+            "messages": [],
+            "trace": [],
+        }
+
+        # Normalize tools to a name->callable mapping where possible
+        self._tools: Dict[str, Any] = {}
+        if isinstance(tools, dict):
+            self._tools = dict(tools)
+        elif isinstance(tools, list):
+            for t in tools:
+                if callable(t):
+                    self._tools[getattr(t, "__name__", "tool")] = t
+                else:
+                    self._tools[str(t)] = t
+
+    def list_tools(self) -> List[str]:
+        return list(self._tools.keys())
+
+    def input(self, prompt: str) -> str:
+        self.last_input = prompt
+        self._calls.append({"input": prompt})
+        self.current_session["messages"].append({"role": "user", "content": prompt})
+
+        if self._on_input is not None:
+            result = self._on_input(prompt, self)
+        elif self._responses:
+            result = self._responses.pop(0)
+        else:
+            result = ""
+
+        # Track a minimal assistant message
+        self.current_session["messages"].append({"role": "assistant", "content": result})
+        return result
+
+    # Alias to mirror some tests that call run()
+    def run(self, prompt: str) -> str:
+        return self.input(prompt)
+
+    @property
+    def calls(self) -> List[Dict[str, Any]]:
+        return self._calls

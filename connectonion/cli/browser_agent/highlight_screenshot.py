@@ -1,4 +1,12 @@
 """
+Purpose: Draw bounding boxes and element indices on screenshots for visual element identification
+LLM-Note:
+  Dependencies: imports from [PIL Image/ImageDraw/ImageFont, pathlib, cli/browser_agent/element_finder] | imported by [cli/browser_agent/browser.py] | tested by [tests/cli/test_highlight.py]
+  Data flow: highlight_screenshot(screenshot_path, elements) → loads PNG image → iterates InteractiveElement list → draws dashed rectangle around each element → draws index label with colored background → saves highlighted image | highlight_current_page(page) → takes screenshot → extracts elements → calls highlight_screenshot() → returns path
+  State/Effects: reads screenshot PNG from disk | writes highlighted PNG to disk | deletes raw screenshot after highlighting | creates screenshots/ directory if missing
+  Integration: exposes highlight_screenshot(screenshot_path, elements, output_path) → str, highlight_current_page(page, output_path) → str | ELEMENT_COLORS dict maps tag names to hex colors | get_font(size) → ImageFont for cross-platform text rendering | draw_dashed_rect() utility for styled boxes
+  Performance: PIL image processing (fast for typical webpage screenshots) | processes all elements in one pass | minimal memory (single image in RAM)
+  Errors: skips elements with width/height < 5px (too small to render) | falls back to default font if system fonts unavailable | raises if PIL/Pillow not installed
 Screenshot highlighting - draw bounding boxes and indices on screenshots.
 Inspired by browser-use's python_highlights.py approach.
 """
@@ -6,7 +14,7 @@ Inspired by browser-use's python_highlights.py approach.
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 from typing import List
-import element_finder
+from . import element_finder
 
 # Color scheme for different element types
 ELEMENT_COLORS = {

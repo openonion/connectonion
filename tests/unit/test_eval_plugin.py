@@ -100,8 +100,8 @@ class TestSummarizeTrace:
     def test_summarize_successful_tool_execution(self):
         """Test summarizing successful tool execution."""
         trace = [{
-            'type': 'tool_execution',
-            'tool_name': 'search',
+            'type': 'tool_result',
+            'name': 'search',
             'status': 'success',
             'result': 'Found 10 results'
         }]
@@ -111,8 +111,8 @@ class TestSummarizeTrace:
     def test_summarize_failed_tool_execution(self):
         """Test summarizing failed tool execution."""
         trace = [{
-            'type': 'tool_execution',
-            'tool_name': 'api_call',
+            'type': 'tool_result',
+            'name': 'api_call',
             'status': 'error',
             'error': 'Connection timeout'
         }]
@@ -122,8 +122,8 @@ class TestSummarizeTrace:
     def test_summarize_multiple_tools(self):
         """Test summarizing multiple tool executions."""
         trace = [
-            {'type': 'tool_execution', 'tool_name': 'search', 'status': 'success', 'result': 'Found results'},
-            {'type': 'tool_execution', 'tool_name': 'read', 'status': 'success', 'result': 'File contents'},
+            {'type': 'tool_result', 'name': 'search', 'status': 'success', 'result': 'Found results'},
+            {'type': 'tool_result', 'name': 'read', 'status': 'success', 'result': 'File contents'},
         ]
         result = _summarize_trace(trace)
         assert '- search:' in result
@@ -132,8 +132,8 @@ class TestSummarizeTrace:
     def test_summarize_truncates_long_results(self):
         """Test that long results are truncated."""
         trace = [{
-            'type': 'tool_execution',
-            'tool_name': 'read',
+            'type': 'tool_result',
+            'name': 'read',
             'status': 'success',
             'result': 'x' * 200  # Long result
         }]
@@ -181,7 +181,7 @@ class TestEvaluateCompletion:
         agent.current_session['user_prompt'] = 'Search docs'
         agent.current_session['result'] = 'Found docs'
         agent.current_session['trace'] = [
-            {'type': 'tool_execution', 'tool_name': 'search', 'status': 'success', 'result': 'Results'}
+            {'type': 'tool_result', 'name': 'search', 'status': 'success', 'result': 'Results'}
         ]
 
         with patch.object(eval_module, 'llm_do') as mock_llm_do:

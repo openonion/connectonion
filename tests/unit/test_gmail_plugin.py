@@ -309,10 +309,10 @@ class TestSyncCrmAfterSend:
         """Test that non-send tools are skipped."""
         agent = FakeAgent()
         agent.current_session['trace'] = [{
-            'type': 'tool_execution',
-            'tool_name': 'read_inbox',
+            'type': 'tool_result',
+            'name': 'read_inbox',
             'status': 'success',
-            'arguments': {}
+            'args': {}
         }]
 
         # Should not raise or call update_contact
@@ -322,10 +322,10 @@ class TestSyncCrmAfterSend:
         """Test that failed sends don't update CRM."""
         agent = FakeAgent()
         agent.current_session['trace'] = [{
-            'type': 'tool_execution',
-            'tool_name': 'send',
+            'type': 'tool_result',
+            'name': 'send',
             'status': 'error',
-            'arguments': {'to': 'user@example.com'}
+            'args': {'to': 'user@example.com'}
         }]
 
         # Should not raise or call update_contact
@@ -335,10 +335,10 @@ class TestSyncCrmAfterSend:
         """Test that sends without recipient are skipped."""
         agent = FakeAgent()
         agent.current_session['trace'] = [{
-            'type': 'tool_execution',
-            'tool_name': 'send',
+            'type': 'tool_result',
+            'name': 'send',
             'status': 'success',
-            'arguments': {}
+            'args': {}
         }]
 
         # Should not raise
@@ -348,10 +348,10 @@ class TestSyncCrmAfterSend:
         """Test that successful send updates CRM."""
         agent = FakeAgent()
         agent.current_session['trace'] = [{
-            'type': 'tool_execution',
-            'tool_name': 'send',
+            'type': 'tool_result',
+            'name': 'send',
             'status': 'success',
-            'arguments': {'to': 'user@example.com'}
+            'args': {'to': 'user@example.com'}
         }]
 
         mock_gmail = Mock()
@@ -371,10 +371,10 @@ class TestSyncCrmAfterSend:
         """Test that successful reply updates CRM."""
         agent = FakeAgent()
         agent.current_session['trace'] = [{
-            'type': 'tool_execution',
-            'tool_name': 'reply',
+            'type': 'tool_result',
+            'name': 'reply',
             'status': 'success',
-            'arguments': {'to': 'user@example.com'}
+            'args': {'to': 'user@example.com'}
         }]
 
         mock_gmail = Mock()

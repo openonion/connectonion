@@ -1,4 +1,12 @@
 """
+Purpose: Find interactive elements on web pages using natural language descriptions via vision LLM
+LLM-Note:
+  Dependencies: imports from [playwright.sync_api Page, connectonion llm_do, pydantic, pathlib] | imported by [cli/browser_agent/browser.py] | tested by [tests/cli/test_element_finder.py]
+  Data flow: extract_elements(page) → evaluates extract_elements.js → injects data-browser-agent-id on all interactive elements → returns list[InteractiveElement] with locators | find_element(page, description, elements) → formats elements for LLM → calls llm_do with vision model + screenshot → LLM selects matching element by index → returns InteractiveElement with pre-built locator
+  State/Effects: modifies DOM by injecting data-browser-agent-id attributes (temporary, removed on navigation) | takes screenshot for vision analysis | no persistent state
+  Integration: exposes extract_elements(page) → list[InteractiveElement], find_element(page, description, elements, screenshot) → InteractiveElement|None, highlight_element(page, element) for visual feedback | InteractiveElement model has tag, text, role, aria_label, placeholder, x, y, width, height, locator | ElementMatch model for LLM response
+  Performance: JavaScript extraction is fast | LLM matching uses vision model (slower) | limits to 150 elements for context window | pre-built locators (no retry needed)
+  Errors: returns None if no matching element found | raises if Playwright page not available | element may be stale if page navigates
 Element Finder - Find interactive elements by natural language description.
 
 Inspired by browser-use (https://github.com/browser-use/browser-use).

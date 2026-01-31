@@ -17,7 +17,7 @@ print(f"Connecting to agent: {agent_address[:16]}...")
 
 # Use production relay by default
 import os
-relay_url = os.getenv("RELAY_URL", "wss://oo.openonion.ai/ws/announce")
+relay_url = os.getenv("RELAY_URL", "wss://oo.openonion.ai")
 
 print(f"Using relay: {relay_url}")
 

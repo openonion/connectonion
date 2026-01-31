@@ -2,6 +2,26 @@
 
 Microsoft Calendar integration via Microsoft Graph API.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import MicrosoftCalendar
+
+agent = Agent("assistant", tools=[MicrosoftCalendar()])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy microsoft_calendar
+```
+
+```python
+from tools.microsoft_calendar import MicrosoftCalendar  # Your local copy
+```
+
 ## Quick Start
 
 ```python

@@ -48,7 +48,13 @@ class ASGIWebSocketClient:
         self.sent = []  # messages sent by app
 
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        # Use new_event_loop to avoid "no current event loop" error in Python 3.10+
+        # when previous tests have closed or consumed the default event loop
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
 
     def send_text(self, text: str):
         return self._run(self._session([{"type": "websocket.receive", "text": text}, {"type": "websocket.disconnect"}]))
@@ -73,18 +79,20 @@ class ASGIWebSocketClient:
 
 
 @pytest.fixture
-def mock_agent():
-    """Create a real Agent with MockLLM that can be deep copied."""
-    mock_llm = MockLLM(responses=[
-        LLMResponseBuilder.text_response("out:hi"),
-    ])
-    return Agent(name="ws-agent", llm=mock_llm, log=False, quiet=True)
+def create_mock_agent():
+    """Factory that creates fresh Agent instances with MockLLM."""
+    def factory():
+        mock_llm = MockLLM(responses=[
+            LLMResponseBuilder.text_response("out:hi"),
+        ])
+        return Agent(name="ws-agent", llm=mock_llm, log=False, quiet=True)
+    return factory
 
 
 @pytest.fixture
-def app(mock_agent, tmp_path):
-    from connectonion.network.host import _make_app
-    return _make_app(mock_agent, trust="open", result_ttl=3600)
+def app(create_mock_agent, tmp_path):
+    from connectonion.network.host import create_app
+    return create_app(create_mock_agent, trust="open", result_ttl=3600)
 
 
 class TestWebSocket:
@@ -124,17 +132,19 @@ class TestWebSocket:
 
 class TestWebSocketStrict:
     @pytest.fixture
-    def mock_agent_strict(self):
-        """Fresh agent for strict tests."""
-        mock_llm = MockLLM(responses=[
-            LLMResponseBuilder.text_response("out:hi"),
-        ])
-        return Agent(name="ws-agent", llm=mock_llm, log=False, quiet=True)
+    def create_mock_agent_strict(self):
+        """Factory that creates fresh Agent instances for strict tests."""
+        def factory():
+            mock_llm = MockLLM(responses=[
+                LLMResponseBuilder.text_response("out:hi"),
+            ])
+            return Agent(name="ws-agent", llm=mock_llm, log=False, quiet=True)
+        return factory
 
     @pytest.fixture
-    def app_strict(self, mock_agent_strict, tmp_path):
-        from connectonion.network.host import _make_app
-        return _make_app(mock_agent_strict, trust="strict", result_ttl=3600)
+    def app_strict(self, create_mock_agent_strict, tmp_path):
+        from connectonion.network.host import create_app
+        return create_app(create_mock_agent_strict, trust="strict", result_ttl=3600)
 
     def test_strict_requires_signature(self, app_strict):
         client = ASGIWebSocketClient(app_strict)
@@ -163,17 +173,19 @@ class TestWebSocketStrict:
 
 class TestWebSocketAccessLists:
     @pytest.fixture
-    def mock_agent_bw(self):
-        """Fresh agent for access list tests."""
-        mock_llm = MockLLM(responses=[
-            LLMResponseBuilder.text_response("out:hi"),
-        ])
-        return Agent(name="ws-agent", llm=mock_llm, log=False, quiet=True)
+    def create_mock_agent_bw(self):
+        """Factory that creates fresh Agent instances for access list tests."""
+        def factory():
+            mock_llm = MockLLM(responses=[
+                LLMResponseBuilder.text_response("out:hi"),
+            ])
+            return Agent(name="ws-agent", llm=mock_llm, log=False, quiet=True)
+        return factory
 
     @pytest.fixture
-    def app_strict_bw(self, mock_agent_bw, tmp_path):
-        from connectonion.network.host import _make_app
-        return _make_app(mock_agent_bw, trust="strict", result_ttl=3600, blacklist=["0xbad"], whitelist=["0xgood"])
+    def app_strict_bw(self, create_mock_agent_bw, tmp_path):
+        from connectonion.network.host import create_app
+        return create_app(create_mock_agent_bw, trust="strict", result_ttl=3600, blacklist=["0xbad"], whitelist=["0xgood"])
 
     def test_blacklisted(self, app_strict_bw):
         data = {

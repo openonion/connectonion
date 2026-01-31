@@ -35,7 +35,8 @@ from .project_cmd_lib import (
     get_template_info,
     generate_custom_template_with_name,
     show_progress,
-    configure_env_for_provider
+    configure_env_for_provider,
+    get_docs_source,
 )
 
 console = Console()
@@ -358,26 +359,28 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     if not co_dir.exists():
         co_dir.mkdir(exist_ok=True)
 
-    # Create docs directory
+    # Create docs directory and copy ALL documentation (always overwrite for latest version)
     docs_dir = co_dir / "docs"
+    if docs_dir.exists():
+        shutil.rmtree(docs_dir)
     docs_dir.mkdir(exist_ok=True)
 
-    # Copy ConnectOnion documentation from single master source
-    cli_dir = Path(__file__).parent.parent
+    # Get docs source (works in both dev and installed package)
+    docs_source = get_docs_source()
 
-    # Copy the main vibe-coding documentation - keep original filename
-    master_vibe_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-    if master_vibe_doc.exists():
-        # Copy to .co/docs/ (project metadata)
-        shutil.copy2(master_vibe_doc, docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md")
-        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
-
-        # ALSO copy to project root (always visible, easier to find)
-        root_doc = project_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-        shutil.copy2(master_vibe_doc, root_doc)
-        files_created.append("co-vibecoding-principles-docs-contexts-all-in-one.md")
+    # Copy ALL docs to .co/docs/
+    if docs_source.exists() and docs_source.is_dir():
+        for item in docs_source.iterdir():
+            if item.name.startswith('.') or item.name == 'archive':
+                continue
+            dest = docs_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dest)
+        files_created.append(".co/docs/ (full documentation)")
     else:
-        console.print(f"[yellow]⚠️  Warning: Vibe coding documentation not found at {master_vibe_doc}[/yellow]")
+        console.print(f"[yellow]⚠️  Warning: Documentation not found at {docs_source}[/yellow]")
 
     # Create config.toml (simplified - agent metadata now in .env)
     config = {
@@ -500,7 +503,7 @@ todo.md
 
     # Vibe Coding hint - clean formatting with proper spacing
     console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
-    console.print(f"   [cyan]co-vibecoding-principles-docs-contexts-all-in-one.md[/cyan]")
+    console.print(f"   [cyan].co/docs/[/cyan] for full documentation")
     console.print()
 
     # Resources - clean format with arrows for better alignment

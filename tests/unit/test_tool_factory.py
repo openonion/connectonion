@@ -1,8 +1,9 @@
 """Unit tests for connectonion/tool_factory.py"""
 
 import pytest
+from typing import Optional, List, Dict
 from unittest.mock import Mock
-from connectonion.core.tool_factory import create_tool_from_function
+from connectonion.core.tool_factory import create_tool_from_function, get_json_schema_type
 
 
 class TestToolFactory:
@@ -96,3 +97,100 @@ This includes validation, transformation, and output formatting.
         assert "Process complex data" in tool.description
         assert "validation" in tool.description
         assert "Args" not in tool.description
+
+
+class TestGetJsonSchemaType:
+    """Test JSON schema type conversion for complex types."""
+
+    def test_basic_string_type(self):
+        """Test basic str type."""
+        result = get_json_schema_type(str)
+        assert result == {"type": "string"}
+
+    def test_basic_int_type(self):
+        """Test basic int type."""
+        result = get_json_schema_type(int)
+        assert result == {"type": "integer"}
+
+    def test_basic_bool_type(self):
+        """Test basic bool type."""
+        result = get_json_schema_type(bool)
+        assert result == {"type": "boolean"}
+
+    def test_basic_list_type(self):
+        """Test basic list type."""
+        result = get_json_schema_type(list)
+        assert result == {"type": "array"}
+
+    def test_list_of_strings(self):
+        """Test List[str] type."""
+        result = get_json_schema_type(List[str])
+        assert result == {"type": "array", "items": {"type": "string"}}
+
+    def test_list_of_ints(self):
+        """Test List[int] type."""
+        result = get_json_schema_type(List[int])
+        assert result == {"type": "array", "items": {"type": "integer"}}
+
+    def test_optional_string(self):
+        """Test Optional[str] type."""
+        result = get_json_schema_type(Optional[str])
+        assert result == {"type": "string"}
+
+    def test_optional_list_of_strings(self):
+        """Test Optional[List[str]] type - the main bug fix."""
+        result = get_json_schema_type(Optional[List[str]])
+        assert result == {"type": "array", "items": {"type": "string"}}
+
+    def test_dict_type(self):
+        """Test Dict type."""
+        result = get_json_schema_type(Dict[str, int])
+        assert result == {"type": "object"}
+
+    def test_optional_dict(self):
+        """Test Optional[Dict] type."""
+        result = get_json_schema_type(Optional[Dict[str, str]])
+        assert result == {"type": "object"}
+
+
+class TestToolFactoryWithComplexTypes:
+    """Test tool factory with complex type hints."""
+
+    def test_function_with_optional_list(self):
+        """Test tool creation with Optional[List[str]] parameter."""
+        def ask_user(question: str, options: Optional[List[str]] = None) -> str:
+            """Ask user a question."""
+            return question
+
+        tool = create_tool_from_function(ask_user)
+        schema = tool.to_function_schema()
+
+        assert schema["parameters"]["properties"]["options"] == {
+            "type": "array",
+            "items": {"type": "string"}
+        }
+
+    def test_function_with_list_param(self):
+        """Test tool creation with List[str] parameter."""
+        def process_items(items: List[str]) -> str:
+            """Process items."""
+            return ",".join(items)
+
+        tool = create_tool_from_function(process_items)
+        schema = tool.to_function_schema()
+
+        assert schema["parameters"]["properties"]["items"] == {
+            "type": "array",
+            "items": {"type": "string"}
+        }
+
+    def test_function_with_dict_param(self):
+        """Test tool creation with Dict parameter."""
+        def process_data(data: Dict[str, int]) -> str:
+            """Process data."""
+            return str(data)
+
+        tool = create_tool_from_function(process_data)
+        schema = tool.to_function_schema()
+
+        assert schema["parameters"]["properties"]["data"] == {"type": "object"}

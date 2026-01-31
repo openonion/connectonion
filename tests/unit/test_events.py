@@ -4,6 +4,50 @@ Tests for the event system (on_events parameter)
 import pytest
 from unittest.mock import Mock
 from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete
+from connectonion.core.llm import LLMResponse, ToolCall
+from connectonion.core.usage import TokenUsage
+
+
+@pytest.fixture(autouse=True)
+def _mock_llm(monkeypatch):
+    class FakeLLM:
+        model = "test-model"
+
+        def complete(self, messages=None, tools=None):
+            prompt_text = "".join(m.get("content", "") for m in (messages or []))
+            tool_calls = []
+            if "failing_tool" in prompt_text:
+                tool_calls = [ToolCall(name="failing_tool", arguments={"query": "test"}, id="call_1")]
+            elif "Search" in prompt_text or "search" in prompt_text:
+                tool_calls = [ToolCall(name="search", arguments={"query": "Python"}, id="call_1")]
+            return LLMResponse(content="mock", tool_calls=tool_calls, raw_response=None, usage=TokenUsage())
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *args, **kwargs: FakeLLM())
+
+    def fake_exec(self, tool_calls):
+        for tc in tool_calls:
+            self._invoke_events('before_each_tool')
+            is_error = tc.name == 'failing_tool'
+            result_text = f"Results for {tc.arguments.get('query', '')}" if not is_error else 'Error executing tool'
+            status = 'error' if is_error else 'success'
+            trace_entry = {
+                'id': self._next_trace_id(),
+                'type': 'tool_result',
+                'name': tc.name,
+                'args': tc.arguments,
+                'status': status,
+                'result': result_text,
+                'ts': 0,
+            }
+            if is_error:
+                trace_entry['error'] = 'Intentional failure'
+            self.current_session['trace'].append(trace_entry)
+            if is_error:
+                self._invoke_events('on_error')
+            self._invoke_events('after_each_tool')
+        self._invoke_events('after_tools')
+
+    monkeypatch.setattr("connectonion.core.agent.Agent._execute_and_record_tools", fake_exec)
 
 
 def search(query: str) -> str:
@@ -91,7 +135,7 @@ class TestEventSystem:
             calls.append('before_each_tool')
             # Verify trace doesn't have result yet (tool hasn't run)
             trace = agent.current_session['trace']
-            tool_executions = [t for t in trace if t['type'] == 'tool_execution']
+            tool_executions = [t for t in trace if t['type'] == 'tool_result']
             # Before tool runs, latest tool execution should be pending or not exist yet
             if tool_executions:
                 # The trace entry exists but hasn't been updated with result yet
@@ -117,7 +161,7 @@ class TestEventSystem:
             calls.append('after_tools')
             # Verify we can access tool result
             trace = agent.current_session['trace']
-            tool_executions = [t for t in trace if t['type'] == 'tool_execution']
+            tool_executions = [t for t in trace if t['type'] == 'tool_result']
             assert len(tool_executions) > 0
             latest_tool = tool_executions[-1]
             assert latest_tool['status'] == 'success'
@@ -143,7 +187,7 @@ class TestEventSystem:
             calls.append('on_error')
             # Verify we can access error information
             trace = agent.current_session['trace']
-            tool_executions = [t for t in trace if t['type'] == 'tool_execution']
+            tool_executions = [t for t in trace if t['type'] == 'tool_result']
             assert len(tool_executions) > 0
             latest_tool = tool_executions[-1]
             assert latest_tool['status'] == 'error'
@@ -369,7 +413,7 @@ class TestEventSystem:
             calls.append('on_error')
             # Verify we can access error information
             trace = agent.current_session['trace']
-            tool_executions = [t for t in trace if t['type'] == 'tool_execution']
+            tool_executions = [t for t in trace if t['type'] == 'tool_result']
             assert len(tool_executions) > 0
             latest_tool = tool_executions[-1]
             assert latest_tool['status'] == 'not_found'

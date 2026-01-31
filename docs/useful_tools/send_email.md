@@ -2,6 +2,26 @@
 
 > Send emails with one line of code. No config, no complexity.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import send_email
+
+agent = Agent("assistant", tools=[send_email])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy send_email
+```
+
+```python
+from tools.send_email import send_email  # Your local copy
+```
+
 ---
 
 ## 📌 Current Status (as of Sep 2025)

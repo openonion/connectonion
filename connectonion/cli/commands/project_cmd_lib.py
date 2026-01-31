@@ -31,6 +31,20 @@ from ... import address
 console = Console()
 
 
+def get_docs_source() -> Path:
+    """Get the docs directory path - works in both dev and installed package."""
+    # After pip install: connectonion/docs/ exists (via force-include)
+    package_dir = Path(__file__).parent.parent.parent  # connectonion/cli/commands/ → connectonion/
+    docs_source = package_dir / "docs"
+
+    # Fallback for editable install: docs are at project root
+    if not docs_source.exists():
+        project_root = package_dir.parent
+        docs_source = project_root / "docs"
+
+    return docs_source
+
+
 
 
 def validate_project_name(name: str) -> Tuple[bool, str]:
@@ -822,6 +836,7 @@ __all__ = [
     'show_progress',
     'generate_custom_template',
     'generate_custom_template_with_name',
+    'get_docs_source',
 ]
 
 # All the handle_init and handle_create code has been moved to init.py and create.py

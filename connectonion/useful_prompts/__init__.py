@@ -1,4 +1,12 @@
 """
+Purpose: Prompt templates directory with utility for copying example prompts to user projects
+LLM-Note:
+  Dependencies: imports from [pathlib] | imported by [cli/commands/copy_commands.py, user code] | tested by [tests/prompts/test_useful_prompts.py]
+  Data flow: get_example_path(name) → returns Path to template directory for copying | PROMPTS_DIR constant points to useful_prompts/ directory
+  State/Effects: reads filesystem (Path operations) | no modifications
+  Integration: exposes PROMPTS_DIR constant, get_example_path(name) → Path | used by `co copy coding_agent` command to copy templates | contains coding_agent/ subdirectory with main.md, tools/*.md, assembler.py
+  Performance: trivial (Path operations only)
+  Errors: none (Path returned whether directory exists or not, caller handles)
 useful_prompts - Prompt templates for ConnectOnion agents.
 
 These are PROMPT TEMPLATES to copy to your project, not framework code to import.

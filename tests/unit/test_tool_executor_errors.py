@@ -30,6 +30,26 @@ from connectonion.core.llm import ToolCall
 from connectonion.logger import Logger
 
 
+def create_mock_agent():
+    """Create a mock agent with all required methods for tool execution."""
+    mock_agent = Mock()
+    mock_agent.current_session = {
+        'messages': [],
+        'trace': [],
+        'iteration': 1
+    }
+    mock_agent._invoke_events = Mock()
+
+    # Add _record_trace method that actually adds to trace
+    def record_trace(entry):
+        if 'id' not in entry:
+            entry['id'] = str(len(mock_agent.current_session['trace']) + 1)
+        mock_agent.current_session['trace'].append(entry)
+
+    mock_agent._record_trace = record_trace
+    return mock_agent
+
+
 class TestToolNotFound:
     """Test handling when tool doesn't exist in tools registry."""
 
@@ -56,12 +76,12 @@ class TestToolNotFound:
         )
 
         # Verify trace entry structure
-        assert trace_entry["type"] == "tool_execution"
-        assert trace_entry["tool_name"] == "nonexistent_tool"
+        assert trace_entry["type"] == "tool_result"
+        assert trace_entry["name"] == "nonexistent_tool"
         assert trace_entry["status"] == "not_found"
         assert "not found" in trace_entry["error"]
         assert "not found" in trace_entry["result"]
-        assert trace_entry["call_id"] == "call_123"
+        assert trace_entry["tool_id"] == "call_123"
 
     def test_tool_not_found_does_not_execute(self):
         """Test that non-existent tool doesn't execute any function."""
@@ -152,7 +172,7 @@ class TestToolExecutionExceptions:
         assert trace_entry["error"] == "Invalid input value"
         assert trace_entry["error_type"] == "ValueError"
         assert "Error executing tool" in trace_entry["result"]
-        assert trace_entry["timing"] > 0  # Should still record timing
+        assert trace_entry["timing_ms"] > 0  # Should still record timing
 
     def test_tool_exception_invokes_on_error_event(self):
         """Test that on_error events are invoked when tool fails."""
@@ -251,18 +271,12 @@ class TestToolExecutionExceptions:
         )
 
         # Timing should be at least 10ms
-        assert trace_entry["timing"] >= 10.0
+        assert trace_entry["timing_ms"] >= 10.0
         assert trace_entry["status"] == "error"
 
     def test_tool_error_added_to_session_trace(self):
         """Test that error trace entries are added to session."""
-        mock_agent = Mock()
-        mock_agent.current_session = {
-            'messages': [],
-            'trace': [],
-            'iteration': 1
-        }
-        mock_agent._invoke_events = Mock()
+        mock_agent = create_mock_agent()
 
         logger = Logger("test", log=False)
 
@@ -280,9 +294,13 @@ class TestToolExecutionExceptions:
             logger=logger
         )
 
-        # Verify trace entry was added to session
-        assert len(mock_agent.current_session['trace']) == 1
-        trace_entry = mock_agent.current_session['trace'][0]
+        # Verify trace entries: tool_call (start) + tool_result (error)
+        assert len(mock_agent.current_session['trace']) == 2
+        # First entry is tool_call
+        assert mock_agent.current_session['trace'][0]["type"] == "tool_call"
+        # Second entry is tool_result with error
+        trace_entry = mock_agent.current_session['trace'][1]
+        assert trace_entry["type"] == "tool_result"
         assert trace_entry["status"] == "error"
         assert trace_entry["error"] == "Test error"
 
@@ -528,13 +546,8 @@ class TestTraceEntryStructure:
 
     def test_success_trace_entry_structure(self):
         """Test trace entry has all required fields on success."""
-        mock_agent = Mock()
-        mock_agent.current_session = {
-            'messages': [],
-            'trace': [],
-            'iteration': 3
-        }
-        mock_agent._invoke_events = Mock()
+        mock_agent = create_mock_agent()
+        mock_agent.current_session['iteration'] = 3
 
         logger = Logger("test", log=False)
 
@@ -552,16 +565,15 @@ class TestTraceEntryStructure:
             logger=logger
         )
 
-        # Verify all required fields
-        assert trace_entry["type"] == "tool_execution"
-        assert trace_entry["tool_name"] == "test"
-        assert trace_entry["arguments"] == {"x": 5, "y": 10}
-        assert trace_entry["call_id"] == "call_success"
+        # Verify all required fields in returned trace_entry
+        assert trace_entry["type"] == "tool_result"
+        assert trace_entry["name"] == "test"
+        assert trace_entry["args"] == {"x": 5, "y": 10}
+        assert trace_entry["tool_id"] == "call_success"
         assert trace_entry["status"] == "success"
         assert trace_entry["result"] == "5 + 10 = 15"
-        assert trace_entry["iteration"] == 3
-        assert "timing" in trace_entry
-        assert "timestamp" in trace_entry
+        assert "timing_ms" in trace_entry
+        # Note: 'ts' is added by agent._record_trace(), not by execute_single_tool()
         # Success should not have error fields
         assert "error" not in trace_entry
         assert "error_type" not in trace_entry

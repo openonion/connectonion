@@ -2,6 +2,26 @@
 
 Give your agents Gmail access.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import Gmail
+
+agent = Agent("assistant", tools=[Gmail()])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy gmail
+```
+
+```python
+from tools.gmail import Gmail  # Your local copy
+```
+
 ## Quick Start
 
 ```python

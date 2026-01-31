@@ -7,7 +7,7 @@ This file tests trust levels, policies, and custom agents.
 import os
 import pytest
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 from connectonion.network.host import (
     extract_and_authenticate,
@@ -15,6 +15,31 @@ from connectonion.network.host import (
     get_default_trust,
 )
 from connectonion.network.trust import create_trust_agent, validate_trust_level, TRUST_LEVELS
+
+
+@pytest.fixture
+def mock_llm():
+    """Mock LLM to avoid real API client initialization."""
+    from connectonion.core.llm import LLMResponse
+    from connectonion.core.usage import TokenUsage
+
+    mock = Mock()
+    mock.model = "mock-model"
+    mock.complete.return_value = LLMResponse(
+        content="Mock response",
+        tool_calls=[],
+        raw_response=None,
+        usage=TokenUsage(),
+    )
+    return mock
+
+
+@pytest.fixture(autouse=True)
+def patch_create_llm(mock_llm):
+    """Auto-patch create_llm to avoid real OpenAI client initialization."""
+    # Need to patch where it's imported (in Agent module), not where it's defined
+    with patch('connectonion.core.agent.create_llm', return_value=mock_llm):
+        yield
 
 
 class TestTrustLevels:
@@ -144,15 +169,29 @@ class TestCreateTrustAgent:
         result = create_trust_agent(guardian)
         assert result == guardian
 
-    def test_invalid_level_raises_error(self):
-        """Test that invalid trust level raises error."""
-        with pytest.raises(ValueError, match="Invalid trust level"):
-            create_trust_agent("invalid_level")
+    def test_invalid_level_treated_as_inline_policy(self):
+        """Test that invalid trust level is treated as inline policy text.
 
-    def test_file_not_found_raises_error(self):
-        """Test that missing file raises error."""
-        with pytest.raises(FileNotFoundError):
-            create_trust_agent("/nonexistent/file.md")
+        The resolution priority is: trust level > file path > inline policy.
+        Unknown strings that don't exist as files become inline policies.
+        """
+        result = create_trust_agent("invalid_level")
+        # Should create an agent with "invalid_level" as the system prompt
+        assert result is not None
+        assert result.name == "trust_agent_custom"
+        assert result.system_prompt == "invalid_level"
+
+    def test_nonexistent_file_treated_as_inline_policy(self):
+        """Test that missing file path is treated as inline policy text.
+
+        If a string looks like a path but doesn't exist, it becomes inline policy.
+        This allows flexibility in policy specification.
+        """
+        result = create_trust_agent("/nonexistent/file.md")
+        # Should create an agent with the path string as the system prompt
+        assert result is not None
+        assert result.name == "trust_agent_custom"
+        assert result.system_prompt == "/nonexistent/file.md"
 
     def test_custom_agent_without_tools_raises_error(self):
         """Test that custom agent without tools raises error."""

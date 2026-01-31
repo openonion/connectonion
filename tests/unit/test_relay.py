@@ -43,11 +43,12 @@ class TestRelayConnection:
         with patch('websockets.connect', new_callable=AsyncMock) as mock_connect:
             mock_ws = AsyncMock()
             mock_connect.return_value = mock_ws
-            custom_url = "ws://localhost:8000/ws/announce"
+            custom_url = "ws://localhost:8000"
 
             result = await relay.connect(custom_url)
 
-            mock_connect.assert_called_once_with(custom_url)
+            # Base URL should have /ws/announce appended
+            mock_connect.assert_called_once_with("ws://localhost:8000/ws/announce")
             assert result == mock_ws
 
     @pytest.mark.asyncio

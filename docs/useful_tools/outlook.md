@@ -2,6 +2,26 @@
 
 Give your agents Outlook access via Microsoft Graph API.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import Outlook
+
+agent = Agent("assistant", tools=[Outlook()])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy outlook
+```
+
+```python
+from tools.outlook import Outlook  # Your local copy
+```
+
 ## Quick Start
 
 ```python

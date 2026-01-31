@@ -2,6 +2,26 @@
 
 Google Calendar integration for managing events and meetings.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import GoogleCalendar
+
+agent = Agent("assistant", tools=[GoogleCalendar()])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy google_calendar
+```
+
+```python
+from tools.google_calendar import GoogleCalendar  # Your local copy
+```
+
 ## Quick Start
 
 ```python

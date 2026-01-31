@@ -105,8 +105,9 @@ class BrowserAutomation:
         self.playwright = sync_playwright().start()
 
         if self.use_chrome_profile:
-            # Use Chromium with Chrome profile copy
-            chromium_profile = Path.cwd() / ".browser_agent_profile"
+            # Use Chromium with Chrome profile copy in global ~/.co/ folder
+            chromium_profile = Path.home() / ".co" / "browser_profile"
+            chromium_profile.parent.mkdir(parents=True, exist_ok=True)
 
             if not chromium_profile.exists():
                 import shutil

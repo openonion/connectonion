@@ -1,4 +1,12 @@
 """
+Purpose: Reflection event handler for generating reasoning after tool execution
+LLM-Note:
+  Dependencies: imports from [core/events.py after_tools, llm_do.py, pathlib, typing] | imported by [useful_events_handlers/__init__.py, user code] | tested by [tests/events/test_reflect.py]
+  Data flow: fires after_tools event → _compress_messages() truncates tool results to 150 chars → llm_do generates reflection using reflect.md prompt → adds reflection as user message to session → LLM sees reflection in next iteration
+  State/Effects: modifies agent.current_session['messages'] by appending user reflection message | calls llm_do (costs tokens) | no persistent state
+  Integration: exposes reflect event handler (use via on_events=[reflect]) | uses after_tools (not after_each_tool) to fire ONCE after ALL tools | loads prompt from prompt_files/reflect.md | compresses messages to reduce context size
+  Performance: one LLM call per tool batch (not per tool) | message compression limits token usage | truncates tool results to 150 chars
+  Errors: none (fails silently if llm_do errors to avoid breaking agent execution)
 Reflect event handler - Adds reflection after tool execution.
 
 Fires ONCE after ALL tools in a batch complete (when LLM returns multiple tool_calls).
@@ -16,6 +24,7 @@ Usage:
     agent = Agent("assistant", tools=[search], on_events=[reflect])
 """
 
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, List, Dict
 from ..core.events import after_tools
@@ -72,12 +81,12 @@ def reflect(agent: 'Agent') -> None:
     """
     trace = agent.current_session['trace'][-1]
 
-    if trace['type'] != 'tool_execution':
+    if trace['type'] != 'tool_result':
         return
 
     user_prompt = agent.current_session.get('user_prompt', '')
-    tool_name = trace['tool_name']
-    tool_args = trace['arguments']
+    tool_name = trace['name']
+    tool_args = trace['args']
     status = trace['status']
 
     conversation = _compress_messages(agent.current_session['messages'])
@@ -110,7 +119,13 @@ Error: {error}"""
 
     agent.logger.print("[dim]/reflecting...[/dim]")
 
+    agent._record_trace({
+        'type': 'thinking',
+        'kind': 'reflect',
+        'content': reasoning,
+    })
+
     agent.current_session['messages'].append({
         'role': 'assistant',
-        'content': f"🤔 {reasoning}"
+        'content': reasoning
     })

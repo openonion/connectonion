@@ -142,6 +142,17 @@ def browser(command: str = typer.Argument(..., help="Browser command")):
 
 
 @app.command()
+def ai(
+    port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
+    model: str = typer.Option("co/claude-opus-4-5", "--model", "-m", help="Model to use"),
+    max_iterations: int = typer.Option(20, "--max-iterations", "-i", help="Max iterations"),
+):
+    """Start AI coding agent web server."""
+    from .commands.ai_commands import handle_ai
+    handle_ai(port=port, model=model, max_iterations=max_iterations)
+
+
+@app.command()
 def copy(
     names: List[str] = typer.Argument(None, help="Tool or plugin names to copy"),
     list_all: bool = typer.Option(False, "--list", "-l", help="List available items"),

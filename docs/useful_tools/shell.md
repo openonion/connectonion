@@ -2,6 +2,26 @@
 
 Shell command execution tool.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import Shell
+
+agent = Agent("coder", tools=[Shell()])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy shell
+```
+
+```python
+from tools.shell import Shell  # Your local copy
+```
+
 ## Installation
 
 ```python

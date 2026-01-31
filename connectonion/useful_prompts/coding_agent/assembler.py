@@ -1,4 +1,12 @@
 """
+Purpose: Modular prompt assembly for coding agents from main.md + tool-specific prompts + project context
+LLM-Note:
+  Dependencies: imports from [pathlib, typing] | imported by [examples/coding_agent/, user code] | tested by [tests/prompts/test_assembler.py]
+  Data flow: assemble_prompt(prompts_dir, tools, context_file) → reads prompts/main.md → for each tool reads prompts/tools/{tool_name}.md → optionally reads context_file (.co/AGENT.md) → concatenates with separators → returns assembled prompt
+  State/Effects: reads markdown files from filesystem | no persistent state
+  Integration: exposes assemble_prompt(prompts_dir, tools, context_file) → str | expects directory structure: prompts/main.md, prompts/tools/*.md | tool name extracted from tool.__name__ or tool.name | user customizable (copy to project and modify)
+  Performance: file I/O only (fast for typical prompt files) | lazy loading (only reads requested tool prompts)
+  Errors: skips missing tool prompt files silently | raises if main.md missing | context_file optional
 Prompt Assembler - Copy this to your project and customize!
 
 This is NOT a framework class. It's an example you can modify freely.
@@ -89,17 +97,16 @@ def _get_tool_name(tool: Any) -> str:
 # Example usage
 if __name__ == "__main__":
     from connectonion import Agent
-    from connectonion.useful_tools import Shell, DiffWriter, TodoList
+    from connectonion.useful_tools import bash, DiffWriter, TodoList
 
     # Define tools
     def read_file(path: str) -> str:
         """Read file contents."""
         return Path(path).read_text()
 
-    shell = Shell()
     writer = DiffWriter()
     todo = TodoList()
-    tools = [shell, read_file, writer, todo]
+    tools = [bash, read_file, writer, todo]
 
     # Assemble prompt
     prompt = assemble_prompt(

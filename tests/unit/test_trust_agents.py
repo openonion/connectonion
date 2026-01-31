@@ -1,8 +1,8 @@
-"""Tests for trust_agents.py - Trust level prompts."""
+"""Tests for network/trust/prompts.py - Trust level prompts."""
 
 import pytest
 
-from connectonion.network.trust_agents import (
+from connectonion.network.trust.prompts import (
     TRUST_PROMPTS,
     get_trust_prompt,
     get_open_trust_prompt,

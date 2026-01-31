@@ -1,7 +1,7 @@
 """Unit tests for connectonion/useful_plugins/re_act.py
 
 Tests cover:
-- plan_task: planning after user input
+- acknowledge_request: intent recognition after user input
 - Plugin registration with correct events
 
 Note: evaluate_completion tests are in test_eval_plugin.py
@@ -13,7 +13,7 @@ from unittest.mock import Mock, patch, MagicMock
 
 # Import the module directly to avoid __init__.py shadowing
 re_act_module = importlib.import_module('connectonion.useful_plugins.re_act')
-plan_task = re_act_module.plan_task
+acknowledge_request = re_act_module.acknowledge_request
 re_act = re_act_module.re_act
 
 
@@ -30,88 +30,104 @@ class FakeAgent:
         self.tools = Mock()
         self.tools.names.return_value = ['tool1', 'tool2']
         self.logger = Mock()
+        self._trace_id = 0
+
+    def _record_trace(self, entry):
+        if 'id' not in entry:
+            self._trace_id += 1
+            entry['id'] = str(self._trace_id)
+        self.current_session['trace'].append(entry)
 
 
-class TestPlanTask:
-    """Tests for plan_task event handler."""
+class TestAcknowledgeRequest:
+    """Tests for acknowledge_request event handler."""
 
-    def test_plan_task_adds_plan_message(self):
-        """Test that plan_task adds a planning message to session."""
+    def test_acknowledge_request_records_intent_and_message(self):
+        """Test that acknowledge_request records intent and adds message to session."""
         agent = FakeAgent()
         agent.current_session['user_prompt'] = 'Search for Python docs'
 
         with patch.object(re_act_module, 'llm_do') as mock_llm_do:
-            mock_llm_do.return_value = 'Use search tool to find docs'
+            mock_llm_do.return_value = 'Looking up Python documentation'
 
-            plan_task(agent)
+            acknowledge_request(agent)
 
             # Verify llm_do was called
             mock_llm_do.assert_called_once()
             call_args = mock_llm_do.call_args
 
-            # Check prompt contains user request and tools
+            # Check prompt contains user request
             assert 'Search for Python docs' in call_args[0][0]
-            assert 'tool1, tool2' in call_args[0][0]
 
-            # Verify plan message was added
+            # Verify intent was recorded
+            assert agent.current_session['intent'] == 'Looking up Python documentation'
+
+            # Verify message was added to session
             assert len(agent.current_session['messages']) == 1
             msg = agent.current_session['messages'][0]
             assert msg['role'] == 'assistant'
-            assert 'Use search tool to find docs' in msg['content']
+            assert msg['content'] == 'Looking up Python documentation'
 
-    def test_plan_task_prints_planning_status(self):
-        """Test that plan_task prints planning status."""
+    def test_acknowledge_request_prints_status_with_model(self):
+        """Test that acknowledge_request prints understanding status with model name."""
         agent = FakeAgent()
+        agent.current_session['user_prompt'] = 'test'
 
         with patch.object(re_act_module, 'llm_do') as mock_llm_do:
-            mock_llm_do.return_value = 'Plan'
+            mock_llm_do.return_value = 'Got it'
 
-            plan_task(agent)
+            acknowledge_request(agent)
 
-            # Verify logger.print was called with planning message
+            # Verify logger.print was called with understanding message and model
             agent.logger.print.assert_called_once()
             call_args = agent.logger.print.call_args[0][0]
-            assert 'planning' in call_args.lower()
+            assert 'understanding' in call_args.lower()
+            assert 'gemini' in call_args.lower()  # Model name should be shown
 
-    def test_plan_task_skips_if_no_user_prompt(self):
-        """Test that plan_task does nothing if no user prompt."""
+    def test_acknowledge_request_records_trace(self):
+        """Test that acknowledge_request records trace entry."""
+        agent = FakeAgent()
+        agent.current_session['user_prompt'] = 'test'
+
+        with patch.object(re_act_module, 'llm_do') as mock_llm_do:
+            mock_llm_do.return_value = 'Got it'
+
+            acknowledge_request(agent)
+
+            # Verify trace was recorded
+            assert len(agent.current_session['trace']) == 1
+            trace = agent.current_session['trace'][0]
+            assert trace['type'] == 'thinking'
+            assert trace['kind'] == 'intent'
+            assert trace['content'] == 'Got it'
+
+    def test_acknowledge_request_skips_if_no_user_prompt(self):
+        """Test that acknowledge_request does nothing if no user prompt."""
         agent = FakeAgent()
         agent.current_session['user_prompt'] = ''
 
         with patch.object(re_act_module, 'llm_do') as mock_llm_do:
-            plan_task(agent)
+            acknowledge_request(agent)
 
             # llm_do should not be called
             mock_llm_do.assert_not_called()
-            assert len(agent.current_session['messages']) == 0
-
-    def test_plan_task_handles_no_tools(self):
-        """Test plan_task when agent has no tools."""
-        agent = FakeAgent()
-        agent.tools.names.return_value = []
-
-        with patch.object(re_act_module, 'llm_do') as mock_llm_do:
-            mock_llm_do.return_value = 'No tools available'
-
-            plan_task(agent)
-
-            # Check prompt mentions no tools
-            call_args = mock_llm_do.call_args[0][0]
-            assert 'no tools' in call_args
+            assert 'intent' not in agent.current_session
 
 
 class TestReActPlugin:
     """Tests for re_act plugin bundle."""
 
     def test_re_act_contains_two_handlers(self):
-        """Test that re_act plugin has two handlers (plan + reflect)."""
+        """Test that re_act plugin has two handlers (acknowledge + reflect)."""
         assert len(re_act) == 2
 
     def test_re_act_handlers_have_correct_event_types(self):
         """Test that handlers are registered for correct events."""
-        # plan_task should be after_user_input
-        assert hasattr(plan_task, '_event_type')
-        assert plan_task._event_type == 'after_user_input'
+        from connectonion.useful_plugins.re_act import acknowledge_request
+
+        # acknowledge_request should be after_user_input
+        assert hasattr(acknowledge_request, '_event_type')
+        assert acknowledge_request._event_type == 'after_user_input'
 
         # reflect should be after_tools
         from connectonion.useful_events_handlers.reflect import reflect

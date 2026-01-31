@@ -1,7 +1,28 @@
-"""Input - smart input component with triggers and autocomplete.
+"""
+Purpose: Smart terminal input component with trigger-based autocomplete and bracketed paste support
+LLM-Note:
+  Dependencies: imports from [rich.console/live, tui/keys.py, tui/dropdown.py, tui/providers.py, tui/status_bar.py] | imported by [tui/chat.py, cli/commands/] | tested by [tests/tui/test_input.py]
+  Data flow: Input(prompt, triggers, on_submit) → read_input() enables bracketed paste → keys.read_key() captures input → handles triggers (/, @) → providers.search() filters items → Dropdown renders matches → arrow keys navigate → Enter selects/submits → returns final value
+  State/Effects: modifies terminal (enables bracketed paste, raw mode) | restores terminal on exit | maintains buffer state during input session
+  Integration: exposes Input(prompt, placeholder, triggers, status_segments, on_submit) with read_input() → str | triggers dict maps trigger char to Provider | uses keys.py for raw input, dropdown.py for rendering, providers.py for search
+  Performance: live terminal updates via Rich Live | efficient re-render only on buffer/dropdown changes | bracketed paste handles large pastes atomically
+  Errors: restores terminal mode on exception | handles paste detection failures gracefully
+Input - smart input component with triggers and autocomplete.
 
 Clean, minimal design that works on light and dark terminals.
 Inspired by powerlevel10k terminal prompts.
+
+Features:
+- Trigger-based autocomplete (e.g., @ for files, / for commands)
+- Arrow key navigation in dropdown
+- Bracketed paste mode for reliable paste handling
+- Keyboard shortcuts (Shift+Tab, Escape, etc.)
+
+Paste Handling:
+    Uses bracketed paste mode to detect and handle pasted text atomically.
+    This prevents display glitches when pasting (multiple prompt lines,
+    truncated text). The entire paste is received as one event and
+    added to the buffer in a single operation.
 """
 
 import random
@@ -10,7 +31,7 @@ from rich.console import Console, Group
 from rich.text import Text
 from rich.live import Live
 
-from .keys import read_key
+from .keys import read_key, enable_bracketed_paste, disable_bracketed_paste
 from .dropdown import Dropdown
 from .providers import FileProvider
 
@@ -195,93 +216,111 @@ class Input:
         global _input_count
         _input_count += 1
 
-        with Live(self._render(), console=self.console, auto_refresh=False) as live:
-            while True:
-                key = read_key()
+        # Enable bracketed paste mode for proper paste detection
+        enable_bracketed_paste()
 
-                # Special key callback (shift+tab, etc)
-                if self.on_special_key and key in ('shift+tab',):
-                    if self.on_special_key(key):
+        try:
+            with Live(self._render(), console=self.console, auto_refresh=False) as live:
+                while True:
+                    key = read_key()
+
+                    # Handle pasted text (from bracketed paste mode)
+                    if key.startswith('paste:'):
+                        pasted_text = key[6:]  # Remove 'paste:' prefix
+                        if self.active_trigger:
+                            self.filter_text += pasted_text
+                            self._update_dropdown()
+                        else:
+                            self.buffer += pasted_text
                         live.update(self._render(), refresh=True)
                         continue
 
-                # Enter - submit or accept selection
-                if key in ('\r', '\n'):
-                    if self.active_trigger:
-                        if not self.dropdown.is_empty:
+                    # Special key callback (shift+tab, etc)
+                    if self.on_special_key and key in ('shift+tab',):
+                        if self.on_special_key(key):
+                            live.update(self._render(), refresh=True)
+                            continue
+
+                    # Enter - submit or accept selection
+                    if key in ('\r', '\n'):
+                        if self.active_trigger:
+                            if not self.dropdown.is_empty:
+                                if self._accept_selection():
+                                    live.update(self._render(), refresh=True)
+                                    continue
+                                live.update(self._render(), refresh=True)
+                            else:
+                                self._exit_autocomplete()
+                                live.update(self._render(), refresh=True)
+                        else:
+                            return self.buffer
+
+                    # Tab - accept selection
+                    elif key == '\t':
+                        if self.active_trigger and not self.dropdown.is_empty:
                             if self._accept_selection():
                                 live.update(self._render(), refresh=True)
                                 continue
                             live.update(self._render(), refresh=True)
-                        else:
+
+                    # Escape - cancel autocomplete
+                    elif key == 'esc':
+                        if self.active_trigger:
+                            if self.buffer.endswith(self.active_trigger):
+                                self.buffer = self.buffer[:-1]
                             self._exit_autocomplete()
                             live.update(self._render(), refresh=True)
-                    else:
-                        return self.buffer
 
-                # Tab - accept selection
-                elif key == '\t':
-                    if self.active_trigger and not self.dropdown.is_empty:
-                        if self._accept_selection():
-                            live.update(self._render(), refresh=True)
-                            continue
-                        live.update(self._render(), refresh=True)
+                    # Ctrl+C / Ctrl+D
+                    elif key == '\x03':
+                        raise KeyboardInterrupt()
+                    elif key == '\x04':
+                        raise EOFError()
 
-                # Escape - cancel autocomplete
-                elif key == 'esc':
-                    if self.active_trigger:
-                        if self.buffer.endswith(self.active_trigger):
-                            self.buffer = self.buffer[:-1]
-                        self._exit_autocomplete()
-                        live.update(self._render(), refresh=True)
-
-                # Ctrl+C / Ctrl+D
-                elif key == '\x03':
-                    raise KeyboardInterrupt()
-                elif key == '\x04':
-                    raise EOFError()
-
-                # Backspace
-                elif key in ('\x7f', '\x08'):
-                    if self.active_trigger:
-                        if self.filter_text:
-                            self.filter_text = self.filter_text[:-1]
-                            self._update_dropdown()
-                        else:
-                            provider = self.triggers.get(self.active_trigger)
-                            if isinstance(provider, FileProvider) and provider.context:
-                                provider.back()
+                    # Backspace
+                    elif key in ('\x7f', '\x08'):
+                        if self.active_trigger:
+                            if self.filter_text:
+                                self.filter_text = self.filter_text[:-1]
                                 self._update_dropdown()
                             else:
-                                if self.buffer.endswith(self.active_trigger):
-                                    self.buffer = self.buffer[:-1]
-                                self._exit_autocomplete()
+                                provider = self.triggers.get(self.active_trigger)
+                                if isinstance(provider, FileProvider) and provider.context:
+                                    provider.back()
+                                    self._update_dropdown()
+                                else:
+                                    if self.buffer.endswith(self.active_trigger):
+                                        self.buffer = self.buffer[:-1]
+                                    self._exit_autocomplete()
+                            live.update(self._render(), refresh=True)
+                        elif self.buffer:
+                            self.buffer = self.buffer[:-1]
+                            live.update(self._render(), refresh=True)
+
+                    # Arrow keys
+                    elif key == 'up' and self.active_trigger:
+                        self.dropdown.up()
                         live.update(self._render(), refresh=True)
-                    elif self.buffer:
-                        self.buffer = self.buffer[:-1]
+                    elif key == 'down' and self.active_trigger:
+                        self.dropdown.down()
                         live.update(self._render(), refresh=True)
 
-                # Arrow keys
-                elif key == 'up' and self.active_trigger:
-                    self.dropdown.up()
-                    live.update(self._render(), refresh=True)
-                elif key == 'down' and self.active_trigger:
-                    self.dropdown.down()
-                    live.update(self._render(), refresh=True)
-
-                # Trigger char
-                elif key in self.triggers:
-                    self.active_trigger = key
-                    self.filter_text = ""
-                    self.buffer += key
-                    self._update_dropdown()
-                    live.update(self._render(), refresh=True)
-
-                # Regular input
-                elif key.isprintable():
-                    if self.active_trigger:
-                        self.filter_text += key
-                        self._update_dropdown()
-                    else:
+                    # Trigger char
+                    elif key in self.triggers:
+                        self.active_trigger = key
+                        self.filter_text = ""
                         self.buffer += key
-                    live.update(self._render(), refresh=True)
+                        self._update_dropdown()
+                        live.update(self._render(), refresh=True)
+
+                    # Regular input (single char)
+                    elif len(key) == 1 and key.isprintable():
+                        if self.active_trigger:
+                            self.filter_text += key
+                            self._update_dropdown()
+                        else:
+                            self.buffer += key
+                        live.update(self._render(), refresh=True)
+        finally:
+            # Always disable bracketed paste mode
+            disable_bracketed_paste()

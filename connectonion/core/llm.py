@@ -1,12 +1,12 @@
 """
 Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, and OpenOnion
 LLM-Note:
-  Dependencies: imports from [abc, typing, dataclasses, json, os, openai, anthropic, google.generativeai, requests, pathlib, toml, pydantic] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py]
+  Dependencies: imports from [abc, typing, dataclasses, json, os, base64, openai, anthropic, requests, pathlib, toml, pydantic, .usage, .exceptions] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py, tests/test_billing_error_agent.py]
   Data flow: Agent/llm_do calls create_llm(model, api_key) → factory routes to provider class → Provider.__init__() validates API key → Agent calls complete(messages, tools) OR structured_complete(messages, output_schema) → provider converts to native format → calls API → parses response → returns LLMResponse(content, tool_calls, raw_response) OR Pydantic model instance
   State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENONION_API_KEY) | reads ~/.connectonion/.co/config.toml for OpenOnion auth | makes HTTP requests to LLM APIs | no caching or persistence
   Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
   Performance: stateless (no caching) | synchronous (no streaming) | default max_tokens=8192 for Anthropic (required) | each call hits API
-  Errors: raises ValueError for missing API keys, unknown models, invalid parameters | provider-specific errors bubble up (openai.APIError, anthropic.APIError, etc.) | Pydantic ValidationError for invalid structured output
+  Errors: raises ValueError for missing API keys, unknown models, invalid parameters | provider-specific errors bubble up (openai.APIError, anthropic.APIError, etc.) | OpenOnionLLM transforms 402 errors to InsufficientCreditsError with formatted message and typed attributes | Pydantic ValidationError for invalid structured output
 
 Unified LLM provider abstraction layer for ConnectOnion framework.
 
@@ -146,6 +146,10 @@ from typing import List, Dict, Any, Optional, Type
 from dataclasses import dataclass
 import json
 import os
+import base64
+import logging
+
+logger = logging.getLogger(__name__)
 import openai
 import anthropic
 # google-genai not needed - using OpenAI-compatible endpoint instead
@@ -175,6 +179,7 @@ class ToolCall:
 
 # Import TokenUsage from usage module
 from .usage import TokenUsage, calculate_cost
+from .exceptions import InsufficientCreditsError
 
 
 @dataclass
@@ -670,13 +675,13 @@ class OpenOnionLLM(LLM):
 
         # Determine base URL for OpenAI-compatible endpoint
         if os.getenv("OPENONION_DEV") or os.getenv("ENVIRONMENT") == "development":
-            base_url = "http://localhost:8000/v1"
+            self.base_url = "http://localhost:8000/v1"
         else:
-            base_url = "https://oo.openonion.ai/v1"
+            self.base_url = "https://oo.openonion.ai/v1"
 
         # Use OpenAI client with OpenOnion endpoint
         self.client = openai.OpenAI(
-            base_url=base_url,
+            base_url=self.base_url,
             api_key=self.auth_token
         )
 
@@ -693,7 +698,17 @@ class OpenOnionLLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        response = self.client.chat.completions.create(**api_kwargs)
+        try:
+            response = self.client.chat.completions.create(**api_kwargs)
+        except openai.APIStatusError as e:
+            if e.status_code == 402:
+                raise InsufficientCreditsError(e) from e
+            logger.error(f"APIStatusError: status={e.status_code}, message={e.message}, body={getattr(e, 'body', None)}")
+            raise
+        except Exception as e:
+            logger.error(f"LLM error: {type(e).__name__}: {e}")
+            raise
+
         message = response.choices[0].message
 
         # Parse tool calls if present
@@ -746,6 +761,39 @@ class OpenOnionLLM(LLM):
             **kwargs
         )
         return completion.choices[0].message.parsed
+
+    def get_balance(self) -> Optional[float]:
+        """Fetch current account balance from OpenOnion API.
+
+        Makes a GET request to /api/v1/auth/me endpoint to retrieve the user's
+        current balance. This is called once at agent startup to display balance
+        in the banner.
+
+        Returns:
+            Balance in USD (e.g., 4.22 for $4.22), or None if request fails
+
+        Note:
+            - Fast timeout (2s) to avoid hanging on network issues
+            - Only called for co/ models (OpenOnion managed keys)
+            - Returns None on any error (network, auth, etc.)
+            - ~200ms typical latency, acceptable for startup
+        """
+        import requests
+
+        # Build auth endpoint URL (strip /v1 suffix)
+        auth_url = f"{self.base_url.rstrip('/v1')}/api/v1/auth/me"
+
+        response = requests.get(
+            auth_url,
+            headers={"Authorization": f"Bearer {self.auth_token}"},
+            timeout=2
+        )
+
+        if response.status_code == 200:
+            data = response.json()
+            return data.get("balance_usd")
+
+        return None
 
 
 def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:

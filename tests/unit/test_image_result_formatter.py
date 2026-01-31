@@ -113,8 +113,8 @@ class TestFormatImageResult:
         base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
         agent.current_session['trace'] = [
             {
-                'type': 'tool_execution',
-                'tool_name': 'screenshot',
+                'type': 'tool_result',
+                'name': 'screenshot',
                 'status': 'success',
                 'result': f"data:image/png;base64,{base64_data}",
                 'call_id': 'call_123'
@@ -150,8 +150,8 @@ class TestFormatImageResult:
         agent = FakeAgent()
         agent.current_session['trace'] = [
             {
-                'type': 'tool_execution',
-                'tool_name': 'capture',
+                'type': 'tool_result',
+                'name': 'capture',
                 'status': 'success',
                 'result': 'data:image/png;base64,iVBORw0KGgo',
                 'call_id': 'call_456'
@@ -191,8 +191,8 @@ class TestFormatImageResult:
         agent = FakeAgent()
         agent.current_session['trace'] = [
             {
-                'type': 'tool_execution',
-                'tool_name': 'screenshot',
+                'type': 'tool_result',
+                'name': 'screenshot',
                 'status': 'error',
                 'error': 'Failed'
             }
@@ -207,8 +207,8 @@ class TestFormatImageResult:
         agent = FakeAgent()
         agent.current_session['trace'] = [
             {
-                'type': 'tool_execution',
-                'tool_name': 'search',
+                'type': 'tool_result',
+                'name': 'search',
                 'status': 'success',
                 'result': 'Found 10 results for Python',
                 'call_id': 'call_789'
@@ -233,8 +233,8 @@ class TestFormatImageResult:
         agent = FakeAgent()
         agent.current_session['trace'] = [
             {
-                'type': 'tool_execution',
-                'tool_name': 'screenshot',
+                'type': 'tool_result',
+                'name': 'screenshot',
                 'status': 'success',
                 'result': 'data:image/png;base64,' + 'A' * 1000,
                 'call_id': 'call_abc'

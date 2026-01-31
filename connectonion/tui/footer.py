@@ -1,4 +1,12 @@
 """
+Purpose: Simple footer tips display for terminal UI
+LLM-Note:
+  Dependencies: imports from [rich.text.Text] | imported by [tui/chat.py, tui/input.py] | tested by [tests/tui/test_footer.py]
+  Data flow: Footer(tips) → render() → formats tips as dimmed text with separators
+  State/Effects: no state (pure function)
+  Integration: exposes Footer(tips: list[str]) with render() → Text | displays help hints at bottom of TUI
+  Performance: trivial (string join)
+  Errors: none
 Footer - Simple tips display.
 
 Usage:

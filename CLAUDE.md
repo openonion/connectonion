@@ -17,7 +17,7 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
 - **Logger** (`connectonion/logger.py`): Unified logging facade (terminal + plain text + YAML sessions) with `quiet` and `log` parameters
 - **Console** (`connectonion/console.py`): Low-level terminal output with Rich formatting (used internally by Logger)
 - **Events** (`connectonion/events.py:11`): Lifecycle hooks (after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete)
-- **Trust System** (`connectonion/trust.py:42`): Three-level verification (open/careful/strict) with custom policy support
+- **Trust System** (`connectonion/network/trust/`): Three-level verification (open/careful/strict) with custom policy support
 - **XRay Debug** (`connectonion/xray.py:32`): Runtime context injection for interactive debugging with `@xray` decorator
 
 ### Key Design Patterns
@@ -53,11 +53,12 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
 - Handlers receive `agent` instance, can modify `current_session`
 - Built-in plugins: reflection, ReAct, image_result_formatter
 
-#### Trust Verification (`connectonion/trust.py`)
+#### Trust Verification (`connectonion/network/trust/`)
 - Three levels: "open" (dev), "careful" (staging), "strict" (prod)
 - Custom policies: markdown files or inline text describing verification rules
 - Custom agents: Pass your own Agent instance with verification tools
 - Environment-based defaults: `CONNECTONION_ENV` sets trust level automatically
+- Module structure: `factory.py` (creation), `prompts.py` (level prompts), `tools.py` (verification tools)
 
 #### XRay Debugging (`connectonion/xray.py`)
 - `@xray` decorator injects context: `xray.agent`, `xray.task`, `xray.messages`, `xray.iteration`
@@ -151,9 +152,11 @@ connectonion/
 │   ├── logger.py                   # Unified logging facade (terminal + file + YAML sessions)
 │   ├── console.py                  # Low-level terminal output with Rich
 │   ├── events.py                   # Event system
-│   ├── trust.py                    # Trust system coordinator
-│   ├── trust_agents.py             # Trust prompts
-│   ├── trust_functions.py          # Trust verification tools
+│   ├── network/
+│   │   ├── trust/                  # Trust verification system
+│   │   │   ├── factory.py          # Trust agent creation
+│   │   │   ├── prompts.py          # Trust level prompts
+│   │   │   └── tools.py            # Verification tools
 │   ├── xray.py                     # XRay debugging
 │   ├── decorators.py               # @replay, @xray_replay
 │   ├── llm_do.py                   # One-shot LLM function
@@ -227,11 +230,12 @@ connectonion/
 3. Fire `before_each_tool` and `after_each_tool` events per tool, then `after_tools` once after all
 4. Handle errors: capture in trace, return to LLM for retry
 
-### Trust Verification (`connectonion/trust.py`)
+### Trust Verification (`connectonion/network/trust/`)
 - Environment defaults: `CONNECTONION_ENV=development` → trust="open"
 - Custom policies loaded from markdown files or inline strings
 - Trust agent created lazily when trust parameter provided
 - Prevents infinite recursion: trust agents don't have their own trust agents
+- Files: `factory.py` (create_trust_agent), `prompts.py` (TRUST_PROMPTS), `tools.py` (check_whitelist, verify_agent)
 
 ### XRay Context Injection (`connectonion/xray.py`)
 - Stores context in `builtins.xray` global object
@@ -399,6 +403,23 @@ git push
 - **Let errors bubble** to agent for retry
 - **Never silently swallow exceptions**
 - **No try-except-pass** unless explicitly required
+
+### Custom Exceptions
+
+**InsufficientCreditsError** (`connectonion/core/exceptions.py`):
+- Raised by `OpenOnionLLM` when account has insufficient ConnectOnion credits
+- Transforms API 402 errors into beautiful, actionable error messages
+- Provides typed attributes: `balance`, `required`, `shortfall`, `address`, `public_key`
+- Example:
+  ```python
+  try:
+      agent = Agent("my_agent", model="co/gemini-2.5-pro")
+      response = agent.input("Hello")
+  except InsufficientCreditsError as e:
+      print(f"Need ${e.shortfall:.4f} more credits")
+      print(f"Account: {e.address}")
+      # Join Discord or run 'co status' to add credits
+  ```
 
 ### Process Guidelines
 1. **Planning**: Break complex work into 3-5 stages in IMPLEMENTATION_PLAN.md

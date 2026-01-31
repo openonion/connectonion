@@ -1,17 +1,35 @@
 """
-Purpose: WebSocket relay client for agent-to-agent communication via central relay server using INPUT/OUTPUT protocol
+Purpose: Agent-side relay client for registering and serving via central relay server
+
+Lifecycle (Agent Side):
+  1. connect(relay_url) opens WebSocket to /ws/announce
+  2. send_announce() sends ANNOUNCE message to register agent
+  3. serve_loop() waits for INPUT messages from relay
+  4. On INPUT: task_handler(prompt) processes → sends OUTPUT back
+  5. Heartbeat: re-sends ANNOUNCE every 60s to stay registered
+
+Message Flow:
+  Agent → ANNOUNCE → Relay (registers in active_connections)
+  Client → INPUT → Relay → forwards to Agent's WebSocket
+  Agent → OUTPUT → Relay → forwards to Client's /ws/input connection
+
+Protocol:
+  ANNOUNCE: {type, address, summary, endpoints, signature, timestamp}
+  INPUT:    {type, input_id, prompt, from_address?, session?}
+  OUTPUT:   {type, input_id, result, session?}
+  TODO: Adopt WebRTC-style ICE candidates (host/srflx/relay) and connectivity
+        checks so clients can prefer direct endpoints when possible.
+
+Related Files:
+  - oo-api/relay/routes.py: Relay server that receives these messages
+  - connectonion/network/connect.py: Client-side (sends INPUT, receives OUTPUT)
+  - connectonion/network/host/server.py: Uses this for relay registration
+
 LLM-Note:
-  Dependencies: imports from [json, asyncio, typing, websockets] | imported by [host.py] | tested by [tests/test_relay.py]
-  Data flow: host() with relay_url → connect(relay_url) → WebSocket established → send_announce(ws, announce_msg) → serve_loop() → wait_for_task(ws) receives INPUT message from relay → task_handler(prompt) executes → send OUTPUT response via WebSocket → heartbeat re-announces every 60s
-  State/Effects: maintains WebSocket connection to relay | reads incoming JSON messages (INPUT type) | writes outgoing JSON messages (OUTPUT type) | prints status to stdout | asyncio timeout for heartbeat | no file I/O
-  Integration: exposes connect(relay_url), send_announce(ws, msg), wait_for_task(ws, timeout), send_response(ws, input_id, result), serve_loop(ws, announce_msg, task_handler, heartbeat_interval) | used by host() with relay_url to make agent discoverable on relay network | task_handler is async function (prompt: str) -> str | Protocol: INPUT/OUTPUT messages (not TASK/RESPONSE)
-  Performance: async/await non-blocking I/O | heartbeat_interval=60s default (configurable) | timeout-based heartbeat scheduling | WebSocket maintains persistent connection
-  Errors: let it crash - ImportError if websockets missing | asyncio.TimeoutError used for heartbeat timing | websockets.ConnectionClosed exits serve loop gracefully
-
-WebSocket relay client functions.
-
-Simple async functions for connecting to relay and exchanging messages using INPUT/OUTPUT protocol.
-No classes needed - just stateless functions operating on websocket connections.
+  Dependencies: imports from [json, asyncio, typing, websockets]
+  Data flow: connect() → /ws/announce → serve_loop() → INPUT → task_handler → OUTPUT
+  State/Effects: WebSocket connection to relay | heartbeat every 60s
+  Integration: exposes connect(), send_announce(), wait_for_task(), serve_loop()
 """
 
 import json
@@ -20,12 +38,12 @@ from typing import Dict, Any
 import websockets
 
 
-async def connect(relay_url: str = "wss://oo.openonion.ai/ws/announce"):
+async def connect(relay_url: str = "wss://oo.openonion.ai"):
     """
-    Connect to relay WebSocket endpoint.
+    Connect to relay's announce endpoint.
 
     Args:
-        relay_url: WebSocket URL for relay (default: production relay)
+        relay_url: Relay server base URL (default: production relay)
 
     Returns:
         WebSocket connection object
@@ -34,7 +52,10 @@ async def connect(relay_url: str = "wss://oo.openonion.ai/ws/announce"):
         >>> ws = await connect()
         >>> # Now use ws for sending/receiving
     """
-    return await websockets.connect(relay_url)
+    ws_url = f"{relay_url.rstrip('/')}/ws/announce"
+    # TODO: Future connection metadata (observed_ip, ICE candidates) should be
+    #       attached to ANNOUNCE so relay can return best endpoints to clients.
+    return await websockets.connect(ws_url)
 
 
 async def send_announce(websocket, announce_message: Dict[str, Any]):

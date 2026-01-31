@@ -49,16 +49,19 @@ def analyze_execution(
         Structured analysis with improvement suggestions
     """
     # Build execution summary
+    # Filter for tool_result entries (the current trace format)
     tools_called = [
         entry for entry in execution_trace
-        if entry.get('type') == 'tool_execution'
+        if entry.get('type') == 'tool_result'
     ]
 
     tools_summary = []
     for entry in tools_called:
         status = "✓" if entry.get('status') == 'success' else "✗"
+        # Use 'name' field (current format) with fallback to 'tool_name' (legacy)
+        tool_name = entry.get('name') or entry.get('tool_name')
         tools_summary.append(
-            f"{status} {entry.get('tool_name')}({entry.get('args')}) → {entry.get('result')}"
+            f"{status} {tool_name}({entry.get('args')}) → {entry.get('result')}"
         )
 
     # Create analysis input

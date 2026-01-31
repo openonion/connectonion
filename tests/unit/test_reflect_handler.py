@@ -27,6 +27,17 @@ class FakeAgent:
             'iteration': 1,
         }
         self.logger = Mock()
+        self.connection = None
+        self._trace_id = 0
+
+    def _next_trace_id(self):
+        self._trace_id += 1
+        return self._trace_id
+
+    def _record_trace(self, entry):
+        if 'id' not in entry:
+            entry['id'] = str(self._next_trace_id())
+        self.current_session['trace'].append(entry)
 
 
 class TestCompressMessages:
@@ -110,9 +121,9 @@ class TestReflect:
         agent.current_session['user_prompt'] = 'Find Python docs'
         agent.current_session['trace'] = [
             {
-                'type': 'tool_execution',
-                'tool_name': 'search',
-                'arguments': {'query': 'python'},
+                'type': 'tool_result',
+                'name': 'search',
+                'args': {'query': 'python'},
                 'status': 'success',
                 'result': 'Found Python documentation'
             }
@@ -140,9 +151,9 @@ class TestReflect:
         agent = FakeAgent()
         agent.current_session['trace'] = [
             {
-                'type': 'tool_execution',
-                'tool_name': 'calc',
-                'arguments': {},
+                'type': 'tool_result',
+                'name': 'calc',
+                'args': {},
                 'status': 'success',
                 'result': '42'
             }
@@ -177,9 +188,9 @@ class TestReflect:
         agent.current_session['user_prompt'] = 'Write file'
         agent.current_session['trace'] = [
             {
-                'type': 'tool_execution',
-                'tool_name': 'write_file',
-                'arguments': {'path': '/etc/passwd'},
+                'type': 'tool_result',
+                'name': 'write_file',
+                'args': {'path': '/etc/passwd'},
                 'status': 'error',
                 'error': 'Permission denied'
             }
@@ -205,9 +216,9 @@ class TestReflect:
         ]
         agent.current_session['trace'] = [
             {
-                'type': 'tool_execution',
-                'tool_name': 'search',
-                'arguments': {'q': 'python'},
+                'type': 'tool_result',
+                'name': 'search',
+                'args': {'q': 'python'},
                 'status': 'success',
                 'result': 'Results'
             }

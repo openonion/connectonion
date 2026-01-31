@@ -1,4 +1,13 @@
-"""StatusBar - Powerline-style info bar with segments.
+"""
+Purpose: Powerline-style status bar with colored segments for terminal UI
+LLM-Note:
+  Dependencies: imports from [rich.text.Text, dataclasses] | imported by [tui/chat.py, tui/input.py] | tested by [tests/tui/test_status_bar.py]
+  Data flow: StatusBar(segments) → render() → formats segments with powerline arrows → colored backgrounds → returns Rich Text
+  State/Effects: no state (pure function)
+  Integration: exposes StatusBar(segments: list[tuple[icon, label, color]]) with render() → Text | uses powerline characters (requires powerline fonts) | fallback to simple arrows if fonts unavailable
+  Performance: trivial (string formatting)
+  Errors: none (handles missing fonts with fallback)
+StatusBar - Powerline-style info bar with segments.
 
 Creates a professional terminal prompt bar like powerlevel10k.
 """

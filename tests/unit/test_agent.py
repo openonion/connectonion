@@ -97,10 +97,10 @@ def test_agent_run_with_single_tool_call():
     result = agent.input("What is 40 + 2?")
     assert result is not None
     assert isinstance(result, str)
-    tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
+    tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_result']
     # Must have at least one tool execution
     assert len(tool_executions) > 0, "Expected calculator tool to be executed"
-    assert tool_executions[0].get('tool_name') == 'calculator'
+    assert tool_executions[0].get('name') == 'calculator'
     assert '42' in str(tool_executions[0].get('result', ''))
 
 
@@ -122,10 +122,10 @@ def test_agent_run_with_multiple_tool_calls():
 
     assert result is not None
     assert isinstance(result, str)
-    tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_execution']
+    tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_result']
     # Must have tool executions
     assert len(tool_executions) > 0, "Expected tools to be executed"
-    tool_names = [e.get('tool_name') for e in tool_executions]
+    tool_names = [e.get('name') for e in tool_executions]
     # Should use both calculator and time tools
     assert 'calculator' in tool_names, "Expected calculator to be called"
     assert 'get_current_time' in tool_names, "Expected get_current_time to be called"
@@ -484,36 +484,36 @@ def test_method_with_complex_parameters():
         assert schema["parameters"]["properties"]["multiplier"]["type"] == "integer"
 
 
-class TestAgentConnection:
-    """Test agent.connection property for hosted execution."""
+class TestAgentIO:
+    """Test agent.io property for hosted execution."""
 
-    def test_connection_defaults_to_none(self):
-        """Agent.connection should be None by default (local execution)."""
+    def test_io_defaults_to_none(self):
+        """Agent.io should be None by default (local execution)."""
         agent = Agent(name="test", api_key="fake")
-        assert agent.connection is None
+        assert agent.io is None
 
-    def test_connection_can_be_set(self):
-        """Agent.connection can be set to a Connection instance."""
-        from connectonion.network.connection import Connection
+    def test_io_can_be_set(self):
+        """Agent.io can be set to an IO instance."""
+        from connectonion.network.io import IO
         from unittest.mock import Mock
 
         agent = Agent(name="test", api_key="fake")
-        mock_connection = Mock(spec=Connection)
+        mock_io = Mock(spec=IO)
 
-        agent.connection = mock_connection
+        agent.io = mock_io
 
-        assert agent.connection == mock_connection
+        assert agent.io == mock_io
 
-    def test_connection_available_in_event_handlers(self):
-        """Agent.connection should be accessible in event handlers."""
+    def test_io_available_in_event_handlers(self):
+        """Agent.io should be accessible in event handlers."""
         from connectonion import after_llm
         from unittest.mock import Mock
 
-        connection_in_handler = [None]
+        io_in_handler = [None]
 
         @after_llm
-        def capture_connection(agent):
-            connection_in_handler[0] = agent.connection
+        def capture_io(agent):
+            io_in_handler[0] = agent.io
 
         mock_llm = Mock()
         mock_llm.model = "test"
@@ -524,23 +524,23 @@ class TestAgentConnection:
             usage=TokenUsage()
         )
 
-        mock_connection = Mock()
-        agent = Agent(name="test", llm=mock_llm, on_events=[capture_connection], quiet=True, log=False)
-        agent.connection = mock_connection
+        mock_io = Mock()
+        agent = Agent(name="test", llm=mock_llm, on_events=[capture_io], quiet=True, log=False)
+        agent.io = mock_io
 
         agent.input("test")
 
-        assert connection_in_handler[0] == mock_connection
+        assert io_in_handler[0] == mock_io
 
-    def test_connection_none_in_local_execution(self):
-        """Agent.connection should remain None during local execution."""
+    def test_io_none_in_local_execution(self):
+        """Agent.io should remain None during local execution."""
         from connectonion import after_llm
 
-        connection_in_handler = [None]
+        io_in_handler = [None]
 
         @after_llm
-        def capture_connection(agent):
-            connection_in_handler[0] = agent.connection
+        def capture_io(agent):
+            io_in_handler[0] = agent.io
 
         mock_llm = Mock()
         mock_llm.model = "test"
@@ -551,9 +551,9 @@ class TestAgentConnection:
             usage=TokenUsage()
         )
 
-        agent = Agent(name="test", llm=mock_llm, on_events=[capture_connection], quiet=True, log=False)
-        # Don't set connection (local execution)
+        agent = Agent(name="test", llm=mock_llm, on_events=[capture_io], quiet=True, log=False)
+        # Don't set io (local execution)
 
         agent.input("test")
 
-        assert connection_in_handler[0] is None
+        assert io_in_handler[0] is None

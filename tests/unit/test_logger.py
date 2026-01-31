@@ -163,8 +163,8 @@ class TestFormatToolCall:
         """Test formatting simple tool call."""
         logger = Logger("test-agent", log=False)
         trace_entry = {
-            'tool_name': 'greet',
-            'arguments': {'name': 'Alice'}
+            'name': 'greet',
+            'args': {'name': 'Alice'}
         }
         result = logger._format_tool_call(trace_entry)
         assert result == "greet(name='Alice')"
@@ -173,8 +173,8 @@ class TestFormatToolCall:
         """Test formatting tool call with multiple args."""
         logger = Logger("test-agent", log=False)
         trace_entry = {
-            'tool_name': 'write_file',
-            'arguments': {'path': 'test.py', 'content': 'print("hello")'}
+            'name': 'write_file',
+            'args': {'path': 'test.py', 'content': 'print("hello")'}
         }
         result = logger._format_tool_call(trace_entry)
         assert result == "write_file(path='test.py', content='print(\"hello\")')"
@@ -184,8 +184,8 @@ class TestFormatToolCall:
         logger = Logger("test-agent", log=False)
         long_content = "x" * 100
         trace_entry = {
-            'tool_name': 'write',
-            'arguments': {'content': long_content}
+            'name': 'write',
+            'args': {'content': long_content}
         }
         result = logger._format_tool_call(trace_entry)
         assert "x" * 50 + "..." in result
@@ -195,8 +195,8 @@ class TestFormatToolCall:
         """Test formatting tool call with non-string values."""
         logger = Logger("test-agent", log=False)
         trace_entry = {
-            'tool_name': 'search',
-            'arguments': {'limit': 10, 'include_all': True}
+            'name': 'search',
+            'args': {'limit': 10, 'include_all': True}
         }
         result = logger._format_tool_call(trace_entry)
         assert "limit=10" in result
@@ -206,8 +206,8 @@ class TestFormatToolCall:
         """Test formatting tool call with no arguments."""
         logger = Logger("test-agent", log=False)
         trace_entry = {
-            'tool_name': 'get_time',
-            'arguments': {}
+            'name': 'get_time',
+            'args': {}
         }
         result = logger._format_tool_call(trace_entry)
         assert result == "get_time()"
@@ -250,9 +250,9 @@ class TestEvalLogging:
         if tool_calls:
             for tc in tool_calls:
                 trace.append({
-                    'type': 'tool_execution',
-                    'tool_name': tc['name'],
-                    'arguments': tc.get('args', {})
+                    'type': 'tool_result',
+                    'name': tc['name'],
+                    'args': tc.get('args', {})
                 })
 
         return {
@@ -447,8 +447,8 @@ class TestRunTracking:
         assert turn["output"] == "Second response"
         assert turn["run"] == 2
         assert len(turn["history"]) == 1
-        assert turn["history"][0]["output"] == "First response"
         assert turn["history"][0]["run"] == 1
+        assert "meta" in turn["history"][0]
 
     def test_multiple_run_yaml_files(self, tmp_path, monkeypatch):
         """Test each run creates separate run YAML file."""

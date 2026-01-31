@@ -1,46 +1,64 @@
 """
-Purpose: Client interface for connecting to remote agents via HTTP or relay network
+Purpose: Client interface for connecting to remote agents with real-time UI updates
+
+Lifecycle (Client Side):
+  1. connect(address) creates RemoteAgent instance
+  2. agent.input(prompt) opens WebSocket to relay /ws/input endpoint
+  3. Sends INPUT message: {type: "INPUT", input_id, to, prompt, session?}
+  4. Receives streaming events: tool_call, tool_result, thinking, assistant
+  5. Receives final OUTPUT: {type: "OUTPUT", result, session} or ask_user
+  6. Returns Response(text, done) - done=False means agent asked a question
+
+Message Flow:
+  Client → /ws/input → Relay → forwards to Agent's /ws/announce connection
+  Agent processes → sends OUTPUT → Relay resolves pending_outputs future
+  Relay → forwards OUTPUT → Client receives response
+
+Related Files:
+  - oo-api/relay/routes.py: Relay server WebSocket endpoints
+  - connectonion/network/relay.py: Agent-side relay connection (serve_loop)
+  - connectonion-ts/src/connect.ts: TypeScript equivalent of this file
+
 LLM-Note:
-  Dependencies: imports from [asyncio, json, uuid, time, aiohttp, websockets, address] | imported by [__init__.py, tests/test_connect.py, examples/] | tested by [tests/test_connect.py]
-  Data flow: connect(address, keys) → RemoteAgent → input() → discover endpoints → try HTTP first → fallback to relay → return result
-  State/Effects: caches discovered endpoint for reuse | optional signing with keys parameter
-  Integration: exposes connect(address, keys, relay_url), RemoteAgent class with .input(), .input_async()
-  Performance: discovery cached per RemoteAgent instance | HTTPS tried first (direct), relay as fallback
-
-Connect to remote agents on the network.
-
-Smart discovery: tries HTTP endpoints first, falls back to relay.
-Always signs requests when keys are provided.
+  Dependencies: imports from [asyncio, json, uuid, time, websockets, address, dataclasses]
+  Data flow: connect(address) → RemoteAgent → input() → WebSocket /ws/input → events → Response
+  State/Effects: current_session synced from server | ui transforms server events
+  Integration: exposes connect(), RemoteAgent with .input(), .input_async(), .ui, .status
 """
 
 import asyncio
 import json
 import time
 import uuid
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from .. import address as addr
 
 
+@dataclass
+class Response:
+    """Response from remote agent."""
+    text: str       # Agent's response or question
+    done: bool      # True = complete, False = needs more input (agent asked a question)
+
+
 class RemoteAgent:
     """
-    Interface to a remote agent.
+    Interface to a remote agent with real-time UI updates.
 
     Supports:
-    - Discovery via relay API
-    - Direct HTTP POST to agent /input endpoint
-    - WebSocket relay fallback
-    - Signed requests when keys provided
-    - Multi-turn conversations via session management
+    - WebSocket streaming for real-time events
+    - Session state synced from server
+    - UI events transformed for rendering
+    - Multi-turn conversations
 
     Usage:
-        # Standard Python scripts
         agent = connect("0x...")
-        result = agent.input("Hello")
-
-        # Jupyter notebooks or async code
-        agent = connect("0x...")
-        result = await agent.input_async("Hello")
+        response = agent.input("Book a flight")
+        print(response.text)   # "Which date?"
+        print(response.done)   # False (agent asked a question)
+        print(agent.ui)        # All events for rendering
     """
 
     def __init__(
@@ -48,192 +66,219 @@ class RemoteAgent:
         agent_address: str,
         *,
         keys: Optional[Dict[str, Any]] = None,
-        relay_url: str = "wss://oo.openonion.ai/ws/announce"
+        relay_url: str = "wss://oo.openonion.ai"
     ):
         self.address = agent_address
         self._keys = keys
-        self._relay_url = relay_url
-        self._cached_endpoint: Optional[str] = None
-        self._session: Optional[Dict[str, Any]] = None  # Multi-turn conversation state
+        self._relay_url = relay_url.rstrip("/")
+        self._status = "idle"
+        self._current_session: Optional[Dict[str, Any]] = None
+        self._ui_events: List[Dict[str, Any]] = []
 
-    def input(self, prompt: str, timeout: float = 30.0) -> str:
+    @property
+    def status(self) -> str:
+        """Current status: 'idle' | 'working' | 'waiting'"""
+        return self._status
+
+    @property
+    def current_session(self) -> Optional[Dict[str, Any]]:
+        """Session state synced from server (read-only)."""
+        return self._current_session
+
+    @property
+    def ui(self) -> List[Dict[str, Any]]:
+        """UI events for rendering. One type = one component.
+
+        Server events are transformed:
+        - tool_call + tool_result merged into single UI item
+        - user_input → type: 'user'
+        - assistant → type: 'agent'
         """
-        Send task to remote agent and get response (sync version).
+        return self._ui_events
 
-        Automatically maintains conversation context across calls.
+    def input(self, prompt: str, timeout: float = 60.0) -> Response:
+        """
+        Send prompt to remote agent and get response.
 
-        Note:
-            This method cannot be used inside an async context (e.g., Jupyter notebooks,
-            async functions). Use input_async() instead in those environments.
+        Returns Response(text, done) where:
+        - done=True: Task complete
+        - done=False: Agent asked a question, send another input to answer
 
         Args:
             prompt: Task/prompt to send
-            timeout: Seconds to wait for response (default 30)
+            timeout: Seconds to wait for response (default 60)
 
         Returns:
-            Agent's response string
-
-        Raises:
-            RuntimeError: If called from within a running event loop
+            Response with text and done flag
 
         Example:
-            >>> translator = connect("0x3d40...")
-            >>> result = translator.input("Translate 'hello' to Spanish")
-            >>> # Continue conversation
-            >>> result2 = translator.input("Now translate it to French")
+            >>> response = agent.input("Book a flight to Tokyo")
+            >>> if not response.done:
+            ...     response = agent.input("March 15")  # Answer the question
         """
         try:
             asyncio.get_running_loop()
             raise RuntimeError(
-                "input() cannot be used inside async context (e.g., Jupyter notebooks). "
+                "input() cannot be used inside async context. "
                 "Use 'await agent.input_async()' instead."
             )
         except RuntimeError as e:
             if "input() cannot be used" in str(e):
                 raise
-            # No running loop - safe to proceed
-        return asyncio.run(self._send_task(prompt, timeout))
+        return asyncio.run(self._stream_input(prompt, timeout))
 
-    async def input_async(self, prompt: str, timeout: float = 30.0) -> str:
-        """
-        Send task to remote agent and get response (async version).
+    async def input_async(self, prompt: str, timeout: float = 60.0) -> Response:
+        """Async version of input()."""
+        return await self._stream_input(prompt, timeout)
 
-        Automatically maintains conversation context across calls.
+    def reset(self) -> None:
+        """Clear conversation and start fresh."""
+        self._current_session = None
+        self._ui_events = []
+        self._status = "idle"
 
-        Args:
-            prompt: Task/prompt to send
-            timeout: Seconds to wait for response (default 30)
-
-        Returns:
-            Agent's response string
-        """
-        return await self._send_task(prompt, timeout)
-
-    def reset_conversation(self):
-        """Clear conversation history and start fresh."""
-        self._session = None
-
-    def _sign_payload(self, payload: Dict[str, Any]) -> Dict[str, Any]:
-        """Sign a payload if keys are available."""
-        if not self._keys:
-            return {"prompt": payload.get("prompt", "")}
-
-        canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
-        signature = addr.sign(self._keys, canonical.encode())
-        return {
-            "payload": payload,
-            "from": self._keys["address"],
-            "signature": signature.hex()
-        }
-
-    async def _discover_endpoints(self) -> List[str]:
-        """Query relay API for agent endpoints."""
-        import aiohttp
-
-        # Convert wss://oo.openonion.ai/ws/announce to https://oo.openonion.ai
-        base_url = self._relay_url.replace("wss://", "https://").replace("ws://", "http://")
-        base_url = base_url.replace("/ws/announce", "")
-
-        async with aiohttp.ClientSession() as session:
-            async with session.get(f"{base_url}/api/relay/agents/{self.address}") as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    if data.get("online"):
-                        return data.get("endpoints", [])
-        return []
-
-    def _create_signed_body(self, prompt: str) -> Dict[str, Any]:
-        """Create signed request body for agent /input endpoint."""
-        payload = {"prompt": prompt, "to": self.address, "timestamp": int(time.time())}
-        body = self._sign_payload(payload)
-        if self._session:
-            body["session"] = self._session
-        return body
-
-    async def _send_http(self, endpoint: str, prompt: str, timeout: float) -> str:
-        """Send request via direct HTTP POST to agent /input endpoint."""
-        import aiohttp
-
-        body = self._create_signed_body(prompt)
-
-        async with aiohttp.ClientSession() as http_session:
-            async with http_session.post(
-                f"{endpoint}/input",
-                json=body,
-                timeout=aiohttp.ClientTimeout(total=timeout)
-            ) as resp:
-                data = await resp.json()
-                if not resp.ok:
-                    raise ConnectionError(data.get("error", f"HTTP {resp.status}"))
-                # Save session for conversation continuation
-                if "session" in data:
-                    self._session = data["session"]
-                return data.get("result", "")
-
-    async def _send_relay(self, prompt: str, timeout: float) -> str:
-        """Send request via WebSocket relay."""
+    async def _stream_input(self, prompt: str, timeout: float) -> Response:
+        """Send prompt via WebSocket and stream events."""
         import websockets
 
+        self._status = "working"
+
+        # Add user event to UI
+        self._add_ui_event({
+            "type": "user",
+            "content": prompt
+        })
+
+        # Connect to relay's input endpoint
+        ws_url = f"{self._relay_url}/ws/input"
+
+        # Generate input_id for routing/response matching
+        import uuid
         input_id = str(uuid.uuid4())
-        relay_input_url = self._relay_url.replace("/ws/announce", "/ws/input")
 
-        async with websockets.connect(relay_input_url) as ws:
-            payload = {"prompt": prompt, "to": self.address, "timestamp": int(time.time())}
-            signed = self._sign_payload(payload)
+        # Build the INPUT message
+        input_msg = {
+            "type": "INPUT",
+            "input_id": input_id,
+            "prompt": prompt,
+            "to": self.address,
+            "timestamp": int(time.time())
+        }
 
-            input_message = {
-                "type": "INPUT",
-                "input_id": input_id,
-                "to": self.address,
-                **signed
-            }
+        # Add session for conversation continuation
+        if self._current_session:
+            input_msg["session"] = self._current_session
 
-            await ws.send(json.dumps(input_message))
+        # Sign if keys provided
+        if self._keys:
+            payload = {"prompt": prompt, "to": self.address, "timestamp": input_msg["timestamp"]}
+            canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+            signature = addr.sign(self._keys, canonical.encode())
+            input_msg["payload"] = payload
+            input_msg["from"] = self._keys["address"]
+            input_msg["signature"] = signature.hex()
 
-            response_data = await asyncio.wait_for(ws.recv(), timeout=timeout)
-            response = json.loads(response_data)
+        try:
+            async with websockets.connect(ws_url) as ws:
+                await ws.send(json.dumps(input_msg))
 
-            if response.get("type") == "OUTPUT" and response.get("input_id") == input_id:
-                return response.get("result", "")
-            elif response.get("type") == "ERROR":
-                raise ConnectionError(f"Agent error: {response.get('error')}")
-            else:
-                raise ConnectionError(f"Unexpected response: {response}")
+                # Stream events until OUTPUT or timeout
+                result_text = ""
+                done = True
 
-    async def _send_task(self, prompt: str, timeout: float) -> str:
-        """
-        Send task using best available connection method.
+                while True:
+                    # Wrap recv in timeout to prevent hanging indefinitely
+                    msg = await asyncio.wait_for(ws.recv(), timeout=timeout)
+                    event = json.loads(msg)
+                    event_type = event.get("type")
 
-        Priority:
-        1. Cached endpoint (if previously successful)
-        2. Discovered HTTPS endpoints
-        3. Discovered HTTP endpoints
-        4. Relay fallback
-        """
-        # Try cached endpoint first
-        if self._cached_endpoint:
-            try:
-                return await self._send_http(self._cached_endpoint, prompt, timeout)
-            except Exception:
-                self._cached_endpoint = None  # Clear failed cache
+                    if event_type == "OUTPUT":
+                        # Final result
+                        result_text = event.get("result", "")
+                        self._current_session = event.get("session")
+                        self._status = "idle"
 
-        # Discover endpoints
-        endpoints = await self._discover_endpoints()
+                        # Add agent response to UI
+                        self._add_ui_event({
+                            "type": "agent",
+                            "content": result_text
+                        })
+                        break
 
-        # Sort: HTTPS first, then HTTP
-        endpoints.sort(key=lambda e: (0 if e.startswith("https://") else 1))
+                    elif event_type == "ERROR":
+                        self._status = "idle"
+                        raise ConnectionError(f"Agent error: {event.get('message', event.get('error'))}")
 
-        # Try each endpoint
-        for endpoint in endpoints:
-            try:
-                result = await self._send_http(endpoint, prompt, timeout)
-                self._cached_endpoint = endpoint  # Cache successful endpoint
-                return result
-            except Exception:
-                continue
+                    elif event_type == "ask_user":
+                        # Agent is asking a question - return done=False so caller sends another input()
+                        self._status = "waiting"
+                        done = False
+                        result_text = event.get("text", "")
 
-        # Fallback to relay
-        return await self._send_relay(prompt, timeout)
+                        # Add ask_user event to UI
+                        self._add_ui_event({
+                            "type": "ask_user",
+                            "text": event.get("text"),
+                            "options": event.get("options")
+                        })
+                        break
+
+                    else:
+                        # Stream event (tool_call, tool_result, thinking, etc.)
+                        self._handle_stream_event(event)
+
+                return Response(text=result_text, done=done)
+
+        except asyncio.TimeoutError:
+            self._status = "idle"
+            raise TimeoutError(f"Request timed out after {timeout}s")
+
+    def _handle_stream_event(self, event: Dict[str, Any]) -> None:
+        """Handle streaming event and update UI."""
+        event_type = event.get("type")
+
+        if event_type == "tool_call":
+            # Add new tool_call UI event with running status
+            self._add_ui_event({
+                "type": "tool_call",
+                "id": event.get("id"),
+                "name": event.get("name"),
+                "args": event.get("args"),
+                "status": "running"
+            })
+
+        elif event_type == "tool_result":
+            # Find and update existing tool_call by id
+            tool_id = event.get("id")
+            for ui_event in self._ui_events:
+                if ui_event.get("type") == "tool_call" and ui_event.get("id") == tool_id:
+                    ui_event["status"] = "done" if event.get("status") == "success" else "error"
+                    ui_event["result"] = event.get("result")
+                    break
+
+        elif event_type == "thinking":
+            self._add_ui_event({"type": "thinking"})
+
+        elif event_type == "user_input":
+            # Already added when input() called, skip
+            pass
+
+        elif event_type == "assistant":
+            self._add_ui_event({
+                "type": "agent",
+                "content": event.get("content")
+            })
+
+        elif event_type == "llm_call":
+            # Internal event, add thinking indicator if not already present
+            if not any(e.get("type") == "thinking" for e in self._ui_events[-3:]):
+                self._add_ui_event({"type": "thinking"})
+
+    def _add_ui_event(self, event: Dict[str, Any]) -> None:
+        """Add event to UI with auto-generated id."""
+        if "id" not in event:
+            event["id"] = str(len(self._ui_events) + 1)
+        self._ui_events.append(event)
 
     def __repr__(self):
         short = self.address[:12] + "..." if len(self.address) > 12 else self.address
@@ -244,7 +289,7 @@ def connect(
     address: str,
     *,
     keys: Optional[Dict[str, Any]] = None,
-    relay_url: str = "wss://oo.openonion.ai/ws/announce"
+    relay_url: str = "wss://oo.openonion.ai"
 ) -> RemoteAgent:
     """
     Connect to a remote agent.
@@ -252,21 +297,23 @@ def connect(
     Args:
         address: Agent's public key address (0x...)
         keys: Signing keys from address.load() - required for strict trust agents
-        relay_url: Relay server URL (default: production)
+        relay_url: Relay server base URL (default: production)
 
     Returns:
-        RemoteAgent interface
+        RemoteAgent interface with real-time UI updates
 
     Example:
-        >>> from connectonion import connect, address
+        >>> from connectonion import connect
         >>>
-        >>> # Simple (unsigned)
         >>> agent = connect("0x3d4017c3...")
-        >>> result = agent.input("Hello")
+        >>> response = agent.input("Book a flight")
+        >>> print(response.text)   # "Which date?"
+        >>> print(response.done)   # False
+        >>> print(agent.ui)        # All events for rendering
+        >>> print(agent.status)    # 'waiting'
         >>>
-        >>> # With signing (for strict trust agents)
-        >>> keys = address.load(Path(".co"))
-        >>> agent = connect("0x3d4017c3...", keys=keys)
-        >>> result = agent.input("Hello")
+        >>> response = agent.input("March 15")
+        >>> print(response.text)   # "Booked! Confirmation #ABC123"
+        >>> print(response.done)   # True
     """
     return RemoteAgent(address, keys=keys, relay_url=relay_url)

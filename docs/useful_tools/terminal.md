@@ -2,6 +2,24 @@
 
 Interactive terminal utilities: selection menus, file browser, and input with autocomplete.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import pick, yes_no, browse_files, input_with_at
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy terminal
+```
+
+```python
+from tools.terminal import pick, yes_no, browse_files, input_with_at  # Your local copy
+```
+
 ## Quick Start
 
 ```python

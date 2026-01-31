@@ -24,16 +24,44 @@ Execute terminal commands in a persistent shell session.
 - Output is truncated at 30000 characters
 - Default timeout: 2 minutes
 
+### Path Quoting (REQUIRED)
+Always quote paths with spaces using double quotes:
+```bash
+cd "/Users/name/My Documents"     # Correct
+python "/path/with spaces/run.py" # Correct
+cd /Users/name/My Documents       # WRONG - will fail
+```
+
+### Directory Verification
+Before creating files/directories, verify the parent exists:
+```bash
+ls /foo           # Verify /foo exists
+mkdir /foo/bar    # Now safe to create
+```
+
+### Parallel vs Sequential
+- **Independent commands**: Call tool multiple times in parallel
+- **Dependent commands**: Chain with `&&` in single call
+```bash
+# Sequential (dependent)
+git add . && git commit -m "msg" && git push
+
+# Parallel (independent) - use separate tool calls
+[git status] [git diff] [git log]
+```
+
 ## Examples
 
 <good-example>
 pytest /foo/bar/tests
 git status
 npm run build
+cd "/path/with spaces" && ls
 </good-example>
 
 <bad-example>
-cat file.txt          # Use read_file instead
-echo "content" > file  # Use write instead
-cd /foo && pytest      # Use absolute path instead
+cat file.txt                # Use read_file instead
+echo "content" > file       # Use write instead
+cd /foo && pytest           # Use absolute path instead
+cd /path/with spaces        # Missing quotes - will fail
 </bad-example>

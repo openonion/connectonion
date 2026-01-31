@@ -2,6 +2,26 @@
 
 > Check your inbox with one line. Process emails safely. Keep it simple.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import get_emails, mark_read
+
+agent = Agent("assistant", tools=[get_emails, mark_read])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy get_emails
+```
+
+```python
+from tools.get_emails import get_emails, mark_read  # Your local copy
+```
+
 ---
 
 ## Quick Start (10 seconds)

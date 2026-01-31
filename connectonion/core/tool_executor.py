@@ -106,17 +106,14 @@ def execute_single_tool(
     # Log tool call before execution
     logger.log_tool_call(tool_name, tool_args)
 
-    # Create single trace entry
     trace_entry = {
-        "type": "tool_execution",
-        "tool_name": tool_name,
-        "arguments": tool_args,
-        "call_id": tool_id,
-        "timing": 0,
+        "type": "tool_result",
+        "tool_id": tool_id,  # LLM's tool call ID for client-side matching
+        "name": tool_name,
+        "args": tool_args,
         "status": "pending",
         "result": None,
-        "iteration": agent.current_session['iteration'],
-        "timestamp": time.time()
+        "timing_ms": 0,
     }
 
     # Check if tool exists
@@ -124,29 +121,30 @@ def execute_single_tool(
     if tool_func is None:
         error_msg = f"Tool '{tool_name}' not found"
 
-        # Update trace entry
         trace_entry["result"] = error_msg
         trace_entry["status"] = "not_found"
         trace_entry["error"] = error_msg
 
-        # Add trace entry to session (so on_error handlers can see it)
-        agent.current_session['trace'].append(trace_entry)
-
-        # Logger output
+        agent._record_trace(trace_entry)
         logger.print(f"[red]✗[/red] {error_msg}")
-
-        # Note: on_error event will fire in execute_and_record_tools after result message added
 
         return trace_entry
 
     # Check if tool has @xray decorator
     xray_enabled = is_xray_enabled(tool_func)
 
-    # Prepare context data for xray
     previous_tools = [
-        entry.get("tool_name") for entry in agent.current_session['trace']
-        if entry.get("type") == "tool_execution"
+        entry.get("name") for entry in agent.current_session['trace']
+        if entry.get("type") == "tool_result"
     ]
+
+    # Record tool_call event BEFORE execution (for real-time UI updates)
+    agent._record_trace({
+        "type": "tool_call",
+        "tool_id": tool_id,  # LLM's tool call ID
+        "name": tool_name,
+        "args": tool_args,
+    })
 
     # Inject xray context before tool execution
     inject_xray_context(
@@ -177,19 +175,19 @@ def execute_single_tool(
 
         # Execute the tool with timing (restart timer AFTER events for accurate tool timing)
         tool_start = time.time()
+
+        # Inject agent for ask_user tool (YAGNI - only generalize when needed)
+        if tool_name == 'ask_user':
+            tool_args['agent'] = agent
+
         result = tool_func(**tool_args)
         tool_duration = (time.time() - tool_start) * 1000  # milliseconds
 
-        # Update trace entry
-        trace_entry["timing"] = tool_duration
+        trace_entry["timing_ms"] = tool_duration
         trace_entry["result"] = str(result)
         trace_entry["status"] = "success"
 
-        # Add trace entry to session BEFORE auto-trace
-        # (so it shows up in xray.trace() output)
-        agent.current_session['trace'].append(trace_entry)
-
-        # Logger output - result on separate line
+        agent._record_trace(trace_entry)
         logger.log_tool_result(str(result), tool_duration)
 
         # Auto-print Rich table if @xray enabled
@@ -208,19 +206,22 @@ def execute_single_tool(
         # Calculate timing from initial start (includes before_tool if it succeeded)
         tool_duration = (time.time() - tool_start) * 1000
 
-        # Update trace entry
-        trace_entry["timing"] = tool_duration
+        trace_entry["timing_ms"] = tool_duration
         trace_entry["status"] = "error"
         trace_entry["error"] = str(e)
         trace_entry["error_type"] = type(e).__name__
 
-        error_msg = f"Error executing tool: {str(e)}"
+        # Always include schema info so LLM knows how to fix the call
+        schema = getattr(tool_func, 'get_parameters_schema', lambda: {})()
+        required = schema.get('required', [])
+        properties = list(schema.get('properties', {}).keys())
+
+        error_msg = f"Error: {str(e)}"
+        error_msg += f"\n\nTool '{tool_name}' schema: required={required}, all_params={properties}, you_provided={list(tool_args.keys())}"
         trace_entry["result"] = error_msg
 
-        # Add error trace entry to session (so on_error handlers can see it)
-        agent.current_session['trace'].append(trace_entry)
+        agent._record_trace(trace_entry)
 
-        # Logger output
         time_str = f"{tool_duration/1000:.4f}s" if tool_duration < 100 else f"{tool_duration/1000:.1f}s"
         logger.print(f"[red]✗[/red] Error ({time_str}): {str(e)}")
 

@@ -13,6 +13,19 @@ class FakeAgent:
     def __init__(self):
         self.name = "test-agent"
         self.current_session = {"messages": [], "trace": [], "iteration": 1}
+        self.connection = None
+        self.io = None
+        self._trace_id = 0
+
+    def _next_trace_id(self):
+        self._trace_id += 1
+        return self._trace_id
+
+    def _record_trace(self, entry: dict):
+        """Record trace entry - mirrors Agent._record_trace."""
+        if 'id' not in entry:
+            entry['id'] = self._next_trace_id()
+        self.current_session['trace'].append(entry)
 
     def _invoke_events(self, event_type: str):
         """Stub for event invocation - no-op in test."""
@@ -235,3 +248,33 @@ class TestLoggerIntegration:
         error_output = logger.print.call_args[0][0]
         assert "Error" in error_output or "✗" in error_output
         assert "Something went wrong" in error_output
+
+    def test_error_includes_schema_info(self):
+        """Error result includes tool schema so LLM can fix the call."""
+        def write_file(path: str, content: str) -> str:
+            """Write content to file."""
+            return f"wrote {len(content)} bytes"
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(write_file))
+
+        agent = FakeAgent()
+        logger = Mock()
+
+        # Call with missing required argument
+        trace = execute_single_tool(
+            tool_name="write_file",
+            tool_args={"path": "/tmp/test.py"},  # Missing 'content'!
+            tool_id="call_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+
+        # Verify error includes schema info
+        assert trace["status"] == "error"
+        result = trace["result"]
+        assert "required=" in result
+        assert "path" in result
+        assert "content" in result
+        assert "you_provided=" in result

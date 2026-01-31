@@ -36,7 +36,7 @@ def test_serve():
     print("\nPress Ctrl+C to stop\n")
 
     # This blocks forever until Ctrl+C
-    host(agent, port=8000, relay_url="ws://localhost:8000/ws/announce")
+    host(agent, port=8000, relay_url="ws://localhost:8000")
 
 
 def test_connect():
@@ -51,7 +51,7 @@ def test_connect():
     print()
 
     # Example:
-    # remote_agent = connect("0x...", relay_url="ws://localhost:8000/ws/announce")
+    # remote_agent = connect("0x...", relay_url="ws://localhost:8000")
     # response = remote_agent.input("Greet Alice")
     # print(f"Response: {response}")
 

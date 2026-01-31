@@ -61,7 +61,7 @@ async def run_serving_agent():
 
     # Connect to relay and start serving
     print("Connecting to relay...")
-    ws = await relay.connect("ws://localhost:8000/ws/announce")
+    ws = await relay.connect("ws://localhost:8000")
     print("✓ Connected\n")
 
     return addr_data['address'], ws, announce_msg, task_handler
@@ -76,7 +76,7 @@ async def run_client_side(agent_address: str):
 
     # Connect to remote agent
     print(f"Connecting to remote agent: {agent_address[:16]}...")
-    remote_agent = connect(agent_address, relay_url="ws://localhost:8000/ws/announce")
+    remote_agent = connect(agent_address, relay_url="ws://localhost:8000")
 
     # Send input (use async version since we're in async code)
     print("Sending INPUT: 'Greet Alice'")

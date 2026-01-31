@@ -2,6 +2,26 @@
 
 Load and execute custom commands from markdown files.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import SlashCommand
+
+cmd = SlashCommand.load("today")
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy slash_command
+```
+
+```python
+from tools.slash_command import SlashCommand  # Your local copy
+```
+
 ## Quick Start
 
 ```python

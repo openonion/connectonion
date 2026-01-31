@@ -282,3 +282,53 @@ class TestCliCreate:
                         assert "Secure agent communication" in content
                         assert "Authentication with OpenOnion" in content
                         assert "@mail.openonion.ai" in content
+
+    def test_create_copies_all_docs_to_co_docs(self):
+        """Test that create copies all documentation to .co/docs/ folder."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['create', 'docs-test-agent',
+                                              '--yes',
+                                              '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            # Check that .co/docs/ directory exists
+            docs_dir = Path("docs-test-agent/.co/docs")
+            assert docs_dir.exists()
+            assert docs_dir.is_dir()
+
+            # Check key docs exist
+            assert (docs_dir / "api.md").exists()
+            assert (docs_dir / "quickstart.md").exists()
+            assert (docs_dir / "README.md").exists()
+
+            # Check subdirectories exist
+            assert (docs_dir / "useful_tools").is_dir()
+            assert (docs_dir / "useful_plugins").is_dir()
+
+    def test_create_excludes_archive_from_docs(self):
+        """Test that create does not copy archive folder to .co/docs/."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['create', 'archive-test-agent',
+                                              '--yes',
+                                              '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            # archive folder should NOT exist in .co/docs/
+            assert not os.path.exists("archive-test-agent/.co/docs/archive")
+
+    def test_create_has_readme_in_docs(self):
+        """Test that create puts README in .co/docs/."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['create', 'readme-test-agent',
+                                              '--yes',
+                                              '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            # docs README should be in .co/docs/
+            assert os.path.exists("readme-test-agent/.co/docs/README.md")

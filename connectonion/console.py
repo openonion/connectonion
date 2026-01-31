@@ -101,7 +101,8 @@ class Console:
         model: str = "",
         tools: Union[List[str], int] = 0,
         log_dir: Optional[str] = None,
-        llm: Any = None
+        llm: Any = None,
+        balance: Optional[float] = None
     ) -> None:
         """Print the ConnectOnion banner (Onion Stack style).
 
@@ -110,6 +111,7 @@ class Console:
         ●     ─────────────────────
               connectonion v0.5.1
               o4-mini · 3 tools
+              balance: $4.22
               .co/logs/ · .co/evals/
 
         Args:
@@ -118,6 +120,7 @@ class Console:
             tools: List of tool names or count of tools
             log_dir: Log directory path (e.g., ".co/")
             llm: LLM instance to check for free tier
+            balance: Optional account balance in USD (only for co/ models)
         """
         version = _get_version()
 
@@ -138,6 +141,11 @@ class Console:
             is_free_tier = type(llm).__name__ == "OpenOnionLLM"
         aaron_message = "credits on me, go build —aaron" if is_free_tier else None
 
+        # Fetch balance for OpenOnion managed keys if not already provided
+        # This adds ~200ms latency on startup but provides useful account info
+        if balance is None and is_free_tier and hasattr(llm, 'get_balance'):
+            balance = llm.get_balance()
+
         # Calculate separator length (at least as long as agent name, min 20)
         separator_len = max(len(agent_name), 20)
         separator = "─" * separator_len
@@ -153,6 +161,10 @@ class Console:
         # Add meta line if there's content
         if meta_line:
             lines.append(f"      [{DIM_COLOR}]{meta_line}[/{DIM_COLOR}]")
+
+        # Add balance if available (only for co/ models)
+        if balance is not None:
+            lines.append(f"      [{DIM_COLOR}]balance: ${balance:.2f}[/{DIM_COLOR}]")
 
         # Add log paths if logging is enabled
         if log_dir:
@@ -181,6 +193,8 @@ class Console:
             ]
             if meta_line:
                 plain_lines.append(f"      {meta_line}")
+            if balance is not None:
+                plain_lines.append(f"      balance: ${balance:.2f}")
             if log_dir:
                 plain_lines.append(f"      {log_dir}logs/ · {log_dir}evals/")
             if aaron_message:

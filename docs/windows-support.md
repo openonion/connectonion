@@ -192,8 +192,8 @@ chcp 65001
 - `connectonion/cli/commands/init.py` - Project initialization
 - `connectonion/cli/commands/create.py` - Project creation
 - `connectonion/cli/commands/reset_commands.py` - Account reset
-- `connectonion/trust.py` - Trust policy handling
-- `connectonion/trust_functions.py` - Trust verification
+- `connectonion/network/trust/factory.py` - Trust policy handling
+- `connectonion/network/trust/tools.py` - Trust verification
 
 ### Test Coverage
 

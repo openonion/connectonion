@@ -51,8 +51,8 @@ class Agent:
         # Current session context (runtime only)
         self.current_session = None
 
-        # Connection to client (None locally, injected by host() for WebSocket)
-        self.connection = None
+        # I/O to client (None locally, injected by host() for WebSocket)
+        self.io = None
 
         # Token usage tracking
         self.total_cost: float = 0.0  # Cumulative cost in USD
@@ -144,6 +144,27 @@ class Agent:
                 llm=self.llm
             )
 
+    def _next_trace_id(self) -> str:
+        """Generate unique trace entry ID (UUID)."""
+        import uuid
+        return str(uuid.uuid4())
+
+    def _record_trace(self, entry: dict) -> None:
+        """Record trace entry and stream to io if connected.
+
+        This is the single place where trace entries are recorded.
+        Ensures both local trace and remote streaming stay in sync.
+        """
+        if 'id' not in entry:
+            entry['id'] = self._next_trace_id()
+        if 'ts' not in entry:
+            entry['ts'] = time.time()
+
+        self.current_session['trace'].append(entry)
+
+        if self.io:
+            self.io.send(entry)
+
     def _invoke_events(self, event_type: str):
         """Invoke all event handlers for given type. Exceptions propagate (fail fast)."""
         for handler in self.events.get(event_type, []):
@@ -231,12 +252,12 @@ class Agent:
         self.current_session['user_prompt'] = prompt  # Store user prompt for xray/debugging
         turn_start = time.time()
 
-        # Add trace entry for this input
-        self.current_session['trace'].append({
+        # Record trace entry (also streams to io if connected)
+        self._record_trace({
             'type': 'user_input',
+            'content': prompt,
             'turn': self.current_session['turn'],
-            'prompt': prompt,  # Keep 'prompt' in trace for backward compatibility
-            'timestamp': turn_start
+            'ts': turn_start,
         })
 
         # Invoke after_user_input events
@@ -316,11 +337,11 @@ class Agent:
 
         # Return simplified result (omit internal fields)
         return {
-            "name": trace_entry["tool_name"],
-            "arguments": trace_entry["arguments"],
+            "name": trace_entry["name"],
+            "args": trace_entry.get("args", {}),
             "result": trace_entry["result"],
             "status": trace_entry["status"],
-            "timing": trace_entry["timing"]
+            "timing_ms": trace_entry.get("timing_ms")
         }
 
     def _create_initial_messages(self, prompt: str) -> List[Dict[str, Any]]:
@@ -338,9 +359,11 @@ class Agent:
             # Get LLM response
             response = self._get_llm_decision()
 
-            # If no tool calls, we're done
+            # If no tool calls, we're done - return the response
+            # Note: Don't send 'assistant' trace here - OUTPUT message will carry the result
             if not response.tool_calls:
-                return response.content if response.content else "Task completed."
+                content = response.content if response.content else "Task completed."
+                return content
 
             # Process tool calls
             self._execute_and_record_tools(response.tool_calls)
@@ -372,11 +395,10 @@ class Agent:
             self.last_usage = response.usage
             self.total_cost += response.usage.cost
 
-        # Add to trace
-        self.current_session['trace'].append({
+        # Record trace (also streams to io if connected)
+        self._record_trace({
             'type': 'llm_call',
             'model': self.llm.model,
-            'timestamp': start,
             'duration_ms': duration,
             'tool_calls_count': len(response.tool_calls) if response.tool_calls else 0,
             'iteration': self.current_session['iteration'],
@@ -447,7 +469,6 @@ class Agent:
             # Single prompt mode
             agent.auto_debug("Find information about Python")
         """
-        from .debug import AutoDebugger
+        from ..debug.auto_debug import AutoDebugger
         debugger = AutoDebugger(self)
         debugger.start_debug_session(prompt)
-

@@ -3,20 +3,20 @@
 import tempfile
 import os
 from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import pytest
 
-from connectonion.useful_tools.diff_writer import DiffWriter
+from connectonion.useful_tools.diff_writer import DiffWriter, MODE_AUTO, MODE_NORMAL
 
 
 class TestDiffWriterAutoApprove:
-    """Tests for DiffWriter with auto_approve=True (no user interaction)."""
+    """Tests for DiffWriter with mode='auto' (no user interaction)."""
 
     def test_write_new_file(self):
         """Write a new file with auto-approve."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "test.py")
 
             result = writer.write(test_file, "print('hello')")
@@ -28,7 +28,7 @@ class TestDiffWriterAutoApprove:
     def test_write_creates_parent_directories(self):
         """Write creates parent directories if needed."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "nested", "deep", "test.py")
 
             result = writer.write(test_file, "content")
@@ -39,7 +39,7 @@ class TestDiffWriterAutoApprove:
     def test_write_overwrites_existing_file(self):
         """Write overwrites existing file content."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "test.py")
 
             # Create initial file
@@ -53,7 +53,7 @@ class TestDiffWriterAutoApprove:
     def test_write_returns_byte_count(self):
         """Write returns the number of bytes written."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "test.py")
             content = "hello world"
 
@@ -92,7 +92,7 @@ class TestDiffWriterDiff:
     def test_diff_no_changes(self):
         """Diff returns 'no changes' when content is same."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "test.py")
             content = "same content"
             Path(test_file).write_text(content)
@@ -104,7 +104,7 @@ class TestDiffWriterDiff:
     def test_diff_new_file(self):
         """Diff returns empty string for new file."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "new.py")
 
             result = writer.diff(test_file, "new content")
@@ -115,12 +115,9 @@ class TestDiffWriterDiff:
     def test_diff_shows_changes(self):
         """Diff returns unified diff format."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "test.py")
             Path(test_file).write_text("line1\nline2\n")
-
-            # Mock console to capture output
-            writer._console = MagicMock()
 
             result = writer.diff(test_file, "line1\nline2\nline3\n")
 
@@ -182,7 +179,7 @@ class TestDiffWriterApproval:
     def test_approval_approve(self):
         """User approves change."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=False)
+            writer = DiffWriter(mode=MODE_NORMAL)
             test_file = os.path.join(tmpdir, "test.py")
 
             with patch.object(writer, '_ask_approval', return_value='approve'):
@@ -194,23 +191,23 @@ class TestDiffWriterApproval:
     def test_approval_approve_all(self):
         """User approves all future changes."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=False)
+            writer = DiffWriter(mode=MODE_NORMAL)
             test_file = os.path.join(tmpdir, "test.py")
 
             with patch.object(writer, '_ask_approval', return_value='approve_all'):
                 result = writer.write(test_file, "content")
 
-            assert writer.auto_approve is True
+            assert writer.mode == MODE_AUTO
             assert Path(test_file).exists()
 
     def test_approval_reject_with_feedback(self):
         """User rejects with feedback."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=False)
+            writer = DiffWriter(mode=MODE_NORMAL)
             test_file = os.path.join(tmpdir, "test.py")
 
             with patch.object(writer, '_ask_approval', return_value='reject'):
-                with patch('builtins.input', return_value='use snake_case'):
+                with patch.object(writer, '_ask_feedback', return_value='use snake_case'):
                     result = writer.write(test_file, "content")
 
             assert not Path(test_file).exists()
@@ -224,7 +221,7 @@ class TestDiffWriterEncoding:
     def test_write_utf8_content(self):
         """Write handles UTF-8 content."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "test.py")
             content = "# 你好世界\nprint('こんにちは')"
 

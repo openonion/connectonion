@@ -8,7 +8,12 @@ class ASGITestClient:
         self.app = app
 
     def _run(self, coro):
-        return asyncio.get_event_loop().run_until_complete(coro)
+        # Use new_event_loop to avoid "no current event loop" error in Python 3.10+
+        loop = asyncio.new_event_loop()
+        try:
+            return loop.run_until_complete(coro)
+        finally:
+            loop.close()
 
     def get(self, path: str):
         return self._run(self._request("GET", path))
@@ -45,15 +50,17 @@ class ASGITestClient:
 
 def test_docs_served(tmp_path):
     from unittest.mock import MagicMock
-    from connectonion.network.host import _make_app
+    from connectonion.network.host import create_app
 
-    agent = MagicMock()
-    agent.name = "docs-agent"
-    agent.tools = MagicMock()
-    agent.tools.list_names = MagicMock(return_value=["t1"]) 
-    agent.input = MagicMock(return_value="ok")
+    def create_agent():
+        agent = MagicMock()
+        agent.name = "docs-agent"
+        agent.tools = MagicMock()
+        agent.tools.names = MagicMock(return_value=["t1"])
+        agent.input = MagicMock(return_value="ok")
+        return agent
 
-    app = _make_app(agent, trust="open")
+    app = create_app(create_agent, trust="open")
     client = ASGITestClient(app)
 
     resp = client.get("/docs")
@@ -62,9 +69,8 @@ def test_docs_served(tmp_path):
     content_types = [v.decode() for k,v in resp.headers if k == b"content-type"]
     assert any("text/html" in ct for ct in content_types)
     body = resp.body.decode("utf-8", errors="ignore")
-    assert "ConnectOnion Docs" in body
-    assert "Agent" in body
-    assert "HTTP /input" in body
-    assert "WebSocket /ws" in body
-    assert "Tasks" in body
-
+    # Title is "ConnectOnion API" (not "ConnectOnion Docs")
+    assert "ConnectOnion API" in body
+    # Key content should be present
+    assert "/input" in body
+    assert "/ws" in body

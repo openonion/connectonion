@@ -140,8 +140,8 @@ class Logger:
 
     def _format_tool_call(self, trace_entry: dict) -> str:
         """Format tool call as natural function-call style: greet(name='Alice')"""
-        tool_name = trace_entry.get('tool_name', '')
-        args = trace_entry.get('arguments', {})
+        tool_name = trace_entry.get('name', '')
+        args = trace_entry.get('args', {})
         parts = []
         for k, v in args.items():
             if isinstance(v, str):
@@ -242,7 +242,7 @@ class Logger:
         # Aggregate from trace
         trace = session.get('trace', [])
         llm_calls = [t for t in trace if t.get('type') == 'llm_call']
-        tool_calls = [t for t in trace if t.get('type') == 'tool_execution']
+        tool_calls = [t for t in trace if t.get('type') == 'tool_result']
 
         total_tokens = sum(
             (t.get('usage').input_tokens + t.get('usage').output_tokens)

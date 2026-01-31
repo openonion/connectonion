@@ -1,0 +1,6 @@
+# Folders/files to exclude from pip package
+# These are for internal use only, not shipped with connectonion
+
+archive
+design-decisions
+roadmap.md

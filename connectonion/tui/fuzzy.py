@@ -1,4 +1,14 @@
-"""Fuzzy matching utilities."""
+"""
+Purpose: Fuzzy string matching for autocomplete with scoring and highlight positions
+LLM-Note:
+  Dependencies: imports from [rich.text.Text] | imported by [tui/dropdown.py, tui/providers.py, tui/input.py] | tested by [tests/tui/test_fuzzy.py]
+  Data flow: fuzzy_match(query, text) → finds characters from query in text → calculates score based on sequential matches → returns (matched, score, positions) | highlight_match(text, positions) → creates Rich Text with highlighted characters
+  State/Effects: no state (pure functions)
+  Integration: exposes fuzzy_match(query, text) → (bool, int, list[int]), highlight_match(text, positions, highlight_style) → Text | used by autocomplete providers for filtering and highlighting
+  Performance: O(n*m) matching (acceptable for short strings) | early exit if no match
+  Errors: none (handles empty query)
+Fuzzy matching utilities.
+"""
 
 from rich.text import Text
 

@@ -318,3 +318,47 @@ class TestCliInit:
                 assert "Secure agent communication" in content
                 assert "Authentication with OpenOnion" in content
                 assert "@mail.openonion.ai" in content
+
+    def test_init_copies_all_docs_to_co_docs(self):
+        """Test that init copies all documentation to .co/docs/ folder."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            # Check that .co/docs/ directory exists
+            assert os.path.exists(".co/docs")
+            assert os.path.isdir(".co/docs")
+
+            # Check key docs exist
+            docs_dir = Path(".co/docs")
+            assert (docs_dir / "api.md").exists()
+            assert (docs_dir / "quickstart.md").exists()
+            assert (docs_dir / "README.md").exists()
+
+            # Check subdirectories exist
+            assert (docs_dir / "useful_tools").is_dir()
+            assert (docs_dir / "useful_plugins").is_dir()
+
+    def test_init_excludes_archive_from_docs(self):
+        """Test that init does not copy archive folder to .co/docs/."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            # archive folder should NOT exist in .co/docs/
+            assert not os.path.exists(".co/docs/archive")
+
+    def test_init_does_not_copy_readme_to_project_root(self):
+        """Test that init does not copy docs README to project root."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            # docs README should only be in .co/docs/, not project root
+            assert os.path.exists(".co/docs/README.md")

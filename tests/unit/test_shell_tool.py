@@ -1,18 +1,21 @@
-"""Unit tests for connectonion/useful_tools/shell.py
+"""Unit tests for connectonion/useful_tools/shell.py and bash.py
 
 Tests cover:
-- Shell.run: basic command execution
-- Shell.run_in_dir: execution in specific directory
-- Output truncation
-- Error handling
+- Shell class: cross-platform shell execution
+- bash function: Unix/Mac specific bash execution
 """
 
 import pytest
 import tempfile
-import os
+import platform
 from pathlib import Path
 from connectonion.useful_tools.shell import Shell
+from connectonion.useful_tools.bash import bash
 
+
+# =============================================================================
+# Shell Class Tests (Cross-Platform)
+# =============================================================================
 
 class TestShellRun:
     """Tests for Shell.run method."""
@@ -47,20 +50,18 @@ class TestShellRun:
         result = shell.run("true")
         assert result == "(no output)"
 
-    def test_run_truncates_long_output(self):
-        """Test that long output is truncated."""
-        shell = Shell()
-        # Generate output longer than 1000 chars
-        result = shell.run("python3 -c \"print('A' * 2000)\"")
-        assert "truncated" in result
-        assert "2000" in result or "2,000" in result
-
     def test_run_with_cwd(self):
         """Test running command with custom working directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
             shell = Shell(cwd=tmpdir)
             result = shell.run("pwd")
             assert tmpdir in result
+
+    def test_run_timeout(self):
+        """Test that timeout returns error message."""
+        shell = Shell()
+        result = shell.run("sleep 5", timeout=1)
+        assert "timed out" in result
 
 
 class TestShellRunInDir:
@@ -79,30 +80,6 @@ class TestShellRunInDir:
         with tempfile.TemporaryDirectory() as tmpdir:
             shell.run_in_dir("touch test_file.txt", tmpdir)
             assert (Path(tmpdir) / "test_file.txt").exists()
-
-    def test_run_in_dir_returns_stderr(self):
-        """Test that stderr is captured in run_in_dir."""
-        shell = Shell()
-        result = shell.run_in_dir("ls /nonexistent_dir_12345", "/tmp")
-        assert "STDERR:" in result or "No such file" in result
-
-    def test_run_in_dir_shows_exit_code_on_failure(self):
-        """Test that non-zero exit codes are reported."""
-        shell = Shell()
-        result = shell.run_in_dir("exit 42", "/tmp")
-        assert "Exit code: 42" in result
-
-    def test_run_in_dir_no_output(self):
-        """Test command with no output in specific directory."""
-        shell = Shell()
-        result = shell.run_in_dir("true", "/tmp")
-        assert result == "(no output)"
-
-    def test_run_in_dir_truncates_long_output(self):
-        """Test that long output is truncated in run_in_dir."""
-        shell = Shell()
-        result = shell.run_in_dir("python3 -c \"print('B' * 2000)\"", "/tmp")
-        assert "truncated" in result
 
 
 class TestShellIntegration:
@@ -136,21 +113,122 @@ class TestShellIntegration:
         assert agent.tools.get("run") is not None
         assert agent.tools.get("run_in_dir") is not None
 
-    def test_shell_methods_have_correct_schema(self):
-        """Test that shell methods generate correct tool schemas."""
+
+# =============================================================================
+# Bash Function Tests (Unix/Mac Only)
+# =============================================================================
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash is Unix/Mac only")
+class TestBashBasic:
+    """Tests for basic bash function usage."""
+
+    def test_bash_simple_command(self):
+        """Test running a simple command."""
+        result = bash("echo hello")
+        assert "hello" in result
+
+    def test_bash_returns_stdout(self):
+        """Test that stdout is captured."""
+        result = bash("echo 'test output'")
+        assert "test output" in result
+
+    def test_bash_returns_stderr(self):
+        """Test that stderr is captured."""
+        result = bash("ls /nonexistent_dir_12345")
+        assert "STDERR:" in result or "No such file" in result
+
+    def test_bash_shows_exit_code_on_failure(self):
+        """Test that non-zero exit codes are reported."""
+        result = bash("exit 1")
+        assert "Exit code: 1" in result
+
+    def test_bash_no_output(self):
+        """Test command with no output."""
+        result = bash("true")
+        assert result == "(no output)"
+
+    def test_bash_truncates_long_output(self):
+        """Test that long output is truncated."""
+        result = bash("python3 -c \"print('A' * 15000)\"")
+        assert "truncated" in result
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash is Unix/Mac only")
+class TestBashWithCwd:
+    """Tests for bash with custom working directory."""
+
+    def test_bash_with_cwd(self):
+        """Test running command with custom working directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            result = bash("pwd", cwd=tmpdir)
+            assert tmpdir in result
+
+    def test_bash_cwd_creates_file(self):
+        """Test that file operations work in the specified directory."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            bash("touch test_file.txt", cwd=tmpdir)
+            assert (Path(tmpdir) / "test_file.txt").exists()
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash is Unix/Mac only")
+class TestBashWithTimeout:
+    """Tests for bash timeout handling."""
+
+    def test_bash_timeout_returns_error(self):
+        """Test that timeout returns error message."""
+        result = bash("sleep 5", timeout=1)
+        assert "timed out" in result
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="bash is Unix/Mac only")
+class TestBashIntegration:
+    """Integration tests for bash tool with Agent."""
+
+    def test_bash_can_be_used_as_agent_tool(self):
+        """Test that bash can be registered with agent."""
+        from connectonion import Agent
+        from connectonion.core.llm import LLMResponse
+        from connectonion.core.usage import TokenUsage
+        from unittest.mock import Mock
+
+        mock_llm = Mock()
+        mock_llm.model = "test-model"
+        mock_llm.complete.return_value = LLMResponse(
+            content="Test",
+            tool_calls=[],
+            raw_response=None,
+            usage=TokenUsage(),
+        )
+
+        agent = Agent(
+            "test",
+            llm=mock_llm,
+            tools=[bash],
+            log=False,
+        )
+
+        # Verify bash is accessible as a tool
+        assert agent.tools.get("bash") is not None
+
+    def test_bash_has_correct_schema(self):
+        """Test that bash generates correct tool schema."""
         from connectonion.core.tool_factory import create_tool_from_function
 
-        shell = Shell()
-        run_tool = create_tool_from_function(shell.run)
-        run_in_dir_tool = create_tool_from_function(shell.run_in_dir)
+        bash_tool = create_tool_from_function(bash)
 
-        # Check run schema
-        assert run_tool.name == "run"
-        run_schema = run_tool.to_function_schema()
-        assert "command" in run_schema["parameters"]["properties"]
+        # Check schema
+        assert bash_tool.name == "bash"
+        schema = bash_tool.to_function_schema()
+        assert "command" in schema["parameters"]["properties"]
+        assert "cwd" in schema["parameters"]["properties"]
+        assert "timeout" in schema["parameters"]["properties"]
 
-        # Check run_in_dir schema
-        assert run_in_dir_tool.name == "run_in_dir"
-        run_in_dir_schema = run_in_dir_tool.to_function_schema()
-        assert "command" in run_in_dir_schema["parameters"]["properties"]
-        assert "directory" in run_in_dir_schema["parameters"]["properties"]
+
+@pytest.mark.skipif(platform.system() != "Windows", reason="Windows-specific test")
+class TestBashOnWindows:
+    """Tests for bash behavior on Windows."""
+
+    def test_bash_returns_error_on_windows(self):
+        """Test that bash returns error on Windows."""
+        result = bash("echo test")
+        assert "Unix/Mac only" in result

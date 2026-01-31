@@ -118,8 +118,8 @@ class TestAnalyzeExecution:
         mock_agent.llm.model = "gpt-4"
 
         trace = [
-            {'type': 'tool_execution', 'tool_name': 'search', 'args': {'q': 'test'}, 'result': 'Found', 'status': 'success'},
-            {'type': 'tool_execution', 'tool_name': 'save', 'args': {'data': 'x'}, 'result': 'Saved', 'status': 'success'}
+            {'type': 'tool_result', 'name': 'search', 'args': {'q': 'test'}, 'result': 'Found', 'status': 'success'},
+            {'type': 'tool_result', 'name': 'save', 'args': {'data': 'x'}, 'result': 'Saved', 'status': 'success'}
         ]
 
         result = analyze_execution(
@@ -262,7 +262,7 @@ class TestAnalyzeExecution:
         mock_agent.llm.model = "gpt-4"
 
         trace = [
-            {'type': 'tool_execution', 'tool_name': 'search', 'args': {}, 'result': 'Error: timeout', 'status': 'error'}
+            {'type': 'tool_result', 'name': 'search', 'args': {}, 'result': 'Error: timeout', 'status': 'error'}
         ]
 
         result = analyze_execution(

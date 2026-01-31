@@ -105,9 +105,9 @@ def _check_approval(agent: 'Agent') -> None:
     if not pending:
         return
 
-    # Only check bash/shell tools
+    # Only check bash/shell tools (including run_in_dir)
     tool_name = pending['name']
-    if tool_name not in ('bash', 'shell', 'run'):
+    if tool_name not in ('bash', 'shell', 'run', 'run_in_dir'):
         return
 
     # Get command from arguments

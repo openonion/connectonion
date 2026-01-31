@@ -8,21 +8,21 @@ import pytest
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 from connectonion.network.asgi import (
-    AsyncToSyncConnection,
     handle_websocket,
     _pump_messages,
     create_app,
     send_json,
     read_body,
 )
+from connectonion.network.io import WebSocketIO
 
 
-class TestAsyncToSyncConnectionInASGI:
-    """Test AsyncToSyncConnection used in WebSocket handling."""
+class TestWebSocketIOInASGI:
+    """Test WebSocketIO used in WebSocket handling."""
 
     def test_integration_with_message_pump(self):
-        """Test that AsyncToSyncConnection works with message pumping pattern."""
-        conn = AsyncToSyncConnection()
+        """Test that WebSocketIO works with message pumping pattern."""
+        conn = WebSocketIO()
 
         # Simulate agent sending events
         conn.send({"type": "thinking"})
@@ -39,7 +39,7 @@ class TestAsyncToSyncConnectionInASGI:
 
     def test_bidirectional_communication(self):
         """Test send and receive for approval flow."""
-        conn = AsyncToSyncConnection()
+        conn = WebSocketIO()
 
         # Agent sends approval request
         def agent_thread():
@@ -72,7 +72,7 @@ class TestPumpMessages:
 
     async def test_sends_outgoing_messages_to_websocket(self):
         """Test that outgoing queue messages are sent to WebSocket."""
-        conn = AsyncToSyncConnection()
+        conn = WebSocketIO()
         agent_done = threading.Event()
         sent_messages = []
 
@@ -110,7 +110,7 @@ class TestPumpMessages:
 
     async def test_routes_incoming_to_connection(self):
         """Test that WebSocket messages are routed to connection incoming queue."""
-        conn = AsyncToSyncConnection()
+        conn = WebSocketIO()
         agent_done = threading.Event()
         receive_count = [0]
 
@@ -135,6 +135,70 @@ class TestPumpMessages:
         assert msg["approved"] is True
 
 
+    async def test_returns_true_when_client_disconnects(self):
+        """Test that _pump_messages returns True when client disconnects.
+
+        This allows the caller to skip sending OUTPUT to a closed connection.
+        The result is still saved to SessionStorage by input_handler, so
+        clients can fetch it via GET /sessions/{session_id} on reconnect.
+        """
+        conn = WebSocketIO()
+        agent_done = threading.Event()
+
+        async def mock_receive():
+            # Simulate immediate disconnect
+            return {"type": "websocket.disconnect"}
+
+        async def mock_send(msg):
+            pass
+
+        # Start agent completion in background
+        def complete_agent():
+            import time
+            time.sleep(0.05)
+            agent_done.set()
+
+        threading.Thread(target=complete_agent).start()
+
+        # _pump_messages should return True (client disconnected)
+        disconnected = await asyncio.wait_for(
+            _pump_messages(mock_receive, mock_send, conn, agent_done),
+            timeout=2.0
+        )
+
+        assert disconnected is True
+
+    async def test_returns_false_when_agent_completes_normally(self):
+        """Test that _pump_messages returns False when agent completes without disconnect."""
+        conn = WebSocketIO()
+        agent_done = threading.Event()
+
+        async def mock_receive():
+            # Keep waiting forever - client never disconnects
+            # _pump_messages will cancel this task when agent completes
+            await asyncio.sleep(10)
+            return {"type": "websocket.disconnect"}
+
+        async def mock_send(msg):
+            pass
+
+        # Complete agent quickly
+        def complete_agent():
+            import time
+            time.sleep(0.05)
+            agent_done.set()
+
+        threading.Thread(target=complete_agent).start()
+
+        disconnected = await asyncio.wait_for(
+            _pump_messages(mock_receive, mock_send, conn, agent_done),
+            timeout=2.0
+        )
+
+        # Agent completed before client disconnected
+        assert disconnected is False
+
+
 @pytest.mark.asyncio
 class TestHandleWebSocket:
     """Test handle_websocket function."""
@@ -143,6 +207,7 @@ class TestHandleWebSocket:
         """Test that WebSocket connection is accepted."""
         scope = {"path": "/ws", "type": "websocket"}
         sent_messages = []
+        storage = Mock()
 
         async def receive():
             return {"type": "websocket.disconnect"}
@@ -152,10 +217,10 @@ class TestHandleWebSocket:
 
         handlers = {
             "auth": lambda *args, **kwargs: ("prompt", "identity", True, None),
-            "ws_input_with_connection": lambda prompt, conn: "result",
+            "ws_input": lambda storage, prompt, conn, session=None: {"result": "result", "session_id": "123", "duration_ms": 100, "session": {}},
         }
 
-        await handle_websocket(scope, receive, send, handlers=handlers, trust="open")
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
 
         assert {"type": "websocket.accept"} in sent_messages
 
@@ -163,6 +228,7 @@ class TestHandleWebSocket:
         """Test that non-/ws paths are rejected."""
         scope = {"path": "/other", "type": "websocket"}
         sent_messages = []
+        storage = Mock()
 
         async def receive():
             return {"type": "websocket.disconnect"}
@@ -172,7 +238,7 @@ class TestHandleWebSocket:
 
         handlers = {}
 
-        await handle_websocket(scope, receive, send, handlers=handlers, trust="open")
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
 
         close_msg = [m for m in sent_messages if m.get("type") == "websocket.close"]
         assert len(close_msg) == 1
@@ -183,6 +249,7 @@ class TestHandleWebSocket:
         scope = {"path": "/ws", "type": "websocket"}
         sent_messages = []
         message_count = [0]
+        storage = Mock()
 
         async def receive():
             message_count[0] += 1
@@ -204,27 +271,28 @@ class TestHandleWebSocket:
         agent_called = [False]
         connection_received = [None]
 
-        def mock_ws_input_with_connection(prompt, connection):
+        def mock_ws_input(storage, prompt, connection, session=None):
             agent_called[0] = True
             connection_received[0] = connection
-            return "Agent response"
+            return {"result": "Agent response", "session_id": "123", "duration_ms": 100, "session": {}}
 
         handlers = {
             "auth": lambda *args, **kwargs: ("hello", "0xtest", True, None),
-            "ws_input_with_connection": mock_ws_input_with_connection,
+            "ws_input": mock_ws_input,
         }
 
-        await handle_websocket(scope, receive, send, handlers=handlers, trust="open")
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
 
         assert agent_called[0] is True
         assert connection_received[0] is not None
-        assert isinstance(connection_received[0], AsyncToSyncConnection)
+        assert isinstance(connection_received[0], WebSocketIO)
 
     async def test_sends_output_after_agent_completes(self):
         """Test that OUTPUT message is sent after agent completes."""
         scope = {"path": "/ws", "type": "websocket"}
         sent_messages = []
         message_count = [0]
+        storage = Mock()
 
         async def receive():
             message_count[0] += 1
@@ -242,10 +310,10 @@ class TestHandleWebSocket:
 
         handlers = {
             "auth": lambda *args, **kwargs: ("test", "0x", True, None),
-            "ws_input_with_connection": lambda p, c: "Expected result",
+            "ws_input": lambda storage, p, c, session=None: {"result": "Expected result", "session_id": "abc-123", "duration_ms": 50, "session": {}},
         }
 
-        await handle_websocket(scope, receive, send, handlers=handlers, trust="open")
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
 
         # Find OUTPUT message
         output_msgs = [
@@ -257,12 +325,15 @@ class TestHandleWebSocket:
         output_data = json.loads(output_msgs[-1]["text"])
         assert output_data["type"] == "OUTPUT"
         assert output_data["result"] == "Expected result"
+        assert output_data["session_id"] == "abc-123"
+        assert output_data["duration_ms"] == 50
 
     async def test_auth_error_sends_error_message(self):
         """Test that auth errors are sent back to client."""
         scope = {"path": "/ws", "type": "websocket"}
         sent_messages = []
         message_count = [0]
+        storage = Mock()
 
         async def receive():
             message_count[0] += 1
@@ -278,10 +349,10 @@ class TestHandleWebSocket:
 
         handlers = {
             "auth": lambda *args, **kwargs: (None, "0x", False, "unauthorized: invalid signature"),
-            "ws_input_with_connection": lambda p, c: "result",
+            "ws_input": lambda storage, p, c, session=None: {"result": "result", "session_id": "123", "duration_ms": 100, "session": {}},
         }
 
-        await handle_websocket(scope, receive, send, handlers=handlers, trust="open")
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
 
         # Find ERROR message
         error_msgs = [
@@ -309,13 +380,13 @@ class TestCreateApp:
             "info": lambda *args: {"name": "test"},
             "auth": lambda *args, **kwargs: ("prompt", "id", True, None),
             "ws_input": lambda p: "result",
-            "ws_input_with_connection": lambda p, c: "result",
+            "ws_input": lambda p, c: "result",
             "admin_logs": lambda: {"content": ""},
             "admin_sessions": lambda: {"sessions": []},
         }
         storage = Mock()
 
-        app = create_app(handlers=handlers, storage=storage)
+        app = create_app(route_handlers=handlers, storage=storage)
 
         assert callable(app)
 
@@ -327,7 +398,7 @@ class TestCreateApp:
         }
         storage = Mock()
 
-        app = create_app(handlers=handlers, storage=storage)
+        app = create_app(route_handlers=handlers, storage=storage)
 
         scope = {"type": "http", "method": "GET", "path": "/health", "headers": []}
         sent = []

@@ -37,7 +37,8 @@ from .project_cmd_lib import (
     interactive_menu,
     generate_custom_template,
     show_progress,
-    configure_env_for_provider
+    configure_env_for_provider,
+    get_docs_source,
 )
 
 console = Console()
@@ -332,30 +333,28 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     co_dir = Path(current_dir) / ".co"
     co_dir.mkdir(exist_ok=True)
 
-    # Create docs directory and copy documentation (always overwrite for latest version)
+    # Create docs directory and copy ALL documentation (always overwrite for latest version)
     docs_dir = co_dir / "docs"
     if docs_dir.exists():
         shutil.rmtree(docs_dir)
     docs_dir.mkdir(exist_ok=True)
 
-    # Copy ConnectOnion documentation
-    cli_dir = Path(__file__).parent.parent
+    # Get docs source (works in both dev and installed package)
+    docs_source = get_docs_source()
 
-    # Always copy the vibe coding doc for all templates - it's the master reference doc
-    master_doc = cli_dir / "docs" / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-
-    if master_doc.exists():
-        # Copy to .co/docs/ (project metadata)
-        target_doc = docs_dir / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-        shutil.copy2(master_doc, target_doc)
-        files_created.append(".co/docs/co-vibecoding-principles-docs-contexts-all-in-one.md")
-
-        # ALSO copy to project root (always visible, easier to find)
-        root_doc = Path(current_dir) / "co-vibecoding-principles-docs-contexts-all-in-one.md"
-        shutil.copy2(master_doc, root_doc)
-        files_created.append("co-vibecoding-principles-docs-contexts-all-in-one.md")
+    # Copy ALL docs to .co/docs/
+    if docs_source.exists() and docs_source.is_dir():
+        for item in docs_source.iterdir():
+            if item.name.startswith('.') or item.name == 'archive':
+                continue
+            dest = docs_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dest)
+        files_created.append(".co/docs/ (full documentation)")
     else:
-        console.print(f"[yellow]⚠️  Warning: Vibe coding documentation not found at {master_doc}[/yellow]")
+        console.print(f"[yellow]⚠️  Warning: Documentation not found at {docs_source}[/yellow]")
 
     # Use global identity instead of generating project keys
     # NO PROJECT KEYS - we use global address/email
@@ -402,7 +401,6 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 .co/cache/
 .co/logs/
 .co/history/
-co-vibecoding-principles-docs-contexts-all-in-one.md
 *.py[cod]
 __pycache__/
 todo.md
@@ -437,12 +435,11 @@ todo.md
 
         # Vibe Coding hint - clean formatting with proper spacing
         console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
-        console.print(f"   [cyan]co-vibecoding-principles-docs-contexts-all-in-one.md[/cyan]")
+        console.print(f"   [cyan].co/docs/[/cyan] for full documentation")
     else:
         # Vibe Coding hint for building from scratch
         console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
-        console.print(f"   [cyan]co-vibecoding-principles-docs-contexts-all-in-one.md[/cyan]")
-        console.print("   to build your agent")
+        console.print(f"   [cyan].co/docs/[/cyan] to build your agent")
 
     # Resources - clean format with arrows for better alignment
     console.print()

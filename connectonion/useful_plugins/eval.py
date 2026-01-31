@@ -75,9 +75,9 @@ def _summarize_trace(trace: List[Dict]) -> str:
     """Summarize what actions were taken."""
     actions = []
     for entry in trace:
-        if entry['type'] == 'tool_execution':
+        if entry['type'] == 'tool_result':
             status = entry['status']
-            tool = entry['tool_name']
+            tool = entry['name']
             if status == 'success':
                 result = str(entry.get('result', ''))[:100]
                 actions.append(f"- {tool}: {result}")

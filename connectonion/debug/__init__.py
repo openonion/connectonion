@@ -1,4 +1,13 @@
-"""Debug tools for agent development and troubleshooting.
+"""
+Purpose: Debug tools package re-exporting xray, decorators, auto_debug, runtime_inspector, debug_explainer
+LLM-Note:
+  Dependencies: imports from [xray.py, decorators.py, auto_debug.py (lazy), auto_debug_exception.py, runtime_inspector/ (lazy), debug_explainer/ (lazy)] | imported by [__init__.py main package, user code] | tested via submodule tests
+  Data flow: pure re-export module with lazy loading for circular dependency avoidance
+  State/Effects: no state
+  Integration: exposes xray (decorator), replay/xray_replay (decorators), AutoDebugger/AutoDebugUI (lazy), auto_debug_exception, RuntimeInspector (lazy), explain_tool_choice (lazy) | lazy imports via __getattr__ to avoid circular deps with agent.py
+  Performance: lazy loading delays imports until accessed
+  Errors: none
+Debug tools for agent development and troubleshooting.
 
 This module contains:
 - xray: Runtime context injection for tool inspection

@@ -2,6 +2,26 @@
 
 Human-in-the-loop file writing with diff display and approval.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import DiffWriter
+
+agent = Agent("coder", tools=[DiffWriter()])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy diff_writer
+```
+
+```python
+from tools.diff_writer import DiffWriter  # Your local copy
+```
+
 ## Installation
 
 ```python

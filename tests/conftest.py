@@ -223,20 +223,20 @@ def relay_url():
     Uses production relay server by default.
     Override with --relay-url flag or RELAY_URL env var.
     """
-    return os.getenv("RELAY_URL", "wss://oo.openonion.ai/ws/announce")
+    return os.getenv("RELAY_URL", "wss://oo.openonion.ai")
 
 
 @pytest.fixture
 def local_relay_url():
     """Local relay URL for development/testing."""
-    return "ws://localhost:8000/ws/announce"
+    return "ws://localhost:8000"
 
 
 @pytest.fixture
 def relay_url_from_cli(request):
     """Get relay URL from command line or use default."""
     if request.config.getoption("--use-local-relay"):
-        return "ws://localhost:8000/ws/announce"
+        return "ws://localhost:8000"
     return request.config.getoption("--relay-url")
 
 
@@ -254,13 +254,13 @@ def pytest_addoption(parser):
     parser.addoption(
         "--relay-url",
         action="store",
-        default="wss://oo.openonion.ai/ws/announce",
+        default="wss://oo.openonion.ai",
         help="Relay server URL for network tests"
     )
     parser.addoption(
         "--use-local-relay",
         action="store_true",
-        help="Use local relay server (ws://localhost:8000/ws/announce)"
+        help="Use local relay server (ws://localhost:8000)"
     )
 
 

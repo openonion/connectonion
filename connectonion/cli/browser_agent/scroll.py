@@ -1,4 +1,12 @@
 """
+Purpose: Intelligent page scrolling with AI strategy selection and fallback mechanisms
+LLM-Note:
+  Dependencies: imports from [playwright Page, connectonion llm_do, pydantic, pathlib, PIL Image] | imported by [cli/browser_agent/browser.py] | tested by [tests/cli/test_scroll.py]
+  Data flow: scroll(page, take_screenshot, times, description) → takes before screenshot → tries strategies: AI-generated JS → element scroll → page scroll → takes after screenshot → compares via _screenshots_different() → returns on first successful change | _ai_scroll() extracts scrollable elements + HTML → llm_do generates ScrollStrategy → executes JS | fallbacks use simpler JS approaches
+  State/Effects: writes before/after screenshots to screenshots/ directory | executes JavaScript on page (modifies scrollTop or window.scrollY) | no persistent state
+  Integration: exposes scroll(page, take_screenshot, times, description) → str | ScrollStrategy Pydantic model with method, selector, javascript, explanation | uses scroll_strategy.md prompt for LLM | verifies success via pixel difference (>1% change threshold)
+  Performance: tries AI first (slower but accurate) → falls back to faster heuristics | 0.5-1s sleep between scrolls for content loading | PIL pixel comparison (fast for typical screenshots)
+  Errors: returns "Browser not open" if page None | returns "All scroll strategies failed" if no strategy changes content | prints strategy attempts for debugging | catches exceptions per strategy and continues
 Unified scroll module - AI-powered with fallback strategies.
 
 Usage:

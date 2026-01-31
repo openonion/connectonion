@@ -135,14 +135,14 @@ def check_email_approval(agent: 'Agent') -> None:
 def sync_crm_after_send(agent: 'Agent') -> None:
     """Update CRM data after each email send - last_contact, clear next_contact_date."""
     trace = agent.current_session['trace'][-1]
-    if trace['type'] != 'tool_execution':
+    if trace['type'] != 'tool_result':
         return
-    if trace['tool_name'] not in SEND_METHODS:
+    if trace['name'] not in SEND_METHODS:
         return
     if trace['status'] != 'success':
         return
 
-    to = trace['arguments'].get('to', '')
+    to = trace['args'].get('to', '')
     if not to:
         return
 

@@ -151,6 +151,98 @@ class TestOpenOnionLLM:
             assert "OPENONION_API_KEY not found" in str(exc_info.value)
             assert "Run 'co init'" in str(exc_info.value)
 
+    def test_get_balance_success(self):
+        """Test get_balance returns balance on successful request."""
+        with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
+            llm = OpenOnionLLM(model="co/gpt-4o")
+
+            # Mock successful response
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "public_key": "0xabc123",
+                "balance_usd": 4.2224,
+                "credits_usd": 5.0,
+                "total_cost_usd": 0.7776
+            }
+
+            with patch('requests.get', return_value=mock_response) as mock_get:
+                balance = llm.get_balance()
+
+                # Check that request was made correctly
+                mock_get.assert_called_once()
+                call_args = mock_get.call_args
+                assert call_args[0][0] == "https://oo.openonion.ai/api/v1/auth/me"
+                assert call_args[1]['headers']['Authorization'] == "Bearer mock-jwt-token"
+                assert call_args[1]['timeout'] == 2
+
+                # Check balance returned
+                assert balance == 4.2224
+
+    def test_get_balance_network_error(self):
+        """Test get_balance returns None on network error."""
+        with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
+            llm = OpenOnionLLM(model="co/gpt-4o")
+
+            # Mock network error
+            with patch('requests.get', side_effect=Exception("Network error")):
+                balance = llm.get_balance()
+
+                # Should return None on error
+                assert balance is None
+
+    def test_get_balance_auth_error(self):
+        """Test get_balance returns None on 401 auth error."""
+        with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
+            llm = OpenOnionLLM(model="co/gpt-4o")
+
+            # Mock auth error response
+            mock_response = MagicMock()
+            mock_response.status_code = 401
+
+            with patch('requests.get', return_value=mock_response):
+                balance = llm.get_balance()
+
+                # Should return None on auth error
+                assert balance is None
+
+    def test_get_balance_invalid_response(self):
+        """Test get_balance returns None when balance_usd missing."""
+        with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
+            llm = OpenOnionLLM(model="co/gpt-4o")
+
+            # Mock response without balance_usd
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "public_key": "0xabc123"
+                # Missing balance_usd
+            }
+
+            with patch('requests.get', return_value=mock_response):
+                balance = llm.get_balance()
+
+                # Should return None when balance_usd is missing
+                assert balance is None
+
+    def test_get_balance_development_url(self):
+        """Test get_balance uses correct URL in development mode."""
+        with patch.dict(os.environ, {'OPENONION_DEV': '1', 'OPENONION_API_KEY': 'mock-jwt-token'}):
+            llm = OpenOnionLLM(model="co/o4-mini")
+
+            # Mock successful response
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {"balance_usd": 10.0}
+
+            with patch('requests.get', return_value=mock_response) as mock_get:
+                balance = llm.get_balance()
+
+                # Check development URL was used
+                call_args = mock_get.call_args
+                assert call_args[0][0] == "http://localhost:8000/api/v1/auth/me"
+                assert balance == 10.0
+
 
 if __name__ == "__main__":
     # Run tests

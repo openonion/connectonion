@@ -1,19 +1,21 @@
 """
-Purpose: Human-in-the-loop file writing tool with diff preview and approval workflow
+Purpose: Web-based file writing tool with Claude Code-style permission modes
 LLM-Note:
-  Dependencies: imports from [difflib, pathlib, rich.console, rich.panel, rich.text, connectonion.tui.pick] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_diff_writer.py, tests/unit/test_diff_writer_tool.py]
-  Data flow: Agent calls DiffWriter.write(path, content) → reads existing file → generates unified diff → displays via Rich panel → pick() prompts for approval → writes if approved → returns status string
-  State/Effects: reads and writes files on filesystem | displays Rich-formatted diff in terminal | blocks for user input (unless auto_approve=True) | creates new files if path doesn't exist
-  Integration: exposes DiffWriter class with write(path, content), diff(path, content), read(path) | used as agent tool via Agent(tools=[DiffWriter()]) | auto_approve=True for automation
-  Performance: file I/O per operation | difflib is O(n) for diff generation | Rich rendering is fast | blocks on user input
-  Errors: returns error string if file unreadable | returns "Cancelled" if user rejects | no exceptions raised
+  Dependencies: imports from [difflib, pathlib, typing] | imported by [useful_tools/__init__.py, __init__.py] | tested by [tests/unit/test_diff_writer.py]
+  Data flow: Agent calls DiffWriter.write(path, content) -> show diff via io -> ask approval via io -> write file -> return status
+  State/Effects: reads and writes files on filesystem | sends diff_preview and ask_user events via io | requires io channel for approval
+  Integration: exposes DiffWriter class with write(path, content), diff(path, content), read(path) | used as agent tool via Agent(tools=[DiffWriter()])
+  Errors: returns error string if file unreadable | returns user feedback on rejection | no exceptions raised
 
-DiffWriter - Human-in-the-loop file writing with diff display.
+Permission Modes (like Claude Code's Shift+Tab cycle):
+  - normal: Prompt for every edit (default)
+  - auto: Auto-approve all edits without prompting
+  - plan: Read-only mode, no writes allowed
 
 Usage:
     from connectonion import Agent, DiffWriter
 
-    writer = DiffWriter()
+    writer = DiffWriter()  # mode="normal" by default
     agent = Agent("coder", tools=[writer])
 
     # Agent can now use:
@@ -24,25 +26,36 @@ Usage:
 
 import difflib
 from pathlib import Path
+from typing import Optional, Tuple
 
-from rich.console import Console
-from rich.panel import Panel
-from rich.text import Text
 
-from connectonion.tui import pick
+# Permission modes (like Claude Code's Shift+Tab cycle)
+MODE_NORMAL = "normal"      # Prompt for every edit
+MODE_AUTO = "auto"          # Auto-approve edits
+MODE_PLAN = "plan"          # Read-only, no writes
 
 
 class DiffWriter:
-    """File writer with diff display and human approval."""
+    """File writer with Claude Code-style permission modes (web mode).
 
-    def __init__(self, auto_approve: bool = False):
+    Requires io channel for approval prompts. Without io, falls back to auto-approve.
+
+    Usage:
+        writer = DiffWriter(mode="normal")  # Prompt for every edit
+        writer = DiffWriter(mode="auto")    # Auto-approve all edits
+        writer = DiffWriter(mode="plan")    # Read-only, preview only
+    """
+
+    def __init__(self, mode: str = MODE_NORMAL, preview_limit: int = 2000):
         """Initialize DiffWriter.
 
         Args:
-            auto_approve: If True, skip approval prompts (for automation)
+            mode: Permission mode - "normal" (prompt), "auto" (auto-approve), "plan" (read-only)
+            preview_limit: Max chars to include in diff preview
         """
-        self.auto_approve = auto_approve
-        self._console = Console()
+        self.mode = mode
+        self.preview_limit = preview_limit
+        self.io = None  # Set by agent's _sync_tool_io event handler
 
     def write(self, path: str, content: str) -> str:
         """Write content to a file with diff display and approval.
@@ -52,31 +65,42 @@ class DiffWriter:
             content: Content to write
 
         Returns:
-            Success message, rejection message, or user feedback for agent
+            Success message, rejection message with feedback, or plan mode preview
         """
         file_path = Path(path)
+        file_exists = file_path.exists()
 
-        if not self.auto_approve:
+        # Plan mode = read-only, just show what would happen
+        if self.mode == MODE_PLAN:
             diff_text = self._generate_diff(path, content)
-            if diff_text:
-                self._display_diff(diff_text, path)
-            else:
-                self._display_new_file(path, content)
+            preview = self._build_preview(diff_text, content, file_exists)
+            return f"[Plan mode] Would write {len(content)} bytes to {path}\n\nPreview:\n{preview[:500]}"
 
-            choice = self._ask_approval(path)
+        # Generate diff for display
+        diff_text = self._generate_diff(path, content)
+        preview = self._build_preview(diff_text, content, file_exists)
+        preview, truncated = self._truncate_preview(preview)
+
+        # Send diff preview to UI (best-effort, doesn't block)
+        self._send_preview(path, preview, truncated, file_exists)
+
+        # Check approval based on mode
+        if self.mode == MODE_NORMAL:
+            choice = self._ask_approval(path, preview, truncated)
 
             if choice == "reject":
-                self._console.print()
-                self._console.print("[bold yellow]What should the agent do instead?[/]")
-                feedback = input("> ")
+                feedback = self._ask_feedback(path)
                 return f"User rejected changes to {path}. Feedback: {feedback}"
 
             if choice == "approve_all":
-                self.auto_approve = True
+                self.mode = MODE_AUTO  # Switch to auto mode for rest of session
 
+        # Auto mode or approved: write file
         file_path.parent.mkdir(parents=True, exist_ok=True)
-        file_path.write_text(content, encoding='utf-8')
-        return f"Wrote {len(content)} bytes to {path}"
+        file_path.write_text(content, encoding="utf-8")
+
+        mode_note = "" if self.mode == MODE_NORMAL else f" [{self.mode} mode]"
+        return f"Wrote {len(content)} bytes to {path}{mode_note}"
 
     def diff(self, path: str, content: str) -> str:
         """Show diff without writing (preview mode).
@@ -90,7 +114,6 @@ class DiffWriter:
         """
         diff_text = self._generate_diff(path, content)
         if diff_text:
-            self._display_diff(diff_text, path)
             return diff_text
         return f"No changes to {path}"
 
@@ -106,37 +129,126 @@ class DiffWriter:
         file_path = Path(path)
         if not file_path.exists():
             return f"Error: File {path} not found"
-        return file_path.read_text(encoding='utf-8')
+        return file_path.read_text(encoding="utf-8")
 
-    def _ask_approval(self, path: str) -> str:
-        """Ask user for approval with single keypress.
+    # =========================================================================
+    # IO Communication (Web Mode)
+    # =========================================================================
+
+    def _get_io(self):
+        """Return active io channel if available."""
+        return self.io
+
+    def _send_preview(self, path: str, preview: str, truncated: bool, file_exists: bool) -> None:
+        """Send diff preview event to UI client.
+
+        This is informational - UI can render a nice diff view.
+        Does not block or wait for response.
+        """
+        io = self._get_io()
+        if not io:
+            return
+        io.send({
+            "type": "diff_preview",
+            "path": path,
+            "preview": preview,
+            "truncated": truncated,
+            "file_exists": file_exists,
+        })
+
+    def _ask_approval(self, path: str, preview: str, truncated: bool) -> str:
+        """Ask user for approval via io channel.
 
         Returns:
-            'approve', 'approve_all', or 'reject'
+            "approve" - Apply this change
+            "approve_all" - Apply and switch to auto mode
+            "reject" - Reject and ask for feedback
         """
-        self._console.print()
-        self._console.print(f"[bold cyan]File:[/] {path}")
+        io = self._get_io()
+        if not io:
+            # No io channel = auto-approve (for non-web usage)
+            return "approve"
 
-        choice = pick(
-            f"Apply changes to {path}?",
-            {
-                "1": "Yes, apply this change",
-                "2": "Yes to all (auto-approve for session)",
-                "3": "No, and tell agent what to do instead",
-            },
-            console=self._console,
+        question = f"Apply changes to {path}?"
+        if truncated:
+            question += " (preview truncated)"
+
+        response = self._ask_user(
+            question,
+            options=[
+                "Yes, apply this change",
+                "Yes to all (auto-approve)",
+                "No, reject and give feedback",
+            ],
         )
-        return {"1": "approve", "2": "approve_all", "3": "reject"}[choice]
+
+        # Parse response
+        if response == "Yes to all (auto-approve)":
+            return "approve_all"
+        if response == "Yes, apply this change":
+            return "approve"
+
+        # Handle free-text responses
+        if response:
+            lowered = response.strip().lower()
+            if "yes to all" in lowered or lowered == "auto":
+                return "approve_all"
+            if lowered.startswith("yes") or lowered == "approve":
+                return "approve"
+
+        return "reject"
+
+    def _ask_feedback(self, path: str) -> str:
+        """Ask user for feedback when changes are rejected."""
+        feedback = self._ask_user(f"What should the agent do instead for {path}?")
+        return feedback or "No feedback provided"
+
+    def _ask_user(self, question: str, options: Optional[list] = None) -> str:
+        """Send ask_user event and block until user responds.
+
+        Args:
+            question: Question to display
+            options: List of option strings (buttons in UI)
+
+        Returns:
+            User's answer string
+        """
+        io = self._get_io()
+        if not io:
+            return ""
+
+        # Send ask_user event
+        io.send({
+            "type": "ask_user",
+            "question": question,
+            "options": options,
+        })
+
+        # Block waiting for response
+        response = io.receive()
+
+        # Handle connection closed
+        if response.get("type") == "io_closed":
+            return ""
+
+        # Extract answer
+        answer = response.get("answer", "")
+        if isinstance(answer, list):
+            return ", ".join([str(a) for a in answer])
+        return str(answer) if answer is not None else ""
+
+    # =========================================================================
+    # Diff Generation
+    # =========================================================================
 
     def _generate_diff(self, path: str, new_content: str) -> str:
         """Generate unified diff between existing file and new content."""
         file_path = Path(path)
 
-        if file_path.exists():
-            original_lines = file_path.read_text(encoding='utf-8').splitlines(keepends=True)
-        else:
-            return ""  # New file, no diff
+        if not file_path.exists():
+            return ""  # New file, no diff to show
 
+        original_lines = file_path.read_text(encoding="utf-8").splitlines(keepends=True)
         new_lines = new_content.splitlines(keepends=True)
 
         diff = difflib.unified_diff(
@@ -146,47 +258,27 @@ class DiffWriter:
             tofile=f"b/{path}",
         )
 
-        return ''.join(diff)
+        return "".join(diff)
 
-    def _display_diff(self, diff_text: str, path: str):
-        """Display colorized diff."""
-        styled = Text()
+    def _build_preview(self, diff_text: str, content: str, file_exists: bool) -> str:
+        """Build human-readable preview for approval dialog."""
+        if diff_text:
+            return diff_text
+        if file_exists:
+            return "(no changes)"
+        return self._new_file_preview(content)
 
-        for line in diff_text.splitlines():
-            if line.startswith('+++') or line.startswith('---'):
-                styled.append(line + '\n', style="bold white")
-            elif line.startswith('@@'):
-                styled.append(line + '\n', style="cyan")
-            elif line.startswith('+'):
-                styled.append(line + '\n', style="green")
-            elif line.startswith('-'):
-                styled.append(line + '\n', style="red")
-            else:
-                styled.append(line + '\n', style="dim")
+    def _truncate_preview(self, preview: str) -> Tuple[str, bool]:
+        """Truncate preview to configured limit."""
+        if len(preview) <= self.preview_limit:
+            return preview, False
+        return preview[: self.preview_limit] + "\n...(truncated)", True
 
-        panel = Panel(
-            styled,
-            title=f"[bold yellow]Changes to {path}[/]",
-            border_style="yellow",
-            padding=(0, 1)
-        )
-        self._console.print(panel)
-
-    def _display_new_file(self, path: str, content: str):
-        """Display preview of new file."""
-        styled = Text()
-
+    def _new_file_preview(self, content: str, max_lines: int = 50) -> str:
+        """Create preview for new file (no existing file to diff against)."""
         lines = content.splitlines()
-        for line in lines[:50]:  # Limit preview to 50 lines
-            styled.append(f"+ {line}\n", style="green")
-
-        if len(lines) > 50:
-            styled.append(f"... ({len(lines) - 50} more lines)\n", style="dim")
-
-        panel = Panel(
-            styled,
-            title=f"[bold yellow]New file: {path}[/]",
-            border_style="yellow",
-            padding=(0, 1)
-        )
-        self._console.print(panel)
+        preview_lines = lines[:max_lines]
+        preview = "\n".join([f"+ {line}" for line in preview_lines])
+        if len(lines) > max_lines:
+            preview += f"\n... ({len(lines) - max_lines} more lines)"
+        return preview

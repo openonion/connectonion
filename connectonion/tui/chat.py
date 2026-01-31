@@ -1,4 +1,13 @@
-"""Chat - Terminal chat interface using Textual.
+"""
+Purpose: Terminal chat interface using Textual framework for interactive agent conversations
+LLM-Note:
+  Dependencies: imports from [textual App/Screen/Widget, rich, core/agent.py, tui/input.py, tui/status_bar.py, tui/providers.py] | imported by [cli/commands/, examples/] | tested by [tests/tui/test_chat.py]
+  Data flow: Chat.run() starts Textual app → renders status bar + chat messages → Input widget captures user input → on_submit sends to agent.input() → agent response appended to message log → UI updates | supports slash command triggers with autocomplete providers
+  State/Effects: maintains message history in MessageLog widget | modifies terminal (clears screen, moves cursor) | restores terminal on exit | saves chat state in self.messages
+  Integration: exposes Chat(agent, title, triggers, welcome, hints, status_segments, input_placeholder) with run() method | CommandItem dataclass for slash commands | uses Textual's reactive system for live updates | integrates with Agent for LLM interactions
+  Performance: Textual async rendering (smooth) | message log scrolls efficiently | minimal re-renders via reactive
+  Errors: catches agent errors and displays in chat | restores terminal on crash | validates command triggers
+Chat - Terminal chat interface using Textual.
 
 A simple, clean chat UI that works with the terminal medium rather than
 fighting it. No fake "bubbles" - just clean text with color differentiation.

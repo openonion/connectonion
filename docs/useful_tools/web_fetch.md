@@ -2,6 +2,26 @@
 
 Web fetching tool with single-responsibility functions.
 
+## Usage
+
+**Option 1: Import directly**
+
+```python
+from connectonion import WebFetch
+
+agent = Agent("researcher", tools=[WebFetch()])
+```
+
+**Option 2: Copy and customize**
+
+```bash
+co copy web_fetch
+```
+
+```python
+from tools.web_fetch import WebFetch  # Your local copy
+```
+
 ## Installation
 
 ```python
