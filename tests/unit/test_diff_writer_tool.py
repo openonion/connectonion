@@ -5,14 +5,14 @@ Tests cover:
 - DiffWriter.diff: preview diff without writing
 - DiffWriter.read: reading file contents
 - _generate_diff: diff generation helper
-- auto_approve mode
+- Mode-based permissions (normal, auto, plan)
 """
 
 import pytest
 import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
-from connectonion.useful_tools.diff_writer import DiffWriter
+from connectonion.useful_tools.diff_writer import DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN
 
 
 class TestDiffWriterRead:
@@ -48,8 +48,6 @@ class TestDiffWriterDiff:
             f.flush()
 
             writer = DiffWriter()
-            # Mock console to avoid output
-            writer._console = Mock()
 
             diff_text = writer.diff(f.name, "line1\nmodified\nline3\n")
 
@@ -63,7 +61,6 @@ class TestDiffWriterDiff:
             f.flush()
 
             writer = DiffWriter()
-            writer._console = Mock()
 
             result = writer.diff(f.name, "same content\n")
 
@@ -72,7 +69,6 @@ class TestDiffWriterDiff:
     def test_diff_new_file(self):
         """Test diff for a new file."""
         writer = DiffWriter()
-        writer._console = Mock()
 
         result = writer.diff("/tmp/nonexistent_test_file.txt", "new content")
 
@@ -105,12 +101,12 @@ class TestDiffWriterGenerateDiff:
 class TestDiffWriterWrite:
     """Tests for DiffWriter.write method."""
 
-    def test_write_with_auto_approve(self):
-        """Test writing file with auto_approve=True."""
+    def test_write_with_auto_mode(self):
+        """Test writing file with mode=auto."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.txt"
 
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             result = writer.write(str(path), "Hello, World!")
 
             assert path.exists()
@@ -123,7 +119,7 @@ class TestDiffWriterWrite:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "nested" / "dir" / "file.txt"
 
-            writer = DiffWriter(auto_approve=True)
+            writer = DiffWriter(mode=MODE_AUTO)
             writer.write(str(path), "content")
 
             assert path.exists()
@@ -134,11 +130,11 @@ class TestDiffWriterWrite:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.txt"
 
-            writer = DiffWriter(auto_approve=False)
-            writer._console = Mock()
+            writer = DiffWriter(mode=MODE_NORMAL)
+            # Mock _ask_approval to return "approve"
+            writer._ask_approval = Mock(return_value="approve")
 
-            with patch.object(writer, '_ask_approval', return_value='approve'):
-                result = writer.write(str(path), "approved content")
+            result = writer.write(str(path), "approved content")
 
             assert path.exists()
             assert "Wrote" in result
@@ -148,74 +144,75 @@ class TestDiffWriterWrite:
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.txt"
 
-            writer = DiffWriter(auto_approve=False)
-            writer._console = Mock()
+            writer = DiffWriter(mode=MODE_NORMAL)
+            writer._ask_approval = Mock(return_value="approve_all")
 
-            with patch.object(writer, '_ask_approval', return_value='approve_all'):
-                writer.write(str(path), "content")
+            writer.write(str(path), "content")
 
-            # After approve_all, auto_approve should be True
-            assert writer.auto_approve is True
+            # After approve_all, mode should be auto
+            assert writer.mode == MODE_AUTO
 
     def test_write_approval_flow_reject(self):
         """Test write with approval flow (user rejects)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.txt"
 
-            writer = DiffWriter(auto_approve=False)
-            writer._console = Mock()
+            writer = DiffWriter(mode=MODE_NORMAL)
+            writer._ask_approval = Mock(return_value="reject")
+            writer._ask_feedback = Mock(return_value="Please use different naming")
 
-            with patch.object(writer, '_ask_approval', return_value='reject'):
-                with patch('builtins.input', return_value='Please use different naming'):
-                    result = writer.write(str(path), "rejected content")
+            result = writer.write(str(path), "rejected content")
 
             assert not path.exists()
             assert "rejected" in result
             assert "different naming" in result
 
+    def test_write_plan_mode_no_write(self):
+        """Test plan mode doesn't write file."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.txt"
 
-class TestDiffWriterDisplayMethods:
-    """Tests for display helper methods."""
+            writer = DiffWriter(mode=MODE_PLAN)
+            result = writer.write(str(path), "content")
 
-    def test_display_diff_colorizes_output(self):
-        """Test that _display_diff creates colorized output."""
+            assert not path.exists()
+            assert "[Plan mode]" in result
+            assert "Would write" in result
+
+
+class TestDiffWriterModes:
+    """Tests for permission modes."""
+
+    def test_default_mode_is_normal(self):
+        """Test default mode is normal."""
         writer = DiffWriter()
-        writer._console = Mock()
+        assert writer.mode == MODE_NORMAL
 
-        diff_text = """--- a/file.txt
-+++ b/file.txt
-@@ -1,3 +1,3 @@
- line1
--old line
-+new line
- line3
-"""
-        writer._display_diff(diff_text, "file.txt")
+    def test_auto_mode_no_io_fallback(self):
+        """Test auto mode writes without io channel."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.txt"
 
-        # Verify console.print was called with a Panel
-        writer._console.print.assert_called_once()
+            writer = DiffWriter(mode=MODE_AUTO)
+            writer.io = None  # No io channel
 
-    def test_display_new_file_shows_preview(self):
-        """Test that _display_new_file shows a preview."""
-        writer = DiffWriter()
-        writer._console = Mock()
+            result = writer.write(str(path), "content")
 
-        content = "line1\nline2\nline3"
-        writer._display_new_file("new_file.txt", content)
+            assert path.exists()
+            assert "[auto mode]" in result
 
-        writer._console.print.assert_called_once()
+    def test_normal_mode_no_io_falls_back_to_approve(self):
+        """Test normal mode without io channel auto-approves."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.txt"
 
-    def test_display_new_file_truncates_long_content(self):
-        """Test that long content is truncated in preview."""
-        writer = DiffWriter()
-        writer._console = Mock()
+            writer = DiffWriter(mode=MODE_NORMAL)
+            writer.io = None  # No io channel
 
-        # Create content with more than 50 lines
-        content = "\n".join([f"line{i}" for i in range(100)])
-        writer._display_new_file("long_file.txt", content)
+            result = writer.write(str(path), "content")
 
-        # Should still display (truncated internally)
-        writer._console.print.assert_called_once()
+            # Should auto-approve since no io channel
+            assert path.exists()
 
 
 class TestDiffWriterIntegration:
@@ -236,7 +233,7 @@ class TestDiffWriterIntegration:
             usage=TokenUsage(),
         )
 
-        writer = DiffWriter(auto_approve=True)
+        writer = DiffWriter(mode=MODE_AUTO)
         agent = Agent(
             "test",
             llm=mock_llm,
@@ -252,11 +249,36 @@ class TestDiffWriterIntegration:
     def test_round_trip_write_and_read(self):
         """Test writing and reading back content."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            path = str(Path(tmpdir) / "roundtrip.txt")
-            content = "Round trip test content\nWith multiple lines\n"
+            path = Path(tmpdir) / "test.txt"
 
-            writer = DiffWriter(auto_approve=True)
-            writer.write(path, content)
-            read_content = writer.read(path)
+            writer = DiffWriter(mode=MODE_AUTO)
+            writer.write(str(path), "Hello, World!")
 
-            assert read_content == content
+            content = writer.read(str(path))
+
+            assert content == "Hello, World!"
+
+
+class TestDiffWriterTruncation:
+    """Tests for preview truncation."""
+
+    def test_truncate_long_preview(self):
+        """Test that long previews get truncated."""
+        writer = DiffWriter(preview_limit=100)
+
+        long_preview = "x" * 200
+        truncated, was_truncated = writer._truncate_preview(long_preview)
+
+        assert was_truncated
+        assert len(truncated) <= 120  # 100 + "...(truncated)"
+        assert "truncated" in truncated
+
+    def test_short_preview_not_truncated(self):
+        """Test that short previews are not truncated."""
+        writer = DiffWriter(preview_limit=100)
+
+        short_preview = "x" * 50
+        result, was_truncated = writer._truncate_preview(short_preview)
+
+        assert not was_truncated
+        assert result == short_preview

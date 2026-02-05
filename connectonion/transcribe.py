@@ -70,7 +70,7 @@ def _get_api_key(model: str) -> str:
         api_key = os.getenv("OPENONION_API_KEY")
         if not api_key:
             # Try loading from config file
-            config_path = Path.home() / ".connectonion" / ".co" / "config.toml"
+            config_path = Path.home() / ".co" / "config.toml"
             if config_path.exists():
                 import toml
                 config = toml.load(config_path)

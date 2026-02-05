@@ -23,6 +23,13 @@ from connectonion.network.host.routes import (
     info_handler,
     admin_logs_handler,
     admin_sessions_handler,
+    admin_trust_promote_handler,
+    admin_trust_demote_handler,
+    admin_trust_block_handler,
+    admin_trust_unblock_handler,
+    admin_trust_level_handler,
+    admin_admins_add_handler,
+    admin_admins_remove_handler,
 )
 from connectonion.network.host.session import Session, SessionStorage
 
@@ -38,8 +45,10 @@ class TestInputHandler:
         mock_agent.input.return_value = "Agent response"
         mock_agent.current_session = {"messages": []}
 
-        with patch('copy.deepcopy', return_value=mock_agent):
-            result = input_handler(mock_agent, storage, "Hello", result_ttl=3600)
+        # Factory function returns mock agent
+        create_agent = Mock(return_value=mock_agent)
+
+        result = input_handler(create_agent, storage, "Hello", result_ttl=3600)
 
         assert "session_id" in result
         assert result["status"] == "done"
@@ -55,8 +64,8 @@ class TestInputHandler:
         mock_agent.input.return_value = "Response"
         mock_agent.current_session = {}
 
-        with patch('copy.deepcopy', return_value=mock_agent):
-            result = input_handler(mock_agent, storage, "Hello", result_ttl=3600)
+        create_agent = Mock(return_value=mock_agent)
+        result = input_handler(create_agent, storage, "Hello", result_ttl=3600)
 
         assert result["session_id"] is not None
         assert len(result["session_id"]) > 0
@@ -71,8 +80,8 @@ class TestInputHandler:
 
         session = {"session_id": "existing-123", "messages": []}
 
-        with patch('copy.deepcopy', return_value=mock_agent):
-            result = input_handler(mock_agent, storage, "Continue", result_ttl=3600, session=session)
+        create_agent = Mock(return_value=mock_agent)
+        result = input_handler(create_agent, storage, "Continue", result_ttl=3600, session=session)
 
         assert result["session_id"] == "existing-123"
 
@@ -86,8 +95,8 @@ class TestInputHandler:
 
         session = {"messages": []}  # No session_id
 
-        with patch('copy.deepcopy', return_value=mock_agent):
-            result = input_handler(mock_agent, storage, "Hello", result_ttl=3600, session=session)
+        create_agent = Mock(return_value=mock_agent)
+        result = input_handler(create_agent, storage, "Hello", result_ttl=3600, session=session)
 
         assert "session_id" in session  # Should be mutated
         assert session["session_id"] == result["session_id"]
@@ -101,8 +110,8 @@ class TestInputHandler:
         mock_agent.input.return_value = "Result"
         mock_agent.current_session = {}
 
-        with patch('copy.deepcopy', return_value=mock_agent):
-            input_handler(mock_agent, storage, "Hello", result_ttl=3600)
+        create_agent = Mock(return_value=mock_agent)
+        input_handler(create_agent, storage, "Hello", result_ttl=3600)
 
         lines = storage_path.read_text().strip().split("\n")
         assert len(lines) == 2  # Running + Done
@@ -115,25 +124,24 @@ class TestInputHandler:
         mock_agent.input.return_value = "Response"
         mock_agent.current_session = {}
 
-        with patch('copy.deepcopy', return_value=mock_agent):
-            result = input_handler(mock_agent, storage, "Hello", result_ttl=3600)
+        create_agent = Mock(return_value=mock_agent)
+        result = input_handler(create_agent, storage, "Hello", result_ttl=3600)
 
         assert result["duration_ms"] >= 0
 
-    def test_deep_copies_agent(self, tmp_path):
-        """input_handler creates deep copy of agent."""
+    def test_factory_creates_fresh_agent(self, tmp_path):
+        """input_handler calls factory to create fresh agent per request."""
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
 
         mock_agent = Mock()
-        mock_copied = Mock()
-        mock_copied.input.return_value = "Copied response"
-        mock_copied.current_session = {}
+        mock_agent.input.return_value = "Response"
+        mock_agent.current_session = {}
 
-        with patch('copy.deepcopy', return_value=mock_copied) as mock_copy:
-            input_handler(mock_agent, storage, "Hello", result_ttl=3600)
+        create_agent = Mock(return_value=mock_agent)
+        input_handler(create_agent, storage, "Hello", result_ttl=3600)
 
-        mock_copy.assert_called_once_with(mock_agent)
-        mock_copied.input.assert_called_once_with("Hello", session=None)
+        create_agent.assert_called_once()
+        mock_agent.input.assert_called_once()
 
 
 class TestSessionHandler:
@@ -199,11 +207,9 @@ class TestHealthHandler:
 
     def test_returns_healthy_status(self):
         """health_handler returns healthy status."""
-        mock_agent = Mock()
-        mock_agent.name = "test_agent"
         start_time = time.time() - 60  # Started 60 seconds ago
 
-        result = health_handler(mock_agent, start_time)
+        result = health_handler("test_agent", start_time)
 
         assert result["status"] == "healthy"
         assert result["agent"] == "test_agent"
@@ -211,11 +217,9 @@ class TestHealthHandler:
 
     def test_uptime_calculation(self):
         """health_handler calculates uptime correctly."""
-        mock_agent = Mock()
-        mock_agent.name = "test"
         start_time = time.time() - 120  # 2 minutes ago
 
-        result = health_handler(mock_agent, start_time)
+        result = health_handler("test", start_time)
 
         assert result["uptime"] >= 120
 
@@ -225,29 +229,63 @@ class TestInfoHandler:
 
     def test_returns_agent_info(self):
         """info_handler returns agent information."""
-        mock_agent = Mock()
-        mock_agent.name = "my_agent"
-        mock_tools = Mock()
-        mock_tools.names.return_value = ["tool1", "tool2"]
-        mock_agent.tools = mock_tools
+        metadata = {
+            "name": "my_agent",
+            "tools": ["tool1", "tool2"],
+            "address": "0x123",
+        }
 
-        result = info_handler(mock_agent, "careful")
+        result = info_handler(metadata, "careful")
 
         assert result["name"] == "my_agent"
         assert result["tools"] == ["tool1", "tool2"]
         assert result["trust"] == "careful"
         assert "version" in result
-        assert "address" in result
 
-    def test_handles_missing_tools_names(self):
-        """info_handler handles tools without names() method."""
-        mock_agent = Mock()
-        mock_agent.name = "agent"
-        mock_agent.tools = []  # No names() method
+    def test_returns_onboard_info(self):
+        """info_handler includes onboard info when trust_config provided."""
+        metadata = {
+            "name": "agent",
+            "tools": [],
+            "address": "0x123",
+        }
+        trust_config = {
+            "onboard": {
+                "invite_code": ["BETA2024"],
+                "payment": 10,
+            }
+        }
 
-        result = info_handler(mock_agent, "open")
+        result = info_handler(metadata, "careful", trust_config)
 
-        assert result["tools"] == []
+        assert "onboard" in result
+        assert result["onboard"]["invite_code"] is True
+        assert result["onboard"]["payment"] == 10
+
+    def test_no_onboard_without_config(self):
+        """info_handler doesn't include onboard when no trust_config."""
+        metadata = {
+            "name": "agent",
+            "tools": [],
+            "address": "0x123",
+        }
+
+        result = info_handler(metadata, "open")
+
+        assert "onboard" not in result
+
+    def test_no_onboard_without_onboard_key(self):
+        """info_handler doesn't include onboard when config has no onboard key."""
+        metadata = {
+            "name": "agent",
+            "tools": [],
+            "address": "0x123",
+        }
+        trust_config = {"default": "allow"}  # No onboard key
+
+        result = info_handler(metadata, "open", trust_config)
+
+        assert "onboard" not in result
 
 
 class TestAdminLogsHandler:
@@ -338,6 +376,114 @@ updated: "2024-01-15T10:00:00"
         assert len(result["sessions"]) == 2
         assert result["sessions"][0]["name"] == "new"  # Newest first
         assert result["sessions"][1]["name"] == "old"
+
+
+class TestAdminTrustHandlers:
+    """Test admin trust route handlers."""
+
+    @pytest.mark.parametrize(
+        "level,method_called,new_level,expected_error",
+        [
+            ("stranger", "promote_to_contact", "contact", None),
+            ("contact", "promote_to_whitelist", "whitelist", None),
+            ("whitelist", None, None, "Already at highest level"),
+            ("blocked", None, None, "Client is blocked. Unblock first."),
+            ("unknown", None, None, "Unknown level: unknown"),
+        ],
+    )
+    def test_promote_handler(self, level, method_called, new_level, expected_error):
+        trust_agent = Mock()
+        if method_called:
+            getattr(trust_agent, method_called).return_value = "ok"
+            trust_agent.get_level.side_effect = [level, new_level]
+        else:
+            trust_agent.get_level.return_value = level
+
+        result = admin_trust_promote_handler(trust_agent, "0xclient")
+
+        if expected_error:
+            assert result["error"] == expected_error
+            return
+
+        assert result["success"] is True
+        assert result["level"] == new_level
+        getattr(trust_agent, method_called).assert_called_once_with("0xclient")
+
+    @pytest.mark.parametrize(
+        "level,method_called,new_level,expected_error",
+        [
+            ("whitelist", "demote_to_contact", "contact", None),
+            ("contact", "demote_to_stranger", "stranger", None),
+            ("stranger", None, None, "Already at lowest level"),
+            ("blocked", None, None, "Client is blocked. Unblock first."),
+            ("unknown", None, None, "Unknown level: unknown"),
+        ],
+    )
+    def test_demote_handler(self, level, method_called, new_level, expected_error):
+        trust_agent = Mock()
+        if method_called:
+            getattr(trust_agent, method_called).return_value = "ok"
+            trust_agent.get_level.side_effect = [level, new_level]
+        else:
+            trust_agent.get_level.return_value = level
+
+        result = admin_trust_demote_handler(trust_agent, "0xclient")
+
+        if expected_error:
+            assert result["error"] == expected_error
+            return
+
+        assert result["success"] is True
+        assert result["level"] == new_level
+        getattr(trust_agent, method_called).assert_called_once_with("0xclient")
+
+    def test_block_handler(self):
+        trust_agent = Mock()
+        trust_agent.block.return_value = "blocked"
+        trust_agent.get_level.return_value = "blocked"
+
+        result = admin_trust_block_handler(trust_agent, "0xclient", reason="spam")
+
+        trust_agent.block.assert_called_once_with("0xclient", "spam")
+        assert result["success"] is True
+        assert result["level"] == "blocked"
+
+    def test_unblock_handler(self):
+        trust_agent = Mock()
+        trust_agent.unblock.return_value = "unblocked"
+        trust_agent.get_level.return_value = "stranger"
+
+        result = admin_trust_unblock_handler(trust_agent, "0xclient")
+
+        trust_agent.unblock.assert_called_once_with("0xclient")
+        assert result["success"] is True
+        assert result["level"] == "stranger"
+
+    def test_level_handler(self):
+        trust_agent = Mock()
+        trust_agent.get_level.return_value = "contact"
+
+        result = admin_trust_level_handler(trust_agent, "0xclient")
+
+        assert result == {"client_id": "0xclient", "level": "contact"}
+
+    def test_admin_add_handler(self):
+        trust_agent = Mock()
+        trust_agent.add_admin.return_value = "added"
+
+        result = admin_admins_add_handler(trust_agent, "0xadmin")
+
+        trust_agent.add_admin.assert_called_once_with("0xadmin")
+        assert result["success"] is True
+
+    def test_admin_remove_handler(self):
+        trust_agent = Mock()
+        trust_agent.remove_admin.return_value = "removed"
+
+        result = admin_admins_remove_handler(trust_agent, "0xadmin")
+
+        trust_agent.remove_admin.assert_called_once_with("0xadmin")
+        assert result["success"] is True
 
 
 if __name__ == "__main__":

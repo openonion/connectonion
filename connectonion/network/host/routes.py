@@ -88,19 +88,36 @@ def health_handler(agent_name: str, start_time: float) -> dict:
     return {"status": "healthy", "agent": agent_name, "uptime": int(time.time() - start_time)}
 
 
-def info_handler(agent_metadata: dict, trust: str) -> dict:
+def info_handler(agent_metadata: dict, trust: str, trust_config: dict | None = None) -> dict:
     """GET /info
 
-    Returns pre-extracted metadata - no agent creation needed.
+    Returns pre-extracted metadata including onboard requirements.
+
+    Args:
+        agent_metadata: Agent name, address, tools
+        trust: Trust level string ("open", "careful", "strict", or custom)
+        trust_config: Parsed YAML config from trust policy (optional)
     """
     from ... import __version__
-    return {
+
+    result = {
         "name": agent_metadata["name"],
         "address": agent_metadata["address"],
         "tools": agent_metadata["tools"],
         "trust": trust,
         "version": __version__,
     }
+
+    # Add onboard info if available
+    if trust_config:
+        onboard = trust_config.get("onboard", {})
+        if onboard:
+            result["onboard"] = {
+                "invite_code": "invite_code" in onboard,
+                "payment": onboard.get("payment"),
+            }
+
+    return result
 
 
 def admin_logs_handler(agent_name: str) -> dict:
@@ -133,3 +150,71 @@ def admin_sessions_handler() -> dict:
     # Sort by updated date descending (newest first)
     sessions.sort(key=lambda s: s.get("updated", s.get("created", "")), reverse=True)
     return {"sessions": sessions}
+
+
+# === Admin Trust Routes ===
+# These receive TrustAgent instance from route_handlers
+
+def admin_trust_promote_handler(trust_agent, client_id: str) -> dict:
+    """POST /admin/trust/promote - Promote client to next level."""
+    level = trust_agent.get_level(client_id)
+    if level == "stranger":
+        result = trust_agent.promote_to_contact(client_id)
+    elif level == "contact":
+        result = trust_agent.promote_to_whitelist(client_id)
+    elif level == "whitelist":
+        return {"error": "Already at highest level", "level": level}
+    elif level == "blocked":
+        return {"error": "Client is blocked. Unblock first.", "level": level}
+    else:
+        return {"error": f"Unknown level: {level}"}
+
+    return {"success": True, "message": result, "level": trust_agent.get_level(client_id)}
+
+
+def admin_trust_demote_handler(trust_agent, client_id: str) -> dict:
+    """POST /admin/trust/demote - Demote client to previous level."""
+    level = trust_agent.get_level(client_id)
+    if level == "whitelist":
+        result = trust_agent.demote_to_contact(client_id)
+    elif level == "contact":
+        result = trust_agent.demote_to_stranger(client_id)
+    elif level == "stranger":
+        return {"error": "Already at lowest level", "level": level}
+    elif level == "blocked":
+        return {"error": "Client is blocked. Unblock first.", "level": level}
+    else:
+        return {"error": f"Unknown level: {level}"}
+
+    return {"success": True, "message": result, "level": trust_agent.get_level(client_id)}
+
+
+def admin_trust_block_handler(trust_agent, client_id: str, reason: str = "") -> dict:
+    """POST /admin/trust/block - Block a client."""
+    result = trust_agent.block(client_id, reason)
+    return {"success": True, "message": result, "level": trust_agent.get_level(client_id)}
+
+
+def admin_trust_unblock_handler(trust_agent, client_id: str) -> dict:
+    """POST /admin/trust/unblock - Unblock a client."""
+    result = trust_agent.unblock(client_id)
+    return {"success": True, "message": result, "level": trust_agent.get_level(client_id)}
+
+
+def admin_trust_level_handler(trust_agent, client_id: str) -> dict:
+    """GET /admin/trust/level/{client_id} - Get client's trust level."""
+    return {"client_id": client_id, "level": trust_agent.get_level(client_id)}
+
+
+# === Super Admin Routes (admin management) ===
+
+def admin_admins_add_handler(trust_agent, admin_id: str) -> dict:
+    """POST /superadmin/add - Add an admin. Super admin only."""
+    result = trust_agent.add_admin(admin_id)
+    return {"success": True, "message": result}
+
+
+def admin_admins_remove_handler(trust_agent, admin_id: str) -> dict:
+    """POST /superadmin/remove - Remove an admin. Super admin only."""
+    result = trust_agent.remove_admin(admin_id)
+    return {"success": True, "message": result}

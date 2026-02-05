@@ -26,6 +26,7 @@ don't interfere between concurrent requests.
 """
 
 import os
+from functools import partial
 from pathlib import Path
 from typing import Callable, Union
 
@@ -33,7 +34,8 @@ from rich.console import Console
 from rich.panel import Panel
 
 from ..asgi import create_app as asgi_create_app
-from ..trust import get_default_trust_level
+from ..trust import TrustAgent, get_default_trust_level, parse_policy, TRUST_LEVELS
+from ..trust.factory import PROMPTS_DIR
 from .session import SessionStorage
 from .auth import extract_and_authenticate
 from .routes import (
@@ -44,7 +46,47 @@ from .routes import (
     info_handler,
     admin_logs_handler,
     admin_sessions_handler,
+    # Admin trust routes
+    admin_trust_promote_handler,
+    admin_trust_demote_handler,
+    admin_trust_block_handler,
+    admin_trust_unblock_handler,
+    admin_trust_level_handler,
+    # Super admin routes
+    admin_admins_add_handler,
+    admin_admins_remove_handler,
 )
+
+
+def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
+    """Parse trust config from trust parameter.
+
+    Returns YAML config dict if trust is a level or file path, None otherwise.
+    Used to extract onboard info for /info endpoint.
+    """
+    if not isinstance(trust, str):
+        return None
+
+    # Check if it's a trust level
+    if trust.lower() in TRUST_LEVELS:
+        policy_path = PROMPTS_DIR / f"{trust.lower()}.md"
+        if policy_path.exists():
+            config, _ = parse_policy(policy_path.read_text(encoding='utf-8'))
+            return config
+        return None
+
+    # Check if it's a file path
+    path = Path(trust)
+    if path.exists() and path.is_file():
+        config, _ = parse_policy(path.read_text(encoding='utf-8'))
+        return config
+
+    # Inline policy text
+    if trust.startswith('---'):
+        config, _ = parse_policy(trust)
+        return config
+
+    return None
 
 
 def get_default_trust() -> str:
@@ -70,7 +112,7 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
     return metadata, sample
 
 
-def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int):
+def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent):
     """Create route handler dict for ASGI app.
 
     Args:
@@ -79,6 +121,7 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         agent_metadata: Pre-extracted metadata (name, tools, address) - avoids
                         creating agents for health/info endpoints.
         result_ttl: How long to keep results on server in seconds
+        trust_agent: TrustAgent instance for trust operations
     """
     agent_name = agent_metadata["name"]
 
@@ -91,8 +134,8 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
 
-    def handle_info(trust):
-        return info_handler(agent_metadata, trust)
+    def handle_info(trust, trust_config=None):
+        return info_handler(agent_metadata, trust, trust_config)
 
     def handle_admin_logs():
         return admin_logs_handler(agent_name)
@@ -107,6 +150,17 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         "ws_input": handle_ws_input,
         "admin_logs": handle_admin_logs,
         "admin_sessions": admin_sessions_handler,
+        # TrustAgent instance for direct access in http.py/websocket.py
+        "trust_agent": trust_agent,
+        # Admin trust routes (partial injects trust_agent as first arg)
+        "admin_trust_promote": partial(admin_trust_promote_handler, trust_agent),
+        "admin_trust_demote": partial(admin_trust_demote_handler, trust_agent),
+        "admin_trust_block": partial(admin_trust_block_handler, trust_agent),
+        "admin_trust_unblock": partial(admin_trust_unblock_handler, trust_agent),
+        "admin_trust_level": partial(admin_trust_level_handler, trust_agent),
+        # Super admin routes
+        "admin_admins_add": partial(admin_admins_add_handler, trust_agent),
+        "admin_admins_remove": partial(admin_admins_remove_handler, trust_agent),
     }
 
 
@@ -197,14 +251,14 @@ def host(
         whitelist: Allowed identities
 
     Endpoints:
-        POST /input         - Submit prompt, get result
-        GET  /sessions/{id} - Get session by ID
-        GET  /sessions      - List all sessions
-        GET  /health        - Health check
-        GET  /info          - Agent info
-        WS   /ws            - WebSocket
-        GET  /logs          - Activity log (requires OPENONION_API_KEY)
-        GET  /logs/sessions - Activity sessions (requires OPENONION_API_KEY)
+        POST /input          - Submit prompt, get result
+        GET  /sessions/{id}  - Get session by ID
+        GET  /sessions       - List all sessions
+        GET  /health         - Health check
+        GET  /info           - Agent info
+        WS   /ws             - WebSocket
+        GET  /admin/logs     - Activity log (requires OPENONION_API_KEY)
+        GET  /admin/sessions - Activity sessions (requires OPENONION_API_KEY)
     """
     import uvicorn
     from ... import address
@@ -228,11 +282,24 @@ def host(
     agent_metadata["address"] = addr_data['address']
 
     storage = SessionStorage()
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl)
+
+    # Create TrustAgent instance - the single interface for all trust operations
+    # Users can subclass TrustAgent to customize (e.g., database-backed admin storage)
+    if isinstance(trust, TrustAgent):
+        trust_agent = trust
+    else:
+        trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
+
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent)
+
+    # Parse trust config for /info onboard info
+    trust_config = _parse_trust_config(trust)
+
     app = asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,
-        trust=trust,
+        trust=trust_agent,  # Pass resolved TrustAgent, not raw trust
+        trust_config=trust_config,
         blacklist=blacklist,
         whitelist=whitelist,
     )
@@ -243,13 +310,23 @@ def host(
 
     # Display startup info
     relay_status = f"[green]✓[/] {relay_url}" if relay_url else "[dim]disabled[/]"
+
+    # Build trust info for display
+    trust_info = ""
+    if trust_config and isinstance(trust, str) and trust.lower() in TRUST_LEVELS:
+        onboard = trust_config.get("onboard", {})
+        invite_codes = onboard.get("invite_code", [])
+        if invite_codes:
+            codes_str = ", ".join(invite_codes) if isinstance(invite_codes, list) else invite_codes
+            trust_info = f"\n[bold]Invite:[/]  {codes_str}\n[dim]         Run 'co copy trust/{trust}' to customize[/]"
+
     Console().print(Panel(
         f"[bold]POST[/] http://localhost:{port}/input\n"
         f"[dim]GET  /sessions/{{id}} · /sessions · /health · /info[/]\n"
         f"[dim]WS   ws://localhost:{port}/ws\n"
         f"[dim]UI   http://localhost:{port}/docs[/]\n\n"
         f"[bold]Address:[/] {agent_metadata['address']}\n"
-        f"[bold]Relay:[/]   {relay_status}",
+        f"[bold]Relay:[/]   {relay_status}{trust_info}",
         title=f"[green]Agent '{agent_metadata['name']}'[/]"
     ))
 
@@ -279,11 +356,17 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     agent_metadata, sample = _extract_agent_metadata(create_agent)
     agent_metadata["address"] = get_agent_address(sample)
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl)
+    # Create TrustAgent instance
+    if isinstance(trust, TrustAgent):
+        trust_agent = trust
+    else:
+        trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
+
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent)
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,
-        trust=trust,
+        trust=trust_agent,  # Pass resolved TrustAgent, not raw trust
         blacklist=blacklist,
         whitelist=whitelist,
     )

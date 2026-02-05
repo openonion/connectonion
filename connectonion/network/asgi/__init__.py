@@ -23,6 +23,7 @@ def create_app(
     route_handlers: dict,
     storage,
     trust: str = "careful",
+    trust_config: dict | None = None,
     blacklist: list | None = None,
     whitelist: list | None = None,
 ):
@@ -32,6 +33,7 @@ def create_app(
         route_handlers: Dict of route handler functions
         storage: SessionStorage instance
         trust: Trust level (open/careful/strict)
+        trust_config: Parsed YAML config from trust policy (for /info onboard)
         blacklist: Blocked identities
         whitelist: Allowed identities
 
@@ -49,6 +51,7 @@ def create_app(
                 route_handlers=route_handlers,
                 storage=storage,
                 trust=trust,
+                trust_config=trust_config,
                 start_time=start_time,
                 blacklist=blacklist,
                 whitelist=whitelist,

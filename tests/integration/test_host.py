@@ -589,12 +589,16 @@ class TestAuthentication:
         assert prompt is None
         assert err == "forbidden: blacklisted"
 
-    def test_extract_and_authenticate_whitelist_allows(self):
-        """extract_and_authenticate should allow whitelisted identities (bypass signature check)."""
+    def test_extract_and_authenticate_whitelist_requires_valid_signature(self):
+        """Whitelist bypasses TRUST POLICY, not SIGNATURE VERIFICATION.
+
+        Security fix: Even whitelisted identities must provide valid signatures.
+        This prevents spoofing attacks where anyone claims to be whitelisted.
+        """
         from connectonion.network.host import extract_and_authenticate
         import time
 
-        # Whitelisted identity bypasses signature verification
+        # Whitelisted identity with INVALID signature should be rejected
         good_identity = "0xgood"
         payload = {"prompt": "hello", "timestamp": time.time()}
 
@@ -604,11 +608,12 @@ class TestAuthentication:
             whitelist=["0xgood"]
         )
 
-        assert prompt == "hello"
-        assert err is None
+        # Should fail - whitelist doesn't bypass signature verification
+        assert err == "unauthorized: invalid signature"
+        assert valid is False
 
-    def test_extract_and_authenticate_strict_without_whitelist(self):
-        """extract_and_authenticate strict mode without whitelist requires valid signature."""
+    def test_extract_and_authenticate_strict_denies_non_whitelisted(self):
+        """Strict mode denies even valid signatures from non-whitelisted identities."""
         from connectonion.network.host import extract_and_authenticate
         from nacl.signing import SigningKey
         import time
@@ -619,15 +624,15 @@ class TestAuthentication:
         canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
         signature = f"0x{signing_key.sign(canonical.encode()).signature.hex()}"
 
-        # Without whitelist, strict mode requires valid signature
+        # Without being whitelisted, strict mode denies access
         prompt, identity, valid, err = extract_and_authenticate(
             {"payload": payload, "from": public_key, "signature": signature},
             trust="strict"
         )
 
-        assert prompt == "hello"
-        assert valid is True
-        assert err is None
+        # Signature is valid, but not whitelisted - denied by strict policy
+        assert valid is True  # Signature WAS valid
+        assert "forbidden" in err.lower()  # But denied by trust policy
 
     def test_extract_and_authenticate_missing_from_field(self):
         """extract_and_authenticate should reject request without 'from' field."""
@@ -717,7 +722,7 @@ class TestSignatureVerification:
         assert result is False
 
     def test_authenticate_signed_request_valid(self):
-        """extract_and_authenticate should accept valid signed request."""
+        """extract_and_authenticate should accept valid signed request with open trust."""
         from connectonion.network.host import extract_and_authenticate
         from nacl.signing import SigningKey
         import json
@@ -736,7 +741,9 @@ class TestSignatureVerification:
             "signature": signature
         }
 
-        prompt, identity, valid, err = extract_and_authenticate(data, trust="strict")
+        # Use "open" trust since we're testing signature validation works
+        # "strict" would deny non-whitelisted identities
+        prompt, identity, valid, err = extract_and_authenticate(data, trust="open")
 
         assert prompt == "hello"
         assert identity == public_key

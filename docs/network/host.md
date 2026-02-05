@@ -359,7 +359,7 @@ curl http://localhost:8000/admin/sessions \
 
 ## WebSocket API
 
-WebSocket provides real-time communication. Connection stays alive via ping/pong (automatic).
+WebSocket provides real-time communication with automatic keep-alive and session recovery.
 
 ### Connect
 
@@ -372,7 +372,10 @@ const ws = new WebSocket("ws://localhost:8000/ws");
 ```javascript
 ws.send(JSON.stringify({
   type: "INPUT",
-  prompt: "Translate hello to Spanish"
+  prompt: "Translate hello to Spanish",
+  session: {
+    session_id: "550e8400-e29b-41d4-a716-446655440000"  // Optional: for session continuity
+  }
 }));
 ```
 
@@ -382,8 +385,12 @@ ws.send(JSON.stringify({
 ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
 
-  if (msg.type === "OUTPUT") {
+  if (msg.type === "PING") {
+    // Server keep-alive check (every 30s)
+    ws.send(JSON.stringify({ type: "PONG" }));
+  } else if (msg.type === "OUTPUT") {
     console.log("Result:", msg.result);
+    console.log("Session ID:", msg.session_id);
   } else if (msg.type === "ERROR") {
     console.error("Error:", msg.message);
   } else {
@@ -397,14 +404,76 @@ ws.onmessage = (event) => {
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
-| INPUT | Client → Agent | Send prompt |
+| INPUT | Client → Agent | Send prompt with optional session |
 | OUTPUT | Agent → Client | Final result + session data |
+| PING | Agent → Client | Connection keep-alive (every 30s) |
+| PONG | Client → Agent | Acknowledge keep-alive |
 | tool_call | Agent → Client | Tool started |
 | tool_result | Agent → Client | Tool completed |
 | thinking | Agent → Client | Agent is processing |
 | ask_user | Agent → Client | Agent needs input |
 | approval_needed | Agent → Client | Tool approval required |
 | ERROR | Agent → Client | Error message |
+
+### Connection Keep-Alive
+
+The server automatically sends **PING** messages every 30 seconds to keep the connection alive and detect dead connections:
+
+```javascript
+ws.onmessage = (event) => {
+  const msg = JSON.parse(event.data);
+
+  if (msg.type === "PING") {
+    // Respond immediately to keep connection alive
+    ws.send(JSON.stringify({ type: "PONG" }));
+  }
+};
+```
+
+**Why it matters:**
+- Keeps connection alive through proxies and firewalls
+- Detects dead connections within 60 seconds
+- Prevents silent connection failures
+
+### Session Recovery
+
+If your WebSocket disconnects (network failure, timeout, page refresh), you can recover the result using the session_id:
+
+**1. Generate and save session_id before connecting:**
+```javascript
+const sessionId = crypto.randomUUID();
+localStorage.setItem('active_session', sessionId);
+```
+
+**2. Include session_id in INPUT:**
+```javascript
+ws.send(JSON.stringify({
+  type: "INPUT",
+  prompt: "Long running task...",
+  session: { session_id: sessionId }
+}));
+```
+
+**3. If connection drops, poll for result:**
+```javascript
+ws.onerror = async () => {
+  // Connection failed, try to recover result
+  const response = await fetch(`http://localhost:8000/sessions/${sessionId}`);
+  const data = await response.json();
+
+  if (data.status === "done") {
+    console.log("Recovered result:", data.result);
+  } else if (data.status === "running") {
+    // Still processing, poll again after delay
+    setTimeout(() => pollForResult(sessionId), 10000);
+  }
+};
+```
+
+**Session lifecycle:**
+- Results stored for **24 hours** (configurable via `result_ttl`)
+- Status can be `"running"` or `"done"`
+- Supports recovery after network failures, timeouts, or page refreshes
 
 ---
 

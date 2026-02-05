@@ -56,6 +56,7 @@ def _show_help():
     console.print("  [green]init[/green]              Initialize in current directory")
     console.print("  [green]copy[/green]   <name>     Copy tool/plugin source to project")
     console.print("  [green]eval[/green]              Run evals and show status")
+    console.print("  [green]trust[/green]             Manage trust lists")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]status[/green]            Check account balance")
@@ -172,6 +173,87 @@ def eval(
     """Run evals and show results."""
     from .commands.eval_commands import handle_eval
     handle_eval(name=name, agent_file=agent)
+
+
+# Trust command group
+trust_app = typer.Typer(help="Manage trust lists (contacts, whitelist, blocklist, admins)")
+app.add_typer(trust_app, name="trust")
+
+
+@trust_app.callback(invoke_without_command=True)
+def trust_callback(ctx: typer.Context):
+    """Trust list management."""
+    if ctx.invoked_subcommand is None:
+        # Default to list
+        from .commands.trust_commands import handle_trust_list
+        handle_trust_list()
+
+
+@trust_app.command("list")
+def trust_list():
+    """List all trust lists."""
+    from .commands.trust_commands import handle_trust_list
+    handle_trust_list()
+
+
+@trust_app.command("level")
+def trust_level(address: str = typer.Argument(..., help="Address to check")):
+    """Check trust level of an address."""
+    from .commands.trust_commands import handle_trust_level
+    handle_trust_level(address)
+
+
+@trust_app.command("add")
+def trust_add(
+    address: str = typer.Argument(..., help="Address to add"),
+    whitelist: bool = typer.Option(False, "-w", "--whitelist", help="Add to whitelist instead of contacts"),
+):
+    """Add address to contacts (default) or whitelist."""
+    from .commands.trust_commands import handle_trust_add
+    handle_trust_add(address, whitelist)
+
+
+@trust_app.command("remove")
+def trust_remove(address: str = typer.Argument(..., help="Address to remove")):
+    """Remove address from all lists (demote to stranger)."""
+    from .commands.trust_commands import handle_trust_remove
+    handle_trust_remove(address)
+
+
+@trust_app.command("block")
+def trust_block(
+    address: str = typer.Argument(..., help="Address to block"),
+    reason: str = typer.Option("", "-r", "--reason", help="Reason for blocking"),
+):
+    """Block an address."""
+    from .commands.trust_commands import handle_trust_block
+    handle_trust_block(address, reason)
+
+
+@trust_app.command("unblock")
+def trust_unblock(address: str = typer.Argument(..., help="Address to unblock")):
+    """Unblock an address."""
+    from .commands.trust_commands import handle_trust_unblock
+    handle_trust_unblock(address)
+
+
+# Admin subcommand group
+admin_app = typer.Typer(help="Manage admins (super admin only)")
+trust_app.add_typer(admin_app, name="admin")
+
+
+@admin_app.command("add")
+def admin_add(address: str = typer.Argument(..., help="Address to add as admin")):
+    """Add an admin."""
+    from .commands.trust_commands import handle_admin_add
+    handle_admin_add(address)
+
+
+@admin_app.command("remove")
+def admin_remove(address: str = typer.Argument(..., help="Address to remove from admins")):
+    """Remove an admin."""
+    from .commands.trust_commands import handle_admin_remove
+    handle_admin_remove(address)
 
 
 def cli():

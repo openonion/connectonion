@@ -171,7 +171,7 @@ class TestToolExecutionExceptions:
         assert trace_entry["status"] == "error"
         assert trace_entry["error"] == "Invalid input value"
         assert trace_entry["error_type"] == "ValueError"
-        assert "Error executing tool" in trace_entry["result"]
+        assert "Error:" in trace_entry["result"]
         assert trace_entry["timing_ms"] > 0  # Should still record timing
 
     def test_tool_exception_invokes_on_error_event(self):
@@ -532,12 +532,12 @@ class TestMessageFormatting:
     def test_add_tool_result_with_error_message(self):
         """Test that error messages are properly added as tool results."""
         messages = []
-        error_result = "Error executing tool: ValueError('bad input')"
+        error_result = "Error: bad input"
         _add_tool_result_message(messages, "call_err", error_result)
 
         msg = messages[0]
         assert msg["role"] == "tool"
-        assert "Error executing tool" in msg["content"]
+        assert "Error:" in msg["content"]
         assert msg["tool_call_id"] == "call_err"
 
 
@@ -608,7 +608,7 @@ class TestTraceEntryStructure:
         assert trace_entry["status"] == "error"
         assert trace_entry["error"] == "Invalid value"
         assert trace_entry["error_type"] == "ValueError"
-        assert "Error executing tool" in trace_entry["result"]
+        assert "Error:" in trace_entry["result"]
 
     def test_not_found_trace_entry_structure(self):
         """Test trace entry structure when tool not found."""

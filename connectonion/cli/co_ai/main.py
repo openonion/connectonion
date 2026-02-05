@@ -47,6 +47,6 @@ def start_server(
             web_mode=True,
         )
 
-    # Start server with open trust (no auth required)
+    # Start server with careful trust (requires invite code or payment for strangers)
     # relay_url=None disables P2P discovery
-    host(agent_factory, port=port, trust="open", relay_url=None)
+    host(agent_factory, port=port, trust="careful", relay_url=None)

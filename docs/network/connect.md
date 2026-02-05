@@ -193,6 +193,141 @@ curl https://oo.openonion.ai/api/relay/agents/0x3d4017c3...
 
 ---
 
+## Connection Reliability & Recovery
+
+The ConnectOnion client (TypeScript/Python) automatically handles connection failures and recovers results seamlessly.
+
+### Automatic Keep-Alive
+
+**Server sends PING every 30 seconds:**
+- Client automatically responds with PONG
+- Keeps connection alive through proxies and firewalls
+- Detects dead connections within 60 seconds
+
+No configuration needed - handled automatically by the SDK.
+
+### Extended Timeout
+
+**Default timeout: 10 minutes** (600 seconds)
+
+Long-running agent tasks have plenty of time to complete:
+
+```typescript
+// TypeScript - default 10 minutes
+const response = await agent.input("Analyze this large dataset");
+
+// Override if needed (5 minutes)
+const response = await agent.input("Quick task", 300000);
+```
+
+### Automatic Session Recovery
+
+If the WebSocket connection fails (network drop, timeout, page refresh), the SDK **automatically polls** the server to retrieve your result:
+
+```
+1. Connection fails or times out
+   ↓
+2. SDK polls GET /sessions/{session_id} every 10s
+   ↓
+3. Server returns result when ready
+   ↓
+4. SDK returns result to your code
+   ↓
+5. You get the result as if nothing happened! ✅
+```
+
+**What this means for you:**
+- ✅ Page refresh during long tasks? No problem.
+- ✅ Network hiccup? Result still delivered.
+- ✅ Connection timeout? Automatically recovered.
+- ✅ Agent takes 15 minutes? You still get the result.
+
+**Configuration (TypeScript):**
+
+```typescript
+const agent = connect("0x123...", {
+  enablePolling: true,        // Default: true
+  pollIntervalMs: 10000,      // Poll every 10s (default)
+  maxPollAttempts: 30         // Try for 5 minutes (default)
+});
+```
+
+**Session persistence:**
+- Results stored server-side for **24 hours**
+- Session ID automatically generated and tracked
+- localStorage used (browser) to survive page refreshes
+
+### Connection Lifecycle
+
+```
+┌─────────────────────────────────────────────────────┐
+│  Normal Operation (WebSocket)                       │
+├─────────────────────────────────────────────────────┤
+│  1. Connect via WebSocket                           │
+│  2. Send INPUT with session_id                      │
+│  3. Receive PING every 30s, respond with PONG       │
+│  4. Receive streaming events                        │
+│  5. Receive OUTPUT (result)                         │
+│  6. Close connection                                │
+└─────────────────────────────────────────────────────┘
+
+┌─────────────────────────────────────────────────────┐
+│  Recovery Mode (HTTP Polling)                       │
+├─────────────────────────────────────────────────────┤
+│  1. WebSocket fails/timeout                         │
+│  2. SDK polls: GET /sessions/{session_id}           │
+│  3. Server responds: {"status": "running"}          │
+│  4. Wait 10s, poll again                            │
+│  5. Server responds: {"status": "done", "result"}   │
+│  6. SDK returns result to your code                 │
+└─────────────────────────────────────────────────────┘
+```
+
+### Error Scenarios Handled
+
+| Scenario | What Happens |
+|----------|-------------|
+| **Network disconnect** | Automatic polling recovers result |
+| **Page refresh** | Session ID in localStorage, poll for result |
+| **10-minute timeout** | Polling activates, waits for completion |
+| **Server restart** | Polling continues, result available when server back |
+| **Connection drops mid-stream** | Polling recovers final result |
+
+### Best Practices
+
+**1. For long-running tasks:**
+```typescript
+// Just call input() - recovery is automatic
+const response = await agent.input("Process 1GB of data");
+// Works even if it takes 20 minutes
+```
+
+**2. For user feedback:**
+```typescript
+agent.on('reconnecting', () => {
+  showMessage('Connection lost, recovering...');
+});
+
+agent.on('polling', () => {
+  showMessage('Checking for results...');
+});
+```
+
+**3. For critical operations:**
+```typescript
+try {
+  const response = await agent.input("Critical task");
+  console.log("Success:", response.text);
+} catch (error) {
+  // Only fails if:
+  // - Server down for 24+ hours
+  // - Session expired (24h TTL)
+  console.error("Failed:", error);
+}
+```
+
+---
+
 ## Message Protocol
 
 ### INPUT (Client → Relay → Agent)

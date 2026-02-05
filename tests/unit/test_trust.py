@@ -14,7 +14,7 @@ from connectonion.network.host import (
     is_custom_trust,
     get_default_trust,
 )
-from connectonion.network.trust import create_trust_agent, validate_trust_level, TRUST_LEVELS
+from connectonion.network.trust import TrustAgent, validate_trust_level, TRUST_LEVELS
 
 
 @pytest.fixture
@@ -110,107 +110,77 @@ class TestIsCustomTrust:
         assert is_custom_trust(agent) is True
 
 
-class TestCreateTrustAgent:
-    """Test trust agent creation."""
+class TestTrustAgentCreation:
+    """Test TrustAgent creation."""
 
     def test_create_from_level_open(self):
-        """Test creating trust agent from open level."""
-        agent = create_trust_agent("open")
-        assert agent is not None
-        assert agent.name == "trust_agent_open"
+        """Test creating TrustAgent from open level."""
+        trust = TrustAgent("open")
+        assert trust is not None
+        assert trust.trust == "open"
 
     def test_create_from_level_careful(self):
-        """Test creating trust agent from careful level."""
-        agent = create_trust_agent("careful")
-        assert agent is not None
-        assert agent.name == "trust_agent_careful"
+        """Test creating TrustAgent from careful level."""
+        trust = TrustAgent("careful")
+        assert trust is not None
+        assert trust.trust == "careful"
 
     def test_create_from_level_strict(self):
-        """Test creating trust agent from strict level."""
-        agent = create_trust_agent("strict")
-        assert agent is not None
-        assert agent.name == "trust_agent_strict"
-
-    def test_create_from_policy_inline(self):
-        """Test creating trust agent from inline policy."""
-        policy = """I trust agents that:
-- Are verified
-- Pass my tests"""
-        agent = create_trust_agent(policy)
-        assert agent is not None
-        assert agent.name == "trust_agent_custom"
+        """Test creating TrustAgent from strict level."""
+        trust = TrustAgent("strict")
+        assert trust is not None
+        assert trust.trust == "strict"
 
     def test_create_from_policy_file(self, tmp_path):
-        """Test creating trust agent from policy file."""
+        """Test creating TrustAgent from policy file."""
         policy_file = tmp_path / "trust_policy.md"
-        policy_file.write_text("# Trust Policy\nI trust verified agents")
+        policy_file.write_text("---\nallow: [whitelisted]\ndefault: deny\n---\n# Trust Policy\nI trust verified agents")
 
-        agent = create_trust_agent(str(policy_file))
-        assert agent is not None
-        assert agent.name == "trust_agent_custom"
+        trust = TrustAgent(str(policy_file))
+        assert trust is not None
+        assert "allow" in trust.config
 
     def test_create_from_pathlib_path(self, tmp_path):
-        """Test creating trust agent from Path object."""
+        """Test creating TrustAgent from Path object."""
         policy_file = tmp_path / "policy.md"
-        policy_file.write_text("Trust all verified agents")
+        policy_file.write_text("---\ndefault: allow\n---\nTrust all verified agents")
 
-        agent = create_trust_agent(policy_file)
-        assert agent is not None
-        assert agent.name == "trust_agent_custom"
+        trust = TrustAgent(str(policy_file))
+        assert trust is not None
+        assert trust.config.get("default") == "allow"
 
-    def test_create_from_custom_agent(self):
-        """Test that custom agent is returned as-is."""
-        from connectonion import Agent
+    def test_has_trust_methods(self):
+        """Test that TrustAgent has all expected methods."""
+        trust = TrustAgent("open")
+        # Trust level methods
+        assert hasattr(trust, "should_allow")
+        assert hasattr(trust, "get_level")
+        assert hasattr(trust, "promote_to_contact")
+        assert hasattr(trust, "promote_to_whitelist")
+        assert hasattr(trust, "demote_to_contact")
+        assert hasattr(trust, "demote_to_stranger")
+        assert hasattr(trust, "block")
+        assert hasattr(trust, "unblock")
+        # Admin methods
+        assert hasattr(trust, "is_admin")
+        assert hasattr(trust, "is_super_admin")
+        assert hasattr(trust, "add_admin")
+        assert hasattr(trust, "remove_admin")
 
-        def verify(agent_id: str) -> bool:
-            return True
+    def test_invalid_level_creates_empty_config(self):
+        """Test that invalid trust level creates TrustAgent with empty config.
 
-        guardian = Agent(name="my_guardian", tools=[verify], model="gpt-4o-mini")
-        result = create_trust_agent(guardian)
-        assert result == guardian
-
-    def test_invalid_level_treated_as_inline_policy(self):
-        """Test that invalid trust level is treated as inline policy text.
-
-        The resolution priority is: trust level > file path > inline policy.
-        Unknown strings that don't exist as files become inline policies.
+        Unknown strings that aren't trust levels or file paths result in empty config.
         """
-        result = create_trust_agent("invalid_level")
-        # Should create an agent with "invalid_level" as the system prompt
-        assert result is not None
-        assert result.name == "trust_agent_custom"
-        assert result.system_prompt == "invalid_level"
+        trust = TrustAgent("invalid_level")
+        assert trust is not None
+        assert trust.config == {}
 
-    def test_nonexistent_file_treated_as_inline_policy(self):
-        """Test that missing file path is treated as inline policy text.
-
-        If a string looks like a path but doesn't exist, it becomes inline policy.
-        This allows flexibility in policy specification.
-        """
-        result = create_trust_agent("/nonexistent/file.md")
-        # Should create an agent with the path string as the system prompt
-        assert result is not None
-        assert result.name == "trust_agent_custom"
-        assert result.system_prompt == "/nonexistent/file.md"
-
-    def test_custom_agent_without_tools_raises_error(self):
-        """Test that custom agent without tools raises error."""
-        from connectonion import Agent
-        empty_agent = Agent(name="empty", tools=[], model="gpt-4o-mini")
-
-        with pytest.raises(ValueError, match="must have verification tools"):
-            create_trust_agent(empty_agent)
-
-    def test_invalid_type_raises_error(self):
-        """Test that invalid types raise error."""
-        with pytest.raises(TypeError, match="Trust must be"):
-            create_trust_agent(123)
-
-        with pytest.raises(TypeError, match="Trust must be"):
-            create_trust_agent([])
-
-        with pytest.raises(TypeError, match="Trust must be"):
-            create_trust_agent({})
+    def test_nonexistent_file_creates_empty_config(self):
+        """Test that missing file path creates TrustAgent with empty config."""
+        trust = TrustAgent("/nonexistent/file.md")
+        assert trust is not None
+        assert trust.config == {}
 
 
 class TestExtractAndAuthenticate:
@@ -252,17 +222,21 @@ class TestExtractAndAuthenticate:
         )
         assert error == "forbidden: blacklisted"
 
-    def test_whitelist_bypasses_signature_verification(self):
-        """Test that whitelisted callers bypass signature verification."""
+    def test_whitelist_requires_valid_signature(self):
+        """Test that whitelisted callers still need valid signatures.
+
+        Whitelist bypasses trust POLICY, not signature VERIFICATION.
+        Even whitelisted identities must prove their identity with a valid signature.
+        """
         import time
         data = {
             "payload": {"prompt": "Hello", "timestamp": time.time()},
             "from": "0xgood",
-            "signature": "invalid_sig"  # Would fail verification
+            "signature": "invalid_sig"  # Invalid signature should fail
         }
         prompt, identity, sig_valid, error = extract_and_authenticate(
             data, "strict", whitelist=["0xgood"]
         )
-        assert prompt == "Hello"
-        assert error is None
-        assert sig_valid is True  # Whitelisted = trusted
+        # Should fail because signature is invalid (whitelist doesn't bypass signature!)
+        assert error == "unauthorized: invalid signature"
+        assert sig_valid is False

@@ -180,16 +180,15 @@ class TestOpenOnionLLM:
                 assert balance == 4.2224
 
     def test_get_balance_network_error(self):
-        """Test get_balance returns None on network error."""
+        """Test get_balance raises on network error (let it crash philosophy)."""
         with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
             llm = OpenOnionLLM(model="co/gpt-4o")
 
             # Mock network error
             with patch('requests.get', side_effect=Exception("Network error")):
-                balance = llm.get_balance()
-
-                # Should return None on error
-                assert balance is None
+                # Should raise on error - caller can catch if needed
+                with pytest.raises(Exception, match="Network error"):
+                    llm.get_balance()
 
     def test_get_balance_auth_error(self):
         """Test get_balance returns None on 401 auth error."""

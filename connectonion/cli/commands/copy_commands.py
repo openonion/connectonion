@@ -63,6 +63,13 @@ PROMPTS = {
     "coding_agent": "coding_agent",
 }
 
+# Registry of copyable trust policies
+TRUST = {
+    "open": "open.md",
+    "careful": "careful.md",
+    "strict": "strict.md",
+}
+
 
 def handle_copy(
     names: List[str],
@@ -82,11 +89,14 @@ def handle_copy(
     import connectonion.useful_plugins as plugins_module
     import connectonion.tui as tui_module
     import connectonion.useful_prompts as prompts_module
+    import connectonion
 
     useful_tools_dir = Path(tools_module.__file__).parent
     useful_plugins_dir = Path(plugins_module.__file__).parent
     tui_dir = Path(tui_module.__file__).parent
     useful_prompts_dir = Path(prompts_module.__file__).parent
+    # Trust policies are in the main package's prompts/trust/ directory
+    trust_dir = Path(connectonion.__file__).parent.parent / "prompts" / "trust"
 
     current_dir = Path.cwd()
 
@@ -122,6 +132,13 @@ def handle_copy(
             source = useful_prompts_dir / PROMPTS[name_lower]
             dest_dir = Path(path) if path else current_dir / "prompts"
             copy_directory(source, dest_dir, force)
+
+        # Check if it's a trust policy (support both "careful" and "trust/careful")
+        elif name_lower in TRUST or (name_lower.startswith("trust/") and name_lower[6:] in TRUST):
+            policy_name = name_lower[6:] if name_lower.startswith("trust/") else name_lower
+            source = trust_dir / TRUST[policy_name]
+            dest_dir = Path(path) if path else current_dir / "prompts" / "trust"
+            copy_file(source, dest_dir, force)
 
         else:
             console.print(f"[red]Unknown: {name}[/red]")
@@ -180,9 +197,13 @@ def show_available_items():
     for name, dir_name in sorted(PROMPTS.items()):
         table.add_row(name, "prompt", f"{dir_name}/")
 
+    for name, file in sorted(TRUST.items()):
+        table.add_row(f"trust/{name}", "trust", file)
+
     for name, file in sorted(TUI.items()):
         table.add_row(name, "tui", file)
 
     console.print(table)
     console.print("\n[dim]Usage: co copy <name> [--path ./custom/][/dim]")
     console.print("[dim]Prompts are copied as directories to ./prompts/<name>/[/dim]")
+    console.print("[dim]Trust policies are copied to ./prompts/trust/<name>.md[/dim]")

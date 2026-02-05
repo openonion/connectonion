@@ -239,7 +239,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=storage,
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -265,7 +264,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -285,7 +283,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "info": lambda trust: {"name": "test", "trust": trust},
+            "info": lambda trust, trust_config: {"name": "test", "trust": trust},
         }
 
         await handle_http(
@@ -293,7 +291,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="careful",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -321,7 +318,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -348,7 +344,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -376,7 +371,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -402,7 +396,7 @@ class TestHandleHttpRouting:
 
         handlers = {
             "auth": lambda data, trust, **kw: ("Hello", "0xtest", True, None),
-            "input": lambda storage, prompt, ttl, session: {"result": "World", "session_id": "x"},
+            "input": lambda storage, prompt, session: {"result": "World", "session_id": "x"},
         }
 
         await handle_http(
@@ -410,7 +404,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -438,7 +431,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -464,7 +456,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -488,7 +479,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -514,7 +504,6 @@ class TestHandleHttpRouting:
             route_handlers=handlers,
             storage=Mock(),
             trust="open",
-            result_ttl=3600,
             start_time=0
         )
 
@@ -544,8 +533,7 @@ class TestAdminEndpoints:
                 route_handlers=handlers,
                 storage=Mock(),
                 trust="open",
-                result_ttl=3600,
-                start_time=0
+                    start_time=0
             )
 
         assert sent[0]["status"] == 401
@@ -573,8 +561,7 @@ class TestAdminEndpoints:
                 route_handlers=handlers,
                 storage=Mock(),
                 trust="open",
-                result_ttl=3600,
-                start_time=0
+                    start_time=0
             )
 
         assert sent[0]["status"] == 401
@@ -602,8 +589,7 @@ class TestAdminEndpoints:
                 route_handlers=handlers,
                 storage=Mock(),
                 trust="open",
-                result_ttl=3600,
-                start_time=0
+                    start_time=0
             )
 
         assert sent[0]["status"] == 200
@@ -632,8 +618,7 @@ class TestAdminEndpoints:
                 route_handlers=handlers,
                 storage=Mock(),
                 trust="open",
-                result_ttl=3600,
-                start_time=0
+                    start_time=0
             )
 
         assert sent[0]["status"] == 200

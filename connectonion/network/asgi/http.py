@@ -107,6 +107,7 @@ async def handle_http(
     route_handlers: dict,
     storage,
     trust: str,
+    trust_config: dict | None = None,
     start_time: float,
     blacklist: list | None = None,
     whitelist: list | None = None,
@@ -120,6 +121,7 @@ async def handle_http(
         route_handlers: Dict of route handler functions (input, session, sessions, health, info, auth)
         storage: SessionStorage instance
         trust: Trust level (open/careful/strict)
+        trust_config: Parsed YAML config from trust policy (for /info onboard)
         start_time: Server start time
         blacklist: Blocked identities
         whitelist: Allowed identities
@@ -133,26 +135,130 @@ async def handle_http(
         await send({"type": "http.response.body", "body": b""})
         return
 
-    # Admin endpoints require API key auth
+    # Admin endpoints
     if path.startswith("/admin"):
-        headers = dict(scope.get("headers", []))
-        auth = headers.get(b"authorization", b"").decode()
-        expected = os.environ.get("OPENONION_API_KEY", "")
-        if not expected or not auth.startswith("Bearer ") or not hmac.compare_digest(auth[7:], expected):
-            await send_json(send, {"error": "unauthorized"}, 401)
-            return
+        # Legacy admin endpoints (Bearer token auth)
+        if path in ["/admin/logs", "/admin/sessions"]:
+            headers_dict = dict(scope.get("headers", []))
+            auth = headers_dict.get(b"authorization", b"").decode()
+            expected = os.environ.get("OPENONION_API_KEY", "")
+            if not expected or not auth.startswith("Bearer ") or not hmac.compare_digest(auth[7:], expected):
+                await send_json(send, {"error": "unauthorized"}, 401)
+                return
 
-        if method == "GET" and path == "/admin/logs":
-            result = route_handlers["admin_logs"]()
-            if "error" in result:
-                await send_json(send, result, 404)
+            if method == "GET" and path == "/admin/logs":
+                result = route_handlers["admin_logs"]()
+                if "error" in result:
+                    await send_json(send, result, 404)
+                else:
+                    await send_text(send, result["content"])
+                return
+
+            if method == "GET" and path == "/admin/sessions":
+                await send_json(send, route_handlers["admin_sessions"]())
+                return
+
+        # Admin trust routes (signed request + admin check)
+        if path.startswith("/admin/trust/") or path.startswith("/superadmin/"):
+            trust_agent = route_handlers["trust_agent"]
+
+            # For GET requests, allow auth via headers (bodies often stripped by proxies)
+            headers_dict = dict(scope.get("headers", []))
+            header_from = headers_dict.get(b"x-from", b"").decode()
+            header_sig = headers_dict.get(b"x-signature", b"").decode()
+            header_ts = headers_dict.get(b"x-timestamp", b"").decode()
+
+            if method == "GET" and header_from and header_sig and header_ts:
+                # Build signed request from headers
+                try:
+                    data = {
+                        "payload": {"timestamp": float(header_ts)},
+                        "from": header_from,
+                        "signature": header_sig
+                    }
+                except ValueError:
+                    await send_json(send, {"error": "Invalid X-Timestamp header"}, 400)
+                    return
             else:
-                await send_text(send, result["content"])
-            return
+                # Read from body (POST or GET without headers)
+                body = await read_body(receive)
+                try:
+                    data = json.loads(body) if body else {}
+                except json.JSONDecodeError:
+                    await send_json(send, {"error": "Invalid JSON"}, 400)
+                    return
 
-        if method == "GET" and path == "/admin/sessions":
-            await send_json(send, route_handlers["admin_sessions"]())
-            return
+            # Authenticate signed request (reuse same auth as /input, but with "open" trust)
+            _, identity, sig_valid, err = route_handlers["auth"](data, "open")
+            if err or not sig_valid:
+                await send_json(send, {"error": err or "unauthorized: invalid signature"}, 401)
+                return
+
+            # Check admin permission
+            if path.startswith("/superadmin/"):
+                # Super admin only (self address)
+                if not trust_agent.is_super_admin(identity):
+                    await send_json(send, {"error": "forbidden: super admin only"}, 403)
+                    return
+            else:
+                # Any admin
+                if not trust_agent.is_admin(identity):
+                    await send_json(send, {"error": "forbidden: admin only"}, 403)
+                    return
+
+            payload = data.get("payload", {})
+            client_id = payload.get("client_id")
+
+            # Route to handlers
+            if method == "POST" and path == "/admin/trust/promote":
+                if not client_id:
+                    await send_json(send, {"error": "client_id required"}, 400)
+                    return
+                await send_json(send, route_handlers["admin_trust_promote"](client_id))
+                return
+
+            if method == "POST" and path == "/admin/trust/demote":
+                if not client_id:
+                    await send_json(send, {"error": "client_id required"}, 400)
+                    return
+                await send_json(send, route_handlers["admin_trust_demote"](client_id))
+                return
+
+            if method == "POST" and path == "/admin/trust/block":
+                if not client_id:
+                    await send_json(send, {"error": "client_id required"}, 400)
+                    return
+                reason = payload.get("reason", "")
+                await send_json(send, route_handlers["admin_trust_block"](client_id, reason))
+                return
+
+            if method == "POST" and path == "/admin/trust/unblock":
+                if not client_id:
+                    await send_json(send, {"error": "client_id required"}, 400)
+                    return
+                await send_json(send, route_handlers["admin_trust_unblock"](client_id))
+                return
+
+            if method == "GET" and path.startswith("/admin/trust/level/"):
+                client_id = path[len("/admin/trust/level/"):]
+                await send_json(send, route_handlers["admin_trust_level"](client_id))
+                return
+
+            if method == "POST" and path == "/superadmin/add":
+                admin_id = payload.get("admin_id")
+                if not admin_id:
+                    await send_json(send, {"error": "admin_id required"}, 400)
+                    return
+                await send_json(send, route_handlers["admin_admins_add"](admin_id))
+                return
+
+            if method == "POST" and path == "/superadmin/remove":
+                admin_id = payload.get("admin_id")
+                if not admin_id:
+                    await send_json(send, {"error": "admin_id required"}, 400)
+                    return
+                await send_json(send, route_handlers["admin_admins_remove"](admin_id))
+                return
 
         await send_json(send, {"error": "not found"}, 404)
         return
@@ -189,7 +295,7 @@ async def handle_http(
         await send_json(send, route_handlers["health"](start_time))
 
     elif method == "GET" and path == "/info":
-        await send_json(send, route_handlers["info"](trust))
+        await send_json(send, route_handlers["info"](trust, trust_config))
 
     elif method == "GET" and path == "/docs":
         # Serve static docs page

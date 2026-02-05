@@ -1,23 +1,36 @@
 """
-Purpose: Factory for creating trust verification agents with policies.
+Factory for creating trust verification agents with policies.
+
+Policy files use YAML frontmatter for fast rules + markdown body for LLM prompts:
+
+    ---
+    allow: [whitelisted, contact]
+    deny: [blocked]
+    onboard:
+      invite_code: [BETA2024]
+      payment: 10
+    default: ask
+    ---
+    # LLM Prompt for trust evaluation...
+
+Fast rules execute without LLM (zero tokens, instant). Only 'default: ask' triggers LLM.
 
 String Resolution Priority:
-  1. Trust level ("open", "careful", "strict")
+  1. Trust level ("open", "careful", "strict") → loads from prompts/trust/{level}.md
   2. File path (if exists)
   3. Inline policy text
-
-LLM-Note:
-  Dependencies: [os, pathlib, typing, .prompts, .tools] | imported by [host/server.py] | tested by [tests/unit/test_trust.py]
-  Data flow: trust param → check env default → resolve by priority → return Agent or None
-  Errors: TypeError (invalid type) | FileNotFoundError (Path doesn't exist)
 """
 
 import os
 from pathlib import Path
 from typing import Union, Optional
 
-from .prompts import get_trust_prompt
 from .tools import get_trust_verification_tools
+from .fast_rules import parse_policy
+
+
+# Path to trust policy files (at repo root: prompts/trust/)
+PROMPTS_DIR = Path(__file__).parent.parent.parent.parent / "prompts" / "trust"
 
 
 # Trust level constants
@@ -45,21 +58,28 @@ def get_default_trust_level() -> Optional[str]:
 
 def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional[str] = None, model: str = "gpt-5-mini") -> Optional['Agent']:
     """
-    Create a trust agent based on the trust parameter.
+    DEPRECATED: Use TrustAgent instead.
+
+    >>> from connectonion.network.trust import TrustAgent
+    >>> trust = TrustAgent("careful")
+    >>> trust.should_allow("client-123")
+
+    This function returns a regular Agent, which lacks TrustAgent methods
+    like should_allow(), promote_to_contact(), etc.
 
     Args:
-        trust: Trust configuration:
-            - None: Check CONNECTONION_TRUST env, else return None
-            - Agent: Return as-is (must have tools)
-            - Path: Read file as policy
-            - str: Resolved by priority:
-                1. Trust level ("open", "careful", "strict")
-                2. File path (if file exists)
-                3. Inline policy text
+        trust: Trust configuration (see TrustAgent for new API)
 
     Returns:
         Agent configured for trust verification, or None
     """
+    import warnings
+    warnings.warn(
+        "create_trust_agent() is deprecated. Use TrustAgent instead: "
+        "from connectonion.network.trust import TrustAgent; trust = TrustAgent('careful')",
+        DeprecationWarning,
+        stacklevel=2
+    )
     from ...core.agent import Agent  # Import here to avoid circular dependency
     
     # If None, check for environment default
@@ -95,13 +115,20 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
     # Handle string: trust level > file path > inline policy
     if isinstance(trust, str):
         if trust.lower() in TRUST_LEVELS:
-            return Agent(
-                name=f"trust_agent_{trust.lower()}",
-                tools=trust_tools,
-                system_prompt=get_trust_prompt(trust.lower()),
-                api_key=api_key,
-                model=model
-            )
+            # Load from prompts/trust/{level}.md
+            policy_path = PROMPTS_DIR / f"{trust.lower()}.md"
+            if policy_path.exists():
+                policy_text = policy_path.read_text(encoding='utf-8')
+                config, markdown_body = parse_policy(policy_text)
+                return Agent(
+                    name=f"trust_agent_{trust.lower()}",
+                    tools=trust_tools,
+                    system_prompt=markdown_body,
+                    api_key=api_key,
+                    model=model
+                )
+            # Fallback if file doesn't exist
+            raise FileNotFoundError(f"Trust policy file not found: {policy_path}")
 
         path = Path(trust)
         if path.exists() and path.is_file():

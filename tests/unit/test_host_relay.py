@@ -263,29 +263,34 @@ class TestHostConsoleOutput:
 class TestCreateRouteHandlers:
     """Test _create_route_handlers function."""
 
-    def test_creates_ws_input_handler(self, create_mock_agent):
+    @pytest.fixture
+    def mock_trust_agent(self):
+        """Create a mock TrustAgent for testing."""
+        from connectonion.network.trust import TrustAgent
+        return TrustAgent("open")
+
+    def test_creates_ws_input_handler(self, create_mock_agent, mock_trust_agent):
         """Test that _create_route_handlers creates ws_input handler."""
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600)
+        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
 
         assert "ws_input" in handlers
         assert callable(handlers["ws_input"])
 
-    def test_creates_all_required_handlers(self, create_mock_agent):
+    def test_creates_all_required_handlers(self, create_mock_agent, mock_trust_agent):
         """Test that _create_route_handlers creates all required handlers."""
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600)
+        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
 
-        required = ["input", "session", "sessions", "health", "info", "auth", "ws_input", "admin_logs", "admin_sessions"]
+        required = ["input", "session", "sessions", "health", "info", "auth", "ws_input", "admin_logs", "admin_sessions", "trust_agent"]
         for key in required:
             assert key in handlers, f"Missing handler: {key}"
-            assert callable(handlers[key])
 
-    def test_ws_input_calls_factory(self, create_mock_agent, tmp_path):
+    def test_ws_input_calls_factory(self, create_mock_agent, tmp_path, mock_trust_agent):
         """Test that ws_input calls the factory to create fresh agent."""
         from connectonion.network.host.session import SessionStorage
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600)
+        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
         mock_connection = Mock()
 
@@ -295,7 +300,7 @@ class TestCreateRouteHandlers:
         assert result["status"] == "done"
         assert "session_id" in result
 
-    def test_ws_input_injects_connection(self, tmp_path):
+    def test_ws_input_injects_connection(self, tmp_path, mock_trust_agent):
         """Test that ws_input injects connection into agent."""
         from connectonion.network.host.session import SessionStorage
 
@@ -309,7 +314,7 @@ class TestCreateRouteHandlers:
             return agent
 
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(tracking_factory, agent_metadata, result_ttl=3600)
+        handlers = host_module._create_route_handlers(tracking_factory, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
         mock_connection = Mock()
 
@@ -319,7 +324,7 @@ class TestCreateRouteHandlers:
         assert len(created_agents) == 1
         assert created_agents[0].io == mock_connection
 
-    def test_ws_input_returns_result_dict(self, tmp_path):
+    def test_ws_input_returns_result_dict(self, tmp_path, mock_trust_agent):
         """Test that ws_input returns result dict with session info."""
         from connectonion.network.host.session import SessionStorage
 
@@ -330,7 +335,7 @@ class TestCreateRouteHandlers:
             return agent
 
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(mock_factory, agent_metadata, result_ttl=3600)
+        handlers = host_module._create_route_handlers(mock_factory, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
         mock_connection = Mock()
 

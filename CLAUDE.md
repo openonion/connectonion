@@ -58,7 +58,9 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
 - Custom policies: markdown files or inline text describing verification rules
 - Custom agents: Pass your own Agent instance with verification tools
 - Environment-based defaults: `CONNECTONION_ENV` sets trust level automatically
-- Module structure: `factory.py` (creation), `prompts.py` (level prompts), `tools.py` (verification tools)
+- Module structure: `factory.py` (creation), `prompts.py` (level prompts), `tools.py` (verification tools), `trust_agent.py` (TrustAgent class)
+- Onboard methods: `invite_code` (verify against configured codes), `payment` (verify via oo-api credit transfer)
+- Payment verification: `TrustAgent.verify_payment()` calls oo-api `/api/v1/onboard/verify` to check for recent transfers
 
 #### XRay Debugging (`connectonion/xray.py`)
 - `@xray` decorator injects context: `xray.agent`, `xray.task`, `xray.messages`, `xray.iteration`
@@ -235,7 +237,8 @@ connectonion/
 - Custom policies loaded from markdown files or inline strings
 - Trust agent created lazily when trust parameter provided
 - Prevents infinite recursion: trust agents don't have their own trust agents
-- Files: `factory.py` (create_trust_agent), `prompts.py` (TRUST_PROMPTS), `tools.py` (check_whitelist, verify_agent)
+- Files: `factory.py` (create_trust_agent), `fast_rules.py` (parse_policy, evaluate_request), `tools.py` (is_whitelisted, is_blocked, promote_to_contact)
+- Policy files: `prompts/trust/{open,careful,strict}.md` with YAML frontmatter for fast rules
 
 ### XRay Context Injection (`connectonion/xray.py`)
 - Stores context in `builtins.xray` global object

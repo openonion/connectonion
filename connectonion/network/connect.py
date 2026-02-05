@@ -6,13 +6,23 @@ Lifecycle (Client Side):
   2. agent.input(prompt) opens WebSocket to relay /ws/input endpoint
   3. Sends INPUT message: {type: "INPUT", input_id, to, prompt, session?}
   4. Receives streaming events: tool_call, tool_result, thinking, assistant
-  5. Receives final OUTPUT: {type: "OUTPUT", result, session} or ask_user
-  6. Returns Response(text, done) - done=False means agent asked a question
+  5. If stranger: ONBOARD_REQUIRED → callback provides credentials → ONBOARD_SUBMIT → ONBOARD_SUCCESS → retry
+  6. Receives final OUTPUT: {type: "OUTPUT", result, session} or ask_user
+  7. Returns Response(text, done) - done=False means agent asked a question
 
 Message Flow:
   Client → /ws/input → Relay → forwards to Agent's /ws/announce connection
   Agent processes → sends OUTPUT → Relay resolves pending_outputs future
   Relay → forwards OUTPUT → Client receives response
+
+Onboard Flow (for strangers connecting to careful/strict agents):
+  Client: INPUT
+  Server: ONBOARD_REQUIRED {methods: ["invite_code", "payment"], payment_amount: N}
+  Client: calls on_onboard callback to get credentials
+  Client: ONBOARD_SUBMIT {invite_code: "...", payment: N}
+  Server: ONBOARD_SUCCESS {level: "contact", message: "..."}
+  Client: INPUT (retry original prompt)
+  Server: OUTPUT
 
 Related Files:
   - oo-api/relay/routes.py: Relay server WebSocket endpoints
@@ -31,7 +41,7 @@ import json
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from .. import address as addr
 
@@ -96,7 +106,12 @@ class RemoteAgent:
         """
         return self._ui_events
 
-    def input(self, prompt: str, timeout: float = 60.0) -> Response:
+    def input(
+        self,
+        prompt: str,
+        timeout: float = 60.0,
+        on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None
+    ) -> Response:
         """
         Send prompt to remote agent and get response.
 
@@ -107,6 +122,10 @@ class RemoteAgent:
         Args:
             prompt: Task/prompt to send
             timeout: Seconds to wait for response (default 60)
+            on_onboard: Callback when agent requires onboarding (invite code or payment).
+                        Called with (methods: list[str], payment_amount: float | None).
+                        Should return {"invite_code": "..."} or {"payment": amount}.
+                        If None, prompts interactively in terminal.
 
         Returns:
             Response with text and done flag
@@ -115,6 +134,12 @@ class RemoteAgent:
             >>> response = agent.input("Book a flight to Tokyo")
             >>> if not response.done:
             ...     response = agent.input("March 15")  # Answer the question
+
+        Onboard example:
+            >>> def handle_onboard(methods, payment_amount):
+            ...     if "invite_code" in methods:
+            ...         return {"invite_code": input("Enter invite code: ")}
+            >>> response = agent.input("Hello", on_onboard=handle_onboard)
         """
         try:
             asyncio.get_running_loop()
@@ -125,11 +150,16 @@ class RemoteAgent:
         except RuntimeError as e:
             if "input() cannot be used" in str(e):
                 raise
-        return asyncio.run(self._stream_input(prompt, timeout))
+        return asyncio.run(self._stream_input(prompt, timeout, on_onboard))
 
-    async def input_async(self, prompt: str, timeout: float = 60.0) -> Response:
+    async def input_async(
+        self,
+        prompt: str,
+        timeout: float = 60.0,
+        on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None
+    ) -> Response:
         """Async version of input()."""
-        return await self._stream_input(prompt, timeout)
+        return await self._stream_input(prompt, timeout, on_onboard)
 
     def reset(self) -> None:
         """Clear conversation and start fresh."""
@@ -137,7 +167,12 @@ class RemoteAgent:
         self._ui_events = []
         self._status = "idle"
 
-    async def _stream_input(self, prompt: str, timeout: float) -> Response:
+    async def _stream_input(
+        self,
+        prompt: str,
+        timeout: float,
+        on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None
+    ) -> Response:
         """Send prompt via WebSocket and stream events."""
         import websockets
 
@@ -153,30 +188,10 @@ class RemoteAgent:
         ws_url = f"{self._relay_url}/ws/input"
 
         # Generate input_id for routing/response matching
-        import uuid
         input_id = str(uuid.uuid4())
 
         # Build the INPUT message
-        input_msg = {
-            "type": "INPUT",
-            "input_id": input_id,
-            "prompt": prompt,
-            "to": self.address,
-            "timestamp": int(time.time())
-        }
-
-        # Add session for conversation continuation
-        if self._current_session:
-            input_msg["session"] = self._current_session
-
-        # Sign if keys provided
-        if self._keys:
-            payload = {"prompt": prompt, "to": self.address, "timestamp": input_msg["timestamp"]}
-            canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
-            signature = addr.sign(self._keys, canonical.encode())
-            input_msg["payload"] = payload
-            input_msg["from"] = self._keys["address"]
-            input_msg["signature"] = signature.hex()
+        input_msg = self._build_input_message(prompt, input_id)
 
         try:
             async with websockets.connect(ws_url) as ws:
@@ -209,6 +224,43 @@ class RemoteAgent:
                         self._status = "idle"
                         raise ConnectionError(f"Agent error: {event.get('message', event.get('error'))}")
 
+                    elif event_type == "ONBOARD_REQUIRED":
+                        # Agent requires onboarding (invite code or payment)
+                        methods = event.get("methods", [])
+                        payment_amount = event.get("payment_amount")
+
+                        # Add onboard_required event to UI
+                        self._add_ui_event({
+                            "type": "onboard_required",
+                            "methods": methods,
+                            "payment_amount": payment_amount
+                        })
+
+                        # Get credentials from callback or prompt interactively
+                        if on_onboard:
+                            credentials = on_onboard(methods, payment_amount)
+                        else:
+                            credentials = self._prompt_onboard(methods, payment_amount)
+
+                        # Send ONBOARD_SUBMIT
+                        submit_msg = self._build_onboard_submit(credentials)
+                        await ws.send(json.dumps(submit_msg))
+                        # Continue loop to wait for ONBOARD_SUCCESS
+
+                    elif event_type == "ONBOARD_SUCCESS":
+                        # Onboard successful - add to UI
+                        self._add_ui_event({
+                            "type": "onboard_success",
+                            "level": event.get("level", "contact"),
+                            "message": event.get("message", "Onboard successful")
+                        })
+
+                        # Retry the original prompt
+                        retry_input_id = str(uuid.uuid4())
+                        retry_msg = self._build_input_message(prompt, retry_input_id)
+                        await ws.send(json.dumps(retry_msg))
+                        # Continue loop to wait for OUTPUT
+
                     elif event_type == "ask_user":
                         # Agent is asking a question - return done=False so caller sends another input()
                         self._status = "waiting"
@@ -232,6 +284,70 @@ class RemoteAgent:
         except asyncio.TimeoutError:
             self._status = "idle"
             raise TimeoutError(f"Request timed out after {timeout}s")
+
+    def _build_input_message(self, prompt: str, input_id: str) -> Dict[str, Any]:
+        """Build INPUT message with optional signing."""
+        input_msg = {
+            "type": "INPUT",
+            "input_id": input_id,
+            "prompt": prompt,
+            "to": self.address,
+            "timestamp": int(time.time())
+        }
+
+        # Add session for conversation continuation
+        if self._current_session:
+            input_msg["session"] = self._current_session
+
+        # Sign if keys provided
+        if self._keys:
+            payload = {"prompt": prompt, "to": self.address, "timestamp": input_msg["timestamp"]}
+            canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+            signature = addr.sign(self._keys, canonical.encode())
+            input_msg["payload"] = payload
+            input_msg["from"] = self._keys["address"]
+            input_msg["signature"] = signature.hex()
+
+        return input_msg
+
+    def _build_onboard_submit(self, credentials: Dict[str, Any]) -> Dict[str, Any]:
+        """Build ONBOARD_SUBMIT message with optional signing."""
+        payload = {
+            "timestamp": int(time.time()),
+            **credentials
+        }
+
+        submit_msg: Dict[str, Any] = {
+            "type": "ONBOARD_SUBMIT",
+            "payload": payload
+        }
+
+        # Sign if keys provided
+        if self._keys:
+            canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+            signature = addr.sign(self._keys, canonical.encode())
+            submit_msg["from"] = self._keys["address"]
+            submit_msg["signature"] = signature.hex()
+
+        return submit_msg
+
+    def _prompt_onboard(self, methods: List[str], payment_amount: Optional[float]) -> Dict[str, Any]:
+        """Prompt user interactively for onboard credentials."""
+        print(f"\n🔐 Access verification required")
+        print(f"   Available methods: {', '.join(methods)}")
+
+        if "invite_code" in methods:
+            code = input("   Enter invite code: ").strip()
+            if code:
+                return {"invite_code": code}
+
+        if "payment" in methods and payment_amount:
+            print(f"   Payment required: ${payment_amount}")
+            confirm = input("   Pay now? [y/N]: ").strip().lower()
+            if confirm == 'y':
+                return {"payment": payment_amount}
+
+        raise ValueError("No valid onboard credentials provided")
 
     def _handle_stream_event(self, event: Dict[str, Any]) -> None:
         """Handle streaming event and update UI."""

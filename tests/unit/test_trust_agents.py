@@ -1,120 +1,92 @@
-"""Tests for network/trust/prompts.py - Trust level prompts."""
+"""Tests for trust policy files and fast rules."""
 
 import pytest
+from pathlib import Path
 
-from connectonion.network.trust.prompts import (
-    TRUST_PROMPTS,
-    get_trust_prompt,
-    get_open_trust_prompt,
-    get_careful_trust_prompt,
-    get_strict_trust_prompt,
-)
+from connectonion.network.trust import parse_policy, TRUST_LEVELS
+from connectonion.network.trust.factory import PROMPTS_DIR
 
 
-class TestTrustPrompts:
-    """Test TRUST_PROMPTS dictionary."""
+class TestTrustPolicyFiles:
+    """Test trust policy markdown files exist and are valid."""
 
-    def test_has_three_levels(self):
-        """TRUST_PROMPTS has exactly three levels."""
-        assert len(TRUST_PROMPTS) == 3
-        assert set(TRUST_PROMPTS.keys()) == {"open", "careful", "strict"}
+    def test_prompts_dir_exists(self):
+        """Prompts directory exists."""
+        assert PROMPTS_DIR.exists(), f"Directory not found: {PROMPTS_DIR}"
 
-    def test_open_prompt_exists(self):
-        """Open trust prompt exists and is non-empty."""
-        assert "open" in TRUST_PROMPTS
-        assert len(TRUST_PROMPTS["open"]) > 0
+    def test_open_policy_exists(self):
+        """open.md exists."""
+        path = PROMPTS_DIR / "open.md"
+        assert path.exists(), f"File not found: {path}"
 
-    def test_careful_prompt_exists(self):
-        """Careful trust prompt exists and is non-empty."""
-        assert "careful" in TRUST_PROMPTS
-        assert len(TRUST_PROMPTS["careful"]) > 0
+    def test_careful_policy_exists(self):
+        """careful.md exists."""
+        path = PROMPTS_DIR / "careful.md"
+        assert path.exists(), f"File not found: {path}"
 
-    def test_strict_prompt_exists(self):
-        """Strict trust prompt exists and is non-empty."""
-        assert "strict" in TRUST_PROMPTS
-        assert len(TRUST_PROMPTS["strict"]) > 0
+    def test_strict_policy_exists(self):
+        """strict.md exists."""
+        path = PROMPTS_DIR / "strict.md"
+        assert path.exists(), f"File not found: {path}"
 
-    def test_prompts_are_strings(self):
-        """All prompts are strings."""
-        for level, prompt in TRUST_PROMPTS.items():
-            assert isinstance(prompt, str), f"Prompt for {level} is not a string"
-
-    def test_open_prompt_mentions_development(self):
-        """Open prompt mentions development context."""
-        prompt = TRUST_PROMPTS["open"]
-        assert "development" in prompt.lower()
-
-    def test_careful_prompt_mentions_verification(self):
-        """Careful prompt mentions verification."""
-        prompt = TRUST_PROMPTS["careful"]
-        assert "verify" in prompt.lower() or "verification" in prompt.lower()
-
-    def test_strict_prompt_mentions_security(self):
-        """Strict prompt mentions security."""
-        prompt = TRUST_PROMPTS["strict"]
-        assert "security" in prompt.lower()
+    def test_all_levels_have_files(self):
+        """All trust levels have corresponding .md files."""
+        for level in TRUST_LEVELS:
+            path = PROMPTS_DIR / f"{level}.md"
+            assert path.exists(), f"Missing policy file for level: {level}"
 
 
-class TestGetTrustPrompt:
-    """Test get_trust_prompt function."""
+class TestParsePolicyFiles:
+    """Test parsing YAML frontmatter from policy files."""
 
-    def test_get_open(self):
-        """Get open trust prompt."""
-        result = get_trust_prompt("open")
-        assert result == TRUST_PROMPTS["open"]
+    def test_parse_open_policy(self):
+        """Parse open.md YAML config."""
+        path = PROMPTS_DIR / "open.md"
+        content = path.read_text(encoding='utf-8')
+        config, body = parse_policy(content)
 
-    def test_get_careful(self):
-        """Get careful trust prompt."""
-        result = get_trust_prompt("careful")
-        assert result == TRUST_PROMPTS["careful"]
+        assert config.get('default') == 'allow'
+        assert len(body) > 0
 
-    def test_get_strict(self):
-        """Get strict trust prompt."""
-        result = get_trust_prompt("strict")
-        assert result == TRUST_PROMPTS["strict"]
+    def test_parse_careful_policy(self):
+        """Parse careful.md YAML config."""
+        path = PROMPTS_DIR / "careful.md"
+        content = path.read_text(encoding='utf-8')
+        config, body = parse_policy(content)
 
-    def test_case_insensitive(self):
-        """Level lookup is case insensitive."""
-        assert get_trust_prompt("OPEN") == TRUST_PROMPTS["open"]
-        assert get_trust_prompt("Careful") == TRUST_PROMPTS["careful"]
-        assert get_trust_prompt("STRICT") == TRUST_PROMPTS["strict"]
+        assert 'allow' in config
+        assert 'onboard' in config
+        assert config.get('default') == 'ask'
+        assert len(body) > 0
 
-    def test_invalid_level_raises(self):
-        """Invalid level raises ValueError."""
-        with pytest.raises(ValueError, match="Invalid trust level"):
-            get_trust_prompt("invalid")
+    def test_parse_strict_policy(self):
+        """Parse strict.md YAML config."""
+        path = PROMPTS_DIR / "strict.md"
+        content = path.read_text(encoding='utf-8')
+        config, body = parse_policy(content)
 
-    def test_invalid_level_message_lists_valid_options(self):
-        """Error message lists valid options."""
-        with pytest.raises(ValueError) as exc_info:
-            get_trust_prompt("wrong")
+        assert 'whitelisted' in config.get('allow', [])
+        assert config.get('default') == 'deny'
+        assert len(body) > 0
 
-        error_msg = str(exc_info.value)
-        assert "open" in error_msg
-        assert "careful" in error_msg
-        assert "strict" in error_msg
+    def test_open_mentions_development(self):
+        """Open policy mentions development."""
+        path = PROMPTS_DIR / "open.md"
+        content = path.read_text(encoding='utf-8')
+        assert "development" in content.lower()
 
+    def test_careful_has_onboard(self):
+        """Careful policy has onboard config."""
+        path = PROMPTS_DIR / "careful.md"
+        content = path.read_text(encoding='utf-8')
+        config, _ = parse_policy(content)
 
-class TestConvenienceFunctions:
-    """Test convenience functions for each level."""
+        onboard = config.get('onboard', {})
+        assert 'invite_code' in onboard
+        assert isinstance(onboard['invite_code'], list)
 
-    def test_get_open_trust_prompt(self):
-        """get_open_trust_prompt returns open prompt."""
-        result = get_open_trust_prompt()
-        assert result == TRUST_PROMPTS["open"]
-
-    def test_get_careful_trust_prompt(self):
-        """get_careful_trust_prompt returns careful prompt."""
-        result = get_careful_trust_prompt()
-        assert result == TRUST_PROMPTS["careful"]
-
-    def test_get_strict_trust_prompt(self):
-        """get_strict_trust_prompt returns strict prompt."""
-        result = get_strict_trust_prompt()
-        assert result == TRUST_PROMPTS["strict"]
-
-    def test_convenience_functions_match_get_trust_prompt(self):
-        """Convenience functions return same as get_trust_prompt."""
-        assert get_open_trust_prompt() == get_trust_prompt("open")
-        assert get_careful_trust_prompt() == get_trust_prompt("careful")
-        assert get_strict_trust_prompt() == get_trust_prompt("strict")
+    def test_strict_mentions_whitelist(self):
+        """Strict policy mentions whitelist."""
+        path = PROMPTS_DIR / "strict.md"
+        content = path.read_text(encoding='utf-8')
+        assert "whitelist" in content.lower()

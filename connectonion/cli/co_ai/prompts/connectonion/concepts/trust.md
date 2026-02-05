@@ -1,291 +1,249 @@
 # Trust in ConnectOnion
 
-The `trust` parameter provides flexible, bidirectional trust configuration for agent interactions.
+Trust is a **host layer** concern that controls who can access your agent. It manages onboarding, access control, and client state transitions.
 
 ## Quick Start
 
 ```python
-from connectonion import Agent, need
+from connectonion import Agent
+from connectonion.network import host
 
-# Simple trust levels
-translator = need("translate", trust="strict")   # Production: verified only
-analyzer = need("analyze", trust="tested")       # Default: test first
-scraper = need("scrape", trust="open")          # Development: trust all
+# Create your agent (no trust here - agent only cares about its job)
+agent = Agent("my_service", tools=[process_data])
 
-# For your own agent
-agent = Agent(
-    name="my_service",
-    tools=[process_data],
-    trust="strict"  # Who can use my services
-)
+# Host it with trust (trust is a host concern)
+host(agent, trust="careful")  # Default: verify before allowing access
 ```
 
-## Three Forms of Trust
+## Core Concepts
 
-### 1. Trust Levels (String)
+### Separation of Concerns
 
-Simple predefined levels for common scenarios:
+| Layer | Responsibility |
+|-------|----------------|
+| **Agent** | What it does (skills, tools, reasoning) |
+| **Host** | How it's accessed (network, trust, security) |
 
 ```python
-# Development - trust everyone
-agent = need("service", trust="open")
+# Agent is pure - only cares about its job
+agent = Agent("translator", tools=[translate])
 
-# Default - test before trusting
-agent = need("service", trust="tested")
-
-# Production - only verified/whitelisted
-agent = need("service", trust="strict")
+# Trust is configured at host level
+host(agent, trust="open")     # Dev: trust everyone
+host(agent, trust="careful")  # Staging: verify first
+host(agent, trust="strict")   # Prod: whitelist only
 ```
 
-### 2. Trust Policy (Natural Language)
+### Two-Tier Verification
 
-Express complex requirements in plain English:
+| Type | Tokens | When to Use |
+|------|--------|-------------|
+| **Fast Rules** | Zero | Simple checks (invite code, payment, whitelist) |
+| **Trust Agent** | Burns tokens | Complex decisions (behavior analysis, edge cases) |
+
+90% of requests use fast rules (instant, free). 10% use trust agent (LLM reasoning, rare).
+
+## Trust Levels
+
+### Open (Development)
+
+Trust everyone. No verification.
 
 ```python
-# Inline policy
-translator = need("translate", trust="""
-    I trust agents that:
-    - Pass capability tests
-    - Respond within 500ms
-    - Are on my whitelist OR from local network
-""")
-
-# From file
-translator = need("translate", trust="./trust_policy.md")
+host(agent, trust="open")
 ```
 
-Example trust policy file:
-```markdown
-# My Trust Requirements
+Use for: Local development, Jupyter notebooks, testing.
 
-I trust agents that meet ALL of these criteria:
-- Successfully translate "Hello" to "Hola"
-- Respond in less than 1 second
-- Have processed at least 10 requests successfully
+### Careful (Default)
 
-I immediately reject agents that:
-- Fail basic capability tests
-- Take longer than 5 seconds
-- Are on my blacklist
-```
-
-### 3. Trust Agent
-
-For maximum control, use a custom trust agent:
+Verify strangers before granting access. Fast rules first, then trust agent for complex cases.
 
 ```python
-# Create a trust agent with verification tools
-trust_agent = Agent(
-    name="my_guardian",
-    tools=[
-        check_whitelist,
-        verify_capability,
-        measure_response_time,
-        check_reputation
-    ],
-    system_prompt="""
-        You verify other agents before allowing interaction.
-        Be strict with payment processors, relaxed with read-only services.
-    """
-)
-
-# Use it for your agent
-my_agent = Agent(
-    name="my_service",
-    tools=[process_payment],
-    trust=trust_agent  # My guardian protects me
-)
-
-# And for discovering services
-payment = need("payment processor", trust=trust_agent)
+host(agent, trust="careful")
 ```
 
-## Bidirectional Trust
+Use for: Staging, testing, pre-production.
 
-The same `trust` parameter works in both directions:
+### Strict (Production)
+
+Whitelist only. No exceptions.
 
 ```python
-# As a SERVICE provider (who can use me?)
-alice_agent = Agent(
-    name="alice_translator",
-    tools=[translate],
-    trust="tested"  # Users must pass my tests
-)
-
-# As a SERVICE consumer (who do I trust?)
-translator = need("translate", trust="strict")  # I only use verified services
-
-# Both trust requirements must be satisfied for interaction!
+host(agent, trust="strict")
 ```
 
-## Trust Flow Example
+Use for: Production, sensitive data, payments.
+
+## Client States
+
+```
+Promotion Chain (earned trust):
+
+┌─────────────┐   verify    ┌─────────────┐  earn trust  ┌─────────────┐
+│  Stranger   │ ──────────► │   Contact   │ ───────────► │  Whitelist  │
+└─────────────┘             └─────────────┘              └─────────────┘
+      │                           │                            │
+      │ block                     │ demote                     │ demote
+      ▼                           ▼                            ▼
+┌─────────────┐             ┌─────────────┐              ┌─────────────┐
+│  Blocklist  │             │  Stranger   │              │   Contact   │
+└─────────────┘             └─────────────┘              └─────────────┘
+
+
+Admin (separate, manual only):
+
+┌─────────────┐  set_admin()   ┌─────────────┐
+│  Any Level  │ ─────────────► │    Admin    │
+└─────────────┘                └─────────────┘
+                                     │
+                               remove_admin()
+                                     │
+                                     ▼
+                               ┌─────────────┐
+                               │  Previous   │
+                               └─────────────┘
+```
+
+### Client Levels
+
+| Level | Description | Access |
+|-------|-------------|--------|
+| **Stranger** | Unknown client, not verified | Limited or none |
+| **Contact** | Verified via invite/payment | Standard access |
+| **Whitelist** | Trusted, pre-approved | Full access |
+| **Admin** | Can manage other clients | Full access + management |
+| **Blocklist** | Blocked, denied access | No access |
+
+## Trust Policy Files
+
+Trust policies are markdown files with YAML frontmatter. YAML defines fast rules (no tokens), markdown body defines trust agent behavior (for complex decisions).
+
+```yaml
+# prompts/trust/careful.md
+---
+fast_rules:
+  - if: has_invite_code
+    action: verify_invite
+    on_success: promote_to_contact
+
+  - if: is_blocked
+    action: deny
+
+  - if: is_whitelist
+    action: allow
+
+  - if: is_stranger
+    action: deny
+
+use_agent:
+  - when: requests > 10
+    reason: "Evaluate for promotion"
+
+cache: 24h
+---
+
+# Trust Agent Policy
+
+You handle complex trust decisions.
+
+## Available Tools
+- promote_to_contact(client_id)
+- block(client_id, reason)
+
+## When to Promote
+Promote stranger to contact when:
+- 10+ requests with good behavior
+- No suspicious patterns
+```
+
+## Atomic Functions
+
+Trust manager provides simple atomic functions as tools:
 
 ```python
-# Alice creates a translation service
-alice = Agent(
-    name="alice_translator",
-    tools=[translate],
-    trust="tested"  # Test users before serving them
-)
-share(alice)
+# Promotion (earned)
+promote_to_contact(client_id)    # Stranger → Contact
+promote_to_whitelist(client_id)  # Contact → Whitelist
 
-# Bob looks for a translator
-translator = need(
-    "translate to Spanish",
-    trust="strict"  # Bob only uses verified services
-)
+# Demotion
+demote_to_contact(client_id)     # Whitelist → Contact
+demote_to_stranger(client_id)    # Contact → Stranger
 
-# What happens:
-# 1. Bob's trust agent evaluates Alice (strict check)
-# 2. Alice's trust agent evaluates Bob (test required)
-# 3. Both must approve for connection to succeed
+# Blocking
+block(client_id, reason)
+unblock(client_id)
+
+# Admin (manual only)
+set_admin(client_id, by_admin)
+remove_admin(client_id, by_admin)
+```
+
+## Custom Trust Policies
+
+### Option 1: Use Preset
+
+```python
+host(agent, trust="careful")  # Uses prompts/trust/careful.md
+```
+
+### Option 2: Custom Markdown File
+
+```python
+host(agent, trust="./my_policy.md")
+```
+
+### Option 3: Custom TrustAgent
+
+```python
+from connectonion.network.trust import TrustAgent
+
+trust = TrustAgent(
+    system_prompt="./my_policy.md",
+    tools=[my_custom_verifier]
+)
+host(agent, trust=trust)
 ```
 
 ## Environment-Based Defaults
 
-ConnectOnion automatically adjusts trust based on environment:
-
 ```python
-# No trust parameter needed - auto-detected!
-translator = need("translate")
+# No trust specified - auto-detected from environment
+host(agent)
 
-# In development (localhost, Jupyter)
-# → Defaults to trust="open"
-
-# In test files (test_*.py)
-# → Defaults to trust="tested"
-
-# In production
-# → Defaults to trust="strict"
-
-# Override when needed
-translator = need("translate", trust="open")  # Force open even in production
+# CONNECTONION_ENV=development → trust="open"
+# CONNECTONION_ENV=staging     → trust="careful"
+# CONNECTONION_ENV=production  → trust="strict"
 ```
 
-## Trust Functions
+## List Management
 
-Trust agents use composable functions:
-
-```python
-# Basic trust functions (provided by ConnectOnion)
-def check_whitelist(agent_id: str) -> bool:
-    """Check if agent is whitelisted"""
-    
-def test_capability(agent, test_input, expected) -> bool:
-    """Test if agent produces expected output"""
-    
-def measure_response_time(agent, timeout_ms) -> float:
-    """Measure agent response time"""
-    
-def check_local_network(agent_ip: str) -> bool:
-    """Check if agent is on local network"""
-
-# Combine in your trust agent
-my_trust = Agent(
-    name="guardian",
-    tools=[
-        check_whitelist,
-        test_capability,
-        measure_response_time,
-        check_local_network
-    ]
-)
-```
-
-## Whitelist Management
-
-Simple text file at `~/.connectonion/trusted.txt`:
+Trust manager maintains lists at `~/.co/`:
 
 ```
-translator.api.com
-analyzer.local
-my-company.internal.net
-192.168.1.*
+~/.co/
+├── contacts.txt     # Verified contacts
+├── whitelist.txt    # Trusted, pre-approved
+├── admins.txt       # Can manage other clients
+└── blocklist.txt    # Blocked clients
 ```
-
-Edit with any text editor or programmatically:
-
-```python
-# Add to whitelist
-with open("~/.connectonion/trusted.txt", "a") as f:
-    f.write("new-service.com\n")
-```
-
-## Progressive Trust Building
-
-Trust grows through successful interactions:
-
-```python
-# First encounter - requires testing
-translator = need("translate", trust="tested")
-# → Agent is tested before use
-
-# After successful interactions
-# → Agent automatically added to "verified" list
-
-# Future encounters
-translator = need("translate", trust="tested")
-# → Skip testing, already verified
-```
-
-## Common Patterns
-
-### Development Mode
-```python
-# Trust everyone for rapid development
-connectonion.set_default_trust("open")
-```
-
-### Production Mode
-```python
-# Strict verification for production
-payment = need("payment processor", trust="strict")
-sensitive = need("data processor", trust="strict")
-```
-
-### Mixed Trust
-```python
-# Different trust for different services
-scraper = need("web scraper", trust="open")      # Low risk
-analyzer = need("analyze data", trust="tested")   # Medium risk
-payment = need("process payment", trust="strict") # High risk
-```
-
-### Custom Trust Logic
-```python
-# Trust based on context
-def get_trust_level(service_type):
-    if "payment" in service_type:
-        return "strict"
-    elif "read" in service_type:
-        return "open"
-    else:
-        return "tested"
-
-service = need("read data", trust=get_trust_level("read data"))
-```
-
-## Security Best Practices
-
-1. **Production = Strict**: Always use `trust="strict"` in production
-2. **Test Sensitive Operations**: Payment, data modification, etc.
-3. **Whitelist Critical Services**: Manually verify and whitelist
-4. **Monitor Trust Decisions**: Log all trust evaluations
-5. **Regular Audits**: Review whitelist and trust policies
 
 ## FAQ
 
 **Q: What's the default trust level?**
-A: `"tested"` - agents are tested before first use
+A: `"careful"` - verify strangers, allow contacts.
 
-**Q: Can I change trust after agent creation?**
-A: Yes: `agent.trust = new_trust_agent`
+**Q: Do fast rules burn tokens?**
+A: No. Fast rules are simple if/then executed by host. Zero tokens.
 
-**Q: How do trust agents communicate?**
-A: They're regular ConnectOnion agents - they talk naturally
+**Q: When does trust agent run?**
+A: Only when `use_agent` triggers fire (e.g., after 10 requests). Rare.
 
-**Q: What if both agents have strict trust?**
-A: Both requirements must be met - most restrictive wins
+**Q: Can I use the same agent with different trust levels?**
+A: Yes. Trust is host config, not agent config.
 
-**Q: Can I disable trust completely?**
-A: Yes: `trust="open"` accepts everyone without checks
+```python
+# Same agent, different trust
+host(agent, trust="open")    # Dev
+host(agent, trust="strict")  # Prod
+```

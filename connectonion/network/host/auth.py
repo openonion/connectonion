@@ -1,20 +1,25 @@
 """
 Purpose: Ed25519 signature verification and trust-based authentication for hosted agents
 LLM-Note:
-  Dependencies: imports from [network/trust/, llm_do.py, nacl.signing] | imported by [network/host/routes.py, network/host/server.py] | tested by [tests/network/test_host_auth.py]
-  Data flow: receives request dict with {payload, from, signature} → extract_and_authenticate() verifies Ed25519 signature via verify_signature() using nacl → checks timestamp expiry (5 min window) → applies trust policy (open/careful/strict/custom) → optionally evaluates via trust agent → returns (prompt, identity, sig_valid, error)
-  State/Effects: reads trust settings from agent | calls trust agent for evaluation if custom policy | no persistent state
-  Integration: exposes verify_signature(payload, signature, public_key) → bool, extract_and_authenticate(data, trust, blacklist, whitelist, agent_address) → (prompt, identity, sig_valid, error), get_agent_address(agent) → str, is_custom_trust(trust) → bool | used by host() to enforce authentication on all requests
-  Performance: signature verification uses nacl (fast Ed25519) | 5 minute timestamp window prevents replay | whitelist bypass for trusted callers
-  Errors: returns error strings: "unauthorized: ...", "forbidden: ...", "rejected: ..." | does NOT raise exceptions (caller checks error)
+  Dependencies: imports from [network/trust/TrustAgent, nacl.signing] | imported by [network/host/routes.py, network/host/server.py] | tested by [tests/unit/test_host_auth.py]
+  Data flow: receives request dict with {payload, from, signature} → extract_and_authenticate() verifies Ed25519 signature → uses TrustAgent.should_allow() for trust decisions (fast rules + LLM fallback) → returns (prompt, identity, sig_valid, error)
+  State/Effects: TrustAgent handles all trust state (whitelist, contacts, blocklist in ~/.co/)
+  Integration: exposes verify_signature(), extract_and_authenticate(), get_agent_address(), is_custom_trust() | used by host() to enforce authentication
+  Performance: TrustAgent.should_allow() runs fast rules first (zero tokens), only uses LLM for 'ask' cases
+  Errors: returns error strings: "unauthorized: ...", "forbidden: ..." | does NOT raise exceptions
 Authentication and signature verification for hosted agents.
+
+Trust evaluation (via TrustAgent.should_allow()):
+1. Parameter whitelist (highest priority, instant allow)
+2. Signature verification (protocol level)
+3. TrustAgent handles fast rules + LLM fallback
 """
 
 import hashlib
 import json
 import time
 
-from ..trust import create_trust_agent, TRUST_LEVELS
+from ..trust import TrustAgent, TRUST_LEVELS
 
 
 # Signature expiry window (5 minutes)
@@ -64,10 +69,29 @@ def extract_and_authenticate(data: dict, trust, *, blacklist=None, whitelist=Non
             "signature": "0xEd25519Signature..."
         }
 
-    Trust levels control additional policies AFTER signature verification:
-        - "open": Any valid signer allowed
-        - "careful": Warnings for unknown signers (default)
-        - "strict": Whitelist only
+    Onboarding (in payload):
+        {
+            "payload": {"prompt": "...", "invite_code": "BETA2024", ...}
+        }
+        or:
+        {
+            "payload": {"prompt": "...", "payment": 10, ...}
+        }
+
+    Authentication flow:
+        1. Signature verification (protocol level, always required)
+        2. Parameter whitelist check (instant allow if match)
+        3. Fast rules from YAML config:
+           - allow: [whitelisted, contact]  → instant allow
+           - deny: [blocked]                → instant deny
+           - onboard: {invite_code, payment} → promote stranger to contact
+           - default: allow | deny | ask    → final decision
+        4. Trust agent (only if fast rules return None for 'ask' cases)
+
+    Trust levels (predefined YAML configs):
+        - "open": default=allow (development)
+        - "careful": default=ask (staging)
+        - "strict": allow=[whitelisted], default=deny (production)
         - Custom policy/Agent: LLM evaluation
 
     Returns: (prompt, identity, sig_valid, error)
@@ -76,31 +100,48 @@ def extract_and_authenticate(data: dict, trust, *, blacklist=None, whitelist=Non
     if "payload" not in data or "signature" not in data:
         return None, None, False, "unauthorized: signed request required"
 
-    # Verify signature (protocol level - always required)
+    # Verify signature (protocol level - always required, even for whitelisted)
     prompt, identity, error = _authenticate_signed(
-        data, blacklist=blacklist, whitelist=whitelist, agent_address=agent_address
+        data, blacklist=blacklist, agent_address=agent_address
     )
     if error:
         return prompt, identity, False, error
 
-    # Trust level: additional policies AFTER signature verification
-    if trust == "strict" and whitelist and identity not in whitelist:
-        return None, identity, True, "forbidden: not in whitelist"
+    # Parameter whitelist bypasses trust POLICY (not signature verification)
+    if whitelist and identity in whitelist:
+        return prompt, identity, True, None
 
-    # Custom trust policy/agent evaluation
-    if is_custom_trust(trust):
-        trust_agent = create_trust_agent(trust)
-        accepted, reason = evaluate_with_trust_agent(trust_agent, prompt, identity, True)
-        if not accepted:
-            return None, identity, True, f"rejected: {reason}"
+    # Use TrustAgent for all trust decisions (fast rules + LLM fallback)
+    payload = data.get("payload", {})
+    request_data = {
+        "prompt": prompt,
+        "invite_code": payload.get("invite_code"),
+        "payment": payload.get("payment", 0),
+    }
 
-    return prompt, identity, True, None
+    # Trust should be TrustAgent (resolved by host/create_app)
+    # But handle string for backwards compatibility with direct calls
+    if isinstance(trust, TrustAgent):
+        trust_agent = trust
+    elif isinstance(trust, str):
+        trust_agent = TrustAgent(trust)
+    else:
+        # Unknown type (e.g., Agent) - use default "careful"
+        trust_agent = TrustAgent("careful")
+
+    decision = trust_agent.should_allow(identity, request_data)
+
+    if decision.allow:
+        return prompt, identity, True, None
+    else:
+        return None, identity, True, f"forbidden: {decision.reason}"
 
 
-def _authenticate_signed(data: dict, *, blacklist=None, whitelist=None, agent_address=None):
+def _authenticate_signed(data: dict, *, blacklist=None, agent_address=None):
     """Authenticate signed request with Ed25519 - ALWAYS REQUIRED.
 
     Protocol-level signature verification. All requests must be signed.
+    Whitelist is NOT checked here - it bypasses trust policy, not signature.
 
     Returns: (prompt, identity, error) - error is None on success
     """
@@ -112,13 +153,9 @@ def _authenticate_signed(data: dict, *, blacklist=None, whitelist=None, agent_ad
     timestamp = payload.get("timestamp")
     to_address = payload.get("to")
 
-    # Check blacklist first
+    # Check blacklist first (security: even before signature check)
     if blacklist and identity in blacklist:
         return None, identity, "forbidden: blacklisted"
-
-    # Check whitelist (bypass signature check - trusted caller)
-    if whitelist and identity in whitelist:
-        return prompt, identity, None
 
     # Validate required fields
     if not identity:
@@ -137,7 +174,7 @@ def _authenticate_signed(data: dict, *, blacklist=None, whitelist=None, agent_ad
     if agent_address and to_address and to_address != agent_address:
         return None, identity, "unauthorized: wrong recipient"
 
-    # Verify signature
+    # Verify signature ALWAYS (no whitelist bypass - that's at policy level)
     if not verify_signature(payload, signature, identity):
         return None, identity, "unauthorized: invalid signature"
 
@@ -148,40 +185,6 @@ def get_agent_address(agent) -> str:
     """Generate deterministic address from agent name."""
     h = hashlib.sha256(agent.name.encode()).hexdigest()
     return f"0x{h[:40]}"
-
-
-def evaluate_with_trust_agent(trust_agent, prompt: str, identity: str, sig_valid: bool) -> tuple[bool, str]:
-    """Evaluate request using a custom trust agent (policy or Agent).
-
-    Only called when trust is a policy string or custom Agent - NOT for simple levels.
-
-    Args:
-        trust_agent: The trust agent created from policy or custom Agent
-        prompt: The request prompt
-        identity: The requester's identity/address
-        sig_valid: Whether the signature is valid
-
-    Returns:
-        (accepted, reason) tuple
-    """
-    from pydantic import BaseModel
-    from ...llm_do import llm_do
-
-    class TrustDecision(BaseModel):
-        accept: bool
-        reason: str
-
-    request_info = f"""Evaluate this request:
-- prompt: {prompt[:200]}{'...' if len(prompt) > 200 else ''}
-- identity: {identity or 'anonymous'}
-- signature_valid: {sig_valid}"""
-
-    decision = llm_do(
-        request_info,
-        output=TrustDecision,
-        system_prompt=trust_agent.system_prompt,
-    )
-    return decision.accept, decision.reason
 
 
 def is_custom_trust(trust) -> bool:

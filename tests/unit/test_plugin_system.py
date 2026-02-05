@@ -30,7 +30,8 @@ def test_simple_plugin():
     agent = Agent(
         "test_simple",
         plugins=[simple_logger],  # Pass the list directly
-        log=False
+        log=False,
+        model="gpt-4o-mini",
     )
 
     # Should have 1 after_llm event handler
@@ -46,7 +47,8 @@ def test_factory_plugin():
     agent = Agent(
         "test_factory",
         plugins=[counter],  # Pass the list
-        log=False
+        log=False,
+        model="gpt-4o-mini",
     )
 
     # Should have 1 after_llm and 1 after_tools handler
@@ -63,7 +65,8 @@ def test_multiple_plugins():
     agent = Agent(
         "test_multiple",
         plugins=[simple_logger, counter],  # Two lists
-        log=False
+        log=False,
+        model="gpt-4o-mini",
     )
 
     # Should have 2 after_llm handlers (one from each plugin)
@@ -84,7 +87,8 @@ def test_plugins_with_on_events():
         "test_combined",
         plugins=[simple_logger],
         on_events=[after_tools(custom_event)],
-        log=False
+        log=False,
+        model="gpt-4o-mini",
     )
 
     # Should have 1 after_llm from plugin
@@ -102,8 +106,8 @@ def test_reusable_plugin():
     counter = make_counter()
 
     # Use it in multiple agents
-    agent1 = Agent("test1", plugins=[counter], log=False)
-    agent2 = Agent("test2", plugins=[counter], log=False)
+    agent1 = Agent("test1", plugins=[counter], log=False, model="gpt-4o-mini")
+    agent2 = Agent("test2", plugins=[counter], log=False, model="gpt-4o-mini")
 
     # Both should have the same events
     assert len(agent1.events['after_llm']) == 1

@@ -14,14 +14,14 @@ class TestAgentSystemPrompts:
     
     def test_agent_with_default_prompt(self):
         """Test agent with no prompt specified uses default."""
-        agent = Agent("test_agent", api_key="fake_key")
+        agent = Agent("test_agent", api_key="fake_key", model="gpt-4o-mini")
         assert agent.system_prompt == DEFAULT_PROMPT
         assert "helpful assistant" in agent.system_prompt
     
     def test_agent_with_string_prompt(self):
         """Test agent with direct string prompt."""
         prompt = "You are a Python expert"
-        agent = Agent("test_agent", system_prompt=prompt, api_key="fake_key")
+        agent = Agent("test_agent", system_prompt=prompt, api_key="fake_key", model="gpt-4o-mini")
         assert agent.system_prompt == prompt
     
     def test_agent_with_file_path_string(self):
@@ -32,7 +32,7 @@ class TestAgentSystemPrompts:
             temp_path = f.name
         
         try:
-            agent = Agent("test_agent", system_prompt=temp_path, api_key="fake_key")
+            agent = Agent("test_agent", system_prompt=temp_path, api_key="fake_key", model="gpt-4o-mini")
             assert agent.system_prompt == content
         finally:
             os.unlink(temp_path)
@@ -45,7 +45,7 @@ class TestAgentSystemPrompts:
             temp_path = Path(f.name)
         
         try:
-            agent = Agent("test_agent", system_prompt=temp_path, api_key="fake_key")
+            agent = Agent("test_agent", system_prompt=temp_path, api_key="fake_key", model="gpt-4o-mini")
             assert agent.system_prompt == content
         finally:
             temp_path.unlink()
@@ -61,7 +61,7 @@ class TestAgentSystemPrompts:
                 temp_path = f.name
             
             try:
-                agent = Agent("test_agent", system_prompt=temp_path, api_key="fake_key")
+                agent = Agent("test_agent", system_prompt=temp_path, api_key="fake_key", model="gpt-4o-mini")
                 assert agent.system_prompt == content
             finally:
                 os.unlink(temp_path)
@@ -70,7 +70,7 @@ class TestAgentSystemPrompts:
         """Test agent with Path object to nonexistent file raises error."""
         path = Path("/nonexistent/prompt.md")
         with pytest.raises(FileNotFoundError):
-            Agent("test_agent", system_prompt=path, api_key="fake_key")
+            Agent("test_agent", system_prompt=path, api_key="fake_key", model="gpt-4o-mini")
     
     def test_agent_with_string_that_looks_like_path(self):
         """Test agent with string that looks like path but isn't a file."""
@@ -82,7 +82,7 @@ class TestAgentSystemPrompts:
         ]
         
         for prompt in prompts:
-            agent = Agent("test_agent", system_prompt=prompt, api_key="fake_key")
+            agent = Agent("test_agent", system_prompt=prompt, api_key="fake_key", model="gpt-4o-mini")
             assert agent.system_prompt == prompt
     
     def test_agent_prompt_with_tools(self):
@@ -101,7 +101,7 @@ class TestAgentSystemPrompts:
                 "math_agent",
                 system_prompt=temp_path,
                 tools=[calculator],
-                api_key="fake_key"
+                api_key="fake_key", model="gpt-4o-mini"
             )
             assert agent.system_prompt == content
             assert len(agent.tools) == 1
@@ -129,7 +129,7 @@ Professional yet friendly and approachable."""
             temp_path = f.name
         
         try:
-            agent = Agent("support_agent", system_prompt=temp_path, api_key="fake_key")
+            agent = Agent("support_agent", system_prompt=temp_path, api_key="fake_key", model="gpt-4o-mini")
             assert "customer support specialist" in agent.system_prompt
             assert "empathize" in agent.system_prompt
             assert "Professional yet friendly" in agent.system_prompt

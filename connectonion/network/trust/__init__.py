@@ -1,30 +1,38 @@
 """
-Purpose: Trust verification system module re-exporting factory, prompts, and verification tools
-LLM-Note:
-  Dependencies: imports from [factory.py, prompts.py, tools.py] | imported by [network/__init__.py, network/host/auth.py, network/host/server.py] | tested by [tests/network/test_trust.py]
-  Data flow: re-exports trust agent creation utilities and trust level prompts
-  State/Effects: no state
-  Integration: exposes create_trust_agent(trust_spec) → Agent, get_default_trust_level() → str, validate_trust_level(level), TRUST_LEVELS dict, TRUST_PROMPTS dict, get_trust_prompt(level) → str, get_trust_verification_tools() → list | used by host() for access control policies
-  Performance: trivial
-  Errors: none
 Trust verification system for agent networking.
 
-This module contains:
-- factory: Trust agent creation and configuration
-- prompts: Pre-configured trust prompts for different levels
-- tools: Verification tools for trust agents
+Usage:
+    from connectonion.network.trust import TrustAgent
+
+    trust = TrustAgent("careful")  # or "open", "strict", or path to policy
+
+    # Access control
+    decision = trust.should_allow("client-123", {"prompt": "hello"})
+
+    # Trust level operations
+    trust.promote_to_contact("client-123")
+    trust.block("bad-actor", reason="spam")
+    level = trust.get_level("client-123")  # "stranger", "contact", "whitelist", "blocked"
+
+    # Admin operations
+    trust.is_admin("client-123")
+    trust.add_admin("new-admin")
+
+TrustAgent is the single interface for all trust operations.
+Subclass to customize behavior (e.g., database-backed admin storage).
 """
 
-from .factory import create_trust_agent, get_default_trust_level, validate_trust_level, TRUST_LEVELS
-from .prompts import TRUST_PROMPTS, get_trust_prompt
-from .tools import get_trust_verification_tools
+from .trust_agent import TrustAgent, Decision
+from .factory import get_default_trust_level, validate_trust_level, TRUST_LEVELS
+from .fast_rules import parse_policy
 
 __all__ = [
-    "create_trust_agent",
+    # TrustAgent - the single interface
+    "TrustAgent",
+    "Decision",
+    # Helpers
     "get_default_trust_level",
     "validate_trust_level",
     "TRUST_LEVELS",
-    "TRUST_PROMPTS",
-    "get_trust_prompt",
-    "get_trust_verification_tools",
+    "parse_policy",
 ]

@@ -177,22 +177,26 @@ class TestExtractAndAuthenticate:
         assert error == "forbidden: blacklisted"
         assert identity == "0xbad"
 
-    def test_whitelisted_bypasses_signature_check(self):
-        """Whitelisted identity bypasses signature verification."""
+    def test_whitelisted_still_requires_valid_signature(self):
+        """Whitelisted identity must still provide valid signature.
+
+        Security fix: whitelist bypasses TRUST POLICY, not SIGNATURE VERIFICATION.
+        Even whitelisted identities must prove their identity cryptographically.
+        This prevents spoofing attacks where anyone claims to be a whitelisted identity.
+        """
         data = {
             "payload": {"prompt": "Hello world", "timestamp": time.time()},
             "from": "0xtrusted",
-            "signature": "invalid_signature"  # Would normally fail
+            "signature": "invalid_signature"  # Invalid signature should fail
         }
 
         prompt, identity, sig_valid, error = extract_and_authenticate(
             data, "strict", whitelist=["0xtrusted"]
         )
 
-        assert error is None
-        assert prompt == "Hello world"
-        assert identity == "0xtrusted"
-        assert sig_valid is True
+        # Should fail - whitelist does NOT bypass signature verification!
+        assert error == "unauthorized: invalid signature"
+        assert sig_valid is False
 
     def test_missing_from_rejected(self):
         """Request without 'from' field is rejected."""
@@ -281,8 +285,8 @@ class TestExtractAndAuthenticate:
             data, "strict", whitelist=["0xother"]  # Not this caller
         )
 
-        assert error == "forbidden: not in whitelist"
-        assert sig_valid is True  # Signature was valid, just not whitelisted
+        assert error == "forbidden: Denied by fast rules"
+        assert sig_valid is True  # Signature was valid, just not allowed by TrustAgent
 
     def test_valid_signed_request_succeeds(self):
         """Fully valid signed request is accepted."""
@@ -307,6 +311,38 @@ class TestExtractAndAuthenticate:
         assert error is None
         assert prompt == "Calculate 2+2"
         assert identity == public_key_hex
+        assert sig_valid is True
+
+    def test_accepts_trust_agent_directly(self, tmp_path, monkeypatch):
+        """Can pass TrustAgent instance directly instead of string."""
+        from nacl.signing import SigningKey
+        from connectonion.network.trust import TrustAgent
+
+        # Set up temp ~/.co directory
+        co_path = tmp_path / ".co"
+        co_path.mkdir()
+        monkeypatch.setattr("connectonion.network.trust.tools.CO_DIR", co_path)
+
+        signing_key = SigningKey.generate()
+        verify_key = signing_key.verify_key
+        public_key_hex = "0x" + verify_key.encode().hex()
+
+        payload = {"prompt": "Hello", "timestamp": time.time()}
+        canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+        signature = "0x" + signing_key.sign(canonical.encode()).signature.hex()
+
+        data = {
+            "payload": payload,
+            "from": public_key_hex,
+            "signature": signature
+        }
+
+        # Pass TrustAgent instance directly
+        trust_agent = TrustAgent("open")
+        prompt, identity, sig_valid, error = extract_and_authenticate(data, trust_agent)
+
+        assert error is None
+        assert prompt == "Hello"
         assert sig_valid is True
 
 
