@@ -19,5 +19,7 @@ from .calendar_plugin import calendar_plugin
 from .ui_stream import ui_stream
 from .system_reminder import system_reminder
 from .tool_approval import tool_approval
+from .auto_compact import auto_compact
+from .prefer_write_tool import prefer_write_tool
 
-__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream', 'system_reminder', 'tool_approval']
+__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream', 'system_reminder', 'tool_approval', 'auto_compact', 'prefer_write_tool']
