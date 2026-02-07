@@ -11,9 +11,13 @@ Tool Approval Plugin - Request client approval before executing dangerous tools.
 
 WebSocket-only. Uses io.send/receive pattern:
 1. Sends {type: "approval_needed", tool, arguments} to client
-2. Blocks until client responds with {approved: bool, scope?, feedback?}
+2. Blocks until client responds with {approved: bool, scope?, feedback?, mode?}
 3. If approved: execute tool (optionally save to session memory)
-4. If rejected: raise ValueError, stopping batch, LLM sees feedback
+4. If rejected: raise ValueError, LLM sees rejection message
+
+Rejection Modes (client sends mode field):
+- "reject_soft": Skip this tool, loop continues. LLM gets hint to use ask_user.
+- "reject_hard" (default): Skip remaining batch, stop loop, wait for user input.
 
 Tool Classification:
 - SAFE_TOOLS: Read-only operations (read, glob, grep, etc.) - never need approval
@@ -23,11 +27,6 @@ Tool Classification:
 Session Memory:
 - scope="once": Approve for this call only
 - scope="session": Approve for rest of session (no re-prompting)
-
-Rejection Behavior:
-- Raises ValueError with user feedback
-- Stops entire tool batch (remaining tools skipped)
-- LLM receives error message and can adjust approach
 
 Usage:
     from connectonion import Agent
@@ -42,7 +41,8 @@ Client Protocol:
     # Send response:
     {"approved": true, "scope": "session"}  # Approve for session
     {"approved": true, "scope": "once"}     # Approve once
-    {"approved": false, "feedback": "Use yarn instead"}  # Reject with feedback
+    {"approved": false, "feedback": "Use yarn instead", "mode": "reject_soft"}   # Skip, agent continues
+    {"approved": false, "feedback": "Wrong approach", "mode": "reject_hard"}     # Stop, wait for user
 """
 
 from typing import TYPE_CHECKING
@@ -94,6 +94,25 @@ DANGEROUS_TOOLS = {
 }
 
 
+# Command-based tools — approval is per command name, not per tool type.
+# e.g., approving `ls` doesn't approve `rm`. Approval key: "bash:ls"
+COMMAND_TOOLS = {'bash', 'shell', 'run', 'run_in_dir', 'run_background'}
+
+
+def _get_approval_key(tool_name: str, tool_args: dict) -> str:
+    """Get the approval key for session memory.
+
+    Command tools (bash, shell, etc.): "bash:ls", "bash:npm"
+    Other tools: "write", "edit" (tool name only)
+    """
+    if tool_name in COMMAND_TOOLS:
+        command = tool_args.get('command', '')
+        cmd_name = command.split()[0] if command.strip() else ''
+        if cmd_name:
+            return f"{tool_name}:{cmd_name}"
+    return tool_name
+
+
 # Session state helpers for approval memory
 # These functions manage the session['approval'] dict which tracks
 # which tools have been approved for the current session.
@@ -128,6 +147,53 @@ def _save_session_approval(session: dict, tool_name: str) -> None:
     session['approval']['approved_tools'][tool_name] = 'session'
 
 
+def _resolve_display_name(tool_name: str, args_str: str) -> str:
+    """Resolve display name from tool name and JSON arguments string.
+
+    Command tools (bash, etc.): "bash:ls", "bash:npm"
+    Other tools: "write", "edit" (unchanged)
+    """
+    if tool_name in COMMAND_TOOLS:
+        import json
+        try:
+            args = json.loads(args_str)
+        except (json.JSONDecodeError, TypeError):
+            args = {}
+        return _get_approval_key(tool_name, args)
+    return tool_name
+
+
+def _get_batch_remaining(agent: 'Agent', current_tool_id: str) -> list:
+    """Extract remaining tools in the batch from the assistant message.
+
+    The assistant message with all tool_calls is already in messages
+    (added by tool_executor before the loop). We find the current tool
+    by ID and return everything after it.
+
+    Tool names are resolved to display names (e.g., bash → ls).
+    """
+    messages = agent.current_session.get('messages', [])
+    # Walk backwards to find the last assistant message with tool_calls
+    for msg in reversed(messages):
+        if msg.get('role') == 'assistant' and msg.get('tool_calls'):
+            tool_calls = msg['tool_calls']
+            # Find current tool's position
+            for i, tc in enumerate(tool_calls):
+                if tc.get('id') == current_tool_id:
+                    # Return tools after current one with resolved display names
+                    remaining = []
+                    for t in tool_calls[i + 1:]:
+                        name = t['function']['name']
+                        args = t['function'].get('arguments', '{}')
+                        remaining.append({
+                            'tool': _resolve_display_name(name, args),
+                            'arguments': args,
+                        })
+                    return remaining
+            break
+    return []
+
+
 def _log(agent: 'Agent', message: str, style: str = None) -> None:
     """Log message via agent's logger if available.
 
@@ -145,21 +211,23 @@ def check_approval(agent: 'Agent') -> None:
     """Check if tool needs approval and request from client.
 
     Flow:
-    1. Skip if no IO (not web mode)
-    2. Skip if safe tool
-    3. Skip if unknown tool (default: safe)
-    4. Skip if already approved for session
-    5. Send approval_needed, wait for response
-    6. If approved: optionally save to session, continue
-    7. If rejected: raise ValueError (stops batch)
-
-    Logging:
-    - Logs approval requests, approvals, and rejections
-    - Uses agent.logger.print() for terminal output
+    1. If previous tool was reject_hard, reject remaining batch
+    2. Skip if no IO (not web mode)
+    3. Skip if safe tool
+    4. Skip if unknown tool (default: safe)
+    5. Skip if already approved for session
+    6. Send approval_needed, wait for response
+    7. If approved: optionally save to session, continue
+    8. If reject_soft: raise ValueError with ask_user hint
+    9. If reject_hard: set session flag + raise ValueError
 
     Raises:
-        ValueError: If user rejects the tool (includes feedback if provided)
+        ValueError: If user rejects the tool
     """
+    # reject_hard was set by a previous tool in this batch — reject remaining
+    if 'tool_rejected_hard' in agent.current_session:
+        raise ValueError("User rejected this batch of tools. They want to provide input for the correct direction.")
+
     # No IO = not web mode, skip
     if not agent.io:
         return
@@ -181,16 +249,27 @@ def check_approval(agent: 'Agent') -> None:
         return
 
     # Already approved for this session
-    if _is_approved_for_session(agent.current_session, tool_name):
-        _log(agent, f"[dim]⏭ {tool_name} (session-approved)[/dim]")
+    approval_key = _get_approval_key(tool_name, tool_args)
+    if _is_approved_for_session(agent.current_session, approval_key):
+        _log(agent, f"[dim]⏭ {approval_key} (session-approved)[/dim]")
         return
 
+    # Get remaining tools in this batch for client context
+    pending = agent.current_session.get('pending_tool')
+    tool_id = pending.get('id', '') if pending else ''
+    batch_remaining = _get_batch_remaining(agent, tool_id)
+
     # Send approval request to client
-    agent.io.send({
+    # Tool name uses approval key format: "bash:ls" for commands, "write" for others
+    approval_msg = {
         'type': 'approval_needed',
-        'tool': tool_name,
+        'tool': approval_key,
         'arguments': tool_args,
-    })
+        'description': tool_args.get('description', ''),
+    }
+    if batch_remaining:
+        approval_msg['batch_remaining'] = batch_remaining
+    agent.io.send(approval_msg)
 
     # Wait for client response (BLOCKS)
     response = agent.io.receive()
@@ -207,24 +286,63 @@ def check_approval(agent: 'Agent') -> None:
         # Save to session if scope is "session"
         scope = response.get('scope', 'once')
         if scope == 'session':
-            _save_session_approval(agent.current_session, tool_name)
-            _log(agent, f"[green]✓ {tool_name} approved (session)[/green]")
+            _save_session_approval(agent.current_session, approval_key)
+            _log(agent, f"[green]✓ {approval_key} approved (session)[/green]")
         else:
             _log(agent, f"[green]✓ {tool_name} approved (once)[/green]")
-        # Continue to execute tool
         return
 
-    # Rejected - raise ValueError to stop batch
+    # Rejected
     feedback = response.get('feedback', '')
+    mode = response.get('mode', 'reject_hard')
+
     if feedback:
         _log(agent, f"[red]✗ {tool_name} rejected: {feedback}[/red]")
     else:
         _log(agent, f"[red]✗ {tool_name} rejected[/red]")
 
-    error_msg = f"User rejected tool '{tool_name}'."
-    if feedback:
-        error_msg += f" Feedback: {feedback}"
-    raise ValueError(error_msg)
+    if mode == 'reject_hard':
+        # Set flag — remaining tools in batch will be rejected, loop will stop
+        agent.current_session['tool_rejected_hard'] = feedback or f"User rejected tool '{tool_name}'."
+        raise ValueError(
+            f"User rejected tool '{tool_name}'."
+            + (f" Feedback: {feedback}" if feedback else "")
+        )
+
+    if mode == 'reject_explain':
+        # Like reject_soft: skip tool, loop continues
+        # But ask for explanation - user may not understand tech concepts at all
+        raise ValueError(
+            f"User wants explanation for tool '{tool_name}'."
+            + (f" Context: {feedback}" if feedback else "")
+            + "\n\n<system-reminder>"
+            "User clicked 'Explain' - they don't understand what you're doing.\n\n"
+            "IMPORTANT: The user may have NO technical background. Explain like teaching a 15-year-old:\n\n"
+            "1. CONTEXT: What are you trying to accomplish overall? (the big picture)\n"
+            "2. CONCEPT: What is this type of action? (e.g., 'A bash command is like giving instructions to your computer through text')\n"
+            "3. THIS STEP: What specifically will this do? Use simple analogies.\n"
+            "4. WHY NEEDED: Why is this step necessary to complete the task?\n"
+            "5. CONSEQUENCE: What happens after this runs? Is it reversible?\n\n"
+            "Keep it simple, avoid jargon, use everyday analogies.\n"
+            "After explaining, ask if they want to proceed or have more questions.\n"
+            "Do NOT retry the tool until the user explicitly approves.\n"
+            "</system-reminder>"
+        )
+
+    # reject_soft — skip this tool, loop continues, hint LLM to use ask_user tool
+    raise ValueError(
+        f"User rejected tool '{tool_name}'."
+        + (f" Feedback: {feedback}" if feedback else "")
+        + "\n\n<system-reminder>"
+        f"User skipped '{tool_name}'. Do not retry it.\n\n"
+        "Call ask_user to let the user choose direction:\n"
+        "- Think about what the rejected tool was trying to accomplish\n"
+        "- Offer 2-4 specific alternatives as options (not vague)\n"
+        "- Always include a 'Skip this entirely' option\n\n"
+        "ask_user(question=\"...contextual question...\", options=[\"alt 1\", \"alt 2\", \"Skip this entirely\"])\n\n"
+        "Do not respond with text instead of calling ask_user."
+        "</system-reminder>"
+    )
 
 
 # Export as plugin (list of event handlers)
