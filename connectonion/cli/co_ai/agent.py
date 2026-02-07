@@ -13,30 +13,17 @@ from .tools import (
 )
 from .skills import skill
 from .plugins import system_reminder
-from connectonion import Agent, bash, after_user_input, FileWriter, MODE_AUTO, MODE_NORMAL, TodoList
-from connectonion.useful_plugins import eval, tool_approval
+from connectonion import Agent, bash, FileWriter, MODE_AUTO, MODE_NORMAL, TodoList
+from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool
 
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
 
 
-@after_user_input
-def _sync_tool_io(agent) -> None:
-    io = getattr(agent, "io", None) or getattr(agent, "connection", None)
-    if not io:
-        return
-    # ToolRegistry does not expose instances publicly; use best-effort access.
-    instances = getattr(agent.tools, "_instances", {})
-    for instance in instances.values():
-        if hasattr(instance, "io"):
-            instance.io = io
-
-
 def create_coding_agent(
     model: str = "co/claude-opus-4-5",
-    max_iterations: int = 20,
+    max_iterations: int = 100,
     auto_approve: bool = False,
-    web_mode: bool = False,
 ) -> Agent:
     writer = FileWriter(mode=MODE_AUTO if auto_approve else MODE_NORMAL)
     todo = TodoList()
@@ -71,13 +58,13 @@ def create_coding_agent(
     if project_context:
         system_prompt += f"\n\n---\n\n{project_context}"
 
-    plugins = [eval, system_reminder, tool_approval]
+    plugins = [eval, system_reminder, prefer_write_tool, tool_approval, auto_compact]
 
     agent = Agent(
         name="oo",
         tools=tools,
         plugins=plugins,
-        on_events=[_sync_tool_io],
+        on_events=[],
         system_prompt=system_prompt,
         model=model,
         max_iterations=max_iterations,
