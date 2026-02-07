@@ -66,6 +66,19 @@ def block_bash_file_creation(agent: 'Agent') -> None:
     if not _is_file_creation_command(command):
         return
 
+    # Log the block
+    if hasattr(agent, 'logger') and agent.logger:
+        agent.logger.print("[yellow]⚠ Blocked bash file creation. Use Write tool instead.[/yellow]")
+
+    # Send to UI
+    if agent.io:
+        agent.io.send({
+            'type': 'tool_blocked',
+            'tool': tool_name,
+            'reason': 'file_creation',
+            'message': 'Use Write tool instead of bash for creating files',
+        })
+
     raise ValueError(
         "Bash file creation blocked."
         "\n\n<system-reminder>"
