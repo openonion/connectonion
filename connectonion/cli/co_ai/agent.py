@@ -18,6 +18,8 @@ from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefe
 
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
+# Global .co directory for co ai (consistent logs/evals location)
+GLOBAL_CO_DIR = Path.home() / ".co"
 
 
 def create_coding_agent(
@@ -68,6 +70,7 @@ def create_coding_agent(
         system_prompt=system_prompt,
         model=model,
         max_iterations=max_iterations,
+        co_dir=GLOBAL_CO_DIR,
     )
 
     agent.writer = writer

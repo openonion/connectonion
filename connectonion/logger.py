@@ -75,15 +75,18 @@ class Logger:
         self,
         agent_name: str,
         quiet: bool = False,
-        log: Union[bool, str, Path, None] = None
+        log: Union[bool, str, Path, None] = None,
+        co_dir: Union[str, Path, None] = None
     ):
         self.agent_name = agent_name
+        # Base .co directory (default: current directory's .co/)
+        self.co_dir = Path(co_dir) if co_dir else Path(".co")
 
         # Determine what to enable
         self.enable_console = not quiet
         self.enable_sessions = True  # Evals on unless log=False
         self.enable_file = True
-        self.log_file_path = Path(f".co/logs/{agent_name}.log")
+        self.log_file_path = self.co_dir / "logs" / f"{agent_name}.log"
 
         # Parse log parameter
         if log is False:
@@ -181,7 +184,7 @@ class Logger:
         Args:
             first_input: The first user input (used to name the file)
         """
-        evals_dir = Path(".co/evals")
+        evals_dir = self.co_dir / "evals"
         evals_dir.mkdir(parents=True, exist_ok=True)
 
         # Generate filename from first input
@@ -420,13 +423,13 @@ class Logger:
             yaml.dump(ordered, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
     def get_eval_path(self) -> Optional[str]:
-        """Get the path to the current eval file.
+        """Get the absolute path to the current eval file.
 
         Returns:
-            Path string like '.co/evals/what_is_25_x_4.yaml' or None
+            Absolute path string like '/Users/user/.co/evals/what_is_25_x_4.yaml' or None
         """
         if self.eval_file:
-            return str(self.eval_file)
+            return str(self.eval_file.resolve())
         return None
 
     def load_messages(self, run: Optional[int] = None) -> list:

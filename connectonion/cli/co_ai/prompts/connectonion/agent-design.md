@@ -2,6 +2,90 @@
 
 How to design robust ConnectOnion agents.
 
+## Decision Tree: How to Create an Agent
+
+```
+User wants an agent
+        │
+        ▼
+┌─────────────────────────────────┐
+│ Does a template exist?          │
+│ (playwright, email-agent,       │
+│  web-research, meta-agent)      │
+└───────────┬─────────────────────┘
+            │
+    ┌───────┴───────┐
+    │Yes            │No
+    ▼               ▼
+┌─────────┐   ┌─────────────────────────┐
+│ co create│   │ Is it simple (2-4 tools)?│
+│ --template│   └───────────┬─────────────┘
+└─────────┘             │
+                ┌───────┴───────┐
+                │Yes            │No
+                ▼               ▼
+        ┌─────────────┐   ┌─────────────────┐
+        │Write directly│   │Load guide,      │
+        │(one file)   │   │write with class │
+        └─────────────┘   └─────────────────┘
+```
+
+## One-Shot Agent Creation
+
+**Simple agents (2-4 tools) → Write directly:**
+```python
+# /tmp/calc/agent.py - complete file
+from connectonion import Agent
+
+def add(a: float, b: float) -> float:
+    """Add two numbers."""
+    return a + b
+
+def multiply(a: float, b: float) -> float:
+    """Multiply two numbers."""
+    return a * b
+
+agent = Agent("calculator", tools=[add, multiply])
+
+if __name__ == "__main__":
+    agent.input("What is 5 + 3?")
+```
+
+**Complex agents (5+ tools, shared state) → Use class:**
+```python
+# /tmp/browser/agent.py - with class for stateful tools
+from connectonion import Agent
+
+class Browser:
+    def __init__(self):
+        self.page = None
+
+    def navigate(self, url: str) -> str:
+        """Go to URL."""
+        # ... implementation
+
+    def screenshot(self) -> str:
+        """Take screenshot."""
+        # ... implementation
+
+    def click(self, selector: str) -> str:
+        """Click element."""
+        # ... implementation
+
+browser = Browser()
+agent = Agent("browser", tools=[browser], system_prompt="prompt.md")
+```
+
+**With built-in tools → Import and use:**
+```python
+from connectonion import Agent, Gmail, WebFetch
+
+gmail = Gmail()
+web = WebFetch()
+
+agent = Agent("assistant", tools=[gmail, web])
+```
+
 ## 1. Start with CLI
 
 **Check available commands:**
@@ -10,7 +94,7 @@ How to design robust ConnectOnion agents.
 co --help
 ```
 
-**Create new projects:**
+**Create new projects (use when template matches):**
 
 ```bash
 co create my-agent
@@ -28,7 +112,7 @@ co create my-researcher --template web-research
 my-agent/
 ├── agent.py          # Your agent code
 ├── prompts/
-│   └── agent.md      # System prompt
+│   └── agent.md      # System prompt (for complex agents)
 ├── .env              # API keys (auto-copied from ~/.co/)
 └── .co/              # Metadata
 ```

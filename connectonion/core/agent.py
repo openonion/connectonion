@@ -42,7 +42,8 @@ class Agent:
         log: Optional[Union[bool, str, Path]] = None,
         quiet: bool = False,
         plugins: Optional[List[List[EventHandler]]] = None,
-        on_events: Optional[List[EventHandler]] = None
+        on_events: Optional[List[EventHandler]] = None,
+        co_dir: Optional[Union[str, Path]] = None
     ):
         self.name = name
         self.system_prompt = load_system_prompt(system_prompt)
@@ -64,7 +65,7 @@ class Agent:
         if os.getenv('CONNECTONION_LOG'):
             effective_log = Path(os.getenv('CONNECTONION_LOG'))
 
-        self.logger = Logger(agent_name=name, quiet=quiet, log=effective_log)
+        self.logger = Logger(agent_name=name, quiet=quiet, log=effective_log, co_dir=co_dir)
 
         # Initialize event registry
         # Note: before_each_tool/after_each_tool fire for EACH tool

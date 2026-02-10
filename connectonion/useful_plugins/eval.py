@@ -215,6 +215,10 @@ Is this task truly complete? What was achieved or what's missing?"""
     else:
         agent.logger.print(f"[dim]{summary}[/dim]")
 
+    # Show eval file path
+    if eval_path:
+        agent.logger.print(f"[dim]  {eval_path}[/dim]")
+
 
 # Bundle as plugin (generate expected after user input, then evaluate on complete)
 eval = [generate_expected, evaluate_completion]
