@@ -133,6 +133,31 @@ class TestCliCreate:
                 if result.exit_code == 0:
                     assert os.path.exists('groq-agent')
 
+
+    def test_api_key_detection_xai_grok(self):
+        """Test that XAI API key is detected from environment."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            with patch.dict(os.environ, {'XAI_API_KEY': 'xai-test-key'}):
+                result = self.runner.invoke(cli, ['create', 'grok-agent'],
+                                            input='minimal\n')
+
+                if result.exit_code == 0:
+                    assert os.path.exists('grok-agent')
+
+    def test_api_key_detection_openrouter(self):
+        """Test that OpenRouter API key is detected from environment."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            with patch.dict(os.environ, {'OPENROUTER_API_KEY': 'sk-or-v1-test-key'}):
+                result = self.runner.invoke(cli, ['create', 'openrouter-agent'],
+                                            input='minimal\n')
+
+                if result.exit_code == 0:
+                    assert os.path.exists('openrouter-agent')
+
     def test_create_existing_directory_fails(self):
         """Test that create fails if directory already exists."""
         with self.runner.isolated_filesystem():

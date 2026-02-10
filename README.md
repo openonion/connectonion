@@ -633,7 +633,7 @@ agent = Agent(name="test", llm=CustomLLM())
 - `co deploy` for one-command deployment
 
 **Recently Completed:**
-- Multiple LLM providers (OpenAI, Anthropic, Gemini)
+- Multiple LLM providers (OpenAI, Anthropic, Gemini, Groq, Grok, OpenRouter)
 - Managed API keys (`co/` prefix)
 - Plugin system
 - Google OAuth integration
