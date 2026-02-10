@@ -88,14 +88,14 @@ def health_handler(agent_name: str, start_time: float) -> dict:
     return {"status": "healthy", "agent": agent_name, "uptime": int(time.time() - start_time)}
 
 
-def info_handler(agent_metadata: dict, trust: str, trust_config: dict | None = None) -> dict:
+def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None) -> dict:
     """GET /info
 
     Returns pre-extracted metadata including onboard requirements.
 
     Args:
         agent_metadata: Agent name, address, tools
-        trust: Trust level string ("open", "careful", "strict", or custom)
+        trust: TrustAgent instance (trust level extracted via .trust attribute)
         trust_config: Parsed YAML config from trust policy (optional)
     """
     from ... import __version__
@@ -104,7 +104,7 @@ def info_handler(agent_metadata: dict, trust: str, trust_config: dict | None = N
         "name": agent_metadata["name"],
         "address": agent_metadata["address"],
         "tools": agent_metadata["tools"],
-        "trust": trust,
+        "trust": trust.trust,  # Extract level string from TrustAgent
         "version": __version__,
     }
 

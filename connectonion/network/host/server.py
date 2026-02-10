@@ -180,9 +180,6 @@ def _print_host_banner(
     prefix = "[magenta]\\[host][/magenta]"
     indent = "       "  # 7 spaces to align with [host]
 
-    # Truncate address for display (show first 14 and last 4 chars)
-    addr_short = f"{address[:14]}...{address[-4:]}" if len(address) > 20 else address
-
     # Build relay status
     relay_status = "[green]✓[/green] relay" if relay_url else "[dim]no relay[/dim]"
 
@@ -193,8 +190,10 @@ def _print_host_banner(
     console.print(f"{indent}[bold]POST[/bold] /input · [bold]WS[/bold] /ws · [dim]GET /docs[/dim]")
     console.print()
 
-    # Identity line: address + relay status
-    console.print(f"{indent}[cyan]{addr_short}[/cyan] · {relay_status}")
+    # Full address (clickable to chat) + relay status
+    chat_url = f"https://chat.openonion.ai/{address}"
+    console.print(f"{indent}[link={chat_url}][cyan]{address}[/cyan][/link]")
+    console.print(f"{indent}{relay_status}")
 
     # Trust/Invite (belongs to host layer)
     if trust_config and isinstance(trust, str) and trust.lower() in TRUST_LEVELS:
@@ -248,13 +247,10 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
             return await asyncio.to_thread(agent.input, prompt)
 
         async def relay_loop():
-            first_connect = True
             while True:
                 try:
                     ws = await relay.connect(relay_url)
-                    if first_connect:
-                        console.print(f"{host_prefix} [green]Relay connected[/green]")
-                        first_connect = False
+                    # Relay status shown in banner - no log needed on first connect
                     await relay.serve_loop(ws, announce_msg, task_handler, addr_data=addr_data)
                 except asyncio.CancelledError:
                     raise
