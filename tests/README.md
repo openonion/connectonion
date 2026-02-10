@@ -23,6 +23,9 @@ tests/
 └── real_api/                 # Real API tests (auto-marked: real_api)
 ```
 
+Markers are applied automatically based on folder names in `tests/conftest.py`,
+so individual test files do not need `@pytest.mark.unit/integration/cli/e2e/real_api`.
+
 ---
 
 ## 🚀 Quick Start
@@ -54,11 +57,14 @@ pytest -m integration
 # CLI tests
 pytest -m cli
 
-# End-to-end example
+# End-to-end example (offline)
 pytest -m e2e
 
 # Real API tests (requires API keys)
 pytest -m real_api
+
+# Real API end-to-end tests only
+pytest -m "real_api and e2e_online"
 
 # Everything except real API (default in CI)
 pytest -m "not real_api"
@@ -96,7 +102,9 @@ Test command-line interface:
 **Characteristics**: Medium speed (1-5s), file system operations
 
 ### 4. Example Agent (`test_example_agent.py`)
-A complete working agent that serves as both test and documentation, demonstrating all features in real use
+`tests/e2e/test_example_agent.py` runs offline with MockLLM for deterministic behavior.
+For a real API end-to-end workflow, use `tests/real_api/test_real_example_agent.py` and
+run with `-m "real_api and e2e_online"`.
 
 ---
 
@@ -141,14 +149,14 @@ curl -X POST "https://oo.openonion.ai/api/emails/mark-read" \
 
 ## 🔧 Test Utilities
 
-### TestProject Context Manager
+### ProjectHelper Context Manager
 
 Create a temporary ConnectOnion project for testing:
 
 ```python
-from tests.utils.config_helpers import TestProject
+from tests.utils.config_helpers import ProjectHelper
 
-with TestProject() as project_dir:
+with ProjectHelper() as project_dir:
     # Test code here - project is automatically cleaned up
     from connectonion import send_email, get_emails
     
@@ -174,11 +182,11 @@ for email in SAMPLE_EMAILS:
 ### Pytest Template for New Test
 
 ```python
-from tests.utils.config_helpers import TestProject
+from tests.utils.config_helpers import ProjectHelper
 
 def test_with_project():
     """Test new feature with a temporary project."""
-    with TestProject() as project_dir:
+    with ProjectHelper() as project_dir:
         from connectonion import your_function
         result = your_function()
         assert result

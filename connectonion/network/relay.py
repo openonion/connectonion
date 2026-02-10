@@ -150,34 +150,42 @@ async def serve_loop(
     websocket,
     announce_message: Dict[str, Any],
     task_handler,
-    heartbeat_interval: int = 60
+    heartbeat_interval: int = 300,
+    addr_data: Dict[str, Any] = None
 ):
     """
     Main serving loop for agent.
 
     This handles:
     - Initial ANNOUNCE
-    - Periodic heartbeat ANNOUNCE (every 60s)
+    - Periodic heartbeat ANNOUNCE (every 60s) with fresh signature
     - Receiving and processing TASK messages
     - Sending responses
 
     Args:
         websocket: WebSocket connection from connect()
-        announce_message: ANNOUNCE message dict (will be re-sent for heartbeat)
+        announce_message: ANNOUNCE message dict (initial message)
         task_handler: Async function that takes (prompt: str) -> str
         heartbeat_interval: Seconds between heartbeat ANNOUNCEs (default 60)
+        addr_data: Agent address data for re-signing heartbeat messages
 
     Example:
         >>> async def handler(prompt):
         ...     return agent.input(prompt)
-        >>> await serve_loop(ws, announce_msg, handler)
+        >>> await serve_loop(ws, announce_msg, handler, addr_data=addr_data)
     """
+    from . import announce as announce_module
+    from rich.console import Console
+    console = Console()
+    prefix = "[magenta]\\[host][/magenta]"
+
     # Send initial ANNOUNCE
     await send_announce(websocket, announce_message)
-    print(f"✓ Announced to relay: {announce_message['address'][:12]}...")
 
-    # Track last heartbeat time
-    last_heartbeat = asyncio.get_event_loop().time()
+    # Extract announce parameters for heartbeat re-creation
+    summary = announce_message.get("summary", "")
+    endpoints = announce_message.get("endpoints", [])
+    relay_url = announce_message.get("relay")
 
     # Main loop
     while True:
@@ -187,7 +195,7 @@ async def serve_loop(
 
             # Handle INPUT message
             if task.get("type") == "INPUT":
-                print(f"→ Received input: {task['input_id'][:8]}...")
+                console.print(f"{prefix} [dim]Input received[/dim]")
 
                 # Process with handler
                 result = await task_handler(task["prompt"])
@@ -199,23 +207,25 @@ async def serve_loop(
                     "result": result
                 }
                 await websocket.send(json.dumps(output_message))
-                print(f"✓ Sent output: {task['input_id'][:8]}...")
+                console.print(f"{prefix} [green]Output sent[/green]")
 
             elif task.get("type") == "ERROR":
-                print(f"✗ Error from relay: {task.get('error')}")
+                console.print(f"{prefix} [red]Relay error: {task.get('error')}[/red]")
 
         except asyncio.TimeoutError:
-            # Time for heartbeat ANNOUNCE
-            # Update timestamp in message
-            announce_message["timestamp"] = int(asyncio.get_event_loop().time())
-
-            # Need to re-sign with new timestamp
-            # For now, just send without updating signature
-            # TODO: Re-sign message with new timestamp
-            await send_announce(websocket, announce_message)
-            print("♥ Sent heartbeat")
-            last_heartbeat = asyncio.get_event_loop().time()
+            # Time for heartbeat ANNOUNCE - create fresh message with new timestamp and signature
+            if addr_data:
+                # Re-create message with fresh timestamp and signature
+                fresh_announce = announce_module.create_announce_message(
+                    addr_data, summary, endpoints=endpoints, relay=relay_url
+                )
+                await send_announce(websocket, fresh_announce)
+            else:
+                # Fallback: just update timestamp (signature will be invalid)
+                announce_message["timestamp"] = int(asyncio.get_event_loop().time())
+                await send_announce(websocket, announce_message)
+            console.print(f"{prefix} [red]♥[/red]")
 
         except websockets.exceptions.ConnectionClosed:
-            print("✗ Connection to relay closed")
+            console.print(f"{prefix} [dim]Relay disconnected[/dim]")
             break

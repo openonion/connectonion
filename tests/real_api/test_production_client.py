@@ -43,7 +43,7 @@ def get_test_token():
 
 
 @pytest.mark.real_api
-def test_production_llm_do_structured():
+def test_production_llm_do_structured(monkeypatch):
     """Test llm_do() with structured output against production API"""
     print("\n" + "=" * 80)
     print("TESTING CONNECTONION CLIENT AGAINST PRODUCTION")
@@ -51,11 +51,11 @@ def test_production_llm_do_structured():
     print("=" * 80)
 
     # Point to production instead of localhost
-    os.environ["OPENONION_API_URL"] = PRODUCTION_URL
+    monkeypatch.setenv("OPENONION_API_URL", PRODUCTION_URL)
 
     # Get auth token from production
     token = get_test_token()
-    os.environ["OPENONION_API_KEY"] = token
+    monkeypatch.setenv("OPENONION_API_KEY", token)
 
     print("\n✓ Authentication successful")
     print(f"  Using production API: {PRODUCTION_URL}")

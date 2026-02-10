@@ -107,7 +107,7 @@ class TestDiffWriterWrite:
             path = Path(tmpdir) / "test.txt"
 
             writer = DiffWriter(mode=MODE_AUTO)
-            result = writer.write(str(path), "Hello, World!")
+            result = writer.write(None, str(path), "Hello, World!")
 
             assert path.exists()
             assert path.read_text() == "Hello, World!"
@@ -120,7 +120,7 @@ class TestDiffWriterWrite:
             path = Path(tmpdir) / "nested" / "dir" / "file.txt"
 
             writer = DiffWriter(mode=MODE_AUTO)
-            writer.write(str(path), "content")
+            writer.write(None, str(path), "content")
 
             assert path.exists()
             assert path.read_text() == "content"
@@ -134,7 +134,7 @@ class TestDiffWriterWrite:
             # Mock _ask_approval to return "approve"
             writer._ask_approval = Mock(return_value="approve")
 
-            result = writer.write(str(path), "approved content")
+            result = writer.write(None, str(path), "approved content")
 
             assert path.exists()
             assert "Wrote" in result
@@ -147,7 +147,7 @@ class TestDiffWriterWrite:
             writer = DiffWriter(mode=MODE_NORMAL)
             writer._ask_approval = Mock(return_value="approve_all")
 
-            writer.write(str(path), "content")
+            writer.write(None, str(path), "content")
 
             # After approve_all, mode should be auto
             assert writer.mode == MODE_AUTO
@@ -161,7 +161,7 @@ class TestDiffWriterWrite:
             writer._ask_approval = Mock(return_value="reject")
             writer._ask_feedback = Mock(return_value="Please use different naming")
 
-            result = writer.write(str(path), "rejected content")
+            result = writer.write(None, str(path), "rejected content")
 
             assert not path.exists()
             assert "rejected" in result
@@ -173,7 +173,7 @@ class TestDiffWriterWrite:
             path = Path(tmpdir) / "test.txt"
 
             writer = DiffWriter(mode=MODE_PLAN)
-            result = writer.write(str(path), "content")
+            result = writer.write(None, str(path), "content")
 
             assert not path.exists()
             assert "[Plan mode]" in result
@@ -189,27 +189,25 @@ class TestDiffWriterModes:
         assert writer.mode == MODE_NORMAL
 
     def test_auto_mode_no_io_fallback(self):
-        """Test auto mode writes without io channel."""
+        """Test auto mode writes without io channel (agent=None)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.txt"
 
             writer = DiffWriter(mode=MODE_AUTO)
-            writer.io = None  # No io channel
 
-            result = writer.write(str(path), "content")
+            result = writer.write(None, str(path), "content")
 
             assert path.exists()
             assert "[auto mode]" in result
 
     def test_normal_mode_no_io_falls_back_to_approve(self):
-        """Test normal mode without io channel auto-approves."""
+        """Test normal mode without io channel auto-approves (agent=None)."""
         with tempfile.TemporaryDirectory() as tmpdir:
             path = Path(tmpdir) / "test.txt"
 
             writer = DiffWriter(mode=MODE_NORMAL)
-            writer.io = None  # No io channel
 
-            result = writer.write(str(path), "content")
+            result = writer.write(None, str(path), "content")
 
             # Should auto-approve since no io channel
             assert path.exists()
@@ -252,7 +250,7 @@ class TestDiffWriterIntegration:
             path = Path(tmpdir) / "test.txt"
 
             writer = DiffWriter(mode=MODE_AUTO)
-            writer.write(str(path), "Hello, World!")
+            writer.write(None, str(path), "Hello, World!")
 
             content = writer.read(str(path))
 

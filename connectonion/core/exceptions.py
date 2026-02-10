@@ -66,9 +66,54 @@ class InsufficientCreditsError(Exception):
             f"Shortfall:   ${self.shortfall:.4f}\n"
             f"\n"
             f"💡 How to add credits:\n"
-            f"   • Join Discord: https://discord.gg/4xfD9k8AUF\n"
-            f"   • Ask Aaron for free credits to get started\n"
+            f"   • Purchase: https://o.openonion.ai/purchase\n"
             f"   • Check balance: Run 'co status' in terminal\n"
+            f"   • Pricing: https://docs.connectonion.com/models/pricing\n"
             f"\n"
             f"{'='*70}\n"
         )
+
+
+class LLMConnectionError(Exception):
+    """
+    Raised when the LLM API request times out or fails to connect.
+
+    Common causes: proxy/VPN adding latency, network issues, API server down.
+    """
+
+    def __init__(self, original_error, model: str = "unknown", base_url: str = ""):
+        self.model = model
+        self.base_url = base_url
+        self.error_type = type(original_error).__name__
+
+        message = self._format_message()
+        super().__init__(message)
+        self.__cause__ = original_error
+
+    def _format_message(self):
+        return (
+            f"\n"
+            f"{'='*70}\n"
+            f"Connection Failed\n"
+            f"{'='*70}\n"
+            f"\n"
+            f"Model:       {self.model}\n"
+            f"Server:      {self.base_url}\n"
+            f"Error:       {self.error_type}\n"
+            f"\n"
+            f"Possible causes:\n"
+            f"   - Proxy/VPN slowing down the connection\n"
+            f"   - Network connectivity issue\n"
+            f"   - API server temporarily unavailable\n"
+            f"\n"
+            f"Try:\n"
+            f"   - Check your internet connection\n"
+            f"   - Disable proxy/VPN and retry\n"
+            f"   - Run 'curl https://oo.openonion.ai/health' to test\n"
+            f"\n"
+            f"{'='*70}\n"
+        )
+
+
+class ToolRejectedError(ValueError):
+    """Raised when a user rejects a tool execution request."""

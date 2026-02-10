@@ -164,7 +164,10 @@ class Console:
 
         # Add balance if available (only for co/ models)
         if balance is not None:
-            lines.append(f"      [{DIM_COLOR}]balance: ${balance:.2f}[/{DIM_COLOR}]")
+            if balance <= 0:
+                lines.append(f"      [yellow]balance: ${balance:.2f} — add credits: o.openonion.ai/purchase[/yellow]")
+            else:
+                lines.append(f"      [{DIM_COLOR}]balance: ${balance:.2f}[/{DIM_COLOR}]")
 
         # Add log paths if logging is enabled
         if log_dir:
@@ -278,7 +281,7 @@ class Console:
         prompt_preview = user_prompt[:50] + "..." if len(user_prompt) > 50 else user_prompt
         table.add_row("user_prompt", prompt_preview)
         iteration = agent.current_session.get('iteration', 0)
-        max_iterations = getattr(agent, 'max_iterations', 10)
+        max_iterations = getattr(agent, 'max_iterations', 100)
         table.add_row("iteration", f"{iteration}/{max_iterations}")
 
         # Separator
@@ -443,16 +446,17 @@ class Console:
 
         self.print(f"{main_part}{' ' * padding}{meta_part}")
 
-    def log_llm_response(self, model: str, duration_ms: float, tool_count: int, usage) -> None:
+    def log_llm_response(self, model: str, duration_ms: float, tool_count: int, usage, context_percent: int = None) -> None:
         """Log LLM response with violet filled circle (AI done thinking).
 
-        [co] ● gemini-2.5-flash · 1 tools · 66 tok (42 cached) · $0.00   ✓ 1.8s
+        [co] ● gemini-2.5-flash · 1 tools · 66 tok (42 cached) · $0.00 · 45% ctx   ✓ 1.8s
 
         Args:
             model: Model name
             duration_ms: Response time in milliseconds
             tool_count: Number of tool calls requested
             usage: TokenUsage object with input_tokens, output_tokens, cached_tokens, cost
+            context_percent: Optional context window usage percentage (0-100)
         """
         # Format tokens with cache info
         total_tokens = usage.input_tokens + usage.output_tokens
@@ -473,7 +477,11 @@ class Console:
         if tool_count:
             tool_word = "tool" if tool_count == 1 else "tools"
             info_parts.append(f"{tool_count} {tool_word}")
-        info_parts.append(f"[{DIM_COLOR}]{tokens_str} · {cost_str}[/{DIM_COLOR}]")
+        # Build dim metadata: tokens · cost · context%
+        dim_parts = [tokens_str, cost_str]
+        if context_percent is not None:
+            dim_parts.append(f"{round(context_percent)}% ctx")
+        info_parts.append(f"[{DIM_COLOR}]{' · '.join(dim_parts)}[/{DIM_COLOR}]")
         main_part = f"{circle} " + " · ".join(info_parts)
 
         # Build status: flash symbol for LLM completion, dim time
@@ -484,6 +492,8 @@ class Console:
         if tool_count:
             visible_text += f" · {tool_count} tools"
         visible_text += f" · {tokens_str} · {cost_str}"
+        if context_percent is not None:
+            visible_text += f" · {round(context_percent)}% ctx"
         padding = max(1, 55 - len(visible_text))
 
         self.print(f"{main_part}{' ' * padding}{status}")

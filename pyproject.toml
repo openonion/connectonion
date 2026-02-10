@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "0.6.6"
+version = "0.6.7"
 description = "A simple Python framework for creating AI agents with behavior tracking"
 readme = "README.md"
 license = {text = "MIT"}
@@ -54,6 +54,7 @@ dependencies = [
     "google-auth>=2.0.0",
     "google-api-python-client>=2.0.0",
     "httpx>=0.24.0",
+    "ifaddr>=0.2.0",
     "beautifulsoup4>=4.12.0",
     "pyyaml>=6.0.0",
     "typer>=0.20.0",

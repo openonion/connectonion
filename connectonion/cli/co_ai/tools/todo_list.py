@@ -1,10 +1,10 @@
 """
-Purpose: Web-friendly todo tracking tool that emits updates via io
+Purpose: Web-friendly todo tracking tool
 LLM-Note:
   Dependencies: imports from [typing, dataclasses] | imported by [co_ai.tools.__init__]
-  Data flow: Agent calls TodoList methods -> updates internal list -> emits todo_update via io -> returns status string
-  State/Effects: maintains in-memory list of TodoItem objects | sends updates via io | no console output
-  Integration: exposes TodoList class with add(content, active_form), start(content), complete(content), remove(content), list(), update(todos), clear()
+  Data flow: Agent calls TodoList methods -> updates internal list -> returns status string
+  State/Effects: maintains in-memory list of TodoItem objects | no console output
+  Integration: exposes TodoList class with add(content, active_form), start(content), complete(content), etc.
 """
 
 from typing import List, Literal, Optional
@@ -24,7 +24,6 @@ class TodoList:
 
     def __init__(self):
         self._todos: List[TodoItem] = []
-        self.io = None
 
     def add(self, content: str, active_form: str) -> str:
         """Add a new todo item."""
@@ -36,7 +35,6 @@ class TodoList:
             status="pending",
             active_form=active_form
         ))
-        self._emit()
         return f"Added: {content}"
 
     def start(self, content: str) -> str:
@@ -53,7 +51,6 @@ class TodoList:
             return f"Another task is in progress: {in_progress[0].content}. Complete it first."
 
         item.status = "in_progress"
-        self._emit()
         return f"Started: {item.active_form}"
 
     def complete(self, content: str) -> str:
@@ -63,7 +60,6 @@ class TodoList:
             return f"Todo not found: {content}"
 
         item.status = "completed"
-        self._emit()
         return f"Completed: {content}"
 
     def remove(self, content: str) -> str:
@@ -73,7 +69,6 @@ class TodoList:
             return f"Todo not found: {content}"
 
         self._todos.remove(item)
-        self._emit()
         return f"Removed: {content}"
 
     def list(self) -> str:
@@ -97,14 +92,12 @@ class TodoList:
                 status=t["status"],
                 active_form=t.get("active_form", t["content"] + "...")
             ))
-        self._emit()
         return f"Updated {len(self._todos)} todos"
 
     def clear(self) -> str:
         """Clear all todos."""
         count = len(self._todos)
         self._todos = []
-        self._emit()
         return f"Cleared {count} todos"
 
     def _find(self, content: str) -> Optional[TodoItem]:
@@ -121,26 +114,6 @@ class TodoList:
             "in_progress": "[>]",
             "completed": "[x]"
         }.get(status, "[ ]")
-
-    def _emit(self) -> None:
-        """Emit todo updates to io (best-effort)."""
-        if not self.io:
-            return
-
-        payload = {
-            "type": "todo_update",
-            "todos": [
-                {
-                    "content": t.content,
-                    "status": t.status,
-                    "active_form": t.active_form
-                }
-                for t in self._todos
-            ],
-            "progress": self.progress,
-            "current_task": self.current_task,
-        }
-        self.io.send(payload)
 
     @property
     def progress(self) -> float:

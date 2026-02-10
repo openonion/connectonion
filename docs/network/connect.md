@@ -360,7 +360,7 @@ try {
 | `tool_call` | Tool execution started `{id, name, args, status: "running"}` |
 | `tool_result` | Tool completed `{id, result, status: "done"}` |
 | `thinking` | Agent is processing |
-| `ask_user` | Agent needs input `{text, options?}` → `done: false` |
+| `ask_user` | Agent needs input `{text, options, multi_select}` → `done: false` |
 
 Note: Relay /ws/input does not forward streaming events. Use direct host /ws for real-time events.
 
@@ -444,7 +444,7 @@ agent.ui = [
 | `agent` | Agent chat bubble | `content` |
 | `thinking` | Loading spinner | - |
 | `tool_call` | Tool card | `name`, `status`, `result?` |
-| `ask_user` | Question form | `text`, `options?` |
+| `ask_user` | Question form | `text`, `options`, `multi_select` |
 
 ### Server → Client Mapping
 
@@ -642,7 +642,8 @@ class UIEvent:
 
     # For ask_user
     text: Optional[str]
-    options: Optional[List[str]]
+    options: Optional[List[str]]    # Required when type == 'ask_user'
+    multi_select: Optional[bool]    # Required when type == 'ask_user'
 ```
 
 ---

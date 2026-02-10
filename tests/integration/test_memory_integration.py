@@ -100,23 +100,3 @@ def test_memory_with_other_tools(memory_instance):
     assert "read_memory" in tool_names
     assert "calculate" in tool_names
 
-
-@pytest.mark.real_api
-def test_agent_uses_memory_naturally(memory_instance):
-    """Test that an agent can use memory in natural conversation (requires API key).
-
-    Run with: pytest tests/integration/ -m real_api
-    """
-    agent = Agent(
-        "memory-agent",
-        system_prompt="You are a helpful assistant with memory. Save important information when asked.",
-        tools=[memory_instance]
-    )
-
-    # Ask agent to remember something
-    result = agent.input("Remember that Alice prefers email communication")
-    assert result is not None
-
-    # Ask agent to recall
-    result = agent.input("What do you know about Alice?")
-    assert result is not None

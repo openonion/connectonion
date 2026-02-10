@@ -2,9 +2,9 @@
 Purpose: Write file tool with Claude Code-style approval (web mode)
 LLM-Note:
   Dependencies: imports from [.diff_writer] | imported by [useful_tools/__init__]
-  Data flow: Agent calls write(path, content) -> DiffWriter handles approval via io -> writes file
-  State/Effects: writes file to filesystem | sends events via io for approval
-  Integration: exposes write(path, content) function and Write class | used as agent tool
+  Data flow: Agent calls write(agent, path, content) -> DiffWriter handles approval via agent.io -> writes file
+  State/Effects: writes file to filesystem | sends events via agent.io for approval
+  Integration: exposes write(agent, path, content) function and FileWriter class | used as agent tool
 
 This is a wrapper around DiffWriter for simpler function-based usage.
 For class-based usage with mode control, use DiffWriter directly.
@@ -28,7 +28,7 @@ def _get_writer() -> DiffWriter:
     return _writer
 
 
-def write(path: str, content: str) -> str:
+def write(agent, path: str, content: str) -> str:
     """
     Write content to a file (full overwrite).
 
@@ -36,6 +36,7 @@ def write(path: str, content: str) -> str:
     Use edit() for small, targeted changes instead.
 
     Args:
+        agent: Injected by tool_executor (provides agent.io for frontend communication)
         path: File path to write to
         content: Complete file content
 
@@ -47,7 +48,7 @@ def write(path: str, content: str) -> str:
         write("config.json", '{"debug": true}')
     """
     writer = _get_writer()
-    return writer.write(path, content)
+    return writer.write(agent, path, content)
 
 
 class FileWriter:
@@ -71,16 +72,6 @@ class FileWriter:
         self._writer = DiffWriter(mode=mode)
 
     @property
-    def io(self):
-        """IO channel for web mode."""
-        return self._writer.io
-
-    @io.setter
-    def io(self, value):
-        """Set IO channel."""
-        self._writer.io = value
-
-    @property
     def mode(self):
         """Current permission mode."""
         return self._writer.mode
@@ -90,10 +81,11 @@ class FileWriter:
         """Set permission mode."""
         self._writer.mode = value
 
-    def write(self, path: str, content: str) -> str:
+    def write(self, agent, path: str, content: str) -> str:
         """Write content to a file. Both path and content are REQUIRED.
 
         Args:
+            agent: Injected by tool_executor (provides agent.io for frontend communication)
             path: File path to write to (REQUIRED)
             content: Complete file content (REQUIRED)
 
@@ -103,7 +95,7 @@ class FileWriter:
         Example:
             write(path="/tmp/agent.py", content="from connectonion import Agent...")
         """
-        return self._writer.write(path, content)
+        return self._writer.write(agent, path, content)
 
     def diff(self, path: str, content: str) -> str:
         """Show diff without writing (preview mode).

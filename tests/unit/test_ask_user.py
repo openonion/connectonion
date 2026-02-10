@@ -78,18 +78,18 @@ class TestAskUserTool:
         })
         assert result == "python,rust"
 
-    def test_ask_user_without_options(self):
-        """ask_user works without options (free-form input)."""
+    def test_ask_user_with_empty_options(self):
+        """ask_user works with empty options list."""
         agent = FakeAgent()
         agent.io = Mock()
         agent.io.receive.return_value = {"answer": "my-project"}
 
-        result = ask_user(agent, "Project name?")
+        result = ask_user(agent, "Project name?", options=[])
 
         agent.io.send.assert_called_once_with({
             "type": "ask_user",
             "question": "Project name?",
-            "options": None,
+            "options": [],
             "multi_select": False
         })
         assert result == "my-project"
@@ -100,7 +100,7 @@ class TestAskUserTool:
         agent.io = Mock()
         agent.io.receive.return_value = {}
 
-        result = ask_user(agent, "Question?")
+        result = ask_user(agent, "Question?", options=["A", "B"])
 
         assert result == ""
 
@@ -118,21 +118,21 @@ class TestAskUserSchema:
         assert "options" in schema["parameters"]["properties"]
         assert "multi_select" in schema["parameters"]["properties"]
 
-    def test_question_is_required(self):
-        """question should be required, others optional."""
+    def test_question_and_options_are_required(self):
+        """question and options should be required."""
         tool = create_tool_from_function(ask_user)
         schema = tool.to_function_schema()
 
         assert "question" in schema["parameters"]["required"]
-        assert "options" not in schema["parameters"].get("required", [])
+        assert "options" in schema["parameters"]["required"]
         assert "multi_select" not in schema["parameters"].get("required", [])
 
 
 class TestAskUserInjection:
-    """Test that tool_executor injects agent for ask_user."""
+    """Test that tool_executor injects agent for tools with 'agent' in signature."""
 
     def test_agent_injected_for_ask_user(self):
-        """tool_executor injects agent when tool is ask_user."""
+        """tool_executor injects agent when tool declares 'agent' in signature."""
         tools = ToolRegistry()
         tools.add(create_tool_from_function(ask_user))
 
@@ -144,7 +144,7 @@ class TestAskUserInjection:
 
         trace = execute_single_tool(
             tool_name="ask_user",
-            tool_args={"question": "Test?"},
+            tool_args={"question": "Test?", "options": ["A", "B"]},
             tool_id="call_1",
             tools=tools,
             agent=agent,

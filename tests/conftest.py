@@ -247,6 +247,7 @@ def pytest_configure(config):
     config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line("markers", "unit: marks tests as unit tests")
     config.addinivalue_line("markers", "benchmark: marks tests as performance benchmarks")
+    config.addinivalue_line("markers", "e2e_online: marks real API end-to-end tests")
 
 
 def pytest_addoption(parser):
@@ -265,7 +266,22 @@ def pytest_addoption(parser):
 
 
 def pytest_collection_modifyitems(config, items):
-    """Auto-skip tests that need API keys if keys are missing."""
+    """Auto-mark tests by folder and skip real_api if keys are missing."""
+
+    # Auto-mark tests based on folder path
+    for item in items:
+        path = Path(str(item.fspath))
+        parts = set(path.parts)
+        if "unit" in parts:
+            item.add_marker(pytest.mark.unit)
+        if "integration" in parts:
+            item.add_marker(pytest.mark.integration)
+        if "cli" in parts:
+            item.add_marker(pytest.mark.cli)
+        if "e2e" in parts:
+            item.add_marker(pytest.mark.e2e)
+        if "real_api" in parts:
+            item.add_marker(pytest.mark.real_api)
 
     # Check for API keys
     has_openai = bool(os.getenv("OPENAI_API_KEY"))

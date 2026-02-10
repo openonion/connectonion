@@ -44,9 +44,8 @@ def start_server(
             model=model,
             max_iterations=max_iterations,
             auto_approve=True,  # Always auto-approve in web mode
-            web_mode=True,
         )
 
     # Start server with careful trust (requires invite code or payment for strangers)
-    # relay_url=None disables P2P discovery
-    host(agent_factory, port=port, trust="careful", relay_url=None)
+    # Relay enabled by default - agent discoverable via address
+    host(agent_factory, port=port, trust="careful")

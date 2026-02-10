@@ -53,18 +53,15 @@ Returns answer to agent
 
 ## Parameters
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `question` | `str` | The question to ask |
-| `options` | `list[str]` | Optional list of choices |
-| `multi_select` | `bool` | Allow multiple selections (default: False) |
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `question` | `str` | Yes | The question to ask |
+| `options` | `list[str]` | Yes | List of choices for the user to select from |
+| `multi_select` | `bool` | No | Allow multiple selections (default: False) |
 
 ## Examples
 
 ```python
-# Free-form question
-answer = ask_user("What is your project name?")
-
 # Single choice
 color = ask_user("Pick a color", options=["Red", "Green", "Blue"])
 
@@ -74,6 +71,9 @@ languages = ask_user(
     options=["Python", "JavaScript", "Rust", "Go"],
     multi_select=True
 )
+
+# Yes/No
+confirm = ask_user("Proceed with deployment?", options=["Yes", "No"])
 ```
 
 ## Frontend Integration

@@ -179,7 +179,7 @@ class ToolCall:
 
 # Import TokenUsage from usage module
 from .usage import TokenUsage, calculate_cost
-from .exceptions import InsufficientCreditsError
+from .exceptions import InsufficientCreditsError, LLMConnectionError
 
 
 @dataclass
@@ -705,6 +705,8 @@ class OpenOnionLLM(LLM):
                 raise InsufficientCreditsError(e) from e
             logger.error(f"APIStatusError: status={e.status_code}, message={e.message}, body={getattr(e, 'body', None)}")
             raise
+        except (openai.APITimeoutError, openai.APIConnectionError) as e:
+            raise LLMConnectionError(e, model=f"co/{self.model}", base_url=self.base_url) from e
         except Exception as e:
             logger.error(f"LLM error: {type(e).__name__}: {e}")
             raise
@@ -773,7 +775,7 @@ class OpenOnionLLM(LLM):
             Balance in USD (e.g., 4.22 for $4.22), or None if request fails
 
         Note:
-            - Fast timeout (2s) to avoid hanging on network issues
+            - Fast timeout (5s) to avoid hanging on network issues
             - Only called for co/ models (OpenOnion managed keys)
             - Returns None on any error (network, auth, etc.)
             - ~200ms typical latency, acceptable for startup
@@ -783,11 +785,16 @@ class OpenOnionLLM(LLM):
         # Build auth endpoint URL (strip /v1 suffix)
         auth_url = f"{self.base_url.rstrip('/v1')}/api/v1/auth/me"
 
-        response = requests.get(
-            auth_url,
-            headers={"Authorization": f"Bearer {self.auth_token}"},
-            timeout=2
-        )
+        # 15s timeout: balance ~200ms typical, but proxy/VPN users need more headroom
+        # Network errors return None — balance is non-critical banner info
+        try:
+            response = requests.get(
+                auth_url,
+                headers={"Authorization": f"Bearer {self.auth_token}"},
+                timeout=15
+            )
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError):
+            return None
 
         if response.status_code == 200:
             data = response.json()

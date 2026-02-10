@@ -2,15 +2,21 @@
 Purpose: Web-based file writing tool with Claude Code-style permission modes
 LLM-Note:
   Dependencies: imports from [difflib, pathlib, typing] | imported by [useful_tools/__init__.py, __init__.py] | tested by [tests/unit/test_diff_writer.py]
-  Data flow: Agent calls DiffWriter.write(path, content) -> show diff via io -> ask approval via io -> write file -> return status
-  State/Effects: reads and writes files on filesystem | sends diff_preview and ask_user events via io | requires io channel for approval
-  Integration: exposes DiffWriter class with write(path, content), diff(path, content), read(path) | used as agent tool via Agent(tools=[DiffWriter()])
+  Data flow: Agent calls DiffWriter.write(agent, path, content) -> show diff via agent.io -> ask approval via agent.io -> write file -> return status
+  State/Effects: reads and writes files on filesystem | sends diff_preview and ask_user events via agent.io
+  Integration: exposes DiffWriter class with write(agent, path, content), diff(path, content), read(path) | used as agent tool via Agent(tools=[DiffWriter()])
   Errors: returns error string if file unreadable | returns user feedback on rejection | no exceptions raised
 
 Permission Modes (like Claude Code's Shift+Tab cycle):
   - normal: Prompt for every edit (default)
   - auto: Auto-approve all edits without prompting
   - plan: Read-only mode, no writes allowed
+
+IO Access:
+  write() declares 'agent' in its signature. The tool_executor detects this and
+  injects the current agent automatically. Same pattern as ask_user — no sync
+  hooks or back-references needed. The tool_factory excludes 'agent' from the
+  LLM-facing schema so the LLM never sees it.
 
 Usage:
     from connectonion import Agent, DiffWriter
@@ -55,12 +61,12 @@ class DiffWriter:
         """
         self.mode = mode
         self.preview_limit = preview_limit
-        self.io = None  # Set by agent's _sync_tool_io event handler
 
-    def write(self, path: str, content: str) -> str:
+    def write(self, agent, path: str, content: str) -> str:
         """Write content to a file with diff display and approval.
 
         Args:
+            agent: Injected by tool_executor (provides agent.io for frontend communication)
             path: File path to write to
             content: Content to write
 
@@ -69,6 +75,7 @@ class DiffWriter:
         """
         file_path = Path(path)
         file_exists = file_path.exists()
+        io = agent.io if agent else None
 
         # Plan mode = read-only, just show what would happen
         if self.mode == MODE_PLAN:
@@ -82,14 +89,14 @@ class DiffWriter:
         preview, truncated = self._truncate_preview(preview)
 
         # Send diff preview to UI (best-effort, doesn't block)
-        self._send_preview(path, preview, truncated, file_exists)
+        self._send_preview(io, path, preview, truncated, file_exists)
 
         # Check approval based on mode
         if self.mode == MODE_NORMAL:
-            choice = self._ask_approval(path, preview, truncated)
+            choice = self._ask_approval(io, path, preview, truncated)
 
             if choice == "reject":
-                feedback = self._ask_feedback(path)
+                feedback = self._ask_feedback(io, path)
                 return f"User rejected changes to {path}. Feedback: {feedback}"
 
             if choice == "approve_all":
@@ -133,19 +140,15 @@ class DiffWriter:
 
     # =========================================================================
     # IO Communication (Web Mode)
+    # All private methods receive io as first arg — passed from write().
     # =========================================================================
 
-    def _get_io(self):
-        """Return active io channel if available."""
-        return self.io
-
-    def _send_preview(self, path: str, preview: str, truncated: bool, file_exists: bool) -> None:
+    def _send_preview(self, io, path: str, preview: str, truncated: bool, file_exists: bool) -> None:
         """Send diff preview event to UI client.
 
         This is informational - UI can render a nice diff view.
         Does not block or wait for response.
         """
-        io = self._get_io()
         if not io:
             return
         io.send({
@@ -156,7 +159,7 @@ class DiffWriter:
             "file_exists": file_exists,
         })
 
-    def _ask_approval(self, path: str, preview: str, truncated: bool) -> str:
+    def _ask_approval(self, io, path: str, preview: str, truncated: bool) -> str:
         """Ask user for approval via io channel.
 
         Returns:
@@ -164,7 +167,6 @@ class DiffWriter:
             "approve_all" - Apply and switch to auto mode
             "reject" - Reject and ask for feedback
         """
-        io = self._get_io()
         if not io:
             # No io channel = auto-approve (for non-web usage)
             return "approve"
@@ -174,6 +176,7 @@ class DiffWriter:
             question += " (preview truncated)"
 
         response = self._ask_user(
+            io,
             question,
             options=[
                 "Yes, apply this change",
@@ -198,22 +201,22 @@ class DiffWriter:
 
         return "reject"
 
-    def _ask_feedback(self, path: str) -> str:
+    def _ask_feedback(self, io, path: str) -> str:
         """Ask user for feedback when changes are rejected."""
-        feedback = self._ask_user(f"What should the agent do instead for {path}?")
+        feedback = self._ask_user(io, f"What should the agent do instead for {path}?")
         return feedback or "No feedback provided"
 
-    def _ask_user(self, question: str, options: Optional[list] = None) -> str:
+    def _ask_user(self, io, question: str, options: Optional[list] = None) -> str:
         """Send ask_user event and block until user responds.
 
         Args:
+            io: IO channel (agent.io)
             question: Question to display
             options: List of option strings (buttons in UI)
 
         Returns:
             User's answer string
         """
-        io = self._get_io()
         if not io:
             return ""
 

@@ -247,7 +247,7 @@ class TestCheckApproval:
         with pytest.raises(ValueError) as exc_info:
             _check_approval(agent)
 
-        assert "User feedback: use pip instead" in str(exc_info.value)
+        assert "Feedback: use pip instead" in str(exc_info.value)
 
 
 class TestShellApprovalPlugin:

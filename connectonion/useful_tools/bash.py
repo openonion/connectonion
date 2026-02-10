@@ -18,11 +18,12 @@ import subprocess
 import platform
 
 
-def bash(command: str, cwd: str = ".", timeout: int = 120) -> str:
+def bash(command: str, description: str, cwd: str = ".", timeout: int = 120) -> str:
     """Execute a bash command, returns output (Unix/Mac only).
 
     Args:
         command: Bash command to execute (e.g., "ls -la", "git status")
+        description: What this command does (e.g., "Install dependencies")
         cwd: Working directory (default: current directory)
         timeout: Seconds before timeout (default: 120, max: 600)
 

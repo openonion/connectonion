@@ -14,17 +14,26 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 from connectonion import Agent
 from connectonion.core.exceptions import InsufficientCreditsError
 
-# API key with very low credits ($0.0001)
-LOW_CREDIT_API_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJwdWJsaWNfa2V5IjoiMHhjYzliNmI0ZGZlOGVhMDE0NDIxYzhmMWRjZDI2NDhjZWQ2OTE0ZTdkNzczZTk2MjllZWU3N2IzMDc4YjRkNDA2IiwiZXhwIjoyMDc2OTgyNzU3LCJpYXQiOjE3NjE2MjI3NTd9.sPrK_idOZ-vhdFgXRKel4w2ez4cYltFK0SdGfOzEGFo"
+# Mark all tests in this module as real API tests
+pytestmark = pytest.mark.real_api
+
+# API key with very low credits ($0.0001). Set in environment for safety.
+LOW_CREDIT_API_KEY = os.getenv("LOW_CREDIT_API_KEY")
 
 
-@pytest.mark.integration
+def _require_low_credit_key():
+    if not LOW_CREDIT_API_KEY:
+        pytest.skip("LOW_CREDIT_API_KEY not set")
+
+
 def test_beautiful_error_message():
     """
     Test that developers see a beautiful, clear error message with ConnectOnion branding.
 
     This is the main user experience test - what does a developer actually see?
     """
+    _require_low_credit_key()
+
     agent = Agent(
         name="billing_test",
         model="co/gemini-2.5-pro",
@@ -62,13 +71,14 @@ def test_beautiful_error_message():
     assert "co status" in error_message, "Should mention 'co status' command"
 
 
-@pytest.mark.integration
 def test_exception_has_typed_attributes():
     """
     Test that the exception has typed attributes for programmatic access.
 
     Developers should be able to access balance, cost, etc. directly.
     """
+    _require_low_credit_key()
+
     agent = Agent(
         name="billing_test",
         model="co/gemini-2.5-pro",
@@ -102,13 +112,14 @@ def test_exception_has_typed_attributes():
     print(f"   address={error.address}")
 
 
-@pytest.mark.integration
 def test_programmatic_error_handling():
     """
     Test that developers can catch and handle billing errors specifically.
 
     This is the improved developer experience - no string parsing needed!
     """
+    _require_low_credit_key()
+
     agent = Agent(
         name="billing_test",
         model="co/gemini-2.5-pro",

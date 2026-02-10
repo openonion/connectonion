@@ -19,7 +19,7 @@ class TestDiffWriterAutoApprove:
             writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "test.py")
 
-            result = writer.write(test_file, "print('hello')")
+            result = writer.write(None, test_file, "print('hello')")
 
             assert "Wrote" in result
             assert Path(test_file).exists()
@@ -31,7 +31,7 @@ class TestDiffWriterAutoApprove:
             writer = DiffWriter(mode=MODE_AUTO)
             test_file = os.path.join(tmpdir, "nested", "deep", "test.py")
 
-            result = writer.write(test_file, "content")
+            result = writer.write(None, test_file, "content")
 
             assert Path(test_file).exists()
             assert Path(test_file).read_text() == "content"
@@ -46,7 +46,7 @@ class TestDiffWriterAutoApprove:
             Path(test_file).write_text("original")
 
             # Overwrite
-            result = writer.write(test_file, "new content")
+            result = writer.write(None, test_file, "new content")
 
             assert Path(test_file).read_text() == "new content"
 
@@ -57,7 +57,7 @@ class TestDiffWriterAutoApprove:
             test_file = os.path.join(tmpdir, "test.py")
             content = "hello world"
 
-            result = writer.write(test_file, content)
+            result = writer.write(None, test_file, content)
 
             assert f"Wrote {len(content)} bytes" in result
 
@@ -183,7 +183,7 @@ class TestDiffWriterApproval:
             test_file = os.path.join(tmpdir, "test.py")
 
             with patch.object(writer, '_ask_approval', return_value='approve'):
-                result = writer.write(test_file, "content")
+                result = writer.write(None, test_file, "content")
 
             assert Path(test_file).exists()
             assert "Wrote" in result
@@ -195,7 +195,7 @@ class TestDiffWriterApproval:
             test_file = os.path.join(tmpdir, "test.py")
 
             with patch.object(writer, '_ask_approval', return_value='approve_all'):
-                result = writer.write(test_file, "content")
+                result = writer.write(None, test_file, "content")
 
             assert writer.mode == MODE_AUTO
             assert Path(test_file).exists()
@@ -208,7 +208,7 @@ class TestDiffWriterApproval:
 
             with patch.object(writer, '_ask_approval', return_value='reject'):
                 with patch.object(writer, '_ask_feedback', return_value='use snake_case'):
-                    result = writer.write(test_file, "content")
+                    result = writer.write(None, test_file, "content")
 
             assert not Path(test_file).exists()
             assert "rejected" in result
@@ -225,7 +225,7 @@ class TestDiffWriterEncoding:
             test_file = os.path.join(tmpdir, "test.py")
             content = "# 你好世界\nprint('こんにちは')"
 
-            result = writer.write(test_file, content)
+            result = writer.write(None, test_file, content)
 
             assert Path(test_file).read_text(encoding='utf-8') == content
 

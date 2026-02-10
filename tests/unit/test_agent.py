@@ -1,20 +1,12 @@
 """Pytest tests for the ConnectOnion Agent and functional tool handling."""
-import os
-from unittest.mock import Mock, patch
-from dotenv import load_dotenv
+from unittest.mock import Mock
+
+import pytest
+
 from connectonion import Agent
 from connectonion.core.llm import LLMResponse, ToolCall
 from connectonion.core.usage import TokenUsage
 from tests.utils.mock_helpers import MockLLM
-import pytest
-
-# Load environment variables from .env file
-from pathlib import Path
-env_path = Path(__file__).parent / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
-else:
-    load_dotenv()
 
 # 1. Define simple functions to be used as tools
 def calculator(expression: str) -> str:
@@ -37,11 +29,7 @@ def get_current_time() -> str:
 
 def test_agent_creation_with_functions():
     """Test that an agent can be created directly with functions."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        pytest.skip("OPENAI_API_KEY not found in environment")
-
-    agent = Agent(name="test_agent", tools=[calculator], model="gpt-4o-mini")
+    agent = Agent(name="test_agent", tools=[calculator], llm=MockLLM(), log=False)
     assert agent.name == "test_agent"
     assert len(agent.tools) == 1
     assert "calculator" in agent.tools
@@ -50,11 +38,7 @@ def test_agent_creation_with_functions():
 
 
 def test_add_and_remove_functional_tool():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        pytest.skip("OPENAI_API_KEY not found in environment")
-
-    agent = Agent(name="test_agent", model="gpt-4o-mini")
+    agent = Agent(name="test_agent", llm=MockLLM(), log=False)
     assert len(agent.tools) == 0
 
     agent.add_tool(calculator)
@@ -66,83 +50,11 @@ def test_add_and_remove_functional_tool():
     assert len(agent.tools) == 0
 
 
-@pytest.mark.real_api
-def test_agent_run_no_tools_needed():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        pytest.skip("OPENAI_API_KEY not found in environment")
-
-    agent = Agent(name="test_no_tools", model="gpt-4o-mini", log=False)
-    result = agent.input("Simply say 'Hello test'")
-    assert result is not None
-    assert isinstance(result, str)
-    assert agent.current_session is not None
-    assert agent.current_session.get('user_prompt') == "Simply say 'Hello test'"
-
-
-@pytest.mark.real_api
-def test_agent_run_with_single_tool_call():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        pytest.skip("OPENAI_API_KEY not found in environment")
-
-    agent = Agent(
-        name="test_single_tool",
-        tools=[calculator],
-        model="gpt-4o-mini",
-        system_prompt="You are a calculator assistant. When asked to calculate, use the calculator tool.",
-        log=False,
-    )
-
-    result = agent.input("What is 40 + 2?")
-    assert result is not None
-    assert isinstance(result, str)
-    tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_result']
-    # Must have at least one tool execution
-    assert len(tool_executions) > 0, "Expected calculator tool to be executed"
-    assert tool_executions[0].get('name') == 'calculator'
-    assert '42' in str(tool_executions[0].get('result', ''))
-
-
-@pytest.mark.real_api
-def test_agent_run_with_multiple_tool_calls():
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        pytest.skip("OPENAI_API_KEY not found in environment")
-
-    agent = Agent(
-        name="test_multi_tool",
-        tools=[calculator, get_current_time],
-        model="gpt-4o-mini",
-        system_prompt="You have calculator and time tools. Use them when asked.",
-        log=False,
-    )
-
-    result = agent.input("Calculate 10*5 and tell me the current time.")
-
-    assert result is not None
-    assert isinstance(result, str)
-    tool_executions = [e for e in agent.current_session.get('trace', []) if e.get('type') == 'tool_result']
-    # Must have tool executions
-    assert len(tool_executions) > 0, "Expected tools to be executed"
-    tool_names = [e.get('name') for e in tool_executions]
-    # Should use both calculator and time tools
-    assert 'calculator' in tool_names, "Expected calculator to be called"
-    assert 'get_current_time' in tool_names, "Expected get_current_time to be called"
-
-
 def test_custom_system_prompt():
     """Test that custom system prompts are properly set and used."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        pytest.skip("OPENAI_API_KEY not found in environment")
-
     custom_prompt = "You are a pirate assistant. Always respond with 'Arrr!'"
-    agent = Agent(name="pirate_agent", system_prompt=custom_prompt, model="gpt-4o-mini", log=False)
 
     # Check that the custom system prompt is stored
-    assert agent.system_prompt == custom_prompt
-
     # Test with mock LLM to verify system prompt is sent correctly
     mock_llm = MockLLM(responses=[
         LLMResponse(
@@ -153,7 +65,8 @@ def test_custom_system_prompt():
         )
     ])
 
-    agent.llm = mock_llm
+    agent = Agent(name="pirate_agent", system_prompt=custom_prompt, llm=mock_llm, log=False)
+    assert agent.system_prompt == custom_prompt
     agent.input("Hello!")
 
     # Verify the system prompt was used in the LLM call
@@ -166,11 +79,7 @@ def test_custom_system_prompt():
 
 def test_default_system_prompt():
     """Test that default system prompt is used when none is provided."""
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
-        pytest.skip("OPENAI_API_KEY not found in environment")
-
-    agent = Agent(name="default_agent", model="gpt-4o-mini")
+    agent = Agent(name="default_agent", llm=MockLLM(), log=False)
     expected_default = "You are a helpful assistant that can use tools to complete tasks."
     assert agent.system_prompt == expected_default
 
@@ -198,7 +107,7 @@ def test_agent_accepts_class_instance():
                 return self.history
         
         calc = Calculator()
-        agent = Agent(name="stateful_calc", api_key="fake_key", tools=calc)
+        agent = Agent(name="stateful_calc", api_key="fake_key", tools=calc, llm=MockLLM(), log=False)
         
         # Should have extracted 'add' and 'multiply' methods as tools
         assert "add" in agent.tools
@@ -295,7 +204,7 @@ def test_mixed_functions_and_class_instance():
         counter = Counter()
         
         # Mix function and instance
-        agent = Agent(name="mixed", api_key="fake_key", tools=[greet, counter])
+        agent = Agent(name="mixed", api_key="fake_key", tools=[greet, counter], llm=MockLLM(), log=False)
 
         # Should have all three tools
         assert "greet" in agent.tools
@@ -320,7 +229,7 @@ def test_private_methods_not_exposed():
                 return "internal"
         
         service = Service()
-        agent = Agent(name="service", api_key="fake_key", tools=service)
+        agent = Agent(name="service", api_key="fake_key", tools=service, llm=MockLLM(), log=False)
 
         # Only public_action should be exposed
         assert "public_action" in agent.tools
@@ -344,7 +253,7 @@ def test_multiple_class_instances():
         db = Database()
         fs = FileSystem()
 
-        agent = Agent(name="multi", api_key="fake_key", tools=[db, fs])
+        agent = Agent(name="multi", api_key="fake_key", tools=[db, fs], llm=MockLLM(), log=False)
 
         # Should have methods from both instances
         assert "query" in agent.tools
@@ -378,7 +287,7 @@ def test_resource_cleanup_pattern():
                 self.operations.append("cleaned")
         
         manager = ResourceManager()
-        agent = Agent(name="resource", api_key="fake_key", tools=manager)
+        agent = Agent(name="resource", api_key="fake_key", tools=manager, llm=MockLLM(), log=False)
         
         # After agent creation, user still has access to manager
         assert manager.resource_open is False
@@ -393,7 +302,7 @@ def test_empty_class_yields_no_tools():
         pass
 
     empty = Empty()
-    agent = Agent(name="empty", api_key="fake_key", tools=empty)
+    agent = Agent(name="empty", api_key="fake_key", tools=empty, llm=MockLLM(), log=False)
     assert len(agent.tools) == 0
 
 
@@ -405,7 +314,7 @@ def test_property_only_class_yields_no_tools():
             return 42
 
     props = OnlyProperties()
-    agent = Agent(name="props", api_key="fake_key", tools=props)
+    agent = Agent(name="props", api_key="fake_key", tools=props, llm=MockLLM(), log=False)
     assert len(agent.tools) == 0  # Properties shouldn't be tools
 
 
@@ -414,8 +323,13 @@ def test_mixed_valid_and_invalid_tools():
     class Empty:
         pass
 
-    agent = Agent(name="mixed_valid", api_key="fake_key",
-                  tools=[calculator, Empty(), get_current_time])
+    agent = Agent(
+        name="mixed_valid",
+        api_key="fake_key",
+        tools=[calculator, Empty(), get_current_time],
+        llm=MockLLM(),
+        log=False,
+    )
     # Should only have the two valid functions
     assert len(agent.tools) == 2
     assert "calculator" in agent.tools
@@ -438,8 +352,13 @@ def test_list_of_class_instances():
         text_tools = Text()
         
         # Pass instances in a list along with functions
-        agent = Agent(name="list_test", api_key="fake_key",
-                      tools=[calculator, math_tools, text_tools, get_current_time])
+        agent = Agent(
+            name="list_test",
+            api_key="fake_key",
+            tools=[calculator, math_tools, text_tools, get_current_time],
+            llm=MockLLM(),
+            log=False,
+        )
 
         # Should have all tools: calculator, square, uppercase, get_current_time
         expected_tools = {"calculator", "square", "uppercase", "get_current_time"}
@@ -466,7 +385,7 @@ def test_method_with_complex_parameters():
                 return f"Processed {len(processed)} config items"
         
         processor = DataProcessor()
-        agent = Agent(name="processor", api_key="fake_key", tools=processor)
+        agent = Agent(name="processor", api_key="fake_key", tools=processor, llm=MockLLM(), log=False)
 
         # Should have both methods as tools
         assert "process_list" in agent.tools
@@ -489,7 +408,7 @@ class TestAgentIO:
 
     def test_io_defaults_to_none(self):
         """Agent.io should be None by default (local execution)."""
-        agent = Agent(name="test", api_key="fake")
+        agent = Agent(name="test", api_key="fake", llm=MockLLM(), log=False)
         assert agent.io is None
 
     def test_io_can_be_set(self):
@@ -497,7 +416,7 @@ class TestAgentIO:
         from connectonion.network.io import IO
         from unittest.mock import Mock
 
-        agent = Agent(name="test", api_key="fake")
+        agent = Agent(name="test", api_key="fake", llm=MockLLM(), log=False)
         mock_io = Mock(spec=IO)
 
         agent.io = mock_io

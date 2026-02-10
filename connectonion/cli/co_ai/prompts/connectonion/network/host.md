@@ -48,6 +48,22 @@ Waiting for tasks...
 
 **That's it.** Your agent is now accessible via HTTP, WebSocket, and P2P relay.
 
+**By default, your agent is automatically discoverable.** Anyone with your address can connect:
+
+```python
+from connectonion import connect
+
+# From anywhere in the world
+translator = connect("0x3d4017c3e843895a92b70aa74d1b7ebc9c98...")
+result = translator.input("Hello!")
+```
+
+The relay handles all the complexity:
+- Agent registers its endpoints (localhost, local IPs, public IP)
+- Client queries relay by address
+- SDK tries direct connection first (fastest path)
+- Falls back to relay routing if needed
+
 ---
 
 ## Function Signature
@@ -80,42 +96,74 @@ def host(
 
 ## How It Works
 
+When you call `host(create_agent)`, your agent becomes accessible via **three connection types**, all running in the same event loop:
+
 ```
-┌─────────────────────────────────────────────────────────┐
-│                      host(agent)                        │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  1. Request arrives (HTTP or WebSocket)                 │
-│  2. Trust check (blacklist/whitelist/policy)            │
-│  3. Deep copy agent (isolated instance for this request)│
-│  4. Create session_id, append to session_results.jsonl  │
-│  5. Execute agent.input(prompt, session)                │
-│  6. Append result to session_results.jsonl (done)       │
-│  7. Return result (or client fetches via GET /sessions) │
-│                                                         │
-└─────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                            host(create_agent)                                │
+│                                                                              │
+│  Single Event Loop (uvicorn)                                                │
+│  ═══════════════════════════                                                │
+│                                                                              │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐ │
+│  │   HTTP Client   │  │  WebSocket      │  │  Relay Server               │ │
+│  │   (curl, SDK)   │  │  Client (chat)  │  │  (wss://oo.openonion.ai)    │ │
+│  └────────┬────────┘  └────────┬────────┘  └──────────────┬──────────────┘ │
+│           │                    │                          │                 │
+│           ▼                    ▼                          ▼                 │
+│  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────────────┐ │
+│  │  POST /input    │  │  WS /ws         │  │  Persistent WebSocket       │ │
+│  │  GET /sessions  │  │  INPUT/OUTPUT   │  │  ANNOUNCE (register)        │ │
+│  │  GET /health    │  │  PING/PONG      │  │  INPUT → OUTPUT (relay)     │ │
+│  │  GET /info      │  │  Real-time      │  │  Heartbeat (60s)            │ │
+│  └────────┬────────┘  └────────┬────────┘  └──────────────┬──────────────┘ │
+│           │                    │                          │                 │
+│           └────────────────────┼──────────────────────────┘                 │
+│                                │                                            │
+│                                ▼                                            │
+│                    ┌───────────────────────┐                               │
+│                    │  create_agent()       │  ← Fresh instance per request │
+│                    │  agent.input(prompt)  │                               │
+│                    │  Return result        │                               │
+│                    └───────────────────────┘                               │
+│                                                                              │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
 
-**Results are always saved first.** If connection drops, client can fetch later via HTTP.
+### Connection Type 1: HTTP (`POST /input`)
+
+Direct HTTP request/response. Best for simple integrations.
+
+### Connection Type 2: WebSocket (`/ws`)
+
+Bidirectional real-time connection. Best for chat UIs with streaming.
+
+### Connection Type 3: Relay (`wss://oo.openonion.ai`)
+
+Persistent connection to relay server for discoverability. Runs automatically.
+
+### Heartbeat & Keep-Alive
+
+| Connection | Mechanism | Interval | Purpose |
+|------------|-----------|----------|---------|
+| HTTP | None | N/A | Stateless request/response |
+| WebSocket /ws | Server PING | 30s | Detect dead connections |
+| Relay | Agent ANNOUNCE | 60s | Stay registered, update endpoints |
 
 ### Worker Isolation
 
-Each request gets a **fresh deep copy** of your agent. This ensures:
-
-- **No shared state** between concurrent requests
-- **Stateful tools work correctly** (e.g., browser tools with page state)
-- **Complete isolation** - one request can't affect another
+Each request calls your function to get a **fresh agent instance**:
 
 ```python
 # Request A and B arrive simultaneously
-# Each gets its own copy of the agent and tools
+# Each calls create_agent() and gets its own fresh agent
 # No interference, no race conditions
 ```
 
 For horizontal scaling, use uvicorn `workers`:
 
 ```python
-host(agent, workers=4)  # 4 OS processes, each with isolated agents
+host(create_agent, workers=4)  # 4 OS processes, each with isolated agents
 ```
 
 ---

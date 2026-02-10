@@ -30,5 +30,5 @@ def handle_ai(
     """
     from ..co_ai.main import start_server
 
-    console.print(f"[green]Starting AI coding agent on port {port}...[/]")
+    # Server startup banner is printed by host() - no duplicate message needed
     start_server(port=port, model=model, max_iterations=max_iterations)

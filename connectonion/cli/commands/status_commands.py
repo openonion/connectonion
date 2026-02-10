@@ -161,8 +161,9 @@ def handle_status():
     ))
 
     if user.get('balance_usd', 0) <= 0:
-        console.print("\n[yellow]⚠️  Low balance! Purchase tokens at https://oo.openonion.ai[/yellow]")
+        console.print("\n[yellow]⚠️  Low balance! Add credits at https://o.openonion.ai/purchase[/yellow]")
 
     console.print("\n[yellow]💡 Tips:[/yellow]")
+    console.print("   • Add credits: https://o.openonion.ai/purchase")
     console.print("   • Use 'co auth' to refresh your token")
-    console.print("   • Visit https://oo.openonion.ai to manage your account\n")
+    console.print("   • Pricing: https://docs.connectonion.com/models/pricing\n")

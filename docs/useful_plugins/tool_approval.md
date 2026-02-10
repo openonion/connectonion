@@ -17,13 +17,100 @@ agent.input("Install dependencies")
 # ✓ bash approved (session)
 ```
 
-## How It Works
+## Lifecycle
 
-1. Before each tool executes, check if it's dangerous
-2. If dangerous, send `approval_needed` event via WebSocket
-3. Wait for client response (blocks until received)
-4. If approved: execute tool, optionally remember for session
-5. If rejected: stop batch, return feedback to LLM
+```
+User sends prompt
+    ↓
+Agent calls LLM
+    ↓
+LLM returns tool_calls batch: [bash("npm install"), write("config.json"), bash("npm build")]
+    ↓
+tool_executor iterates sequentially:
+    ↓
+┌─ Tool #1: bash("npm install")
+│   before_each_tool fires → check_approval()
+│   → Is it safe? No (bash is DANGEROUS)
+│   → Already approved for session? No
+│   → Send to client:
+│       {
+│         "type": "approval_needed",
+│         "tool": "bash",
+│         "arguments": {"command": "npm install"},
+│         "batch_remaining": [
+│           {"tool": "write", "arguments": "{...}"},
+│           {"tool": "bash", "arguments": "{\"command\": \"npm build\"}"}
+│         ]
+│       }
+│   → BLOCK — wait for client response
+│   ↓
+│   Client responds: {"approved": true, "scope": "session"}
+│   → Execute bash("npm install")
+│   → Save "bash" as session-approved
+│
+├─ Tool #2: write("config.json")
+│   before_each_tool fires → check_approval()
+│   → Is it safe? No (write is DANGEROUS)
+│   → Send approval_needed (batch_remaining: [bash(...)])
+│   → Client responds: {"approved": false, "mode": "reject_soft"}
+│   → Skip this tool, continue to next
+│
+├─ Tool #3: bash("npm build")
+│   before_each_tool fires → check_approval()
+│   → bash is session-approved → skip approval, execute immediately
+│
+└─ Done. Return results to LLM.
+```
+
+## Rejection Modes
+
+When the client rejects a tool, the `mode` field determines what happens next:
+
+### reject_soft (Skip)
+
+Skip this tool, agent loop continues. The LLM receives a hint to ask the user what they prefer.
+
+```json
+{"approved": false, "mode": "reject_soft", "feedback": "Don't write that file"}
+```
+
+- Current tool is skipped (raises ValueError)
+- Next tool in the batch proceeds normally
+- LLM gets: `"User rejected tool 'write'. Feedback: Don't write that file\n\n[System reminder: Ask the user...]"`
+
+### reject_hard (Stop)
+
+Skip this tool AND all remaining tools in the batch. The agent loop stops and waits for new user input.
+
+```json
+{"approved": false, "mode": "reject_hard", "feedback": "Wrong approach entirely"}
+```
+
+- Current tool is skipped (raises ValueError)
+- `tool_rejected_hard` flag is set in session
+- All remaining tools in the batch are auto-rejected
+- Agent loop stops — LLM does NOT get another turn
+- User must send a new message to continue
+
+Default mode when `mode` is not provided: `reject_hard`.
+
+## Batch Context
+
+When a tool needs approval, the server includes `batch_remaining` — a list of tools that will execute after the current one. This gives the client an overview to make informed decisions.
+
+```json
+{
+  "type": "approval_needed",
+  "tool": "bash",
+  "arguments": {"command": "npm install"},
+  "batch_remaining": [
+    {"tool": "write", "arguments": "{\"file_path\": \"config.json\", ...}"},
+    {"tool": "bash", "arguments": "{\"command\": \"npm build\"}"}
+  ]
+}
+```
+
+`batch_remaining` is only present when there are more tools after the current one. For the last tool in a batch (or a single-tool call), it is omitted.
 
 ## Tool Classification
 
@@ -49,29 +136,30 @@ run_background, kill_task
 send_email, post, delete, remove
 ```
 
+### Unknown Tools
+
+Tools not in either list are treated as safe (no approval needed).
+
 ## Client Protocol
 
-### Receive from server
+### Server sends
 
 ```json
 {
   "type": "approval_needed",
   "tool": "bash",
-  "arguments": {"command": "npm install"}
+  "arguments": {"command": "npm install"},
+  "batch_remaining": [{"tool": "write", "arguments": "..."}]
 }
 ```
 
-### Send response
+### Client responds
 
 ```json
-// Approve for this session (no re-prompting)
-{"approved": true, "scope": "session"}
-
-// Approve once only
 {"approved": true, "scope": "once"}
-
-// Reject with feedback
-{"approved": false, "feedback": "Use yarn instead"}
+{"approved": true, "scope": "session"}
+{"approved": false, "mode": "reject_soft", "feedback": "Use yarn instead"}
+{"approved": false, "mode": "reject_hard", "feedback": "Wrong approach"}
 ```
 
 ## Approval Scopes
@@ -81,22 +169,7 @@ send_email, post, delete, remove
 | `once` | Approve this call only |
 | `session` | Approve for rest of session (stored in memory) |
 
-## Rejection Behavior
-
-When user rejects a tool:
-
-1. Raises `ValueError` with feedback message
-2. Stops the entire tool batch (remaining tools skipped)
-3. LLM receives the error and can adjust approach
-
-```python
-# Example error message
-"User rejected tool 'bash'. Feedback: Use yarn instead"
-```
-
 ## Terminal Logging
-
-The plugin logs all approval decisions:
 
 ```
 ✓ bash approved (session)    # Approved with session scope
@@ -118,19 +191,18 @@ The plugin logs all approval decisions:
 # Approval state stored in session
 agent.current_session['approval'] = {
     'approved_tools': {
-        'bash': 'session',   # Approved for session
-        'write': 'session'   # Approved for session
+        'bash': 'session',
+        'write': 'session'
     }
 }
+
+# Set by reject_hard — remaining tools in batch see this and auto-reject
+agent.current_session['tool_rejected_hard'] = "User rejected tool 'bash'."
 ```
 
 ## Non-Web Mode
 
 When `agent.io` is None (not web mode), all tools execute without approval. This is the default behavior for CLI usage.
-
-## Unknown Tools
-
-Tools not in SAFE_TOOLS or DANGEROUS_TOOLS are treated as safe and execute without approval.
 
 ## See Also
 

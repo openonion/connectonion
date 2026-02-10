@@ -1,8 +1,8 @@
 """
 Tests for transcribe() audio-to-text utility.
 
-Run: pytest tests/test_transcribe.py -v
-Run with real API: pytest tests/test_transcribe.py -v -m real_api
+Run: pytest tests/unit/test_transcribe.py -v
+Real API tests live in tests/real_api/test_real_transcribe.py
 """
 
 import pytest
@@ -10,7 +10,7 @@ from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 # Test fixtures path
-FIXTURES_DIR = Path(__file__).parent / "fixtures"
+FIXTURES_DIR = Path(__file__).parents[1] / "fixtures"
 TEST_AUDIO = FIXTURES_DIR / "test_audio.mp3"
 
 
@@ -56,7 +56,7 @@ class TestTranscribeUnit:
         import importlib.util
         spec = importlib.util.spec_from_file_location(
             "transcribe_mod",
-            Path(__file__).parent.parent / "connectonion" / "transcribe.py"
+            Path(__file__).parents[2] / "connectonion" / "transcribe.py"
         )
         transcribe_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(transcribe_mod)
@@ -83,7 +83,7 @@ class TestTranscribeUnit:
         import importlib.util
         spec = importlib.util.spec_from_file_location(
             "transcribe_mod",
-            Path(__file__).parent.parent / "connectonion" / "transcribe.py"
+            Path(__file__).parents[2] / "connectonion" / "transcribe.py"
         )
         transcribe_mod = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(transcribe_mod)
@@ -103,98 +103,3 @@ class TestTranscribeUnit:
 
             assert result == "Test transcription via proxy"
             mock_post.assert_called_once()
-
-
-@pytest.mark.real_api
-class TestTranscribeRealAPI:
-    """Real API tests (require GEMINI_API_KEY or OPENONION_API_KEY)."""
-
-    @pytest.fixture
-    def audio_file(self):
-        """Return path to test audio file."""
-        if not TEST_AUDIO.exists():
-            pytest.skip("Test audio file not found. Run: yt-dlp to download.")
-        return str(TEST_AUDIO)
-
-    def test_transcribe_gemini_direct(self, audio_file):
-        """Test transcription using Gemini API directly."""
-        import os
-        if not os.getenv("GEMINI_API_KEY"):
-            pytest.skip("GEMINI_API_KEY not set")
-
-        from connectonion import transcribe
-
-        result = transcribe(audio_file, model="gemini-3-flash-preview")
-
-        assert result is not None
-        assert len(result) > 0
-        # The test audio is "Me at the zoo" - should contain "elephant"
-        assert "elephant" in result.lower()
-
-    def test_transcribe_openonion_proxy(self, audio_file):
-        """Test transcription using OpenOnion proxy."""
-        import os
-        if not os.getenv("OPENONION_API_KEY"):
-            # Try loading from config
-            from pathlib import Path
-            config_path = Path.home() / ".connectonion" / ".co" / "config.toml"
-            if not config_path.exists():
-                pytest.skip("OPENONION_API_KEY not set and no config.toml")
-
-        from connectonion import transcribe
-
-        result = transcribe(audio_file, model="co/gemini-3-flash-preview")
-
-        assert result is not None
-        assert len(result) > 0
-        assert "elephant" in result.lower()
-
-    def test_transcribe_with_prompt(self, audio_file):
-        """Test transcription with context prompt."""
-        import os
-        if not os.getenv("GEMINI_API_KEY"):
-            pytest.skip("GEMINI_API_KEY not set")
-
-        from connectonion import transcribe
-
-        result = transcribe(
-            audio_file,
-            prompt="A person at a zoo talking about animals",
-            model="gemini-3-flash-preview"
-        )
-
-        assert result is not None
-        assert "elephant" in result.lower()
-
-    def test_transcribe_with_timestamps(self, audio_file):
-        """Test transcription with timestamps."""
-        import os
-        if not os.getenv("GEMINI_API_KEY"):
-            pytest.skip("GEMINI_API_KEY not set")
-
-        from connectonion import transcribe
-
-        result = transcribe(
-            audio_file,
-            timestamps=True,
-            model="gemini-3-flash-preview"
-        )
-
-        assert result is not None
-        # Should contain timestamp markers like [00:00] or similar
-        # Note: Gemini may format timestamps differently
-        assert len(result) > 0
-
-    def test_transcribe_different_models(self, audio_file):
-        """Test transcription with different Gemini models."""
-        import os
-        if not os.getenv("GEMINI_API_KEY"):
-            pytest.skip("GEMINI_API_KEY not set")
-
-        from connectonion import transcribe
-
-        # Test with gemini-2.5-flash
-        result = transcribe(audio_file, model="gemini-2.5-flash")
-
-        assert result is not None
-        assert "elephant" in result.lower()

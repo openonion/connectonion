@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → logger logs to .co/logs/{name}.log and .co/evals/{name}.yaml → returns final response: str
   State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log and .co/evals/ via logger.py
   Integration: exposes Agent(name, tools, system_prompt, model, log, quiet), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path | quiet=True suppresses console but keeps eval logging | trust enforcement moved to host() for network access control
-  Performance: max_iterations=10 default (configurable per-input) | session state persists across turns for multi-turn conversations | ToolRegistry provides O(1) tool lookup via .get() or attribute access
+  Performance: max_iterations=100 default (configurable per-input) | session state persists across turns for multi-turn conversations | ToolRegistry provides O(1) tool lookup via .get() or attribute access
   Errors: LLM errors bubble up | tool execution errors captured in trace and returned to LLM for retry
 """
 
@@ -38,7 +38,7 @@ class Agent:
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
         model: str = "co/gemini-2.5-pro",
-        max_iterations: int = 10,
+        max_iterations: int = 100,
         log: Optional[Union[bool, str, Path]] = None,
         quiet: bool = False,
         plugins: Optional[List[List[EventHandler]]] = None,
@@ -368,8 +368,10 @@ class Agent:
             # Process tool calls
             self._execute_and_record_tools(response.tool_calls)
 
-            # After executing tools, continue the loop to let LLM decide next action
-            # The LLM will see the tool results and decide if task is complete
+            # reject_hard: user wants to stop and provide new direction
+            rejection = self.current_session.pop('tool_rejected_hard', None)
+            if rejection:
+                return rejection
 
         # Hit max iterations
         return f"Task incomplete: Maximum iterations ({max_iterations}) reached."
@@ -386,6 +388,18 @@ class Agent:
         # Invoke before_llm events
         self._invoke_events('before_llm')
 
+        # Generate ID for correlation between llm_call and llm_result
+        llm_id = self._next_trace_id()
+
+        # Record llm_call BEFORE calling LLM (streams to client for "thinking" indicator)
+        self._record_trace({
+            'type': 'llm_call',
+            'id': llm_id,
+            'model': self.llm.model,
+            'iteration': self.current_session['iteration'],
+            'status': 'running',
+        })
+
         start = time.time()
         response = self.llm.complete(self.current_session['messages'], tools=tool_schemas)
         duration = (time.time() - start) * 1000  # milliseconds
@@ -395,20 +409,25 @@ class Agent:
             self.last_usage = response.usage
             self.total_cost += response.usage.cost
 
-        # Record trace (also streams to io if connected)
+        # Record llm_result AFTER LLM completes (streams to client)
+        # Convert usage to dict for JSON serialization (Pydantic objects need model_dump())
+        usage_dict = response.usage.model_dump() if response.usage else None
         self._record_trace({
-            'type': 'llm_call',
+            'type': 'llm_result',
+            'id': llm_id,
             'model': self.llm.model,
+            'iteration': self.current_session['iteration'],
             'duration_ms': duration,
             'tool_calls_count': len(response.tool_calls) if response.tool_calls else 0,
-            'iteration': self.current_session['iteration'],
-            'usage': response.usage,
+            'usage': usage_dict,
+            'context_percent': self.context_percent,  # Show context usage in UI
+            'status': 'success',
         })
 
         # Invoke after_llm events (after trace entry is added)
         self._invoke_events('after_llm')
 
-        self.logger.log_llm_response(self.llm.model, duration, len(response.tool_calls), response.usage)
+        self.logger.log_llm_response(self.llm.model, duration, len(response.tool_calls), response.usage, self.context_percent)
 
         return response
 

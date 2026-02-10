@@ -41,9 +41,86 @@ import json
 import time
 import uuid
 from dataclasses import dataclass
-from typing import Any, Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional, Tuple
+
+import httpx
 
 from .. import address as addr
+
+
+def _sort_endpoints(endpoints: List[str]) -> List[str]:
+    """Sort endpoints by priority: localhost first, then local network, then public."""
+    def priority(url: str) -> int:
+        if "localhost" in url or "127.0.0.1" in url:
+            return 0
+        if "192.168." in url or "10." in url or "172.16." in url:
+            return 1
+        return 2
+    return sorted(endpoints, key=priority)
+
+
+async def resolve_endpoint(
+    agent_address: str,
+    relay_url: str,
+    timeout: float = 3.0
+) -> Optional[str]:
+    """
+    Resolve the best WebSocket endpoint for an agent address.
+
+    Steps:
+    1. Query relay server for agent endpoints
+    2. Sort by priority (localhost → local network → public)
+    3. Verify each HTTP endpoint by checking /info
+    4. Return first working ws:// endpoint where address matches
+
+    Returns:
+        WebSocket URL (ws://...) or None if resolution fails
+    """
+    # Only try resolution for valid addresses (0x + 64 hex = 66 chars)
+    if not agent_address.startswith("0x") or len(agent_address) != 66:
+        return None
+
+    # Convert wss://relay to https://relay for API call
+    https_relay = relay_url.replace("wss://", "https://").replace("ws://", "http://").rstrip("/")
+
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        # Step 1: Query relay for agent info
+        try:
+            response = await client.get(f"{https_relay}/api/relay/agents/{agent_address}")
+            if response.status_code != 200:
+                return None
+            agent_info = response.json()
+        except Exception:
+            return None
+
+        if not agent_info.get("online") or not agent_info.get("endpoints"):
+            return None
+
+        # Step 2: Sort endpoints (localhost first)
+        sorted_endpoints = _sort_endpoints(agent_info["endpoints"])
+
+        # Step 3: Try each HTTP endpoint
+        http_endpoints = [ep for ep in sorted_endpoints if ep.startswith("http://") or ep.startswith("https://")]
+
+        for http_url in http_endpoints:
+            try:
+                info_response = await client.get(f"{http_url}/info")
+                if info_response.status_code != 200:
+                    continue
+
+                info = info_response.json()
+
+                # Step 4: Verify address matches
+                if info.get("address") == agent_address:
+                    # Build WebSocket URL from HTTP URL
+                    ws_url = http_url.replace("https://", "wss://").replace("http://", "ws://")
+                    if not ws_url.endswith("/ws"):
+                        ws_url = ws_url.rstrip("/") + "/ws"
+                    return ws_url
+            except Exception:
+                continue
+
+    return None
 
 
 @dataclass
@@ -84,6 +161,8 @@ class RemoteAgent:
         self._status = "idle"
         self._current_session: Optional[Dict[str, Any]] = None
         self._ui_events: List[Dict[str, Any]] = []
+        self._resolved_endpoint: Optional[str] = None
+        self._endpoint_resolved = False
 
     @property
     def status(self) -> str:
@@ -167,6 +246,13 @@ class RemoteAgent:
         self._ui_events = []
         self._status = "idle"
 
+    async def _try_resolve_endpoint(self) -> None:
+        """Try to resolve endpoint for the agent address. Only attempts once."""
+        if self._endpoint_resolved:
+            return
+        self._endpoint_resolved = True
+        self._resolved_endpoint = await resolve_endpoint(self.address, self._relay_url)
+
     async def _stream_input(
         self,
         prompt: str,
@@ -178,20 +264,28 @@ class RemoteAgent:
 
         self._status = "working"
 
+        # Try endpoint resolution (once, cached)
+        await self._try_resolve_endpoint()
+
         # Add user event to UI
         self._add_ui_event({
             "type": "user",
             "content": prompt
         })
 
-        # Connect to relay's input endpoint
-        ws_url = f"{self._relay_url}/ws/input"
+        # Choose connection: direct (resolved) or via relay
+        if self._resolved_endpoint:
+            ws_url = self._resolved_endpoint
+            is_direct = True
+        else:
+            ws_url = f"{self._relay_url}/ws/input"
+            is_direct = False
 
         # Generate input_id for routing/response matching
         input_id = str(uuid.uuid4())
 
         # Build the INPUT message
-        input_msg = self._build_input_message(prompt, input_id)
+        input_msg = self._build_input_message(prompt, input_id, is_direct)
 
         try:
             async with websockets.connect(ws_url) as ws:
@@ -257,7 +351,7 @@ class RemoteAgent:
 
                         # Retry the original prompt
                         retry_input_id = str(uuid.uuid4())
-                        retry_msg = self._build_input_message(prompt, retry_input_id)
+                        retry_msg = self._build_input_message(prompt, retry_input_id, is_direct)
                         await ws.send(json.dumps(retry_msg))
                         # Continue loop to wait for OUTPUT
 
@@ -285,15 +379,18 @@ class RemoteAgent:
             self._status = "idle"
             raise TimeoutError(f"Request timed out after {timeout}s")
 
-    def _build_input_message(self, prompt: str, input_id: str) -> Dict[str, Any]:
+    def _build_input_message(self, prompt: str, input_id: str, is_direct: bool = False) -> Dict[str, Any]:
         """Build INPUT message with optional signing."""
-        input_msg = {
+        input_msg: Dict[str, Any] = {
             "type": "INPUT",
             "input_id": input_id,
             "prompt": prompt,
-            "to": self.address,
             "timestamp": int(time.time())
         }
+
+        # Only include 'to' for relay mode (not needed for direct connection)
+        if not is_direct:
+            input_msg["to"] = self.address
 
         # Add session for conversation continuation
         if self._current_session:
@@ -301,7 +398,9 @@ class RemoteAgent:
 
         # Sign if keys provided
         if self._keys:
-            payload = {"prompt": prompt, "to": self.address, "timestamp": input_msg["timestamp"]}
+            payload: Dict[str, Any] = {"prompt": prompt, "timestamp": input_msg["timestamp"]}
+            if not is_direct:
+                payload["to"] = self.address
             canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
             signature = addr.sign(self._keys, canonical.encode())
             input_msg["payload"] = payload

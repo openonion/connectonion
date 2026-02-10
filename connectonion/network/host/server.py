@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Callable, Union
 
 from rich.console import Console
-from rich.panel import Panel
 
 from ..asgi import create_app as asgi_create_app
 from ..trust import TrustAgent, get_default_trust_level, parse_policy, TRUST_LEVELS
@@ -164,44 +163,118 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
     }
 
 
-def _start_relay_background(create_agent: Callable, relay_url: str, addr_data: dict, agent_summary: str):
-    """Start relay connection in background thread.
+def _print_host_banner(
+    port: int,
+    address: str,
+    relay_url: str | None,
+    trust: str,
+    trust_config: dict | None,
+):
+    """Print clean host startup banner focused on server info.
 
-    The relay connection runs alongside the HTTP server, allowing the agent
-    to be discovered via P2P network while also serving HTTP requests.
+    Agent info (name, model, tools, balance) is shown by Agent's print_banner().
+    Host banner only shows: URL, endpoints, address, relay, trust/invite.
+    """
+    console = Console()
+    base_url = f"http://localhost:{port}"
+    prefix = "[magenta]\\[host][/magenta]"
+    indent = "       "  # 7 spaces to align with [host]
+
+    # Truncate address for display (show first 14 and last 4 chars)
+    addr_short = f"{address[:14]}...{address[-4:]}" if len(address) > 20 else address
+
+    # Build relay status
+    relay_status = "[green]✓[/green] relay" if relay_url else "[dim]no relay[/dim]"
+
+    # Header with [host] prefix
+    console.print()
+    console.print(f"{prefix} [dim]{'─' * 35}[/dim]")
+    console.print(f"{indent}[cyan]{base_url}[/cyan]")
+    console.print(f"{indent}[bold]POST[/bold] /input · [bold]WS[/bold] /ws · [dim]GET /docs[/dim]")
+    console.print()
+
+    # Identity line: address + relay status
+    console.print(f"{indent}[cyan]{addr_short}[/cyan] · {relay_status}")
+
+    # Trust/Invite (belongs to host layer)
+    if trust_config and isinstance(trust, str) and trust.lower() in TRUST_LEVELS:
+        onboard = trust_config.get("onboard", {})
+        invite_codes = onboard.get("invite_code", [])
+        if invite_codes:
+            codes = invite_codes if isinstance(invite_codes, list) else [invite_codes]
+            codes_str = ", ".join(codes)
+            console.print(f"{indent}[bold yellow]Invite: {codes_str}[/bold yellow]")
+
+    console.print()
+
+
+def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: dict, agent_summary: str, port: int):
+    """Create relay startup/shutdown callbacks for ASGI lifespan.
+
+    The relay connection runs in uvicorn's event loop alongside HTTP/WebSocket,
+    allowing the agent to be discovered via P2P network.
 
     Args:
         create_agent: Factory function that returns a fresh Agent instance
         relay_url: WebSocket URL for P2P relay
         addr_data: Agent address data (public key, address)
         agent_summary: Summary text for relay announcement
+        port: HTTP port for endpoint discovery
+
+    Returns:
+        Tuple of (on_startup, on_shutdown) async callbacks
     """
     import asyncio
-    import threading
     from .. import announce, relay
 
-    # Create ANNOUNCE message
-    announce_msg = announce.create_announce_message(addr_data, agent_summary, endpoints=[])
+    console = Console()
+    host_prefix = "[magenta]\\[host][/magenta]"
 
-    # Task handler - fresh instance for each request
-    # NOTE: agent.input() is synchronous inside async function, but this runs in
-    # a separate thread with its own event loop (not uvicorn's). Only blocks the
-    # relay thread, not the HTTP server. Could use asyncio.to_thread() if relay
-    # needs concurrent task handling or heartbeat during execution.
-    async def task_handler(prompt: str) -> str:
-        agent = create_agent()
-        return agent.input(prompt)
+    # State shared between startup and shutdown
+    relay_task = None
 
-    async def relay_loop():
-        ws = await relay.connect(relay_url)
-        await relay.serve_loop(ws, announce_msg, task_handler)
+    async def on_startup():
+        nonlocal relay_task
 
-    def run():
-        asyncio.run(relay_loop())
+        # Discover endpoints and create ANNOUNCE message
+        endpoints = announce.get_endpoints(port)
+        announce_msg = announce.create_announce_message(addr_data, agent_summary, endpoints=endpoints, relay=relay_url)
 
-    thread = threading.Thread(target=run, daemon=True, name="relay-connection")
-    thread.start()
-    return thread
+        # Task handler - fresh instance for each request
+        # Runs agent.input() in thread pool to avoid blocking event loop
+        async def task_handler(prompt: str) -> str:
+            agent = create_agent()
+            # Run synchronous agent.input() in thread pool
+            return await asyncio.to_thread(agent.input, prompt)
+
+        async def relay_loop():
+            first_connect = True
+            while True:
+                try:
+                    ws = await relay.connect(relay_url)
+                    if first_connect:
+                        console.print(f"{host_prefix} [green]Relay connected[/green]")
+                        first_connect = False
+                    await relay.serve_loop(ws, announce_msg, task_handler, addr_data=addr_data)
+                except asyncio.CancelledError:
+                    raise
+                except Exception as e:
+                    console.print(f"{host_prefix} [yellow]Relay error: {e}, reconnecting...[/yellow]")
+                    await asyncio.sleep(5)
+
+        # Start relay as background task in same event loop
+        relay_task = asyncio.create_task(relay_loop())
+
+    async def on_shutdown():
+        nonlocal relay_task
+        if relay_task:
+            relay_task.cancel()
+            try:
+                await relay_task
+            except asyncio.CancelledError:
+                pass
+
+    return on_startup, on_shutdown
 
 
 def host(
@@ -295,6 +368,13 @@ def host(
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
 
+    # Create relay lifespan callbacks (runs in same event loop as HTTP/WebSocket)
+    on_startup, on_shutdown = None, None
+    if relay_url:
+        on_startup, on_shutdown = _create_relay_lifespan(
+            create_agent, relay_url, addr_data, agent_summary, port
+        )
+
     app = asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,
@@ -302,33 +382,18 @@ def host(
         trust_config=trust_config,
         blacklist=blacklist,
         whitelist=whitelist,
+        on_startup=on_startup,
+        on_shutdown=on_shutdown,
     )
 
-    # Start relay connection in background (if enabled)
-    if relay_url:
-        _start_relay_background(create_agent, relay_url, addr_data, agent_summary)
-
-    # Display startup info
-    relay_status = f"[green]✓[/] {relay_url}" if relay_url else "[dim]disabled[/]"
-
-    # Build trust info for display
-    trust_info = ""
-    if trust_config and isinstance(trust, str) and trust.lower() in TRUST_LEVELS:
-        onboard = trust_config.get("onboard", {})
-        invite_codes = onboard.get("invite_code", [])
-        if invite_codes:
-            codes_str = ", ".join(invite_codes) if isinstance(invite_codes, list) else invite_codes
-            trust_info = f"\n[bold]Invite:[/]  {codes_str}\n[dim]         Run 'co copy trust/{trust}' to customize[/]"
-
-    Console().print(Panel(
-        f"[bold]POST[/] http://localhost:{port}/input\n"
-        f"[dim]GET  /sessions/{{id}} · /sessions · /health · /info[/]\n"
-        f"[dim]WS   ws://localhost:{port}/ws\n"
-        f"[dim]UI   http://localhost:{port}/docs[/]\n\n"
-        f"[bold]Address:[/] {agent_metadata['address']}\n"
-        f"[bold]Relay:[/]   {relay_status}{trust_info}",
-        title=f"[green]Agent '{agent_metadata['name']}'[/]"
-    ))
+    # Display host startup banner (agent info shown separately by Agent class)
+    _print_host_banner(
+        port=port,
+        address=agent_metadata["address"],
+        relay_url=relay_url,
+        trust=trust,
+        trust_config=trust_config,
+    )
 
     uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")
 

@@ -138,21 +138,29 @@ def _check_approval(agent: 'Agent') -> None:
     choice = pick("Execute this command?", [
         "Yes, execute",
         f"Auto approve '{base_cmd}' in this session",
-        "No, tell agent what I want"
+        "Skip, let agent figure it out",
+        "Stop, tell agent what I want",
     ], console=_console)
 
     if choice == "Yes, execute":
-        return  # Execute the command
+        return
     elif choice.startswith("Auto approve"):
-        # Add this command type to approved set
         if 'shell_approved_cmds' not in agent.current_session:
             agent.current_session['shell_approved_cmds'] = set()
         agent.current_session['shell_approved_cmds'].add(base_cmd)
-        return  # Execute the command
+        return
+    elif choice.startswith("Skip"):
+        # reject_soft: skip tool, loop continues, hint LLM to ask user
+        raise ValueError(
+            f"User rejected command '{base_cmd}'."
+            "\n\n[System reminder: Ask the user why they rejected this tool"
+            " and what approach they'd prefer. Save their preference to memory.]"
+        )
     else:
-        # User wants to provide feedback
+        # reject_hard: stop loop, wait for user input
         feedback = input("What do you want the agent to do instead? ")
-        raise ValueError(f"User feedback: {feedback}")
+        agent.current_session['tool_rejected_hard'] = feedback or f"User rejected command '{base_cmd}'."
+        raise ValueError(f"User rejected command '{base_cmd}'. Feedback: {feedback}")
 
 
 # Plugin is an event list

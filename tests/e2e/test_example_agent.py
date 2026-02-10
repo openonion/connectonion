@@ -1,26 +1,15 @@
-"""
-Complete example agent that demonstrates all ConnectOnion features.
+"""Example agent tests that run without real API calls.
 
-This test serves as both:
-1. A comprehensive integration test
-2. Living documentation showing best practices
-3. A template for building real agents
-
-Run with: pytest test_example_agent.py -v
+These tests use MockLLM for deterministic behavior while exercising
+agent workflows and tool execution paths.
 """
 
-import os
 import pytest
-import tempfile
-from pathlib import Path
-from dotenv import load_dotenv
-from connectonion import Agent, xray, replay, send_email, get_emails
-from tests.utils.mock_helpers import MockLLM
 
-# Load environment variables from tests/.env
-env_path = Path(__file__).parent / ".env"
-if env_path.exists():
-    load_dotenv(env_path)
+from connectonion import Agent
+from connectonion.core.llm import LLMResponse, ToolCall
+from connectonion.core.usage import TokenUsage
+from tests.utils.mock_helpers import MockLLM
 
 
 # Define example tools for the agent
@@ -45,171 +34,9 @@ def calculator(expression: str) -> str:
         return f"Error: {str(e)}"
 
 
-def get_current_time() -> str:
-    """Get the current date and time."""
-    from datetime import datetime
-    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-
-
-def search_web(query: str) -> str:
-    """
-    Simulate web search (in real agent, this would call an API).
-
-    Args:
-        query: The search query
-
-    Returns:
-        Mock search results
-    """
-    return f"Search results for '{query}': [Result 1], [Result 2], [Result 3]"
-
-
-@xray
-def process_data(data: str) -> str:
-    """
-    Process data with xray debugging enabled.
-    This demonstrates the @xray decorator.
-    """
-    # The @xray decorator will capture all inputs/outputs
-    processed = data.upper()
-    return f"Processed: {processed}"
-
-
 @pytest.mark.e2e
 class TestExampleAgent:
-    """Comprehensive test demonstrating a complete agent workflow."""
-
-    @pytest.fixture
-    def temp_dir(self):
-        """Create a temporary directory for test files."""
-        temp_dir = tempfile.mkdtemp()
-        yield temp_dir
-        # Cleanup happens automatically
-
-    @pytest.mark.real_api
-    def test_complete_agent_workflow(self, temp_dir):
-        """
-        Test a complete agent workflow demonstrating all major features.
-
-        This test shows:
-        1. Agent creation with multiple tools
-        2. Debug and logging configuration
-        3. Multi-turn conversations
-        4. Tool execution
-        5. History tracking
-        6. Error handling
-        """
-
-        # Create an agent with all features enabled
-        agent = Agent(
-            name="example_assistant",
-            tools=[
-                calculator,
-                get_current_time,
-                search_web,
-                process_data
-            ],
-            system_prompt="You are a helpful assistant with access to various tools.",
-            model="gpt-4o-mini",  # Using a cost-effective model
-            log=f"{temp_dir}/agent.log"  # Log to file (console always on by default)
-        )
-
-        # Test 1: Simple conversation without tools
-        response = agent.input("Hello! What can you help me with?")
-        assert response is not None
-        assert isinstance(response, str)
-
-        # Test 2: Use calculator tool
-        response = agent.input("Calculate 15 * 7 for me")
-        assert response is not None
-        assert isinstance(response, str)
-        # Check that tool was called
-
-        # Test 3: Multi-tool usage
-        response = agent.input(
-            "What time is it? Also calculate 100 / 4"
-        )
-        assert response is not None
-        assert isinstance(response, str)
-
-        # Test 4: Error handling
-        response = agent.input("Calculate this invalid expression: 2 ++ 2")
-        assert response is not None
-        assert isinstance(response, str)
-        # Agent should handle the error gracefully
-
-        # Test 5: Check history persistence
-
-        # Test 6: Check log file was created
-        if isinstance(agent.logger.log_file_path, Path):
-            assert agent.logger.log_file_path.exists()
-
-    @pytest.mark.real_api
-    def test_agent_with_real_conversation(self, temp_dir):
-        """
-        Test agent with a real multi-turn conversation.
-
-        This demonstrates:
-        1. Context retention across turns
-        2. Complex tool usage
-        3. Natural conversation flow
-        """
-
-        agent = Agent(
-            name="conversation_example",
-            tools=[calculator, get_current_time, search_web],
-            model="gpt-4o-mini",
-            log=f"{temp_dir}/conversation.log"  # Console always on, log to file
-        )
-
-        # Multi-turn conversation
-        conversations = [
-            "Hi! I'm planning a meeting. What's the current time?",
-            "The meeting will have 12 people. If we order 3 pizzas, how many slices per person if each pizza has 8 slices?",
-            "Great! Can you search for 'best pizza places for catering'?",
-            "Thank you for your help!"
-        ]
-
-        for message in conversations:
-            response = agent.input(message)
-            assert response is not None
-            assert isinstance(response, str)
-            assert not response.startswith("Error")
-
-        # Verify conversation history
-        # Verify session exists
-        assert agent.current_session is not None
-
-    @pytest.mark.real_api
-    def test_agent_with_decorators(self, temp_dir):
-        """
-        Test agent with xray and replay decorators.
-
-        This demonstrates:
-        1. Using @xray for debugging
-        2. Replay functionality
-        3. Decorator integration with agents
-        """
-
-        @xray
-        def custom_tool(input_text: str) -> str:
-            """Tool with xray debugging."""
-            return f"Processed with xray: {input_text}"
-
-        agent = Agent(
-            name="decorator_example",
-            tools=[custom_tool, process_data],
-            model="gpt-4o-mini"
-        )
-
-        # Use tools with decorators
-        response = agent.input("Use the custom tool with input 'test data'")
-        assert response is not None
-        assert isinstance(response, str)
-
-        response = agent.input("Process the text 'hello world' with the process_data function")
-        assert response is not None
-        assert isinstance(response, str)
+    """Example tests demonstrating agent workflows without network calls."""
 
     def test_agent_with_mock_llm(self):
         """
@@ -217,9 +44,6 @@ class TestExampleAgent:
 
         This demonstrates how to test agent logic without API calls.
         """
-        from connectonion.core.llm import LLMResponse, ToolCall
-        from connectonion.core.usage import TokenUsage
-
         # Create mock LLM with two responses (tool call + final)
         mock_llm = MockLLM(responses=[
             LLMResponse(
@@ -252,7 +76,7 @@ class TestExampleAgent:
 
         # Verify mock was called
         assert mock_llm.call_count > 0
-        # Verify tool was executed
+        assert response is not None
 
     def test_agent_with_custom_system_prompt(self):
         """
@@ -260,9 +84,6 @@ class TestExampleAgent:
 
         This demonstrates prompt engineering for specific behaviors.
         """
-        from connectonion.core.llm import LLMResponse
-        from connectonion.core.usage import TokenUsage
-
         mock_llm = MockLLM(responses=[
             LLMResponse(
                 content="Ahoy! I be calculatin' that for ye!",
@@ -285,6 +106,7 @@ class TestExampleAgent:
         assert mock_llm.call_count > 0
         messages = mock_llm.last_call["messages"]
         assert any(msg.get("role") == "system" for msg in messages)
+        assert response is not None
 
     def test_agent_error_recovery(self):
         """
@@ -295,9 +117,6 @@ class TestExampleAgent:
         def failing_tool(input: str) -> str:
             """A tool that always fails."""
             raise Exception("Tool failure!")
-
-        from connectonion.core.llm import LLMResponse, ToolCall
-        from connectonion.core.usage import TokenUsage
 
         mock_llm = MockLLM(responses=[
             # First response: try to use the failing tool

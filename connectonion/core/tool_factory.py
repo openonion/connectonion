@@ -2,10 +2,10 @@
 Purpose: Convert Python functions and class methods into agent-compatible tool schemas
 LLM-Note:
   Dependencies: imports from [inspect, functools, typing] | imported by [agent.py, __init__.py] | tested by [tests/unit/test_tool_factory.py]
-  Data flow: receives func: Callable → inspects signature with inspect.signature() → extracts type hints with get_type_hints() → maps Python types to JSON Schema via get_json_schema_type() → creates tool with .name, .description, .to_function_schema(), .run() attributes → returns wrapped Callable
-  State/Effects: no side effects | pure function transformations | preserves @xray and @replay decorator flags via hasattr checks | creates wrapper functions for bound methods to maintain self reference
+  Data flow: receives func: Callable → inspects signature with inspect.signature() → extracts type hints with get_type_hints() → maps Python types to JSON Schema via get_json_schema_type() → skips 'self' and 'agent' params from schema → caches _needs_agent flag for tool_executor → creates tool with .name, .description, .to_function_schema(), .run() attributes → returns wrapped Callable
+  State/Effects: no side effects | pure function transformations | preserves @xray and @replay decorator flags via hasattr checks | creates wrapper functions for bound methods to maintain self reference | sets _needs_agent=True on tools that declare 'agent' in signature
   Integration: exposes get_json_schema_type(param_type), create_tool_from_function(func), extract_methods_from_instance(obj), is_class_instance(obj) | used by Agent.__init__ to auto-convert tools | supports both standalone functions and bound methods | skips private methods (starting with _)
-  Performance: uses inspect module (relatively fast) | TYPE_MAP provides O(1) type lookups | caches nothing (recreates on each call)
+  Performance: uses inspect module (relatively fast) | TYPE_MAP provides O(1) type lookups | caches _needs_agent at registration time so tool_executor avoids inspect.signature() on every call
   Errors: skips methods without type annotations | skips methods without return type hint | handles inspection failures gracefully | wraps functions with functools.wraps to preserve metadata
   Type Support: handles Optional[X], List[X], Dict[K,V] via get_json_schema_type() | extracts inner types from Union/Optional | generates proper JSON Schema with "items" for arrays
 """
@@ -125,6 +125,10 @@ def create_tool_from_function(func: Callable) -> Callable:
     else:
         tool_func = func
     
+    # Cache whether this tool needs agent injection (checked by tool_executor)
+    # Convention: if the original function has 'agent' in its signature, the executor provides it.
+    tool_func._needs_agent = 'agent' in sig.parameters
+
     # Attach the necessary attributes for Agent compatibility
     tool_func.name = name
     tool_func.description = description

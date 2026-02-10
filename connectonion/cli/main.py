@@ -59,6 +59,7 @@ def _show_help():
     console.print("  [green]trust[/green]             Manage trust lists")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
+    console.print("  [green]keys[/green]              Show agent keys and credentials")
     console.print("  [green]status[/green]            Check account balance")
     console.print("  [green]doctor[/green]            Diagnose installation")
     console.print()
@@ -112,6 +113,15 @@ def auth(service: Optional[str] = typer.Argument(None, help="Service: google, mi
     else:
         from .commands.auth_commands import handle_auth
         handle_auth()
+
+
+@app.command()
+def keys(
+    reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full key values"),
+):
+    """Show agent keys and credentials."""
+    from .commands.keys_commands import handle_keys
+    handle_keys(reveal=reveal)
 
 
 @app.command()

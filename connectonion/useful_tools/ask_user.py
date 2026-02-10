@@ -7,20 +7,20 @@ LLM-Note:
   Integration: requires agent.io to be set | agent parameter injected by tool_executor
 """
 
-from typing import List, Optional
+from typing import List
 
 
 def ask_user(
     agent,
     question: str,
-    options: Optional[List[str]] = None,
+    options: List[str],
     multi_select: bool = False
 ) -> str:
     """Ask the user a question and wait for their response.
 
     Args:
         question: The question to ask the user
-        options: Optional list of choices for the user to select from
+        options: List of choices for the user to select from
         multi_select: If True, user can select multiple options
 
     Returns:

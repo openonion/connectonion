@@ -2,10 +2,10 @@
 Purpose: Execute agent tools with xray context injection, timing, error handling, and trace recording
 LLM-Note:
   Dependencies: imports from [time, json, typing, xray.py] | imported by [agent.py] | tested by [tests/test_tool_executor.py]
-  Data flow: receives from Agent → tool_calls: List[ToolCall], tools: ToolRegistry, agent: Agent, logger: Logger → for each tool: injects xray context via inject_xray_context() → executes tool_func(**tool_args) → records timing and result → appends to agent.current_session['trace'] → clears xray context → adds tool result to messages
+  Data flow: receives from Agent → tool_calls: List[ToolCall], tools: ToolRegistry, agent: Agent, logger: Logger → for each tool: injects xray context via inject_xray_context() → if tool._needs_agent, injects agent into tool_args → executes tool_func(**tool_args) → records timing and result → appends to agent.current_session['trace'] → clears xray context → adds tool result to messages
   State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_execution entries | calls logger.log_tool_call() and logger.log_tool_result() for user feedback | injects/clears xray context via thread-local storage
   Integration: exposes execute_and_record_tools(tool_calls, tools, agent, logger), execute_single_tool(...) | uses logger.log_tool_call(name, args) for natural function-call style output: greet(name='Alice') | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp
-  Performance: times each tool execution in milliseconds | executes tools sequentially (not parallel) | trace entry added BEFORE auto-trace so xray.trace() sees it
+  Performance: times each tool execution in milliseconds | executes tools sequentially (not parallel) | trace entry added BEFORE auto-trace so xray.trace() sees it | agent injection uses cached _needs_agent flag (set by tool_factory) instead of inspect.signature() for zero overhead
   Errors: catches all tool execution exceptions | wraps errors in trace_entry with error, error_type fields | returns error message to LLM for retry | prints error to logger with red ✗
 """
 
@@ -43,7 +43,7 @@ def execute_and_record_tools(
     agent._invoke_events('before_tools')
 
     # Execute each tool
-    for tool_call in tool_calls:
+    for i, tool_call in enumerate(tool_calls):
         # Execute the tool and get trace entry
         trace_entry = execute_single_tool(
             tool_name=tool_call.name,
@@ -53,6 +53,14 @@ def execute_and_record_tools(
             agent=agent,
             logger=logger
         )
+
+        # reject_hard: swap result with clean message, mark remaining as rejected
+        rejection = agent.current_session.get('tool_rejected_hard')
+        if rejection:
+            _add_tool_result_message(agent.current_session['messages'], tool_call.id, rejection)
+            for remaining in tool_calls[i + 1:]:
+                _add_tool_result_message(agent.current_session['messages'], remaining.id, "Rejected by user")
+            break
 
         # Add result to conversation messages
         _add_tool_result_message(
@@ -91,6 +99,8 @@ def execute_single_tool(
 
     Uses agent.current_session as single source of truth.
     Checks for __xray_enabled__ attribute to auto-print Rich tables.
+    If tool has _needs_agent flag (set by tool_factory), injects agent into args
+    so tools can access agent.io for frontend communication.
 
     Args:
         tool_name: Name of the tool to execute
@@ -176,8 +186,10 @@ def execute_single_tool(
         # Execute the tool with timing (restart timer AFTER events for accurate tool timing)
         tool_start = time.time()
 
-        # Inject agent for ask_user tool (YAGNI - only generalize when needed)
-        if tool_name == 'ask_user':
+        # Inject agent for tools that declare 'agent' in their signature.
+        # _needs_agent is cached by tool_factory at registration time.
+        # This lets tools access agent.io for frontend communication (ask_user, DiffWriter, etc.)
+        if getattr(tool_func, '_needs_agent', False):
             tool_args['agent'] = agent
 
         result = tool_func(**tool_args)

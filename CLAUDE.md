@@ -225,12 +225,20 @@ connectonion/
 1. Add assistant message with tool_calls to session
 2. For each tool:
    - `inject_xray_context()` provides runtime context
+   - If tool has `_needs_agent` flag, inject `agent` into tool args (for IO access)
    - Execute tool function with arguments
    - Record timing and result in trace
    - Clear xray context
    - Add tool result message
 3. Fire `before_each_tool` and `after_each_tool` events per tool, then `after_tools` once after all
 4. Handle errors: capture in trace, return to LLM for retry
+
+### Agent Injection for Tools
+Tools that need access to `agent.io` (for frontend communication) declare `agent` as a parameter:
+- `tool_factory` detects `agent` in signature → skips it from LLM schema, sets `_needs_agent=True`
+- `tool_executor` checks `_needs_agent` flag → injects `agent` at call time
+- Used by: `ask_user`, `DiffWriter.write()` (approval flow)
+- The LLM never sees the `agent` parameter
 
 ### Trust Verification (`connectonion/network/trust/`)
 - Environment defaults: `CONNECTONION_ENV=development` → trust="open"

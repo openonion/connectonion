@@ -138,15 +138,14 @@ class TestAgentWorkflows:
         ]
         mock_llm = MockLLM(responses=responses)
 
-        # Create agent
-        agent = Agent(name="iteration_test", llm=mock_llm, tools=[calculator], log=False)
+        # Create agent with explicit low limit to test iteration protection
+        agent = Agent(name="iteration_test", llm=mock_llm, tools=[calculator], log=False, max_iterations=10)
 
         # Run task
         result = agent.input("Keep calculating 1 + 1")
 
         # Should stop at max iterations
         assert "Maximum iterations" in result and "reached" in result
-        # History removed - checking trace instead
         # Should have stopped at max iterations (10), not continue to 15
 
 

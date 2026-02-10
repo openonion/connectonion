@@ -11,10 +11,14 @@ The ANNOUNCE message broadcasts agent presence and connectivity information to t
   "timestamp": 1234567890,
   "summary": "I translate text between 100+ languages with cultural context",
   "endpoints": [
-    "tcp://192.168.1.100:8001",
-    "tcp://73.42.18.9:8001",
-    "relay://relay.connectonion.io"
+    "http://localhost:8000",
+    "ws://localhost:8000/ws",
+    "http://192.168.1.50:8000",
+    "ws://192.168.1.50:8000/ws",
+    "http://73.42.18.9:8000",
+    "ws://73.42.18.9:8000/ws"
   ],
+  "relay": "wss://oo.openonion.ai",
   "signature": "0xabc123..."
 }
 ```
@@ -27,18 +31,38 @@ The ANNOUNCE message broadcasts agent presence and connectivity information to t
 | `address` | string | Yes | Agent's public address (0x + hex encoded Ed25519 public key) |
 | `timestamp` | number | Yes | Unix timestamp to prevent replay attacks |
 | `summary` | string | Yes | Natural language description of agent capabilities |
-| `endpoints` | array | Yes | Connection endpoints in priority order |
+| `endpoints` | array | Yes | Direct connection URLs (http and ws) |
+| `relay` | string | No | Fallback relay server URL |
 | `signature` | string | Yes | Ed25519 signature of all fields |
 
 ## Endpoints Format
 
-Endpoints use URI scheme for self-documentation:
+Endpoints are full URLs that clients can use directly:
 
-- `tcp://192.168.1.100:8001` - Local network direct connection
-- `tcp://73.42.18.9:8001` - Public IP direct connection
-- `relay://relay.connectonion.io` - WebSocket relay (always works)
+- `http://localhost:8000` - HTTP API
+- `ws://localhost:8000/ws` - WebSocket
+- `http://192.168.1.50:8000` - Local network HTTP
+- `ws://192.168.1.50:8000/ws` - Local network WebSocket
 
-Order matters - first endpoint is preferred, last is fallback.
+Order: localhost first, then local network, then public IP.
+
+## Relay Field
+
+Separate from endpoints - fallback when direct connections fail.
+
+## Endpoint Discovery
+
+```python
+from connectonion.network.announce import get_endpoints
+
+endpoints = get_endpoints(8000)
+# ["http://localhost:8000", "ws://localhost:8000/ws", ...]
+```
+
+Discovery sources:
+- **localhost** - Always included
+- **Local IPs** - Via `ifaddr` (WiFi, Ethernet, etc.)
+- **Public IP** - Via `ipify` service
 
 ## Minimal Valid Example
 
@@ -49,9 +73,10 @@ Order matters - first endpoint is preferred, last is fallback.
   "timestamp": 1234567890,
   "summary": "",
   "endpoints": [
-    "tcp://127.0.0.1:8001",
-    "relay://relay.connectonion.io"
+    "http://localhost:8000",
+    "ws://localhost:8000/ws"
   ],
+  "relay": "wss://oo.openonion.ai",
   "signature": "0x..."
 }
 ```
@@ -66,7 +91,8 @@ Additional fields can be added at root level when needed:
   "address": "0x3d40...",
   "timestamp": 1234567890,
   "summary": "I translate text",
-  "endpoints": [...],
+  "endpoints": ["http://localhost:8000", "ws://localhost:8000/ws"],
+  "relay": "wss://oo.openonion.ai",
 
   "nat_type": "restricted",     // For NAT traversal
   "wifi_ssid": "HomeNetwork",   // For local discovery
@@ -111,5 +137,12 @@ announce["signature"] = "0x" + signature
 - **No sequence number**: Timestamp provides ordering and replay prevention
 - **Address not pubkey**: Clarifies it's used for routing, not just identity
 - **Summary not capabilities**: Natural language from system prompt is more flexible
+- **Relay as separate field**: Direct endpoints vs fallback relay are conceptually different
 
 This minimal design keeps messages small while providing everything needed for discovery and connection.
+
+## Future Support (TODO)
+
+- `tcp://` - Direct TCP connections
+- `udp://` - UDP connections
+- `quic://` - QUIC protocol
