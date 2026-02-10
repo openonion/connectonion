@@ -27,6 +27,23 @@ def ask_user(
     Returns:
         The user's answer (or comma-separated answers if multi_select)
     """
+    if not agent.io:
+        # One-shot mode: no interactive IO available
+        options_str = ', '.join(f'"{opt}"' for opt in options)
+        return f"""[One-shot mode - No interactive user input available]
+
+You asked: "{question}"
+Available options: {options_str}
+
+Since this is running in one-shot CLI mode without interactive input, you cannot ask the user directly. Instead, you must make this decision yourself based on:
+
+1. The original user request and their intent
+2. Best practices and first principles
+3. The simplest approach that achieves the goal
+4. What a reasonable user would most likely choose
+
+Analyze the context and proceed with the most appropriate option. If uncertain, choose the safest/simplest option that still accomplishes the task."""
+
     agent.io.send({
         "type": "ask_user",
         "question": question,

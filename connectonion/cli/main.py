@@ -10,10 +10,17 @@ LLM-Note:
 """
 
 import typer
+from pathlib import Path
 from rich.console import Console
 from typing import Optional, List
+from dotenv import load_dotenv
 
 from .. import __version__
+
+# Load global keys.env for all CLI commands
+_global_keys = Path.home() / ".co" / "keys.env"
+if _global_keys.exists():
+    load_dotenv(_global_keys)
 
 console = Console()
 app = typer.Typer(add_completion=False, no_args_is_help=False)
@@ -154,13 +161,14 @@ def browser(command: str = typer.Argument(..., help="Browser command")):
 
 @app.command()
 def ai(
+    prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
     model: str = typer.Option("co/claude-opus-4-5", "--model", "-m", help="Model to use"),
     max_iterations: int = typer.Option(20, "--max-iterations", "-i", help="Max iterations"),
 ):
-    """Start AI coding agent web server."""
+    """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
-    handle_ai(port=port, model=model, max_iterations=max_iterations)
+    handle_ai(prompt=prompt, port=port, model=model, max_iterations=max_iterations)
 
 
 @app.command()

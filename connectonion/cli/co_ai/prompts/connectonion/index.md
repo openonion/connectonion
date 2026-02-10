@@ -152,6 +152,7 @@ Use `load_guide(path)` to load detailed documentation.
 
 | Guide | Description |
 |-------|-------------|
+| `agent-design` | Agent design best practices |
 | `examples` | Copy-paste ready code examples |
 | `quickstart` | 60-second quick start |
 | `connectonion` | Complete API reference |

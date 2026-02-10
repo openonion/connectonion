@@ -1,34 +1,34 @@
 """
 Purpose: AI coding agent CLI command
 LLM-Note:
-  Dependencies: imports from [cli/co_ai/main.py] | imported by [cli/main.py] | no direct tests
-  Data flow: CLI args → start_server(port, model, max_iterations) → co_ai.main.start_server()
+  Dependencies: imports from [cli/co_ai/main.py, cli/co_ai/agent.py] | imported by [cli/main.py] | no direct tests
+  Data flow: CLI args → start_server() or agent.input() for one-shot
   Integration: exposes handle_ai() | called from main.py as 'co ai' command
 """
 
-from rich.console import Console
-
-console = Console()
-
 
 def handle_ai(
+    prompt: str = None,
     port: int = 8000,
     model: str = "co/claude-opus-4-5",
     max_iterations: int = 20,
 ):
-    """Start AI coding agent web server.
+    """Start AI coding agent or run one-shot prompt.
 
     Args:
-        port: Port to run server on
+        prompt: One-shot prompt (runs and exits)
+        port: Port for web server
         model: LLM model to use
-        max_iterations: Max tool calling iterations
+        max_iterations: Max tool iterations
 
     Examples:
-        co ai                      # Start on port 8000
-        co ai --port 3001          # Custom port
-        co ai --model co/gpt-5     # Different model
+        co ai                                    # Start web server
+        co ai "Create a calculator agent"        # One-shot
     """
-    from ..co_ai.main import start_server
-
-    # Server startup banner is printed by host() - no duplicate message needed
-    start_server(port=port, model=model, max_iterations=max_iterations)
+    if prompt:
+        from ..co_ai.agent import create_coding_agent
+        agent = create_coding_agent(model=model, max_iterations=max_iterations)
+        agent.input(prompt)
+    else:
+        from ..co_ai.main import start_server
+        start_server(port=port, model=model, max_iterations=max_iterations)
