@@ -111,16 +111,18 @@ my-agent/
 │   └── browser.py    # Tool class
 ├── prompts/
 │   └── agent.md      # System prompt
-├── CLAUDE.md         # AI guidance for maintaining this project
+├── OO.md             # AI guidance for maintaining this project
+├── CLAUDE.md -> OO.md  # Symlink for Claude Code compatibility
 ├── pyproject.toml    # Dependencies
 ├── tests/            # Test suite
 └── README.md         # Usage docs
 ```
 
-**CLAUDE.md for Production:**
+**OO.md for Production:**
 Add this file so AI assistants understand the project:
 ```markdown
-# CLAUDE.md
+# OO.md - OpenOnion AI Guidance
+
 ## Project Overview
 What this agent does and its core philosophy.
 
@@ -136,6 +138,8 @@ What this agent does and its core philosophy.
 - How to add new tools
 - Error handling approach
 ```
+
+Create symlink for Claude Code: `ln -s OO.md CLAUDE.md`
 
 ## 1. Start with CLI
 
