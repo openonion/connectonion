@@ -190,9 +190,10 @@ def _print_host_banner(
     console.print(f"{indent}[bold]POST[/bold] /input · [bold]WS[/bold] /ws · [dim]GET /docs[/dim]")
     console.print()
 
-    # Full address (clickable to chat) + relay status
+    # Full address + clickable chat link hint
     chat_url = f"https://chat.openonion.ai/{address}"
-    console.print(f"{indent}[link={chat_url}][cyan]{address}[/cyan][/link]")
+    console.print(f"{indent}[cyan]{address}[/cyan]")
+    console.print(f"{indent}[link={chat_url}][dim]↳ chat.openonion.ai ↗[/dim][/link]")
     console.print(f"{indent}{relay_status}")
 
     # Trust/Invite (belongs to host layer)
