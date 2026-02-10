@@ -86,6 +86,34 @@ web = WebFetch()
 agent = Agent("assistant", tools=[gmail, web])
 ```
 
+## File Structure by Complexity
+
+**Simple (2-4 tools) → Single file:**
+```
+my-agent/
+└── agent.py          # Everything in one file
+```
+
+**Medium (5-8 tools) → Split tool class:**
+```
+my-agent/
+├── agent.py          # Main entry, Agent setup
+├── tools.py          # Tool class with methods
+└── prompt.md         # System prompt
+```
+
+**Complex (8+ tools, production) → Full structure:**
+```
+my-agent/
+├── agent.py          # Main entry with interactive loop
+├── tools/
+│   ├── __init__.py
+│   └── browser.py    # Tool class
+├── prompt.md         # System prompt
+├── pyproject.toml    # Dependencies
+└── README.md         # Usage docs
+```
+
 ## 1. Start with CLI
 
 **Check available commands:**
