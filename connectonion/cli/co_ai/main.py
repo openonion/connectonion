@@ -1,9 +1,10 @@
 """AI coding agent web server entry point."""
 
 import logging
+import webbrowser
 from pathlib import Path
 from dotenv import load_dotenv
-from connectonion import host
+from connectonion import host, address
 
 logging.basicConfig(
     level=logging.WARNING,
@@ -46,6 +47,10 @@ def start_server(
             auto_approve=True,  # Always auto-approve in web mode
         )
 
-    # Start server with careful trust (requires invite code or payment for strangers)
-    # Relay enabled by default - agent discoverable via address
+    # Load global identity for chat URL (host() also uses ~/.co/ by default)
+    addr_data = address.load(Path.home() / '.co')
+    if addr_data:
+        webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
+
+    # Start server (uses global ~/.co/ identity by default)
     host(agent_factory, port=port, trust="careful")

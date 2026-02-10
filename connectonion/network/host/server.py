@@ -285,6 +285,7 @@ def host(
     relay_url: str = "wss://oo.openonion.ai",
     blacklist: list | None = None,
     whitelist: list | None = None,
+    co_dir: Path = None,
 ):
     """
     Host an agent over HTTP/WebSocket with optional P2P relay discovery.
@@ -319,6 +320,7 @@ def host(
             - Set to None to disable relay
         blacklist: Blocked identities
         whitelist: Allowed identities
+        co_dir: Path to .co directory for agent identity (default: ~/.co/)
 
     Endpoints:
         POST /input          - Submit prompt, get result
@@ -341,8 +343,9 @@ def host(
     agent_metadata, sample = _extract_agent_metadata(create_agent)
     agent_summary = sample.system_prompt[:1000] if sample.system_prompt else f"{agent_metadata['name']} agent"
 
-    # Load or generate agent identity
-    co_dir = Path.cwd() / '.co'
+    # Load or generate agent identity (default: global ~/.co/)
+    if co_dir is None:
+        co_dir = Path.home() / '.co'
     addr_data = address.load(co_dir)
 
     if addr_data is None:
