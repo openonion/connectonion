@@ -109,9 +109,32 @@ my-agent/
 ├── tools/
 │   ├── __init__.py
 │   └── browser.py    # Tool class
-├── prompt.md         # System prompt
+├── prompts/
+│   └── agent.md      # System prompt
+├── CLAUDE.md         # AI guidance for maintaining this project
 ├── pyproject.toml    # Dependencies
+├── tests/            # Test suite
 └── README.md         # Usage docs
+```
+
+**CLAUDE.md for Production:**
+Add this file so AI assistants understand the project:
+```markdown
+# CLAUDE.md
+## Project Overview
+What this agent does and its core philosophy.
+
+## Architecture
+- Tool layer: tools/*.py
+- Agent layer: agent.py
+- Prompts: prompts/*.md
+
+## Development Commands
+- How to run, test, deploy
+
+## Key Patterns
+- How to add new tools
+- Error handling approach
 ```
 
 ## 1. Start with CLI
