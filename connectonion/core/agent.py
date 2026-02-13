@@ -155,6 +155,8 @@ class Agent:
 
         This is the single place where trace entries are recorded.
         Ensures both local trace and remote streaming stay in sync.
+        Also includes current session state so client can persist it
+        (client-side is source of truth for session state).
         """
         if 'id' not in entry:
             entry['id'] = self._next_trace_id()
@@ -164,6 +166,7 @@ class Agent:
         self.current_session['trace'].append(entry)
 
         if self.io:
+            entry['session'] = self.current_session
             self.io.send(entry)
 
     def _invoke_events(self, event_type: str):
@@ -202,18 +205,14 @@ class Agent:
         self.events[event_type].append(event_func)
 
     def input(self, prompt: str, max_iterations: Optional[int] = None,
-              session: Optional[Dict] = None) -> str:
+              session: Optional[Dict] = None, images: list[str] | None = None) -> str:
         """Provide input to the agent and get response.
 
         Args:
             prompt: The input prompt or data to process
             max_iterations: Override agent's max_iterations for this request
-            session: Optional session to continue a conversation. Pass the session
-                    from a previous response to maintain context. Contains:
-                    - session_id: Conversation identifier
-                    - messages: Conversation history
-                    - trace: Execution trace for debugging
-                    - turn: Turn counter
+            session: Optional session to continue a conversation.
+            images: Optional list of base64 data URLs for multimodal input
 
         Returns:
             The agent's response after processing the input
@@ -242,11 +241,14 @@ class Agent:
             # Start YAML session logging
             self.logger.start_session(self.system_prompt)
 
-        # Add user message to conversation
-        self.current_session['messages'].append({
-            "role": "user",
-            "content": prompt
-        })
+        # Add user message to conversation (multimodal if images provided)
+        if images:
+            content = [{"type": "text", "text": prompt}]
+            for img in images:
+                content.append({"type": "image_url", "image_url": {"url": img}})
+            self.current_session['messages'].append({"role": "user", "content": content})
+        else:
+            self.current_session['messages'].append({"role": "user", "content": prompt})
 
         # Track this turn
         self.current_session['turn'] += 1

@@ -25,7 +25,6 @@ This ensures complete isolation - tools with state (like BrowserTool)
 don't interfere between concurrent requests.
 """
 
-import os
 from functools import partial
 from pathlib import Path
 from typing import Callable, Union
@@ -124,11 +123,11 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
     """
     agent_name = agent_metadata["name"]
 
-    def handle_input(storage, prompt, session=None, connection=None):
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection)
+    def handle_input(storage, prompt, session=None, connection=None, images=None):
+        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images)
 
-    def handle_ws_input(storage, prompt, connection, session=None):
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection)
+    def handle_ws_input(storage, prompt, connection, session=None, images=None):
+        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images)
 
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
@@ -169,6 +168,7 @@ def _print_host_banner(
     relay_url: str | None,
     trust: str,
     trust_config: dict | None,
+    co_dir: Path = None,
 ):
     """Print clean host startup banner focused on server info.
 
@@ -195,6 +195,7 @@ def _print_host_banner(
     console.print(f"{indent}[cyan]{address}[/cyan]")
     console.print(f"{indent}[link={chat_url}][dim]↳ chat.openonion.ai ↗[/dim][/link]")
     console.print(f"{indent}{relay_status}")
+    console.print(f"{indent}[dim]{co_dir}[/dim]")
 
     # Trust/Invite (belongs to host layer)
     if trust_config and isinstance(trust, str) and trust.lower() in TRUST_LEVELS:
@@ -208,7 +209,7 @@ def _print_host_banner(
     console.print()
 
 
-def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: dict, agent_summary: str, port: int):
+def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: dict, summary: str, port: int):
     """Create relay startup/shutdown callbacks for ASGI lifespan.
 
     The relay connection runs in uvicorn's event loop alongside HTTP/WebSocket,
@@ -218,7 +219,7 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
         create_agent: Factory function that returns a fresh Agent instance
         relay_url: WebSocket URL for P2P relay
         addr_data: Agent address data (public key, address)
-        agent_summary: Summary text for relay announcement
+        summary: Summary text for relay announcement
         port: HTTP port for endpoint discovery
 
     Returns:
@@ -238,7 +239,7 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
 
         # Discover endpoints and create ANNOUNCE message
         endpoints = announce.get_endpoints(port)
-        announce_msg = announce.create_announce_message(addr_data, agent_summary, endpoints=endpoints, relay=relay_url)
+        announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
 
         # Task handler - fresh instance for each request
         # Runs agent.input() in thread pool to avoid blocking event loop
@@ -277,18 +278,23 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
 def host(
     create_agent: Callable,
     port: int = None,
-    trust: Union[str, "Agent"] = "careful",
-    result_ttl: int = 86400,
-    workers: int = 1,
-    reload: bool = False,
+    trust: Union[str, "Agent"] = None,
+    result_ttl: int = None,
+    workers: int = None,
+    reload: bool = None,
     *,
-    relay_url: str = "wss://oo.openonion.ai",
+    relay_url: str = None,
     blacklist: list | None = None,
     whitelist: list | None = None,
     co_dir: Path = None,
+    summary: str = None,
+    examples: list = None,
 ):
     """
     Host an agent over HTTP/WebSocket with optional P2P relay discovery.
+
+    Configuration: .co/host.yaml (required) with code param overrides.
+    Run 'co init' to generate the config file.
 
     Each request calls create_agent() to get a fresh Agent instance.
     This ensures complete isolation between concurrent requests.
@@ -308,44 +314,76 @@ def host(
         create_agent: Function that returns a fresh Agent instance.
                       Called once per request. Define tools inside for isolation,
                       or outside for shared state.
-        port: HTTP port (default: PORT env var or 8000)
-        trust: Trust level, policy, or Agent:
+        port: HTTP port (default: 8000 or from .co/host.yaml)
+        trust: Trust level, policy, or Agent (default: from .co/host.yaml or "careful")
             - Level: "open", "careful", "strict"
             - Policy: Natural language or file path
             - Agent: Custom trust agent
-        result_ttl: How long to keep results on server in seconds (default 24h)
-        workers: Number of worker processes
-        reload: Auto-reload on code changes
-        relay_url: P2P relay URL (default: production relay)
+        result_ttl: How long to keep results in seconds (default: 86400 or from config)
+        workers: Number of worker processes (default: 1 or from config)
+        reload: Auto-reload on code changes (default: False or from config)
+        relay_url: P2P relay URL (default: wss://oo.openonion.ai or from config)
             - Set to None to disable relay
-        blacklist: Blocked identities
-        whitelist: Allowed identities
+        blacklist: Blocked identities (default: from .co/blacklist.txt)
+        whitelist: Allowed identities (default: from .co/whitelist.txt)
         co_dir: Path to .co directory for agent identity (default: ~/.co/)
+        summary: Agent description (default: from config or agent.system_prompt)
+        examples: Example prompts (default: from config or auto-generated)
 
     Endpoints:
         POST /input          - Submit prompt, get result
         GET  /sessions/{id}  - Get session by ID
         GET  /sessions       - List all sessions
         GET  /health         - Health check
-        GET  /info           - Agent info
+        GET  /info           - Agent info (includes summary, examples)
         WS   /ws             - WebSocket
         GET  /admin/logs     - Activity log (requires OPENONION_API_KEY)
         GET  /admin/sessions - Activity sessions (requires OPENONION_API_KEY)
     """
     import uvicorn
     from ... import address
+    from .config import load_host_config, load_list_file
 
-    # Use PORT env var if port not specified (for container deployments)
-    if port is None:
-        port = int(os.environ.get("PORT", 8000))
+    # Resolve co_dir: explicit > cwd/.co (project default)
+    if co_dir is None:
+        co_dir = Path.cwd() / '.co'
+
+    # Load config: host.yaml (optional) → code param overrides
+    config = load_host_config(
+        co_dir,
+        port=port, trust=trust, result_ttl=result_ttl,
+        workers=workers, reload=reload, relay_url=relay_url,
+        summary=summary, examples=examples,
+    )
+
+    # Extract final values from config
+    port = config.get('port', 8000)
+    trust = config.get('trust', 'careful')
+    result_ttl = config.get('result_ttl', 86400)
+    workers = config.get('workers', 1)
+    reload = config.get('reload', False)
+    relay_url = config.get('relay_url')
+    summary = config.get('summary')
+    examples = config.get('examples')
 
     # Extract metadata once at startup
     agent_metadata, sample = _extract_agent_metadata(create_agent)
-    agent_summary = sample.system_prompt[:1000] if sample.system_prompt else f"{agent_metadata['name']} agent"
 
-    # Load or generate agent identity (default: global ~/.co/)
-    if co_dir is None:
-        co_dir = Path.home() / '.co'
+    # Auto-generate summary from system_prompt if not set
+    if summary is None:
+        summary = sample.system_prompt[:1000] if sample.system_prompt else f"{agent_metadata['name']} agent"
+
+    agent_metadata['summary'] = summary
+    agent_metadata['examples'] = examples
+
+    # Load whitelist/blacklist: code param (list) takes priority, else load from YAML file path
+    if whitelist is None:
+        whitelist = load_list_file(config.get('whitelist'))
+
+    if blacklist is None:
+        blacklist = load_list_file(config.get('blacklist'))
+
+    # Load or generate agent identity
     addr_data = address.load(co_dir)
 
     if addr_data is None:
@@ -372,7 +410,7 @@ def host(
     on_startup, on_shutdown = None, None
     if relay_url:
         on_startup, on_shutdown = _create_relay_lifespan(
-            create_agent, relay_url, addr_data, agent_summary, port
+            create_agent, relay_url, addr_data, summary, port
         )
 
     app = asgi_create_app(
@@ -393,6 +431,7 @@ def host(
         relay_url=relay_url,
         trust=trust,
         trust_config=trust_config,
+        co_dir=co_dir,
     )
 
     uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")

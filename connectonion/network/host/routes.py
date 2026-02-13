@@ -19,7 +19,7 @@ from .session import Session, SessionStorage
 
 
 def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, result_ttl: int,
-                  session: dict | None = None, connection=None) -> dict:
+                  session: dict | None = None, connection=None, images: list[str] | None = None) -> dict:
     """POST /input (and WebSocket /ws)
 
     Args:
@@ -29,6 +29,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         result_ttl: How long to keep the result on server
         session: Optional conversation session for continuation
         connection: WebSocket connection for bidirectional I/O (None for HTTP)
+        images: Optional list of base64 data URLs for multimodal input
     """
     agent = create_agent()  # Fresh instance per request
     agent.io = connection  # WebSocket connection or None for HTTP
@@ -54,7 +55,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     # TODO: If agent.input() throws, record stays "running" until TTL expires.
     # This is acceptable: client gets 500 error, record expires naturally.
     start = time.time()
-    result = agent.input(prompt, session=session)
+    result = agent.input(prompt, session=session, images=images)
     duration_ms = int((time.time() - start) * 1000)
 
     record.status = "done"
