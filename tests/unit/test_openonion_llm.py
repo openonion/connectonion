@@ -174,7 +174,7 @@ class TestOpenOnionLLM:
                 call_args = mock_get.call_args
                 assert call_args[0][0] == "https://oo.openonion.ai/api/v1/auth/me"
                 assert call_args[1]['headers']['Authorization'] == "Bearer mock-jwt-token"
-                assert call_args[1]['timeout'] == 5
+                assert call_args[1]['timeout'] == 15
 
                 # Check balance returned
                 assert balance == 4.2224

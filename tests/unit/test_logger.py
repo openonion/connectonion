@@ -636,7 +636,8 @@ class TestGetEvalPath:
         logger.log_turn("hello", "hi", 100, session, "gpt-4")
 
         path = logger.get_eval_path()
-        assert path == ".co/evals/hello.yaml"
+        # get_eval_path returns absolute path
+        assert path.endswith(".co/evals/hello.yaml")
 
     def test_returns_none_before_log_turn(self, tmp_path, monkeypatch):
         """Test get_eval_path returns None before first log."""

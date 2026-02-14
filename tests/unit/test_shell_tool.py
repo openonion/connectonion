@@ -124,32 +124,32 @@ class TestBashBasic:
 
     def test_bash_simple_command(self):
         """Test running a simple command."""
-        result = bash("echo hello")
+        result = bash("echo hello", "Echo test")
         assert "hello" in result
 
     def test_bash_returns_stdout(self):
         """Test that stdout is captured."""
-        result = bash("echo 'test output'")
+        result = bash("echo 'test output'", "Echo test output")
         assert "test output" in result
 
     def test_bash_returns_stderr(self):
         """Test that stderr is captured."""
-        result = bash("ls /nonexistent_dir_12345")
+        result = bash("ls /nonexistent_dir_12345", "List nonexistent dir")
         assert "STDERR:" in result or "No such file" in result
 
     def test_bash_shows_exit_code_on_failure(self):
         """Test that non-zero exit codes are reported."""
-        result = bash("exit 1")
+        result = bash("exit 1", "Exit with error")
         assert "Exit code: 1" in result
 
     def test_bash_no_output(self):
         """Test command with no output."""
-        result = bash("true")
+        result = bash("true", "Run true command")
         assert result == "(no output)"
 
     def test_bash_truncates_long_output(self):
         """Test that long output is truncated."""
-        result = bash("python3 -c \"print('A' * 15000)\"")
+        result = bash("python3 -c \"print('A' * 15000)\"", "Print long string")
         assert "truncated" in result
 
 
@@ -160,13 +160,13 @@ class TestBashWithCwd:
     def test_bash_with_cwd(self):
         """Test running command with custom working directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            result = bash("pwd", cwd=tmpdir)
+            result = bash("pwd", "Print working dir", cwd=tmpdir)
             assert tmpdir in result
 
     def test_bash_cwd_creates_file(self):
         """Test that file operations work in the specified directory."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            bash("touch test_file.txt", cwd=tmpdir)
+            bash("touch test_file.txt", "Create test file", cwd=tmpdir)
             assert (Path(tmpdir) / "test_file.txt").exists()
 
 
@@ -176,7 +176,7 @@ class TestBashWithTimeout:
 
     def test_bash_timeout_returns_error(self):
         """Test that timeout returns error message."""
-        result = bash("sleep 5", timeout=1)
+        result = bash("sleep 5", "Sleep command", timeout=1)
         assert "timed out" in result
 
 
@@ -230,5 +230,5 @@ class TestBashOnWindows:
 
     def test_bash_returns_error_on_windows(self):
         """Test that bash returns error on Windows."""
-        result = bash("echo test")
+        result = bash("echo test", "Echo test")
         assert "Unix/Mac only" in result

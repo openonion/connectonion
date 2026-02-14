@@ -248,7 +248,7 @@ class TestServeLoop:
         async def dummy_handler(prompt):
             return "response"
 
-        with patch('builtins.print'):  # Suppress print output
+        with patch('rich.console.Console.print'):  # Suppress Rich console output
             await relay.serve_loop(mock_ws, announce_msg, dummy_handler)
 
         # Should have sent initial ANNOUNCE
@@ -285,7 +285,7 @@ class TestServeLoop:
             handler_prompt = prompt
             return "10"
 
-        with patch('builtins.print'):
+        with patch('rich.console.Console.print'):
             await relay.serve_loop(mock_ws, announce_msg, test_handler)
 
         # Verify handler was called with prompt
@@ -323,13 +323,13 @@ class TestServeLoop:
         async def dummy_handler(prompt):
             return "response"
 
-        # Should print error but not crash
-        with patch('builtins.print') as mock_print:
+        # Should print error but not crash - uses Rich console.print
+        with patch('rich.console.Console.print') as mock_print:
             await relay.serve_loop(mock_ws, announce_msg, dummy_handler)
 
-            # Check that error was printed
+            # Check that error was printed (code prints "Relay error: {error}")
             print_calls = [str(call) for call in mock_print.call_args_list]
-            error_printed = any("Error from relay" in str(call) for call in print_calls)
+            error_printed = any("Relay error" in str(call) for call in print_calls)
             assert error_printed
 
     @pytest.mark.asyncio
@@ -356,7 +356,7 @@ class TestServeLoop:
         async def dummy_handler(prompt):
             return "response"
 
-        with patch('builtins.print') as mock_print:
+        with patch('rich.console.Console.print'):
             with patch('asyncio.get_event_loop') as mock_loop:
                 mock_loop.return_value.time.return_value = 99999
                 await relay.serve_loop(mock_ws, announce_msg, dummy_handler, heartbeat_interval=1)
@@ -379,12 +379,13 @@ class TestServeLoop:
         async def dummy_handler(prompt):
             return "response"
 
-        with patch('builtins.print') as mock_print:
+        # Uses Rich console.print, code prints "Relay disconnected"
+        with patch('rich.console.Console.print') as mock_print:
             await relay.serve_loop(mock_ws, announce_msg, dummy_handler)
 
-            # Should print connection closed message
+            # Should print disconnection message
             print_calls = [str(call) for call in mock_print.call_args_list]
-            closed_printed = any("Connection to relay closed" in str(call) for call in print_calls)
+            closed_printed = any("disconnected" in str(call).lower() for call in print_calls)
             assert closed_printed
 
     @pytest.mark.asyncio
@@ -411,7 +412,7 @@ class TestServeLoop:
         async def dummy_handler(prompt):
             return "response"
 
-        with patch('builtins.print'):
+        with patch('rich.console.Console.print'):
             with patch('asyncio.get_event_loop') as mock_loop:
                 mock_loop.return_value.time.return_value = 99999
                 # Should complete without error with custom interval

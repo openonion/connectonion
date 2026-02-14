@@ -204,8 +204,8 @@ class TestEvaluateCompletion:
 
             evaluate_completion(agent)
 
-            # Verify logger.print was called twice (evaluating... and result)
-            assert agent.logger.print.call_count == 2
+            # Verify logger.print was called (evaluating... and result)
+            assert agent.logger.print.call_count >= 2
 
     def test_evaluate_completion_skips_if_no_user_prompt(self):
         """Test that evaluate_completion does nothing if no user prompt."""

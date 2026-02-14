@@ -33,7 +33,7 @@ def test_start_server_calls_host(monkeypatch):
 
     called = {}
 
-    def fake_host(factory, port, trust, relay_url):
+    def fake_host(factory, port, trust, co_dir=None, relay_url=None):
         called.update({"factory": factory, "port": port, "trust": trust, "relay_url": relay_url})
 
     monkeypatch.setattr(main_mod, "host", fake_host)

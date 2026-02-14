@@ -234,8 +234,11 @@ class TestInfoHandler:
             "tools": ["tool1", "tool2"],
             "address": "0x123",
         }
+        # Create mock TrustAgent with .trust attribute
+        mock_trust = Mock()
+        mock_trust.trust = "careful"
 
-        result = info_handler(metadata, "careful")
+        result = info_handler(metadata, mock_trust)
 
         assert result["name"] == "my_agent"
         assert result["tools"] == ["tool1", "tool2"]
@@ -255,8 +258,10 @@ class TestInfoHandler:
                 "payment": 10,
             }
         }
+        mock_trust = Mock()
+        mock_trust.trust = "careful"
 
-        result = info_handler(metadata, "careful", trust_config)
+        result = info_handler(metadata, mock_trust, trust_config)
 
         assert "onboard" in result
         assert result["onboard"]["invite_code"] is True
@@ -269,8 +274,10 @@ class TestInfoHandler:
             "tools": [],
             "address": "0x123",
         }
+        mock_trust = Mock()
+        mock_trust.trust = "open"
 
-        result = info_handler(metadata, "open")
+        result = info_handler(metadata, mock_trust)
 
         assert "onboard" not in result
 
@@ -282,8 +289,10 @@ class TestInfoHandler:
             "address": "0x123",
         }
         trust_config = {"default": "allow"}  # No onboard key
+        mock_trust = Mock()
+        mock_trust.trust = "open"
 
-        result = info_handler(metadata, "open", trust_config)
+        result = info_handler(metadata, mock_trust, trust_config)
 
         assert "onboard" not in result
 

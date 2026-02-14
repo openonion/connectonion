@@ -89,7 +89,7 @@ class TestCreateAnnounceMessage:
 
             # Parse and verify it's sorted
             parsed = json.loads(signed_data.decode('utf-8'))
-            expected_keys = ["address", "endpoints", "summary", "timestamp", "type"]
+            expected_keys = ["address", "endpoints", "relay", "summary", "timestamp", "type"]
             assert list(parsed.keys()) == expected_keys
 
     def test_default_endpoints_is_empty_list(self):
