@@ -1,10 +1,10 @@
 """
-Purpose: Automatically format base64 image tool results for multimodal LLM consumption
+Purpose: Automatically format base64 image tool results for multimodal LLM consumption and send to frontend
 LLM-Note:
   Dependencies: imports from [re, typing, events.after_tools] | imported by [useful_plugins/__init__.py] | tested by [tests/unit/test_image_result_formatter.py]
-  Data flow: after_tools event → scans tool result messages for base64 images → detects data URL or raw base64 patterns → converts tool result message content to OpenAI vision API format with image_url type → allows LLM to visually interpret screenshots/images
-  State/Effects: modifies agent.current_session['messages'] in place | replaces text content with image content blocks | no file I/O | no network
-  Integration: exposes image_result_formatter plugin list with [format_images] handler | used via Agent(plugins=[image_result_formatter]) | works with screenshot tools, image generators
+  Data flow: after_tools event → scans tool result messages for base64 images → detects data URL or raw base64 patterns → converts tool result message content to OpenAI vision API format with image_url type → sends image to frontend via agent.io.send_image() if available → allows LLM to visually interpret screenshots/images
+  State/Effects: modifies agent.current_session['messages'] in place | replaces text content with image content blocks | sends WebSocket event if agent.io exists | no file I/O
+  Integration: exposes image_result_formatter plugin list with [format_images] handler | used via Agent(plugins=[image_result_formatter]) | works with screenshot tools, image generators | auto-sends to oo-chat/SDK clients when hosted
   Performance: O(n) message scanning | regex pattern matching | no LLM calls
   Errors: silent skip if no base64 images detected | malformed base64 may cause LLM confusion
 
