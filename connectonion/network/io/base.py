@@ -96,3 +96,14 @@ class IO(ABC):
         self.send({"type": "approval_needed", "tool": tool, "arguments": arguments})
         response = self.receive()
         return response.get("approved", False)
+
+    def send_image(self, image_data: str) -> None:
+        """Send an image to the client for display.
+
+        Args:
+            image_data: Base64-encoded data URL (e.g., "data:image/png;base64,iVBORw0K...")
+
+        Example:
+            agent.io.send_image("data:image/png;base64,iVBORw0KGgoAAAANSUh...")
+        """
+        self.send({"type": "agent_image", "image": image_data})
