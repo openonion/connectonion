@@ -19,12 +19,13 @@ from tests.utils.mock_helpers import MockLLM
 class FakeAgent:
     """Fake agent for testing plugins."""
 
-    def __init__(self):
+    def __init__(self, with_io=False):
         self.current_session = {
             'messages': [],
             'trace': [],
         }
         self.logger = Mock()
+        self.io = Mock() if with_io else None
 
 
 class TestIsBase64Image:
@@ -255,6 +256,58 @@ class TestFormatImageResult:
         assert 'screenshot' in trace_result
         assert 'image/png' in trace_result
         assert len(trace_result) < 100  # Much shorter than original
+
+    def test_sends_image_to_io_when_available(self):
+        """Test that image is sent to frontend via agent.io when available."""
+        agent = FakeAgent(with_io=True)
+        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
+        agent.current_session['trace'] = [
+            {
+                'type': 'tool_result',
+                'name': 'screenshot',
+                'status': 'success',
+                'result': f"data:image/png;base64,{base64_data}",
+                'call_id': 'call_123'
+            }
+        ]
+        agent.current_session['messages'] = [
+            {
+                'role': 'tool',
+                'content': f"data:image/png;base64,{base64_data}",
+                'tool_call_id': 'call_123'
+            }
+        ]
+
+        _format_image_result(agent)
+
+        # Verify send_image was called with the correct data URL
+        agent.io.send_image.assert_called_once()
+        call_args = agent.io.send_image.call_args[0][0]
+        assert call_args == f"data:image/png;base64,{base64_data}"
+
+    def test_skips_sending_to_io_when_not_available(self):
+        """Test that no error occurs when io is None."""
+        agent = FakeAgent(with_io=False)
+        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
+        agent.current_session['trace'] = [
+            {
+                'type': 'tool_result',
+                'name': 'screenshot',
+                'status': 'success',
+                'result': f"data:image/png;base64,{base64_data}",
+                'call_id': 'call_456'
+            }
+        ]
+        agent.current_session['messages'] = [
+            {
+                'role': 'tool',
+                'content': f"data:image/png;base64,{base64_data}",
+                'tool_call_id': 'call_456'
+            }
+        ]
+
+        # Should not raise error even without io
+        _format_image_result(agent)
 
 
 class TestImageResultFormatterPlugin:
