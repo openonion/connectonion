@@ -121,6 +121,11 @@ def _format_image_result(agent: 'Agent') -> None:
     # Update trace result to short message (avoids token overflow in other plugins like ReAct)
     trace['result'] = f"🖼️ Tool '{tool_name}' returned image ({mime_type})"
 
+    # Send image to frontend via WebSocket if available
+    if agent.io:
+        data_url = f"data:{mime_type};base64,{base64_data}"
+        agent.io.send_image(data_url)
+
 
 # Plugin is an event list
 # Uses after_tools because message modification can only happen after all tools finish
