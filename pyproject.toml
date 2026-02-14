@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "0.6.7"
+version = "0.6.8"
 description = "A simple Python framework for creating AI agents with behavior tracking"
 readme = "README.md"
 license = {text = "MIT"}
@@ -107,6 +107,7 @@ include = [
 include = [
     "connectonion/**/*.md",
     "connectonion/**/*.txt",
+    "connectonion/**/*.yaml",
     "connectonion/**/*.example",
 ]
 
