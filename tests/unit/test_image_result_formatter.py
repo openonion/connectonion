@@ -118,7 +118,7 @@ class TestFormatImageResult:
                 'name': 'screenshot',
                 'status': 'success',
                 'result': f"data:image/png;base64,{base64_data}",
-                'call_id': 'call_123'
+                'tool_id': 'call_123'
             }
         ]
         agent.current_session['messages'] = [
@@ -155,7 +155,7 @@ class TestFormatImageResult:
                 'name': 'capture',
                 'status': 'success',
                 'result': 'data:image/png;base64,iVBORw0KGgo',
-                'call_id': 'call_456'
+                'tool_id': 'call_456'
             }
         ]
         agent.current_session['messages'] = [
@@ -212,7 +212,7 @@ class TestFormatImageResult:
                 'name': 'search',
                 'status': 'success',
                 'result': 'Found 10 results for Python',
-                'call_id': 'call_789'
+                'tool_id': 'call_789'
             }
         ]
         agent.current_session['messages'] = [
@@ -238,7 +238,7 @@ class TestFormatImageResult:
                 'name': 'screenshot',
                 'status': 'success',
                 'result': 'data:image/png;base64,' + 'A' * 1000,
-                'call_id': 'call_abc'
+                'tool_id': 'call_abc'
             }
         ]
         agent.current_session['messages'] = [
@@ -267,7 +267,7 @@ class TestFormatImageResult:
                 'name': 'screenshot',
                 'status': 'success',
                 'result': f"data:image/png;base64,{base64_data}",
-                'call_id': 'call_123'
+                'tool_id': 'call_123'
             }
         ]
         agent.current_session['messages'] = [
@@ -295,7 +295,7 @@ class TestFormatImageResult:
                 'name': 'screenshot',
                 'status': 'success',
                 'result': f"data:image/png;base64,{base64_data}",
-                'call_id': 'call_456'
+                'tool_id': 'call_456'
             }
         ]
         agent.current_session['messages'] = [
