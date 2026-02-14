@@ -476,3 +476,109 @@ class TestAgentIO:
         agent.input("test")
 
         assert io_in_handler[0] is None
+
+
+def test_agent_input_with_images():
+    """Test that agent.input() handles images parameter correctly for multimodal input."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="I can see an image of a cat.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="vision_agent", llm=mock_llm, log=False)
+
+    # Simulate base64 image data URL
+    test_image = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+
+    result = agent.input("What's in this image?", images=[test_image])
+
+    # Verify response
+    assert "cat" in result.lower()
+
+    # Verify the message format sent to LLM
+    assert mock_llm.call_count > 0
+    messages = mock_llm.last_call["messages"]
+
+    # Find user message (should be the last one before LLM call)
+    user_message = None
+    for msg in messages:
+        if msg['role'] == 'user':
+            user_message = msg
+
+    assert user_message is not None
+
+    # User message content should be a list with text and image_url
+    content = user_message['content']
+    assert isinstance(content, list)
+    assert len(content) == 2
+
+    # First item should be text
+    assert content[0]['type'] == 'text'
+    assert content[0]['text'] == "What's in this image?"
+
+    # Second item should be image_url
+    assert content[1]['type'] == 'image_url'
+    assert content[1]['image_url']['url'] == test_image
+
+
+def test_agent_input_with_multiple_images():
+    """Test that agent.input() handles multiple images correctly."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="I can see two images.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="vision_agent", llm=mock_llm, log=False)
+
+    # Multiple test images
+    test_images = [
+        "data:image/png;base64,image1base64data",
+        "data:image/jpeg;base64,image2base64data",
+    ]
+
+    agent.input("Compare these images", images=test_images)
+
+    # Verify message format
+    messages = mock_llm.last_call["messages"]
+    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+
+    content = user_message['content']
+    assert isinstance(content, list)
+    assert len(content) == 3  # 1 text + 2 images
+
+    # Check all images are included
+    image_items = [item for item in content if item['type'] == 'image_url']
+    assert len(image_items) == 2
+    assert image_items[0]['image_url']['url'] == test_images[0]
+    assert image_items[1]['image_url']['url'] == test_images[1]
+
+
+def test_agent_input_without_images_unchanged():
+    """Test that agent.input() without images still works as before (string content)."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="Hello!",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="text_agent", llm=mock_llm, log=False)
+    agent.input("Hello")
+
+    # Verify message format - should be plain string, not list
+    messages = mock_llm.last_call["messages"]
+    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+
+    # Content should be a simple string when no images
+    assert isinstance(user_message['content'], str)
+    assert user_message['content'] == "Hello"
