@@ -29,14 +29,6 @@ python personality_examples.py
 
 ## 📁 Example Files
 
-### Image Support
-
-**`image_agent.py`** - Demonstrates sending and receiving base64-encoded images:
-- Receive images from users via WebSocket (`images` parameter)
-- Send images back using `agent.io.send_image(data_url)`
-- Example tools for image processing workflows
-- Run: `python examples/image_agent.py` then connect via oo-chat or SDK
-
 ### 1. `quick_start.py` - Minimal Setup ⚡
 **Perfect for beginners!**
 - Shows the simplest way to create an agent
