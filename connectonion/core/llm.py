@@ -1,17 +1,18 @@
 """
-Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, and OpenOnion
+Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, Groq, Grok, OpenRouter, and OpenOnion
 LLM-Note:
   Dependencies: imports from [abc, typing, dataclasses, json, os, base64, openai, anthropic, requests, pathlib, toml, pydantic, .usage, .exceptions] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py, tests/test_billing_error_agent.py]
   Data flow: Agent/llm_do calls create_llm(model, api_key) → factory routes to provider class → Provider.__init__() validates API key → Agent calls complete(messages, tools) OR structured_complete(messages, output_schema) → provider converts to native format → calls API → parses response → returns LLMResponse(content, tool_calls, raw_response) OR Pydantic model instance
-  State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, OPENONION_API_KEY) | reads ~/.co/config.toml for OpenOnion auth | makes HTTP requests to LLM APIs | no caching or persistence
-  Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
+  State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, OPENONION_API_KEY) | reads ~/.co/config.toml for OpenOnion auth | makes HTTP requests to LLM APIs | no caching or persistence
+  Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, GroqLLM, GrokLLM, OpenRouterLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
   Performance: stateless (no caching) | synchronous (no streaming) | default max_tokens=8192 for Anthropic (required) | each call hits API
   Errors: raises ValueError for missing API keys, unknown models, invalid parameters | provider-specific errors bubble up (openai.APIError, anthropic.APIError, etc.) | OpenOnionLLM transforms 402 errors to InsufficientCreditsError with formatted message and typed attributes | Pydantic ValidationError for invalid structured output
 
 Unified LLM provider abstraction layer for ConnectOnion framework.
 
 This module provides a consistent interface for interacting with multiple LLM providers
-(OpenAI, Anthropic, Google Gemini, and ConnectOnion managed keys) through a common API.
+(OpenAI, Anthropic, Google Gemini, Groq, Grok, OpenRouter, and ConnectOnion managed keys)
+through a common API.
 
 Architecture Overview
 --------------------
@@ -26,6 +27,9 @@ The module follows a factory pattern with provider-specific implementations:
    - OpenAILLM: Native OpenAI API with responses.parse() for structured output
    - AnthropicLLM: Claude API with tool calling workaround for structured output
    - GeminiLLM: Google Gemini with response_schema for structured output
+   - GroqLLM: Groq via OpenAI-compatible endpoint
+   - GrokLLM: xAI Grok via OpenAI-compatible endpoint
+   - OpenRouterLLM: OpenRouter via OpenAI-compatible endpoint
    - OpenOnionLLM: Managed keys using OpenAI-compatible proxy endpoint
 
 3. **Factory Function (create_llm)**:
@@ -98,6 +102,11 @@ Required (pick one):
   - ANTHROPIC_API_KEY: For Claude models
   - GEMINI_API_KEY or GOOGLE_API_KEY: For Gemini models
   - OPENONION_API_KEY: For co/ managed keys (or from ~/.co/config.toml)
+  - GROQ_API_KEY: For groq/ prefixed models
+  - OPENROUTER_API_KEY: For openrouter/ prefixed models
+  - OPENROUTER_HTTP_REFERER: Optional attribution header for OpenRouter
+  - OPENROUTER_X_TITLE: Optional app title header for OpenRouter
+  - XAI_API_KEY: For grok/ prefixed models (xAI)
 
 Optional:
   - OPENONION_DEV: Use localhost:8000 for OpenOnion (development)
@@ -602,6 +611,240 @@ class GeminiLLM(LLM):
         return completion.choices[0].message.parsed
 
 
+class GroqLLM(LLM):
+    """Groq LLM implementation using OpenAI-compatible endpoint."""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "groq/llama-3.3-70b-versatile", **kwargs):
+        self.api_key = api_key or os.getenv("GROQ_API_KEY")
+        if not self.api_key:
+            raise ValueError("Groq API key required. Set GROQ_API_KEY environment variable or pass api_key parameter.")
+
+        self.model = model.removeprefix("groq/")
+        self.client = openai.OpenAI(
+            api_key=self.api_key,
+            base_url="https://api.groq.com/openai/v1"
+        )
+
+    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
+        """Complete a conversation using Groq's OpenAI-compatible endpoint."""
+        api_kwargs = {
+            "model": self.model,
+            "messages": messages,
+            **kwargs
+        }
+
+        if tools:
+            api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
+            api_kwargs["tool_choice"] = "auto"
+
+        response = self.client.chat.completions.create(**api_kwargs)
+        message = response.choices[0].message
+
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
+
+        usage = None
+        if hasattr(response, 'usage') and response.usage:
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cost = calculate_cost(self.model, input_tokens, output_tokens)
+            usage = TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost=cost,
+            )
+
+        return LLMResponse(content=message.content, tool_calls=tool_calls, raw_response=response, usage=usage)
+
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
+        """Get structured Pydantic output using JSON-mode + schema validation.
+
+        Uses chat.completions with JSON response format for compatibility with
+        OpenAI-like providers that may not support beta parse endpoints.
+        """
+        schema_json = json.dumps(output_schema.model_json_schema(), indent=2)
+        schema_instruction = (
+            "Return ONLY valid JSON (no markdown) that matches this JSON Schema:\n"
+            f"{schema_json}"
+        )
+
+        structured_messages = [{"role": "system", "content": schema_instruction}, *messages]
+
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=structured_messages,
+            response_format={"type": "json_object"},
+            **kwargs,
+        )
+        content = completion.choices[0].message.content or "{}"
+        return output_schema.model_validate_json(content)
+
+
+class GrokLLM(LLM):
+    """Grok (xAI) LLM implementation using OpenAI-compatible endpoint."""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "grok/grok-4", **kwargs):
+        self.api_key = api_key or os.getenv("XAI_API_KEY")
+        if not self.api_key:
+            raise ValueError("Grok API key required. Set XAI_API_KEY environment variable or pass api_key parameter.")
+
+        self.model = model.removeprefix("grok/")
+        self.client = openai.OpenAI(
+            api_key=self.api_key,
+            base_url="https://api.x.ai/v1"
+        )
+
+    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
+        """Complete a conversation using Grok's OpenAI-compatible endpoint."""
+        api_kwargs = {
+            "model": self.model,
+            "messages": messages,
+            **kwargs
+        }
+
+        if tools:
+            api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
+            api_kwargs["tool_choice"] = "auto"
+
+        response = self.client.chat.completions.create(**api_kwargs)
+        message = response.choices[0].message
+
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
+
+        usage = None
+        if hasattr(response, 'usage') and response.usage:
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cost = calculate_cost(self.model, input_tokens, output_tokens)
+            usage = TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost=cost,
+            )
+
+        return LLMResponse(content=message.content, tool_calls=tool_calls, raw_response=response, usage=usage)
+
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
+        """Get structured Pydantic output using JSON-mode + schema validation."""
+        schema_json = json.dumps(output_schema.model_json_schema(), indent=2)
+        schema_instruction = (
+            "Return ONLY valid JSON (no markdown) that matches this JSON Schema:\n"
+            f"{schema_json}"
+        )
+
+        structured_messages = [{"role": "system", "content": schema_instruction}, *messages]
+
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=structured_messages,
+            response_format={"type": "json_object"},
+            **kwargs,
+        )
+        content = completion.choices[0].message.content or "{}"
+        return output_schema.model_validate_json(content)
+
+
+class OpenRouterLLM(LLM):
+    """OpenRouter LLM implementation using OpenAI-compatible endpoint."""
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "openrouter/openai/gpt-4o-mini", **kwargs):
+        self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
+        if not self.api_key:
+            raise ValueError("OpenRouter API key required. Set OPENROUTER_API_KEY environment variable or pass api_key parameter.")
+
+        self.model = model.removeprefix("openrouter/")
+
+        # OpenRouter recommends these optional headers for request attribution.
+        default_headers = {}
+        if os.getenv("OPENROUTER_HTTP_REFERER"):
+            default_headers["HTTP-Referer"] = os.getenv("OPENROUTER_HTTP_REFERER")
+        if os.getenv("OPENROUTER_X_TITLE"):
+            default_headers["X-Title"] = os.getenv("OPENROUTER_X_TITLE")
+
+        client_kwargs = {
+            "api_key": self.api_key,
+            "base_url": "https://openrouter.ai/api/v1",
+        }
+        if default_headers:
+            client_kwargs["default_headers"] = default_headers
+
+        self.client = openai.OpenAI(**client_kwargs)
+
+    def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
+        """Complete a conversation using OpenRouter's OpenAI-compatible endpoint."""
+        api_kwargs = {
+            "model": self.model,
+            "messages": messages,
+            **kwargs
+        }
+
+        if tools:
+            api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
+            api_kwargs["tool_choice"] = "auto"
+
+        response = self.client.chat.completions.create(**api_kwargs)
+        message = response.choices[0].message
+
+        tool_calls = []
+        if hasattr(message, 'tool_calls') and message.tool_calls:
+            for tc in message.tool_calls:
+                tool_calls.append(ToolCall(
+                    name=tc.function.name,
+                    arguments=json.loads(tc.function.arguments) if isinstance(tc.function.arguments, str) else tc.function.arguments,
+                    id=tc.id
+                ))
+
+        usage = None
+        if hasattr(response, 'usage') and response.usage:
+            input_tokens = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            cost = calculate_cost(self.model, input_tokens, output_tokens)
+            usage = TokenUsage(
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                cost=cost,
+            )
+
+        return LLMResponse(content=message.content, tool_calls=tool_calls, raw_response=response, usage=usage)
+
+    def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
+        """Get structured Pydantic output using JSON-mode + schema validation.
+
+        Uses chat.completions with JSON response format for compatibility with
+        OpenAI-like providers that may not support beta parse endpoints.
+        """
+        schema_json = json.dumps(output_schema.model_json_schema(), indent=2)
+        schema_instruction = (
+            "Return ONLY valid JSON (no markdown) that matches this JSON Schema:\n"
+            f"{schema_json}"
+        )
+
+        structured_messages = [{"role": "system", "content": schema_instruction}, *messages]
+
+        completion = self.client.chat.completions.create(
+            model=self.model,
+            messages=structured_messages,
+            response_format={"type": "json_object"},
+            **kwargs,
+        )
+        content = completion.choices[0].message.content or "{}"
+        return output_schema.model_validate_json(content)
+
+
+
 # Model registry mapping model names to providers
 MODEL_REGISTRY = {
     # OpenAI models
@@ -820,6 +1063,14 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     # Check if it's a co/ model (OpenOnion managed keys)
     if model.startswith("co/"):
         return OpenOnionLLM(api_key=api_key, model=model, **kwargs)
+
+    # Explicit provider prefixes for OpenAI-compatible third-party providers
+    if model.startswith("groq/"):
+        return GroqLLM(api_key=api_key, model=model, **kwargs)
+    if model.startswith("openrouter/"):
+        return OpenRouterLLM(api_key=api_key, model=model, **kwargs)
+    if model.startswith("grok/"):
+        return GrokLLM(api_key=api_key, model=model, **kwargs)
     
     # Get provider from registry
     provider = MODEL_REGISTRY.get(model)

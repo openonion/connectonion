@@ -288,6 +288,8 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         "anthropic": "ANTHROPIC_API_KEY",
         "google": "GEMINI_API_KEY",
         "groq": "GROQ_API_KEY",
+        "grok": "XAI_API_KEY",
+        "openrouter": "OPENROUTER_API_KEY",
     }
     for prov, key_value in detected_keys.items():
         env_var = provider_to_env.get(prov, f"{prov.upper()}_API_KEY")
@@ -311,6 +313,8 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 # ANTHROPIC_API_KEY=
 # GEMINI_API_KEY=
 # GROQ_API_KEY=
+# XAI_API_KEY=
+# OPENROUTER_API_KEY=
 
 # Optional: Override default model
 # MODEL=gpt-4o-mini

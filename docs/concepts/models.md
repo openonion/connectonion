@@ -308,7 +308,7 @@ agent = Agent("assistant", model="co/claude-sonnet-4-5")
 
 **Includes:**
 - 100K free tokens to start
-- Access to all providers (OpenAI, Google, Anthropic)
+- Access to all providers (OpenAI, Google, Anthropic, Groq, Grok, OpenRouter)
 - No API key management needed
 - ⭐ Bonus: [Star our repo](https://github.com/openonion/connectonion) for +100K tokens
 
@@ -334,6 +334,18 @@ export GEMINI_API_KEY="AIza..."
 
 # Anthropic
 export ANTHROPIC_API_KEY="sk-ant-..."
+
+# Groq (use groq/ model prefix)
+export GROQ_API_KEY="gsk_..."
+
+# OpenRouter (use openrouter/ model prefix)
+export OPENROUTER_API_KEY="sk-or-..."
+# Optional but recommended for OpenRouter app attribution
+export OPENROUTER_HTTP_REFERER="https://your-app.example"
+export OPENROUTER_X_TITLE="Your App Name"
+
+# xAI Grok (use grok/ model prefix)
+export XAI_API_KEY="xai-..."
 ```
 
 ```python
@@ -343,7 +355,23 @@ from connectonion import Agent
 agent = Agent("assistant", model="gpt-5")
 agent = Agent("assistant", model="gemini-2.5-pro")
 agent = Agent("assistant", model="claude-opus-4.1")
+agent = Agent("assistant", model="groq/llama-3.3-70b-versatile")
+agent = Agent("assistant", model="openrouter/openai/gpt-4o-mini")
+agent = Agent("assistant", model="grok/grok-4")
 ```
+
+### OpenRouter and Grok notes
+
+**OpenRouter (`openrouter/...`)**
+- Prefix model names with `openrouter/` (for example: `openrouter/openai/gpt-4o-mini`).
+- Set `OPENROUTER_API_KEY`.
+- Optional (recommended): set `OPENROUTER_HTTP_REFERER` and `OPENROUTER_X_TITLE` for request attribution headers.
+- OpenRouter is treated as an OpenAI-compatible provider in ConnectOnion.
+
+**xAI Grok (`grok/...`)**
+- Prefix model names with `grok/` (for example: `grok/grok-4`).
+- Set `XAI_API_KEY`.
+- Grok is treated as an OpenAI-compatible provider in ConnectOnion.
 
 **Important:** For Gemini models, use `GEMINI_API_KEY` as recommended by [Google's official documentation](https://ai.google.dev/gemini-api/docs/api-key). While `GOOGLE_API_KEY` is supported for backward compatibility, `GEMINI_API_KEY` is the standard used by Google's Python SDK and most tools in the ecosystem.
 

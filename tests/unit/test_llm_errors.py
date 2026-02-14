@@ -26,6 +26,9 @@ from connectonion.core.llm import (
     OpenAILLM,
     AnthropicLLM,
     GeminiLLM,
+    GroqLLM,
+    GrokLLM,
+    OpenRouterLLM,
     OpenOnionLLM,
     LLMResponse,
     ToolCall
@@ -75,6 +78,34 @@ class TestMissingAPIKeys:
 
             assert "Gemini API key required" in str(exc_info.value)
             assert "GEMINI_API_KEY" in str(exc_info.value)
+
+
+    def test_groq_missing_api_key_env(self):
+        """Test Groq raises ValueError when API key missing from environment."""
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ValueError) as exc_info:
+                GroqLLM(model="groq/llama-3.3-70b-versatile")
+
+            assert "Groq API key required" in str(exc_info.value)
+            assert "GROQ_API_KEY" in str(exc_info.value)
+
+    def test_openrouter_missing_api_key_env(self):
+        """Test OpenRouter raises ValueError when API key missing from environment."""
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ValueError) as exc_info:
+                OpenRouterLLM(model="openrouter/openai/gpt-4o-mini")
+
+            assert "OpenRouter API key required" in str(exc_info.value)
+            assert "OPENROUTER_API_KEY" in str(exc_info.value)
+
+    def test_grok_missing_api_key_env(self):
+        """Test Grok raises ValueError when API key missing from environment."""
+        with patch.dict(os.environ, {}, clear=True):
+            with pytest.raises(ValueError) as exc_info:
+                GrokLLM(model="grok/grok-4")
+
+            assert "Grok API key required" in str(exc_info.value)
+            assert "XAI_API_KEY" in str(exc_info.value)
 
     def test_openonion_missing_api_key_helpful_message(self):
         """Test OpenOnion raises ValueError with helpful message about co init."""
@@ -290,8 +321,111 @@ class TestProviderErrorBubbling:
                 llm.complete([{"role": "user", "content": "test"}])
 
 
+class TestOpenAICompatibleProviders:
+    """Test Groq/OpenRouter OpenAI-compatible behavior."""
+
+    def test_openrouter_default_headers_from_env(self):
+        """OpenRouter should pass optional attribution headers when configured."""
+        with patch.dict(os.environ, {
+            "OPENROUTER_API_KEY": "test-key",
+            "OPENROUTER_HTTP_REFERER": "https://example.com",
+            "OPENROUTER_X_TITLE": "My App",
+        }):
+            with patch("connectonion.core.llm.openai.OpenAI") as mock_openai:
+                OpenRouterLLM(model="openrouter/openai/gpt-4o-mini")
+
+                _, kwargs = mock_openai.call_args
+                assert kwargs["base_url"] == "https://openrouter.ai/api/v1"
+                assert kwargs["default_headers"]["HTTP-Referer"] == "https://example.com"
+                assert kwargs["default_headers"]["X-Title"] == "My App"
+
+    def test_groq_structured_complete_json_mode(self):
+        """Groq structured output should use JSON mode and validate with Pydantic."""
+        with patch.dict(os.environ, {"GROQ_API_KEY": "test-key"}):
+            llm = GroqLLM(model="groq/llama-3.3-70b-versatile")
+
+            mock_message = Mock()
+            mock_message.content = '{"value": 7, "message": "ok"}'
+            mock_response = Mock()
+            mock_response.choices = [Mock(message=mock_message)]
+            llm.client.chat.completions.create = Mock(return_value=mock_response)
+
+            result = llm.structured_complete(
+                [{"role": "user", "content": "Return test payload"}],
+                StructuredOutputSchema
+            )
+
+            assert result.value == 7
+            assert result.message == "ok"
+            llm.client.chat.completions.create.assert_called_once()
+            called = llm.client.chat.completions.create.call_args.kwargs
+            assert called["response_format"] == {"type": "json_object"}
+
+    def test_grok_structured_complete_json_mode(self):
+        """Grok structured output should use JSON mode and validate with Pydantic."""
+        with patch.dict(os.environ, {"XAI_API_KEY": "test-key"}):
+            llm = GrokLLM(model="grok/grok-4")
+
+            mock_message = Mock()
+            mock_message.content = '{"value": 11, "message": "xai"}'
+            mock_response = Mock()
+            mock_response.choices = [Mock(message=mock_message)]
+            llm.client.chat.completions.create = Mock(return_value=mock_response)
+
+            result = llm.structured_complete(
+                [{"role": "user", "content": "Return test payload"}],
+                StructuredOutputSchema
+            )
+
+            assert result.value == 11
+            assert result.message == "xai"
+            llm.client.chat.completions.create.assert_called_once()
+            called = llm.client.chat.completions.create.call_args.kwargs
+            assert called["response_format"] == {"type": "json_object"}
+
+    def test_openrouter_structured_complete_json_mode(self):
+        """OpenRouter structured output should use JSON mode and validate with Pydantic."""
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+            llm = OpenRouterLLM(model="openrouter/openai/gpt-4o-mini")
+
+            mock_message = Mock()
+            mock_message.content = '{"value": 9, "message": "great"}'
+            mock_response = Mock()
+            mock_response.choices = [Mock(message=mock_message)]
+            llm.client.chat.completions.create = Mock(return_value=mock_response)
+
+            result = llm.structured_complete(
+                [{"role": "user", "content": "Return test payload"}],
+                StructuredOutputSchema
+            )
+
+            assert result.value == 9
+            assert result.message == "great"
+            llm.client.chat.completions.create.assert_called_once()
+            called = llm.client.chat.completions.create.call_args.kwargs
+            assert called["response_format"] == {"type": "json_object"}
+
+
 class TestModelInference:
     """Test model provider inference from model names."""
+
+
+    def test_infer_groq_from_prefix(self):
+        """Test that groq/* models are routed to GroqLLM."""
+        with patch.dict(os.environ, {"GROQ_API_KEY": "test-key"}):
+            llm = create_llm("groq/llama-3.3-70b-versatile")
+            assert isinstance(llm, GroqLLM)
+
+    def test_infer_openrouter_from_prefix(self):
+        """Test that openrouter/* models are routed to OpenRouterLLM."""
+        with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
+            llm = create_llm("openrouter/openai/gpt-4o-mini")
+            assert isinstance(llm, OpenRouterLLM)
+    def test_infer_grok_from_prefix(self):
+        """Test that grok/* models are routed to GrokLLM."""
+        with patch.dict(os.environ, {"XAI_API_KEY": "test-key"}):
+            llm = create_llm("grok/grok-4")
+            assert isinstance(llm, GrokLLM)
 
     def test_infer_openai_from_gpt_prefix(self):
         """Test that gpt-* models are inferred as OpenAI."""
