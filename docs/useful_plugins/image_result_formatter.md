@@ -20,8 +20,9 @@ agent.input("Take a screenshot and describe what you see")
 When a tool returns base64 encoded image data:
 
 1. Detects base64 image in tool result
-2. Converts to OpenAI vision format
-3. Allows LLM to see image visually (not as text)
+2. Converts to OpenAI vision format for LLM consumption
+3. Sends image to frontend via WebSocket (if hosted with `agent.io`)
+4. Allows LLM to see image visually (not as text)
 
 ## Supported Formats
 
@@ -52,11 +53,60 @@ Uses `after_tools` because it modifies messages (see [Event Lifecycle](README.md
 
 ## Use Cases
 
-- Screenshot tools
-- Image generation tools
+- Screenshot tools (browser automation)
+- Image generation tools (charts, QR codes, diagrams)
 - Camera/webcam capture
 - PDF to image conversion
 - Any tool returning visual data
+
+## Sending Images to the User
+
+### Automatic (via Plugin)
+
+The plugin automatically sends images to the frontend when tools return them:
+
+```python
+from connectonion import Agent
+from connectonion.network import host
+from connectonion.useful_plugins import image_result_formatter
+
+def create_agent():
+    return Agent("vision", tools=[take_screenshot], plugins=[image_result_formatter])
+
+# Images from tools will be sent to oo-chat or SDK clients automatically
+host(create_agent, port=8000, trust="open")
+```
+
+The plugin detects `agent.io` and sends images via WebSocket for real-time display.
+
+### Manual (Direct Send)
+
+You can also send images directly from the agent to the user:
+
+```python
+from connectonion import Agent
+
+def generate_chart(data: str, agent) -> str:
+    """Generate a chart and send it to the user."""
+    # Generate your image (e.g., using matplotlib, PIL, etc.)
+    # Convert to base64 data URL
+    image_data_url = f"data:image/png;base64,{base64_string}"
+
+    # Send to user's frontend (if hosted)
+    if agent.io:
+        agent.io.send_image(image_data_url)
+
+    return "Chart generated and sent to your screen!"
+
+# Note: Tools need 'agent' parameter to access agent.io
+agent = Agent("chart_bot", tools=[generate_chart])
+```
+
+**Key points:**
+- Tools that need to send images should declare `agent` as a parameter
+- The `agent` parameter is automatically injected by the tool executor
+- Check `if agent.io` before calling `send_image()` (it's None in non-hosted mode)
+- Images appear in real-time in oo-chat and TypeScript SDK frontends
 
 ## Customizing
 

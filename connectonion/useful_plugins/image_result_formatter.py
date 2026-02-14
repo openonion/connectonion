@@ -1,18 +1,60 @@
 """
-Purpose: Automatically format base64 image tool results for multimodal LLM consumption
-LLM-Note:
-  Dependencies: imports from [re, typing, events.after_tools] | imported by [useful_plugins/__init__.py] | tested by [tests/unit/test_image_result_formatter.py]
-  Data flow: after_tools event → scans tool result messages for base64 images → detects data URL or raw base64 patterns → converts tool result message content to OpenAI vision API format with image_url type → allows LLM to visually interpret screenshots/images
-  State/Effects: modifies agent.current_session['messages'] in place | replaces text content with image content blocks | no file I/O | no network
-  Integration: exposes image_result_formatter plugin list with [format_images] handler | used via Agent(plugins=[image_result_formatter]) | works with screenshot tools, image generators
-  Performance: O(n) message scanning | regex pattern matching | no LLM calls
-  Errors: silent skip if no base64 images detected | malformed base64 may cause LLM confusion
+Purpose: Automatically format base64 image tool results for multimodal LLM consumption and send to frontend
 
 Image Result Formatter Plugin - Automatically formats base64 image results for model consumption.
 
 When a tool returns a base64 encoded image (screenshot, generated image, etc.), this plugin
 detects it and converts the tool result message to image format that LLMs can properly
 interpret visually instead of treating it as text.
+
+LIFECYCLE - When and How Messages Are Modified:
+┌─────────────────────────────────────────────────────────────────────────┐
+│ BEFORE Plugin (after_tools event fires)                                │
+├─────────────────────────────────────────────────────────────────────────┤
+│ messages = [                                                            │
+│   {"role": "user", "content": "Take a screenshot"},                     │
+│   {"role": "assistant", "content": "", "tool_calls": [...]},           │
+│   {"role": "tool", "content": "data:image/png;base64,iVBORw...",       │
+│    "tool_call_id": "call_123"}                                          │
+│ ]                                                                       │
+│                                                                         │
+│ trace = [                                                               │
+│   {"type": "tool_result", "name": "screenshot", "status": "success",    │
+│    "result": "data:image/png;base64,iVBORw...", "tool_id": "call_123"}  │
+│ ]                                                                       │
+├─────────────────────────────────────────────────────────────────────────┤
+│ TRANSFORMATION                                                          │
+│ 1. Scan trace for tool_result entries with base64 images              │
+│ 2. Find matching tool message by tool_call_id                          │
+│ 3. Shorten tool message content (remove base64)                        │
+│ 4. Insert assistant message with image after tool message              │
+│ 5. Update trace result to short summary                                │
+│ 6. Send image to frontend via agent.io.send_image() if available       │
+├─────────────────────────────────────────────────────────────────────────┤
+│ AFTER Plugin                                                            │
+│ messages = [                                                            │
+│   {"role": "user", "content": "Take a screenshot"},                     │
+│   {"role": "assistant", "content": "", "tool_calls": [...]},           │
+│   {"role": "tool", "content": "Screenshot captured (image below)",      │
+│    "tool_call_id": "call_123"},                                         │
+│   {"role": "assistant", "content": [                                    │
+│       {"type": "text", "text": "I captured an image from 'screenshot'"},│
+│       {"type": "image_url", "image_url": "data:image/png;base64,..."}   │
+│    ]}                                                                   │
+│ ]                                                                       │
+│                                                                         │
+│ trace = [                                                               │
+│   {"type": "tool_result", "name": "screenshot", "status": "success",    │
+│    "result": "🖼️ Tool 'screenshot' returned image (image/png)",         │
+│    "tool_id": "call_123"}                                               │
+│ ]                                                                       │
+└─────────────────────────────────────────────────────────────────────────┘
+
+WHY after_tools?
+- Fires ONCE after ALL tools complete (not per-tool)
+- Safe to modify messages array (tool execution finished)
+- Trace is complete with all tool results
+- Can insert new messages without breaking tool execution loop
 
 Usage:
     from connectonion import Agent
@@ -60,11 +102,13 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
 
 def _format_image_result(agent: 'Agent') -> None:
     """
-    Format base64 image in tool result to proper multimodal message format.
+    Format base64 images in tool results to proper multimodal message format.
 
-    When a tool returns base64 image data, this converts the tool message
+    When tools return base64 image data, this converts the tool messages
     to multimodal format (text + image) so the LLM can properly see and
-    analyze the image visually.
+    analyze the images visually.
+
+    Processes ALL tool results from the current turn (after_tools fires once per turn).
 
     Uses OpenAI vision format:
     content: [
@@ -72,54 +116,62 @@ def _format_image_result(agent: 'Agent') -> None:
         {"type": "image_url", "image_url": "data:image/png;base64,..."}
     ]
     """
-    trace = agent.current_session['trace'][-1]
-
-    if trace['type'] != 'tool_result' or trace['status'] != 'success':
-        return
-
-    result = trace['result']
-    tool_call_id = trace.get('call_id')
-    tool_name = trace.get('name', 'unknown')
-
-    # Check if result contains base64 image
-    is_image, mime_type, base64_data = _is_base64_image(result)
-
-    if not is_image:
-        return
-
-    # Find the tool result message and modify it
-    # Keep tool message with shortened text + insert user message with image
-    # This works around OpenAI's requirement (tool_calls must have tool responses)
-    # while also providing image in user message (only format that supports images)
+    trace = agent.current_session.get('trace', [])
     messages = agent.current_session['messages']
 
-    for i in range(len(messages) - 1, -1, -1):
-        msg = messages[i]
+    # Track messages already processed to avoid double-insertion when iterating
+    # We need this because messages.insert() shifts indices
+    processed_tool_ids = set()
 
-        if msg['role'] == 'tool' and msg.get('tool_call_id') == tool_call_id:
-            # Shorten the tool message content (remove base64 to save tokens)
-            messages[i]['content'] = f"Screenshot captured (image provided below)"
+    # Process tool results in order (not reversed - simpler logic)
+    for trace_entry in trace:
+        if trace_entry.get('type') != 'tool_result' or trace_entry.get('status') != 'success':
+            continue
 
-            # Insert a user message with the image right after the tool message
-            messages.insert(i + 1, {
-                "role": "user",
-                "content": [
-                    {
-                        "type": "text",
-                        "text": f"Tool '{tool_name}' returned an image result. See image below."
-                    },
-                    {
-                        "type": "image_url",
-                        "image_url": {"url": f"data:{mime_type};base64,{base64_data}"}
-                    }
-                ]
-            })
+        tool_call_id = trace_entry.get('tool_id')
+        if tool_call_id in processed_tool_ids:
+            continue
 
-            agent.logger.print(f"[dim]🖼️  Formatted '{tool_name}' result as image[/dim]")
-            break
+        result = trace_entry.get('result')
+        tool_name = trace_entry.get('name', 'unknown')
 
-    # Update trace result to short message (avoids token overflow in other plugins like ReAct)
-    trace['result'] = f"🖼️ Tool '{tool_name}' returned image ({mime_type})"
+        # Check if result contains base64 image
+        is_image, mime_type, base64_data = _is_base64_image(result)
+        if not is_image:
+            continue
+
+        # Find the matching tool message
+        for i, msg in enumerate(messages):
+            if msg.get('role') == 'tool' and msg.get('tool_call_id') == tool_call_id:
+                # Shorten the tool message content (remove base64 to save tokens)
+                messages[i]['content'] = f"Screenshot captured (image provided below)"
+
+                # Insert an assistant message with the image right after the tool message
+                messages.insert(i + 1, {
+                    "role": "assistant",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"I captured an image from the '{tool_name}' tool:"
+                        },
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{base64_data}"}
+                        }
+                    ]
+                })
+
+                processed_tool_ids.add(tool_call_id)
+                agent.logger.print(f"[dim]🖼️  Formatted '{tool_name}' result as image[/dim]")
+                break
+
+        # Update trace result to short message (avoids token overflow in other plugins like ReAct)
+        trace_entry['result'] = f"🖼️ Tool '{tool_name}' returned image ({mime_type})"
+
+        # Send image to frontend via WebSocket if available
+        if agent.io:
+            data_url = f"data:{mime_type};base64,{base64_data}"
+            agent.io.send_image(data_url)
 
 
 # Plugin is an event list
