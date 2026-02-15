@@ -1,21 +1,30 @@
-"""Prompt Assembler - Dynamic prompt composition with variable injection.
+"""
+LLM-Note: Prompt assembler with dynamic composition and variable interpolation.
 
-Similar to Claude Code's approach:
-- Tool descriptions are injected based on available tools
-- Variables like ${TOOL_NAME} are interpolated at runtime
-- Conditional sections using ${condition ? "yes" : ""}
-- System reminders can be injected based on agent state
+This module provides modular prompt loading with runtime variable injection,
+tool-based conditional sections, and context-aware prompt assembly.
 
-Structure:
-    prompts/
-    ├── main.md           # Core agent behavior (with ${VARIABLES})
-    ├── tools/            # Tool-specific guidance
-    │   ├── shell.md
-    │   └── ...
-    ├── agents/           # Sub-agent prompts
-    │   └── explore.md
-    └── reminders/        # Runtime state reminders
-        └── plan_mode.md
+Key components:
+- PromptContext: Manages variables, tool registry, and interpolation context
+- interpolate(): Handles ${VAR}, ${VAR or "default"}, ${condition ? "yes" : "no"}
+- assemble_prompt(): Loads and combines main.md, workflow.md, tools/*.md based on available tools
+- load_reminder(): Loads system reminders with <system-reminder> tags for runtime injection
+- load_agent_prompt(): Loads sub-agent prompts from agents/ directory
+
+Architecture:
+- Variable syntax: ${VAR_NAME} for simple substitution
+- Tool conditionals: ${has_tool("name") ? "include" : "exclude"}
+- Default values: ${VAR or "fallback text"}
+- Modular structure: main.md + workflow.md + connectonion/index.md + tool-specific .md files
+- Context propagation: Variables and tool registry flow through all interpolation stages
+- Regex-based interpolation with recursive pattern matching for nested expressions
+
+Usage:
+    ctx = PromptContext()
+    ctx.set("agent_name", "coder")
+    ctx.register_tool(read_file)
+    ctx.register_tool(glob)
+    prompt = assemble_prompt("prompts/", tools=[read_file, glob], context=ctx)
 """
 
 import re
