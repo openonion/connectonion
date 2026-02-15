@@ -765,7 +765,7 @@ class OpenRouterLLM(LLM):
         if not self.api_key:
             raise ValueError("OpenRouter API key required. Set OPENROUTER_API_KEY environment variable or pass api_key parameter.")
 
-        self.model = model.removeprefix("openrouter/")
+        self.model = model.removeprefix("openrouter/").removeprefix("or/")
 
         # OpenRouter recommends these optional headers for request attribution.
         default_headers = {}
@@ -1067,7 +1067,7 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     # Explicit provider prefixes for OpenAI-compatible third-party providers
     if model.startswith("groq/"):
         return GroqLLM(api_key=api_key, model=model, **kwargs)
-    if model.startswith("openrouter/"):
+    if model.startswith("openrouter/") or model.startswith("or/"):
         return OpenRouterLLM(api_key=api_key, model=model, **kwargs)
     if model.startswith("grok/"):
         return GrokLLM(api_key=api_key, model=model, **kwargs)
