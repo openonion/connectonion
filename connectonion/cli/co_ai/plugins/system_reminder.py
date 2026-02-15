@@ -1,9 +1,23 @@
 """
-System Reminder Plugin - Injects contextual guidance based on intent and tool usage.
+LLM-Note: System reminder plugin with intent detection and contextual guidance.
 
-Two triggers:
-1. after_user_input: Detect intent (coding, agent creation) and inject relevant reminder
-2. after_each_tool: Inject reminder based on tool usage
+This plugin provides adaptive tool guidance by detecting user intent and injecting
+relevant reminders at appropriate moments during agent execution.
+
+Key components:
+- IntentAnalysis: Pydantic model for structured intent detection output
+- detect_intent(): after_user_input handler that analyzes user request intent
+- inject_tool_reminder(): after_each_tool handler that injects contextual guidance
+- _load_reminders(): Loads reminder markdown files from prompts/system-reminders/
+
+Architecture:
+- Dual-trigger system: Intent detection on user input + reminder injection after tools
+- Uses llm_do with gemini-2.5-flash for fast intent analysis (structured output)
+- Stores detected intent in agent.current_session['intent'] as {ack, is_build}
+- Reminder files in prompts/system-reminders/ directory with YAML frontmatter
+- Only injects reminders when intent matches (build tasks) or tool usage matches
+- Reminders append to tool result messages or user messages for next LLM call
+- Frontend integration: Sends intent analysis to UI via agent.io.send()
 
 Usage:
     from connectonion.cli.co_ai.plugins.system_reminder import system_reminder
