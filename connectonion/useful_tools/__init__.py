@@ -16,6 +16,7 @@ from .google_calendar import GoogleCalendar
 from .outlook import Outlook
 from .microsoft_calendar import MicrosoftCalendar
 from .web_fetch import WebFetch
+from .gatheris import GatherIs
 from .shell import Shell
 from .bash import bash
 from .diff_writer import DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN
@@ -46,6 +47,7 @@ __all__ = [
     "Outlook",
     "MicrosoftCalendar",
     "WebFetch",
+    "GatherIs",
     "Shell",
     "bash",
     "DiffWriter",
