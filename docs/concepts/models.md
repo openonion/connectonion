@@ -338,7 +338,7 @@ export ANTHROPIC_API_KEY="sk-ant-..."
 # Groq (use groq/ model prefix)
 export GROQ_API_KEY="gsk_..."
 
-# OpenRouter (use openrouter/ model prefix)
+# OpenRouter (use openrouter/ or or/ model prefix)
 export OPENROUTER_API_KEY="sk-or-..."
 # Optional but recommended for OpenRouter app attribution
 export OPENROUTER_HTTP_REFERER="https://your-app.example"
@@ -357,13 +357,15 @@ agent = Agent("assistant", model="gemini-2.5-pro")
 agent = Agent("assistant", model="claude-opus-4.1")
 agent = Agent("assistant", model="groq/llama-3.3-70b-versatile")
 agent = Agent("assistant", model="openrouter/openai/gpt-4o-mini")
+agent = Agent("assistant", model="or/claude-3.5-sonnet")  # Shorthand
 agent = Agent("assistant", model="grok/grok-4")
 ```
 
 ### OpenRouter and Grok notes
 
-**OpenRouter (`openrouter/...`)**
-- Prefix model names with `openrouter/` (for example: `openrouter/openai/gpt-4o-mini`).
+**OpenRouter (`openrouter/...` or `or/...`)**
+- Prefix model names with `openrouter/` (for example: `openrouter/openai/gpt-4o-mini`)
+- Or use the shorthand `or/` prefix (for example: `or/claude-3.5-sonnet`)
 - Set `OPENROUTER_API_KEY`.
 - Optional (recommended): set `OPENROUTER_HTTP_REFERER` and `OPENROUTER_X_TITLE` for request attribution headers.
 - OpenRouter is treated as an OpenAI-compatible provider in ConnectOnion.

@@ -14,5 +14,6 @@ Status: In Progress
 - [x] Added "or/" shorthand prefix support to create_llm() factory (line 1070)
 - [x] Updated OpenRouterLLM.__init__() to strip both "openrouter/" and "or/" prefixes (line 768)
 - [x] Added test for "or/" shorthand prefix in tests/unit/test_llm_errors.py
+- [x] Updated documentation in docs/concepts/models.md to mention both prefixes
 - [x] Issue #74 implementation complete - OpenRouter now supports both "openrouter/" and "or/" prefixes
 
