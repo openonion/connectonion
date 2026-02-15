@@ -1,4 +1,37 @@
-"""Skills loader - discovers and loads skills from .co/skills/ directory."""
+"""
+LLM-Note: Skills loader with multi-source discovery and YAML frontmatter parsing.
+
+This module discovers and loads skill files from multiple search paths, parsing
+YAML frontmatter to extract metadata and populating the global registry.
+
+Key components:
+- SkillInfo: Dataclass holding skill metadata (name, description, path)
+- SKILLS_REGISTRY: Global dict mapping skill names to SkillInfo instances
+- discover_skills(): Multi-path discovery (.co/skills, ~/.co/skills, builtin/)
+- parse_skill_frontmatter(): Extracts YAML metadata from SKILL.md files
+- load_skills(): Populates SKILLS_REGISTRY from discovered skills
+- get_skill(): Retrieves skill by name from registry
+- get_skills_for_prompt(): Formats skills as XML for system prompt injection
+
+Architecture:
+- Three search paths (priority: project > user > builtin)
+- Supports SKILL.md in subdirs (skill-name/SKILL.md) or standalone .md files
+- YAML frontmatter format: name, description fields
+- Fallback: Uses directory/file name if no frontmatter name
+- Fallback: Extracts first paragraph as description if missing
+- Global registry mutated (not reassigned) to preserve references
+
+Search paths:
+    1. .co/skills/skill-name/SKILL.md (project-level, highest priority)
+    2. ~/.co/skills/skill-name/SKILL.md (user-level)
+    3. co_ai/skills/builtin/skill-name/SKILL.md (built-in, lowest priority)
+
+Usage:
+    skills = load_skills()
+    skill_info = get_skill("commit")
+    content = skill_info.load_content()
+    xml = get_skills_for_prompt()  # For system prompt
+"""
 
 import re
 from pathlib import Path
