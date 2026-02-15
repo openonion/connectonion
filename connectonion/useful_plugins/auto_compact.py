@@ -1,4 +1,13 @@
 """
+Purpose: Automatically compress conversation context when usage >= 90% to prevent overflow
+LLM-Note:
+  Dependencies: imports from [typing, core.events, llm_do, pathlib, uuid] | imported by [useful_plugins/__init__.py, cli/co_ai/agent.py] | tested via after_llm event firing
+  Data flow: after_llm event fires → check_and_compact() checks context_percent → if >= 90% and len(messages) >= 8: _do_compact() → llm_do() with gemini-2.5-flash summarizes old messages → replaces old messages with summary → keeps system + summary + last 5 messages → returns "{old_count} → {new_count} messages"
+  State/Effects: modifies agent.current_session['messages'] by replacing old messages with LLM-generated summary | sends compact events via agent.io if connected | logs to console via agent.logger | no file I/O except loading summarization.md prompt
+  Integration: exposes auto_compact=[check_and_compact] plugin | fires on after_llm event | uses _do_compact(), _format_messages_for_summary() helper functions | COMPACT_THRESHOLD=90 constant | reads cli/co_ai/prompts/summarization.md for instructions
+  Performance: only fires when context >= 90% | minimum 8 messages required | keeps last 5 messages (recent_count) + system + summary | llm_do() call to gemini-2.5-flash (fast/cheap) | summary prompt limited to 800 words
+  Errors: catches all exceptions in _do_compact() and sends error event | prints red ✗ on failure | gracefully handles missing summarization.md (empty instructions)
+
 Auto-compact plugin - Automatically compresses context when running low.
 
 Monitors context window usage after each LLM call. When usage >= 90%,

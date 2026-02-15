@@ -1,4 +1,13 @@
 """
+Purpose: Cross-platform shell command execution with directory control and output formatting
+LLM-Note:
+  Dependencies: imports from [subprocess] | imported by [useful_tools/__init__.py] | tested by command execution
+  Data flow: Shell() creates instance → .run(command, timeout) or .run_in_dir(command, directory, timeout) → subprocess.run(shell=True) in cwd → captures stdout+stderr → _format_output() truncates if >10000 chars → returns formatted output: str
+  State/Effects: executes system commands via subprocess.run(shell=True) | stores default cwd in self.cwd | no file persistence | side effects depend on executed commands (file I/O, network calls, etc.)
+  Integration: exposes Shell class with .run(command, timeout), .run_in_dir(command, directory, timeout) | used as agent tool | class methods extracted to tools via extract_methods_from_instance() | instance accessible via agent.tools.shell
+  Performance: timeout default 120s, max 600s | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes) | uses system default shell (bash/sh on Unix, cmd.exe on Windows)
+  Errors: returns "Error: Command timed out" on TimeoutExpired | includes stderr in output | includes exit code for non-zero returns | handles empty output gracefully
+
 Shell tool for executing terminal commands (cross-platform).
 
 Usage:

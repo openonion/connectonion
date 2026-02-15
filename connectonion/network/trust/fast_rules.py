@@ -1,4 +1,13 @@
 """
+Purpose: Parse YAML frontmatter from policies and execute fast rules without LLM
+LLM-Note:
+  Dependencies: imports from [yaml, typing, tools] | imported by [trust/factory.py, trust/trust_agent.py] | tested via TrustAgent.should_allow()
+  Data flow: parse_policy(policy_text) → splits on '---' delimiters → yaml.safe_load() → returns (config: dict, markdown_body: str) | evaluate_request(config, client_id, request) → checks deny list (blocked) → checks allow list (whitelisted, contact) → tries onboarding (invite_code or payment) → returns 'allow', 'deny', or None (needs LLM)
+  State/Effects: calls tools.py functions (is_blocked, is_whitelisted, is_contact, promote_to_contact) which read/write .co/trust/ files | no direct file I/O in this module
+  Integration: exposes parse_policy(policy_text), evaluate_request(config, client_id, request) | used by TrustAgent to parse policies and execute zero-cost fast rules before LLM | returns None when LLM needed (default: ask)
+  Performance: zero LLM tokens for fast rules | O(n) checks against allow/deny lists | promote_to_contact() writes to file but rare (onboarding only) | YAML parsing is fast
+  Errors: yaml.safe_load() errors propagate | gracefully handles missing frontmatter (returns empty config)
+
 Parse YAML config from trust policy files and execute fast rules.
 
 Config format:

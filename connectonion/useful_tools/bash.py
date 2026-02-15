@@ -1,4 +1,13 @@
 """
+Purpose: Execute bash commands on Unix/Mac systems with timeout and output truncation
+LLM-Note:
+  Dependencies: imports from [subprocess, platform] | imported by [useful_tools/__init__.py, useful_prompts/coding_agent/assembler.py] | tested by command execution
+  Data flow: receives command: str, description: str, cwd: str, timeout: int → subprocess.run() with shell=True → captures stdout+stderr → truncates if >10000 chars → returns formatted output: str
+  State/Effects: executes system commands via subprocess.run(shell=True) | no persistent state | reads/writes filesystem based on command | can have any side effect depending on command (network calls, file operations, etc.)
+  Integration: exposes bash(command, description, cwd, timeout) function | used as agent tool | description parameter for user clarity (not passed to shell) | Unix/Mac only (raises ValueError on Windows)
+  Performance: timeout default 120s, max 600s | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes)
+  Errors: raises ValueError on Windows | returns formatted error on timeout | non-zero exit codes included in output | stderr merged with stdout
+
 Bash tool for executing terminal commands (Unix/Mac only).
 
 Usage:

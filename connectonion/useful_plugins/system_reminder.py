@@ -1,4 +1,14 @@
 """
+Purpose: Inject contextual reminders into tool results based on tool name and argument patterns
+LLM-Note:
+  Dependencies: imports from [pathlib, fnmatch, typing, yaml, core.events] | imported by [useful_plugins/__init__.py, cli/co_ai/agent.py, cli/co_ai/plugins/__init__.py, cli/co_ai/plugins/system_reminder.py] | tested via after_each_tool event firing
+  Data flow: after_each_tool event fires → inject_reminder() checks last trace entry → _find_reminder() matches tool_name/args against triggers from .md files → if match: appends reminder content to last tool message → modifies agent.current_session['messages'][-1]['content']
+  State/Effects: modifies last tool result message in agent.current_session['messages'] by appending reminder text | reads .md files from useful_prompts/system-reminders/ at import time (cached in _REMINDERS) | no writes
+  Integration: exposes system_reminder=[inject_reminder] plugin | fires on after_each_tool event | REMINDERS_DIR=useful_prompts/system-reminders/ | uses _parse_frontmatter(), _load_reminders(), _matches_pattern(), _find_reminder() helpers | reminders loaded once at module import
+  Performance: reminders loaded once at import (not per-call) | fnmatch glob pattern matching for path/command triggers | iterates through all reminders until first match | appends to existing tool message (in-place modification)
+  Errors: returns None if no match found (no-op) | gracefully handles missing reminders directory | YAML parsing errors bubble up (fail fast)
+  ⚠️ Reminder files use YAML frontmatter: name, triggers (tool, path_pattern, command_pattern)
+
 System Reminder Plugin - Injects contextual guidance into tool results.
 
 Usage:

@@ -52,5 +52,5 @@ def start_server(
     if addr_data:
         webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
 
-    # Start server (uses global ~/.co/ identity by default)
+    # Start server (relay enabled by default for web chat)
     host(agent_factory, port=port, trust="careful")

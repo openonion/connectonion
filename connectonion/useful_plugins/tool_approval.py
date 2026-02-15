@@ -53,44 +53,61 @@ if TYPE_CHECKING:
     from ..core.agent import Agent
 
 
+# =============================================================================
+# MODE SYSTEM
+# =============================================================================
+# Three modes control approval behavior:
+#   - 'safe' (default): Dangerous tools need approval
+#   - 'plan': Read-only tools only, exit_plan_mode shows plan for approval
+#   - 'accept_edits': No approvals, agent runs freely
+#
+# Mode can be changed by:
+#   - User: via WebSocket { type: 'mode_change', mode: '...' }
+#   - Agent: via enter_plan_mode() tool (safe/accept_edits → plan)
+# =============================================================================
+
+VALID_MODES = {'safe', 'plan', 'accept_edits'}
+DEFAULT_MODE = 'safe'
+
+
 # Tools that NEVER need approval (read-only, safe)
 # These tools cannot modify system state or have external side effects.
-# Add new read-only tools here to skip approval prompts.
 SAFE_TOOLS = {
-    # File reading - read contents without modification
+    # File reading
     'read', 'read_file',
-    # Search operations - find files/content without modification
+    # Search operations
     'glob', 'grep', 'search',
-    # Info operations - query metadata only
+    # Info operations
     'list_files', 'get_file_info',
     # Agent operations - sub-agents handle their own approval
     'task',
-    # Documentation - load reference materials
+    # Documentation
     'load_guide',
-    # Planning - state management without side effects
-    'enter_plan_mode', 'exit_plan_mode', 'write_plan',
-    # Task management - read-only task status
+    # Planning - enter freely, write plan freely
+    'enter_plan_mode', 'write_plan',
+    # Task management
     'task_output',
-    # User interaction - prompts user, not system modification
+    # User interaction
     'ask_user',
 }
 
-# Tools that ALWAYS need approval (destructive/side-effects)
+# Tools that need approval in 'safe' mode
 # These tools can modify files, execute code, or have external effects.
-# User approval required before execution in web mode.
 DANGEROUS_TOOLS = {
-    # Shell execution - arbitrary command execution
+    # Shell execution
     'bash', 'shell', 'run', 'run_in_dir',
-    # File modification - write/edit file contents
+    # File modification
     'write', 'edit', 'multi_edit',
-    # Background tasks - long-running command execution
+    # Background tasks
     'run_background',
-    # Task control - terminate running processes
+    # Task control
     'kill_task',
-    # External communication - send data outside system
+    # External communication
     'send_email', 'post',
-    # Deletion - remove files/resources
+    # Deletion
     'delete', 'remove',
+    # Plan approval - exit_plan_mode shows plan for user review
+    'exit_plan_mode',
 }
 
 
@@ -206,23 +223,38 @@ def _log(agent: 'Agent', message: str, style: str = None) -> None:
         agent.logger.print(message, style)
 
 
+def _get_mode(agent: 'Agent') -> str:
+    """Get current approval mode from session.
+
+    Modes:
+        'safe': Dangerous tools need approval (default)
+        'plan': Read-only tools only, exit_plan_mode needs approval
+        'accept_edits': No approvals, agent runs freely
+    """
+    return agent.current_session.get('mode', DEFAULT_MODE)
+
+
+def _set_mode(agent: 'Agent', mode: str) -> None:
+    """Set approval mode in session and notify frontend."""
+    if mode not in VALID_MODES:
+        mode = DEFAULT_MODE
+    agent.current_session['mode'] = mode
+    # Notify frontend of mode change
+    if agent.io:
+        agent.io.send({'type': 'mode_changed', 'mode': mode, 'triggered_by': 'agent'})
+
+
 @before_each_tool
 def check_approval(agent: 'Agent') -> None:
-    """Check if tool needs approval and request from client.
+    """Check if tool needs approval based on current mode.
 
-    Flow:
-    1. If previous tool was reject_hard, reject remaining batch
-    2. Skip if no IO (not web mode)
-    3. Skip if safe tool
-    4. Skip if unknown tool (default: safe)
-    5. Skip if already approved for session
-    6. Send approval_needed, wait for response
-    7. If approved: optionally save to session, continue
-    8. If reject_soft: raise ValueError with ask_user hint
-    9. If reject_hard: set session flag + raise ValueError
+    Mode behavior:
+        'safe': Dangerous tools need approval
+        'plan': Only read-only tools allowed, exit_plan_mode needs approval
+        'accept_edits': No approvals needed
 
     Raises:
-        ValueError: If user rejects the tool
+        ValueError: If tool rejected or blocked by mode
     """
     # reject_hard was set by a previous tool in this batch — reject remaining
     if 'tool_rejected_hard' in agent.current_session:
@@ -239,7 +271,36 @@ def check_approval(agent: 'Agent') -> None:
 
     tool_name = pending['name']
     tool_args = pending['arguments']
+    mode = _get_mode(agent)
 
+    # =================================================================
+    # MODE: accept_edits - No approvals needed
+    # =================================================================
+    if mode == 'accept_edits':
+        _log(agent, f"[dim]⚡ {tool_name} (accept_edits mode)[/dim]")
+        return
+
+    # =================================================================
+    # MODE: plan - Read-only tools only, exit_plan_mode needs approval
+    # =================================================================
+    if mode == 'plan':
+        # exit_plan_mode is the only dangerous tool allowed - needs approval to show plan
+        if tool_name == 'exit_plan_mode':
+            pass  # Fall through to approval logic below
+        # Block other dangerous tools in plan mode
+        elif tool_name in DANGEROUS_TOOLS:
+            raise ValueError(
+                f"Tool '{tool_name}' is blocked in Plan Mode. "
+                "Use read-only tools to explore, write your plan with write_plan(), "
+                "then call exit_plan_mode() when ready for approval."
+            )
+        # Safe tools are allowed
+        else:
+            return
+
+    # =================================================================
+    # MODE: safe - Dangerous tools need approval
+    # =================================================================
     # Safe tools don't need approval
     if tool_name in SAFE_TOOLS:
         return

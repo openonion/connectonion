@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [network/asgi/, network/trust/, network/host/session.py, network/host/auth.py, network/host/routes.py] | imported by [network/__init__.py as host()] | tested by [tests/network/test_host.py]
   Data flow: host(create_agent, port, trust) → _create_route_handlers() wraps all routes → asgi_create_app() creates FastAPI/Starlette app → uvicorn.run() starts server → each request calls create_agent() for fresh instance → executes via input_handler()/ws_input() → returns result + session | trust enforcement via extract_and_authenticate() at request boundary
   State/Effects: starts HTTP server on specified port | creates .co/logs/ directory | stores sessions in SessionStorage (in-memory with TTL) | optionally announces to relay server | each request gets fresh agent instance (no state bleeding)
-  Integration: exposes host(create_agent, port=8000, trust=None, result_ttl=3600, relay_url=None) | creates ASGI app with routes: POST /input, GET /sessions, GET /sessions/{id}, GET /health, GET /info, WebSocket /ws, admin endpoints | trust accepts: "open"/"careful"/"strict" (level), markdown string (policy), or Agent (custom verifier)
+  Integration: exposes host(create_agent, port=8000, trust=None, result_ttl=3600, relay_url="wss://oo.openonion.ai") | creates ASGI app with routes: POST /input, GET /sessions, GET /sessions/{id}, GET /health, GET /info, WebSocket /ws, admin endpoints | trust accepts: "open"/"careful"/"strict" (level), markdown string (policy), or Agent (custom verifier)
   Performance: factory pattern creates fresh agent per request (thread-safe) | SessionStorage auto-expires old results via TTL | WebSocket supports real-time bidirectional I/O | relay connection runs in background thread
   Errors: trust errors return 401/403 via extract_and_authenticate() | missing sessions return None (404) | raises if port already in use
 Host an agent over HTTP/WebSocket.
@@ -275,6 +275,9 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
     return on_startup, on_shutdown
 
 
+DEFAULT_RELAY_URL = "wss://oo.openonion.ai"
+
+
 def host(
     create_agent: Callable,
     port: int = None,
@@ -283,7 +286,7 @@ def host(
     workers: int = None,
     reload: bool = None,
     *,
-    relay_url: str = None,
+    relay_url: str = DEFAULT_RELAY_URL,
     blacklist: list | None = None,
     whitelist: list | None = None,
     co_dir: Path = None,
@@ -291,7 +294,7 @@ def host(
     examples: list = None,
 ):
     """
-    Host an agent over HTTP/WebSocket with optional P2P relay discovery.
+    Host an agent over HTTP/WebSocket with P2P relay discovery (enabled by default).
 
     Configuration: .co/host.yaml (required) with code param overrides.
     Run 'co init' to generate the config file.
@@ -322,8 +325,8 @@ def host(
         result_ttl: How long to keep results in seconds (default: 86400 or from config)
         workers: Number of worker processes (default: 1 or from config)
         reload: Auto-reload on code changes (default: False or from config)
-        relay_url: P2P relay URL (default: wss://oo.openonion.ai or from config)
-            - Set to None to disable relay
+        relay_url: P2P relay URL (default: wss://oo.openonion.ai)
+            - Set to None or "" to disable relay and run local-only
         blacklist: Blocked identities (default: from .co/blacklist.txt)
         whitelist: Allowed identities (default: from .co/whitelist.txt)
         co_dir: Path to .co directory for agent identity (default: ~/.co/)

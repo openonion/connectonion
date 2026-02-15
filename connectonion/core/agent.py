@@ -166,8 +166,13 @@ class Agent:
         self.current_session['trace'].append(entry)
 
         if self.io:
-            entry['session'] = self.current_session
+            # Send entry first (without session to avoid circular ref)
             self.io.send(entry)
+            # Then send session sync separately
+            self.io.send({
+                'type': 'session_sync',
+                'session': self.current_session,
+            })
 
     def _invoke_events(self, event_type: str):
         """Invoke all event handlers for given type. Exceptions propagate (fail fast)."""
