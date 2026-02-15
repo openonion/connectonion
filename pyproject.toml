@@ -88,9 +88,6 @@ exclude = [
     "connectonion/docs/archive/**",
 ]
 
-[tool.hatch.build.targets.wheel.force-include]
-"docs" = "connectonion/docs"
-
 [tool.hatch.build.targets.sdist]
 include = [
     "connectonion/**",
@@ -98,9 +95,6 @@ include = [
     "README.md",
     "LICENSE",
 ]
-
-[tool.hatch.build.targets.sdist.force-include]
-"docs" = "connectonion/docs"
 
 # Include all non-Python files (md, txt, etc.) in the package
 [tool.hatch.build]
