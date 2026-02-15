@@ -40,7 +40,7 @@ from .debug import xray, auto_debug_exception, replay, xray_replay
 from .useful_tools import (
     send_email, get_emails, mark_read, mark_unread,
     Memory, Gmail, GoogleCalendar, Outlook, MicrosoftCalendar,
-    WebFetch, Shell, bash, DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN,
+    WebFetch, GatherIs, Shell, bash, DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN,
     pick, yes_no, autocomplete, TodoList, SlashCommand,
     # Claude Code-style file tools
     read_file, edit, multi_edit, glob, grep, write, FileWriter,
@@ -74,6 +74,7 @@ __all__ = [
     "Outlook",
     "MicrosoftCalendar",
     "WebFetch",
+    "GatherIs",
     "Shell",
     "bash",
     "DiffWriter",
