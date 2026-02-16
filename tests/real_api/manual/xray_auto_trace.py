@@ -1,3 +1,13 @@
+"""
+LLM-Note: Manual test for xray auto-trace functionality
+
+What it tests:
+- xray.trace() automatic execution display
+- Manual testing script (not pytest)
+
+Components under test:
+- connectonion.xray trace functionality
+"""
 #!/usr/bin/env python3
 """Test the new auto-tracing feature of @xray decorator."""
 

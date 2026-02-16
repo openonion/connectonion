@@ -1,3 +1,13 @@
+"""
+LLM-Note: Manual test for xray with class-based tools
+
+What it tests:
+- xray decorator with tool classes
+- Manual testing script (not pytest)
+
+Components under test:
+- connectonion.xray with class-based tools
+"""
 #!/usr/bin/env python3
 """Test script to verify xray.trace() works with class methods."""
 

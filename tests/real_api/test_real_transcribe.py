@@ -3,6 +3,17 @@ Real API tests for transcribe() audio-to-text utility.
 
 Run: pytest tests/real_api/test_real_transcribe.py -v
 """
+"""
+LLM-Note: Real API tests for audio transcription
+
+What it tests:
+- Audio transcription functionality
+- Transcription API testing
+
+Components under test:
+- Transcription tools and API
+"""
+
 
 import os
 from pathlib import Path

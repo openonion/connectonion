@@ -2,6 +2,17 @@
 
 Uses decorators from conftest.py for skip conditions - no inline skips.
 """
+"""
+LLM-Note: Tests for multi-LLM model support
+
+What it tests:
+- OpenAI, Google, Anthropic integration
+- Cross-provider testing
+
+Components under test:
+- Multi-provider LLM abstraction
+"""
+
 
 import os
 import time

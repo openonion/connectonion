@@ -1,3 +1,13 @@
+"""
+LLM-Note: Manual test for email receiving
+
+What it tests:
+- Email receiving functionality
+- Manual testing script (not pytest)
+
+Components under test:
+- Email receiving tools
+"""
 #!/usr/bin/env python
 """Test email receiving functionality"""
 

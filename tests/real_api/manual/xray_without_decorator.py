@@ -1,3 +1,13 @@
+"""
+LLM-Note: Manual test for xray without decorator
+
+What it tests:
+- xray functionality without @xray decorator
+- Manual testing script (not pytest)
+
+Components under test:
+- connectonion.xray context injection
+"""
 #!/usr/bin/env python3
 """Test that xray.trace() works WITHOUT the @xray decorator - automatic context injection."""
 

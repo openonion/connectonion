@@ -6,6 +6,17 @@ Run with: pytest test_real_openai.py -v
 
 Requires: OPENAI_API_KEY environment variable
 """
+"""
+LLM-Note: Real API tests for OpenAI provider
+
+What it tests:
+- OpenAI model completion
+- OpenAI-specific functionality
+
+Components under test:
+- connectonion.core.llm.OpenAILLM
+"""
+
 
 import os
 import pytest

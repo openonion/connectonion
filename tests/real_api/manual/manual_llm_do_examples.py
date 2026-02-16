@@ -1,3 +1,13 @@
+"""
+LLM-Note: Manual examples for llm_do function
+
+What it tests:
+- llm_do usage examples
+- Manual testing script (not pytest)
+
+Components under test:
+- connectonion.llm_do examples
+"""
 #!/usr/bin/env python3
 """Test all examples from llm_do docstring."""
 

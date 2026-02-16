@@ -1,3 +1,13 @@
+"""
+LLM-Note: Manual test for structured output
+
+What it tests:
+- Structured output examples
+- Manual testing script (not pytest)
+
+Components under test:
+- Structured output with Pydantic
+"""
 #!/usr/bin/env python3
 """Comprehensive tests for llm_do structured output with Pydantic models."""
 

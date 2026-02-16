@@ -16,6 +16,21 @@ Usage:
         ...
 """
 
+"""
+LLM-Note: Real API tests configuration and shared fixtures
+
+What it tests:
+- pytest_collection_modifyitems: Auto-marks all tests as @pytest.mark.real_api
+- Skip markers: requires_openai, requires_anthropic, requires_gemini, requires_any_provider, requires_multiple_providers
+- Fixtures: signing_keypair, auth_payload, auth_token, api_headers (Ed25519 auth)
+- Test tool fixtures: calculator_tool, greeting_tool, test_tools
+
+Components under test:
+- tests/real_api/* configuration
+- API key validation and authentication
+- Ed25519 signing for OpenOnion API auth
+"""
+
 import os
 import time
 from pathlib import Path

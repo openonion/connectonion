@@ -1,4 +1,16 @@
 """Real API tests for llm_do() and multi-provider LLM support."""
+"""
+LLM-Note: Real API tests for multi-provider LLM support
+
+What it tests:
+- llm_do across multiple providers
+- Multi-provider functionality
+
+Components under test:
+- connectonion.llm_do
+- Multi-provider LLM abstraction
+"""
+
 
 import os
 

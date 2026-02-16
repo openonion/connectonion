@@ -5,6 +5,19 @@ Run with: pytest tests/real_api/test_llm_do.py -v
 
 Note: Environment loading and skip markers are handled by conftest.py
 """
+"""
+LLM-Note: Comprehensive tests for llm_do function
+
+What it tests:
+- Simple prompts across all providers
+- Structured output with Pydantic models
+- Documentation example validation
+
+Components under test:
+- connectonion.llm_do (one-shot LLM function)
+- Pydantic structured output parsing
+"""
+
 
 import os
 import pytest
