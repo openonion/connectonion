@@ -1,5 +1,24 @@
 """Test runner for Typer-based CLIs - wraps typer.testing.CliRunner."""
 
+"""
+LLM-Note: CLI test runner wrapper for backwards compatibility
+
+What it tests:
+- Result: Wrapper class for Typer test results with ANSI stripping
+- ArgparseCliRunner: Test runner providing backwards-compatible interface for old tests
+- isolated_filesystem: Context manager for isolated test environments
+- invoke: Execute CLI commands with env vars and input
+
+Key functionality:
+- Wraps typer.testing.CliRunner with old ArgparseCliRunner interface
+- Strips ANSI escape codes from output for easier assertions
+- Provides isolated filesystem context for safe test execution
+- Manages environment variables and working directory restoration
+
+Components under test:
+- connectonion.cli.main.app (Typer CLI application)
+"""
+
 import os
 import re
 import tempfile

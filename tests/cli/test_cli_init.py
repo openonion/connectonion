@@ -1,5 +1,19 @@
 """Tests for the CLI init command."""
 
+"""
+LLM-Note: Tests for CLI init command (co init)
+
+What it tests:
+- TestCliInit: Project initialization in existing directory
+  - test_init_empty_directory_creates_basic_files: Verify file creation
+  - test_init_creates_valid_python_file: Verify valid Python generation
+  - Template application and file structure
+
+Components under test:
+- connectonion.cli.commands.init (init command)
+- connectonion.cli.templates (template system)
+"""
+
 import os
 import tempfile
 import pytest

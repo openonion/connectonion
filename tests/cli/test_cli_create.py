@@ -1,5 +1,19 @@
 """Tests for new CLI create command and updated init command."""
 
+"""
+LLM-Note: Tests for CLI create command (co create)
+
+What it tests:
+- TestCliCreate: Project creation with templates
+  - test_create_with_name_creates_directory: Verify new directory creation
+  - test_create_without_name_prompts: Verify auto-generated names from templates
+  - Various template tests and directory handling
+
+Components under test:
+- connectonion.cli.commands.create (create command)
+- connectonion.cli.templates (project templates)
+"""
+
 import os
 import tempfile
 import shutil

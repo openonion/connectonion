@@ -1,5 +1,31 @@
 """Pytest configuration and shared fixtures for ConnectOnion tests."""
 
+"""
+LLM-Note: Global pytest configuration and shared test fixtures
+
+What it tests:
+- pytest_configure: Registers custom test markers (slow, integration, unit, benchmark, e2e_online)
+- pytest_addoption: CLI options for relay URL configuration
+- pytest_collection_modifyitems: Auto-marks tests by folder path, skips real_api tests if API keys missing
+
+Shared fixtures provided:
+- temp_dir: Temporary directory for test isolation
+- mock_openai_client: Mock OpenAI client with default responses
+- mock_llm: MockLLM instance with standard response
+- sample_tools: Standard test tools (calculator, current_time, read_file)
+- test_agent: Pre-configured test agent with mocked LLM
+- sample_behavior_records: Example behavior data for testing
+- sample_openai_responses: Mock API response payloads
+- test_files: Pre-created test files (normal, empty, large, unicode)
+- relay_url: Default relay server URL for network tests
+- openai_api_key: Test API key fixture
+
+Components under test:
+- connectonion.Agent
+- connectonion.core.llm (LLMResponse, ToolCall, OpenAILLM)
+- tests.utils.mock_helpers.MockLLM
+"""
+
 import pytest
 import tempfile
 import shutil

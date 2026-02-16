@@ -1,5 +1,23 @@
 """Simplified tests for CLI init command - focusing on core behavior."""
 
+"""
+LLM-Note: Tests for CLI init command
+
+What it tests:
+- TestCliInit: Core init command behavior
+  - test_init_creates_working_agent: Verify init creates complete agent setup
+  - test_init_templates: Verify template selection works
+  - test_init_in_non_empty_directory: Verify confirmation prompts
+  - test_init_never_overwrites: Verify existing agent.py is preserved
+  - test_init_with_git: Verify .gitignore creation in git repos
+- TestCliCommands: Installation verification tests
+  - test_co_command_works: Verify CLI is accessible after install
+
+Components under test:
+- connectonion.cli.main.cli (init command)
+- connectonion.cli.templates (minimal and other templates)
+"""
+
 import os
 import tempfile
 import shutil

@@ -3,6 +3,21 @@
 Addresses are shown in full (not truncated) so users can easily copy them.
 """
 
+"""
+LLM-Note: Tests for CLI trust command (co trust)
+
+What it tests:
+- TestTrustCommand: Trust list management
+  - test_trust_help: Verify help text display
+  - test_trust_no_args_shows_list: Verify default list display
+  - test_trust_list: Verify full trust lists display
+  - Management of contacts, whitelist, blocklist, and admins
+
+Components under test:
+- connectonion.cli.commands.trust_command (trust command)
+- Trust list display with full addresses for copying
+"""
+
 from .argparse_runner import ArgparseCliRunner
 
 

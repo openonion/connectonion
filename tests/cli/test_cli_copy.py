@@ -1,5 +1,31 @@
 """Tests for CLI copy command - copies tools and plugins to user's project."""
 
+"""
+LLM-Note: Tests for CLI copy command (co copy)
+
+What it tests:
+- TestCopyCommand: Core copy functionality
+  - test_copy_help: Verify help text shows options
+  - test_copy_list: Verify --list shows available items
+  - test_copy_no_args_shows_list: Verify no args defaults to list
+  - test_copy_tool_creates_tools_dir: Verify tools/ directory creation
+  - test_copy_plugin_creates_plugins_dir: Verify plugins/ directory creation
+  - test_copy_case_insensitive: Verify case-insensitive matching
+  - test_copy_multiple_items: Verify copying multiple items at once
+  - test_copy_custom_path: Verify --path custom destination
+  - test_copy_skips_existing_without_force: Verify existing files skipped
+  - test_copy_force_overwrites: Verify --force overwrites existing
+  - test_copy_unknown_item: Verify error for unknown items
+- TestCopyListOutput: List output format verification
+  - test_list_shows_tools: Verify all tools shown
+  - test_list_shows_plugins: Verify all plugins shown
+  - test_list_shows_usage_hint: Verify usage hint displayed
+
+Components under test:
+- connectonion.cli.commands.copy_command (copy command implementation)
+- Built-in tools and plugins copying
+"""
+
 import pytest
 import os
 import tempfile
