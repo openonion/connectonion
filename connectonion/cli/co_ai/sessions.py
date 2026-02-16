@@ -1,4 +1,31 @@
-"""Session management with SQLite persistence."""
+"""
+LLM-Note: SQLite-backed session persistence for co ai conversations.
+
+Key classes:
+- SessionManager: CRUD operations for chat sessions
+
+Database schema:
+- sessions table: id (TEXT PK), title, model, created_at, updated_at, messages (JSON)
+
+Database location:
+- ~/.co-ai/sessions.db
+
+Features:
+- Create/load/update/delete sessions
+- List all sessions with metadata
+- Update session title and messages
+- Automatic timestamps (created_at, updated_at)
+
+Architecture:
+- SQLite for simple, local persistence
+- Messages stored as JSON array
+- Session IDs use timestamp format: YYYYMMDD_HHMMSS
+- Connection per SessionManager instance
+
+Used by:
+- co ai commands for session management
+- Web interface for chat history
+"""
 
 import json
 import sqlite3
