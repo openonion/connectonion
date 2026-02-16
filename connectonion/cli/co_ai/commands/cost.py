@@ -1,4 +1,30 @@
-"""Cost command for showing session spending."""
+"""
+LLM-Note: Session cost tracking command for co_ai - Displays token usage and cost metrics
+
+This module implements the /cost command which shows comprehensive cost analytics
+for the current co_ai session.
+
+Key components:
+- cmd_cost(args): Main command handler displaying cost breakdown
+- _current_agent: Module-level storage for active agent reference
+- set_agent(agent): Injects agent reference from CLI
+
+Display metrics:
+- Total cost in USD (from token usage)
+- Input/output token counts
+- Context usage percentage with visual progress bar
+- Model name
+- Total messages in conversation
+
+Architecture:
+- Uses Rich library for formatted Panel display with Table
+- Accesses agent.total_cost, agent.last_usage, agent.context_percent
+- Shows "No agent session active" if agent not set
+- CLI integration: set_agent() called by co_ai main loop
+- Visual context bar: green (<50%), yellow (50-80%), red (>80%)
+
+Cost command for showing session spending.
+"""
 
 from rich.console import Console
 from rich.panel import Panel
