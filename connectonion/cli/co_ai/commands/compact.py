@@ -1,4 +1,36 @@
-"""Compact command for compressing conversation context using LLM summarization."""
+"""
+LLM-Note: /compact command - compress conversation context using LLM summarization.
+
+This command uses an LLM to intelligently summarize older messages in the conversation
+history, freeing up context window space while preserving important information.
+
+Key function:
+- cmd_compact(): Triggers context compression for current session
+- set_agent(): Injects agent reference for message manipulation
+
+Compaction strategy:
+- Never compacts system prompt (preserves core instructions)
+- Creates summary of old messages (all except last 5)
+- Keeps recent 5 messages intact (maintains immediate context)
+- Replaces old messages with single summary message
+
+Summarization:
+- Uses fast model: co/gemini-2.5-flash
+- Prompt asks for concise summary preserving key decisions/facts
+- Summary becomes new "assistant" message in conversation
+- Reduces token count while maintaining continuity
+
+Architecture:
+- Module-level _current_agent reference (set by CLI)
+- Direct manipulation of agent.current_session['messages']
+- Rich Panel for status display with blue border
+- Token count reduction tracking
+
+Used by:
+- CLI: `oo /compact` or `/compact` in interactive mode
+- Manual trigger when context approaching limits
+- Enables longer conversations without hitting token limits
+"""
 
 from pathlib import Path
 from rich.console import Console
