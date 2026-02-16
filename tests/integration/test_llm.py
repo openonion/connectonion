@@ -1,5 +1,21 @@
 """Tests for LLM functionality including multi-LLM support."""
 
+"""
+LLM-Note: Integration tests for LLM multi-provider support
+
+What it tests:
+- test_llm_do_empty_input: Error handling for empty input
+- TestMultiLLMSupport: Multi-LLM provider integration
+  - test_model_registry: Model-to-provider mapping
+  - test_create_llm_factory: LLM factory function for all providers
+
+Components under test:
+- connectonion.llm_do (one-shot LLM function)
+- connectonion.core.llm.MODEL_REGISTRY
+- connectonion.core.llm.create_llm (factory pattern)
+- OpenAILLM, AnthropicLLM, GeminiLLM
+"""
+
 import os
 
 import pytest

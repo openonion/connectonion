@@ -1,5 +1,20 @@
 """Performance benchmarks for ConnectOnion."""
 
+"""
+LLM-Note: Performance benchmarks for ConnectOnion components
+
+What it tests:
+- TestPerformanceBenchmarks: Performance metrics and timing
+  - test_agent_response_time_simple: Simple agent response benchmarks
+  - test_agent_response_time_with_tools: Tool execution performance
+  - Memory and CPU usage tracking
+
+Components under test:
+- connectonion.Agent (performance characteristics)
+- Tool execution speed
+- System resource usage with psutil
+"""
+
 import pytest
 import time
 import psutil

@@ -1,5 +1,18 @@
 """Tests for GET /docs static page."""
 
+"""
+LLM-Note: Integration tests for /docs static page endpoint
+
+What it tests:
+- ASGITestClient: Minimal ASGI test client for HTTP requests
+- GET /docs endpoint testing
+- Static documentation page serving
+
+Components under test:
+- ASGI HTTP endpoint handlers
+- Static page serving infrastructure
+"""
+
 import asyncio
 
 

@@ -1,5 +1,20 @@
 """Integration tests for agent workflows."""
 
+"""
+LLM-Note: Integration tests for complete agent workflows
+
+What it tests:
+- TestAgentWorkflows: End-to-end agent execution patterns
+  - test_simple_conversation_workflow: Text-only conversation
+  - test_single_tool_workflow: Single tool execution
+  - Multi-tool workflows and complex interactions
+
+Components under test:
+- connectonion.Agent (complete workflows)
+- Tool execution integration
+- MockLLM for deterministic testing
+"""
+
 import pytest
 from unittest.mock import Mock, patch
 from connectonion import Agent
