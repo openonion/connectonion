@@ -4,6 +4,20 @@ These tests use MockLLM for deterministic behavior while exercising
 agent workflows and tool execution paths.
 """
 
+"""
+LLM-Note: E2E example agent tests with mocked LLM
+
+What it tests:
+- TestExampleAgent: Complete agent workflows without network calls
+  - test_agent_with_mock_llm: Agent logic with MockLLM
+  - calculator tool: Example tool for mathematical expressions
+  - Demonstrates testing patterns for agent behavior
+
+Components under test:
+- connectonion.Agent (full workflow)
+- Tool execution with mocked LLM responses
+"""
+
 import pytest
 
 from connectonion import Agent

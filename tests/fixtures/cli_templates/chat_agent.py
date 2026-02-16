@@ -1,5 +1,19 @@
 """Chat Agent Template - Focused on conversation"""
 
+"""
+LLM-Note: Chat agent template fixture for testing
+
+What it tests:
+- remember_info, search_memory: Simulated memory tools
+- get_weather: Simulated weather API tool
+- set_reminder: Reminder tool
+- Conversational agent template structure
+
+Components under test:
+- Template fixtures for CLI testing
+- Example conversational tools
+"""
+
 from connectonion import Agent
 
 

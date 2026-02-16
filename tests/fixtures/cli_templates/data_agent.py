@@ -1,5 +1,18 @@
 """Data Analysis Agent Template"""
 
+"""
+LLM-Note: Data analysis agent template fixture for testing
+
+What it tests:
+- analyze_data: Statistical analysis tool (mean, median, min, max)
+- JSON data parsing and validation
+- Data analysis agent template structure
+
+Components under test:
+- Template fixtures for CLI testing
+- Example data analysis tools
+"""
+
 from connectonion import Agent
 import json
 from typing import List, Dict, Any
