@@ -53,6 +53,9 @@ from .routes import (
     # Super admin routes
     admin_admins_add_handler,
     admin_admins_remove_handler,
+    # Group chat routes (issue #83)
+    create_chat_handler,
+    join_chat_handler,
 )
 
 
@@ -122,6 +125,10 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         trust_agent: TrustAgent instance for trust operations
     """
     agent_name = agent_metadata["name"]
+    agent_address = agent_metadata.get("address", "")
+
+    def handle_create_chat(storage, visibility="invite_link", history_visible=True, owner_id=None):
+        return create_chat_handler(storage, agent_address, visibility, history_visible, owner_id)
 
     def handle_input(storage, prompt, session=None, connection=None, images=None):
         return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images)
@@ -159,6 +166,9 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         # Super admin routes
         "admin_admins_add": partial(admin_admins_add_handler, trust_agent),
         "admin_admins_remove": partial(admin_admins_remove_handler, trust_agent),
+        # Group chat routes (issue #83)
+        "create_chat": handle_create_chat,
+        "join_chat": join_chat_handler,
     }
 
 

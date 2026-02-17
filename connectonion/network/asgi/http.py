@@ -288,6 +288,18 @@ async def handle_http(
         result = route_handlers["session"](storage, path[10:])
         await send_json(send, result or {"error": "not found"}, 404 if not result else 200)
 
+    elif method == "POST" and path == "/api/chats":
+        body = await read_body(receive)
+        data = json.loads(body) if body else {}
+        result = route_handlers["create_chat"](storage, **data)
+        await send_json(send, result)
+
+    elif method == "GET" and path.startswith("/c/"):
+        invite_code = path[3:]
+        result = route_handlers["join_chat"](storage, invite_code)
+        status = 404 if "error" in result else 200
+        await send_json(send, result, status)
+
     elif method == "GET" and path == "/sessions":
         await send_json(send, route_handlers["sessions"](storage))
 
