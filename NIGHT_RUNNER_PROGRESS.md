@@ -1,59 +1,47 @@
 # Night Runner Progress for Issue #74
 
-Last run: 2026-02-15 08:04:51
-Status: In Progress
+Last run: 2026-02-17
+Status: In Progress - Addressing Review Feedback
 
 ## What to do next
-- Read this file to see what's already done
-- Continue implementing remaining tasks
-- Update this file with completed tasks
-- Commit frequently
+- Address review feedback from PR #84
+- Remove 'or/' shorthand prefix as requested
+- Continue with remaining OpenRouter implementation if needed
+
+## Review Feedback
+- **From wu-changxing (2026-02-15)**: "remove shorthand or/ this make things complicated"
+- **Action**: Revert all 'or/' shorthand prefix changes
 
 ## Completed Tasks
-- [x] Analyzed existing OpenRouterLLM implementation in connectonion/core/llm.py
-  - Found that OpenRouterLLM class was already fully implemented
-  - Only missing feature was the "or/" shorthand prefix support
+
+### Initial Implementation (Reverted)
 - [x] Added "or/" shorthand prefix support to create_llm() factory (line 1070)
-  - Changed condition to: `if model.startswith("openrouter/") or model.startswith("or/"):`
 - [x] Updated OpenRouterLLM.__init__() to strip both "openrouter/" and "or/" prefixes (line 768)
-  - Changed to: `self.model = model.removeprefix("openrouter/").removeprefix("or/")`
 - [x] Added test for "or/" shorthand prefix in tests/unit/test_llm_errors.py
-  - New test: `test_infer_openrouter_from_shorthand_prefix()`
-  - Verifies both routing and model name stripping
-- [x] Updated documentation in docs/concepts/models.md
-  - Added example showing or/ shorthand usage
-  - Updated OpenRouter notes to mention both prefixes
-  - Updated environment variable comments
+- [x] Updated documentation in docs/concepts/models.md to mention both prefixes
 - [x] Updated CHANGELOG.md with new feature
-  - Added [Unreleased] section
-  - Documented or/ prefix as developer experience improvement
+
+### Reverted Changes (Based on Review Feedback)
+- [x] Removed 'or/' shorthand prefix from create_llm() routing logic
+  - Commit: 8c6f171 - revert: Remove 'or/' shorthand prefix for OpenRouter
+- [x] Removed 'or/' prefix stripping from OpenRouterLLM.__init__()
+  - Commit: 8c6f171 - revert: Remove 'or/' shorthand prefix for OpenRouter
+- [x] Removed test for 'or/' shorthand prefix
+  - Commit: 0e91c56 - test: Remove test for 'or/' shorthand prefix
+- [x] Removed 'or/' documentation from models.md
+  - Commit: a8a4c5c - docs: Remove 'or/' shorthand from models.md documentation
+- [x] Removed 'or/' CHANGELOG entry
+  - Commit: 885e344 - docs: Remove 'or/' shorthand entry from CHANGELOG
 
 ## Summary
-Issue #74 implementation is COMPLETE! 🎉
+OpenRouter support was already fully implemented in the codebase. The initial approach added an 'or/' shorthand prefix, but this was deemed to add unnecessary complexity based on review feedback from the project maintainer.
 
-The OpenRouter support was already fully implemented in the codebase. The only missing piece was the shorthand "or/" prefix support mentioned in the issue description.
+All 'or/' shorthand changes have been reverted. OpenRouter continues to work with the `openrouter/` prefix:
 
-**What was added:**
-1. `or/` shorthand prefix routing in create_llm()
-2. Model name stripping for or/ prefix in OpenRouterLLM
-3. Test coverage for the new shorthand
-4. Documentation updates
-5. CHANGELOG entry
-
-**Commits:**
-1. feat: Add 'or/' shorthand prefix support for OpenRouter (0cfcd7d)
-2. docs: Update models.md to document 'or/' shorthand prefix (8de5252)
-3. docs: Add or/ shorthand prefix to CHANGELOG (ded2a95)
-
-**Usage Examples:**
 ```python
-# Full prefix (already worked)
+# OpenRouter usage (no shorthand)
 agent = Agent("assistant", model="openrouter/anthropic/claude-3.5-sonnet")
-
-# Shorthand (NEW!)
-agent = Agent("assistant", model="or/claude-3.5-sonnet")
 ```
 
-
-Last attempt: 2026-02-15 08:11:19
-Exit code: 0
+Last attempt: 2026-02-17
+Status: Review feedback addressed - 'or/' shorthand removed
