@@ -1,4 +1,14 @@
 """Unit tests for connectonion/console.py"""
+"""
+LLM-Note: Tests for console
+
+What it tests:
+- Console functionality
+
+Components under test:
+- Module: console
+"""
+
 
 import pytest
 from unittest.mock import patch, Mock

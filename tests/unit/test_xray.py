@@ -1,4 +1,14 @@
 """Tests for xray.py - XRay debugging tool."""
+"""
+LLM-Note: Tests for xray
+
+What it tests:
+- Xray functionality
+
+Components under test:
+- Module: xray
+"""
+
 
 import builtins
 import pytest

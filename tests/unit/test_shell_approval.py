@@ -5,6 +5,16 @@ Tests cover:
 - _check_approval: approval workflow for shell commands
 - Plugin registration with correct events
 """
+"""
+LLM-Note: Tests for shell approval
+
+What it tests:
+- Shell Approval functionality
+
+Components under test:
+- Module: shell_approval
+"""
+
 
 import pytest
 import importlib

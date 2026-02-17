@@ -8,6 +8,16 @@ Tests cover:
 - is_custom_trust() trust type detection
 - evaluate_with_trust_agent() (mocked LLM)
 """
+"""
+LLM-Note: Tests for host auth
+
+What it tests:
+- Host Auth functionality
+
+Components under test:
+- Module: host_auth
+"""
+
 
 import hashlib
 import json

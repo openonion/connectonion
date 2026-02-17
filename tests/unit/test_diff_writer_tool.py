@@ -7,6 +7,16 @@ Tests cover:
 - _generate_diff: diff generation helper
 - Mode-based permissions (normal, auto, plan)
 """
+"""
+LLM-Note: Tests for diff writer tool
+
+What it tests:
+- Diff Writer Tool functionality
+
+Components under test:
+- Module: diff_writer_tool
+"""
+
 
 import pytest
 import tempfile

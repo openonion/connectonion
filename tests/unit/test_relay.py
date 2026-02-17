@@ -1,3 +1,12 @@
+"""
+LLM-Note: Tests for relay
+
+What it tests:
+- Relay functionality
+
+Components under test:
+- Module: relay
+"""
 #!/usr/bin/env python3
 """
 Unit tests for relay.py - WebSocket relay client functionality.

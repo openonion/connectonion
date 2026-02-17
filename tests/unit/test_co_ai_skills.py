@@ -1,4 +1,14 @@
 """Tests for co_ai skills loader and tool."""
+"""
+LLM-Note: Tests for co ai skills
+
+What it tests:
+- Co Ai Skills functionality
+
+Components under test:
+- Module: co_ai_skills
+"""
+
 
 from pathlib import Path
 

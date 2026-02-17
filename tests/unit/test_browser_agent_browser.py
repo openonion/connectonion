@@ -1,4 +1,14 @@
 """Tests for browser agent module without Playwright."""
+"""
+LLM-Note: Tests for browser agent browser
+
+What it tests:
+- Browser Agent Browser functionality
+
+Components under test:
+- Module: browser_agent_browser
+"""
+
 
 import os
 

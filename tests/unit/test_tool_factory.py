@@ -1,4 +1,14 @@
 """Unit tests for connectonion/tool_factory.py"""
+"""
+LLM-Note: Tests for tool factory
+
+What it tests:
+- Tool Factory functionality
+
+Components under test:
+- Module: tool_factory
+"""
+
 
 import pytest
 from typing import Optional, List, Dict

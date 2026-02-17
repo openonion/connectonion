@@ -1,4 +1,14 @@
 """Tests for co_ai session management."""
+"""
+LLM-Note: Tests for co ai sessions
+
+What it tests:
+- Co Ai Sessions functionality
+
+Components under test:
+- Module: co_ai_sessions
+"""
+
 
 from pathlib import Path
 

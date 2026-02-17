@@ -1,4 +1,14 @@
 """Import smoke tests to catch package-relative import issues."""
+"""
+LLM-Note: Tests for imports
+
+What it tests:
+- Imports functionality
+
+Components under test:
+- Module: imports
+"""
+
 
 import importlib
 

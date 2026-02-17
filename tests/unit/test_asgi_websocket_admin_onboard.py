@@ -5,6 +5,16 @@ Coverage:
 - ONBOARD_SUBMIT invite/payment handling
 - ADMIN_* message handling (auth, admin checks, success/error cases)
 """
+"""
+LLM-Note: Tests for asgi websocket admin onboard
+
+What it tests:
+- Asgi Websocket Admin Onboard functionality
+
+Components under test:
+- Module: asgi_websocket_admin_onboard
+"""
+
 
 import json
 from types import SimpleNamespace

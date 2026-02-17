@@ -1,3 +1,12 @@
+"""
+LLM-Note: Tests for trust functions
+
+What it tests:
+- Trust Functions functionality
+
+Components under test:
+- Module: trust_functions
+"""
 #!/usr/bin/env python3
 """
 Unit tests for network/trust/tools.py - trust verification tools.

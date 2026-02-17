@@ -1,6 +1,16 @@
 """
 Tests for the event system (on_events parameter)
 """
+"""
+LLM-Note: Tests for events
+
+What it tests:
+- Events functionality
+
+Components under test:
+- Module: events
+"""
+
 import pytest
 from unittest.mock import Mock
 from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete

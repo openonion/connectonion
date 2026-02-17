@@ -9,6 +9,16 @@ Tests cover:
 - CORS headers
 - Admin endpoint authentication
 """
+"""
+LLM-Note: Tests for asgi http
+
+What it tests:
+- Asgi Http functionality
+
+Components under test:
+- Module: asgi_http
+"""
+
 
 import json
 import os

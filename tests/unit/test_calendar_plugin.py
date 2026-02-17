@@ -4,6 +4,16 @@ Tests cover:
 - check_calendar_approval: approval workflow for calendar modifications
 - Plugin registration with correct events
 """
+"""
+LLM-Note: Tests for calendar plugin
+
+What it tests:
+- Calendar Plugin functionality
+
+Components under test:
+- Module: calendar_plugin
+"""
+
 
 import pytest
 import importlib

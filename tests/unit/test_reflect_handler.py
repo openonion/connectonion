@@ -5,6 +5,16 @@ Tests cover:
 - _compress_messages: message compression helper
 - Event registration
 """
+"""
+LLM-Note: Tests for reflect handler
+
+What it tests:
+- Reflect Handler functionality
+
+Components under test:
+- Module: reflect_handler
+"""
+
 
 import pytest
 import importlib

@@ -3,6 +3,16 @@
 Trust has moved from Agent to host() function.
 This file tests trust levels, policies, and custom agents.
 """
+"""
+LLM-Note: Tests for trust
+
+What it tests:
+- Trust functionality
+
+Components under test:
+- Module: trust
+"""
+
 
 import os
 import pytest

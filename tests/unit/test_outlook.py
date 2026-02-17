@@ -1,4 +1,14 @@
 """Test the Outlook tool functionality."""
+"""
+LLM-Note: Tests for outlook
+
+What it tests:
+- Outlook functionality
+
+Components under test:
+- Module: outlook
+"""
+
 
 import os
 import pytest

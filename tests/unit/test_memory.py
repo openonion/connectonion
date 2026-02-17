@@ -1,4 +1,14 @@
 """Test the Memory system functionality."""
+"""
+LLM-Note: Tests for memory
+
+What it tests:
+- Memory functionality
+
+Components under test:
+- Module: memory
+"""
+
 
 import os
 import shutil

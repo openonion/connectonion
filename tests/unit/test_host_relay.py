@@ -1,3 +1,12 @@
+"""
+LLM-Note: Tests for host relay
+
+What it tests:
+- Host Relay functionality
+
+Components under test:
+- Module: host_relay
+"""
 #!/usr/bin/env python3
 """
 Unit tests for host() relay functionality.

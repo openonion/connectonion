@@ -1,4 +1,17 @@
 """Mock helpers for ConnectOnion testing."""
+"""
+LLM-Note: Mock helpers for testing
+
+What it tests:
+- MockLLM: Mock LLM for deterministic testing
+- LLMResponseBuilder: Builder for mock responses
+- AgentWorkflowMocker: Workflow mocking utilities
+- OpenAIMockBuilder: OpenAI mock utilities
+
+Components under test:
+- Test mocking infrastructure
+"""
+
 
 import json
 from unittest.mock import Mock, MagicMock

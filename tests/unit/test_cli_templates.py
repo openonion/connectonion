@@ -1,4 +1,14 @@
 """Tests for CLI template modules with stubbed connectonion API."""
+"""
+LLM-Note: Tests for cli templates
+
+What it tests:
+- Cli Templates functionality
+
+Components under test:
+- Module: cli_templates
+"""
+
 
 import importlib.util
 import sys

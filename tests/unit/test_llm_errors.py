@@ -1,3 +1,12 @@
+"""
+LLM-Note: Tests for llm errors
+
+What it tests:
+- Llm Errors functionality
+
+Components under test:
+- Module: llm_errors
+"""
 #!/usr/bin/env python3
 """
 Unit tests for llm.py error handling.
