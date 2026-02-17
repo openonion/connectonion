@@ -219,3 +219,76 @@ def admin_admins_remove_handler(trust_agent, admin_id: str) -> dict:
     """POST /superadmin/remove - Remove an admin. Super admin only."""
     result = trust_agent.remove_admin(admin_id)
     return {"success": True, "message": result}
+
+
+# === Group Chat Routes (Issue #83) ===
+
+def create_chat_handler(storage: SessionStorage, agent_address: str, visibility: str = "invite_link",
+                       history_visible: bool = True, owner_id: str | None = None) -> dict:
+    """POST /api/chats - Create shareable group chat.
+
+    Args:
+        storage: SessionStorage instance
+        agent_address: The 0x address of the agent
+        visibility: "private" | "invite_link" | "public"
+        history_visible: Whether new participants can see chat history
+        owner_id: Creator's identifier (from auth)
+
+    Returns:
+        {"invite_url": "chat.openonion.ai/c/abc123", "invite_code": "abc123", "session_id": "..."}
+    """
+    from .session import generate_invite_code
+    now = time.time()
+
+    session_id = str(uuid.uuid4())
+    invite_code = generate_invite_code()
+
+    # Create session record with invite
+    session = Session(
+        session_id=session_id,
+        status="ready",  # Ready for participants to join
+        prompt="",  # Group chat, no single prompt
+        created=now,
+        expires=now + (30 * 24 * 3600),  # 30 days for group chats
+        invite_code=invite_code,
+        visibility=visibility,
+        participants=[owner_id] if owner_id else [],
+        owner_id=owner_id
+    )
+    storage.save(session)
+
+    return {
+        "invite_url": f"chat.openonion.ai/c/{invite_code}",
+        "invite_code": invite_code,
+        "session_id": session_id,
+        "agent": agent_address
+    }
+
+
+def join_chat_handler(storage: SessionStorage, invite_code: str, participant_id: str | None = None) -> dict:
+    """GET /c/{invite_code} - Join group chat via invite link.
+
+    Args:
+        storage: SessionStorage instance
+        invite_code: The invite code from URL
+        participant_id: Joining user's identifier (from session or anonymous)
+
+    Returns:
+        {"session_id": "...", "session": {...}, "agent": "0x...", "joined": true}
+        or {"error": "..."} if invite not found/expired
+    """
+    session = storage.get_by_invite_code(invite_code)
+    if not session:
+        return {"error": "Invite not found or expired"}
+
+    # Add participant if not already in list
+    if participant_id and participant_id not in session.participants:
+        session.participants.append(participant_id)
+        storage.save(session)
+
+    return {
+        "session_id": session.session_id,
+        "joined": True,
+        "visibility": session.visibility,
+        # Note: actual session data and agent info would be fetched by frontend
+    }

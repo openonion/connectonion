@@ -11,11 +11,17 @@ Session storage for hosted agents.
 """
 
 import json
+import secrets
 import time
 from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel
+
+
+def generate_invite_code(length: int = 8) -> str:
+    """Generate a URL-safe invite code."""
+    return secrets.token_urlsafe(length)[:length]
 
 
 class Session(BaseModel):
@@ -25,6 +31,12 @@ class Session(BaseModel):
     - Native JSON serialization via .model_dump()
     - Type validation
     - API response compatibility
+
+    Multi-participant support (issue #83):
+    - invite_code: Shareable code for joining (e.g., "abc123")
+    - visibility: "private" (default), "invite_link", or "public"
+    - participants: List of participant IDs (owner + guests)
+    - owner_id: Session creator (can revoke invites, kick users)
     """
     session_id: str
     status: str
@@ -33,6 +45,12 @@ class Session(BaseModel):
     created: Optional[float] = None
     expires: Optional[float] = None
     duration_ms: Optional[int] = None
+
+    # Group chat fields (issue #83)
+    invite_code: Optional[str] = None
+    visibility: str = "private"  # "private" | "invite_link" | "public"
+    participants: list[str] = []  # List of participant IDs
+    owner_id: Optional[str] = None  # Session creator
 
 
 class SessionStorage:
@@ -76,3 +94,19 @@ class SessionStorage:
                  if s.status == "running" or not s.expires or s.expires > now]
         # Sort by created desc (newest first)
         return sorted(valid, key=lambda s: s.created or 0, reverse=True)
+
+    def get_by_invite_code(self, invite_code: str) -> Session | None:
+        """Get session by invite code (for group chat joins)."""
+        if not self.path.exists():
+            return None
+        now = time.time()
+        with open(self.path) as f:
+            lines = f.readlines()
+        for line in reversed(lines):
+            data = json.loads(line)
+            if data.get("invite_code") == invite_code:
+                session = Session(**data)
+                if session.status == "running" or not session.expires or session.expires > now:
+                    return session
+                return None  # Expired
+        return None
