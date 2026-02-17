@@ -1,4 +1,14 @@
 """Unit tests for connectonion/tool_executor.py"""
+"""
+LLM-Note: Tests for tool executor
+
+What it tests:
+- Tool Executor functionality
+
+Components under test:
+- Module: tool_executor
+"""
+
 
 import pytest
 from unittest.mock import Mock, patch

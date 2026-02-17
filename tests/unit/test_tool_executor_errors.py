@@ -1,3 +1,12 @@
+"""
+LLM-Note: Tests for tool executor errors
+
+What it tests:
+- Tool Executor Errors functionality
+
+Components under test:
+- Module: tool_executor_errors
+"""
 #!/usr/bin/env python3
 """
 Unit tests for tool_executor.py error handling.

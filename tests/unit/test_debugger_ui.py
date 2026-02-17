@@ -19,6 +19,16 @@ Tests cover:
   - _format_dict_value
   - _format_list_value
 """
+"""
+LLM-Note: Tests for debugger ui
+
+What it tests:
+- Debugger Ui functionality
+
+Components under test:
+- Module: debugger_ui
+"""
+
 
 import pytest
 from unittest.mock import patch, Mock, MagicMock

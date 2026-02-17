@@ -4,6 +4,16 @@ Tests cover:
 - ExecutionAnalysis: Pydantic model for structured output
 - analyze_execution: Post-execution analysis with AI suggestions
 """
+"""
+LLM-Note: Tests for execution analysis
+
+What it tests:
+- Execution Analysis functionality
+
+Components under test:
+- Module: execution_analysis
+"""
+
 
 import pytest
 from unittest.mock import patch, Mock, MagicMock

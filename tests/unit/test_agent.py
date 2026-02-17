@@ -1,4 +1,14 @@
 """Pytest tests for the ConnectOnion Agent and functional tool handling."""
+"""
+LLM-Note: Tests for agent
+
+What it tests:
+- Agent functionality
+
+Components under test:
+- Module: agent
+"""
+
 from unittest.mock import Mock
 
 import pytest

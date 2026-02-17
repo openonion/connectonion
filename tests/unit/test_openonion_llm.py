@@ -1,3 +1,12 @@
+"""
+LLM-Note: Tests for openonion llm
+
+What it tests:
+- Openonion Llm functionality
+
+Components under test:
+- Module: openonion_llm
+"""
 #!/usr/bin/env python3
 """Test OpenOnion LLM implementation with co/ models."""
 

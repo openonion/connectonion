@@ -1,4 +1,19 @@
-"""Background task execution for long-running operations."""
+"""
+LLM-Note: Background task execution system for co_ai - Runs long-running shell commands in background threads
+
+Key components:
+- BackgroundTask: Dataclass tracking task state, process, and output
+- run_background(): Start command in background with task ID
+- task_output(): Check output and status of running/completed tasks
+- kill_task(): Terminate running tasks
+- list_tasks(): View all background tasks
+
+Architecture:
+- Global task registry (_tasks dict) with thread-safe access
+- Output reader threads capture stdout/stderr
+- Task status tracking (RUNNING, COMPLETED, FAILED)
+- Used by co_ai for builds, tests, servers, and other long operations
+"""
 
 import subprocess
 import threading

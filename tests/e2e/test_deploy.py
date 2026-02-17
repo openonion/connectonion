@@ -12,6 +12,20 @@ Run:
     DEPLOY_API_URL=https://oo.openonion.ai pytest tests/e2e/test_deploy.py::test_deploy_and_cleanup -v -s
 """
 
+"""
+LLM-Note: E2E tests for agent deployment
+
+What it tests:
+- get_auth_token: JWT authentication with Ed25519 signing
+- Agent deployment workflow to production infrastructure
+- Full lifecycle: deploy → verify → cleanup
+- Requires DEPLOY_API_URL environment variable
+
+Components under test:
+- connectonion.cli.commands.deploy_commands (deployment infrastructure)
+- Production deployment API integration
+"""
+
 import io
 import os
 import tarfile

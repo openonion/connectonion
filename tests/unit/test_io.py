@@ -1,4 +1,14 @@
 """Unit tests for connectonion/network/io/"""
+"""
+LLM-Note: Tests for io
+
+What it tests:
+- Io functionality
+
+Components under test:
+- Module: io
+"""
+
 
 import threading
 import pytest

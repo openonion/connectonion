@@ -1,4 +1,14 @@
 """Tests for trust state management functions (promote, demote, block, etc.)."""
+"""
+LLM-Note: Tests for trust state
+
+What it tests:
+- Trust State functionality
+
+Components under test:
+- Module: trust_state
+"""
+
 
 import pytest
 from pathlib import Path

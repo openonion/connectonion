@@ -1,4 +1,14 @@
 """Unit tests for IO image support"""
+"""
+LLM-Note: Tests for io image support
+
+What it tests:
+- Io Image Support functionality
+
+Components under test:
+- Module: io_image_support
+"""
+
 
 from connectonion.network.io import WebSocketIO
 

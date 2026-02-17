@@ -1,4 +1,21 @@
-"""Tasks command - list and manage background tasks."""
+"""
+LLM-Note: /tasks command for background task management.
+
+This module implements the /tasks command which lists and manages background
+tasks running in the co-ai environment.
+
+Key components:
+- cmd_tasks(args): Lists all background tasks or kills specific task
+- Displays task table with ID, status, command, and elapsed time
+- Supports `/tasks kill <task_id>` to terminate running tasks
+
+Architecture:
+- Uses _tasks dict and TaskStatus enum from background.py for task management
+- Rich Table for formatted task display with color-coded status
+- Shows task_id, status (running/completed/failed), truncated command, and elapsed time
+- Empty args shows all tasks, "kill <task_id>" terminates specified task
+- Calculates elapsed time from start_time to end_time (or current time if running)
+"""
 
 from rich.console import Console
 from rich.table import Table

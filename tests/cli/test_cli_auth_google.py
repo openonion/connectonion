@@ -1,5 +1,33 @@
 """Tests for co auth google CLI command."""
 
+"""
+LLM-Note: Tests for Google OAuth CLI authentication flow
+
+What it tests:
+- TestAuthGoogleHelp: Help text and prerequisites
+  - test_auth_help_shows_google_option: Verify google appears in help
+  - test_auth_google_requires_openonion_auth: Verify OpenOnion auth required first
+- TestLoadApiKey: API key loading from multiple sources
+  - test_load_api_key_from_env_var: Load from OPENONION_API_KEY env var
+  - test_load_api_key_from_local_env: Load from local .env file
+  - test_load_api_key_from_global_keys_env: Load from ~/.co/keys.env
+  - test_load_api_key_returns_none_when_not_found: Fallback when not found
+- TestSaveGoogleToEnv: Credential persistence
+  - test_save_google_credentials_to_new_env: Create new .env with credentials
+  - test_save_google_credentials_updates_existing_env: Update existing .env preserving other vars
+  - test_save_google_credentials_file_permissions: Verify 0600 permissions on Unix
+- TestAuthGoogleFlow: OAuth flow with mocked backend
+  - test_auth_google_success_flow: Complete successful OAuth flow
+  - test_auth_google_init_failure: Handle OAuth init errors
+  - test_auth_google_timeout: Handle authorization timeout
+- TestAuthGoogleIntegration: Manual integration tests (skipped)
+
+Components under test:
+- connectonion.cli.commands.auth_commands (auth google command)
+- connectonion.cli.commands.auth_commands._load_api_key
+- connectonion.cli.commands.auth_commands._save_google_to_env
+"""
+
 import os
 import tempfile
 from pathlib import Path

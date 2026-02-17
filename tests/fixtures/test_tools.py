@@ -5,6 +5,19 @@ The agent supports both patterns:
 - Functions: tools=[calculator, current_time]
 - Class instances: tools=[CalculatorTool(), TimeTool()]
 """
+
+"""
+LLM-Note: Test tool fixtures for shared testing
+
+What it tests:
+- Function-based tools: calculator, current_time, read_file, write_file
+- Class-based tools: CalculatorTool, TimeTool
+- Both function and class-based tool patterns
+
+Components under test:
+- Tool creation patterns
+- Shared test tools for use across test suite
+"""
 import os
 from datetime import datetime
 from typing import Optional

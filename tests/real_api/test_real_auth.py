@@ -1,4 +1,15 @@
 """End-to-end test for ConnectOnion authentication with production API."""
+"""
+LLM-Note: E2E authentication tests with production API
+
+What it tests:
+- Ed25519 signing and authentication
+- Production API auth flow
+
+Components under test:
+- Authentication infrastructure with Ed25519
+"""
+
 
 import time
 import json

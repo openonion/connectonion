@@ -1,5 +1,19 @@
 """Tests for CLI help system - updated for Typer."""
 
+"""
+LLM-Note: Tests for CLI help system
+
+What it tests:
+- TestCliHelp: Help text and version display
+  - test_no_args_shows_brief_help: Verify brief help on bare 'co' command
+  - test_help_flag_shows_detailed_help: Verify detailed --help output
+  - test_version_flag: Verify --version display
+
+Components under test:
+- connectonion.cli.main (CLI entry point)
+- Typer help system
+"""
+
 import pytest
 from connectonion import __version__
 from .argparse_runner import ArgparseCliRunner

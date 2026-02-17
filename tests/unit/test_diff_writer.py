@@ -1,4 +1,14 @@
 """Unit tests for DiffWriter."""
+"""
+LLM-Note: Tests for diff writer
+
+What it tests:
+- Diff Writer functionality
+
+Components under test:
+- Module: diff_writer
+"""
+
 
 import tempfile
 import os

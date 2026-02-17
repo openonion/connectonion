@@ -1,5 +1,19 @@
 """Tests for CLI deploy command."""
 
+"""
+LLM-Note: Tests for CLI deploy command (co deploy)
+
+What it tests:
+- TestCliDeploy: Deployment workflow
+  - test_deploy_requires_git_repo: Verify git repo requirement
+  - test_deploy_requires_co_project: Verify .co folder requirement
+  - Git integration and deployment workflows
+
+Components under test:
+- connectonion.cli.commands.deploy (deploy command)
+- Git repository integration
+"""
+
 import os
 import shutil
 import tempfile

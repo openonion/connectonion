@@ -1,4 +1,14 @@
 """Coverage tests for remaining modules with light-touch assertions."""
+"""
+LLM-Note: Tests for additional modules
+
+What it tests:
+- Additional Modules functionality
+
+Components under test:
+- Module: additional_modules
+"""
+
 
 from pathlib import Path
 

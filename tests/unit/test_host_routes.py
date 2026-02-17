@@ -9,6 +9,16 @@ Tests cover:
 - admin_logs_handler() - GET /admin/logs route
 - admin_sessions_handler() - GET /admin/sessions route
 """
+"""
+LLM-Note: Tests for host routes
+
+What it tests:
+- Host Routes functionality
+
+Components under test:
+- Module: host_routes
+"""
+
 
 import time
 import pytest

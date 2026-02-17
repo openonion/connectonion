@@ -1,5 +1,18 @@
 """Fixtures for trust-related tests."""
 
+"""
+LLM-Note: Trust system test fixtures
+
+What it tests:
+- trust_policy_file: Single trust policy fixture
+- trust_policy_files: Multiple trust policies (open, careful, strict)
+- Pre-configured trust policy markdown files for testing
+
+Components under test:
+- connectonion.network.trust (trust system)
+- Trust policy file formats and parsing
+"""
+
 import pytest
 import tempfile
 from pathlib import Path

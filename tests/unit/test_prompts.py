@@ -1,4 +1,14 @@
 """Test system prompt loading functionality."""
+"""
+LLM-Note: Tests for prompts
+
+What it tests:
+- Prompts functionality
+
+Components under test:
+- Module: prompts
+"""
+
 
 import os
 import tempfile

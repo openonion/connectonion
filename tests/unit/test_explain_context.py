@@ -9,6 +9,16 @@ Tests cover:
   - analyze_why_this_tool
   - analyze_root_cause
 """
+"""
+LLM-Note: Tests for explain context
+
+What it tests:
+- Explain Context functionality
+
+Components under test:
+- Module: explain_context
+"""
+
 
 import pytest
 from unittest.mock import patch, Mock, MagicMock

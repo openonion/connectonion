@@ -4,6 +4,21 @@ Tests for host() HTTP endpoints.
 Based on docs/network/host.md specification.
 """
 
+"""
+LLM-Note: Integration tests for host() HTTP endpoints
+
+What it tests:
+- create_signed_request: Ed25519 signed request creation
+- ASGITestClient: Minimal ASGI HTTP test client
+- HTTP endpoint handling for hosted agents
+- Request signing and verification
+
+Components under test:
+- connectonion host() HTTP endpoints
+- Ed25519 signature verification
+- ASGI HTTP request handling
+"""
+
 import asyncio
 import json
 import time

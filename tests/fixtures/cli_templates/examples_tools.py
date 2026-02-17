@@ -1,5 +1,18 @@
 """Additional Example Tools for ConnectOnion Agents"""
 
+"""
+LLM-Note: Example tools fixture for testing
+
+What it tests:
+- generate_password: Secure password generation tool
+- create_todo_list: Todo list formatting tool
+- Collection of example tools for template testing
+
+Components under test:
+- Template fixtures for CLI testing
+- Example utility tools
+"""
+
 import json
 import random
 from datetime import datetime, timedelta

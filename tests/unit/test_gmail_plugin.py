@@ -5,6 +5,16 @@ Tests cover:
 - sync_crm_after_send: CRM update after successful sends
 - Plugin registration with correct events
 """
+"""
+LLM-Note: Tests for gmail plugin
+
+What it tests:
+- Gmail Plugin functionality
+
+Components under test:
+- Module: gmail_plugin
+"""
+
 
 import pytest
 import importlib

@@ -1,4 +1,15 @@
 """Test Gemini models via direct API and co/ managed keys"""
+"""
+LLM-Note: Tests for Gemini via direct API and co/ managed keys
+
+What it tests:
+- Gemini 2.5 Flash direct API
+- co/ managed key testing
+
+Components under test:
+- Gemini with managed keys (co/ prefix)
+"""
+
 import os
 import pytest
 from connectonion import Agent, llm_do

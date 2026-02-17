@@ -1,4 +1,33 @@
-"""Session commands - /sessions, /new."""
+"""
+LLM-Note: Session management commands - /sessions, /new, /resume.
+
+These commands manage conversation session persistence, allowing users to
+save, list, and resume previous conversations.
+
+Key functions:
+- cmd_sessions(): Lists recent saved sessions (last 10)
+- cmd_new(): Creates new session and clears current conversation
+- cmd_resume(): Loads saved session and restores messages
+- set_agent(): Injects agent reference for message manipulation
+
+Session features:
+- SQLite-backed persistence in ~/.co-ai/sessions.db
+- Automatic session creation on first user input
+- Session includes: id, title, model, timestamp, full message history
+- Title auto-generated from first user input (50 chars max)
+- Sessions listed with: id, title, last updated date
+
+Architecture:
+- Module-level _agent reference (set by CLI)
+- SessionManager from sessions.py handles database operations
+- Direct manipulation of agent.messages for session restore
+- Integration with co ai CLI for seamless persistence
+
+Used by:
+- CLI: `oo /sessions`, `/new`, `/resume <id>` in interactive mode
+- Automatic session saving after each exchange
+- Session recovery after disconnection or restart
+"""
 
 from connectonion.cli.co_ai.sessions import get_session_manager
 

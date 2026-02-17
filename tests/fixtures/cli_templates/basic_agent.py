@@ -1,5 +1,18 @@
 """Basic ConnectOnion Agent Template"""
 
+"""
+LLM-Note: Basic agent template fixture for testing
+
+What it tests:
+- explain_connectonion: Tool for explaining ConnectOnion concepts
+- Basic agent template structure
+- Documentation reading and topic-based responses
+
+Components under test:
+- Template fixtures for CLI testing
+- Example tool implementations
+"""
+
 from connectonion import Agent
 import os
 

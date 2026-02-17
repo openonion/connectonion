@@ -10,6 +10,23 @@ Tests cover:
 - CLI integration: co keys and co keys --reveal via Typer
 """
 
+"""
+LLM-Note: Tests for CLI keys command (co keys)
+
+What it tests:
+- TestMask: Secret string masking
+  - test_mask_empty_string, test_mask_none: Edge cases
+  - test_mask_short_string_shown_in_full: Short strings not masked
+  - test_mask_long_string_truncated: Long strings masked with asterisks
+  - test_mask_custom_show_length: Custom visible length
+- TestShortPath: Path display helpers
+- API key loading and display functionality
+
+Components under test:
+- connectonion.cli.commands.keys_commands (keys command)
+- Helper functions: _find_co_dir, _load_env_vars, _mask, _short_path, _source_label
+"""
+
 import os
 import tempfile
 from pathlib import Path

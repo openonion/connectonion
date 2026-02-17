@@ -1,4 +1,14 @@
 """Tests for prompt assembler utilities."""
+"""
+LLM-Note: Tests for co ai prompts assembler
+
+What it tests:
+- Co Ai Prompts Assembler functionality
+
+Components under test:
+- Module: co_ai_prompts_assembler
+"""
+
 
 from pathlib import Path
 

@@ -6,6 +6,23 @@ Tests cover:
 - handle_status: Display account status without re-authenticating
 """
 
+"""
+LLM-Note: Tests for CLI status command (co status)
+
+What it tests:
+- TestLoadApiKey: API key loading from multiple sources
+  - test_load_api_key_from_env_var: Load from OPENONION_API_KEY env var
+  - test_load_api_key_from_local_env: Load from local .env file
+  - test_load_api_key_from_global_keys_env: Load from ~/.co/keys.env
+- TestLoadConfig: Config file loading
+- Account status display without re-authentication
+
+Components under test:
+- connectonion.cli.commands.status_commands._load_api_key
+- connectonion.cli.commands.status_commands._load_config
+- connectonion.cli.commands.status_commands.handle_status
+"""
+
 import pytest
 import os
 import tempfile

@@ -1,4 +1,20 @@
-"""Sub-agent registry and factory."""
+"""
+LLM-Note: Sub-agent registry and factory for specialized agents.
+
+This module defines configurations for specialized sub-agents and provides
+a factory function to create them on demand.
+
+Key components:
+- SUBAGENTS: Dictionary mapping agent types to configurations
+- get_subagent(agent_type): Creates configured Agent instance
+
+Architecture:
+- Each sub-agent config includes: description, tools, model, max_iterations
+- "explore": Fast codebase exploration (gemini-2.5-flash, glob/grep/read)
+- "plan": Implementation planning (gemini-2.5-pro, glob/grep/read)
+- System prompts loaded from co_ai/prompts/agents/{type}.md
+- Falls back to description if prompt file not found
+"""
 
 from typing import Dict, Any, Optional
 from connectonion import Agent

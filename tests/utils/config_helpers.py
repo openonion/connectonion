@@ -1,4 +1,15 @@
 """Test configuration for ConnectOnion tests."""
+"""
+LLM-Note: Configuration helpers for testing
+
+What it tests:
+- Configuration file helpers
+- Test configuration utilities
+
+Components under test:
+- Test configuration infrastructure
+"""
+
 
 import os
 from pathlib import Path

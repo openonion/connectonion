@@ -12,6 +12,16 @@ Tests cover:
 - CSV caching: sync_emails, sync_contacts, get_cached_contacts
 - update_contact, bulk_update_contacts
 """
+"""
+LLM-Note: Tests for gmail
+
+What it tests:
+- Gmail functionality
+
+Components under test:
+- Module: gmail
+"""
+
 
 import pytest
 import os

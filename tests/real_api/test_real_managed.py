@@ -1,4 +1,15 @@
 """Test LLM functionality with co/ models."""
+"""
+LLM-Note: Tests for co/ managed key models
+
+What it tests:
+- co/ model API calls
+- Managed key functionality
+
+Components under test:
+- OpenOnion managed keys (co/ prefix)
+"""
+
 
 import os
 import sys

@@ -1,3 +1,13 @@
+"""
+LLM-Note: Manual test for network connection
+
+What it tests:
+- Network connection workflow
+- Manual testing script (not pytest)
+
+Components under test:
+- connectonion.connect (agent-to-agent connection)
+"""
 #!/usr/bin/env python3
 """Test connect() - Connect to a remote agent and send requests."""
 

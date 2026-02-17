@@ -1,4 +1,14 @@
 """Tests for auto_compact plugin."""
+"""
+LLM-Note: Tests for useful plugins auto compact
+
+What it tests:
+- Useful Plugins Auto Compact functionality
+
+Components under test:
+- Module: useful_plugins_auto_compact
+"""
+
 
 from types import SimpleNamespace
 import importlib

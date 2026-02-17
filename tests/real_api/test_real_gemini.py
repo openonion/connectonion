@@ -6,6 +6,17 @@ Run with: pytest test_real_gemini.py -v
 
 Requires: GEMINI_API_KEY environment variable (GOOGLE_API_KEY also supported for backward compatibility)
 """
+"""
+LLM-Note: Real API tests for Google Gemini provider
+
+What it tests:
+- Gemini model completion
+- Google-specific functionality
+
+Components under test:
+- connectonion.core.llm.GeminiLLM
+"""
+
 
 import os
 import pytest

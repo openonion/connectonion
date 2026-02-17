@@ -1,4 +1,14 @@
 """Unit tests for connectonion/address.py (imports aligned)."""
+"""
+LLM-Note: Tests for address
+
+What it tests:
+- Address functionality
+
+Components under test:
+- Module: address
+"""
+
 
 import pytest
 from connectonion.address import generate

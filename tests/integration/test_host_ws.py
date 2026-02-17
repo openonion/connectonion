@@ -13,6 +13,23 @@ Covers:
 All requests require signatures (protocol requirement).
 """
 
+"""
+LLM-Note: Integration tests for host() WebSocket endpoints
+
+What it tests:
+- sign_request: WebSocket INPUT request signing helper
+- ASGIWebSocketClient: Minimal ASGI WebSocket test client
+- WebSocket protocol with signed messages
+- Trust list enforcement (whitelist/blacklist)
+- PING/PONG keep-alive
+- Session management
+
+Components under test:
+- connectonion host() WebSocket endpoints
+- WebSocket message signing and verification
+- Trust system integration with WebSocket
+"""
+
 import asyncio
 import json
 import time

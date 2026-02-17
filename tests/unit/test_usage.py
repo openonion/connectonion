@@ -1,4 +1,14 @@
 """Unit tests for connectonion/usage.py"""
+"""
+LLM-Note: Tests for usage
+
+What it tests:
+- Usage functionality
+
+Components under test:
+- Module: usage
+"""
+
 
 import pytest
 from connectonion.core.usage import (

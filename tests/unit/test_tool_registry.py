@@ -1,4 +1,14 @@
 """Tests for ToolRegistry class."""
+"""
+LLM-Note: Tests for tool registry
+
+What it tests:
+- Tool Registry functionality
+
+Components under test:
+- Module: tool_registry
+"""
+
 
 import pytest
 from unittest.mock import Mock

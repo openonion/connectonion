@@ -1,3 +1,12 @@
+"""
+LLM-Note: Tests for connect
+
+What it tests:
+- Connect functionality
+
+Components under test:
+- Module: connect
+"""
 #!/usr/bin/env python3
 """
 Unit tests for connect.py - remote agent connection with streaming.

@@ -12,6 +12,21 @@ Tests cover:
 SAFETY: All tests use temporary directories to avoid affecting real ~/.co/
 """
 
+"""
+LLM-Note: Tests for CLI reset command (co reset)
+
+What it tests:
+- TestHandleResetNoConfig: Behavior when no config exists
+  - test_reset_no_global_config: Error when ~/.co/ doesn't exist
+- TestHandleResetConfirmation: User confirmation workflow
+  - test_reset_cancelled_on_n: Cancel on 'n' input
+  - Verification of DESTRUCTIVE deletion with 'Y' confirmation
+
+Components under test:
+- connectonion.cli.commands.reset_commands.handle_reset
+- Global configuration deletion and recreation
+"""
+
 import pytest
 import os
 import tempfile

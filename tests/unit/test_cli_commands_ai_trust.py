@@ -1,4 +1,14 @@
 """Tests for CLI ai and trust command handlers."""
+"""
+LLM-Note: Tests for cli commands ai trust
+
+What it tests:
+- Cli Commands Ai Trust functionality
+
+Components under test:
+- Module: cli_commands_ai_trust
+"""
+
 
 import connectonion.cli.commands.ai_commands as ai_mod
 import connectonion.cli.commands.trust_commands as trust_mod

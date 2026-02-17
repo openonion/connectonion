@@ -1,5 +1,19 @@
 """Integration tests for Memory with Agent."""
 
+"""
+LLM-Note: Integration tests for Memory class with Agent
+
+What it tests:
+- test_memory_as_agent_tool: Memory class used as agent tool
+- test_memory_tool_schemas: Tool schema generation from Memory methods
+- Memory instance fixture with cleanup
+
+Components under test:
+- connectonion.Memory (as tool class)
+- Memory methods: write_memory, read_memory, list_memories, search_memory
+- Tool schema generation from class methods
+"""
+
 import os
 import shutil
 import pytest

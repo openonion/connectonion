@@ -1,4 +1,15 @@
 """Real API tests for Memory integration with Agent."""
+"""
+LLM-Note: Real API tests for Memory with Agent
+
+What it tests:
+- Memory integration with real LLMs
+- Memory persistence testing
+
+Components under test:
+- connectonion.Memory with Agent
+"""
+
 
 import pytest
 

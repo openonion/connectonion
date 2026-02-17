@@ -3,6 +3,16 @@
 Tests cover:
 - explain_tool_choice: Creates explainer agent to explain tool decisions
 """
+"""
+LLM-Note: Tests for explain agent
+
+What it tests:
+- Explain Agent functionality
+
+Components under test:
+- Module: explain_agent
+"""
+
 
 import pytest
 from unittest.mock import patch, Mock, MagicMock

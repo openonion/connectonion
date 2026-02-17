@@ -1,4 +1,27 @@
-"""Context loading for project awareness."""
+"""
+LLM-Note: Loads project context from multiple sources for co ai agent system prompt.
+
+Key function:
+- load_project_context(): Assembles context from files and git status
+
+Context sources (priority order):
+1. .co/OO.md - OpenOnion-specific project instructions (primary)
+2. CLAUDE.md - Compatibility with Claude Code plugin
+3. README.md - Project overview (truncated if >5000 chars)
+4. Skills - Available user-defined skills from ~/.claude/skills/
+5. Git status - Current branch, changes, recent commits
+6. Environment - Working directory, current date
+
+Architecture:
+- Called by agent.py during agent creation
+- Appended to base system prompt from prompts/assembler.py
+- Git operations timeout after 5s to prevent hangs
+- README truncation prevents token bloat
+
+Used by:
+- create_coding_agent() in agent.py
+- Provides project-aware context for AI coding assistance
+"""
 
 import subprocess
 from datetime import datetime

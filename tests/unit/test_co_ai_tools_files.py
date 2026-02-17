@@ -1,4 +1,14 @@
 """Tests for co_ai file tools (read/edit/multi_edit/glob/grep/write/diff)."""
+"""
+LLM-Note: Tests for co ai tools files
+
+What it tests:
+- Co Ai Tools Files functionality
+
+Components under test:
+- Module: co_ai_tools_files
+"""
+
 
 from types import SimpleNamespace
 

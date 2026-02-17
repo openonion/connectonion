@@ -1,4 +1,14 @@
 """Pytest unit tests for ConnectOnion debugging decorators."""
+"""
+LLM-Note: Tests for decorators
+
+What it tests:
+- Decorators functionality
+
+Components under test:
+- Module: decorators
+"""
+
 
 from unittest.mock import Mock, patch, call
 import threading

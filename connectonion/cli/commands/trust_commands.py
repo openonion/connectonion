@@ -1,4 +1,13 @@
 """
+Purpose: Manage trust lists (contacts, whitelist, blocklist, admins) with full address display for easy copying
+LLM-Note:
+  Dependencies: imports from [pathlib, rich.console, rich.table, network.trust.tools] | imported by [cli/main.py via trust subcommands] | tested by [tests/cli/test_cli_trust.py]
+  Data flow: receives address and optional flags → calls trust.tools functions (get_level, promote_to_contact, promote_to_whitelist, demote_to_stranger, block, unblock, add_admin, remove_admin, load_admins, get_self_address) → reads/writes ~/.co/{contacts,whitelist,blocklist,admins}.txt → displays results with Rich console color coding (stranger=dim, contact=cyan, whitelist=green, blocked=red) → outputs full addresses (not truncated) for easy copy-paste to other commands
+  State/Effects: modifies trust list files in ~/.co/ directory (contacts.txt, whitelist.txt, blocklist.txt, admins.txt) | reads from these files to display current state | writes to stdout via rich.Console | no network calls
+  Integration: exposes handle_trust_* functions for CLI subcommands | relies on network.trust.tools for verification logic and file operations | uses Rich for formatted terminal output | integrates with trust verification system used by network.host() | admins can manage trust lists via CLI commands | self address shown with "(self)" label in admin list
+  Performance: file I/O for reading/writing trust lists (<50ms) | Rich table rendering is fast | no network calls | linear scan of trust list files (typically small <100 entries)
+  Errors: trust.tools functions return descriptive error messages on failure (e.g., "Address not found", "Already in list") | gracefully handles missing trust list files (treats as empty) | invalid addresses rejected by trust.tools validation | admin operations require super admin privileges (enforced by trust.tools)
+
 CLI commands for managing trust lists (contacts, whitelist, blocklist, admins).
 
 Addresses are shown in full (not truncated) so users can easily copy them

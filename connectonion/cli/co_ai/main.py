@@ -1,4 +1,21 @@
-"""AI coding agent web server entry point."""
+"""
+LLM-Note: Entry point for 'co ai' command - starts ConnectOnion AI coding agent web server.
+
+This file provides the `start_server()` function that:
+- Creates a coding agent via agent.create_coding_agent()
+- Hosts it via connectonion.host() on specified port
+- Opens web chat at chat.openonion.ai with agent address
+- Loads global API keys from ~/.co/keys.env
+
+Architecture:
+- Uses agent factory pattern for stateless agent creation
+- Trust level set to "careful" for web deployment
+- Auto-approve mode for web usage (no terminal prompts)
+
+Used by:
+- CLI command: `co ai` (see cli/main.py)
+- Web chat interface at chat.openonion.ai
+"""
 
 import logging
 import webbrowser

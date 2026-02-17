@@ -1,4 +1,14 @@
 """Tests for auto_debug_exception functionality."""
+"""
+LLM-Note: Tests for auto debug exception
+
+What it tests:
+- Auto Debug Exception functionality
+
+Components under test:
+- Module: auto_debug_exception
+"""
+
 
 import sys
 import os

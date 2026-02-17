@@ -5,6 +5,21 @@ Simple test: Just connect and send ANNOUNCE once.
 Tests connectivity without waiting for heartbeat or tasks.
 """
 
+"""
+LLM-Note: Integration test for network ANNOUNCE functionality
+
+What it tests:
+- test_announce: Connect to relay and send ANNOUNCE message
+- Address generation and loading
+- ANNOUNCE message creation
+- Network connectivity (skipped in CI, requires local relay)
+
+Components under test:
+- connectonion.address (key generation and loading)
+- connectonion.announce (ANNOUNCE message creation)
+- connectonion.relay (relay connection)
+"""
+
 import sys
 import asyncio
 import os

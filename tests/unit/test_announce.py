@@ -1,4 +1,14 @@
 """Tests for announce.py - ANNOUNCE message creation and signing."""
+"""
+LLM-Note: Tests for announce
+
+What it tests:
+- Announce functionality
+
+Components under test:
+- Module: announce
+"""
+
 
 import json
 import time

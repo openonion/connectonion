@@ -2,6 +2,16 @@
 
 Tests the clear, method-based interface for trust management.
 """
+"""
+LLM-Note: Tests for trust agent class
+
+What it tests:
+- Trust Agent Class functionality
+
+Components under test:
+- Module: trust_agent_class
+"""
+
 
 import pytest
 from pathlib import Path
