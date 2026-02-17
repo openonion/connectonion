@@ -1,6 +1,25 @@
 #!/usr/bin/env python3
 """Quick test of the browser CLI feature."""
 
+"""
+LLM-Note: Browser CLI feature smoke tests
+
+What it tests:
+- main: Manual smoke test runner for browser CLI commands
+
+Test scenarios:
+- Help text includes browser command
+- Invalid command format (no URL)
+- Valid command format with URL
+- Screenshot with output path
+- Screenshot with device preset
+- Full command with all options
+
+Components under test:
+- connectonion.cli browser command (co -b)
+- Browser agent screenshot functionality
+"""
+
 import subprocess
 import sys
 from pathlib import Path

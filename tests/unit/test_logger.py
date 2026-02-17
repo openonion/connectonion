@@ -1,4 +1,14 @@
 """Unit tests for connectonion/logger.py"""
+"""
+LLM-Note: Tests for logger
+
+What it tests:
+- Logger functionality
+
+Components under test:
+- Module: logger
+"""
+
 
 import json
 import pytest

@@ -1,4 +1,30 @@
-"""Main coding agent module."""
+"""
+LLM-Note: Factory function for creating the 'co ai' coding agent with all tools and plugins.
+
+Key function:
+- create_coding_agent(): Creates Agent with full tool suite and intelligent defaults
+
+Tools included:
+- File operations: glob, grep, read_file, edit, FileWriter
+- Task management: task, TodoList
+- Planning: enter_plan_mode, exit_plan_mode, write_plan
+- Background tasks: run_background, task_output, kill_task
+- User interaction: ask_user, skill, load_guide
+- Shell: bash (with approval flow)
+
+Plugins included:
+- eval: Session persistence for debugging
+- system_reminder: Contextual hints
+- prefer_write_tool: Nudges toward using Write over Edit
+- tool_approval: Approval flow for dangerous operations
+- auto_compact: Context window management
+
+Architecture:
+- Uses prompt assembly from prompts/assembler.py
+- Loads project context from CLAUDE.md, NIGHT_RUNNER_PROGRESS.md, etc.
+- Global .co directory at ~/.co for consistent logs/evals
+- MODE_AUTO vs MODE_NORMAL for FileWriter (web vs CLI)
+"""
 
 from pathlib import Path
 

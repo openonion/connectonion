@@ -1,6 +1,18 @@
 """
 Debug script to list available Gemini models and their supported methods.
 """
+
+"""
+LLM-Note: Debug script for Gemini model discovery
+
+What it tests:
+- Manual debug script (not pytest) to list available Gemini models
+- Uses google.generativeai API to enumerate models and their capabilities
+- Loads API key from tests/.env
+
+Components under test:
+- Google Gemini API model discovery
+"""
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv

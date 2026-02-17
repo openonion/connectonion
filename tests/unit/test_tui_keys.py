@@ -1,4 +1,14 @@
 """Smoke test for tui.keys module."""
+"""
+LLM-Note: Tests for tui keys
+
+What it tests:
+- Tui Keys functionality
+
+Components under test:
+- Module: tui_keys
+"""
+
 
 import connectonion.tui.keys as keys
 

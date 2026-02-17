@@ -1,4 +1,6 @@
 """
+LLM-Note: Image Result Formatter Plugin - Automatically detects and formats base64 image tool results for multimodal LLM consumption
+
 Purpose: Automatically format base64 image tool results for multimodal LLM consumption and send to frontend
 
 Image Result Formatter Plugin - Automatically formats base64 image results for model consumption.

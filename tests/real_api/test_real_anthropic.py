@@ -6,6 +6,17 @@ Run with: pytest test_real_anthropic.py -v
 
 Requires: ANTHROPIC_API_KEY environment variable
 """
+"""
+LLM-Note: Real API tests for Anthropic provider
+
+What it tests:
+- Claude model completion
+- Anthropic-specific functionality
+
+Components under test:
+- connectonion.core.llm.AnthropicLLM
+"""
+
 
 import os
 import pytest

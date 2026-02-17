@@ -7,6 +7,16 @@ Tests cover:
 - Expiration handling
 - Running vs completed sessions
 """
+"""
+LLM-Note: Tests for host session
+
+What it tests:
+- Host Session functionality
+
+Components under test:
+- Module: host_session
+"""
+
 
 import json
 import time

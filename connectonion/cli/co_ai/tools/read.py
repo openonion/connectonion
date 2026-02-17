@@ -1,4 +1,20 @@
-"""Read file tool."""
+"""
+LLM-Note: Read File tool for co_ai - Reads files with line numbers, pagination, and truncation
+
+Key components:
+- read_file() function: Main entry point for reading files with line numbers
+- Parameters: path, offset (start line), limit (max lines)
+- Default limit: 2000 lines to prevent overwhelming responses
+
+Architecture:
+- Returns content with cat -n style line numbers (right-aligned, tab-separated)
+- Supports pagination via offset/limit for large files
+- Truncates individual lines longer than 500 characters
+- Shows "... (N more lines)" suffix when file extends beyond limit
+- Uses errors="replace" for encoding safety
+
+Read file tool.
+"""
 
 from pathlib import Path
 from typing import Optional

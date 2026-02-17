@@ -4,6 +4,17 @@ Test how ConnectOnion agent developers see billing errors.
 This simulates a real developer using the Agent class and hitting insufficient credits.
 We want to ensure the error message is clear and actionable.
 """
+"""
+LLM-Note: Tests for billing error handling
+
+What it tests:
+- InsufficientCreditsError handling
+- Billing integration
+
+Components under test:
+- Billing error scenarios
+"""
+
 import pytest
 import sys
 import os

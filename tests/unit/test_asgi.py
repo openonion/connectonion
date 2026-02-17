@@ -1,4 +1,14 @@
 """Unit tests for connectonion/network/asgi.py"""
+"""
+LLM-Note: Tests for asgi
+
+What it tests:
+- Asgi functionality
+
+Components under test:
+- Module: asgi
+"""
+
 
 import asyncio
 import json

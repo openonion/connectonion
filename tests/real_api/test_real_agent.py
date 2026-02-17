@@ -1,4 +1,15 @@
 """Real API tests for Agent input and tool execution."""
+"""
+LLM-Note: Real API tests for Agent execution
+
+What it tests:
+- Agent without tools
+- Agent with tool execution (calculator, get_current_time)
+
+Components under test:
+- connectonion.Agent with real LLM calls
+"""
+
 
 import pytest
 

@@ -1,4 +1,14 @@
 """Tests for co_ai background task tool."""
+"""
+LLM-Note: Tests for co ai tools background
+
+What it tests:
+- Co Ai Tools Background functionality
+
+Components under test:
+- Module: co_ai_tools_background
+"""
+
 
 import sys
 import time

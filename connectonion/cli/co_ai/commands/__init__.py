@@ -1,4 +1,32 @@
-"""Built-in commands for OO CLI."""
+"""
+LLM-Note: Built-in slash commands for co ai interactive CLI.
+
+This module exports all built-in commands that users can invoke with
+slash syntax (e.g., /help, /cost, /sessions) in the co ai interface.
+
+Available commands:
+- /init: Initialize project context
+- /help: Show available commands
+- /cost: Show token costs for current session
+- /compact: Trigger context compaction
+- /tasks: Show todo list
+- /export: Export session to markdown/YAML
+- /sessions: List saved sessions
+- /new: Start new session
+- /resume: Resume saved session
+- /undo: Undo last edit
+- /redo: Redo undone edit
+
+Architecture:
+- BUILTIN_COMMANDS dict maps command names to functions
+- set_agent_for_commands() injects agent reference for stateful commands
+- Each command in separate file (init.py, help.py, cost.py, etc.)
+- Commands receive user input and agent context
+
+Used by:
+- slash_command tool in tools/slash_command.py
+- Interactive co ai CLI
+"""
 
 from connectonion.cli.co_ai.commands.init import cmd_init
 from connectonion.cli.co_ai.commands.help import cmd_help

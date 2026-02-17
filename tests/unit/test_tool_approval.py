@@ -9,6 +9,16 @@ Tests cover:
 - batch_remaining: approval_needed includes upcoming tools
 - No IO = skip (not web mode)
 """
+"""
+LLM-Note: Tests for tool approval
+
+What it tests:
+- Tool Approval functionality
+
+Components under test:
+- Module: tool_approval
+"""
+
 
 import pytest
 from unittest.mock import Mock

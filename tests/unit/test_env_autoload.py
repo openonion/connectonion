@@ -7,6 +7,16 @@ IMPORTANT: This test manipulates sys.modules and must run in ISOLATION.
 Run with: pytest tests/unit/test_env_autoload.py -v
 Skip in full suite to avoid affecting other tests.
 """
+"""
+LLM-Note: Tests for env autoload
+
+What it tests:
+- Env Autoload functionality
+
+Components under test:
+- Module: env_autoload
+"""
+
 
 import os
 import sys

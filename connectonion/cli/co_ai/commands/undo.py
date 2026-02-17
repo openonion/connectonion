@@ -1,4 +1,23 @@
-"""Undo/Redo commands with Git backing."""
+"""
+LLM-Note: Git-backed undo/redo system for co-ai conversations.
+
+This module implements /undo and /redo commands which allow reversing
+conversation turns and their associated file changes using git stash.
+
+Key components:
+- cmd_undo(): Removes last conversation turn and stashes file changes
+- cmd_redo(): Restores last undone turn and pops stashed file changes
+- _undo_stack: Tracks undone conversation turns with stash indices
+- _redo_stack: Cleared when new undo occurs
+
+Architecture:
+- Requires git repository to function (_is_git_repo check)
+- Uses git stash to preserve file state at each undo
+- Removes last user+assistant message pair from agent.messages
+- Stores removed messages in _undo_stack with stash index
+- Redo pops from stack, restores messages, and pops git stash
+- Stash messages formatted as "oo-undo-{index}" for identification
+"""
 
 import subprocess
 from typing import Optional

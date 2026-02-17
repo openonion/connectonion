@@ -1,4 +1,15 @@
 """Test connectonion client against production API"""
+"""
+LLM-Note: Tests for ConnectOnion client against production API
+
+What it tests:
+- Production API endpoint testing
+- EmailDraft structured output model
+
+Components under test:
+- Production API client integration
+"""
+
 import os
 import time
 import requests

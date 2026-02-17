@@ -1,4 +1,14 @@
 """Tests for fast_rules.py - YAML parsing and rule execution."""
+"""
+LLM-Note: Tests for fast rules
+
+What it tests:
+- Fast Rules functionality
+
+Components under test:
+- Module: fast_rules
+"""
+
 
 import pytest
 from pathlib import Path

@@ -10,6 +10,16 @@ Tests cover:
 - analyze_page: High-level page analysis (mocked LLM)
 - get_contact_info: Contact info extraction (mocked LLM)
 """
+"""
+LLM-Note: Tests for web fetch
+
+What it tests:
+- Web Fetch functionality
+
+Components under test:
+- Module: web_fetch
+"""
+
 
 import pytest
 from unittest.mock import Mock, patch, MagicMock

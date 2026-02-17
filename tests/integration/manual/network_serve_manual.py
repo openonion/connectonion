@@ -1,3 +1,13 @@
+"""
+LLM-Note: Manual test for network serving
+
+What it tests:
+- Network relay serving
+- Manual testing script (not pytest)
+
+Components under test:
+- connectonion.relay (relay server)
+"""
 #!/usr/bin/env python3
 """Test host() with relay - Run an agent on HTTP + relay network."""
 

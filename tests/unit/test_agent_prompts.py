@@ -1,4 +1,14 @@
 """Test Agent with flexible system prompts."""
+"""
+LLM-Note: Tests for agent prompts
+
+What it tests:
+- Agent Prompts functionality
+
+Components under test:
+- Module: agent_prompts
+"""
+
 
 import os
 import tempfile

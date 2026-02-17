@@ -1,4 +1,14 @@
 """Test the MicrosoftCalendar tool functionality."""
+"""
+LLM-Note: Tests for microsoft calendar
+
+What it tests:
+- Microsoft Calendar functionality
+
+Components under test:
+- Module: microsoft_calendar
+"""
+
 
 import os
 import pytest

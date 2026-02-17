@@ -11,6 +11,16 @@ Tests cover:
 - TodoList.progress: getting progress percentage
 - TodoList.current_task: getting current in_progress task
 """
+"""
+LLM-Note: Tests for todo list tool
+
+What it tests:
+- Todo List Tool functionality
+
+Components under test:
+- Module: todo_list_tool
+"""
+
 
 import pytest
 from unittest.mock import Mock

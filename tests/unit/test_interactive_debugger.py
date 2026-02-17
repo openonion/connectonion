@@ -11,6 +11,16 @@ Tests cover:
 
 SAFETY: Uses fixture to restore global state after tests that modify tool_executor
 """
+"""
+LLM-Note: Tests for interactive debugger
+
+What it tests:
+- Interactive Debugger functionality
+
+Components under test:
+- Module: interactive_debugger
+"""
+
 
 import pytest
 from unittest.mock import patch, Mock, MagicMock

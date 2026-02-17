@@ -1,4 +1,16 @@
-"""Task tool for delegating to sub-agents."""
+"""
+LLM-Note: Task delegation tool for co_ai - Delegates tasks to specialized sub-agents (explore, plan)
+
+Key components:
+- task() function: Main entry point for delegating to sub-agents
+- Agent types: "explore" (codebase exploration), "plan" (implementation planning)
+- Integration with subagent registry from agents/registry.py
+
+Architecture:
+- Used by co_ai main agent to delegate complex tasks
+- Creates sub-agents on demand via get_subagent()
+- Rich console output for task progress visualization
+"""
 
 from typing import Literal
 

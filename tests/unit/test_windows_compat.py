@@ -6,6 +6,16 @@ Tests that ConnectOnion works correctly on Windows with:
 - Windows path separators
 - Platform-specific chmod behavior
 """
+"""
+LLM-Note: Tests for windows compat
+
+What it tests:
+- Windows Compat functionality
+
+Components under test:
+- Module: windows_compat
+"""
+
 
 import tempfile
 import sys

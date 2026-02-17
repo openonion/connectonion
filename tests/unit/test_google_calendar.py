@@ -8,6 +8,16 @@ Tests cover:
 - _parse_time helper method
 - _format_datetime helper method
 """
+"""
+LLM-Note: Tests for google calendar
+
+What it tests:
+- Google Calendar functionality
+
+Components under test:
+- Module: google_calendar
+"""
+
 
 import pytest
 import os

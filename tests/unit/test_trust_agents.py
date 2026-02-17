@@ -1,4 +1,14 @@
 """Tests for trust policy files and fast rules."""
+"""
+LLM-Note: Tests for trust agents
+
+What it tests:
+- Trust Agents functionality
+
+Components under test:
+- Module: trust_agents
+"""
+
 
 import pytest
 from pathlib import Path

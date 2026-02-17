@@ -1,4 +1,21 @@
-"""Plan Mode tools for planning before implementation.
+"""
+LLM-Note: Plan Mode tools - Planning before implementation workflow
+
+Provides plan mode functionality for AI agents to design implementation approaches
+before writing code. Enables user approval workflow for complex changes.
+
+Key functions:
+- enter_plan_mode(): Start planning phase with template
+- write_plan(content): Update implementation plan
+- exit_plan_mode(): Request user approval
+- is_plan_mode_active(agent): Check current state
+
+Workflow:
+1. enter_plan_mode() - Sets up .co/PLAN.md template
+2. Explore codebase (glob/grep/read_file)
+3. write_plan() - Document implementation approach
+4. exit_plan_mode() - Display plan, wait for user approval
+5. Proceed with implementation after approval
 
 Three modes:
 - 'safe': Dangerous tools need approval (default)
@@ -7,6 +24,10 @@ Three modes:
 
 Agent can enter plan mode via enter_plan_mode().
 User can switch modes via WebSocket mode_change message.
+
+State management:
+- Mode stored in agent.current_session['mode']
+- Plan file at .co/PLAN.md
 """
 
 from pathlib import Path

@@ -1,4 +1,15 @@
 """Real API end-to-end example agent tests."""
+"""
+LLM-Note: Real API E2E example agent tests
+
+What it tests:
+- Example agent workflows
+- Real API integration examples
+
+Components under test:
+- Example agents with real LLMs
+"""
+
 
 from pathlib import Path
 

@@ -1,4 +1,14 @@
 """Unit tests for ask_user tool."""
+"""
+LLM-Note: Tests for ask user
+
+What it tests:
+- Ask User functionality
+
+Components under test:
+- Module: ask_user
+"""
+
 
 import pytest
 from unittest.mock import Mock

@@ -1,3 +1,13 @@
+"""
+LLM-Note: Manual test for default model behavior
+
+What it tests:
+- Default model selection
+- Manual testing script (not pytest)
+
+Components under test:
+- Default LLM model configuration
+"""
 #!/usr/bin/env python3
 """Test script to verify default models work correctly."""
 

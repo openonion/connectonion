@@ -1,4 +1,13 @@
-"""Show and manage agent keys and credentials."""
+"""
+Purpose: Display and manage agent keys, credentials, and OAuth connections with masked/revealed output
+LLM-Note:
+  Dependencies: imports from [os, pathlib, rich.console, rich.panel, rich.table, dotenv.load_dotenv, address] | imported by [cli/main.py via handle_keys()] | tested by [tests/cli/test_cli_keys.py]
+  Data flow: receives reveal flag (bool) → _find_co_dir() searches for .co/keys/ (local first, then ~/.co) → address.load() reads Ed25519 keypair → _load_env_vars() loads from local .env and global ~/.co/keys.env → _mask() obscures secrets unless --reveal → displays Identity table (address, short ID, email, source, key file) → displays Secrets table (recovery phrase, API key) → displays OAuth table (Google/Microsoft email and tokens if connected) → displays Env Files table (global and local paths with ✓/✗ status)
+  State/Effects: no state modifications | reads from .co/keys/agent.key, recovery.txt, .env, ~/.co/keys.env | writes to stdout via rich.Console | does NOT modify any files
+  Integration: exposes handle_keys() for CLI | similar to status command but focuses on credentials | relies on address module for keypair loading | uses Rich for formatted panel output | checks env vars in priority order: OPENONION_API_KEY, GOOGLE_EMAIL/tokens, MICROSOFT_EMAIL/tokens | recovery phrase shown if recovery.txt exists
+  Performance: file I/O for key loading and env vars (<50ms) | Rich table rendering is fast | no network calls
+  Errors: prints message if no .co directory found (run 'co init' or 'co create') | prints message if keys fail to load | gracefully handles missing recovery.txt (shows "missing" message) | gracefully handles missing OAuth tokens (not shown in table) | gracefully handles missing env files (shows red ✗)
+"""
 
 import os
 from pathlib import Path

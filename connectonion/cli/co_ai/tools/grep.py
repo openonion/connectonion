@@ -1,3 +1,30 @@
+"""
+LLM-Note: Grep tool - Regex-based content search across files
+
+Searches file contents using regex patterns with multiple output modes and filtering.
+Respects .gitignore-style ignore patterns (node_modules, .git, etc.).
+
+Key function:
+- grep(pattern, path, file_pattern, output_mode, context_lines, ignore_case, max_results)
+
+Output modes:
+- "files": List matching file paths (default)
+- "content": Show matching lines with context
+- "count": Show match counts per file
+
+Features:
+- Regex pattern matching with case-insensitive option
+- File filtering by glob pattern (*.py, *.ts, etc.)
+- Context lines (before/after matches)
+- Result limiting (max_results)
+- Respects IGNORE_DIRS from glob tool
+
+Common use cases:
+- Find function definitions: grep("def main")
+- Search in specific files: grep("TODO", file_pattern="*.py")
+- View matches with context: grep("class.*Agent", output_mode="content")
+"""
+
 """Grep tool for content searching."""
 
 import re

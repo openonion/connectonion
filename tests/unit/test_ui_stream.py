@@ -1,4 +1,14 @@
 """Unit tests for connectonion/useful_plugins/ui_stream.py"""
+"""
+LLM-Note: Tests for ui stream
+
+What it tests:
+- Ui Stream functionality
+
+Components under test:
+- Module: ui_stream
+"""
+
 
 import pytest
 from unittest.mock import Mock

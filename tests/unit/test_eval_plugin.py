@@ -6,6 +6,16 @@ Tests cover:
 - _summarize_trace: summarizing tool execution trace
 - Plugin registration with correct events
 """
+"""
+LLM-Note: Tests for eval plugin
+
+What it tests:
+- Eval Plugin functionality
+
+Components under test:
+- Module: eval_plugin
+"""
+
 
 import pytest
 import importlib

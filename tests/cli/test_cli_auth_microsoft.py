@@ -1,5 +1,27 @@
 """Tests for co auth microsoft CLI command."""
 
+"""
+LLM-Note: Tests for Microsoft OAuth CLI authentication flow
+
+What it tests:
+- TestAuthMicrosoftHelp: Help text and prerequisites
+  - test_auth_help_shows_microsoft_option: Verify microsoft appears in help
+  - test_auth_microsoft_requires_openonion_auth: Verify OpenOnion auth required first
+- TestSaveMicrosoftToEnv: Credential persistence
+  - test_save_microsoft_credentials_to_new_env: Create new .env with credentials
+  - test_save_microsoft_credentials_updates_existing_env: Update existing .env preserving other vars
+  - test_save_microsoft_credentials_file_permissions: Verify 0600 permissions on Unix
+- TestAuthMicrosoftFlow: OAuth flow with mocked backend
+  - test_auth_microsoft_success_flow: Complete successful OAuth flow
+  - test_auth_microsoft_init_failure: Handle OAuth init errors
+  - test_auth_microsoft_timeout: Handle authorization timeout
+- TestAuthMicrosoftIntegration: Manual integration tests (skipped)
+
+Components under test:
+- connectonion.cli.commands.auth_commands (auth microsoft command)
+- connectonion.cli.commands.auth_commands._save_microsoft_to_env
+"""
+
 import os
 import tempfile
 from pathlib import Path

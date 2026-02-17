@@ -1,4 +1,14 @@
 """Tests for co_ai agent creation and server entrypoint."""
+"""
+LLM-Note: Tests for co ai agent main
+
+What it tests:
+- Co Ai Agent Main functionality
+
+Components under test:
+- Module: co_ai_agent_main
+"""
+
 
 from types import SimpleNamespace
 

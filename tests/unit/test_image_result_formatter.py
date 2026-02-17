@@ -5,6 +5,16 @@ Tests cover:
 - _format_image_result: formatting image results for LLM
 - Plugin registration
 """
+"""
+LLM-Note: Tests for image result formatter
+
+What it tests:
+- Image Result Formatter functionality
+
+Components under test:
+- Module: image_result_formatter
+"""
+
 
 import pytest
 from unittest.mock import Mock

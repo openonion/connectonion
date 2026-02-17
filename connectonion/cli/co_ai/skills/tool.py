@@ -1,4 +1,36 @@
-"""Skill tool - allows agent to invoke skills."""
+"""
+LLM-Note: Skill tool for runtime skill invocation by agents.
+
+This module provides the skill() tool that allows agents to dynamically load
+skill instructions at runtime based on task recognition.
+
+Key components:
+- skill(): Tool function that loads and returns full SKILL.md content by name
+- Auto-loading: Ensures SKILLS_REGISTRY is populated before lookup
+- Error handling: Returns available skills list if requested skill not found
+- Argument support: Optional args parameter appended to skill content
+
+Architecture:
+- Tool callable by LLM agents via tool_calls
+- Lazy registry initialization (loads on first call if empty)
+- Returns full SKILL.md markdown content for agent instruction
+- Arguments appended as ## Arguments section if provided
+- Integrates with loader.py's SKILLS_REGISTRY global state
+
+Workflow:
+    1. Agent recognizes task matches skill description from system prompt
+    2. Agent calls skill(name="commit") via tool_calls
+    3. Tool ensures SKILLS_REGISTRY loaded (calls load_skills() if empty)
+    4. Tool retrieves SkillInfo from registry via get_skill()
+    5. Tool loads full SKILL.md content via skill_info.load_content()
+    6. Returns markdown content to agent for instruction following
+
+Usage:
+    # Agent sees <skill name="commit" description="Create commits"/> in prompt
+    # Agent recognizes task matches description
+    # Agent invokes:
+    result = skill("commit")  # Returns full SKILL.md content
+"""
 
 from typing import Optional
 from connectonion.cli.co_ai.skills.loader import get_skill, load_skills, SKILLS_REGISTRY

@@ -8,6 +8,16 @@ Tests cover:
 - list_all: listing all available commands
 - is_custom: checking if command is custom
 """
+"""
+LLM-Note: Tests for slash command
+
+What it tests:
+- Slash Command functionality
+
+Components under test:
+- Module: slash_command
+"""
+
 
 import pytest
 from pathlib import Path

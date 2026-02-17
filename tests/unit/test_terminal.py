@@ -8,6 +8,16 @@ Tests cover:
 
 Note: These tests mock stdin since actual TTY interaction cannot be tested in pytest.
 """
+"""
+LLM-Note: Tests for terminal
+
+What it tests:
+- Terminal functionality
+
+Components under test:
+- Module: terminal
+"""
+
 
 import pytest
 import sys

@@ -1,4 +1,14 @@
 """Test the plugin system implementation."""
+"""
+LLM-Note: Tests for plugin system
+
+What it tests:
+- Plugin System functionality
+
+Components under test:
+- Module: plugin_system
+"""
+
 from connectonion import Agent, after_llm, after_tools
 
 # Simple plugin - just a list

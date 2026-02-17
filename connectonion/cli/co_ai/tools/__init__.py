@@ -1,4 +1,25 @@
 """
+LLM-Note: co_ai tools package - Claude Code-style tools for AI coding agents
+
+This package provides a comprehensive toolkit for AI agents to interact with code:
+- File operations (read, edit, write) with approval flows
+- Search capabilities (glob, grep)
+- Task spawning and background process management
+- Planning mode for complex implementations
+- User interaction and documentation loading
+
+Key exports:
+- File tools: read_file, edit, multi_edit, write, FileWriter, DiffWriter
+- Search tools: glob, grep
+- Task tools: task, run_background, task_output, kill_task
+- Planning tools: enter_plan_mode, exit_plan_mode, write_plan
+- Interaction tools: ask_user, load_guide
+- Utilities: TodoList
+
+Note: Many tools are re-exported from connectonion.useful_tools for consistency.
+"""
+
+"""
 Coding tools for the AI agent (Claude Code-style).
 
 File Tools:

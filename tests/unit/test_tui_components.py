@@ -6,6 +6,16 @@ Tests cover:
 - footer.py: Footer class
 - keys.py: getch, read_key (mocked since they require terminal)
 """
+"""
+LLM-Note: Tests for tui components
+
+What it tests:
+- Tui Components functionality
+
+Components under test:
+- Module: tui_components
+"""
+
 
 import pytest
 from unittest.mock import patch, Mock

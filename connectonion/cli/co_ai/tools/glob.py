@@ -1,4 +1,20 @@
-"""Glob tool for file pattern matching."""
+"""
+LLM-Note: Glob tool for co_ai - Finds files matching glob patterns with modification time sorting
+
+Key components:
+- glob() function: Main entry point for file pattern matching
+- Parameters: pattern (glob syntax like "**/*.py"), optional path
+- IGNORE_DIRS: Shared constant defining directories to exclude (used by both glob and grep)
+
+Architecture:
+- Returns file paths sorted by modification time (newest first)
+- Limits output to 100 results to prevent overwhelming responses
+- Helper function _should_ignore() filters paths against IGNORE_DIRS
+- Supports wildcard patterns in IGNORE_DIRS (e.g., "*.egg-info")
+- Integration point: IGNORE_DIRS imported by grep.py for consistent filtering
+
+Glob tool for file pattern matching.
+"""
 
 from pathlib import Path
 from typing import Optional

@@ -1,3 +1,13 @@
+"""
+LLM-Note: Tests against deployed OpenOnion API
+
+What it tests:
+- Production API endpoint validation
+- End-to-end API testing
+
+Components under test:
+- OpenOnion production API
+"""
 #!/usr/bin/env python3
 """Test with the actual deployed OpenOnion API."""
 

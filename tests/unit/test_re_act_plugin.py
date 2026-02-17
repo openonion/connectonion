@@ -6,6 +6,16 @@ Tests cover:
 
 Note: evaluate_completion tests are in test_eval_plugin.py
 """
+"""
+LLM-Note: Tests for re act plugin
+
+What it tests:
+- Re Act Plugin functionality
+
+Components under test:
+- Module: re_act_plugin
+"""
+
 
 import pytest
 import importlib

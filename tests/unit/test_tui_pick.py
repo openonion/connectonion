@@ -8,6 +8,16 @@ Tests cover:
 Note: Since pick() is an interactive TUI component that reads keyboard input
 and uses Rich Live, we test with mocked terminal interaction.
 """
+"""
+LLM-Note: Tests for tui pick
+
+What it tests:
+- Tui Pick functionality
+
+Components under test:
+- Module: tui_pick
+"""
+
 
 import pytest
 import importlib

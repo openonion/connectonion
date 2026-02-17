@@ -1,4 +1,14 @@
 """Tests for project context loading."""
+"""
+LLM-Note: Tests for co ai context
+
+What it tests:
+- Co Ai Context functionality
+
+Components under test:
+- Module: co_ai_context
+"""
+
 
 from pathlib import Path
 

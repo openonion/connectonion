@@ -1,5 +1,20 @@
 """Test authentication integration between ConnectOnion CLI and OpenOnion API."""
 
+"""
+LLM-Note: Integration tests for authentication flow
+
+What it tests:
+- test_connectonion_auth_format: Ed25519 signing and authentication payload
+- ConnectOnion auth message format
+- Signature verification with OpenOnion API
+- Test against local API if available
+
+Components under test:
+- Authentication flow between CLI and API
+- Ed25519 key signing with nacl
+- ConnectOnion-Auth message format
+"""
+
 import pytest
 import time
 import json

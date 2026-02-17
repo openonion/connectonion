@@ -1,4 +1,14 @@
 """Tests for RuntimeInspector class."""
+"""
+LLM-Note: Tests for runtime inspector
+
+What it tests:
+- Runtime Inspector functionality
+
+Components under test:
+- Module: runtime_inspector
+"""
+
 
 import sys
 import pytest

@@ -4,6 +4,16 @@ Tests cover:
 - Shell class: cross-platform shell execution
 - bash function: Unix/Mac specific bash execution
 """
+"""
+LLM-Note: Tests for shell tool
+
+What it tests:
+- Shell Tool functionality
+
+Components under test:
+- Module: shell_tool
+"""
+
 
 import pytest
 import tempfile

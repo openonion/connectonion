@@ -1,4 +1,14 @@
 """Tests for useful_tools file helpers (read/write/edit/glob/grep)."""
+"""
+LLM-Note: Tests for useful tools files
+
+What it tests:
+- Useful Tools Files functionality
+
+Components under test:
+- Module: useful_tools_files
+"""
+
 
 from types import SimpleNamespace
 

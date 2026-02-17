@@ -1,4 +1,14 @@
 """Tests for email functionality in ConnectOnion (pytest style)."""
+"""
+LLM-Note: Tests for email functions
+
+What it tests:
+- Email Functions functionality
+
+Components under test:
+- Module: email_functions
+"""
+
 
 from unittest.mock import patch, MagicMock, mock_open
 from pathlib import Path

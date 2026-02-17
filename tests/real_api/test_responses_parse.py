@@ -1,3 +1,13 @@
+"""
+LLM-Note: Tests for structured output with managed keys
+
+What it tests:
+- Structured output across all billing models
+- Pydantic parsing with managed keys
+
+Components under test:
+- Structured output with co/ models
+"""
 """Test structured output with managed keys for ALL models from billing.py.
 
 This ensures llm_do() with Pydantic output works for all providers via OpenOnion proxy.

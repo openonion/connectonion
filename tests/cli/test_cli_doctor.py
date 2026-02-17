@@ -8,6 +8,20 @@ Tests cover:
 - Backend connectivity checks (mocked)
 """
 
+"""
+LLM-Note: Tests for CLI doctor command (co doctor)
+
+What it tests:
+- TestHandleDoctorSystemChecks: System-level diagnostics
+  - test_doctor_displays_version: Verify version display
+  - test_doctor_checks_python_version: Verify Python version check
+  - Version and environment validation
+
+Components under test:
+- connectonion.cli.commands.doctor_commands.handle_doctor
+- System diagnostics (Python version, API keys, connectivity)
+"""
+
 import pytest
 import sys
 import os

@@ -1,3 +1,13 @@
+"""
+LLM-Note: Tests for email functionality with live backend
+
+What it tests:
+- Email sending with environment variables
+- Live backend integration
+
+Components under test:
+- Email tools with real backend
+"""
 #!/usr/bin/env python3
 """Test email functionality with live backend - uses environment variables safely."""
 

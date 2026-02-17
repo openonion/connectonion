@@ -1,3 +1,16 @@
+"""
+LLM-Note: Parametrized tests for all newest LLM models
+
+What it tests:
+- OpenAI models: gpt-4o, gpt-4o-mini, o1-mini
+- Anthropic models: claude-3-5-sonnet, claude-3-5-haiku, claude-opus-4.1
+- Google models: gemini-2.5-pro, gemini-2.5-flash
+- Basic completion and tool calling for each model
+
+Components under test:
+- connectonion.Agent with all supported model variants
+- Cross-provider LLM abstraction
+"""
 """Parametrized tests for all newest models from each provider.
 
 Tests basic completion and tool calling for each model to ensure

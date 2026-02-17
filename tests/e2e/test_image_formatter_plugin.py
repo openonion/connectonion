@@ -7,6 +7,21 @@ This test demonstrates the complete workflow of the image formatter plugin:
 4. LLM receives properly formatted image message
 """
 
+"""
+LLM-Note: E2E tests for image_result_formatter plugin
+
+What it tests:
+- TestImageFormatterPluginE2E: Complete image handling workflow
+  - test_complete_image_workflow_with_io: Tool returns image → plugin formats → sends to frontend
+  - take_screenshot: Example tool returning base64 PNG
+  - Image detection, formatting, and WebSocket transmission
+
+Components under test:
+- connectonion.useful_plugins.image_result_formatter
+- Image handling in tool results
+- WebSocket IO integration for image display
+"""
+
 import pytest
 from unittest.mock import Mock
 

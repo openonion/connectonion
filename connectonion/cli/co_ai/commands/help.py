@@ -1,4 +1,29 @@
-"""Help command for OO CLI."""
+"""
+LLM-Note: Help command for co_ai - Displays comprehensive CLI reference and usage guide
+
+This module implements the /help command which shows complete documentation
+for co_ai commands, tools, skills, and configuration.
+
+Key components:
+- cmd_help(args): Main command handler displaying help panel
+- HELP_TEXT: Markdown-formatted comprehensive reference guide
+
+Documentation sections:
+- Built-in commands (/init, /review-pr, /cost, /compact, /tasks, /help, clear, exit)
+- Usage examples (one-shot mode, interactive mode, options like -m and -y)
+- Agent tools (search, files, execute, sub-agents, plan mode, interaction, skills, background)
+- Skills system (auto-discovery, built-in skills, custom skills in .co/skills/)
+- Configuration (context loading priority: .co/OO.md > CLAUDE.md > README.md)
+- Tips (autocomplete, cost checking, compaction, background task monitoring)
+
+Architecture:
+- Uses Rich Markdown rendering for formatted help display
+- Panel border style: blue
+- Returns "Help displayed" for command completion status
+- HELP_TEXT contains markdown table syntax for commands reference
+
+Help command for OO CLI.
+"""
 
 from rich.console import Console
 from rich.panel import Panel

@@ -1,4 +1,14 @@
 """Tests for co_ai sub-agent registry."""
+"""
+LLM-Note: Tests for co ai agents registry
+
+What it tests:
+- Co Ai Agents Registry functionality
+
+Components under test:
+- Module: co_ai_agents_registry
+"""
+
 
 import connectonion.cli.co_ai.agents.registry as reg
 

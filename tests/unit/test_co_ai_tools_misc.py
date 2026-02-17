@@ -1,4 +1,14 @@
 """Tests for co_ai miscellaneous tools (ask_user, load_guide, plan_mode, task, todo_list)."""
+"""
+LLM-Note: Tests for co ai tools misc
+
+What it tests:
+- Co Ai Tools Misc functionality
+
+Components under test:
+- Module: co_ai_tools_misc
+"""
+
 
 from types import SimpleNamespace
 

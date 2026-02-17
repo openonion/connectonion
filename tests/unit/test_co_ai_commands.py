@@ -1,4 +1,14 @@
 """Tests for co_ai command handlers."""
+"""
+LLM-Note: Tests for co ai commands
+
+What it tests:
+- Co Ai Commands functionality
+
+Components under test:
+- Module: co_ai_commands
+"""
+
 
 import os
 from types import SimpleNamespace
