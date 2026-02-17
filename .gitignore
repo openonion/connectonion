@@ -173,3 +173,4 @@ tests/cli/logs/
 test-package-*.tar.gz
 # Agent runtime directory
 .co/
+NIGHT_RUNNER_PROGRESS.md
