@@ -72,6 +72,8 @@ class Agent:
         # before_tools/after_tools fire ONCE per batch (safe for adding messages)
         self.events = {
             'after_user_input': [],
+            'before_iteration': [],    # Start of each iteration (poll IO, mode changes)
+            'after_iteration': [],     # End of each iteration (metrics, checkpoints)
             'before_llm': [],
             'after_llm': [],
             'before_each_tool': [],    # Fires before EACH tool
@@ -364,6 +366,9 @@ class Agent:
         while self.current_session['iteration'] < max_iterations:
             self.current_session['iteration'] += 1
 
+            # Fire before_iteration (poll IO, check mode changes)
+            self._invoke_events('before_iteration')
+
             # Get LLM response
             response = self._get_llm_decision()
 
@@ -376,10 +381,12 @@ class Agent:
             # Process tool calls
             self._execute_and_record_tools(response.tool_calls)
 
-            # reject_hard: user wants to stop and provide new direction
-            rejection = self.current_session.pop('tool_rejected_hard', None)
-            if rejection:
-                return rejection
+            # Fire after_iteration
+            self._invoke_events('after_iteration')
+
+            # Check if plugin set stop_signal (stop loop, wait for user input)
+            if self.current_session.pop('stop_signal', None):
+                return "What would you like me to do?"
 
         # Hit max iterations
         return f"Task incomplete: Maximum iterations ({max_iterations}) reached."

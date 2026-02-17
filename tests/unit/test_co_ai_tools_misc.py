@@ -51,18 +51,25 @@ def test_load_guide_existing_and_missing():
 def test_plan_mode_flow(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
-    msg = enter_plan_mode()
+    # Create fake agent with session
+    agent = SimpleNamespace(
+        current_session={'mode': 'safe'},
+        io=None,
+    )
+
+    msg = enter_plan_mode(agent)
     assert "Entered plan mode" in msg
-    assert is_plan_mode_active() is True
+    assert is_plan_mode_active(agent) is True
 
     plan_text = "# Plan\n\nDo things."
     write_msg = write_plan(plan_text)
     assert "Plan updated" in write_msg
 
-    exit_msg = exit_plan_mode()
-    assert "Exited plan mode" in exit_msg
+    exit_msg = exit_plan_mode(agent)
+    assert "Plan ready for review" in exit_msg
     assert "Do things" in exit_msg
-    assert is_plan_mode_active() is False
+    # After exit, mode is still 'plan' until approval sets it back
+    # The actual mode change happens in tool_approval plugin after user approves
 
 
 def test_task_delegation(monkeypatch):

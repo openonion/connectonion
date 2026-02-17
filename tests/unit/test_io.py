@@ -112,6 +112,86 @@ class TestWebSocketIO:
         assert result_holder[0] == {"type": "io_closed"}
 
 
+class TestReceiveAll:
+    """Test receive_all() non-blocking message retrieval."""
+
+    def test_receive_all_returns_empty_list_when_empty(self):
+        """receive_all() returns empty list when queue is empty."""
+        io = WebSocketIO()
+
+        result = io.receive_all()
+
+        assert result == []
+
+    def test_receive_all_returns_all_messages(self):
+        """receive_all() returns all pending messages."""
+        io = WebSocketIO()
+        io._incoming.put({"type": "msg1"})
+        io._incoming.put({"type": "msg2"})
+        io._incoming.put({"type": "msg3"})
+
+        result = io.receive_all()
+
+        assert len(result) == 3
+        assert result[0]["type"] == "msg1"
+        assert result[1]["type"] == "msg2"
+        assert result[2]["type"] == "msg3"
+        assert io._incoming.empty()
+
+    def test_receive_all_with_type_filter(self):
+        """receive_all(msg_type) only returns messages of that type."""
+        io = WebSocketIO()
+        io._incoming.put({"type": "mode_change", "mode": "safe"})
+        io._incoming.put({"type": "approval", "approved": True})
+        io._incoming.put({"type": "mode_change", "mode": "ulw"})
+
+        result = io.receive_all("mode_change")
+
+        assert len(result) == 2
+        assert result[0] == {"type": "mode_change", "mode": "safe"}
+        assert result[1] == {"type": "mode_change", "mode": "ulw"}
+
+    def test_receive_all_with_type_filter_keeps_others_in_queue(self):
+        """receive_all(msg_type) keeps non-matching messages in queue."""
+        io = WebSocketIO()
+        io._incoming.put({"type": "mode_change", "mode": "safe"})
+        io._incoming.put({"type": "approval", "approved": True})
+        io._incoming.put({"type": "mode_change", "mode": "ulw"})
+
+        io.receive_all("mode_change")
+
+        # The approval message should still be in queue
+        assert not io._incoming.empty()
+        remaining = io._incoming.get_nowait()
+        assert remaining == {"type": "approval", "approved": True}
+        assert io._incoming.empty()
+
+    def test_receive_all_with_no_matching_type(self):
+        """receive_all(msg_type) returns empty list when no matches."""
+        io = WebSocketIO()
+        io._incoming.put({"type": "approval", "approved": True})
+        io._incoming.put({"type": "other", "data": 123})
+
+        result = io.receive_all("mode_change")
+
+        assert result == []
+        # All messages should still be in queue
+        assert io._incoming.qsize() == 2
+
+    def test_receive_all_is_non_blocking(self):
+        """receive_all() returns immediately without blocking."""
+        io = WebSocketIO()
+
+        # Should return immediately even with empty queue
+        import time
+        start = time.time()
+        result = io.receive_all()
+        elapsed = time.time() - start
+
+        assert result == []
+        assert elapsed < 0.1  # Should be nearly instant
+
+
 class TestHighLevelAPI:
     """Test high-level API methods (log, request_approval)."""
 

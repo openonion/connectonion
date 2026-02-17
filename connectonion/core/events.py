@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: None (standalone module) | imported by [agent.py, __init__.py] | tested by [tests/test_events.py]
   Data flow: Wrapper functions tag event handlers with _event_type attribute → Agent organizes handlers by type → Agent invokes handlers at specific lifecycle points passing agent instance
   State/Effects: Event handlers receive agent instance and can modify agent.current_session (messages, trace, etc.)
-  Integration: exposes after_user_input(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete()
+  Integration: exposes after_user_input(), before_iteration(), after_iteration(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete()
   Performance: Minimal overhead - just function attribute checking and iteration over handler lists
   Errors: Event handler exceptions propagate and stop agent execution (fail fast)
 """
@@ -36,6 +36,48 @@ def after_user_input(*funcs: EventHandler) -> Union[EventHandler, List[EventHand
     """
     for fn in funcs:
         fn._event_type = 'after_user_input'  # type: ignore
+    return funcs[0] if len(funcs) == 1 else list(funcs)
+
+
+def before_iteration(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+    """
+    Mark function(s) as before_iteration event handlers.
+
+    Fires at the start of each iteration (LLM decision cycle).
+    Use for: polling IO for mode changes, initializing iteration state.
+
+    Supports both decorator and wrapper syntax:
+        @before_iteration
+        def poll_io(agent):
+            if agent.io:
+                msg = agent.io.poll()
+                if msg:
+                    handle_message(agent, msg)
+
+        on_events=[before_iteration(handler1, handler2)]
+    """
+    for fn in funcs:
+        fn._event_type = 'before_iteration'  # type: ignore
+    return funcs[0] if len(funcs) == 1 else list(funcs)
+
+
+def after_iteration(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+    """
+    Mark function(s) as after_iteration event handlers.
+
+    Fires at the end of each iteration (after LLM + tools complete).
+    Use for: metrics, checkpoints, cleanup after each cycle.
+
+    Supports both decorator and wrapper syntax:
+        @after_iteration
+        def log_iteration(agent):
+            iteration = agent.current_session.get('iteration', 0)
+            print(f"Iteration {iteration} complete")
+
+        on_events=[after_iteration(handler1, handler2)]
+    """
+    for fn in funcs:
+        fn._event_type = 'after_iteration'  # type: ignore
     return funcs[0] if len(funcs) == 1 else list(funcs)
 
 

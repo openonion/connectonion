@@ -47,7 +47,7 @@ Client Protocol:
 
 from typing import TYPE_CHECKING
 
-from ..core.events import before_each_tool
+from ..core.events import before_each_tool, before_iteration, before_iteration
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -59,7 +59,10 @@ if TYPE_CHECKING:
 # Three modes control approval behavior:
 #   - 'safe' (default): Dangerous tools need approval
 #   - 'plan': Read-only tools only, exit_plan_mode shows plan for approval
-#   - 'accept_edits': No approvals, agent runs freely
+#   - 'accept_edits': File edit tools auto-approved, other dangerous tools need approval
+#
+# Other modes (handled by separate plugins via skip_tool_approval flag):
+#   - 'ulw': Handled by ulw plugin - sets skip_tool_approval=True
 #
 # Mode can be changed by:
 #   - User: via WebSocket { type: 'mode_change', mode: '...' }
@@ -109,6 +112,10 @@ DANGEROUS_TOOLS = {
     # Plan approval - exit_plan_mode shows plan for user review
     'exit_plan_mode',
 }
+
+# File edit tools - auto-approved in 'accept_edits' mode
+# These tools only modify files, no external side effects.
+FILE_EDIT_TOOLS = {'write', 'edit', 'multi_edit'}
 
 
 # Command-based tools — approval is per command name, not per tool type.
@@ -251,13 +258,24 @@ def check_approval(agent: 'Agent') -> None:
     Mode behavior:
         'safe': Dangerous tools need approval
         'plan': Only read-only tools allowed, exit_plan_mode needs approval
-        'accept_edits': No approvals needed
+        'accept_edits': File edit tools auto-approved, other dangerous tools need approval
+
+    Other plugins can set session['skip_tool_approval'] = True to bypass all checks.
 
     Raises:
         ValueError: If tool rejected or blocked by mode
     """
+    # =================================================================
+    # Check if another plugin requested to skip approvals (e.g., ulw)
+    # =================================================================
+    if agent.current_session.get('skip_tool_approval'):
+        pending = agent.current_session.get('pending_tool')
+        tool_name = pending['name'] if pending else 'unknown'
+        _log(agent, f"[dim]⚡ {tool_name} (approval skipped)[/dim]")
+        return
+
     # reject_hard was set by a previous tool in this batch — reject remaining
-    if 'tool_rejected_hard' in agent.current_session:
+    if 'stop_signal' in agent.current_session:
         raise ValueError("User rejected this batch of tools. They want to provide input for the correct direction.")
 
     # No IO = not web mode, skip
@@ -274,11 +292,13 @@ def check_approval(agent: 'Agent') -> None:
     mode = _get_mode(agent)
 
     # =================================================================
-    # MODE: accept_edits - No approvals needed
+    # MODE: accept_edits - File edits auto-approved, others need approval
     # =================================================================
     if mode == 'accept_edits':
-        _log(agent, f"[dim]⚡ {tool_name} (accept_edits mode)[/dim]")
-        return
+        if tool_name in FILE_EDIT_TOOLS:
+            _log(agent, f"[dim]⚡ {tool_name} (accept_edits mode)[/dim]")
+            return
+        # Other dangerous tools fall through to approval logic
 
     # =================================================================
     # MODE: plan - Read-only tools only, exit_plan_mode needs approval
@@ -321,7 +341,6 @@ def check_approval(agent: 'Agent') -> None:
     batch_remaining = _get_batch_remaining(agent, tool_id)
 
     # Send approval request to client
-    # Tool name uses approval key format: "bash:ls" for commands, "write" for others
     approval_msg = {
         'type': 'approval_needed',
         'tool': approval_key,
@@ -330,6 +349,11 @@ def check_approval(agent: 'Agent') -> None:
     }
     if batch_remaining:
         approval_msg['batch_remaining'] = batch_remaining
+
+    # For exit_plan_mode, include plan content for display
+    if tool_name == 'exit_plan_mode':
+        approval_msg['plan_content'] = agent.current_session.get('pending_plan_content', '')
+
     agent.io.send(approval_msg)
 
     # Wait for client response (BLOCKS)
@@ -344,6 +368,16 @@ def check_approval(agent: 'Agent') -> None:
     approved = response.get('approved', False)
 
     if approved:
+        # For exit_plan_mode, restore previous mode
+        if tool_name == 'exit_plan_mode':
+            previous_mode = agent.current_session.get('previous_mode', 'safe')
+            _set_mode(agent, previous_mode)
+            _log(agent, f"[green]✓ Plan approved, returning to {previous_mode} mode[/green]")
+            # Clean up
+            agent.current_session.pop('pending_plan_content', None)
+            agent.current_session.pop('previous_mode', None)
+            return
+
         # Save to session if scope is "session"
         scope = response.get('scope', 'once')
         if scope == 'session':
@@ -364,7 +398,7 @@ def check_approval(agent: 'Agent') -> None:
 
     if mode == 'reject_hard':
         # Set flag — remaining tools in batch will be rejected, loop will stop
-        agent.current_session['tool_rejected_hard'] = feedback or f"User rejected tool '{tool_name}'."
+        agent.current_session['stop_signal'] = feedback or f"User rejected tool '{tool_name}'."
         raise ValueError(
             f"User rejected tool '{tool_name}'."
             + (f" Feedback: {feedback}" if feedback else "")
@@ -406,7 +440,65 @@ def check_approval(agent: 'Agent') -> None:
     )
 
 
+def handle_mode_change(agent: 'Agent', mode: str) -> None:
+    """Handle mode change request from frontend.
+
+    Called when frontend sends { type: 'mode_change', mode: '...' }
+    Only handles modes known to this plugin (safe, plan, accept_edits).
+    Other modes (e.g., ulw) should be handled by their respective plugins.
+
+    Args:
+        agent: Agent instance
+        mode: New mode ('safe', 'plan', 'accept_edits')
+    """
+    if mode not in VALID_MODES:
+        # Unknown mode - might be handled by another plugin (e.g., ulw)
+        return
+
+    old_mode = _get_mode(agent)
+    if old_mode == mode:
+        return  # No change
+
+    # Clear skip_tool_approval when switching to a mode we handle
+    agent.current_session.pop('skip_tool_approval', None)
+
+    _set_mode(agent, mode)
+    _log(agent, f"[cyan]Mode changed: {old_mode} → {mode}[/cyan]")
+
+
+def get_current_mode(agent: 'Agent') -> str:
+    """Get the current approval mode."""
+    return _get_mode(agent)
+
+
+@before_iteration
+def poll_mode_changes(agent: 'Agent') -> None:
+    """Poll for mode_change signals at iteration start.
+
+    Checks if client sent mode_change while agent was working.
+    Handles all modes: safe, plan, accept_edits, ulw.
+    """
+    if not agent.io:
+        return
+
+    for msg in agent.io.receive_all('mode_change'):
+        new_mode = msg.get('mode')
+        if new_mode in VALID_MODES:
+            handle_mode_change(agent, new_mode)
+        elif new_mode == 'ulw':
+            from .ulw import handle_ulw_mode_change
+            handle_ulw_mode_change(agent, msg.get('turns'))
+
+
 # Export as plugin (list of event handlers)
 # Usage: Agent("name", plugins=[tool_approval])
-# The plugin registers check_approval as a before_each_tool handler
-tool_approval = [check_approval]
+tool_approval = [poll_mode_changes, check_approval]
+
+# Export mode functions for external use
+__all__ = [
+    'tool_approval',
+    'handle_mode_change',
+    'get_current_mode',
+    'VALID_MODES',
+    'DEFAULT_MODE',
+]

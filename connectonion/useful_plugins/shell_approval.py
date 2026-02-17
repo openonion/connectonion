@@ -159,7 +159,7 @@ def _check_approval(agent: 'Agent') -> None:
     else:
         # reject_hard: stop loop, wait for user input
         feedback = input("What do you want the agent to do instead? ")
-        agent.current_session['tool_rejected_hard'] = feedback or f"User rejected command '{base_cmd}'."
+        agent.current_session['stop_signal'] = feedback or f"User rejected command '{base_cmd}'."
         raise ValueError(f"User rejected command '{base_cmd}'. Feedback: {feedback}")
 
 

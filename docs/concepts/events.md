@@ -64,6 +64,7 @@ agent = Agent(
 | Event | When It Runs | Fires | Use For |
 |-------|--------------|-------|---------|
 | `after_user_input` | After user provides input | Once per turn | Add context, timestamps, initialize turn state |
+| `before_iteration` | Before each iteration starts | Once per iteration | Poll IO, check mode changes, setup |
 | `before_llm` | Before each LLM call | Multiple per turn | Modify messages for each LLM call |
 | `after_llm` | After LLM responds | Multiple per turn | Log LLM calls, analyze responses |
 | `before_tools` | Before ALL tools in round | Once per round | Prepare shared context for all tools |
@@ -71,9 +72,59 @@ agent = Agent(
 | `after_each_tool` | After each tool completes | Per tool call | Log performance, side effects (no message changes!) |
 | `after_tools` | After ALL tools in round | Once per round | Add reflection, **ONLY place safe to modify messages** |
 | `on_error` | When tool fails | Per tool error | Custom error handling, retries |
+| `after_iteration` | End of iteration (after tools) | Once per iteration | Checkpoints, stop loop via `stop_loop_result` |
 | `on_complete` | After agent finishes | Once per input() | Metrics, cleanup, final summary |
 
 > **Note on message injection:** Use `after_tools` (not `after_each_tool`) when adding messages to ensure compatibility with all LLM providers. Anthropic Claude requires tool results to immediately follow tool_calls.
+
+---
+
+## Agent Lifecycle: Turns vs Iterations
+
+**Key Concepts:**
+- **Turn** = One `agent.input()` call → agent works → returns result
+- **Iteration** = One LLM decision cycle (LLM thinks → executes tools → repeat)
+
+**Example:** `agent.input("Research React and save to notes.md")`
+
+```
+TURN START
+│
+├─ after_user_input
+│
+├─ ITERATION 1 ─────────────────────────────────────────────────
+│   ├─ before_iteration          ← poll IO, check mode changes
+│   ├─ before_llm
+│   ├─ LLM thinks → "I'll search and save the results"
+│   ├─ LLM returns tool_calls: [search("React"), write("notes.md")]
+│   ├─ after_llm
+│   ├─ before_tools              ← batch of 2 tools starts
+│   ├─ before_each_tool          ← search
+│   ├─ search("React") → "React is a JavaScript library..."
+│   ├─ after_each_tool           ← search done
+│   ├─ before_each_tool          ← write
+│   ├─ write("notes.md") → "File saved"
+│   ├─ after_each_tool           ← write done
+│   ├─ after_tools               ← batch done, safe to add messages
+│   └─ after_iteration           ← continuing to next iteration
+│
+├─ ITERATION 2 (final) ─────────────────────────────────────────
+│   ├─ before_iteration
+│   ├─ before_llm
+│   ├─ LLM thinks → "Done! I saved React info to notes.md"
+│   ├─ LLM returns tool_calls: []  ← no tools, final answer
+│   ├─ after_llm
+│   └─ (no after_iteration - not continuing)
+│
+└─ on_complete                   ← turn ends
+```
+
+**When to use iteration events:**
+
+| Event | Best for |
+|-------|----------|
+| `before_iteration` | Poll IO for mode changes, initialize iteration state |
+| `after_iteration` | Checkpoints, decide whether to continue (e.g., ULW mode) |
 
 ---
 

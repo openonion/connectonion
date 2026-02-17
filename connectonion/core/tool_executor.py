@@ -54,8 +54,8 @@ def execute_and_record_tools(
             logger=logger
         )
 
-        # reject_hard: swap result with clean message, mark remaining as rejected
-        rejection = agent.current_session.get('tool_rejected_hard')
+        # stop_signal: swap result with clean message, mark remaining as rejected
+        rejection = agent.current_session.get('stop_signal')
         if rejection:
             _add_tool_result_message(agent.current_session['messages'], tool_call.id, rejection)
             for remaining in tool_calls[i + 1:]:

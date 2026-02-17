@@ -15,10 +15,13 @@ from unittest.mock import Mock
 
 from connectonion.useful_plugins.tool_approval import (
     check_approval,
+    poll_mode_changes,
+    handle_mode_change,
     tool_approval,
     SAFE_TOOLS,
     DANGEROUS_TOOLS,
     COMMAND_TOOLS,
+    VALID_MODES,
     _is_approved_for_session,
     _save_session_approval,
     _init_approval_state,
@@ -31,8 +34,9 @@ from connectonion.useful_plugins.tool_approval import (
 class FakeIO:
     """Fake IO for testing."""
 
-    def __init__(self, responses=None):
+    def __init__(self, responses=None, pending_signals=None):
         self.responses = responses or []
+        self.pending_signals = pending_signals or []
         self.sent = []
         self.response_index = 0
 
@@ -45,6 +49,16 @@ class FakeIO:
             self.response_index += 1
             return response
         return {'type': 'io_closed'}
+
+    def receive_all(self, msg_type=None):
+        """Get all pending signals, optionally filtered by type."""
+        if msg_type is None:
+            result = self.pending_signals[:]
+            self.pending_signals = []
+            return result
+        result = [m for m in self.pending_signals if m.get('type') == msg_type]
+        self.pending_signals = [m for m in self.pending_signals if m.get('type') != msg_type]
+        return result
 
 
 class FakeAgent:
@@ -296,7 +310,7 @@ class TestRejectSoft:
         assert "Do not retry" in msg
 
     def test_reject_soft_does_not_set_hard_flag(self):
-        """reject_soft should NOT set tool_rejected_hard in session."""
+        """reject_soft should NOT set stop_signal in session."""
         io = FakeIO(responses=[{'approved': False, 'mode': 'reject_soft'}])
         agent = FakeAgent(io=io)
         agent.current_session['pending_tool'] = {
@@ -308,7 +322,7 @@ class TestRejectSoft:
         with pytest.raises(ValueError):
             check_approval(agent)
 
-        assert 'tool_rejected_hard' not in agent.current_session
+        assert 'stop_signal' not in agent.current_session
 
     def test_reject_soft_with_feedback(self):
         """reject_soft with feedback should include feedback in error."""
@@ -330,7 +344,7 @@ class TestRejectHard:
     """Test reject_hard mode (stop batch and loop)."""
 
     def test_reject_hard_sets_session_flag(self):
-        """reject_hard should set tool_rejected_hard in session."""
+        """reject_hard should set stop_signal in session."""
         io = FakeIO(responses=[{'approved': False, 'mode': 'reject_hard'}])
         agent = FakeAgent(io=io)
         agent.current_session['pending_tool'] = {
@@ -342,7 +356,7 @@ class TestRejectHard:
         with pytest.raises(ValueError):
             check_approval(agent)
 
-        assert 'tool_rejected_hard' in agent.current_session
+        assert 'stop_signal' in agent.current_session
 
     def test_reject_hard_is_default_mode(self):
         """No mode field should default to reject_hard."""
@@ -357,12 +371,12 @@ class TestRejectHard:
         with pytest.raises(ValueError):
             check_approval(agent)
 
-        assert 'tool_rejected_hard' in agent.current_session
+        assert 'stop_signal' in agent.current_session
 
     def test_reject_hard_blocks_subsequent_tools(self):
         """After reject_hard, next tool in batch should auto-reject."""
         agent = FakeAgent(io=FakeIO())
-        agent.current_session['tool_rejected_hard'] = "User rejected."
+        agent.current_session['stop_signal'] = "User rejected."
         agent.current_session['pending_tool'] = {
             'name': 'write',
             'arguments': {'file_path': 'test.txt'},
@@ -556,19 +570,117 @@ class TestSessionState:
         assert session['approval']['approved_tools']['bash'] == 'session'
 
 
+class TestPollModeChanges:
+    """Test poll_mode_changes before_iteration handler."""
+
+    def test_poll_mode_changes_no_io_skips(self):
+        """poll_mode_changes should skip when no IO."""
+        agent = FakeAgent(io=None)
+
+        # Should not raise
+        poll_mode_changes(agent)
+
+    def test_poll_mode_changes_handles_safe_mode(self):
+        """poll_mode_changes should handle mode_change to safe."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'safe'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'accept_edits'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'safe'
+
+    def test_poll_mode_changes_handles_plan_mode(self):
+        """poll_mode_changes should handle mode_change to plan."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'plan'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'plan'
+
+    def test_poll_mode_changes_handles_accept_edits_mode(self):
+        """poll_mode_changes should handle mode_change to accept_edits."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'accept_edits'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'accept_edits'
+
+    def test_poll_mode_changes_handles_ulw_mode(self):
+        """poll_mode_changes should handle mode_change to ulw."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'ulw', 'turns': 50}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'ulw'
+        assert agent.current_session['ulw_turns'] == 50
+        assert agent.current_session['skip_tool_approval'] is True
+
+    def test_poll_mode_changes_handles_multiple_signals(self):
+        """poll_mode_changes should process multiple mode_change signals."""
+        io = FakeIO(pending_signals=[
+            {'type': 'mode_change', 'mode': 'plan'},
+            {'type': 'mode_change', 'mode': 'safe'},
+        ])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'accept_edits'
+
+        poll_mode_changes(agent)
+
+        # Last mode wins
+        assert agent.current_session['mode'] == 'safe'
+
+    def test_poll_mode_changes_ignores_other_message_types(self):
+        """poll_mode_changes should only process mode_change messages."""
+        io = FakeIO(pending_signals=[
+            {'type': 'other_signal', 'data': 123},
+            {'type': 'mode_change', 'mode': 'plan'},
+        ])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'plan'
+        # Other signal should still be in pending
+        assert len(io.pending_signals) == 1
+        assert io.pending_signals[0]['type'] == 'other_signal'
+
+    def test_poll_mode_changes_ignores_invalid_modes(self):
+        """poll_mode_changes should ignore invalid mode values."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'invalid_mode'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
+
+        poll_mode_changes(agent)
+
+        # Mode unchanged
+        assert agent.current_session['mode'] == 'safe'
+
+
 class TestPluginExport:
     """Test plugin is properly exported."""
 
     def test_tool_approval_is_list(self):
         """tool_approval should be a list of handlers."""
         assert isinstance(tool_approval, list)
-        assert len(tool_approval) == 1
+        assert len(tool_approval) == 2
 
-    def test_handler_has_event_type(self):
-        """Handler should have correct event type."""
-        handler = tool_approval[0]
-        assert hasattr(handler, '_event_type')
-        assert handler._event_type == 'before_each_tool'
+    def test_handlers_have_correct_event_types(self):
+        """Handlers should have correct event types."""
+        # First handler: poll_mode_changes (before_iteration)
+        assert hasattr(tool_approval[0], '_event_type')
+        assert tool_approval[0]._event_type == 'before_iteration'
+
+        # Second handler: check_approval (before_each_tool)
+        assert hasattr(tool_approval[1], '_event_type')
+        assert tool_approval[1]._event_type == 'before_each_tool'
 
     def test_plugin_integrates_with_agent(self):
         """Plugin should integrate with Agent without errors."""
@@ -594,3 +706,4 @@ class TestPluginExport:
         )
 
         assert 'before_each_tool' in agent.events
+        assert 'before_iteration' in agent.events

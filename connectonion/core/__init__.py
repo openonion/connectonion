@@ -22,6 +22,8 @@ from .llm import LLM, create_llm, TokenUsage
 from .events import (
     EventHandler,
     after_user_input,
+    before_iteration,
+    after_iteration,
     before_llm,
     after_llm,
     before_each_tool,
@@ -43,6 +45,8 @@ __all__ = [
     "TokenUsage",
     "EventHandler",
     "after_user_input",
+    "before_iteration",
+    "after_iteration",
     "before_llm",
     "after_llm",
     "before_each_tool",

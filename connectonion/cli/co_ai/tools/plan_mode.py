@@ -1,4 +1,13 @@
-"""Plan Mode tools for planning before implementation."""
+"""Plan Mode tools for planning before implementation.
+
+Three modes:
+- 'safe': Dangerous tools need approval (default)
+- 'plan': Read-only tools only, exit_plan_mode shows plan for approval
+- 'accept_edits': No approvals, agent runs freely
+
+Agent can enter plan mode via enter_plan_mode().
+User can switch modes via WebSocket mode_change message.
+"""
 
 from pathlib import Path
 from typing import Optional
@@ -6,11 +15,21 @@ from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
 
+# Note: The `agent` parameter in tool functions has no type hint.
+#
+# Why: tool_factory uses get_type_hints() to build parameter schemas.
+# If we use `agent: 'Agent'` with TYPE_CHECKING import, get_type_hints()
+# fails with NameError because Agent isn't defined at runtime.
+#
+# This is safe because:
+# - tool_factory skips 'agent' parameter anyway (not sent to LLM)
+# - tool_executor injects agent at runtime
+
 console = Console()
 
 # Plan mode state (module-level for simplicity)
-_plan_mode_active = False
 _plan_file_path: Optional[Path] = None
+_previous_mode: Optional[str] = None  # Mode before entering plan mode
 
 
 def get_plan_file_path() -> Path:
@@ -20,12 +39,12 @@ def get_plan_file_path() -> Path:
     return co_dir / "PLAN.md"
 
 
-def is_plan_mode_active() -> bool:
+def is_plan_mode_active(agent) -> bool:
     """Check if plan mode is currently active."""
-    return _plan_mode_active
+    return agent.current_session.get('mode') == 'plan'
 
 
-def enter_plan_mode() -> str:
+def enter_plan_mode(agent=None) -> str:
     """
     Enter plan mode for designing implementation before coding.
 
@@ -35,9 +54,9 @@ def enter_plan_mode() -> str:
     - Get user approval on approach before making changes
 
     In plan mode:
-    - Explore the codebase to understand structure
+    - Explore the codebase with read-only tools (glob, grep, read)
     - Design the implementation approach
-    - Write your plan to .co/PLAN.md
+    - Write your plan with write_plan()
     - Exit plan mode when ready for user approval
 
     Returns:
@@ -45,17 +64,25 @@ def enter_plan_mode() -> str:
 
     Example workflow:
         1. enter_plan_mode() - Start planning
-        2. Use glob/grep/read_file to explore
-        3. Write plan to .co/PLAN.md
+        2. Use glob/grep/read to explore
+        3. write_plan(content) - Document your plan
         4. exit_plan_mode() - Get user approval
         5. Implement after approval
     """
-    global _plan_mode_active, _plan_file_path
+    global _plan_file_path, _previous_mode
 
-    if _plan_mode_active:
+    # Check if already in plan mode
+    if agent and agent.current_session.get('mode') == 'plan':
         return "Already in plan mode. Use exit_plan_mode() when ready for user approval."
 
-    _plan_mode_active = True
+    # Save previous mode to restore after plan approval
+    if agent:
+        _previous_mode = agent.current_session.get('mode', 'safe')
+        # Set mode to 'plan' and notify frontend
+        agent.current_session['mode'] = 'plan'
+        if agent.io:
+            agent.io.send({'type': 'mode_changed', 'mode': 'plan', 'triggered_by': 'agent'})
+
     _plan_file_path = get_plan_file_path()
 
     # Create initial plan file
@@ -82,7 +109,7 @@ def enter_plan_mode() -> str:
 - Any risks or trade-offs
 
 ---
-*Plan created by OO. Waiting for user approval.*
+*Plan created by agent. Waiting for user approval.*
 """
 
     _plan_file_path.write_text(initial_content, encoding="utf-8")
@@ -90,25 +117,25 @@ def enter_plan_mode() -> str:
     console.print(Panel(
         "[bold green]Entered Plan Mode[/]\n\n"
         "You are now in planning mode. In this mode:\n"
-        "1. [cyan]Explore[/] - Use glob/grep/read_file to understand the codebase\n"
+        "1. [cyan]Explore[/] - Use glob/grep/read to understand the codebase\n"
         "2. [cyan]Design[/] - Write your implementation plan\n"
-        "3. [cyan]Document[/] - Update .co/PLAN.md with your plan\n"
+        "3. [cyan]Document[/] - Use write_plan() to save your plan\n"
         "4. [cyan]Exit[/] - Call exit_plan_mode() for user approval\n\n"
         f"Plan file: [dim]{_plan_file_path}[/]",
-        title="Plan Mode",
+        title="📋 Plan Mode",
         border_style="green"
     ))
 
-    return f"Entered plan mode. Write your plan to {_plan_file_path}, then call exit_plan_mode() when ready for user approval."
+    return f"Entered plan mode. Write your plan with write_plan(), then call exit_plan_mode() when ready for user approval."
 
 
-def exit_plan_mode() -> str:
+def exit_plan_mode(agent=None) -> str:
     """
     Exit plan mode and request user approval for the plan.
 
     Call this after you have:
     1. Explored the codebase
-    2. Written your implementation plan to .co/PLAN.md
+    2. Written your implementation plan with write_plan()
 
     The user will review the plan and either:
     - Approve: You can proceed with implementation
@@ -118,23 +145,30 @@ def exit_plan_mode() -> str:
     Returns:
         The plan content for user review
     """
-    global _plan_mode_active, _plan_file_path
+    global _plan_file_path, _previous_mode
 
-    if not _plan_mode_active:
+    # Check if in plan mode
+    if agent and agent.current_session.get('mode') != 'plan':
         return "Not in plan mode. Use enter_plan_mode() first."
 
     plan_file = _plan_file_path or get_plan_file_path()
 
     if not plan_file.exists():
-        return f"Plan file not found at {plan_file}. Write your plan first."
+        return f"Plan file not found at {plan_file}. Use write_plan() to write your plan first."
 
     plan_content = plan_file.read_text(encoding="utf-8")
 
-    # Reset state
-    _plan_mode_active = False
-    _plan_file_path = None
+    # Restore previous mode (will be set after approval in tool_approval plugin)
+    if agent:
+        # Store plan content in session for approval UI
+        agent.current_session['pending_plan_content'] = plan_content
+        agent.current_session['previous_mode'] = _previous_mode or 'safe'
 
-    # Display plan for user approval
+    # Reset module state
+    _plan_file_path = None
+    _previous_mode = None
+
+    # Display plan for CLI approval
     console.print(Panel(
         Markdown(plan_content),
         title="📋 Implementation Plan - Review Required",
@@ -143,13 +177,9 @@ def exit_plan_mode() -> str:
 
     console.print()
     console.print("[bold yellow]Please review the plan above.[/]")
-    console.print("Reply with:")
-    console.print("  [green]'approve'[/] or [green]'yes'[/] - Proceed with implementation")
-    console.print("  [yellow]'modify: <feedback>'[/] - Request changes to the plan")
-    console.print("  [red]'reject'[/] or [red]'no'[/] - Abandon this plan")
     console.print()
 
-    return f"Exited plan mode. Plan saved to {plan_file}. Waiting for user approval.\n\n---\n\n{plan_content}"
+    return f"Plan ready for review. Waiting for user approval.\n\n---\n\n{plan_content}"
 
 
 def write_plan(content: str) -> str:

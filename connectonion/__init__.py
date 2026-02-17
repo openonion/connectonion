@@ -23,6 +23,8 @@ load_dotenv(_Path.cwd() / ".env")
 from .core import Agent, LLM, create_tool_from_function
 from .core import (
     after_user_input,
+    before_iteration,
+    after_iteration,
     before_llm,
     after_llm,
     before_each_tool,
@@ -107,6 +109,8 @@ __all__ = [
     "address",
     # Event decorators
     "after_user_input",
+    "before_iteration",
+    "after_iteration",
     "before_llm",
     "after_llm",
     "before_each_tool",

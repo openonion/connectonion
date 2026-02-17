@@ -87,7 +87,7 @@ Skip this tool AND all remaining tools in the batch. The agent loop stops and wa
 ```
 
 - Current tool is skipped (raises ValueError)
-- `tool_rejected_hard` flag is set in session
+- `stop_signal` flag is set in session
 - All remaining tools in the batch are auto-rejected
 - Agent loop stops — LLM does NOT get another turn
 - User must send a new message to continue
@@ -197,7 +197,7 @@ agent.current_session['approval'] = {
 }
 
 # Set by reject_hard — remaining tools in batch see this and auto-reject
-agent.current_session['tool_rejected_hard'] = "User rejected tool 'bash'."
+agent.current_session['stop_signal'] = "User rejected tool 'bash'."
 ```
 
 ## Non-Web Mode

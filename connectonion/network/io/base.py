@@ -51,10 +51,23 @@ class IO(ABC):
 
     @abstractmethod
     def receive(self) -> Dict[str, Any]:
-        """Receive response from client.
+        """Receive response from client (blocking).
 
         Returns:
             Dict response from client
+        """
+        pass
+
+    @abstractmethod
+    def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
+        """Get all pending messages (non-blocking).
+
+        Args:
+            msg_type: If specified, only return messages of this type.
+                      Other messages stay in queue for later.
+
+        Returns:
+            List of messages (empty if none).
         """
         pass
 

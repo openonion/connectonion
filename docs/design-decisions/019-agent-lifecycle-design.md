@@ -75,17 +75,31 @@ This document describes the complete lifecycle of an Agent from initialization t
 │                                                                  │
 │  Each iteration:                                                 │
 │    1. Increment iteration counter                                │
-│    2. Get LLM decision                                           │
-│    3. If no tool_calls → return response (exit loop)            │
-│    4. Execute tools and record results                           │
-│    5. Continue to next iteration                                 │
+│    2. Fire @before_iteration (poll IO, check mode changes)      │
+│    3. Get LLM decision                                           │
+│    4. If no tool_calls → return response (exit loop)            │
+│    5. Execute tools and record results                           │
+│    6. Fire @after_iteration                                      │
+│    7. Check stop_signal → if set, return and wait for user      │
+│    8. Continue to next iteration                                 │
 │                                                                  │
 │  Exit conditions:                                                │
 │    - LLM returns content without tool_calls → return content    │
+│    - stop_signal set by plugin → return and wait for user       │
 │    - Max iterations reached → return "Task incomplete" message  │
 └─────────────────────────────────────────────────────────────────┘
                               │
                               │
+                  ┌───────────────────────┐
+                  │  @before_iteration    │
+                  │                       │
+                  │  Use cases:           │
+                  │  - Poll IO messages   │
+                  │  - Check mode changes │
+                  │  - Initialize state   │
+                  └───────────────────────┘
+                              │
+                              ▼
               ┌───────────────┴───────────────┐
               │       LLM CALL PHASE          │
               │                               │
@@ -234,6 +248,24 @@ This document describes the complete lifecycle of an Agent from initialization t
               │  └─────────────────────────────────────────┘   │
               │                      │                          │
               └──────────────────────┼──────────────────────────┘
+                                     │
+                                     ▼
+                        ┌───────────────────────┐
+                        │   @after_iteration    │
+                        │                       │
+                        │  Use cases:           │
+                        │  - Set stop_signal    │
+                        │  - Metrics/logging    │
+                        │  - Checkpoints        │
+                        └───────────────────────┘
+                                     │
+                                     ▼
+                        ┌───────────────────────┐
+                        │  Check stop_signal    │
+                        │                       │
+                        │  If set: return and   │
+                        │  wait for user input  │
+                        └───────────────────────┘
                                      │
                                      ▼
                         (back to ITERATION LOOP)
@@ -406,6 +438,7 @@ The context lifecycle:
 | Event | When | Frequency | Safe to Add Messages? |
 |-------|------|-----------|----------------------|
 | `@after_user_input` | After user prompt added | Once per input() | Yes |
+| `@before_iteration` | Start of each iteration | Each iteration | Yes |
 | `@before_llm` | Before LLM call | Each iteration | Yes |
 | `@after_llm` | After LLM response | Each iteration | Yes |
 | `@before_tools` | Before first tool in round | Once per round | Yes |
@@ -413,9 +446,34 @@ The context lifecycle:
 | `@after_each_tool` | After each tool | Per tool | No |
 | `@after_tools` | After all tools in round | Once per round | Yes |
 | `@on_error` | When tool fails | Per error | No |
+| `@after_iteration` | End of each iteration | Each iteration | Yes |
 | `@on_complete` | Task finished | Once per input() | Yes |
 
 \* `pending_tool` is available in `@before_each_tool` for inspection/validation.
+
+---
+
+## Stop Signal
+
+Plugins can stop the iteration loop by setting `stop_signal` in the session:
+
+```python
+# In a plugin (e.g., tool_approval):
+agent.current_session['stop_signal'] = "User rejected the tool"
+```
+
+When `stop_signal` is set:
+1. The current iteration completes
+2. `@after_iteration` fires
+3. Agent checks `stop_signal` and returns immediately
+4. User must send a new message to continue
+
+**Use cases:**
+- User rejects a tool execution (hard reject)
+- Plugin decides to pause and wait for user input
+- ULW mode checkpoint reached
+
+The value stored in `stop_signal` is used as the tool result message, so the LLM understands what happened.
 
 ---
 

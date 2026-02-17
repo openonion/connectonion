@@ -48,6 +48,32 @@ class WebSocketIO(IO):
         """Block until response from client."""
         return self._incoming.get()
 
+    def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
+        """Get all pending messages without blocking.
+
+        Args:
+            msg_type: If specified, only return messages of this type.
+                      Other messages stay in queue.
+
+        Returns:
+            List of messages (empty if none).
+        """
+        messages = []
+        keep = []
+        while True:
+            try:
+                msg = self._incoming.get_nowait()
+                if msg_type is None or msg.get('type') == msg_type:
+                    messages.append(msg)
+                else:
+                    keep.append(msg)
+            except queue.Empty:
+                break
+        # Put back messages we didn't want
+        for msg in keep:
+            self._incoming.put(msg)
+        return messages
+
     def close(self):
         """Mark IO as closed."""
         self._closed = True
