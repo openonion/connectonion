@@ -460,7 +460,7 @@ git push
 ### Code Organization Preferences
 - Avoid `utils.py` - keep helper functions with their features
 - Default model for agents: `co/o4-mini` (production), `o4-mini` (testing)
-- No co-authoring with Claude Code in commit messages
+- No Co-Authored-By lines in commit messages (no Claude, Happy, or other brand attribution)
 - Function-based tools over class-based tools
 - Events/plugins over subclassing Agent
 
