@@ -1,3 +1,25 @@
+"""
+LLM-Note: Edit tool - Precise string replacement for file editing
+
+Token-efficient alternative to rewriting entire files. Performs exact string
+matching and replacement with validation and error reporting.
+
+Key function:
+- edit(file_path, old_string, new_string, replace_all): Replace text in file
+
+Features:
+- Exact string matching (must be unique unless replace_all=True)
+- Helpful error messages with similar text suggestions
+- Prevents ambiguous replacements
+- UTF-8 encoding support
+- Validates file existence and uniqueness
+
+Common use cases:
+- Small targeted changes (function renames, config updates)
+- Version number bumps
+- Multi-occurrence replacements with replace_all=True
+"""
+
 """Edit tool for precise string replacement."""
 
 from pathlib import Path
