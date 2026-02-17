@@ -13,7 +13,7 @@ import time
 import pytest
 from pathlib import Path
 
-from connectonion.network.host.session import Session, SessionStorage
+from connectonion.network.host.session import Session, SessionStorage, generate_invite_code
 
 
 class TestSession:
@@ -388,6 +388,112 @@ class TestSessionStorageList:
 
         assert len(result) == 1
         assert result[0].session_id == "no_created"
+
+
+class TestGroupChatInvite:
+    """Test group chat invite functionality (issue #83)."""
+
+    def test_generate_invite_code(self):
+        """Invite code is URL-safe and correct length."""
+        code = generate_invite_code()
+        assert len(code) == 8
+        # URL-safe means alphanumeric + - and _
+        assert all(c.isalnum() or c in '-_' for c in code)
+
+    def test_generate_invite_code_custom_length(self):
+        """Can specify custom invite code length."""
+        code = generate_invite_code(length=12)
+        assert len(code) == 12
+
+    def test_session_with_invite_fields(self):
+        """Session model includes group chat fields."""
+        session = Session(
+            session_id="test",
+            status="ready",
+            prompt="",
+            invite_code="abc123",
+            visibility="invite_link",
+            participants=["user1", "user2"],
+            owner_id="user1"
+        )
+
+        assert session.invite_code == "abc123"
+        assert session.visibility == "invite_link"
+        assert session.participants == ["user1", "user2"]
+        assert session.owner_id == "user1"
+
+    def test_session_defaults_to_private(self):
+        """Session visibility defaults to private."""
+        session = Session(session_id="test", status="running", prompt="Hi")
+        assert session.visibility == "private"
+        assert session.participants == []
+
+    def test_get_by_invite_code(self, tmp_path):
+        """Can retrieve session by invite code."""
+        storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
+
+        session = Session(
+            session_id="session123",
+            status="ready",
+            prompt="",
+            invite_code="abc123",
+            visibility="invite_link"
+        )
+        storage.save(session)
+
+        result = storage.get_by_invite_code("abc123")
+        assert result is not None
+        assert result.session_id == "session123"
+        assert result.invite_code == "abc123"
+
+    def test_get_by_invite_code_not_found(self, tmp_path):
+        """Returns None if invite code doesn't exist."""
+        storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
+
+        result = storage.get_by_invite_code("notfound")
+        assert result is None
+
+    def test_get_by_invite_code_expired(self, tmp_path):
+        """Returns None for expired invite."""
+        storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
+
+        past = time.time() - 3600  # 1 hour ago
+        session = Session(
+            session_id="session123",
+            status="done",
+            prompt="",
+            invite_code="expired123",
+            expires=past
+        )
+        storage.save(session)
+
+        result = storage.get_by_invite_code("expired123")
+        assert result is None
+
+    def test_multiple_sessions_same_invite_code_last_wins(self, tmp_path):
+        """Last entry wins for same invite code (append-only)."""
+        storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
+
+        # First session
+        storage.save(Session(
+            session_id="session1",
+            status="ready",
+            prompt="",
+            invite_code="same123"
+        ))
+
+        # Updated session (same invite code)
+        storage.save(Session(
+            session_id="session2",
+            status="ready",
+            prompt="",
+            invite_code="same123",
+            participants=["user1"]
+        ))
+
+        result = storage.get_by_invite_code("same123")
+        assert result.session_id == "session2"
+        assert result.participants == ["user1"]
 
 
 if __name__ == "__main__":
