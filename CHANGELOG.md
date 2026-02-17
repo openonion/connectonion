@@ -2,16 +2,6 @@
 
 All notable changes to ConnectOnion will be documented in this file.
 
-## [Unreleased]
-
-### 🎉 New Features
-
-#### OpenRouter Shorthand Prefix
-- **`or/` Prefix Support**: Added shorthand prefix for OpenRouter models
-- **Examples**: `or/claude-3.5-sonnet`, `or/openai/gpt-4o`, `or/anthropic/claude-3-opus`
-- **Backwards Compatible**: Original `openrouter/` prefix still works
-- **Developer Experience**: Shorter, cleaner model names for faster development
-
 ## [0.1.9] - 2025-10-05
 
 ### 🎉 New Features
