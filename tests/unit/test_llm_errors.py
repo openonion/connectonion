@@ -430,6 +430,7 @@ class TestModelInference:
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
             llm = create_llm("openrouter/openai/gpt-4o-mini")
             assert isinstance(llm, OpenRouterLLM)
+
     def test_infer_grok_from_prefix(self):
         """Test that grok/* models are routed to GrokLLM."""
         with patch.dict(os.environ, {"XAI_API_KEY": "test-key"}):
