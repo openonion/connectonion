@@ -85,7 +85,9 @@ def init(
 ):
     """Initialize project in current directory."""
     from .commands.init import handle_init
+    from .tips import show_tip
     handle_init(ai=None, key=key, template=template, description=description, yes=yes, force=force)
+    show_tip("init")
 
 
 @app.command()
@@ -98,19 +100,24 @@ def create(
 ):
     """Create new project."""
     from .commands.create import handle_create
+    from .tips import show_tip
     handle_create(name=name, ai=None, key=key, template=template, description=description, yes=yes)
+    show_tip("create")
 
 
 @app.command()
 def deploy():
     """Deploy to ConnectOnion Cloud."""
     from .commands.deploy_commands import handle_deploy
+    from .tips import show_tip
     handle_deploy()
+    show_tip("deploy")
 
 
 @app.command()
 def auth(service: Optional[str] = typer.Argument(None, help="Service: google, microsoft")):
     """Authenticate with OpenOnion."""
+    from .tips import show_tip
     if service == "google":
         from .commands.auth_commands import handle_google_auth
         handle_google_auth()
@@ -120,6 +127,7 @@ def auth(service: Optional[str] = typer.Argument(None, help="Service: google, mi
     else:
         from .commands.auth_commands import handle_auth
         handle_auth()
+    show_tip("auth")
 
 
 @app.command()
@@ -128,14 +136,18 @@ def keys(
 ):
     """Show agent keys and credentials."""
     from .commands.keys_commands import handle_keys
+    from .tips import show_tip
     handle_keys(reveal=reveal)
+    show_tip("keys")
 
 
 @app.command()
 def status():
     """Check account status."""
     from .commands.status_commands import handle_status
+    from .tips import show_tip
     handle_status()
+    show_tip("status")
 
 
 @app.command()
@@ -149,14 +161,18 @@ def reset():
 def doctor():
     """Diagnose installation."""
     from .commands.doctor_commands import handle_doctor
+    from .tips import show_tip
     handle_doctor()
+    show_tip("doctor")
 
 
 @app.command()
 def browser(command: str = typer.Argument(..., help="Browser command")):
     """Browser automation."""
     from .commands.browser_commands import handle_browser
+    from .tips import show_tip
     handle_browser(command)
+    show_tip("browser")
 
 
 @app.command()
@@ -168,7 +184,9 @@ def ai(
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
+    from .tips import show_tip
     handle_ai(prompt=prompt, port=port, model=model, max_iterations=max_iterations)
+    show_tip("ai")
 
 
 @app.command()
@@ -180,7 +198,9 @@ def copy(
 ):
     """Copy built-in tools/plugins to customize."""
     from .commands.copy_commands import handle_copy
+    from .tips import show_tip
     handle_copy(names=names or [], list_all=list_all, path=path, force=force)
+    show_tip("copy")
 
 
 @app.command()
@@ -190,7 +210,9 @@ def eval(
 ):
     """Run evals and show results."""
     from .commands.eval_commands import handle_eval
+    from .tips import show_tip
     handle_eval(name=name, agent_file=agent)
+    show_tip("eval")
 
 
 # Trust command group
