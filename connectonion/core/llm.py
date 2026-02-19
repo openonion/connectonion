@@ -637,7 +637,11 @@ class GroqLLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        response = self.client.chat.completions.create(**api_kwargs)
+        try:
+            response = self.client.chat.completions.create(**api_kwargs)
+        except openai.APIError as e:
+            raise ValueError(f"Groq API Error: {str(e)}") from e
+
         message = response.choices[0].message
 
         tool_calls = []
