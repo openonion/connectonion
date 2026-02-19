@@ -21,6 +21,6 @@ from .system_reminder import system_reminder
 from .tool_approval import tool_approval, handle_mode_change
 from .auto_compact import auto_compact
 from .prefer_write_tool import prefer_write_tool
-from .ulw import ulw, handle_ulw_mode_change
+from .ulw import ulw, UltraWork
 
-__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream', 'system_reminder', 'tool_approval', 'handle_mode_change', 'auto_compact', 'prefer_write_tool', 'ulw', 'handle_ulw_mode_change']
+__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream', 'system_reminder', 'tool_approval', 'handle_mode_change', 'auto_compact', 'prefer_write_tool', 'ulw', 'UltraWork']
