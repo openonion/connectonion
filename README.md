@@ -158,9 +158,27 @@ def search(query: str) -> str:
     """Search for information."""
     return f"Found information about {query}"
 
+import ast
+import operator as op
+
 def calculate(expression: str) -> float:
-    """Perform mathematical calculations."""
-    return eval(expression)  # Use safely in production
+    """Perform mathematical calculations safely.
+
+    Never use eval() here — the LLM generates the expression string, so
+    eval() would let it execute arbitrary Python (e.g. os.system('rm -rf /')).
+    ast.parse restricts evaluation to safe arithmetic only.
+    """
+    ops = {
+        ast.Add: op.add, ast.Sub: op.sub,
+        ast.Mult: op.mul, ast.Div: op.truediv,
+    }
+    def _eval(node):
+        if isinstance(node, ast.Constant):
+            return float(node.value)
+        if isinstance(node, ast.BinOp) and type(node.op) in ops:
+            return ops[type(node.op)](_eval(node.left), _eval(node.right))
+        raise ValueError(f"Expression not allowed: {expression}")
+    return _eval(ast.parse(expression, mode="eval").body)
 
 # 2. Create an agent with tools and personality
 agent = Agent(
@@ -382,9 +400,22 @@ agent = Agent("assistant", tools=[Calculator(), CurrentTime(), ReadFile()])
 
 ### New Function-Based Approach (Recommended)
 ```python
+import ast
+import operator as op
+
 def calculate(expression: str) -> float:
-    """Perform mathematical calculations."""
-    return eval(expression)  # Use safely in production
+    """Perform mathematical calculations safely.
+
+    Using ast.parse instead of eval() — the LLM controls the expression
+    string, so eval() is a remote code execution risk.
+    """
+    ops = {ast.Add: op.add, ast.Sub: op.sub, ast.Mult: op.mul, ast.Div: op.truediv}
+    def _eval(n):
+        if isinstance(n, ast.Constant): return float(n.value)
+        if isinstance(n, ast.BinOp) and type(n.op) in ops:
+            return ops[type(n.op)](_eval(n.left), _eval(n.right))
+        raise ValueError(f"Expression not allowed: {n}")
+    return _eval(ast.parse(expression, mode="eval").body)
 
 def get_time(format: str = "%Y-%m-%d %H:%M:%S") -> str:
     """Get current date and time."""
