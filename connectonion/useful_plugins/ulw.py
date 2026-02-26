@@ -23,7 +23,7 @@ Usage:
 
 from typing import TYPE_CHECKING
 
-from ..core.events import on_complete
+from ..core.events import on_complete, before_iteration, before_llm
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -138,8 +138,29 @@ def ulw_keep_working(agent: 'Agent') -> None:
     agent.input(ULW_CONTINUE_PROMPT)
 
 
+@before_iteration
+def poll_prompt_update(agent: 'Agent') -> None:
+    """Poll for prompt_update signals — frontend can update goal/direction mid-session."""
+    if not agent.io:
+        return
+    for msg in agent.io.receive_all('prompt_update'):
+        agent.current_session['ulw_prompt'] = msg.get('prompt', '')
+
+
+@before_llm
+def inject_ulw_prompt(agent: 'Agent') -> None:
+    """Inject saved prompt into system message so agent remembers goal every turn."""
+    prompt = agent.current_session.get('ulw_prompt')
+    if not prompt:
+        return
+    messages = agent.current_session['messages']
+    if messages and messages[0]['role'] == 'system':
+        base = messages[0]['content'].split('\n\n[Prompt]')[0]
+        messages[0]['content'] = f"{base}\n\n[Prompt]\n{prompt}"
+
+
 # Export as plugin
-ulw = [ulw_keep_working]
+ulw = [ulw_keep_working, poll_prompt_update, inject_ulw_prompt]
 
 # Export mode handler for external use
 __all__ = ['ulw', 'handle_ulw_mode_change', 'ULW_DEFAULT_TURNS']

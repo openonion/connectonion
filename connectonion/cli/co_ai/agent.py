@@ -18,6 +18,7 @@ Plugins included:
 - prefer_write_tool: Nudges toward using Write over Edit
 - tool_approval: Approval flow for dangerous operations
 - auto_compact: Context window management
+- ulw: Ultra work mode (autonomous N-turn sessions with continuation)
 
 Architecture:
 - Uses prompt assembly from prompts/assembler.py
@@ -40,7 +41,7 @@ from .tools import (
 from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, FileWriter, MODE_AUTO, MODE_NORMAL, TodoList
-from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool
+from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw
 
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -86,7 +87,7 @@ def create_coding_agent(
     if project_context:
         system_prompt += f"\n\n---\n\n{project_context}"
 
-    plugins = [eval, system_reminder, prefer_write_tool, tool_approval, auto_compact]
+    plugins = [eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw]
 
     agent = Agent(
         name="oo",

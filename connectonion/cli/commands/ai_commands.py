@@ -11,7 +11,7 @@ def handle_ai(
     prompt: str = None,
     port: int = 8000,
     model: str = "co/claude-opus-4-5",
-    max_iterations: int = 20,
+    max_iterations: int = 100,
 ):
     """Start AI coding agent or run one-shot prompt.
 

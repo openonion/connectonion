@@ -14,14 +14,15 @@ from rich.console import Console
 console = Console()
 
 
-def handle_browser(command: str):
+def handle_browser(command: str, headless: bool = True):
     """Execute browser automation commands - guide browser to do something.
 
     This is an alternative to the -b flag. Both 'co -b' and 'co browser' are supported.
 
     Args:
         command: The browser command to execute
+        headless: Run browser without visible window (default True)
     """
     from ..browser_agent.browser import execute_browser_command
-    result = execute_browser_command(command)
+    result = execute_browser_command(command, headless=headless)
     console.print(result)

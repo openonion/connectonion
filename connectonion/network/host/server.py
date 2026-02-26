@@ -237,9 +237,8 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
     async def on_startup():
         nonlocal relay_task
 
-        # Discover endpoints and create ANNOUNCE message
+        # Discover endpoints once (they don't change)
         endpoints = announce.get_endpoints(port)
-        announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
 
         # Task handler - fresh instance for each request
         # Runs agent.input() in thread pool to avoid blocking event loop
@@ -251,6 +250,9 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
         async def relay_loop():
             while True:
                 try:
+                    # Create fresh ANNOUNCE message with current timestamp for each connection attempt
+                    announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
+
                     ws = await relay.connect(relay_url)
                     # Relay status shown in banner - no log needed on first connect
                     await relay.serve_loop(ws, announce_msg, task_handler, addr_data=addr_data)

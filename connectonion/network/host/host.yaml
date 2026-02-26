@@ -1,0 +1,13 @@
+# Host configuration — edit these values, then run: host(create_agent)
+trust: careful
+port: 8000
+workers: 1
+result_ttl: 86400
+relay_url: wss://oo.openonion.ai/ws/announce
+reload: false
+# summary: "What your agent does"
+# examples:
+#   - "Example prompt 1"
+#   - "Example prompt 2"
+# whitelist: whitelist.txt
+# blacklist: blacklist.txt

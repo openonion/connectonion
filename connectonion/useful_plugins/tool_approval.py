@@ -268,7 +268,7 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     # Check if another plugin requested to skip approvals (e.g., ulw)
     # =================================================================
-    if agent.current_session.get('skip_tool_approval'):
+    if agent.current_session.get('mode') == 'ulw':
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
         _log(agent, f"[dim]⚡ {tool_name} (approval skipped)[/dim]")

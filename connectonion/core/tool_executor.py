@@ -240,6 +240,10 @@ def execute_single_tool(
         # Note: on_error event will fire in execute_and_record_tools after result message added
 
     finally:
+        # Remove injected agent from tool_args to prevent serialization issues.
+        # Trace entries reference tool_args, so leaving 'agent' would cause
+        # "Non-JSON-serializable object: Agent" warnings when session_sync sends traces.
+        tool_args.pop('agent', None)
         # Clear xray context after tool execution
         clear_xray_context()
 

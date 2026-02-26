@@ -37,11 +37,12 @@ def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
     browser: Optional[str] = typer.Option(None, "-b", "--browser", help="Quick browser command"),
+    headless: bool = typer.Option(True, "--headless/--no-headless", help="Run browser headless"),
 ):
     """ConnectOnion - A simple Python framework for creating AI agents."""
     if browser:
         from .commands.browser_commands import handle_browser
-        handle_browser(browser)
+        handle_browser(browser, headless=headless)
         raise typer.Exit()
     if ctx.invoked_subcommand is None:
         _show_help()
@@ -164,7 +165,7 @@ def ai(
     prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
     model: str = typer.Option("co/claude-opus-4-5", "--model", "-m", help="Model to use"),
-    max_iterations: int = typer.Option(20, "--max-iterations", "-i", help="Max iterations"),
+    max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
