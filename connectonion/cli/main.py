@@ -154,10 +154,13 @@ def doctor():
 
 
 @app.command()
-def browser(command: str = typer.Argument(..., help="Browser command")):
+def browser(
+    command: str = typer.Argument(..., help="Browser command"),
+    headless: bool = typer.Option(True, "--headless/--no-headless", help="Run browser headless"),
+):
     """Browser automation."""
     from .commands.browser_commands import handle_browser
-    handle_browser(command)
+    handle_browser(command, headless=headless)
 
 
 @app.command()

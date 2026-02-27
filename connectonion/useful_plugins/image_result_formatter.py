@@ -29,7 +29,7 @@ LIFECYCLE - When and How Messages Are Modified:
 │ 1. Scan trace for tool_result entries with base64 images              │
 │ 2. Find matching tool message by tool_call_id                          │
 │ 3. Shorten tool message content (remove base64)                        │
-│ 4. Insert assistant message with image after tool message              │
+│ 4. Insert user message with image after tool message                   │
 │ 5. Update trace result to short summary                                │
 │ 6. Send image to frontend via agent.io.send_image() if available       │
 ├─────────────────────────────────────────────────────────────────────────┤
@@ -39,8 +39,8 @@ LIFECYCLE - When and How Messages Are Modified:
 │   {"role": "assistant", "content": "", "tool_calls": [...]},           │
 │   {"role": "tool", "content": "Screenshot captured (image below)",      │
 │    "tool_call_id": "call_123"},                                         │
-│   {"role": "assistant", "content": [                                    │
-│       {"type": "text", "text": "I captured an image from 'screenshot'"},│
+│   {"role": "user", "content": [                                         │
+│       {"type": "text", "text": "Here is the image from 'screenshot':"},│
 │       {"type": "image_url", "image_url": "data:image/png;base64,..."}   │
 │    ]}                                                                   │
 │ ]                                                                       │
@@ -148,13 +148,13 @@ def _format_image_result(agent: 'Agent') -> None:
                 # Shorten the tool message content (remove base64 to save tokens)
                 messages[i]['content'] = f"Screenshot captured (image provided below)"
 
-                # Insert an assistant message with the image right after the tool message
+                # Insert a user message with the image right after the tool message
                 messages.insert(i + 1, {
-                    "role": "assistant",
+                    "role": "user",
                     "content": [
                         {
                             "type": "text",
-                            "text": f"I captured an image from the '{tool_name}' tool:"
+                            "text": f"Here is the image from '{tool_name}':"
                         },
                         {
                             "type": "image_url",

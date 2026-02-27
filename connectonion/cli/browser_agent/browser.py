@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [playwright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/cli/test_browser_agent.py]
   Data flow: BrowserAutomation() initializes Playwright → opens browser with persistent context → provides tools (navigate, find_element, click, type_text, screenshot, scroll, wait_for_login) → auto-saves cookies after each critical action → Agent uses these tools via natural language → element_finder.py uses vision LLM to locate elements | screenshots saved to .tmp/ directory
   State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup
-  Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), type_text(description, text), wait_for_login(seconds) | FormField Pydantic model for form parsing | used by `co browser` CLI command
+  Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), keyboard_type(text), wait_for_login(seconds) | used by `co browser` CLI command
   Performance: headless by default (faster) | persistent context (instant profile load) | vision model for element finding (slower but accurate) | screenshots base64-encoded for LLM analysis | auto-save adds 500ms delay after critical actions
   Errors: returns error string if Playwright not installed | returns "Browser already open" if reinitializing | element not found returns descriptive error
 Browser Agent for CLI - Natural language browser automation.
@@ -31,6 +31,7 @@ from connectonion.useful_plugins import image_result_formatter, ui_stream
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from . import element_finder
+from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
@@ -43,17 +44,7 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
 # Path to the browser agent system prompt
-PROMPT_PATH = Path(__file__).parent / "prompt.md"
-
-
-class FormField(BaseModel):
-    """A form field on a web page."""
-    name: str = Field(..., description="Field name or identifier")
-    label: str = Field(..., description="User-facing label")
-    type: str = Field(..., description="Input type (text, email, select, etc.)")
-    value: Optional[str] = Field(None, description="Current value")
-    required: bool = Field(False, description="Is this field required?")
-    options: List[str] = Field(default_factory=list, description="Available options for select/radio")
+PROMPT_PATH = Path(__file__).parent / "prompts" / "agent.md"
 
 
 class BrowserAutomation:
@@ -87,6 +78,7 @@ class BrowserAutomation:
         self.use_chrome_profile = use_chrome_profile
         self._screenshots = []
         self._headless = headless
+        self.screenshots_dir = str(SCREENSHOTS_DIR)
         # Auto-initialize browser so it's ready immediately
         self._initialize_browser()
 
@@ -128,21 +120,27 @@ class BrowserAutomation:
         if not os.path.exists(chrome_path):
             chrome_path = None  # Fall back to Chromium if Chrome not installed
 
+        # Session persistence: use ONLY user_data_dir (simple approach)
+        # - Persistent Chrome profile at ~/.co/browser_profile/
+        # - Stores cookies, localStorage, sessionStorage, cache, extensions, everything
+        # - Survives browser restarts automatically
+        # - No need for storage_state.json complexity (browser-use uses that for portability)
+
+        # Launch browser with browser-use anti-detection config (see browser_config.py)
         self.browser = self.playwright.chromium.launch_persistent_context(
-            str(profile_dir),
+            str(profile_dir),  # Persistent profile at ~/.co/browser_profile/
             headless=headless,
             executable_path=chrome_path,
-            args=[
-                '--disable-blink-features=AutomationControlled',
-            ],
-            ignore_default_args=['--enable-automation', '--use-mock-keychain'],
+            args=CHROME_DEFAULT_ARGS,  # 53 args + 30 disabled features from browser-use
+            ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # + macOS cookie fix
             timeout=120000,
         )
 
         self.page = self.browser.new_page()
         self.page.set_default_navigation_timeout(60000)
 
-        # Hide automation indicators
+        # Hide automation indicators (defense in depth)
+        # Already handled by --disable-blink-features=AutomationControlled in args above
         self.page.add_init_script(
             """
             Object.defineProperty(navigator, 'webdriver', {
@@ -150,26 +148,6 @@ class BrowserAutomation:
             });
         """
         )
-
-        # Restore sessionStorage if saved (needed for X.com auth persistence)
-        session_storage_path = Path.home() / ".co" / "browser_session_storage.json"
-        if session_storage_path.exists():
-            session_storage_json = session_storage_path.read_text()
-            # Escape single quotes for JavaScript string
-            escaped_storage = session_storage_json.replace("'", "\\'")
-            # Inject sessionStorage restoration script that runs on every page load
-            self.page.add_init_script(f"""
-                (storage => {{
-                    try {{
-                        const entries = JSON.parse(storage);
-                        for (const [key, value] of Object.entries(entries)) {{
-                            window.sessionStorage.setItem(key, value);
-                        }}
-                    }} catch (e) {{
-                        // Session storage restore is best-effort
-                    }}
-                }})('{escaped_storage}')
-            """)
 
         return f"Browser opened with persistent profile: {profile_dir}"
 
@@ -248,40 +226,27 @@ class BrowserAutomation:
         self._save_context()
         return f"Clicked [{element.index}] '{element.text}' at ({x}, {y})"
 
-    def type_text(self, field_description: str, text: str) -> str:
-        """Type text into a form field.
+    def keyboard_type(self, text: str) -> str:
+        """Type text using keyboard input (Playwright keyboard API wrapper).
 
-        Uses element_finder: LLM selects from pre-built locators, never generates CSS.
+        Simulates keyboard typing character by character into the currently focused element.
+        Works with any element type (input, textarea, contenteditable, etc).
+
+        Args:
+            text: The text to type
+
+        Returns:
+            Success message with system reminder to verify with screenshot
         """
         if not self.page:
             return "Browser not open"
 
-        element = element_finder.find_element(self.page, field_description)
-
-        if not element:
-            # Fallback to placeholder matching
-            placeholder_locator = self.page.get_by_placeholder(field_description)
-            if placeholder_locator.count() > 0:
-                placeholder_locator.first.fill(text)
-                self.form_data[field_description] = text
-                return f"Typed into '{field_description}'"
-            return f"Could not find field: {field_description}"
-
-        # Try the pre-built locator
-        locator = self.page.locator(element.locator)
-
-        if locator.count() > 0:
-            locator.first.fill(text)
-            self.form_data[field_description] = text
-            return f"Typed into [{element.index}] {element.tag}"
-
-        # Fallback: click then type
-        x = element.x + element.width // 2
-        y = element.y + element.height // 2
-        self.page.mouse.click(x, y)
         self.page.keyboard.type(text)
-        self.form_data[field_description] = text
-        return f"Typed into [{element.index}] at ({x}, {y})"
+
+        return f"""Typed: '{text}'
+
+SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into the correct input box. If the text is NOT visible in the expected location, you may need to click the element first to focus it, then type again."""
+
 
     def get_text(self) -> str:
         """Get all visible text from the page."""
@@ -295,26 +260,15 @@ class BrowserAutomation:
             return "Browser not open"
         return self.page.url
 
-    def get_current_page_html(self) -> str:
-        """Get the HTML content of the current page."""
-        if not self.page:
-            return "Browser not open"
-        return self.page.content()
-
-    def take_screenshot(self, url: str = None, path: str = "",
-                       width: int = 1920, height: int = 1080,
-                       full_page: bool = False) -> str:
-        """Take a screenshot of a URL or current page.
+    def take_screenshot(self, filename: str = None, full_page: bool = False) -> str:
+        """Take a screenshot of the current page and return base64 encoded image.
 
         Args:
-            url: URL to screenshot (optional - uses current page if not provided)
-            path: Optional path to save (auto-generates if empty)
-            width: Viewport width in pixels (default 1920)
-            height: Viewport height in pixels (default 1080)
-            full_page: If True, captures entire page height
+            filename: Optional filename for the screenshot
+            full_page: If True, captures entire page height (may lose details but shows overview)
 
         Returns:
-            Path to saved screenshot
+            Base64 encoded image data with system reminder for full-page screenshots
         """
         if not PLAYWRIGHT_AVAILABLE:
             return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
@@ -322,33 +276,29 @@ class BrowserAutomation:
         if not self.page:
             return "Browser not open"
 
-        # Navigate if URL provided
-        if url:
-            self.go_to(url)
+        os.makedirs(self.screenshots_dir, exist_ok=True)
 
-        # Set viewport size
-        self.page.set_viewport_size({"width": width, "height": height})
+        if not filename:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"step_{timestamp}.png"
 
-        # Generate filename if needed
-        if not path:
-            SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-            path = str(SCREENSHOTS_DIR / f'screenshot_{timestamp}.png')
-        elif not path.startswith('/'):
-            SCREENSHOTS_DIR.mkdir(parents=True, exist_ok=True)
-            if not path.endswith(('.png', '.jpg', '.jpeg')):
-                path += '.png'
-            path = str(SCREENSHOTS_DIR / path)
-        elif not path.endswith(('.png', '.jpg', '.jpeg')):
-            path += '.png'
+        if not "/" in filename:
+            filename = f"{self.screenshots_dir}/{filename}"
 
-        # Ensure directory exists
-        Path(path).parent.mkdir(parents=True, exist_ok=True)
+        screenshot_bytes = self.page.screenshot(path=filename, full_page=full_page)
 
-        # Take screenshot
-        self.page.screenshot(path=path, full_page=full_page)
-        self._screenshots.append(path)
-        return f'Screenshot saved: {path}'
+        # Wait for page to stabilize after screenshot (especially for full_page which scrolls/resizes)
+        # This prevents focus loss when typing after taking a screenshot
+        self.page.wait_for_timeout(1000)
+
+        screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
+
+        if full_page:
+            return f"""data:image/png;base64,{screenshot_base64}
+
+SYSTEM REMINDER: Full-page screenshots provide an overview of the entire page but may not show details clearly. Some elements might not be loaded yet (lazy loading). If you need to verify specific content or see details clearly, consider: scroll() to the target area first, then take a regular screenshot (full_page=False), or use scroll() multiple times and take screenshots at each position."""
+        else:
+            return f"data:image/png;base64,{screenshot_base64}"
 
     def set_viewport(self, width: int, height: int) -> str:
         """Set the browser viewport size."""
@@ -356,32 +306,6 @@ class BrowserAutomation:
             return "Browser not open"
         self.page.set_viewport_size({"width": width, "height": height})
         return f"Viewport set to {width}x{height}"
-
-    def find_forms(self) -> List[FormField]:
-        """Find all form fields on the current page."""
-        if not self.page:
-            return []
-
-        fields_data = self.page.evaluate("""
-            () => {
-                const fields = [];
-                document.querySelectorAll('input, textarea, select').forEach(input => {
-                    const label = input.labels?.[0]?.textContent ||
-                                input.placeholder || input.name || input.id || 'Unknown';
-                    fields.push({
-                        name: input.name || input.id || label,
-                        label: label.trim(),
-                        type: input.type || input.tagName.toLowerCase(),
-                        value: input.value || '',
-                        required: input.required || false,
-                        options: input.tagName === 'SELECT' ?
-                                Array.from(input.options).map(o => o.text) : []
-                    });
-                });
-                return fields;
-            }
-        """)
-        return [FormField(**field) for field in fields_data]
 
     def select_option(self, field_description: str, option: str) -> str:
         """Select an option from a dropdown."""
@@ -490,8 +414,8 @@ class BrowserAutomation:
         count = elements.count()
         return [elements.nth(i).inner_text() for i in range(count)]
 
-    def get_urls(self, domain_filter: str = "") -> List[str]:
-        """Extract all unique URLs from the current page, optionally filtered by domain.
+    def get_links_from_page(self, domain_filter: str = "") -> List[str]:
+        """Extract all unique links from the current page, optionally filtered by domain.
 
         Args:
             domain_filter: Only return URLs containing this string (e.g. "x.com/status")
@@ -516,30 +440,27 @@ class BrowserAutomation:
         return urls or []
 
     def _save_context(self) -> None:
-        """Force save cookies and storage to disk immediately.
+        """Force save browser state to disk.
 
         Called after critical actions (login, navigation) to ensure
         context is persisted even if process crashes.
 
-        Saves:
-        - Cookies and localStorage (automatic via persistent context)
-        - sessionStorage (manual save for X.com auth persistence)
+        With launch_persistent_context(), Playwright automatically saves:
+        - Cookies
+        - localStorage
+        - sessionStorage
+        - IndexedDB
+        - Service workers
+        - Cache
+
+        This method just waits briefly to ensure async saves complete.
         """
         if not self.browser or not self.page:
             return
 
         # Wait for any async operations to complete
+        # Playwright's persistent context auto-saves in background
         self.page.wait_for_timeout(500)
-
-        # Save sessionStorage to file (needed for X.com auth)
-        # localStorage and cookies are auto-saved by persistent context
-        try:
-            session_storage = self.page.evaluate("() => JSON.stringify(sessionStorage)")
-            session_storage_path = Path.home() / ".co" / "browser_session_storage.json"
-            session_storage_path.write_text(session_storage)
-        except Exception:
-            # Session storage save is best-effort, don't fail if it errors
-            pass
 
     def close(self) -> str:
         """Close the browser and save persistent context."""
@@ -586,7 +507,7 @@ def execute_browser_command(command: str, headless: bool = True) -> str:
     with BrowserAutomation(headless=headless) as browser:
         agent = Agent(
             name="browser_cli",
-            model="co/gemini-2.5-pro",
+            model="co/gemini-3-flash-preview",
             api_key=api_key,
             system_prompt=PROMPT_PATH,
             tools=[browser],
