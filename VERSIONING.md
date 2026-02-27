@@ -26,7 +26,7 @@ Example: `0.0.2`
 - Reset MINOR and PATCH to 0
 - Reserved for major breaking changes or stable releases
 
-## Current Version: 0.7.2
+## Current Version: 0.7.3
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
