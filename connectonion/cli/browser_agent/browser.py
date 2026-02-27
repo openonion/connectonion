@@ -260,11 +260,11 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             return "Browser not open"
         return self.page.url
 
-    def take_screenshot(self, filename: str = None, full_page: bool = False) -> str:
+    def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
         """Take a screenshot of the current page and return base64 encoded image.
 
         Args:
-            filename: Optional filename for the screenshot
+            path: Optional path for the screenshot
             full_page: If True, captures entire page height (may lose details but shows overview)
 
         Returns:
@@ -278,14 +278,14 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
 
         os.makedirs(self.screenshots_dir, exist_ok=True)
 
-        if not filename:
+        if not path:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            filename = f"step_{timestamp}.png"
+            path = f"step_{timestamp}.png"
 
-        if not "/" in filename:
-            filename = f"{self.screenshots_dir}/{filename}"
+        if not "/" in path:
+            path = f"{self.screenshots_dir}/{path}"
 
-        screenshot_bytes = self.page.screenshot(path=filename, full_page=full_page)
+        screenshot_bytes = self.page.screenshot(path=path, full_page=full_page)
 
         # Wait for page to stabilize after screenshot (especially for full_page which scrolls/resizes)
         # This prevents focus loss when typing after taking a screenshot
