@@ -151,6 +151,23 @@ agent = Agent("assistant", model="co/claude-opus-4")      # Managed
 agent = Agent("assistant", model="claude-opus-4")         # Your key
 ```
 
+### Mistral AI Models
+
+#### Mistral Latest
+```python
+# Mistral Large - Most capable Mistral model
+agent = Agent("assistant", model="co/mistral/mistral-large-latest")  # Managed
+agent = Agent("assistant", model="mistral/mistral-large-latest")     # Your key
+
+# Mistral Small - Balanced performance and efficiency
+agent = Agent("assistant", model="co/mistral/mistral-small-latest")  # Managed
+agent = Agent("assistant", model="mistral/mistral-small-latest")     # Your key
+
+# Mistral Medium - Mid-tier performance
+agent = Agent("assistant", model="co/mistral/mistral-medium-latest") # Managed
+agent = Agent("assistant", model="mistral/mistral-medium-latest")    # Your key
+```
+
 ## Model Capabilities Comparison
 
 ### Latest Flagship Models
@@ -161,6 +178,7 @@ agent = Agent("assistant", model="claude-opus-4")         # Your key
 | gemini-2.5-pro | Google | Default model, best price-performance for agents | ✅ |
 | gemini-3-pro-preview | Google | State-of-the-art reasoning | ✅ |
 | claude-sonnet-4-5 | Anthropic | Best balance of intelligence and speed | ✅ |
+| mistral-large-latest | Mistral | High performance European model | ✅ |
 
 ### Context Windows
 
@@ -308,7 +326,7 @@ agent = Agent("assistant", model="co/claude-sonnet-4-5")
 
 **Includes:**
 - 100K free tokens to start
-- Access to all providers (OpenAI, Google, Anthropic, Groq, Grok, OpenRouter)
+- Access to all providers (OpenAI, Google, Anthropic, Mistral, Groq, Grok, OpenRouter)
 - No API key management needed
 - ⭐ Bonus: [Star our repo](https://github.com/openonion/connectonion) for +100K tokens
 
@@ -346,6 +364,9 @@ export OPENROUTER_X_TITLE="Your App Name"
 
 # xAI Grok (use grok/ model prefix)
 export XAI_API_KEY="xai-..."
+
+# Mistral AI (use mistral/ model prefix)
+export MISTRAL_API_KEY="..."
 ```
 
 ```python
@@ -358,6 +379,7 @@ agent = Agent("assistant", model="claude-opus-4.1")
 agent = Agent("assistant", model="groq/llama-3.3-70b-versatile")
 agent = Agent("assistant", model="openrouter/openai/gpt-4o-mini")
 agent = Agent("assistant", model="grok/grok-4")
+agent = Agent("assistant", model="mistral/mistral-large-latest")
 ```
 
 ### OpenRouter and Grok notes
@@ -372,6 +394,11 @@ agent = Agent("assistant", model="grok/grok-4")
 - Prefix model names with `grok/` (for example: `grok/grok-4`).
 - Set `XAI_API_KEY`.
 - Grok is treated as an OpenAI-compatible provider in ConnectOnion.
+
+**Mistral AI (`mistral/...`)**
+- Prefix model names with `mistral/` (for example: `mistral/mistral-large-latest`).
+- Set `MISTRAL_API_KEY`.
+- Mistral is treated as an OpenAI-compatible provider in ConnectOnion.
 
 **Important:** For Gemini models, use `GEMINI_API_KEY` as recommended by [Google's official documentation](https://ai.google.dev/gemini-api/docs/api-key). While `GOOGLE_API_KEY` is supported for backward compatibility, `GEMINI_API_KEY` is the standard used by Google's Python SDK and most tools in the ecosystem.
 
