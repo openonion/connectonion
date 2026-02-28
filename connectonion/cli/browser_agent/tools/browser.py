@@ -31,7 +31,7 @@ from connectonion.useful_plugins import image_result_formatter, ui_stream
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from . import element_finder
-from ..browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
+from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
