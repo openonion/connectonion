@@ -156,17 +156,16 @@ agent = Agent("assistant", model="claude-opus-4")         # Your key
 #### Mistral Latest
 ```python
 # Mistral Large - Most capable Mistral model
-agent = Agent("assistant", model="co/mistral/mistral-large-latest")  # Managed
-agent = Agent("assistant", model="mistral/mistral-large-latest")     # Your key
+agent = Agent("assistant", model="mistral/mistral-large-latest")
 
 # Mistral Small - Balanced performance and efficiency
-agent = Agent("assistant", model="co/mistral/mistral-small-latest")  # Managed
-agent = Agent("assistant", model="mistral/mistral-small-latest")     # Your key
+agent = Agent("assistant", model="mistral/mistral-small-latest")
 
 # Mistral Medium - Mid-tier performance
-agent = Agent("assistant", model="co/mistral/mistral-medium-latest") # Managed
-agent = Agent("assistant", model="mistral/mistral-medium-latest")    # Your key
+agent = Agent("assistant", model="mistral/mistral-medium-latest")
 ```
+
+**Note:** Mistral models require your own API key (`MISTRAL_API_KEY`). Managed keys (`co/` prefix) are not yet available for Mistral.
 
 ## Model Capabilities Comparison
 
@@ -326,9 +325,11 @@ agent = Agent("assistant", model="co/claude-sonnet-4-5")
 
 **Includes:**
 - 100K free tokens to start
-- Access to all providers (OpenAI, Google, Anthropic, Mistral, Groq, Grok, OpenRouter)
+- Access to all providers (OpenAI, Google, Anthropic, Groq, Grok, OpenRouter)
 - No API key management needed
 - ⭐ Bonus: [Star our repo](https://github.com/openonion/connectonion) for +100K tokens
+
+**Note:** Mistral AI models require your own API key and are not available through managed keys.
 
 **When to use:**
 - Getting started with ConnectOnion
