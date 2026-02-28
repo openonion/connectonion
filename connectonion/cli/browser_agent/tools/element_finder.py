@@ -40,7 +40,7 @@ def _get_extract_js():
 
 def _get_element_matcher_prompt():
     """Load element_matcher.md fresh each time (no caching for development)."""
-    return (_BASE_DIR / "prompts" / "element_matcher.md").read_text()
+    return (_BASE_DIR.parent / "prompts" / "element_matcher.md").read_text()
 
 
 class InteractiveElement(BaseModel):
