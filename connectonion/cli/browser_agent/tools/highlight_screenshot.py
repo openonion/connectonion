@@ -14,7 +14,7 @@ Inspired by browser-use's python_highlights.py approach.
 from PIL import Image, ImageDraw, ImageFont
 from pathlib import Path
 from typing import List
-from . import element_finder
+from .tools import element_finder
 
 # Color scheme for different element types
 ELEMENT_COLORS = {

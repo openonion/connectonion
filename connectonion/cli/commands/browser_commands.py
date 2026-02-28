@@ -23,6 +23,6 @@ def handle_browser(command: str, headless: bool = True):
         command: The browser command to execute
         headless: Run browser without visible window (default True)
     """
-    from ..browser_agent.browser import execute_browser_command
+    from ..browser_agent.tools.browser import execute_browser_command
     result = execute_browser_command(command, headless=headless)
     console.print(result)

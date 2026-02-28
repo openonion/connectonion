@@ -10,6 +10,6 @@ LLM-Note:
 Browser agent module for ConnectOnion CLI.
 """
 
-from .browser import execute_browser_command, BrowserAutomation
+from .tools.browser import execute_browser_command, BrowserAutomation
 
 __all__ = ['execute_browser_command', 'BrowserAutomation']
