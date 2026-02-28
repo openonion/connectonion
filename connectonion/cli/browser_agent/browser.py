@@ -139,6 +139,9 @@ class BrowserAutomation:
         self.page = self.browser.new_page()
         self.page.set_default_navigation_timeout(60000)
 
+        # Set large viewport to show more content without scrolling
+        self.page.set_viewport_size({"width": 1920, "height": 1200})
+
         # Hide automation indicators (defense in depth)
         # Already handled by --disable-blink-features=AutomationControlled in args above
         self.page.add_init_script(

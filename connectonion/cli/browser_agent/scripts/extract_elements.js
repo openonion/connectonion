@@ -62,6 +62,24 @@
         if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
             return el.value || el.placeholder || '';
         }
+        // For contenteditable divs (like Twitter's reply box), check for placeholder
+        if (el.getAttribute('contenteditable') === 'true' || el.getAttribute('role') === 'textbox') {
+            // Try direct placeholder attributes first
+            const directPlaceholder = el.getAttribute('data-placeholder') ||
+                                     el.getAttribute('placeholder') ||
+                                     el.getAttribute('aria-placeholder');
+            if (directPlaceholder) return directPlaceholder;
+
+            // Check aria-describedby (Twitter's approach - placeholder in separate element)
+            const describedBy = el.getAttribute('aria-describedby');
+            if (describedBy) {
+                const placeholderEl = document.getElementById(describedBy);
+                if (placeholderEl) {
+                    const placeholderText = placeholderEl.innerText || placeholderEl.textContent || '';
+                    if (placeholderText.trim()) return placeholderText.trim();
+                }
+            }
+        }
         // For other elements, get inner text
         const text = el.innerText || el.textContent || '';
         return text.trim().replace(/\s+/g, ' ').substring(0, 80);
@@ -90,7 +108,19 @@
         // Skip empty elements with no text or useful attributes
         const text = getText(el);
         const ariaLabel = el.getAttribute('aria-label');
-        const placeholder = el.placeholder;
+
+        // Get placeholder (including from aria-describedby reference)
+        let placeholder = el.placeholder || el.getAttribute('data-placeholder') || el.getAttribute('aria-placeholder');
+        if (!placeholder && (el.getAttribute('contenteditable') === 'true' || el.getAttribute('role') === 'textbox')) {
+            const describedBy = el.getAttribute('aria-describedby');
+            if (describedBy) {
+                const placeholderEl = document.getElementById(describedBy);
+                if (placeholderEl) {
+                    placeholder = (placeholderEl.innerText || placeholderEl.textContent || '').trim();
+                }
+            }
+        }
+
         if (!text && !ariaLabel && !placeholder && tag !== 'input') return;
 
         // Skip very small elements (likely icons)
@@ -110,7 +140,7 @@
             text: text,
             role: role,
             aria_label: el.getAttribute('aria-label'),
-            placeholder: el.placeholder || null,
+            placeholder: placeholder || null,  // Use the placeholder we computed above (includes aria-describedby)
             input_type: el.type || null,
             href: (tag === 'a' && el.href) ? el.href.substring(0, 100) : null,
             x: Math.round(rect.x),

@@ -36,14 +36,8 @@ def version_callback(value: bool):
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
-    browser: Optional[str] = typer.Option(None, "-b", "--browser", help="Quick browser command"),
-    headless: bool = typer.Option(True, "--headless/--no-headless", help="Run browser headless"),
 ):
     """ConnectOnion - A simple Python framework for creating AI agents."""
-    if browser:
-        from .commands.browser_commands import handle_browser
-        handle_browser(browser, headless=headless)
-        raise typer.Exit()
     if ctx.invoked_subcommand is None:
         _show_help()
 
@@ -155,8 +149,8 @@ def doctor():
 
 @app.command()
 def browser(
+    headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
     command: str = typer.Argument(..., help="Browser command"),
-    headless: bool = typer.Option(True, "--headless/--no-headless", help="Run browser headless"),
 ):
     """Browser automation."""
     from .commands.browser_commands import handle_browser
