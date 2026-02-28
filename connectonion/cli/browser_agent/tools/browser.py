@@ -44,7 +44,7 @@ except ImportError:
     PLAYWRIGHT_AVAILABLE = False
 
 # Path to the browser agent system prompt
-PROMPT_PATH = Path(__file__).parent / "prompts" / "agent.md"
+PROMPT_PATH = Path(__file__).parent.parent / "prompts" / "agent.md"
 
 
 class BrowserAutomation:
