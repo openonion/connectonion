@@ -1,6 +1,6 @@
-# Tool: Shell
+# Tool: Bash
 
-Execute terminal commands in a persistent shell session.
+Execute bash commands (Unix/Mac only).
 
 ## When to Use
 
