@@ -68,7 +68,13 @@ Use `load_guide(path)` to load detailed documentation.
 
 | Guide | Description |
 |-------|-------------|
-| `useful_tools/shell` | Shell command execution |
+| `useful_tools/bash` | Run bash commands (Unix/Mac) |
+| `useful_tools/read_file` | Read file contents with line numbers |
+| `useful_tools/edit` | Precise string replacement in files |
+| `useful_tools/write` | Create or overwrite files |
+| `useful_tools/glob` | Find files by pattern |
+| `useful_tools/grep` | Search file contents with regex |
+| `useful_tools/browser_tools` | Full browser control (click, type, screenshot) |
 | `useful_tools/diff_writer` | Human-in-the-loop file writing with diffs |
 | `useful_tools/todo_list` | Task tracking for multi-step tasks |
 | `useful_tools/memory` | Persistent memory using markdown storage |
@@ -86,8 +92,11 @@ Use `load_guide(path)` to load detailed documentation.
 |-------|-------------|
 | `useful_plugins/re_act` | ReAct pattern - planning and reflection |
 | `useful_plugins/eval` | Debug and test prompts during development |
-| `useful_plugins/shell_approval` | User approval before shell commands |
+| `useful_plugins/tool_approval` | User approval before dangerous tool calls |
+| `useful_plugins/auto_compact` | Context window management |
 | `useful_plugins/image_result_formatter` | Format base64 images for vision models |
+| `useful_plugins/prefer_write_tool` | Nudges toward write over edit for new files |
+| `useful_plugins/ulw` | Ultra work mode — autonomous multi-turn sessions |
 | `useful_plugins/gmail_plugin` | Email approval and CRM sync |
 | `useful_plugins/calendar_plugin` | Calendar operation approval |
 
@@ -135,10 +144,10 @@ Use `load_guide(path)` to load detailed documentation.
 
 | Guide | Description |
 |-------|-------------|
-| `templates/minimal` | Simplest starting point |
-| `templates/playwright` | Browser automation agent |
+| `templates/minimal` | Bash + file tools + browser (default) |
+| `templates/coder` | Full coding agent (bash, files, planning) |
+| `templates/browser` | Web automation with Playwright |
 | `templates/web-research` | Research and data extraction |
-| `templates/meta-agent` | Development assistant |
 
 ### Integrations
 
