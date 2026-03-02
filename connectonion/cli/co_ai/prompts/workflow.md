@@ -92,8 +92,10 @@ host(create_agent, trust="careful")  # Web deployment
 
 ## Plan Mode
 
-Use `enter_plan_mode()` only for:
-- Multi-file refactors or architecture changes
-- Tasks touching 5+ files with unclear requirements
+**New agent** → always use plan mode first. Design the spec, get approval, then scaffold.
 
-**Not** for creating a single agent file.
+**Existing agent** → read the files first, then edit directly. No plan needed.
+
+The plan is a YAML contract: which template, what tools, what input/output/effects. After user approves, run `co create` then edit `agent.py`.
+
+**NEVER** write agent files manually. Always use `co create` to scaffold.

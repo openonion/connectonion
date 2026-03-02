@@ -22,9 +22,13 @@ Plugins included:
 
 Architecture:
 - Uses prompt assembly from prompts/assembler.py
+- Tool name must match prompts/tools/{tool_name}.md for the doc to be included
 - Loads project context from CLAUDE.md, NIGHT_RUNNER_PROGRESS.md, etc.
 - Global .co directory at ~/.co for consistent logs/evals
 - MODE_AUTO vs MODE_NORMAL for FileWriter (web vs CLI)
+
+Debug:
+- To inspect the assembled system prompt: python tests/cli/show_co_ai_prompt.py
 """
 
 from pathlib import Path

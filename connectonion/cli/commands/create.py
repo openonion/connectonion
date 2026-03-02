@@ -145,17 +145,19 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         provider, key_type = detect_api_provider(key)
         detected_keys[provider] = key
 
-    # Always authenticate to get OPENONION_API_KEY
+    # Authenticate only if OPENONION_API_KEY not already in global keys.env
     global_dir = Path.home() / ".co"
-    if not yes:
-        console.print("\n[cyan]🔐 Authenticating with OpenOnion for managed keys...[/cyan]")
+    global_keys_env = global_dir / "keys.env"
+    already_authed = global_keys_env.exists() and "OPENONION_API_KEY=" in global_keys_env.read_text()
 
-    success = authenticate(global_dir, save_to_project=False)
-    if not success and not yes:
-        console.print("[yellow]⚠️  Authentication failed - you can still use your own API keys[/yellow]")
+    if not already_authed:
+        if not yes:
+            console.print("\n[cyan]🔐 Authenticating with OpenOnion for managed keys...[/cyan]")
+        success = authenticate(global_dir, save_to_project=False)
+        if not success and not yes:
+            console.print("[yellow]⚠️  Authentication failed - you can still use your own API keys[/yellow]")
 
     # Check global keys.env for API keys
-    global_keys_env = global_dir / "keys.env"
     if global_keys_env.exists():
         with open(global_keys_env, 'r', encoding='utf-8') as f:
             for line in f:

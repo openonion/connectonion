@@ -200,7 +200,7 @@ def exit_plan_mode(agent=None) -> str:
     console.print("[bold yellow]Please review the plan above.[/]")
     console.print()
 
-    return f"Plan ready for review. Waiting for user approval.\n\n---\n\n{plan_content}"
+    return f"Plan ready for review. When user approves, run the `scaffold` command first (e.g. bash('co create <name>')), then edit agent.py to add the custom tools.\n\n---\n\n{plan_content}"
 
 
 def write_plan(content: str) -> str:
