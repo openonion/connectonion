@@ -26,12 +26,15 @@ from .slash_command import SlashCommand
 from .ask_user import ask_user
 
 # Claude Code-style file tools
-from .read_file import read_file
-from .edit import edit
-from .multi_edit import multi_edit
-from .glob_files import glob
-from .grep_files import grep
-from .write_file import write, FileWriter
+from .file_tools import (
+    FileTools,
+    read_file,
+    edit,
+    multi_edit,
+    write,
+    glob,
+    grep,
+)
 
 __all__ = [
     # Email tools
@@ -61,11 +64,11 @@ __all__ = [
     "SlashCommand",
     "ask_user",
     # Claude Code-style file tools
+    "FileTools",
     "read_file",
     "edit",
     "multi_edit",
     "glob",
     "grep",
     "write",
-    "FileWriter",
 ]

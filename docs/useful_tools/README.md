@@ -7,6 +7,7 @@ Pre-built tools for common agent tasks.
 | Tool | Purpose | Import |
 |------|---------|--------|
 | [Shell](shell.md) | Execute shell commands | `from connectonion import Shell` |
+| [FileTools](file_tools.md) | Read/edit files with safety tracking | `from connectonion.useful_tools import FileTools` |
 | [DiffWriter](diff_writer.md) | Edit files with diffs | `from connectonion import DiffWriter` |
 | [TodoList](todo_list.md) | Track task progress | `from connectonion import TodoList` |
 | [WebFetch](web_fetch.md) | Fetch web content | `from connectonion import WebFetch` |
@@ -23,14 +24,15 @@ Pre-built tools for common agent tasks.
 ## Usage Pattern
 
 ```python
-from connectonion import Agent, Shell, DiffWriter
+from connectonion import Agent, Shell
+from connectonion.useful_tools import FileTools
 
 # Create tool instances
 shell = Shell()
-writer = DiffWriter()
+file_tools = FileTools()  # Full access with read-before-edit tracking
 
 # Pass to agent
-agent = Agent("coder", tools=[shell, writer])
+agent = Agent("coder", tools=[shell, file_tools])
 
 agent.input("Create a hello.py file that prints 'Hello World'")
 ```
@@ -62,8 +64,9 @@ See [co copy](../cli/copy.md) for full details.
 ## Categories
 
 ### File Operations
+- **FileTools** - Read/edit files with safety tracking (read-before-edit, stale-read detection)
 - **Shell** - Run commands, scripts, git
-- **DiffWriter** - Edit files with visual diffs
+- **DiffWriter** - Edit files with visual diffs (legacy)
 
 ### Communication
 - **Gmail** - Send/read Gmail

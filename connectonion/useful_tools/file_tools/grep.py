@@ -17,7 +17,7 @@ import re
 from pathlib import Path
 from typing import Optional, Literal
 
-from .glob_files import IGNORE_DIRS
+from .glob import IGNORE_DIRS
 
 
 def grep(

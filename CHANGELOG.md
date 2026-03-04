@@ -2,6 +2,112 @@
 
 All notable changes to ConnectOnion will be documented in this file.
 
+## [Unreleased]
+
+### 🎉 Major Features
+
+#### FileTools Refactor - Claude Code-style File Operations
+- **NEW**: `FileTools` class with read-before-edit tracking and permission control
+- **Read-Before-Edit Validation**: Prevents edits without prior file reads
+- **Stale Read Detection**: MD5 hash snapshots detect external file changes
+- **Permission Modes**: `write` (full access) and `read` (read-only) modes
+- **Simplified write()**: Now a pure function for creating NEW files only
+
+### 🔧 Improvements
+
+#### File Operations Architecture
+- **Organized Structure**: Moved to `useful_tools/file_tools/` folder (like `browser_tools` pattern)
+- **Consistent Naming**: All files match function names (`read.py`, `edit.py`, `write.py`, `glob.py`, `grep.py`)
+- **Simplified write()**: Removed DiffWriter dependency, reduced from 122 to 52 lines
+- **write() Semantic**: Enforces new-file-only, returns error if file exists (guides agents to use `edit()`)
+- **No agent Parameter**: write() no longer requires agent parameter
+
+#### API Changes
+```python
+# Old way - separate tools
+from connectonion.useful_tools import read_file, write_file, edit_file
+
+# New way - unified class with state tracking
+from connectonion.useful_tools import FileTools
+
+ft = FileTools()  # Full access with read-before-edit
+ft = FileTools(permission="read")  # Read-only mode
+```
+
+#### Safety Features
+- **MD5 Snapshots**: More reliable than timestamps for detecting file changes
+- **Atomic Multi-Edit**: All edits succeed or none applied
+- **Auto Parent Dirs**: write() creates parent directories automatically
+- **Clear Error Messages**: Helpful guidance when operations fail
+
+### 🧪 Testing
+
+#### Comprehensive Test Coverage
+- **27 Tests**: Cover all file operations and edge cases
+- **Test Coverage**:
+  - ✅ Read offset/limit functionality
+  - ✅ Edit uniqueness validation
+  - ✅ Multi-edit atomic operations
+  - ✅ Write preventing overwrites
+  - ✅ Glob patterns and max results
+  - ✅ Grep modes (files/content/count)
+  - ✅ FileTools validation and stale reads
+  - ✅ Permission enforcement
+  - ✅ Integration scenarios
+
+### 📚 Documentation
+
+#### New Documentation
+- **file_tools/README.md**: Comprehensive documentation of architecture
+- **docs-site/file_tools.md**: User-facing documentation with examples
+- **Updated useful-tools.md**: Added FileTools to tool reference
+
+#### Usage Examples
+- File editing agent with safety
+- Read-only documentation agent
+- Code generation agent (creates new files)
+
+### 🗑️ Breaking Changes
+
+#### Removed Features
+- **Removed**: DiffWriter from write() function
+- **Changed**: write() now returns error if file exists (instead of overwriting)
+- **Migration**: Use `edit()` or `multi_edit()` to modify existing files
+
+### 📁 File Structure
+
+```
+connectonion/useful_tools/file_tools/
+├── __init__.py         → Exports FileTools class and functions
+├── file_tools.py       → FileTools class (wrapper with state tracking)
+├── read.py             → read_file() function
+├── edit.py             → edit() function
+├── multi_edit.py       → multi_edit() function
+├── write.py            → write() function (simplified, no DiffWriter)
+├── glob.py             → glob() function
+├── grep.py             → grep() function
+└── README.md           → Comprehensive documentation
+```
+
+### 🚀 Impact
+
+- **Better Safety**: Read-before-edit validation prevents stale edits
+- **Simpler API**: write() is now a pure function without DiffWriter complexity
+- **Cleaner Semantics**: write() for new files, edit() for modifications
+- **Agent-Friendly**: Clear error messages guide agents to correct operations
+- **Backward Compatible**: Individual functions still available without FileTools wrapper
+
+### 💭 Philosophy
+
+> "Keep simple things simple, make complicated things possible"
+
+This refactor embodies our core philosophy by:
+- Making write() simpler (removed DiffWriter)
+- Making file operations safer (read-before-edit, stale-read detection)
+- Providing flexibility (permission modes, standalone functions)
+
+---
+
 ## [0.1.9] - 2025-10-05
 
 ### 🎉 New Features

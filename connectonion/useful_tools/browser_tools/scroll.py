@@ -18,7 +18,7 @@ from pydantic import BaseModel
 from connectonion import llm_do
 import time
 
-_PROMPT = (Path(__file__).parent.parent / "prompts" / "scroll_strategy.md").read_text()
+_PROMPT = (Path(__file__).parent / "prompts" / "scroll_strategy.md").read_text()
 
 
 class ScrollStrategy(BaseModel):
