@@ -59,9 +59,10 @@ def create_coding_agent(
     auto_approve: bool = False,
 ) -> Agent:
     todo = TodoList()
+    file_tools = FileTools()
 
     tools = [
-        FileTools,
+        file_tools,
         bash,
         task,
         enter_plan_mode,
