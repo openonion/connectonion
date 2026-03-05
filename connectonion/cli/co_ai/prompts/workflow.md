@@ -49,13 +49,18 @@ That's it. Keep it simple.
 
 **Custom tools** — plain Python functions with type hints and docstrings
 
-## When to Ask vs Just Do
+## When to Use Workflow vs Direct Action
 
-**Just write the agent** when the task is clear:
-- "create an agent that monitors my inbox" → write it
-- "build a file organizer" → write it
+**Always use workflow** (plan mode + `co create`) for:
+- **Building new agents**: "create an agent to monitor my inbox" → plan mode → `co create` → edit agent.py
+- **Coding tasks**: adding features, refactoring, multi-file changes → plan first
 
-**Ask first** when there's a real choice that changes the design:
+**Do it directly** for:
+- **Simple operations**: "delete this file", "list files in src/", "run tests" → just do it
+- **Single file edits**: fixing a typo, updating a config → read then edit
+- **Quick commands**: running a script, checking git status → use bash
+
+**Ask for design choices**:
 ```python
 ask_user(
     question="How should duplicates be handled?",
@@ -63,7 +68,7 @@ ask_user(
 )
 ```
 
-Don't ask for confirmation before every agent. Ask when the answer changes what you build.
+Don't ask for confirmation before every action. Ask when the answer changes what you build.
 
 ## Agent Design Principles
 
@@ -92,10 +97,18 @@ host(create_agent, trust="careful")  # Web deployment
 
 ## Plan Mode
 
-**New agent** → always use plan mode first. Design the spec, get approval, then scaffold.
+**Building a new agent** → always start with plan mode:
+1. Design the spec (template, tools, input/output/effects)
+2. Get user approval
+3. Run `co create` with chosen template
+4. Edit `agent.py` to implement logic
 
-**Existing agent** → read the files first, then edit directly. No plan needed.
+**Editing existing agent** → read the files first, then edit directly. No plan needed.
 
-The plan is a YAML contract: which template, what tools, what input/output/effects. After user approves, run `co create` then edit `agent.py`.
+The plan is a YAML contract that describes what the agent will do. After approval, execute the plan.
 
-**NEVER** write agent files manually. Always use `co create` to scaffold.
+**CRITICAL**: NEVER write agent files manually from scratch. Always use `co create` to scaffold. This ensures:
+- `.env` file with API keys
+- Proper imports and structure
+- Bash, file system, and browser tools pre-configured
+- Approval and plugin system ready
