@@ -482,16 +482,19 @@ The approval system uses unified permissions - all permissions stored in `sessio
 ```python
 session['permissions'] = {
     "read_file": {
+        "allowed": True,
         "source": "safe",
         "reason": "read-only operation",
         "expires": {"type": "never"}
     },
     "Bash(git *)": {
+        "allowed": True,
         "source": "skill",
         "reason": "commit skill (turn 5)",
         "expires": {"type": "turn_end"}
     },
     "bash:pytest": {
+        "allowed": True,
         "source": "user",
         "reason": "approved for session",
         "expires": {"type": "session_end"}
