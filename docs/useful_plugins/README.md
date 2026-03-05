@@ -6,6 +6,8 @@ Pre-built plugins that extend agent behavior via event hooks.
 
 | Plugin | Purpose | Import |
 |--------|---------|--------|
+| [skills](../concepts/skills.md) | Invoke workflows with scoped permissions | `from connectonion.useful_plugins import skills` |
+| [tool_approval](tool_approval.md) | Web-based tool approval | `from connectonion.useful_plugins import tool_approval` |
 | [re_act](re_act.md) | ReAct reasoning pattern | `from connectonion.useful_plugins import re_act` |
 | [eval](eval.md) | Task evaluation/debugging | `from connectonion.useful_plugins import eval` |
 | [system_reminder](system_reminder.md) | Inject contextual guidance | `from connectonion.useful_plugins import system_reminder` |
@@ -18,12 +20,12 @@ Pre-built plugins that extend agent behavior via event hooks.
 
 ```python
 from connectonion import Agent
-from connectonion.useful_plugins import re_act, eval
+from connectonion.useful_plugins import skills, tool_approval, re_act
 
 agent = Agent(
     "assistant",
-    tools=[search],
-    plugins=[re_act, eval]  # List of plugins
+    tools=[search, bash],
+    plugins=[skills, tool_approval, re_act]  # List of plugins
 )
 ```
 
@@ -53,6 +55,13 @@ See [co copy](../cli/copy.md) for full details.
 
 ## Categories
 
+### Workflows
+- **skills** - Pre-packaged workflows with scoped permissions (/commit, /deploy, etc.)
+
+### Security
+- **tool_approval** - Web-based approval for dangerous tools
+- **shell_approval** - CLI-based approval for shell commands
+
 ### Reasoning
 - **re_act** - Plan before acting, reflect after tools
 
@@ -64,9 +73,6 @@ See [co copy](../cli/copy.md) for full details.
 
 ### Media
 - **image_result_formatter** - Convert base64 images for vision models
-
-### Security
-- **shell_approval** - Require approval for shell commands
 
 ### OAuth
 - **gmail_plugin** - Handle Gmail authentication flow

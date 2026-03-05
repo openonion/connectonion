@@ -2,36 +2,32 @@
 LLM-Note: co_ai tools package - Claude Code-style tools for AI coding agents
 
 This package provides a comprehensive toolkit for AI agents to interact with code:
-- File operations (read, edit, write) with approval flows
+- File operations (read, edit, write)
 - Search capabilities (glob, grep)
 - Task spawning and background process management
 - Planning mode for complex implementations
 - User interaction and documentation loading
 
 Key exports:
-- File tools: read_file, edit, multi_edit, write, FileWriter, DiffWriter
-- Search tools: glob, grep
+- File tools: FileTools (read_file, edit, multi_edit, write, glob, grep)
 - Task tools: task, run_background, task_output, kill_task
 - Planning tools: enter_plan_mode, exit_plan_mode, write_plan
 - Interaction tools: ask_user, load_guide
 - Utilities: TodoList
 
-Note: Many tools are re-exported from connectonion.useful_tools for consistency.
+Note: All file tools re-exported from connectonion.useful_tools.file_tools (single source of truth).
 """
 
 """
 Coding tools for the AI agent (Claude Code-style).
 
-File Tools:
-    - read_file: Read file with line numbers
-    - edit: Precise string replacement (str_replace)
-    - multi_edit: Multiple atomic string replacements
-    - write: Full file overwrite with approval
-    - Write: Class-based write with mode control
-
-Search Tools:
-    - glob: Find files by pattern
-    - grep: Search file contents
+File Tools (via FileTools class):
+    - FileTools.read_file: Read file with line numbers
+    - FileTools.edit: Precise string replacement (str_replace)
+    - FileTools.multi_edit: Multiple atomic string replacements
+    - FileTools.write: Create new files (errors if file exists)
+    - FileTools.glob: Find files by pattern
+    - FileTools.grep: Search file contents
 
 Task Tools:
     - task: Spawn sub-agent for complex tasks
@@ -49,27 +45,16 @@ Interaction Tools:
     - load_guide: Load documentation/guide
 
 Utility Classes:
-    - DiffWriter: Low-level file writer with diff preview
     - TodoList: Task list management
 
-Note: File tools are re-exported from connectonion.useful_tools for consistency.
+Note: All file tools are re-exported from connectonion.useful_tools.file_tools (single source of truth).
 """
 
-# File tools (Claude Code-style) - re-export from useful_tools
-from connectonion.useful_tools import (
-    read_file,
-    edit,
-    multi_edit,
-    glob,
-    grep,
-    write,
-    FileWriter,
-    DiffWriter,
-    MODE_NORMAL,
-    MODE_AUTO,
-    MODE_PLAN,
-    TodoList,
-)
+# File tools (Claude Code-style) - import from useful_tools/file_tools (single source of truth)
+from connectonion.useful_tools.file_tools import FileTools
+
+# TodoList from useful_tools
+from connectonion.useful_tools import TodoList
 
 # Task tools (CLI-specific)
 from connectonion.cli.co_ai.tools.task import task
@@ -84,18 +69,7 @@ from connectonion.cli.co_ai.tools.load_guide import load_guide
 
 __all__ = [
     # File tools (Claude Code-style)
-    "read_file",
-    "edit",
-    "multi_edit",
-    "write",
-    "FileWriter",
-    "DiffWriter",
-    "MODE_NORMAL",
-    "MODE_AUTO",
-    "MODE_PLAN",
-    # Search tools
-    "glob",
-    "grep",
+    "FileTools",
     # Task tools
     "task",
     "run_background",

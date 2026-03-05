@@ -36,7 +36,7 @@ from pathlib import Path
 from .context import load_project_context
 from .prompts.assembler import assemble_prompt
 from .tools import (
-    glob, grep, edit, read_file, task,
+    FileTools, task,
     enter_plan_mode, exit_plan_mode, write_plan,
     ask_user,
     run_background, task_output, kill_task,
@@ -44,7 +44,7 @@ from .tools import (
 )
 from .skills import skill
 from .plugins import system_reminder
-from connectonion import Agent, bash, FileWriter, MODE_AUTO, MODE_NORMAL, TodoList
+from connectonion import Agent, bash, TodoList
 from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw
 
 
@@ -58,15 +58,10 @@ def create_coding_agent(
     max_iterations: int = 100,
     auto_approve: bool = False,
 ) -> Agent:
-    writer = FileWriter(mode=MODE_AUTO if auto_approve else MODE_NORMAL)
     todo = TodoList()
 
     tools = [
-        glob,
-        grep,
-        read_file,
-        edit,
-        writer,
+        FileTools,
         bash,
         task,
         enter_plan_mode,
@@ -104,5 +99,4 @@ def create_coding_agent(
         co_dir=GLOBAL_CO_DIR,
     )
 
-    agent.writer = writer
     return agent

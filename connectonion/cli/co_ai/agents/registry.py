@@ -19,20 +19,20 @@ Architecture:
 from typing import Dict, Any, Optional
 from connectonion import Agent
 
-from connectonion.cli.co_ai.tools import glob, grep, read_file
+from connectonion.cli.co_ai.tools import FileTools
 
 
 # Sub-agent configurations
 SUBAGENTS: Dict[str, Dict[str, Any]] = {
     "explore": {
         "description": "Fast agent for exploring codebases. Find files, search code, answer questions about structure.",
-        "tools": [glob, grep, read_file],
+        "tools": [FileTools],
         "model": "co/gemini-2.5-flash",  # Fast model for exploration
         "max_iterations": 15,
     },
     "plan": {
         "description": "Design implementation plans. Analyze architecture, identify files to change, plan steps.",
-        "tools": [glob, grep, read_file],
+        "tools": [FileTools],
         "model": "co/gemini-2.5-pro",  # Smarter model for planning
         "max_iterations": 10,
     },

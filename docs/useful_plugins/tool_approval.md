@@ -206,6 +206,8 @@ When `agent.io` is None (not web mode), all tools execute without approval. This
 
 ## See Also
 
+- [Permissions](../concepts/permissions.md) - Complete permission system overview
+- [Skills](../concepts/skills.md) - Pre-packaged workflows with scoped permissions
 - [shell_approval](shell_approval.md) - Terminal-based approval for shell commands
 - [Events](../concepts/events.md) - Available event hooks
 - [Plugins](../concepts/plugins.md) - Plugin system overview

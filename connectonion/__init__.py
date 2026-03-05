@@ -45,7 +45,7 @@ from .useful_tools import (
     WebFetch, Shell, bash, DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN,
     pick, yes_no, autocomplete, TodoList, SlashCommand,
     # Claude Code-style file tools
-    read_file, edit, multi_edit, glob, grep, write, FileWriter,
+    read_file, edit, multi_edit, glob, grep, write,
 )
 from .network import connect, RemoteAgent, Response, host, create_app, IO
 from .network import relay, announce
@@ -96,7 +96,6 @@ __all__ = [
     "glob",
     "grep",
     "write",
-    "FileWriter",
     # Networking
     "connect",
     "RemoteAgent",

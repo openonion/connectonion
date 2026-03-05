@@ -163,12 +163,19 @@ def _is_approved_for_session(session: dict, tool_name: str) -> bool:
 
 
 def _save_session_approval(session: dict, tool_name: str) -> None:
-    """Save tool as approved for this session.
+    """Save tool as approved for this session using unified permissions.
 
     Future calls to the same tool will skip approval prompts.
     """
-    _init_approval_state(session)
-    session['approval']['approved_tools'][tool_name] = 'session'
+    if 'permissions' not in session:
+        session['permissions'] = {}
+
+    session['permissions'][tool_name] = {
+        'allowed': True,
+        'source': 'user',
+        'reason': 'approved for session',
+        'expires': {'type': 'session_end'}
+    }
 
 
 def _resolve_display_name(tool_name: str, args_str: str) -> str:
@@ -266,6 +273,43 @@ def check_approval(agent: 'Agent') -> None:
         ValueError: If tool rejected or blocked by mode
     """
     # =================================================================
+    # Check unified permissions (HIGHEST PRIORITY)
+    # =================================================================
+    pending = agent.current_session.get('pending_tool')
+    if pending:
+        tool_name = pending['name']
+        tool_args = pending['arguments']
+
+        # Ensure safe tools are in permissions
+        if tool_name in SAFE_TOOLS:
+            if 'permissions' not in agent.current_session:
+                agent.current_session['permissions'] = {}
+            if tool_name not in agent.current_session['permissions']:
+                agent.current_session['permissions'][tool_name] = {
+                    'allowed': True,
+                    'source': 'safe',
+                    'reason': 'read-only operation',
+                    'expires': {'type': 'never'}
+                }
+
+        permissions = agent.current_session.get('permissions', {})
+
+        if permissions:
+            # Import pattern matcher from skills plugin
+            from .skills import matches_permission_pattern
+
+            # Check each permission in the dict
+            for pattern, perm in permissions.items():
+                if not perm.get('allowed'):
+                    continue
+
+                # Try pattern match
+                if matches_permission_pattern(tool_name, tool_args, [pattern]):
+                    reason = perm.get('reason', 'unknown')
+                    _log(agent, f"[dim]⚡ {tool_name} ({reason})[/dim]")
+                    return
+
+    # =================================================================
     # Check if another plugin requested to skip approvals (e.g., ulw)
     # =================================================================
     if agent.current_session.get('mode') == 'ulw':
@@ -321,19 +365,12 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     # MODE: safe - Dangerous tools need approval
     # =================================================================
-    # Safe tools don't need approval
-    if tool_name in SAFE_TOOLS:
-        return
-
     # Unknown tools (not in SAFE or DANGEROUS) are treated as safe
     if tool_name not in DANGEROUS_TOOLS:
         return
 
-    # Already approved for this session
+    # Get approval key for this tool
     approval_key = _get_approval_key(tool_name, tool_args)
-    if _is_approved_for_session(agent.current_session, approval_key):
-        _log(agent, f"[dim]⏭ {approval_key} (session-approved)[/dim]")
-        return
 
     # Get remaining tools in this batch for client context
     pending = agent.current_session.get('pending_tool')

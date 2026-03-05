@@ -1,6 +1,14 @@
 ---
 name: commit
 description: Create git commits with good messages. Use when user says "commit", "create commit", or asks to commit changes.
+tools:
+  - Bash(git status)
+  - Bash(git diff *)
+  - Bash(git log *)
+  - Bash(git add *)
+  - Bash(git commit *)
+  - read_file
+  - glob
 ---
 
 # Git Commit Skill
