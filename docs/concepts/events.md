@@ -61,19 +61,20 @@ agent = Agent(
 
 ## Event Types
 
-| Event | When It Runs | Fires | Use For |
-|-------|--------------|-------|---------|
-| `after_user_input` | After user provides input | Once per turn | Add context, timestamps, initialize turn state |
-| `before_iteration` | Before each iteration starts | Once per iteration | Poll IO, check mode changes, setup |
-| `before_llm` | Before each LLM call | Multiple per turn | Modify messages for each LLM call |
-| `after_llm` | After LLM responds | Multiple per turn | Log LLM calls, analyze responses |
-| `before_tools` | Before ALL tools in round | Once per round | Prepare shared context for all tools |
-| `before_each_tool` | Before tool execution | Per tool call | Validate args, approval checks (no message changes!) |
-| `after_each_tool` | After each tool completes | Per tool call | Log performance, side effects (no message changes!) |
-| `after_tools` | After ALL tools in round | Once per round | Add reflection, **ONLY place safe to modify messages** |
-| `on_error` | When tool fails | Per tool error | Custom error handling, retries |
-| `after_iteration` | End of iteration (after tools) | Once per iteration | Checkpoints, stop loop via `stop_loop_result` |
-| `on_complete` | After agent finishes | Once per input() | Metrics, cleanup, final summary |
+| Event              | When It Runs                   | Fires              | Use For                                                |
+| ------------------ | ------------------------------ | ------------------ | ------------------------------------------------------ |
+| `after_user_input` | After user provides input      | Once per turn      | Add context, timestamps, initialize turn state         |
+| `before_iteration` | Before each iteration starts   | Once per iteration | Poll IO, check mode changes, setup                     |
+| `before_llm`       | Before each LLM call           | Multiple per turn  | Modify messages for each LLM call                      |
+| `after_llm`        | After LLM responds             | Multiple per turn  | Log LLM calls, analyze responses                       |
+| `before_tools`     | Before ALL tools in round      | Once per round     | Prepare shared context for all tools                   |
+| `before_each_tool` | Before tool execution          | Per tool call      | Validate args, approval checks (no message changes!)   |
+| `after_each_tool`  | After each tool completes      | Per tool call      | Log performance, side effects (no message changes!)    |
+| `after_tools`      | After ALL tools in round       | Once per round     | Add reflection, **ONLY place safe to modify messages** |
+| `on_error`         | When tool fails                | Per tool error     | Custom error handling, retries                         |
+| `after_iteration`  | End of iteration (after tools) | Once per iteration | Checkpoints, stop loop via `stop_loop_result`          |
+| `on_stop_signal`   | When stop_signal is set        | Once per stop      | Cleanup interrupted ops, save checkpoints, rollback    |
+| `on_complete`      | After agent finishes           | Once per input()   | Metrics, cleanup, final summary                        |
 
 > **Note on message injection:** Use `after_tools` (not `after_each_tool`) when adding messages to ensure compatibility with all LLM providers. Anthropic Claude requires tool results to immediately follow tool_calls.
 
@@ -116,6 +117,7 @@ TURN START
 │   ├─ after_llm
 │   └─ (no after_iteration - not continuing)
 │
+├─ on_stop_signal                ← if interrupted by stop_signal
 └─ on_complete                   ← turn ends
 ```
 
@@ -390,6 +392,39 @@ agent.input("Search for Python")
 - Send task completion notifications
 - Log total execution time
 - Update external systems
+
+### Interrupted Operation Cleanup (on_stop_signal)
+
+Use `on_stop_signal` to clean up when an operation is interrupted via `stop_signal`:
+
+```python
+from connectonion import Agent, on_stop_signal
+
+def cleanup_on_stop(agent):
+    """Clean up when operation is interrupted"""
+    trace = agent.current_session['trace']
+    pending_tools = [t for t in trace if t.get('status') == 'running']
+
+    if pending_tools:
+        print(f"⚠️  Interrupted with {len(pending_tools)} pending operations")
+
+    # Save checkpoint so work can be resumed
+    print("💾 Saving checkpoint...")
+
+agent = Agent(
+    "assistant",
+    tools=[search],
+    on_events=[on_stop_signal(cleanup_on_stop)]
+)
+```
+
+**Use cases for `on_stop_signal`:**
+
+- Rollback partial changes
+- Save checkpoints for resumption
+- Clean up temporary resources
+- Notify user of interruption
+- Log interrupted operations
 
 ### Session Statistics
 
