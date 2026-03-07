@@ -13,7 +13,7 @@ Components under test:
 
 import pytest
 from unittest.mock import Mock
-from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete
+from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete, on_stop_signal
 from connectonion.core.llm import LLMResponse, ToolCall
 from connectonion.core.usage import TokenUsage
 
@@ -376,6 +376,7 @@ class TestEventSystem:
         assert after_tools(handler)._event_type == 'after_tools'
         assert on_error(handler)._event_type == 'on_error'
         assert on_complete(handler)._event_type == 'on_complete'
+        assert on_stop_signal(handler)._event_type == 'on_stop_signal'
 
     def test_event_validation_rejects_non_callable(self):
         """Test that non-callable events are rejected with clear error"""
@@ -596,6 +597,13 @@ class TestNewEventSyntax:
         assert handler6._event_type == 'on_error'
         assert handler7._event_type == 'on_complete'
 
+        @on_stop_signal
+        def handler8(agent):
+            pass
+
+        assert callable(handler8)
+        assert handler8._event_type == 'on_stop_signal'
+
     def test_wrapper_multiple_args_returns_list(self):
         """Test before_each_tool(fn1, fn2) returns list"""
 
@@ -731,3 +739,208 @@ class TestNewEventSyntax:
 
         # Should fire in registration order
         assert calls == ['handler1', 'handler2', 'handler3']
+
+
+class TestOnStopSignalEvent:
+    """Test on_stop_signal event behavior"""
+
+    def test_on_stop_signal_fires_when_stop_signal_set(self):
+        """Test on_stop_signal fires when plugin sets stop_signal in session"""
+        calls = []
+
+        def set_stop(agent):
+            agent.current_session['stop_signal'] = 'User rejected'
+
+        def track_stop(agent):
+            calls.append('on_stop_signal')
+
+        agent = Agent(
+            "test",
+            tools=[search],
+            model="gpt-4o-mini",
+            on_events=[
+                after_tools(set_stop),
+                on_stop_signal(track_stop)
+            ]
+        )
+
+        result = agent.input("Search for Python")
+
+        # on_stop_signal should fire exactly once
+        assert len(calls) == 1
+        assert calls == ['on_stop_signal']
+        # Agent should return the stop message
+        assert result == "What would you like me to do?"
+
+    def test_on_stop_signal_handler_receives_agent(self):
+        """Test on_stop_signal handler receives agent instance with session data"""
+        received_agents = []
+
+        def set_stop(agent):
+            agent.current_session['stop_signal'] = 'Interrupted'
+
+        def check_agent(agent):
+            received_agents.append(agent)
+            # Verify agent has expected attributes
+            assert hasattr(agent, 'name')
+            assert hasattr(agent, 'current_session')
+            assert hasattr(agent, 'tools')
+            assert hasattr(agent, 'llm')
+            assert agent.name == "test"
+            assert agent.current_session is not None
+            assert 'trace' in agent.current_session
+            assert 'messages' in agent.current_session
+
+        agent = Agent(
+            "test",
+            tools=[search],
+            model="gpt-4o-mini",
+            on_events=[
+                after_tools(set_stop),
+                on_stop_signal(check_agent)
+            ]
+        )
+
+        agent.input("Search for Python")
+
+        assert len(received_agents) == 1
+
+    def test_on_stop_signal_wrapper_sets_event_type(self):
+        """Test on_stop_signal wrapper correctly sets _event_type attribute"""
+
+        def handler(agent):
+            pass
+
+        wrapped = on_stop_signal(handler)
+
+        assert hasattr(wrapped, '_event_type')
+        assert wrapped._event_type == 'on_stop_signal'
+        assert callable(wrapped)
+
+    def test_on_stop_signal_decorator_syntax(self):
+        """Test @on_stop_signal decorator syntax works"""
+
+        @on_stop_signal
+        def cleanup(agent):
+            pass
+
+        assert callable(cleanup)
+        assert hasattr(cleanup, '_event_type')
+        assert cleanup._event_type == 'on_stop_signal'
+
+    def test_on_stop_signal_multiple_handlers_fire_in_order(self):
+        """Test multiple on_stop_signal handlers fire in registration order"""
+        calls = []
+
+        def set_stop(agent):
+            agent.current_session['stop_signal'] = 'Stopped'
+
+        def handler1(agent):
+            calls.append('handler1')
+
+        def handler2(agent):
+            calls.append('handler2')
+
+        def handler3(agent):
+            calls.append('handler3')
+
+        agent = Agent(
+            "test",
+            tools=[search],
+            model="gpt-4o-mini",
+            on_events=[
+                after_tools(set_stop),
+                on_stop_signal(handler1),
+                on_stop_signal(handler2),
+                on_stop_signal(handler3)
+            ]
+        )
+
+        agent.input("Search for Python")
+
+        # All handlers should fire in order
+        assert calls == ['handler1', 'handler2', 'handler3']
+
+    def test_on_stop_signal_does_not_fire_without_stop_signal(self):
+        """Test on_stop_signal does NOT fire during normal completion"""
+        calls = []
+
+        def track_stop(agent):
+            calls.append('on_stop_signal')
+
+        agent = Agent(
+            "test",
+            model="gpt-4o-mini",
+            on_events=[on_stop_signal(track_stop)]
+        )
+
+        # Normal input without any stop_signal being set
+        agent.input("test prompt")
+
+        # Should not fire
+        assert len(calls) == 0
+
+    def test_on_stop_signal_exception_propagates(self):
+        """Test that on_stop_signal handler exceptions propagate (fail fast)"""
+
+        def set_stop(agent):
+            agent.current_session['stop_signal'] = 'Stopped'
+
+        def failing_handler(agent):
+            raise RuntimeError("Cleanup failed")
+
+        agent = Agent(
+            "test",
+            tools=[search],
+            model="gpt-4o-mini",
+            on_events=[
+                after_tools(set_stop),
+                on_stop_signal(failing_handler)
+            ]
+        )
+
+        # Exception should propagate from the event handler
+        with pytest.raises(RuntimeError, match="Cleanup failed"):
+            agent.input("Search for Python")
+
+    def test_on_stop_signal_can_modify_session(self):
+        """Test on_stop_signal handler can modify session state"""
+
+        def set_stop(agent):
+            agent.current_session['stop_signal'] = 'User rejected'
+
+        def save_checkpoint(agent):
+            agent.current_session['checkpoint_saved'] = True
+            agent.current_session['interrupted_at_iteration'] = agent.current_session.get('iteration', 0)
+
+        agent = Agent(
+            "test",
+            tools=[search],
+            model="gpt-4o-mini",
+            on_events=[
+                after_tools(set_stop),
+                on_stop_signal(save_checkpoint)
+            ]
+        )
+
+        agent.input("Search for Python")
+
+        # Verify handler could modify session
+        assert agent.current_session['checkpoint_saved'] is True
+        assert 'interrupted_at_iteration' in agent.current_session
+
+    def test_on_stop_signal_with_wrapper_multiple_args(self):
+        """Test on_stop_signal(fn1, fn2) returns list with correct _event_type"""
+
+        def handler1(agent):
+            pass
+
+        def handler2(agent):
+            pass
+
+        result = on_stop_signal(handler1, handler2)
+
+        assert isinstance(result, list)
+        assert len(result) == 2
+        assert result[0]._event_type == 'on_stop_signal'
+        assert result[1]._event_type == 'on_stop_signal'

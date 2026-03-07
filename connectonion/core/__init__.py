@@ -32,6 +32,7 @@ from .events import (
     after_tools,
     on_error,
     on_complete,
+    on_stop_signal,
 )
 from .tool_factory import create_tool_from_function, extract_methods_from_instance, is_class_instance
 from .tool_registry import ToolRegistry
@@ -55,6 +56,7 @@ __all__ = [
     "after_tools",
     "on_error",
     "on_complete",
+    "on_stop_signal",
     "create_tool_from_function",
     "extract_methods_from_instance",
     "is_class_instance",
