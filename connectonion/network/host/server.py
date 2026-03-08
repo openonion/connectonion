@@ -173,7 +173,7 @@ def _print_host_banner(
     """Print clean host startup banner focused on server info.
 
     Agent info (name, model, tools, balance) is shown by Agent's print_banner().
-    Host banner only shows: URL, endpoints, address, relay, trust/invite.
+    Host banner shows: URL, endpoints, address, relay, config, logs, trust/invite.
     """
     console = Console()
     base_url = f"http://localhost:{port}"
@@ -182,6 +182,10 @@ def _print_host_banner(
 
     # Build relay status
     relay_status = "[green]✓[/green] relay" if relay_url else "[dim]no relay[/dim]"
+
+    # Get absolute paths for config and logs
+    config_file = (co_dir / "host.yaml").resolve() if co_dir else (Path.cwd() / ".co" / "host.yaml").resolve()
+    logs_dir = (co_dir / "logs").resolve() if co_dir else (Path.cwd() / ".co" / "logs").resolve()
 
     # Header with [host] prefix
     console.print()
@@ -195,7 +199,12 @@ def _print_host_banner(
     console.print(f"{indent}[cyan]{address}[/cyan]")
     console.print(f"{indent}[link={chat_url}][dim]↳ chat.openonion.ai ↗[/dim][/link]")
     console.print(f"{indent}{relay_status}")
-    console.print(f"{indent}[dim]{co_dir}[/dim]")
+    console.print()
+
+    # Config and logs info (absolute paths)
+    console.print(f"{indent}[dim]config:[/dim] {config_file}")
+    console.print(f"{indent}[dim]logs:[/dim] {logs_dir}")
+    console.print()
 
     # Trust/Invite (belongs to host layer)
     if trust_config and isinstance(trust, str) and trust.lower() in TRUST_LEVELS:
@@ -205,6 +214,7 @@ def _print_host_banner(
             codes = invite_codes if isinstance(invite_codes, list) else [invite_codes]
             codes_str = ", ".join(codes)
             console.print(f"{indent}[bold yellow]Invite: {codes_str}[/bold yellow]")
+            console.print()
 
     console.print()
 

@@ -16,6 +16,16 @@ Code parameters override YAML values.
 
 from pathlib import Path
 import yaml
+import logging
+
+logger = logging.getLogger(__name__)
+
+
+# Default file upload limits
+DEFAULT_FILE_LIMITS = {
+    "max_file_size": 10,                       # MB per file (both WebSocket and HTTP)
+    "max_files_per_request": 10                # Max number of files in one request
+}
 
 
 def load_host_config(co_dir: Path = None, **code_params) -> dict:
@@ -25,22 +35,29 @@ def load_host_config(co_dir: Path = None, **code_params) -> dict:
     Priority (highest to lowest):
     1. Code parameters (passed to host())
     2. Config file (.co/host.yaml) — optional
+    3. Default values (hardcoded)
+
+    File size limits are specified in MB and converted to bytes internally.
 
     Args:
         co_dir: Path to .co directory (defaults to ./.co/)
         **code_params: Code parameters from host() function
 
     Returns:
-        Config dict from YAML with code param overrides
+        Config dict from YAML with code param overrides and defaults
     """
     if co_dir is None:
         co_dir = Path.cwd() / '.co'
 
-    config = {}
+    # Start with defaults
+    config = DEFAULT_FILE_LIMITS.copy()
+
+    # Load YAML config (overrides defaults)
     config_path = co_dir / 'host.yaml'
     if config_path.exists():
         with open(config_path, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f) or {}
+            yaml_config = yaml.safe_load(f) or {}
+            config.update(yaml_config)
 
     # Code params override YAML (only if not None)
     for key, value in code_params.items():
@@ -79,3 +96,56 @@ def load_list_file(file_path: str | Path | None) -> list:
                 addresses.append(line)
 
     return addresses
+
+
+def validate_files(files: list, config: dict) -> None:
+    """Validate uploaded files against configured limits.
+
+    Args:
+        files: List of file dicts with 'name' and 'data' (bytes)
+        config: Host config with limits (max_file_size in MB)
+
+    Raises:
+        ValueError: If files exceed limits with clear error message
+    """
+    if not files:
+        return
+
+    # Get limits from config (already has defaults from load_host_config)
+    max_count = config.get("max_files_per_request", DEFAULT_FILE_LIMITS["max_files_per_request"])
+    max_size_mb = config.get("max_file_size", DEFAULT_FILE_LIMITS["max_file_size"])
+    max_size_bytes = max_size_mb * 1024 * 1024  # Convert MB to bytes
+
+    # Log upload attempt
+    total_size = sum(len(f["data"]) for f in files)
+    total_mb = total_size / 1024 / 1024
+    file_names = [f["name"] for f in files]
+    logger.info(
+        f"File upload: {len(files)} file(s), {total_mb:.2f}MB total - {', '.join(file_names)}"
+    )
+
+    # Validate count
+    if len(files) > max_count:
+        logger.warning(
+            f"File upload rejected: too many files ({len(files)} > {max_count})"
+        )
+        raise ValueError(
+            f"Too many files: {len(files)} (max: {max_count}). "
+            f"Increase max_files_per_request in host.yaml"
+        )
+
+    # Validate individual file sizes
+    for f in files:
+        size = len(f["data"])
+
+        if size > max_size_bytes:
+            mb = size / 1024 / 1024
+            logger.warning(
+                f"File upload rejected: {f['name']} too large ({mb:.1f}MB > {max_size_mb}MB)"
+            )
+            raise ValueError(
+                f"File too large: {f['name']} ({mb:.1f}MB, max: {max_size_mb}MB). "
+                f"Increase max_file_size in host.yaml"
+            )
+
+    logger.info(f"File upload validated: {len(files)} file(s) accepted")

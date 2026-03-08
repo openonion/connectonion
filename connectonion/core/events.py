@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: None (standalone module) | imported by [agent.py, __init__.py] | tested by [tests/test_events.py]
   Data flow: Wrapper functions tag event handlers with _event_type attribute → Agent organizes handlers by type → Agent invokes handlers at specific lifecycle points passing agent instance
   State/Effects: Event handlers receive agent instance and can modify agent.current_session (messages, trace, etc.)
-  Integration: exposes after_user_input(), before_iteration(), after_iteration(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete()
+  Integration: exposes on_agent_ready(), after_user_input(), before_iteration(), after_iteration(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete()
   Performance: Minimal overhead - just function attribute checking and iteration over handler lists
   Errors: Event handler exceptions propagate and stop agent execution (fail fast)
 """
@@ -266,6 +266,33 @@ def on_error(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
     """
     for fn in funcs:
         fn._event_type = 'on_error'  # type: ignore
+    return funcs[0] if len(funcs) == 1 else list(funcs)
+
+
+def on_agent_ready(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+    """
+    Mark function(s) as on_agent_ready event handlers.
+
+    Fires ONCE during agent initialization, when the agent is ready to use.
+    At this point, all core components are initialized and available:
+    - agent.name, agent.logger, agent.model
+    - agent.events (all event handlers registered)
+    - agent.tools (ToolRegistry with initial tools)
+    - agent.llm (LLM instance created)
+    - agent.system_prompt (can be modified)
+
+    Use for: registering tools dynamically, modifying system_prompt, plugin setup.
+
+    Supports both decorator and wrapper syntax:
+        @on_agent_ready
+        def register_task_tool(agent):
+            agent.add_tool(task)
+            agent.system_prompt += "\\n\\nAvailable subagents: explore, plan"
+
+        on_events=[on_agent_ready(handler1, handler2)]
+    """
+    for fn in funcs:
+        fn._event_type = 'on_agent_ready'  # type: ignore
     return funcs[0] if len(funcs) == 1 else list(funcs)
 
 

@@ -29,12 +29,10 @@ logging.basicConfig(
 )
 
 
-# Load global keys.env for CLI commands (fallback for API keys)
-# Priority: current directory .env > global ~/.co/keys.env
-_global_keys = Path.home() / ".co" / "keys.env"
-if _global_keys.exists():
-    # load_dotenv doesn't override existing env vars, so cwd .env takes priority
-    load_dotenv(_global_keys)
+# Note: .env files already loaded by __init__.py with fallback chain:
+# 1. Current directory .env
+# 2. Global ~/.co/keys.env
+# No need to load again here (load_dotenv doesn't override existing env vars)
 
 
 def start_server(

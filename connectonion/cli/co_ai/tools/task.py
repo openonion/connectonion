@@ -4,12 +4,12 @@ LLM-Note: Task delegation tool for co_ai - Delegates tasks to specialized sub-ag
 Key components:
 - task() function: Main entry point for delegating to sub-agents
 - Agent types: "explore" (codebase exploration), "plan" (implementation planning)
-- Integration with subagent registry from agents/registry.py
+- Uses SDK subagents plugin (connectonion.useful_plugins.subagents)
 
 Architecture:
 - Used by co_ai main agent to delegate complex tasks
-- Creates sub-agents on demand via get_subagent()
-- Rich console output for task progress visualization
+- Wraps SDK's task() function with Rich console output
+- SDK handles agent creation, discovery, and execution
 """
 
 from typing import Literal
@@ -17,7 +17,8 @@ from typing import Literal
 from rich.console import Console
 from rich.text import Text
 
-from connectonion.cli.co_ai.agents.registry import get_subagent, SUBAGENTS
+# Use SDK subagents plugin instead of registry
+from connectonion.useful_plugins.subagents import task as sdk_task, _discover_all_agents
 
 console = Console()
 
@@ -47,14 +48,6 @@ def task(
         task("Design a plan to add dark mode support", agent_type="plan")
         task("What is the project structure?", agent_type="explore")
     """
-    if agent_type not in SUBAGENTS:
-        available = ", ".join(SUBAGENTS.keys())
-        return f"Error: Unknown agent type '{agent_type}'. Available: {available}"
-
-    subagent = get_subagent(agent_type)
-    if subagent is None:
-        return f"Error: Failed to create {agent_type} agent"
-
     # Show task start
     short_prompt = prompt[:50] + "..." if len(prompt) > 50 else prompt
     text = Text()
@@ -63,7 +56,9 @@ def task(
     text.append(f" {short_prompt}", style="dim")
     console.print(text)
 
-    result = subagent.input(prompt)
+    # Use SDK task function (doesn't need agent parameter for standalone use)
+    # We pass None as agent since we're calling it directly, not as an agent tool
+    result = sdk_task(None, prompt, agent_type)
 
     # Show task complete
     console.print(Text("  ◀ Task completed", style="blue"))

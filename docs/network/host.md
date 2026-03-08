@@ -21,29 +21,23 @@ host(create_agent)
 
 **Output:**
 ```
-╭─────────────────────────────────────────────────────────╮
-│  Agent 'translator' is now hosted                       │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  Address:  0x3d4017c3e843895a92b70aa74d1b7ebc9c98...   │
-│                                                         │
-│  HTTP Endpoints:                                        │
-│    POST http://localhost:8000/input                     │
-│    GET  http://localhost:8000/sessions/{session_id}     │
-│    GET  http://localhost:8000/sessions                  │
-│    GET  http://localhost:8000/health                    │
-│    GET  http://localhost:8000/info                      │
-│    GET  http://localhost:8000/admin/logs     (API key)  │
-│    GET  http://localhost:8000/admin/sessions (API key)  │
-│    WS   ws://localhost:8000/ws                          │
-│                                                         │
-│  Interactive UI:                                        │
-│    http://localhost:8000/docs                           │
-│                                                         │
-│  P2P Relay:                                             │
-│    wss://oo.openonion.ai/ws/announce                    │
-│                                                         │
-╰─────────────────────────────────────────────────────────╯
+INFO: Loaded environment: /Users/you/my-agent/.env
+INFO: Loaded global keys: /Users/you/.co/keys.env
+
+[agent] ─────────────────────────────────────
+        translator
+        co/gemini-2.5-pro • 12 tools
+
+[host]  ─────────────────────────────────────
+        http://localhost:8000
+        POST /input · WS /ws · GET /docs
+
+        0x3d4017c3e843895a92b70aa74d1b7ebc9c98...
+        ↳ chat.openonion.ai ↗
+        ✓ relay
+
+        config: /Users/you/my-agent/.co/host.yaml
+        logs: /Users/you/my-agent/.co/logs
 
 Waiting for tasks...
 ```
@@ -93,6 +87,10 @@ def host(
 
     # Development
     reload: bool = False,
+
+    # File Upload Limits
+    max_file_size: int = 10,               # MB per file
+    max_files_per_request: int = 10,       # Max files in one request
 ) -> None:
 ```
 
@@ -1164,6 +1162,8 @@ def host(
     result_ttl: int = 86400,
     relay_url: str = "wss://oo.openonion.ai/ws/announce",
     reload: bool = False,
+    max_file_size: int = 10,               # MB per file
+    max_files_per_request: int = 10,
 ) -> None
 ```
 
@@ -1178,6 +1178,8 @@ def host(
 | `result_ttl` | `int` | `86400` | How long server keeps results (24h) |
 | `relay_url` | `str` | production | P2P relay server |
 | `reload` | `bool` | `False` | Auto-reload on changes |
+| `max_file_size` | `int` | `10` | Max file size in MB (both WS and HTTP) |
+| `max_files_per_request` | `int` | `10` | Max number of files in one request |
 
 ### create_app()
 

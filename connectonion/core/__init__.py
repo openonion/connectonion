@@ -21,6 +21,7 @@ from .agent import Agent
 from .llm import LLM, create_llm, TokenUsage
 from .events import (
     EventHandler,
+    on_agent_ready,
     after_user_input,
     before_iteration,
     after_iteration,
@@ -44,6 +45,7 @@ __all__ = [
     "create_llm",
     "TokenUsage",
     "EventHandler",
+    "on_agent_ready",
     "after_user_input",
     "before_iteration",
     "after_iteration",

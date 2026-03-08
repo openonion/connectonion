@@ -107,8 +107,4 @@ host(create_agent, trust="careful")  # Web deployment
 
 The plan is a YAML contract that describes what the agent will do. After approval, execute the plan.
 
-**CRITICAL**: NEVER write agent files manually from scratch. Always use `co create` to scaffold. This ensures:
-- `.env` file with API keys
-- Proper imports and structure
-- Bash, file system, and browser tools pre-configured
-- Approval and plugin system ready
+Always use `co create` to scaffold agent projects. This ensures the project includes `.env` file with API keys, proper imports and structure, bash/file/browser tools pre-configured, and approval and plugin system ready.

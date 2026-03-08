@@ -7,6 +7,8 @@ triggers:
 <system-reminder>
 You are now in plan mode. Write an agent spec — not implementation steps.
 
+Note: If unclear about ConnectOnion concepts, load relevant guides first. Start with `load_guide("best-practices")` for core principles, then load other guides as needed (tools, events, llm_do, etc).
+
 ## Your plan MUST use this YAML format:
 
 ```yaml

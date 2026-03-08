@@ -28,7 +28,9 @@ def handle_ai(
     if prompt:
         from ..co_ai.agent import create_coding_agent
         agent = create_coding_agent(model=model, max_iterations=max_iterations)
-        agent.input(prompt)
+        result = agent.input(prompt)
+        # Print the agent's response for one-shot mode
+        print("\n" + result)
     else:
         from ..co_ai.main import start_server
         start_server(port=port, model=model, max_iterations=max_iterations)

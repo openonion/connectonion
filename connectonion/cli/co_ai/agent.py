@@ -36,7 +36,7 @@ from pathlib import Path
 from .context import load_project_context
 from .prompts.assembler import assemble_prompt
 from .tools import (
-    FileTools, task,
+    FileTools,
     enter_plan_mode, exit_plan_mode, write_plan,
     ask_user,
     run_background, task_output, kill_task,
@@ -45,7 +45,7 @@ from .tools import (
 from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
-from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw
+from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents
 
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -64,7 +64,7 @@ def create_coding_agent(
     tools = [
         file_tools,
         bash,
-        task,
+        # task is now provided by subagents plugin (no need to import from .tools)
         enter_plan_mode,
         exit_plan_mode,
         write_plan,
@@ -87,7 +87,8 @@ def create_coding_agent(
     if project_context:
         system_prompt += f"\n\n---\n\n{project_context}"
 
-    plugins = [eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw]
+    # Use SDK's subagents plugin instead of custom task implementation
+    plugins = [subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw]
 
     agent = Agent(
         name="oo",

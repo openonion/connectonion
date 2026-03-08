@@ -178,6 +178,87 @@ reload: false
 co_dir: null
 ```
 
+### File Upload Limits
+
+Control file upload sizes for `/input` endpoint and `/ws` WebSocket.
+
+```yaml
+# File upload limits
+# Default values shown
+
+# Maximum file size in MB (applies to both WebSocket and HTTP)
+# Default: 10 - Good for screenshots, docs, images
+max_file_size: 10
+
+# Maximum number of files in one request
+# Default: 10
+max_files_per_request: 10
+```
+
+**Error Messages:**
+
+When limits are exceeded, users see clear errors:
+
+```
+File too large: document.pdf (15.2MB, max: 10MB).
+Increase max_file_size in host.yaml
+```
+
+```
+Too many files: 15 (max: 10).
+Increase max_files_per_request in host.yaml
+```
+
+**Use Cases:**
+
+```yaml
+# Image processing agent (small files)
+max_file_size: 5                # 5MB
+max_files_per_request: 20       # Up to 20 files
+
+# Video analysis agent (large files)
+max_file_size: 500              # 500MB
+max_files_per_request: 5        # Fewer files
+
+# Document processing (many small files)
+max_file_size: 10               # 10MB (default)
+max_files_per_request: 50       # Up to 50 files
+```
+
+**Logging:**
+
+Environment and file uploads are automatically logged:
+
+```
+INFO: Loaded environment: /Users/you/my-agent/.env
+INFO: Loaded global keys: /Users/you/.co/keys.env
+```
+
+Host startup banner shows configuration paths:
+
+```
+[host]  ─────────────────────────────────────
+        config: /Users/you/my-agent/.co/host.yaml
+        logs: /Users/you/my-agent/.co/logs
+```
+
+Activity logs written to `.co/logs/{agent_name}.log`:
+
+```
+INFO: File upload: 3 file(s), 15.23MB total - image1.png, image2.png, document.pdf
+INFO: File upload validated: 3 file(s) accepted
+```
+
+```
+INFO: File upload: 1 file(s), 150.50MB total - video.mp4
+WARNING: File upload rejected: video.mp4 too large (150.5MB > 100MB)
+```
+
+```
+INFO: File upload: 15 file(s), 45.20MB total - doc1.pdf, doc2.pdf, ...
+WARNING: File upload rejected: too many files (15 > 10)
+```
+
 ---
 
 ## Examples
@@ -339,6 +420,11 @@ workers: 1
 result_ttl: 86400
 relay_url: wss://oo.openonion.ai/ws/announce
 reload: false
+
+# File upload limits - uncomment to customize
+# max_file_size: 10                 # MB per file (both WebSocket and HTTP)
+# max_files_per_request: 10         # Max number of files in one request
+
 # summary: "What your agent does"
 # examples:
 #   - "Example prompt 1"

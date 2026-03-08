@@ -71,6 +71,7 @@ class Agent:
         # Note: before_each_tool/after_each_tool fire for EACH tool
         # before_tools/after_tools fire ONCE per batch (safe for adding messages)
         self.events = {
+            'on_agent_ready': [],      # Fires once during initialization when agent is ready
             'after_user_input': [],
             'before_iteration': [],    # Start of each iteration (poll IO, mode changes)
             'after_iteration': [],     # End of each iteration (metrics, checkpoints)
@@ -134,6 +135,10 @@ class Agent:
             # - Google models check GOOGLE_API_KEY
             # - co/ models check OPENONION_API_KEY
             self.llm = create_llm(model=model, api_key=api_key)
+
+        # Fire on_agent_ready event (agent is fully initialized and ready to use)
+        # Plugins can: add tools, modify system_prompt, initialize state
+        self._invoke_events('on_agent_ready')
 
         # Print banner (if console enabled)
         if self.logger.console:

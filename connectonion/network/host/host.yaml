@@ -5,6 +5,11 @@ workers: 1
 result_ttl: 86400
 relay_url: wss://oo.openonion.ai/ws/announce
 reload: false
+
+# File upload limits - uncomment to customize
+# max_file_size: 10                 # MB per file (both WebSocket and HTTP)
+# max_files_per_request: 10         # Max number of files in one request
+
 # summary: "What your agent does"
 # examples:
 #   - "Example prompt 1"

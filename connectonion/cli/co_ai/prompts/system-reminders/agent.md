@@ -4,9 +4,9 @@ intent: build
 ---
 
 <system-reminder>
-Agent creation detected. Use ConnectOnion framework:
+Agent creation detected. Use the workflow: enter plan mode → design spec → get approval → `co create` → edit agent.py
 
-**ConnectOnion agents are Python files (.py), NOT markdown files.**
+ConnectOnion agents are Python files that give tools to the AI rather than hardcoded logic. The agent decides its own strategy. After scaffolding with `co create`, the structure looks like:
 
 ```python
 from connectonion import Agent
@@ -19,5 +19,5 @@ agent = Agent("cleaner", tools=[list_files, get_hash, delete])
 agent.input("Remove duplicate files")
 ```
 
-**Give tools, not logic. Let the agent decide strategy. NEVER create standalone scripts with hardcoded logic.**
+Start with `enter_plan_mode()` to design the spec before creating files.
 </system-reminder>

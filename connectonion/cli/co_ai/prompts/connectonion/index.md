@@ -161,6 +161,7 @@ Use `load_guide(path)` to load detailed documentation.
 
 | Guide | Description |
 |-------|-------------|
+| `best-practices` | **Core best practices for building agents** |
 | `agent-design` | Agent design best practices |
 | `examples` | Copy-paste ready code examples |
 | `quickstart` | 60-second quick start |
@@ -169,4 +170,4 @@ Use `load_guide(path)` to load detailed documentation.
 
 ---
 
-**Load the relevant guide before writing complex ConnectOnion code.**
+**IMPORTANT: Load `best-practices` guide when building agents to follow YAGNI, proper event usage, class-based tools, and other core principles.**
