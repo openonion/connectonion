@@ -10,18 +10,29 @@ LLM-Note:
 ConnectOnion - A simple agent framework with behavior tracking.
 """
 
-__version__ = "0.7.5"
+__version__ = "0.7.6"
 
 # Auto-load .env files for the entire framework
 from dotenv import load_dotenv
 from pathlib import Path as _Path
 
-# SDK only loads from current working directory (where user runs their script)
-# CLI commands (co ai, co browser, etc.) handle global fallback separately
-load_dotenv(_Path.cwd() / ".env")
+# Load .env with fallback: cwd .env -> global ~/.co/keys.env
+# Priority 1: Current directory .env (project-specific keys)
+_env_file = _Path.cwd() / ".env"
+if _env_file.exists():
+    load_dotenv(_env_file)
+    print(f"[env] {_env_file.resolve()}")
+else:
+    # Priority 2: Global keys.env (shared API keys fallback)
+    _global_keys = _Path.home() / ".co" / "keys.env"
+    if _global_keys.exists():
+        load_dotenv(_global_keys)
+        print(f"[env] {_global_keys.resolve()}")
+    # No else - if neither exists, proceed without .env (API keys might be in shell env)
 
 from .core import Agent, LLM, create_tool_from_function
 from .core import (
+    on_agent_ready,
     after_user_input,
     before_iteration,
     after_iteration,
@@ -107,6 +118,7 @@ __all__ = [
     "announce",
     "address",
     # Event decorators
+    "on_agent_ready",
     "after_user_input",
     "before_iteration",
     "after_iteration",
