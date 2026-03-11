@@ -3,7 +3,7 @@ Purpose: Factory functions for trust level validation and deprecated trust agent
 LLM-Note:
   Dependencies: imports from [os, pathlib, typing, tools, fast_rules] | imported by [trust/__init__.py, trust/trust_agent.py] | tested via TrustAgent initialization
   Data flow: get_default_trust_level() → reads CONNECTONION_ENV → returns trust level | validate_trust_level(level) → checks against TRUST_LEVELS list | create_trust_agent(trust, api_key, model) [DEPRECATED] → resolves policy string/path/Agent → loads policy file → creates Agent with trust tools
-  State/Effects: reads environment variable CONNECTONION_ENV | reads policy files from prompts/trust/{level}.md | no writes | PROMPTS_DIR constant points to repo root/prompts/trust/
+  State/Effects: reads environment variable CONNECTONION_ENV | reads policy files from network/trust/policies/{level}.md | no writes | PROMPTS_DIR constant points to trust module policies/
   Integration: exposes get_default_trust_level(), validate_trust_level(), TRUST_LEVELS, create_trust_agent() [DEPRECATED] | TRUST_LEVELS = ["open", "careful", "strict"] | create_trust_agent emits DeprecationWarning (use TrustAgent instead)
   Performance: file I/O only when loading policies | parse_policy() extracts YAML frontmatter | environment check is O(1)
   Errors: raises FileNotFoundError if policy file doesn't exist | raises TypeError for invalid trust type | raises ValueError if trust Agent has no tools
@@ -24,7 +24,7 @@ Policy files use YAML frontmatter for fast rules + markdown body for LLM prompts
 Fast rules execute without LLM (zero tokens, instant). Only 'default: ask' triggers LLM.
 
 String Resolution Priority:
-  1. Trust level ("open", "careful", "strict") → loads from prompts/trust/{level}.md
+  1. Trust level ("open", "careful", "strict") → loads from network/trust/policies/{level}.md
   2. File path (if exists)
   3. Inline policy text
 """
@@ -37,8 +37,8 @@ from .tools import get_trust_verification_tools
 from .fast_rules import parse_policy
 
 
-# Path to trust policy files (at repo root: prompts/trust/)
-PROMPTS_DIR = Path(__file__).parent.parent.parent.parent / "prompts" / "trust"
+# Path to trust policy files (in trust module: policies/)
+PROMPTS_DIR = Path(__file__).parent / "policies"
 
 
 # Trust level constants
@@ -123,7 +123,7 @@ def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional
     # Handle string: trust level > file path > inline policy
     if isinstance(trust, str):
         if trust.lower() in TRUST_LEVELS:
-            # Load from prompts/trust/{level}.md
+            # Load from network/trust/policies/{level}.md
             policy_path = PROMPTS_DIR / f"{trust.lower()}.md"
             if policy_path.exists():
                 policy_text = policy_path.read_text(encoding='utf-8')

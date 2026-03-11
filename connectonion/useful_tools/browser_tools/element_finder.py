@@ -30,6 +30,11 @@ import json
 import os
 
 
+class ElementNotFoundError(Exception):
+    """Raised when element cannot be found with LLM suggestions."""
+    pass
+
+
 # Base directory for loading scripts and prompts
 _BASE_DIR = Path(__file__).parent
 
@@ -44,7 +49,14 @@ def _get_element_matcher_prompt():
 
 
 class InteractiveElement(BaseModel):
-    """An interactive element on the page with pre-built locator."""
+    """An interactive element on the page with pre-built locator.
+
+    The frame field tracks which document context the element belongs to:
+    - 'main': Element is in the main page document
+    - iframe name/id: Element is inside that specific iframe (e.g., 'scormContent', 'iframe-0')
+
+    This enables extraction from SCORM content, embedded widgets, and other iframe-based UIs.
+    """
     index: int
     tag: str
     text: str = ""
@@ -57,14 +69,16 @@ class InteractiveElement(BaseModel):
     y: int = 0
     width: int = 0
     height: int = 0
+    frame: str = "main"  # Frame context: 'main' or iframe identifier
     locator: str = ""
 
 
 class ElementMatch(BaseModel):
     """LLM's element selection result."""
-    index: int = Field(..., description="Index of the matching element")
+    index: int = Field(..., description="Index of the matching element, or -1 if no match found")
     confidence: float = Field(..., description="Confidence 0-1")
-    reasoning: str = Field(..., description="Why this element matches")
+    reasoning: str = Field(..., description="Why this element matches, or why no match was found")
+    alternatives: Optional[List[int]] = Field(default=None, description="List of alternative element indices that might match (if no exact match)")
 
 
 def extract_elements(page) -> List[InteractiveElement]:
@@ -85,7 +99,16 @@ def extract_elements(page) -> List[InteractiveElement]:
     with open(debug_file, 'w') as f:
         json.dump(raw, f, indent=2)
 
+    # Count iframe elements
+    main_elements = [el for el in raw if el.get('frame') == 'main']
+    iframe_elements = [el for el in raw if el.get('frame') != 'main']
+
     print(f"\n[element_finder] DEBUG: Extracted {len(raw)} raw elements from page")
+    print(f"[element_finder] DEBUG:   - Main document: {len(main_elements)} elements")
+    print(f"[element_finder] DEBUG:   - Iframes: {len(iframe_elements)} elements")
+    if iframe_elements:
+        iframe_names = set(el.get('frame') for el in iframe_elements)
+        print(f"[element_finder] DEBUG:   - Iframe names: {', '.join(iframe_names)}")
     print(f"[element_finder] DEBUG: Wrote all elements to {debug_file}")
 
     # Show elements with placeholders
@@ -103,7 +126,7 @@ def extract_elements(page) -> List[InteractiveElement]:
 def format_elements_for_llm(elements: List[InteractiveElement]) -> str:
     """Format elements as compact list for LLM context.
 
-    Format: [index] tag "text" pos=(x,y) {extra info}
+    Format: [index] tag "text" pos=(x,y) frame=context {extra info}
     """
     lines = []
     for el in elements:
@@ -120,6 +143,10 @@ def format_elements_for_llm(elements: List[InteractiveElement]) -> str:
             parts.append(f'aria="{el.aria_label}"')
 
         parts.append(f"pos=({el.x},{el.y})")
+
+        # Show frame context (especially useful for SCORM/iframe content)
+        if el.frame != "main":
+            parts.append(f"frame={el.frame}")
 
         # Show all available attributes that help with matching
         if el.input_type:
@@ -140,7 +167,7 @@ def find_element(
     page,
     description: str,
     elements: List[InteractiveElement] = None
-) -> Optional[InteractiveElement]:
+) -> InteractiveElement:
     """Find an interactive element by natural language description.
 
     This is the core function. LLM SELECTS from pre-built options.
@@ -157,6 +184,10 @@ def find_element(
         elements = extract_elements(page)
 
     if not elements:
+        print(f"\n{'='*60}")
+        print(f"❌ Could not find element: '{description}'")
+        print(f"⚠️  No interactive elements found on page!")
+        print(f"{'='*60}\n")
         return None
 
     element_list = format_elements_for_llm(elements)
@@ -177,6 +208,9 @@ def find_element(
         temperature=0.1
     )
 
+    if result.index == -1:
+        raise ElementNotFoundError(f"{result.reasoning}\nSuggested alternatives: {result.alternatives}")
+
     if 0 <= result.index < len(elements):
         selected = elements[result.index]
         # Enhanced debug logging - print all attributes
@@ -187,6 +221,7 @@ def find_element(
         print(f"  Tag: {selected.tag}")
         print(f"  Text: '{selected.text}'")
         print(f"  Position: ({selected.x},{selected.y}) size: {selected.width}x{selected.height}")
+        print(f"  Frame: {selected.frame}")
         print(f"  Role: {selected.role}")
         print(f"  Aria-label: {selected.aria_label}")
         print(f"  Placeholder: {selected.placeholder}")
@@ -195,4 +230,5 @@ def find_element(
         print(f"{'='*60}\n")
         return selected
 
-    return None
+    # Element index out of range or LLM couldn't find a match
+    raise ElementNotFoundError(description, elements, result.reasoning)

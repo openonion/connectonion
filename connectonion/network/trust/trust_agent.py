@@ -3,7 +3,7 @@ Purpose: Class-based trust management with fast rules, LLM fallback, and extensi
 LLM-Note:
   Dependencies: imports from [dataclasses, pathlib, typing, fast_rules, tools, factory, core.agent, llm_do, pydantic, httpx, address] | imported by [trust/__init__.py, network/host/server.py, network/host/auth.py] | tested via should_allow() calls
   Data flow: TrustAgent(trust, api_key, model) → _load_policy() reads policy file → parse_policy() extracts YAML config + markdown prompt → should_allow(client_id, request) → evaluate_request() runs fast rules → if None: _llm_decide() uses llm_do with structured output → returns Decision(allow, reason, used_llm) | verify_payment() → _verify_transfer_via_api() calls oo-api /api/v1/onboard/verify with JWT auth
-  State/Effects: reads policy files from prompts/trust/{level}.md | delegates to tools.py for file operations (.co/trust/ directory) | _verify_transfer_via_api() makes HTTP calls to oo-api | lazy-loads LLM agent only if needed
+  State/Effects: reads policy files from network/trust/policies/{level}.md | delegates to tools.py for file operations (.co/trust/ directory) | _verify_transfer_via_api() makes HTTP calls to oo-api | lazy-loads LLM agent only if needed
   Integration: exposes TrustAgent class with should_allow(), verify_invite(), verify_payment(), promote_to_contact(), promote_to_whitelist(), demote_to_contact(), demote_to_stranger(), block(), unblock(), get_level(), is_admin(), add_admin(), remove_admin() | Decision dataclass with allow, reason, used_llm fields | all methods overridable for custom storage (database, LDAP, etc.)
   Performance: fast rules execute without LLM (instant) | LLM only used if config has 'default: ask' | policy loaded once at init | httpx timeout 10s for API calls | lazy LLM initialization
   Errors: _verify_transfer_via_api() returns False on network/auth errors | llm_do() errors propagate | parse_policy() YAML errors propagate
@@ -54,6 +54,7 @@ Extensibility:
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import logging
 
 from .fast_rules import parse_policy, evaluate_request
 from .tools import (
@@ -124,9 +125,12 @@ class TrustAgent:
         # Lazy-loaded LLM agent (only created if needed)
         self._llm_agent = None
 
+        # Logger for trust events
+        self.logger = logging.getLogger(f"connectonion.trust.{trust}")
+
     def _load_policy(self, trust: str) -> tuple[dict, str]:
         """Load policy file and parse YAML config."""
-        # Trust level -> load from prompts/trust/{level}.md
+        # Trust level -> load from network/trust/policies/{level}.md
         if trust.lower() in TRUST_LEVELS:
             policy_path = PROMPTS_DIR / f"{trust.lower()}.md"
             if policy_path.exists():
@@ -172,7 +176,16 @@ class TrustAgent:
         elif result == 'deny':
             return Decision(allow=False, reason="Denied by fast rules")
 
-        # result is None -> need LLM decision
+        # result is None -> default: ask triggered
+        # Check if onboard methods are available
+        onboard = self._config.get('onboard', {})
+        if onboard and (onboard.get('invite_code') or onboard.get('payment')):
+            # Onboard methods available - return special decision for browser to collect credentials
+            self.logger.info(f"[ONBOARD] Stranger {client_id[:10]}... needs to onboard (methods: {list(onboard.keys())})")
+            return Decision(allow=False, reason="Onboard required")
+
+        # No onboard methods - use LLM to evaluate
+        self.logger.info(f"[LLM] Evaluating stranger {client_id[:10]}... with LLM")
         return self._llm_decide(client_id, request)
 
     def _llm_decide(self, client_id: str, request: dict) -> Decision:

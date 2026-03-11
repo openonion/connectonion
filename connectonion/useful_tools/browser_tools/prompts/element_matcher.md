@@ -93,4 +93,9 @@ Consider:
 - **Distinguish button text from placeholder text** - "Reply" as button text is different from "Post your reply" as placeholder
 - **Exact button text matching** - When looking for a button with specific text (e.g., "Reply"), match the button text exactly, not similar words
 
-Return the index of the best matching element.
+**IMPORTANT: If NO element matches the description:**
+- Return index=-1
+- In reasoning, explain why no match was found
+- In alternatives, provide a list of 3-5 element indices that are the closest matches (most similar or most likely what the user meant)
+
+Return the index of the best matching element, or -1 if no match found.

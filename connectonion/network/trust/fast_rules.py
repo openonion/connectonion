@@ -65,10 +65,15 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
     Returns:
         'allow', 'deny', or None (needs LLM)
     """
+    import logging
+    logger = logging.getLogger("connectonion.trust.fast_rules")
+    logger.warning(f"[FAST_RULES] Evaluating client_id={client_id[:20]}... config={config}")
+
     # 1. Check deny list first (blocked users)
     deny_list = config.get('deny', ['blocked'])
     for condition in deny_list:
         if condition == 'blocked' and is_blocked(client_id):
+            logger.warning(f"[FAST_RULES] Client {client_id[:20]}... is BLOCKED, returning 'deny'")
             return 'deny'
 
     # 2. Check allow list (whitelisted, contacts)
@@ -98,12 +103,17 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
 
     # 4. Default action for strangers without onboarding
     default = config.get('default', 'deny')
+    logger.warning(f"[FAST_RULES] No match, using default={default}")
 
     if default == 'allow':
+        logger.warning(f"[FAST_RULES] Returning 'allow' (default)")
         return 'allow'
     elif default == 'deny':
+        logger.warning(f"[FAST_RULES] Returning 'deny' (default)")
         return 'deny'
     elif default == 'ask':
+        logger.warning(f"[FAST_RULES] Returning None (needs LLM)")
         return None  # Needs LLM evaluation
 
+    logger.warning(f"[FAST_RULES] Returning 'deny' (fallback)")
     return 'deny'  # Safe fallback

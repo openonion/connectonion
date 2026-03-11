@@ -196,17 +196,25 @@ class BrowserAutomation:
 
         element = element_finder.find_element(self.page, description)
 
-        if not element:
-            # Fallback to simple text matching
-            text_locator = self.page.get_by_text(description)
-            if text_locator.count() > 0:
-                text_locator.first.click()
-                self._save_context()
-                return f"Clicked on '{description}' (by text fallback)"
-            return f"Could not find element matching: {description}"
+        # Get the appropriate locator context (main page or iframe)
+        if element.frame != "main":
+            # Element is inside an iframe - find the frame first
+            frame = None
+            for f in self.page.frames:
+                if f.name == element.frame or (hasattr(f, '_impl') and element.frame in (f.url or "")):
+                    frame = f
+                    break
 
-        # Try the locator with fresh bounding box
-        locator = self.page.locator(element.locator)
+            if frame:
+                locator = frame.locator(element.locator)
+                print(f"[browser] DEBUG: Element in iframe '{element.frame}', using frame locator")
+            else:
+                # Iframe not found - fallback to main page (shouldn't happen)
+                locator = self.page.locator(element.locator)
+                print(f"[browser] WARNING: Iframe '{element.frame}' not found, using main page locator")
+        else:
+            # Element is in main document
+            locator = self.page.locator(element.locator)
 
         if locator.count() > 0:
             box = locator.first.bounding_box()

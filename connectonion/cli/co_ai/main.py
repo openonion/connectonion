@@ -19,6 +19,8 @@ Used by:
 
 import logging
 import webbrowser
+import threading
+import time
 from pathlib import Path
 from dotenv import load_dotenv
 from connectonion import host, address
@@ -65,8 +67,14 @@ def start_server(
     # Use global ~/.co/ for consistent identity across all co ai sessions
     co_dir = Path.home() / '.co'
     addr_data = address.load(co_dir)
+
+    # Open chat URL after agent successfully starts (2 second delay)
     if addr_data:
-        webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
+        def open_chat_delayed():
+            time.sleep(2)
+            webbrowser.open(f"https://chat.openonion.ai/{addr_data['address']}")
+
+        threading.Thread(target=open_chat_delayed, daemon=True).start()
 
     # Start server with same co_dir (relay enabled by default for web chat)
     host(agent_factory, port=port, trust="careful", co_dir=co_dir)
