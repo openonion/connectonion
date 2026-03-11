@@ -10,7 +10,7 @@ LLM-Note:
 ConnectOnion - A simple agent framework with behavior tracking.
 """
 
-__version__ = "0.7.6"
+__version__ = "0.8.0"
 
 # Auto-load .env files for the entire framework
 from dotenv import load_dotenv
