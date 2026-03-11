@@ -39,7 +39,7 @@ logging.basicConfig(
 
 def start_server(
     port: int = 8000,
-    model: str = "co/claude-opus-4-5",
+    model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 20,
 ):
     """Start AI coding agent web server.
