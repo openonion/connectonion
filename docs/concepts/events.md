@@ -395,36 +395,96 @@ agent.input("Search for Python")
 
 ### Interrupted Operation Cleanup (on_stop_signal)
 
-Use `on_stop_signal` to clean up when an operation is interrupted via `stop_signal`:
+#### Overview
+
+The `on_stop_signal` event fires when the agent's iteration loop is interrupted by a plugin setting `stop_signal` in the session. This typically happens when:
+
+- User rejects a tool via the tool approval plugin (reject_hard mode)
+- A custom plugin detects a condition requiring user input
+- An operation needs to pause and wait for user direction
+
+See [tool_approval.md](../useful_plugins/tool_approval.md#reject-hard-mode) for details on how `stop_signal` is set.
+
+#### When It Fires
+
+```
+Iteration Loop
+    ↓
+Tool execution completes
+    ↓
+Plugin sets: agent.current_session['stop_signal'] = "reason"
+    ↓
+after_iteration event
+    ↓
+┌─────────────────────────────┐
+│ on_stop_signal fires HERE   │ ← Clean up resources
+│ stop_signal value is GONE   │ ← Handler can't access reason
+│ Returns to user             │
+└─────────────────────────────┘
+    ↓
+on_complete does NOT fire (interruption, not completion)
+```
+
+#### Important Limitations
+
+⚠️ **Handler cannot access the stop_signal value** - it's removed before the event fires. Handlers receive the agent but can't see the interruption reason. Use the trace to understand what happened.
+
+⚠️ **Mutually exclusive with on_complete** - Either `on_stop_signal` fires (interruption) OR `on_complete` fires (normal completion), never both.
+
+#### Example: Rollback and Cleanup
 
 ```python
 from connectonion import Agent, on_stop_signal
+import os
 
-def cleanup_on_stop(agent):
-    """Clean up when operation is interrupted"""
+@on_stop_signal
+def rollback_and_cleanup(agent):
+    """Rollback partial changes and clean up resources"""
     trace = agent.current_session['trace']
-    pending_tools = [t for t in trace if t.get('status') == 'running']
 
-    if pending_tools:
-        print(f"⚠️  Interrupted with {len(pending_tools)} pending operations")
+    # Rollback files written this turn
+    files_modified = [
+        t['args']['file_path']
+        for t in trace
+        if t.get('tool') == 'write_file' and t.get('status') == 'success'
+    ]
 
-    # Save checkpoint so work can be resumed
-    print("💾 Saving checkpoint...")
+    for file_path in files_modified:
+        restore_from_backup(file_path)
+        print(f"⏪ Rolled back: {file_path}")
+
+    # Clean up temp resources
+    temp_files = agent.current_session.pop('temp_files', [])
+    for temp in temp_files:
+        if os.path.exists(temp):
+            os.remove(temp)
+
+    # Close open connections
+    if 'db_connection' in agent.current_session:
+        agent.current_session['db_connection'].rollback()
+        agent.current_session['db_connection'].close()
+
+    print("✅ Cleanup complete - ready for new input")
 
 agent = Agent(
     "assistant",
-    tools=[search],
-    on_events=[on_stop_signal(cleanup_on_stop)]
+    tools=[write_file, read_file],
+    on_events=[rollback_and_cleanup]
 )
 ```
 
-**Use cases for `on_stop_signal`:**
+#### Use Cases
 
-- Rollback partial changes
-- Save checkpoints for resumption
-- Clean up temporary resources
-- Notify user of interruption
-- Log interrupted operations
+- **Rollback partial changes** - Undo file modifications, database transactions
+- **Save checkpoints** - Persist state for later resumption
+- **Clean up resources** - Close connections, delete temp files, stop processes
+- **Notify user** - Explain what was interrupted and what state was saved
+- **Log interruptions** - Track how often operations are rejected
+
+#### See Also
+
+- [Tool Approval Plugin](../useful_plugins/tool_approval.md) - Main source of stop_signal
+- [Agent Lifecycle](../design-decisions/019-agent-lifecycle-design.md#stop-signal) - How stop_signal works
 
 ### Session Statistics
 
