@@ -679,6 +679,14 @@ def load_config_permissions(agent: 'Agent') -> None:
     # Store config permissions on agent (applied on first tool execution)
     agent._config_permissions = permissions_config
 
+    # Log where permissions were loaded from (once, at startup)
+    if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+        abs_path = str(host_yaml.absolute())
+        count = len(permissions_config)
+        agent.logger.console.print(
+            f"[dim]Loaded {count} permission(s) from {abs_path}[/dim]"
+        )
+
 
 @before_iteration
 def poll_mode_changes(agent: 'Agent') -> None:

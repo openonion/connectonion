@@ -387,18 +387,8 @@ class Console:
             tool_display = self._format_tool_display(tool_name, tool_args, max_width=35)
 
         # Format source with color and location
-        from pathlib import Path
         if source == 'config':
-            config_path = Path.cwd() / '.co' / 'host.yaml'
-            if config_path.exists():
-                # Show absolute path for debugging
-                abs_path = str(config_path.absolute())
-                source_display = f"[{BRAND_COLOR}]config[/{BRAND_COLOR}] [{DIM_COLOR}]{abs_path}[/{DIM_COLOR}]"
-            else:
-                # Fallback to template if local config doesn't exist
-                template_path = Path(__file__).parent / 'network' / 'host' / 'host.yaml'
-                abs_template = str(template_path.absolute())
-                source_display = f"[{BRAND_COLOR}]config[/{BRAND_COLOR}] [{DIM_COLOR}]{abs_template}[/{DIM_COLOR}]"
+            source_display = f"[{BRAND_COLOR}]config[/{BRAND_COLOR}]"
         elif source == 'user':
             source_display = f"[{SUCCESS_COLOR}]user[/{SUCCESS_COLOR}] [{DIM_COLOR}](session)[/{DIM_COLOR}]"
         elif source == 'skill':
