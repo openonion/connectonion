@@ -106,6 +106,7 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
     metadata = {
         "name": sample.name,
         "tools": sample.tools.names(),
+        "model": sample.model,  # Add model to metadata
     }
     return metadata, sample
 
