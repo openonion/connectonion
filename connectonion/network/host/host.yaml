@@ -13,6 +13,98 @@ reload: false
 # Auto-approve tool permissions
 # Default permissions for safe read-only commands
 permissions:
+  # Safe read-only tools (built-in)
+  "read":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
+
+  "read_file":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
+
+  "glob":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
+
+  "grep":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
+
+  "search":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
+
+  "list_files":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
+
+  "get_file_info":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
+
+  "task":
+    allowed: true
+    source: safe
+    reason: sub-agents handle own approval
+    expires:
+      type: never
+
+  "load_guide":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
+
+  "enter_plan_mode":
+    allowed: true
+    source: safe
+    reason: planning mode
+    expires:
+      type: never
+
+  "write_plan":
+    allowed: true
+    source: safe
+    reason: planning mode
+    expires:
+      type: never
+
+  "task_output":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
+
+  "ask_user":
+    allowed: true
+    source: safe
+    reason: user interaction
+    expires:
+      type: never
+
   # System information commands (Linux/Unix)
   "Bash(pwd)":
     allowed: true

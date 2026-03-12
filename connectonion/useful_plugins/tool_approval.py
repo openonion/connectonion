@@ -359,18 +359,7 @@ def check_approval(agent: 'Agent') -> None:
         tool_name = pending['name']
         tool_args = pending['arguments']
 
-        # Ensure safe tools are in permissions
-        if tool_name in SAFE_TOOLS:
-            if 'permissions' not in agent.current_session:
-                agent.current_session['permissions'] = {}
-            if tool_name not in agent.current_session['permissions']:
-                agent.current_session['permissions'][tool_name] = {
-                    'allowed': True,
-                    'source': 'safe',
-                    'reason': 'read-only operation',
-                    'expires': {'type': 'never'}
-                }
-
+        # Get permissions from session (includes safe tools from template)
         permissions = agent.current_session.get('permissions', {})
 
         if permissions:
