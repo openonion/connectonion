@@ -85,6 +85,62 @@ permissions:
     expires:
       type: never
 
+  "Bash(top *)":
+    allowed: true
+    source: config
+    reason: safe - process and system stats
+    expires:
+      type: never
+
+  "Bash(ps *)":
+    allowed: true
+    source: config
+    reason: safe - process list
+    expires:
+      type: never
+
+  "Bash(uptime *)":
+    allowed: true
+    source: config
+    reason: safe - system uptime
+    expires:
+      type: never
+
+  "Bash(whoami)":
+    allowed: true
+    source: config
+    reason: safe - current user
+    expires:
+      type: never
+
+  "Bash(hostname *)":
+    allowed: true
+    source: config
+    reason: safe - system hostname
+    expires:
+      type: never
+
+  "Bash(date *)":
+    allowed: true
+    source: config
+    reason: safe - current date/time
+    expires:
+      type: never
+
+  "Bash(which *)":
+    allowed: true
+    source: config
+    reason: safe - find command path
+    expires:
+      type: never
+
+  "Bash(env *)":
+    allowed: true
+    source: config
+    reason: safe - environment variables
+    expires:
+      type: never
+
   "Bash(grep *)":
     allowed: true
     source: config
