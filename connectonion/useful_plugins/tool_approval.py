@@ -124,6 +124,84 @@ FILE_EDIT_TOOLS = {'write', 'edit', 'multi_edit'}
 COMMAND_TOOLS = {'bash', 'shell', 'run', 'run_in_dir', 'run_background'}
 
 
+def _extract_commands_from_bash(command: str) -> list[str]:
+    """Parse bash command chain into individual command names.
+
+    Uses bashlex AST to handle: pipes, &&, ||, ;, command substitution, etc.
+
+    Examples:
+        "pwd && ls -F" → ["pwd", "ls"]
+        "cat file | grep test" → ["cat", "grep"]
+
+    Args:
+        command: Bash command string
+
+    Returns:
+        List of command names (just names, no args)
+    """
+    try:
+        import bashlex
+
+        parts = bashlex.parse(command)
+        commands = []
+
+        def extract_from_node(node):
+            """Recursively extract commands from AST node."""
+            if node.kind == 'command':
+                # Get first word (command name)
+                for part in node.parts:
+                    if part.kind == 'word':
+                        commands.append(part.word)
+                        break
+            elif hasattr(node, 'parts'):
+                # Recurse into child nodes
+                for part in node.parts:
+                    extract_from_node(part)
+
+        for tree in parts:
+            extract_from_node(tree)
+
+        return commands if commands else [command.split()[0] if command.split() else command]
+
+    except Exception:
+        parts = command.split()
+        return [parts[0]] if parts else [command]
+
+
+def _check_bash_chain_permitted(command: str, permissions: dict) -> tuple[bool, str]:
+    """Check if ALL commands in bash chain are permitted.
+
+    For "pwd && ls -F", checks if BOTH pwd AND ls are allowed.
+    If ANY command lacks permission, whole chain is rejected.
+
+    Args:
+        command: Bash command (may be chain)
+        permissions: Session permissions dict
+
+    Returns:
+        (permitted, reason) tuple
+    """
+    from .skills import matches_permission_pattern
+
+    commands = _extract_commands_from_bash(command)
+    unpermitted = []
+
+    for cmd_name in commands:
+        found = False
+        for pattern, perm in permissions.items():
+            if perm.get('allowed') and matches_permission_pattern('bash', {'command': cmd_name}, [pattern]):
+                found = True
+                break
+        if not found:
+            unpermitted.append(cmd_name)
+
+    if unpermitted:
+        return False, None
+
+    reason = f"safe chain ({len(commands)} commands)" if len(commands) > 1 else "permitted"
+    return True, reason
+
+
 def _get_approval_key(tool_name: str, tool_args: dict) -> str:
     """Get the approval key for session memory.
 
@@ -314,6 +392,22 @@ def check_approval(agent: 'Agent') -> None:
             from .skills import matches_permission_pattern
             import fnmatch
 
+            # Special handling for bash command chains
+            if tool_name == 'bash' and 'command' in tool_args:
+                permitted, reason = _check_bash_chain_permitted(tool_args['command'], permissions)
+                if permitted:
+                    # Find source from first matching permission
+                    source = 'config'
+                    commands = _extract_commands_from_bash(tool_args['command'])
+                    if commands:
+                        for pattern, perm in permissions.items():
+                            if perm.get('allowed') and matches_permission_pattern('bash', {'command': commands[0]}, [pattern]):
+                                source = perm.get('source', 'config')
+                                break
+                    if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                        agent.logger.console.log_permission_granted('bash', tool_args, source, reason)
+                    return
+
             # Check each permission in the dict
             for pattern, perm in permissions.items():
                 if not perm.get('allowed'):
@@ -338,7 +432,9 @@ def check_approval(agent: 'Agent') -> None:
 
                     # Pattern matched (and params matched if match field exists)
                     reason = perm.get('reason', 'unknown')
-                    _log(agent, f"[dim]⚡ {tool_name} ({reason})[/dim]")
+                    source = perm.get('source', 'config')
+                    if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                        agent.logger.console.log_permission_granted(tool_name, tool_args, source, reason)
                     return
 
     # =================================================================
@@ -347,7 +443,9 @@ def check_approval(agent: 'Agent') -> None:
     if agent.current_session.get('mode') == 'ulw':
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
-        _log(agent, f"[dim]⚡ {tool_name} (approval skipped)[/dim]")
+        tool_args = pending.get('arguments', {}) if pending else {}
+        if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+            agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'ulw mode')
         return
 
     # reject_hard was set by a previous tool in this batch — reject remaining
@@ -372,7 +470,8 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     if mode == 'accept_edits':
         if tool_name in FILE_EDIT_TOOLS:
-            _log(agent, f"[dim]⚡ {tool_name} (accept_edits mode)[/dim]")
+            if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'accept_edits mode')
             return
         # Other dangerous tools fall through to approval logic
 
