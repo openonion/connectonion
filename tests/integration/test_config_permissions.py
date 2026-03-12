@@ -17,6 +17,7 @@ from unittest.mock import Mock
 
 from connectonion import Agent
 from connectonion.useful_plugins import tool_approval
+from connectonion.useful_plugins.tool_approval import load_config_permissions
 
 
 def test_load_permissions_from_project_host_yaml(tmp_path, monkeypatch):
@@ -52,14 +53,23 @@ def test_load_permissions_from_project_host_yaml(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     # Create agent with tool_approval plugin
-    agent = Agent("test", plugins=[tool_approval])
+    agent = Agent("test", plugins=[tool_approval], model="gpt-4o-mini")
 
-    # Check that config permissions were loaded
-    assert hasattr(agent, '_config_permissions')
-    assert 'read_file' in agent._config_permissions
-    assert 'Bash(git status)' in agent._config_permissions
-    assert agent._config_permissions['read_file']['allowed'] is True
-    assert agent._config_permissions['read_file']['reason'] == 'safe read operation'
+    # Initialize session by simulating a user input (but don't actually run it)
+    agent.current_session = {
+        'messages': [{'role': 'user', 'content': 'test'}],
+        'trace': [],
+        'turn': 1
+    }
+    # Trigger permission loading
+    load_config_permissions(agent)
+
+    # Check that config permissions were loaded into session
+    assert 'permissions' in agent.current_session
+    assert 'read_file' in agent.current_session['permissions']
+    assert 'Bash(git status)' in agent.current_session['permissions']
+    assert agent.current_session['permissions']['read_file']['allowed'] is True
+    assert agent.current_session['permissions']['read_file']['reason'] == 'safe read operation'
 
 
 def test_no_permissions_when_host_yaml_missing(tmp_path, monkeypatch):
@@ -68,14 +78,23 @@ def test_no_permissions_when_host_yaml_missing(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     # Create agent - should not crash
-    agent = Agent("test", plugins=[tool_approval])
+    agent = Agent("test", plugins=[tool_approval], model="gpt-4o-mini")
+
+    # Initialize session
+    agent.current_session = {
+        'messages': [{'role': 'user', 'content': 'test'}],
+        'trace': [],
+        'turn': 1
+    }
+    # Trigger permission loading
+    load_config_permissions(agent)
 
     # Should load from template (which has default permissions)
-    assert hasattr(agent, '_config_permissions')
-    assert agent._config_permissions
+    assert 'permissions' in agent.current_session
+    assert agent.current_session['permissions']
     # Verify some default permissions from template
-    assert 'Bash(pwd)' in agent._config_permissions
-    assert 'Bash(git status)' in agent._config_permissions
+    assert 'Bash(pwd)' in agent.current_session['permissions']
+    assert 'Bash(git status)' in agent.current_session['permissions']
 
 
 def test_simple_tool_name_pattern_matching(tmp_path, monkeypatch):

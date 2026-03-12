@@ -48,7 +48,7 @@ Client Protocol:
 from typing import TYPE_CHECKING
 from pathlib import Path
 
-from ..core.events import before_each_tool, before_iteration, on_agent_ready
+from ..core.events import before_each_tool, before_iteration, after_user_input
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -352,21 +352,7 @@ def check_approval(agent: 'Agent') -> None:
         ValueError: If tool rejected or blocked by mode
     """
     # =================================================================
-    # Apply config permissions (FIRST TIME ONLY)
-    # =================================================================
-    # Config permissions are loaded at agent_ready and stored on agent instance
-    # On first tool execution, copy them into session['permissions']
-    if hasattr(agent, '_config_permissions') and agent._config_permissions:
-        if 'permissions' not in agent.current_session:
-            agent.current_session['permissions'] = {}
-
-        # Only add config permissions that aren't already in session
-        for pattern, perm_config in agent._config_permissions.items():
-            if pattern not in agent.current_session['permissions']:
-                agent.current_session['permissions'][pattern] = perm_config
-
-    # =================================================================
-    # Check unified permissions (HIGHEST PRIORITY)
+    # Check unified permissions from session
     # =================================================================
     pending = agent.current_session.get('pending_tool')
     if pending:
@@ -639,16 +625,22 @@ def get_current_mode(agent: 'Agent') -> str:
     return _get_mode(agent)
 
 
-@on_agent_ready
+@after_user_input
 def load_config_permissions(agent: 'Agent') -> None:
-    """Load permissions from host.yaml on agent initialization.
+    """Load permissions from host.yaml into session after user input.
 
     Reads permissions from .co/host.yaml (project) or falls back to
     the template in the package if project config doesn't exist.
 
     Uses unified permission structure with source='config'.
+    Runs after user input so session is guaranteed to exist.
+    Only loads once per session (first input).
     """
     import yaml
+
+    # Only load once per session
+    if 'permissions' in agent.current_session and 'permissions_source' in agent.current_session:
+        return
 
     # Try project-specific config first
     co_dir = Path.cwd() / '.co'
@@ -676,15 +668,21 @@ def load_config_permissions(agent: 'Agent') -> None:
     if not isinstance(permissions_config, dict):
         return
 
-    # Store config permissions on agent (applied on first tool execution)
-    agent._config_permissions = permissions_config
+    # Store config permissions in session (session already exists after user input)
+    if 'permissions' not in agent.current_session:
+        agent.current_session['permissions'] = {}
+
+    # Merge config permissions into session permissions
+    agent.current_session['permissions'].update(permissions_config)
+
+    # Store config file path in session for reference
+    agent.current_session['permissions_source'] = str(host_yaml.name)
 
     # Log where permissions were loaded from (once, at startup)
     if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
-        abs_path = str(host_yaml.absolute())
         count = len(permissions_config)
         agent.logger.console.print(
-            f"[dim]Loaded {count} permission(s) from {abs_path}[/dim]"
+            f"[dim]Loaded {count} permission(s) from {host_yaml.name}[/dim]"
         )
 
 
