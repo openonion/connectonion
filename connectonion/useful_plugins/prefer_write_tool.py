@@ -39,11 +39,15 @@ if TYPE_CHECKING:
 
 # Patterns that indicate bash is being used to create/write files
 FILE_CREATION_PATTERNS = [
-    re.compile(r"cat\s+<<"),           # cat <<EOF, cat <<'EOF', cat << 'EOF'
-    re.compile(r">\s*\S+\.\w+\s*<<"),   # > file.py <<EOF
-    re.compile(r"echo\s+.*>\s*\S+"),    # echo "..." > file
-    re.compile(r"printf\s+.*>\s*\S+"),  # printf "..." > file
-    re.compile(r"tee\s+\S+"),           # tee file.py
+    re.compile(r"cat\s+<<"),              # cat <<EOF, cat <<'EOF', cat << 'EOF'
+    re.compile(r">\s*\S+\.\w+\s*<<"),     # > file.py <<EOF
+    re.compile(r"echo\s+.*>\s*\S+"),      # echo "..." > file
+    re.compile(r"printf\s+.*>\s*\S+"),    # printf "..." > file
+    re.compile(r"tee\s+\S+"),             # tee file.py
+    re.compile(r">\s*[~/\.]"),            # > file, > ./file, > ~/file, > /path
+    re.compile(r">>\s*[~/\.]"),           # >> file, >> ./file, >> ~/file, >> /path
+    re.compile(r"\s+>\s+\S+"),            # cmd > file (with spaces)
+    re.compile(r"\s+>>\s+\S+"),           # cmd >> file (with spaces)
 ]
 
 # Patterns that indicate bash is being used to read files
