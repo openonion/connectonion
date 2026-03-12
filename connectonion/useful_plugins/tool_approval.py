@@ -20,8 +20,8 @@ Rejection Modes (client sends mode field):
 - "reject_hard" (default): Skip remaining batch, stop loop, wait for user input.
 
 Tool Classification:
-- SAFE_TOOLS: Read-only operations (read, glob, grep, etc.) - never need approval
-- DANGEROUS_TOOLS: Write/execute operations (bash, write, edit, etc.) - always need approval
+- Safe tools (read, glob, grep, etc.) - defined in host.yaml template, auto-approved
+- DANGEROUS_TOOLS: Write/execute operations (bash, write, edit, etc.) - need approval
 - Unknown tools: Treated as safe (no approval needed)
 
 Session Memory:
@@ -73,27 +73,6 @@ if TYPE_CHECKING:
 VALID_MODES = {'safe', 'plan', 'accept_edits'}
 DEFAULT_MODE = 'safe'
 
-
-# Tools that NEVER need approval (read-only, safe)
-# These tools cannot modify system state or have external side effects.
-SAFE_TOOLS = {
-    # File reading
-    'read', 'read_file',
-    # Search operations
-    'glob', 'grep', 'search',
-    # Info operations
-    'list_files', 'get_file_info',
-    # Agent operations - sub-agents handle their own approval
-    'task',
-    # Documentation
-    'load_guide',
-    # Planning - enter freely (write_plan needs approval for user feedback)
-    'enter_plan_mode',
-    # Task management
-    'task_output',
-    # User interaction
-    'ask_user',
-}
 
 # Tools that need approval in 'safe' mode
 # These tools can modify files, execute code, or have external effects.
