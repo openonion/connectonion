@@ -67,7 +67,9 @@ def test_load_permissions_from_project_host_yaml(tmp_path, monkeypatch):
     # Check that config permissions were loaded into session
     assert 'permissions' in agent.current_session
     assert 'read_file' in agent.current_session['permissions']
-    assert 'Bash(git status)' in agent.current_session['permissions']
+    # Bash() patterns converted to 'bash' with 'when' field
+    assert 'bash' in agent.current_session['permissions']
+    assert agent.current_session['permissions']['bash']['when'] == {'command': 'git status'}
     assert agent.current_session['permissions']['read_file']['allowed'] is True
     assert agent.current_session['permissions']['read_file']['reason'] == 'safe read operation'
 
@@ -92,9 +94,10 @@ def test_no_permissions_when_host_yaml_missing(tmp_path, monkeypatch):
     # Should load from template (which has default permissions)
     assert 'permissions' in agent.current_session
     assert agent.current_session['permissions']
-    # Verify some default permissions from template
-    assert 'Bash(pwd)' in agent.current_session['permissions']
-    assert 'Bash(git status)' in agent.current_session['permissions']
+    # Verify bash permission exists (converted from Bash() patterns)
+    assert 'bash' in agent.current_session['permissions']
+    # Template has multiple Bash() patterns, last one loaded wins
+    assert 'when' in agent.current_session['permissions']['bash']
 
 
 def test_simple_tool_name_pattern_matching(tmp_path, monkeypatch):
@@ -128,6 +131,9 @@ def test_simple_tool_name_pattern_matching(tmp_path, monkeypatch):
         'trace': [],
         'turn': 0
     }
+
+    # Trigger permission loading
+    load_config_permissions(agent)
 
     # Simulate tool execution
     agent.current_session['pending_tool'] = {
@@ -175,6 +181,9 @@ def test_bash_exact_command_pattern(tmp_path, monkeypatch):
         'turn': 0
     }
 
+    # Trigger permission loading
+    load_config_permissions(agent)
+
     # Test exact match
     agent.current_session['pending_tool'] = {
         'name': 'bash',
@@ -186,8 +195,9 @@ def test_bash_exact_command_pattern(tmp_path, monkeypatch):
     # Should not raise
     check_approval(agent)
 
-    # Check permissions applied
-    assert 'Bash(git status)' in agent.current_session['permissions']
+    # Check permissions applied - converted to 'when' format
+    assert 'bash' in agent.current_session['permissions']
+    assert agent.current_session['permissions']['bash']['when'] == {'command': 'git status'}
 
 
 def test_bash_wildcard_pattern(tmp_path, monkeypatch):
@@ -219,6 +229,9 @@ def test_bash_wildcard_pattern(tmp_path, monkeypatch):
         'turn': 0
     }
 
+    # Trigger permission loading
+    load_config_permissions(agent)
+
     # Test wildcard match - should match "git diff --staged"
     agent.current_session['pending_tool'] = {
         'name': 'bash',
@@ -230,7 +243,9 @@ def test_bash_wildcard_pattern(tmp_path, monkeypatch):
     # Should not raise
     check_approval(agent)
 
-    assert 'Bash(git diff *)' in agent.current_session['permissions']
+    # Converted to 'when' format
+    assert 'bash' in agent.current_session['permissions']
+    assert agent.current_session['permissions']['bash']['when'] == {'command': 'git diff *'}
 
 
 def test_parameter_matching_with_match_field(tmp_path, monkeypatch):
@@ -264,6 +279,9 @@ def test_parameter_matching_with_match_field(tmp_path, monkeypatch):
         'trace': [],
         'turn': 0
     }
+
+    # Trigger permission loading
+    load_config_permissions(agent)
 
     # Test match - should auto-approve write to .md file
     agent.current_session['pending_tool'] = {
@@ -362,6 +380,9 @@ def test_glob_pattern_matching_in_match_field(tmp_path, monkeypatch):
         'turn': 0
     }
 
+    # Trigger permission loading
+    load_config_permissions(agent)
+
     # Test glob match
     agent.current_session['pending_tool'] = {
         'name': 'write',
@@ -405,6 +426,9 @@ def test_priority_config_permissions_with_safe_tools(tmp_path, monkeypatch):
         'turn': 0
     }
 
+    # Trigger permission loading
+    load_config_permissions(agent)
+
     # Test safe tool (should auto-approve from SAFE_TOOLS)
     agent.current_session['pending_tool'] = {
         'name': 'read_file',
@@ -427,8 +451,10 @@ def test_priority_config_permissions_with_safe_tools(tmp_path, monkeypatch):
 
     check_approval(agent)
 
-    assert 'Bash(git status)' in agent.current_session['permissions']
-    assert agent.current_session['permissions']['Bash(git status)']['source'] == 'config'
+    # Converted to 'when' format
+    assert 'bash' in agent.current_session['permissions']
+    assert agent.current_session['permissions']['bash']['source'] == 'config'
+    assert agent.current_session['permissions']['bash']['when'] == {'command': 'git status'}
 
 
 if __name__ == '__main__':

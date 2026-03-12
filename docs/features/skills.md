@@ -131,20 +131,21 @@ snapshot = deepcopy(session['permissions'])  # Preserves user approvals
 # Step 2: Grant skill permissions
 session['permissions'] = {
     # User approvals preserved from snapshot
-    "bash:pytest": {
+    "write": {
         "allowed": True,
         "source": "user",
         "reason": "approved for session",
         "expires": {"type": "session_end"}
     },
-    # Skill permissions added
-    "Bash(git status)": {
+    # Skill permissions added (unified format with 'when' field)
+    "bash": {
         "allowed": True,
         "source": "skill",
         "reason": "commit skill (turn 5)",
+        "when": {"command": "git *"},  # Granular - only git commands
         "expires": {"type": "turn_end"}
     },
-    "Bash(git diff *)": {
+    "read_file": {
         "allowed": True,
         "source": "skill",
         "reason": "commit skill (turn 5)",
@@ -497,7 +498,7 @@ agent.current_session = {
             'expires': {'type': 'turn_end'}
         },
         # User approvals (session-scoped)
-        'bash:pytest': {
+        'write': {
             'allowed': True,
             'source': 'user',
             'reason': 'approved for session',
@@ -508,7 +509,7 @@ agent.current_session = {
     # Permission snapshot (for restore after skill completes)
     '_permission_snapshot': {
         'read_file': {...},
-        'bash:pytest': {...}
+        'write': {...}
         # Skill permissions NOT in snapshot
     }
 }

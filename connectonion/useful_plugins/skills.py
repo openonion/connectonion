@@ -221,10 +221,12 @@ def _discover_all_skills() -> List[Dict[str, str]]:
 # =============================================================================
 
 def _grant_skill_permissions(agent: 'Agent', skill_name: str, patterns: List[str]) -> None:
-    """Grant skill permissions using unified permission structure.
+    """Grant skill permissions using unified permission structure with 'when' field.
 
     Takes snapshot of current permissions before granting to preserve user approvals.
-    Stores patterns directly in permissions dict - pattern matching happens at check time.
+    Converts patterns to unified format:
+    - "Bash(git status)" → "bash" with when: {command: "git status"}
+    - "read_file" → "read_file" (simple tool name)
 
     Args:
         agent: Agent instance
@@ -242,13 +244,29 @@ def _grant_skill_permissions(agent: 'Agent', skill_name: str, patterns: List[str
     # Grant permissions for each pattern
     turn = agent.current_session.get('turn', 0)
     for pattern in patterns:
-        # Store pattern itself as key in permissions dict
-        agent.current_session['permissions'][pattern] = {
-            'allowed': True,
-            'source': 'skill',
-            'reason': f'{skill_name} skill (turn {turn})',
-            'expires': {'type': 'turn_end'}
-        }
+        # Convert pattern to unified format
+        if pattern.startswith('Bash(') and pattern.endswith(')'):
+            # "Bash(git status)" → "bash" with when: {command: "git status"}
+            command_pattern = pattern[5:-1]  # Extract "git status"
+            tool_name = 'bash'
+            permission = {
+                'allowed': True,
+                'source': 'skill',
+                'reason': f'{skill_name} skill (turn {turn})',
+                'when': {'command': command_pattern},
+                'expires': {'type': 'turn_end'}
+            }
+        else:
+            # Simple tool name: "read_file" → "read_file"
+            tool_name = pattern
+            permission = {
+                'allowed': True,
+                'source': 'skill',
+                'reason': f'{skill_name} skill (turn {turn})',
+                'expires': {'type': 'turn_end'}
+            }
+
+        agent.current_session['permissions'][tool_name] = permission
 
 
 def _restore_permissions(agent: 'Agent') -> None:
@@ -258,53 +276,6 @@ def _restore_permissions(agent: 'Agent') -> None:
     """
     if '_permission_snapshot' in agent.current_session:
         agent.current_session['permissions'] = agent.current_session.pop('_permission_snapshot')
-
-
-def matches_permission_pattern(tool_name: str, tool_args: dict, patterns: List[str]) -> bool:
-    """Check if tool call matches any allowed pattern.
-
-    Pattern types:
-    - "read_file" - Tool name only (matches any args)
-    - "Bash(git status)" - Exact command match
-    - "Bash(git diff *)" - Command with wildcard
-    - "Bash(git *)" - All commands starting with "git"
-
-    Args:
-        tool_name: Tool name (e.g., "bash")
-        tool_args: Tool arguments dict
-        patterns: List of allowed patterns
-
-    Returns:
-        True if tool matches any pattern
-    """
-    for pattern in patterns:
-        # Pattern: "tool_name" - matches tool name only
-        if pattern == tool_name:
-            return True
-
-        # Pattern: "Bash(command pattern)" - matches bash commands
-        if pattern.startswith('Bash(') and pattern.endswith(')'):
-            if tool_name.lower() != 'bash':
-                continue
-
-            cmd_pattern = pattern[5:-1]  # Extract "git status" from "Bash(git status)"
-            actual_cmd = tool_args.get('command', '')
-
-            # Exact match: "git status" == "git status"
-            if cmd_pattern == actual_cmd:
-                return True
-
-            # Wildcard match: "git diff *" matches "git diff --staged"
-            if cmd_pattern.endswith(' *'):
-                prefix = cmd_pattern[:-2]  # Remove " *"
-                if actual_cmd.startswith(prefix):
-                    return True
-
-            # Wildcard match: "git *" matches "git status"
-            if cmd_pattern == actual_cmd.split()[0] + ' *':
-                return True
-
-    return False
 
 
 # =============================================================================

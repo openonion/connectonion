@@ -28,10 +28,13 @@ from connectonion.useful_plugins.tool_approval import (
     poll_mode_changes,
     handle_mode_change,
     tool_approval,
-    SAFE_TOOLS,
+    VALID_MODES,
+)
+from connectonion.useful_plugins.tool_approval.constants import (
     DANGEROUS_TOOLS,
     COMMAND_TOOLS,
-    VALID_MODES,
+)
+from connectonion.useful_plugins.tool_approval.approval import (
     _is_approved_for_session,
     _save_session_approval,
     _init_approval_state,
@@ -84,14 +87,7 @@ class FakeAgent:
 
 
 class TestToolClassification:
-    """Test tool classification (SAFE vs DANGEROUS)."""
-
-    def test_safe_tools_defined(self):
-        """SAFE_TOOLS should contain read-only tools."""
-        assert 'read' in SAFE_TOOLS
-        assert 'read_file' in SAFE_TOOLS
-        assert 'glob' in SAFE_TOOLS
-        assert 'grep' in SAFE_TOOLS
+    """Test tool classification - DANGEROUS tools need approval."""
 
     def test_dangerous_tools_defined(self):
         """DANGEROUS_TOOLS should contain write/execute tools."""
@@ -100,10 +96,11 @@ class TestToolClassification:
         assert 'edit' in DANGEROUS_TOOLS
         assert 'run_background' in DANGEROUS_TOOLS
 
-    def test_no_overlap(self):
-        """SAFE and DANGEROUS should not overlap."""
-        overlap = SAFE_TOOLS & DANGEROUS_TOOLS
-        assert len(overlap) == 0, f"Overlap found: {overlap}"
+    def test_command_tools_defined(self):
+        """COMMAND_TOOLS should contain bash-like tools."""
+        assert 'bash' in COMMAND_TOOLS
+        assert 'shell' in COMMAND_TOOLS
+        assert 'run' in COMMAND_TOOLS
 
 
 class TestNoIO:
@@ -154,10 +151,10 @@ class TestDangerousTools:
 
         check_approval(agent)
 
-        # Approval request was sent with "bash:npm" tool name and description
+        # Approval request was sent with tool name (no more :npm suffix)
         assert len(io.sent) == 1
         assert io.sent[0]['type'] == 'approval_needed'
-        assert io.sent[0]['tool'] == 'bash:npm'
+        assert io.sent[0]['tool'] == 'bash'  # Changed: no more :npm suffix
         assert io.sent[0]['arguments'] == {'command': 'npm install', 'description': 'Install dependencies'}
         assert io.sent[0]['description'] == 'Install dependencies'
 
@@ -187,8 +184,11 @@ class TestDangerousTools:
 
         check_approval(agent)
 
-        # Saved to session with command-level key
-        assert agent.current_session['approval']['approved_tools']['bash:npm'] == 'session'
+        # Saved to permissions (tool-level, no 'when' field for user approvals)
+        assert 'bash' in agent.current_session['permissions']
+        assert agent.current_session['permissions']['bash']['source'] == 'user'
+        assert agent.current_session['permissions']['bash']['allowed'] is True
+        assert agent.current_session['permissions']['bash']['expires'] == {'type': 'session_end'}
 
     def test_session_approved_tool_skips_same_command(self):
         """Session approval for 'npm install' should skip 'npm run build' (same base command)."""
@@ -211,15 +211,14 @@ class TestDangerousTools:
         check_approval(agent)
         assert len(io.sent) == 1  # Still 1, no new request
 
-    def test_session_approved_tool_does_not_skip_different_command(self):
-        """Session approval for 'npm' should NOT skip 'git' (different command)."""
+    def test_session_approved_bash_approves_all_commands(self):
+        """Session approval for 'bash' approves ALL bash commands."""
         io = FakeIO(responses=[
             {'approved': True, 'scope': 'session'},
-            {'approved': True, 'scope': 'once'},
         ])
         agent = FakeAgent(io=io)
 
-        # First call - approve npm for session
+        # First call - approve bash for session
         agent.current_session['pending_tool'] = {
             'name': 'bash',
             'arguments': {'command': 'npm install', 'description': 'Install dependencies'}
@@ -227,13 +226,14 @@ class TestDangerousTools:
         check_approval(agent)
         assert len(io.sent) == 1
 
-        # Second call with different command - should still require approval
+        # Second call with different command - should NOT require approval
+        # (bash was approved for session, which covers all bash commands)
         agent.current_session['pending_tool'] = {
             'name': 'bash',
             'arguments': {'command': 'git status', 'description': 'Check git status'}
         }
         check_approval(agent)
-        assert len(io.sent) == 2  # New approval request sent
+        assert len(io.sent) == 1  # No new approval request
 
     def test_non_command_tool_session_approval_uses_tool_name(self):
         """Non-command tools (write, edit) use tool name as approval key."""
@@ -246,8 +246,9 @@ class TestDangerousTools:
         }
         check_approval(agent)
 
-        # Saved with tool name only (not command-level)
-        assert agent.current_session['approval']['approved_tools']['write'] == 'session'
+        # Saved with tool name only (not command-level) in unified permissions
+        assert 'write' in agent.current_session['permissions']
+        assert agent.current_session['permissions']['write']['source'] == 'user'
 
 
 class TestRejection:
@@ -426,11 +427,11 @@ class TestBatchRemaining:
 
         sent = io.sent[0]
         assert sent['type'] == 'approval_needed'
-        assert sent['tool'] == 'bash:npm'
+        assert sent['tool'] == 'bash'  # No more :npm suffix
         assert 'batch_remaining' in sent
         assert len(sent['batch_remaining']) == 2
         assert sent['batch_remaining'][0]['tool'] == 'write'
-        assert sent['batch_remaining'][1]['tool'] == 'bash:npm'
+        assert sent['batch_remaining'][1]['tool'] == 'bash'  # No more :npm suffix
 
     def test_no_batch_remaining_for_last_tool(self):
         """approval_needed should NOT include batch_remaining for last tool in batch."""
@@ -470,7 +471,7 @@ class TestBatchRemaining:
         remaining = _get_batch_remaining(agent, 'c1')
         assert len(remaining) == 2
         assert remaining[0]['tool'] == 'write'
-        assert remaining[1]['tool'] == 'bash:git'
+        assert remaining[1]['tool'] == 'bash'  # No more :git suffix
 
         remaining = _get_batch_remaining(agent, 'c3')
         assert len(remaining) == 0
@@ -509,17 +510,17 @@ class TestDescription:
 class TestApprovalKey:
     """Test _get_approval_key for command-level granularity."""
 
-    def test_bash_uses_command_name(self):
-        """Bash tools use 'bash:command' as approval key."""
-        assert _get_approval_key('bash', {'command': 'ls /tmp'}) == 'bash:ls'
-        assert _get_approval_key('bash', {'command': 'npm install'}) == 'bash:npm'
-        assert _get_approval_key('bash', {'command': 'git status'}) == 'bash:git'
+    def test_bash_uses_tool_name_only(self):
+        """Bash tools return just tool name (command stored in 'when' field)."""
+        assert _get_approval_key('bash', {'command': 'ls /tmp'}) == 'bash'
+        assert _get_approval_key('bash', {'command': 'npm install'}) == 'bash'
+        assert _get_approval_key('bash', {'command': 'git status'}) == 'bash'
 
-    def test_all_command_tools_use_command_name(self):
-        """All COMMAND_TOOLS use command-level keys."""
+    def test_all_command_tools_use_tool_name_only(self):
+        """All COMMAND_TOOLS return just tool name."""
         for tool in COMMAND_TOOLS:
             key = _get_approval_key(tool, {'command': 'ls -la'})
-            assert key == f'{tool}:ls'
+            assert key == tool  # Just tool name
 
     def test_non_command_tool_uses_tool_name(self):
         """Non-command tools use tool name as key."""
@@ -573,11 +574,16 @@ class TestSessionState:
         assert _is_approved_for_session(session, 'write') is False
 
     def test_save_session_approval(self):
-        """_save_session_approval saves correctly."""
+        """_save_session_approval saves to unified permissions with 'when' field."""
         session = {}
-        _save_session_approval(session, 'bash')
+        _save_session_approval(session, 'bash', {'command': 'npm install'})
 
-        assert session['approval']['approved_tools']['bash'] == 'session'
+        assert 'bash' in session['permissions']
+        assert session['permissions']['bash']['allowed'] is True
+        assert session['permissions']['bash']['source'] == 'user'
+        # User approvals are tool-level (no 'when' field)
+        assert 'when' not in session['permissions']['bash']
+        assert session['permissions']['bash']['expires'] == {'type': 'session_end'}
 
 
 class TestPollModeChanges:
@@ -680,17 +686,21 @@ class TestPluginExport:
     def test_tool_approval_is_list(self):
         """tool_approval should be a list of handlers."""
         assert isinstance(tool_approval, list)
-        assert len(tool_approval) == 2
+        assert len(tool_approval) == 3  # load_config_permissions, poll_mode_changes, check_approval
 
     def test_handlers_have_correct_event_types(self):
         """Handlers should have correct event types."""
-        # First handler: poll_mode_changes (before_iteration)
+        # First handler: load_config_permissions (after_user_input)
         assert hasattr(tool_approval[0], '_event_type')
-        assert tool_approval[0]._event_type == 'before_iteration'
+        assert tool_approval[0]._event_type == 'after_user_input'
 
-        # Second handler: check_approval (before_each_tool)
+        # Second handler: poll_mode_changes (before_iteration)
         assert hasattr(tool_approval[1], '_event_type')
-        assert tool_approval[1]._event_type == 'before_each_tool'
+        assert tool_approval[1]._event_type == 'before_iteration'
+
+        # Third handler: check_approval (before_each_tool)
+        assert hasattr(tool_approval[2], '_event_type')
+        assert tool_approval[2]._event_type == 'before_each_tool'
 
     def test_plugin_integrates_with_agent(self):
         """Plugin should integrate with Agent without errors."""

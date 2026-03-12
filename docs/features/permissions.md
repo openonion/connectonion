@@ -431,9 +431,9 @@ Pre-packaged workflows with **one-turn** automatic tool approval that preserves 
 ### How It Works - Unified Permissions
 
 ```python
-# Turn 3: User approved bash:pytest for session
+# Turn 3: User approved "write" for session (tool-level)
 session['permissions'] = {
-    "bash:pytest": {
+    "write": {
         "allowed": True,
         "source": "user",
         "reason": "approved for session",
@@ -443,23 +443,24 @@ session['permissions'] = {
 
 # Turn 5: User types /commit
 # Step 1: Take snapshot of current permissions
-snapshot = deepcopy(session['permissions'])  # Preserves bash:pytest
+snapshot = deepcopy(session['permissions'])  # Preserves write approval
 
-# Step 2: Grant skill permissions
+# Step 2: Grant skill permissions (adds bash with 'when' field)
 session['permissions'] = {
-    "bash:pytest": {  # Preserved from snapshot
+    "write": {  # Preserved from snapshot
         "allowed": True,
         "source": "user",
         "reason": "approved for session",
         "expires": {"type": "session_end"}
     },
-    "Bash(git status)": {  # Added by skill
+    "bash": {  # Added by skill (with granular matching)
         "allowed": True,
         "source": "skill",
         "reason": "commit skill (turn 5)",
+        "when": {"command": "git *"},  # Only git commands
         "expires": {"type": "turn_end"}
     },
-    "Bash(git diff *)": {  # Added by skill
+    "read_file": {  # Also added by skill
         "allowed": True,
         "source": "skill",
         "reason": "commit skill (turn 5)",
@@ -468,18 +469,19 @@ session['permissions'] = {
 }
 
 # During turn 5:
-# → git status - auto-approved (skill permission) ✓
+# → git status - auto-approved (skill permission matches "git *") ✓
 # → git diff --staged - auto-approved (skill permission) ✓
 # → git commit -m "msg" - auto-approved (skill permission) ✓
-# → bash:pytest - auto-approved (user permission) ✓
+# → write("foo.txt") - auto-approved (user permission) ✓
+# → pytest - BLOCKED (skill only allows "git *") ✗
 # → rm -rf - BLOCKED (no permission) ✗
 
 # Turn 5 ends (@on_complete)
 # Step 3: Restore snapshot
-session['permissions'] = snapshot  # User's bash:pytest preserved ✓
+session['permissions'] = snapshot  # User's write approval preserved ✓
 
 # Turn 6: User continues
-# → bash:pytest - still works ✓ (user approval preserved)
+# → write - still works ✓ (user approval preserved)
 # → git status - requires approval ✗ (skill permission cleared)
 ```
 
@@ -488,20 +490,20 @@ session['permissions'] = snapshot  # User's bash:pytest preserved ✓
 **Snapshot → Grant → Restore** - User approvals are never lost.
 
 ```
-Turn 3: User approves bash:pytest for session
-  └─ permissions['bash:pytest'] = {source: 'user', expires: 'session_end'}
+Turn 3: User approves "write" for session
+  └─ permissions['write'] = {source: 'user', expires: 'session_end'}
 
 Turn 5: /commit skill
-  ├─ Snapshot current permissions (bash:pytest saved)
-  ├─ Grant skill permissions (git commands added)
+  ├─ Snapshot current permissions (write saved)
+  ├─ Grant skill permissions (bash with when:{command: 'git *'} added)
   ├─ Tools execute with both user + skill permissions
   └─ Turn ends → Restore snapshot
-      └─ bash:pytest preserved ✓
-      └─ git commands cleared ✓
+      └─ write preserved ✓
+      └─ bash cleared ✓
 
 Turn 6: Continue conversation
-  ├─ bash:pytest - still works (user approval)
-  └─ git commands - require approval (skill cleared)
+  ├─ write - still works (user approval)
+  └─ bash - requires approval (skill cleared)
 ```
 
 **Benefits:**
@@ -813,13 +815,14 @@ session['permissions'] = {
         "reason": "read-only operation",
         "expires": {"type": "never"}
     },
-    "Bash(git *)": {
+    "bash": {
         "allowed": True,
         "source": "skill",
         "reason": "commit skill (turn 5)",
+        "when": {"command": "git *"},  # Granular matching - only git commands
         "expires": {"type": "turn_end"}
     },
-    "bash:pytest": {
+    "write": {
         "allowed": True,
         "source": "user",
         "reason": "approved for session",

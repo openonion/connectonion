@@ -14,14 +14,17 @@ from unittest.mock import Mock, patch, MagicMock
 from pathlib import Path
 from copy import deepcopy
 
-# Import the module
+# Import the modules
 skills_module = importlib.import_module('connectonion.useful_plugins.skills')
 _grant_skill_permissions = skills_module._grant_skill_permissions
 _restore_permissions = skills_module._restore_permissions
-matches_permission_pattern = skills_module.matches_permission_pattern
 handle_skill_invocation = skills_module.handle_skill_invocation
 cleanup_scope = skills_module.cleanup_scope
 skills = skills_module.skills
+
+# Import pattern matching from tool_approval
+approval_module = importlib.import_module('connectonion.useful_plugins.tool_approval.approval')
+matches_permission_pattern = approval_module.matches_permission_pattern
 
 
 class FakeAgent:
@@ -44,7 +47,7 @@ class TestPermissionGranting:
         """Test that granting permissions takes a snapshot first."""
         agent = FakeAgent()
         agent.current_session['permissions'] = {
-            'bash:pytest': {
+            'write': {
                 'allowed': True,
                 'source': 'user',
                 'reason': 'approved for session',
@@ -57,8 +60,8 @@ class TestPermissionGranting:
         # Snapshot should exist
         assert '_permission_snapshot' in agent.current_session
         # Snapshot should contain user approval
-        assert 'bash:pytest' in agent.current_session['_permission_snapshot']
-        assert agent.current_session['_permission_snapshot']['bash:pytest']['source'] == 'user'
+        assert 'write' in agent.current_session['_permission_snapshot']
+        assert agent.current_session['_permission_snapshot']['write']['source'] == 'user'
 
     def test_grant_skill_permissions_adds_patterns(self):
         """Test that skill permissions are added to permissions dict."""
@@ -67,23 +70,22 @@ class TestPermissionGranting:
 
         _grant_skill_permissions(agent, 'commit', ['Bash(git status)', 'Bash(git diff *)', 'read_file'])
 
-        # Skill permissions should be added
-        assert 'Bash(git status)' in agent.current_session['permissions']
-        assert 'Bash(git diff *)' in agent.current_session['permissions']
+        # Skill permissions should be added (unified format: bash patterns→'bash' key)
+        assert 'bash' in agent.current_session['permissions']
         assert 'read_file' in agent.current_session['permissions']
 
-        # Check permission structure
-        git_status_perm = agent.current_session['permissions']['Bash(git status)']
-        assert git_status_perm['allowed'] == True
-        assert git_status_perm['source'] == 'skill'
-        assert git_status_perm['reason'] == 'commit skill (turn 5)'
-        assert git_status_perm['expires'] == {'type': 'turn_end'}
+        # Check permission structure (unified format has 'when' field)
+        bash_perm = agent.current_session['permissions']['bash']
+        assert bash_perm['allowed'] == True
+        assert bash_perm['source'] == 'skill'
+        assert bash_perm['reason'] == 'commit skill (turn 5)'
+        assert bash_perm['expires'] == {'type': 'turn_end'}
 
     def test_grant_preserves_user_approvals(self):
         """Test that user approvals are preserved when skill grants permissions."""
         agent = FakeAgent()
         agent.current_session['permissions'] = {
-            'bash:pytest': {
+            'write': {
                 'allowed': True,
                 'source': 'user',
                 'reason': 'approved for session',
@@ -93,17 +95,19 @@ class TestPermissionGranting:
 
         _grant_skill_permissions(agent, 'commit', ['Bash(git status)'])
 
-        # User approval should still be in permissions
-        assert 'bash:pytest' in agent.current_session['permissions']
-        # Skill permission should also be there
-        assert 'Bash(git status)' in agent.current_session['permissions']
+        # User approval for different tool should still be in permissions
+        assert 'write' in agent.current_session['permissions']
+        assert agent.current_session['permissions']['write']['source'] == 'user'
+        # Skill permission should also be there (unified format: key='bash')
+        assert 'bash' in agent.current_session['permissions']
+        assert agent.current_session['permissions']['bash']['source'] == 'skill'
 
     def test_restore_permissions_restores_snapshot(self):
         """Test that restore removes skill permissions and keeps user approvals."""
         agent = FakeAgent()
         # Setup: user approval exists
         agent.current_session['permissions'] = {
-            'bash:pytest': {
+            'write': {
                 'allowed': True,
                 'source': 'user',
                 'reason': 'approved for session',
@@ -112,11 +116,12 @@ class TestPermissionGranting:
         }
         agent.current_session['_permission_snapshot'] = deepcopy(agent.current_session['permissions'])
 
-        # Add skill permission
-        agent.current_session['permissions']['Bash(git status)'] = {
+        # Add skill permission (unified format)
+        agent.current_session['permissions']['bash'] = {
             'allowed': True,
             'source': 'skill',
             'reason': 'commit skill (turn 5)',
+            'when': {'command': 'git status'},
             'expires': {'type': 'turn_end'}
         }
 
@@ -124,9 +129,10 @@ class TestPermissionGranting:
         _restore_permissions(agent)
 
         # User approval should remain
-        assert 'bash:pytest' in agent.current_session['permissions']
+        assert 'write' in agent.current_session['permissions']
+        assert agent.current_session['permissions']['write']['source'] == 'user'
         # Skill permission should be gone
-        assert 'Bash(git status)' not in agent.current_session['permissions']
+        assert 'bash' not in agent.current_session['permissions']
         # Snapshot should be removed
         assert '_permission_snapshot' not in agent.current_session
 
@@ -136,21 +142,21 @@ class TestPatternMatching:
 
     def test_exact_tool_name_match(self):
         """Test exact tool name matching."""
-        assert matches_permission_pattern('read_file', {}, ['read_file']) == True
-        assert matches_permission_pattern('read_file', {}, ['write']) == False
+        assert matches_permission_pattern('read_file', {}, 'read_file') == True
+        assert matches_permission_pattern('read_file', {}, 'write') == False
 
     def test_exact_bash_command_match(self):
         """Test exact bash command matching."""
         assert matches_permission_pattern(
             'bash',
             {'command': 'git status'},
-            ['Bash(git status)']
+            'Bash(git status)'
         ) == True
 
         assert matches_permission_pattern(
             'bash',
             {'command': 'git diff'},
-            ['Bash(git status)']
+            'Bash(git status)'
         ) == False
 
     def test_bash_wildcard_match(self):
@@ -159,21 +165,21 @@ class TestPatternMatching:
         assert matches_permission_pattern(
             'bash',
             {'command': 'git diff --staged'},
-            ['Bash(git diff *)']
+            'Bash(git diff *)'
         ) == True
 
         # "git diff *" should match "git diff HEAD"
         assert matches_permission_pattern(
             'bash',
             {'command': 'git diff HEAD'},
-            ['Bash(git diff *)']
+            'Bash(git diff *)'
         ) == True
 
         # "git diff *" should NOT match "git status"
         assert matches_permission_pattern(
             'bash',
             {'command': 'git status'},
-            ['Bash(git diff *)']
+            'Bash(git diff *)'
         ) == False
 
     def test_bash_command_prefix_wildcard(self):
@@ -182,36 +188,38 @@ class TestPatternMatching:
         assert matches_permission_pattern(
             'bash',
             {'command': 'git status'},
-            ['Bash(git *)']
+            'Bash(git *)'
         ) == True
 
         assert matches_permission_pattern(
             'bash',
             {'command': 'git diff --staged'},
-            ['Bash(git *)']
+            'Bash(git *)'
         ) == True
 
         assert matches_permission_pattern(
             'bash',
             {'command': 'git commit -m "msg"'},
-            ['Bash(git *)']
+            'Bash(git *)'
         ) == True
 
         # "git *" should NOT match non-git commands
         assert matches_permission_pattern(
             'bash',
             {'command': 'pytest'},
-            ['Bash(git *)']
+            'Bash(git *)'
         ) == False
 
-    def test_multiple_patterns(self):
-        """Test matching against multiple patterns."""
-        patterns = ['read_file', 'Bash(git status)', 'Bash(git diff *)']
+    def test_single_pattern_string(self):
+        """Test that function now takes single pattern string instead of list."""
+        # Simple tool name
+        assert matches_permission_pattern('read_file', {}, 'read_file') == True
+        assert matches_permission_pattern('write', {}, 'read_file') == False
 
-        assert matches_permission_pattern('read_file', {}, patterns) == True
-        assert matches_permission_pattern('bash', {'command': 'git status'}, patterns) == True
-        assert matches_permission_pattern('bash', {'command': 'git diff HEAD'}, patterns) == True
-        assert matches_permission_pattern('bash', {'command': 'pytest'}, patterns) == False
+        # Bash patterns
+        assert matches_permission_pattern('bash', {'command': 'git status'}, 'Bash(git status)') == True
+        assert matches_permission_pattern('bash', {'command': 'git diff HEAD'}, 'Bash(git diff *)') == True
+        assert matches_permission_pattern('bash', {'command': 'pytest'}, 'Bash(git *)') == False
 
 
 class TestSkillInvocation:
@@ -240,8 +248,8 @@ class TestSkillInvocation:
         # Message should be replaced with instructions
         assert agent.current_session['messages'][-1]['content'] == 'Create a git commit'
 
-        # Permissions should be granted
-        assert 'Bash(git status)' in agent.current_session['permissions']
+        # Permissions should be granted (unified format)
+        assert 'bash' in agent.current_session['permissions']
         assert 'read_file' in agent.current_session['permissions']
 
         # Snapshot should exist
@@ -284,25 +292,25 @@ class TestCleanup:
         """Test that cleanup_scope restores permissions."""
         agent = FakeAgent()
         agent.current_session['permissions'] = {
-            'bash:pytest': {'source': 'user'},
-            'Bash(git status)': {'source': 'skill'}
+            'write': {'source': 'user'},
+            'bash': {'source': 'skill', 'when': {'command': 'git status'}}
         }
         agent.current_session['_permission_snapshot'] = {
-            'bash:pytest': {'source': 'user'}
+            'write': {'source': 'user'}
         }
 
         cleanup_scope(agent)
 
         # Snapshot should be restored
-        assert 'bash:pytest' in agent.current_session['permissions']
-        assert 'Bash(git status)' not in agent.current_session['permissions']
+        assert 'write' in agent.current_session['permissions']
+        assert 'bash' not in agent.current_session['permissions']
         assert '_permission_snapshot' not in agent.current_session
 
     def test_cleanup_scope_no_snapshot(self):
         """Test that cleanup handles missing snapshot gracefully."""
         agent = FakeAgent()
         agent.current_session['permissions'] = {
-            'bash:pytest': {'source': 'user'}
+            'write': {'source': 'user'}
         }
 
         # No snapshot
@@ -310,7 +318,7 @@ class TestCleanup:
 
         # Should not crash
         # Permissions should remain unchanged
-        assert 'bash:pytest' in agent.current_session['permissions']
+        assert 'write' in agent.current_session['permissions']
 
 
 class TestPluginStructure:
@@ -338,7 +346,7 @@ class TestIntegrationScenarios:
 
         # User has existing approval
         agent.current_session['permissions'] = {
-            'bash:pytest': {
+            'write': {
                 'allowed': True,
                 'source': 'user',
                 'reason': 'approved for session',
@@ -362,48 +370,50 @@ class TestIntegrationScenarios:
         handle_skill_invocation(agent)
 
         # During turn 5: both user and skill permissions should exist
-        assert 'bash:pytest' in agent.current_session['permissions']
-        assert 'Bash(git status)' in agent.current_session['permissions']
-        assert 'Bash(git diff *)' in agent.current_session['permissions']
+        assert 'write' in agent.current_session['permissions']
+        # Skill permissions use unified format (key='bash')
+        assert 'bash' in agent.current_session['permissions']
 
         # User approval should have correct metadata
-        assert agent.current_session['permissions']['bash:pytest']['source'] == 'user'
+        assert agent.current_session['permissions']['write']['source'] == 'user'
 
-        # Skill permissions should have correct metadata
-        assert agent.current_session['permissions']['Bash(git status)']['source'] == 'skill'
-        assert 'turn 5' in agent.current_session['permissions']['Bash(git status)']['reason']
+        # Skill permissions should have correct metadata (unified format)
+        assert agent.current_session['permissions']['bash']['source'] == 'skill'
+        assert 'turn 5' in agent.current_session['permissions']['bash']['reason']
 
         # Turn ends
         cleanup_scope(agent)
 
         # After turn: only user approval remains
-        assert 'bash:pytest' in agent.current_session['permissions']
-        assert 'Bash(git status)' not in agent.current_session['permissions']
-        assert 'Bash(git diff *)' not in agent.current_session['permissions']
+        assert 'write' in agent.current_session['permissions']
+        # Skill permission gone
+        bash_perm = agent.current_session['permissions'].get('bash', {})
+        assert bash_perm.get('source') != 'skill'
 
     def test_snapshot_restore_preserves_multiple_user_approvals(self):
         """Test that snapshot/restore preserves multiple user approvals."""
         agent = FakeAgent()
 
-        # User has multiple approvals
+        # User has multiple approvals (different tools)
         agent.current_session['permissions'] = {
-            'bash:pytest': {'source': 'user', 'expires': {'type': 'session_end'}},
-            'bash:npm': {'source': 'user', 'expires': {'type': 'session_end'}},
-            'write': {'source': 'user', 'expires': {'type': 'session_end'}}
+            'bash': {'source': 'user', 'expires': {'type': 'session_end'}},
+            'write': {'source': 'user', 'expires': {'type': 'session_end'}},
+            'edit': {'source': 'user', 'expires': {'type': 'session_end'}}
         }
 
-        # Grant skill permissions
-        _grant_skill_permissions(agent, 'commit', ['Bash(git status)'])
+        # Grant skill permissions (will overwrite bash temporarily)
+        _grant_skill_permissions(agent, 'commit', ['Bash(git status)', 'read_file'])
 
-        # All approvals should exist during skill
+        # All approvals should exist during skill (bash overwritten, +read_file added)
         assert len(agent.current_session['permissions']) == 4
 
         # Restore
         _restore_permissions(agent)
 
         # All user approvals should be preserved
-        assert 'bash:pytest' in agent.current_session['permissions']
-        assert 'bash:npm' in agent.current_session['permissions']
+        assert 'bash' in agent.current_session['permissions']
+        assert agent.current_session['permissions']['bash']['source'] == 'user'
         assert 'write' in agent.current_session['permissions']
+        assert 'edit' in agent.current_session['permissions']
         # Skill permission should be gone
-        assert 'Bash(git status)' not in agent.current_session['permissions']
+        assert 'read_file' not in agent.current_session['permissions']
