@@ -522,5 +522,50 @@ class TestAdminTrustHandlers:
         assert result["success"] is True
 
 
+class TestValidateFiles:
+    """Test file upload validation from config.py."""
+
+    def test_accepts_valid_files(self):
+        """validate_files passes for files within limits."""
+        from connectonion.network.host.config import validate_files
+
+        files = [{"name": "doc.pdf", "data": "x" * 1000}]
+        config = {"max_file_size": 10, "max_files_per_request": 10}
+        validate_files(files, config)  # Should not raise
+
+    def test_rejects_oversized_file(self):
+        """validate_files raises ValueError for file exceeding max_file_size."""
+        from connectonion.network.host.config import validate_files
+
+        # 2MB of data, but limit is 1MB
+        files = [{"name": "big.pdf", "data": "x" * (2 * 1024 * 1024)}]
+        config = {"max_file_size": 1, "max_files_per_request": 10}
+        with pytest.raises(ValueError, match="File too large"):
+            validate_files(files, config)
+
+    def test_rejects_too_many_files(self):
+        """validate_files raises ValueError when file count exceeds limit."""
+        from connectonion.network.host.config import validate_files
+
+        files = [{"name": f"file{i}.txt", "data": "x"} for i in range(5)]
+        config = {"max_file_size": 10, "max_files_per_request": 3}
+        with pytest.raises(ValueError, match="Too many files"):
+            validate_files(files, config)
+
+    def test_none_files_passes(self):
+        """validate_files accepts None without error."""
+        from connectonion.network.host.config import validate_files
+
+        config = {"max_file_size": 10, "max_files_per_request": 10}
+        validate_files(None, config)  # Should not raise
+
+    def test_empty_files_passes(self):
+        """validate_files accepts empty list without error."""
+        from connectonion.network.host.config import validate_files
+
+        config = {"max_file_size": 10, "max_files_per_request": 10}
+        validate_files([], config)  # Should not raise
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

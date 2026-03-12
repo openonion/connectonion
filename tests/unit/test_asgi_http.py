@@ -464,6 +464,45 @@ class TestHandleHttpRouting:
         assert captured["images"] == ["data:image/png;base64,abc"]
         assert captured["files"] == [{"name": "doc.pdf", "data": "data:application/pdf;base64,xyz"}]
 
+    async def test_input_endpoint_rejects_invalid_files(self):
+        """POST /input returns 400 when file validation fails."""
+        scope = {"method": "POST", "path": "/input", "headers": []}
+        sent = []
+
+        async def receive():
+            return {
+                "body": json.dumps({
+                    "payload": {"prompt": "Analyze", "timestamp": 123},
+                    "from": "0xtest",
+                    "signature": "0xsig",
+                    "files": [{"name": "big.pdf", "data": "x" * 100}],
+                }).encode(),
+                "more_body": False
+            }
+
+        async def send(msg):
+            sent.append(msg)
+
+        def mock_input(storage, prompt, session, **kw):
+            raise ValueError("File too large: big.pdf (50.0MB, max: 10MB)")
+
+        handlers = {
+            "auth": lambda data, trust, **kw: ("Analyze", "0xtest", True, None),
+            "input": mock_input,
+        }
+
+        await handle_http(
+            scope, receive, send,
+            route_handlers=handlers,
+            storage=Mock(),
+            trust="open",
+            start_time=0
+        )
+
+        assert sent[0]["status"] == 400
+        body = json.loads(sent[1]["body"])
+        assert "File too large" in body["error"]
+
     async def test_input_endpoint_auth_error(self):
         """POST /input returns 401 on auth error."""
         scope = {"method": "POST", "path": "/input", "headers": []}

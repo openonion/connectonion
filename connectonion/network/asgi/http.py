@@ -283,7 +283,11 @@ async def handle_http(
         session = data.get("session")
         images = data.get("images")
         files = data.get("files")
-        result = route_handlers["input"](storage, prompt, session, images=images, files=files)
+        try:
+            result = route_handlers["input"](storage, prompt, session, images=images, files=files)
+        except ValueError as e:
+            await send_json(send, {"error": str(e)}, 400)
+            return
         await send_json(send, result)
 
     elif method == "GET" and path.startswith("/sessions/"):
