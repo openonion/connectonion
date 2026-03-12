@@ -230,6 +230,31 @@ permissions:
     type: never
 ```
 
+### Default Permissions
+
+The template `host.yaml` includes safe read-only commands that are auto-approved:
+
+**System Information:**
+- `pwd`, `ls`, `uname`, `lscpu`, `free`, `df` - Basic system info
+- `top`, `ps`, `uptime` - Process and system monitoring
+- `whoami`, `hostname`, `date` - User and time info
+- `which`, `env` - Environment info
+
+**macOS Specific:**
+- `sw_vers`, `system_profiler` - macOS version and hardware
+- `sysctl`, `vm_stat` - System control and memory stats
+
+**Git Read Commands:**
+- `git status`, `git diff *`, `git log *`, `git branch *`
+
+**Testing:**
+- `pytest *`, `npm test`
+
+**Utilities:**
+- `cat *`, `grep *`, `perl *`
+
+All commands are whitelisted for bash command chains - if ALL commands in a chain are permitted, the entire chain is auto-approved.
+
 ### Priority Order
 
 Config permissions integrate with the existing approval system:
