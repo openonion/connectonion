@@ -91,7 +91,8 @@ def health_handler(agent_name: str, start_time: float) -> dict:
     return {"status": "healthy", "agent": agent_name, "uptime": int(time.time() - start_time)}
 
 
-def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None) -> dict:
+def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
+                 host_config: dict | None = None) -> dict:
     """GET /info
 
     Returns pre-extracted metadata including onboard requirements and accepted inputs.
@@ -100,8 +101,12 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None) 
         agent_metadata: Agent name, address, tools
         trust: TrustAgent instance (trust level extracted via .trust attribute)
         trust_config: Parsed YAML config from trust policy (optional)
+        host_config: Host config dict with file upload limits (optional)
     """
     from ... import __version__
+    from .config import DEFAULT_FILE_LIMITS
+
+    file_config = host_config or DEFAULT_FILE_LIMITS
 
     result = {
         "name": agent_metadata["name"],
@@ -110,7 +115,14 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None) 
         "model": agent_metadata.get("model", "unknown"),  # Add model info
         "trust": trust.trust,  # Extract level string from TrustAgent
         "version": __version__,
-        "accepted_inputs": ["text", "images", "files"],
+        "accepted_inputs": {
+            "text": True,
+            "images": True,
+            "files": {
+                "max_file_size_mb": file_config.get("max_file_size", DEFAULT_FILE_LIMITS["max_file_size"]),
+                "max_files_per_request": file_config.get("max_files_per_request", DEFAULT_FILE_LIMITS["max_files_per_request"]),
+            },
+        },
     }
 
     # Add onboard info if available

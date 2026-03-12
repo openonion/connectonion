@@ -306,8 +306,8 @@ class TestInfoHandler:
 
         assert "onboard" not in result
 
-    def test_returns_accepted_inputs(self):
-        """info_handler includes accepted_inputs list."""
+    def test_returns_accepted_inputs_with_file_limits(self):
+        """info_handler includes accepted_inputs with file size limits."""
         metadata = {
             "name": "agent",
             "tools": [],
@@ -318,10 +318,27 @@ class TestInfoHandler:
 
         result = info_handler(metadata, mock_trust)
 
-        assert "accepted_inputs" in result
-        assert "text" in result["accepted_inputs"]
-        assert "images" in result["accepted_inputs"]
-        assert "files" in result["accepted_inputs"]
+        accepted = result["accepted_inputs"]
+        assert accepted["text"] is True
+        assert accepted["images"] is True
+        assert accepted["files"]["max_file_size_mb"] == 10
+        assert accepted["files"]["max_files_per_request"] == 10
+
+    def test_accepted_inputs_uses_custom_config(self):
+        """info_handler uses host_config for file limits."""
+        metadata = {
+            "name": "agent",
+            "tools": [],
+            "address": "0x123",
+        }
+        mock_trust = Mock()
+        mock_trust.trust = "open"
+        custom_config = {"max_file_size": 50, "max_files_per_request": 5}
+
+        result = info_handler(metadata, mock_trust, host_config=custom_config)
+
+        assert result["accepted_inputs"]["files"]["max_file_size_mb"] == 50
+        assert result["accepted_inputs"]["files"]["max_files_per_request"] == 5
 
 
 class TestAdminLogsHandler:

@@ -139,7 +139,7 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         return health_handler(agent_name, start_time)
 
     def handle_info(trust, trust_config=None):
-        return info_handler(agent_metadata, trust, trust_config)
+        return info_handler(agent_metadata, trust, trust_config, config)
 
     def handle_admin_logs():
         return admin_logs_handler(agent_name)
