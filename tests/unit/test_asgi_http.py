@@ -406,7 +406,7 @@ class TestHandleHttpRouting:
 
         handlers = {
             "auth": lambda data, trust, **kw: ("Hello", "0xtest", True, None),
-            "input": lambda storage, prompt, session: {"result": "World", "session_id": "x"},
+            "input": lambda storage, prompt, session, **kw: {"result": "World", "session_id": "x"},
         }
 
         await handle_http(
@@ -420,6 +420,49 @@ class TestHandleHttpRouting:
         assert sent[0]["status"] == 200
         body = json.loads(sent[1]["body"])
         assert body["result"] == "World"
+
+    async def test_input_endpoint_passes_images_and_files(self):
+        """POST /input passes images and files to handler."""
+        scope = {"method": "POST", "path": "/input", "headers": []}
+        sent = []
+        captured = {}
+
+        async def receive():
+            return {
+                "body": json.dumps({
+                    "payload": {"prompt": "Analyze", "timestamp": 123},
+                    "from": "0xtest",
+                    "signature": "0xsig",
+                    "images": ["data:image/png;base64,abc"],
+                    "files": [{"name": "doc.pdf", "data": "data:application/pdf;base64,xyz"}],
+                }).encode(),
+                "more_body": False
+            }
+
+        async def send(msg):
+            sent.append(msg)
+
+        def mock_input(storage, prompt, session, **kw):
+            captured["images"] = kw.get("images")
+            captured["files"] = kw.get("files")
+            return {"result": "OK", "session_id": "x"}
+
+        handlers = {
+            "auth": lambda data, trust, **kw: ("Analyze", "0xtest", True, None),
+            "input": mock_input,
+        }
+
+        await handle_http(
+            scope, receive, send,
+            route_handlers=handlers,
+            storage=Mock(),
+            trust="open",
+            start_time=0
+        )
+
+        assert sent[0]["status"] == 200
+        assert captured["images"] == ["data:image/png;base64,abc"]
+        assert captured["files"] == [{"name": "doc.pdf", "data": "data:application/pdf;base64,xyz"}]
 
     async def test_input_endpoint_auth_error(self):
         """POST /input returns 401 on auth error."""
