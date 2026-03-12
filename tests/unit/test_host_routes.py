@@ -306,6 +306,23 @@ class TestInfoHandler:
 
         assert "onboard" not in result
 
+    def test_returns_accepted_inputs(self):
+        """info_handler includes accepted_inputs list."""
+        metadata = {
+            "name": "agent",
+            "tools": [],
+            "address": "0x123",
+        }
+        mock_trust = Mock()
+        mock_trust.trust = "open"
+
+        result = info_handler(metadata, mock_trust)
+
+        assert "accepted_inputs" in result
+        assert "text" in result["accepted_inputs"]
+        assert "images" in result["accepted_inputs"]
+        assert "files" in result["accepted_inputs"]
+
 
 class TestAdminLogsHandler:
     """Test admin_logs_handler route."""

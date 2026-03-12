@@ -218,7 +218,8 @@ class Agent:
         self.events[event_type].append(event_func)
 
     def input(self, prompt: str, max_iterations: Optional[int] = None,
-              session: Optional[Dict] = None, images: list[str] | None = None) -> str:
+              session: Optional[Dict] = None, images: list[str] | None = None,
+              files: list[dict] | None = None) -> str:
         """Provide input to the agent and get response.
 
         Args:
@@ -226,6 +227,9 @@ class Agent:
             max_iterations: Override agent's max_iterations for this request
             session: Optional session to continue a conversation.
             images: Optional list of base64 data URLs for multimodal input
+            files: Optional list of file dicts with keys:
+                - name: filename (e.g. "report.pdf")
+                - data: base64-encoded data URL (e.g. "data:application/pdf;base64,...")
 
         Returns:
             The agent's response after processing the input
@@ -254,11 +258,16 @@ class Agent:
             # Start YAML session logging
             self.logger.start_session(self.system_prompt)
 
-        # Add user message to conversation (multimodal if images provided)
-        if images:
+        # Add user message to conversation (multimodal if images or files provided)
+        if images or files:
             content = [{"type": "text", "text": prompt}]
-            for img in images:
+            for img in (images or []):
                 content.append({"type": "image_url", "image_url": {"url": img}})
+            for f in (files or []):
+                content.append({
+                    "type": "file",
+                    "file": {"name": f["name"], "data": f["data"]}
+                })
             self.current_session['messages'].append({"role": "user", "content": content})
         else:
             self.current_session['messages'].append({"role": "user", "content": prompt})

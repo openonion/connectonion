@@ -19,7 +19,8 @@ from .session import Session, SessionStorage
 
 
 def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, result_ttl: int,
-                  session: dict | None = None, connection=None, images: list[str] | None = None) -> dict:
+                  session: dict | None = None, connection=None, images: list[str] | None = None,
+                  files: list[dict] | None = None) -> dict:
     """POST /input (and WebSocket /ws)
 
     Args:
@@ -30,6 +31,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
         session: Optional conversation session for continuation
         connection: WebSocket connection for bidirectional I/O (None for HTTP)
         images: Optional list of base64 data URLs for multimodal input
+        files: Optional list of file dicts with name and base64 data
     """
     agent = create_agent()  # Fresh instance per request
     agent.io = connection  # WebSocket connection or None for HTTP
@@ -55,7 +57,7 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     # TODO: If agent.input() throws, record stays "running" until TTL expires.
     # This is acceptable: client gets 500 error, record expires naturally.
     start = time.time()
-    result = agent.input(prompt, session=session, images=images)
+    result = agent.input(prompt, session=session, images=images, files=files)
     duration_ms = int((time.time() - start) * 1000)
 
     record.status = "done"
@@ -92,7 +94,7 @@ def health_handler(agent_name: str, start_time: float) -> dict:
 def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None) -> dict:
     """GET /info
 
-    Returns pre-extracted metadata including onboard requirements.
+    Returns pre-extracted metadata including onboard requirements and accepted inputs.
 
     Args:
         agent_metadata: Agent name, address, tools
@@ -108,6 +110,7 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None) 
         "model": agent_metadata.get("model", "unknown"),  # Add model info
         "trust": trust.trust,  # Extract level string from TrustAgent
         "version": __version__,
+        "accepted_inputs": ["text", "images", "files"],
     }
 
     # Add onboard info if available

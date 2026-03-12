@@ -189,7 +189,9 @@ class RemoteAgent:
         self,
         prompt: str,
         timeout: float = 60.0,
-        on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None
+        on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None,
+        images: Optional[List[str]] = None,
+        files: Optional[List[Dict[str, Any]]] = None,
     ) -> Response:
         """
         Send prompt to remote agent and get response.
@@ -205,6 +207,8 @@ class RemoteAgent:
                         Called with (methods: list[str], payment_amount: float | None).
                         Should return {"invite_code": "..."} or {"payment": amount}.
                         If None, prompts interactively in terminal.
+            images: Optional list of base64 data URLs for multimodal input
+            files: Optional list of file dicts with name and base64 data
 
         Returns:
             Response with text and done flag
@@ -229,16 +233,18 @@ class RemoteAgent:
         except RuntimeError as e:
             if "input() cannot be used" in str(e):
                 raise
-        return asyncio.run(self._stream_input(prompt, timeout, on_onboard))
+        return asyncio.run(self._stream_input(prompt, timeout, on_onboard, images, files))
 
     async def input_async(
         self,
         prompt: str,
         timeout: float = 60.0,
-        on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None
+        on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None,
+        images: Optional[List[str]] = None,
+        files: Optional[List[Dict[str, Any]]] = None,
     ) -> Response:
         """Async version of input()."""
-        return await self._stream_input(prompt, timeout, on_onboard)
+        return await self._stream_input(prompt, timeout, on_onboard, images, files)
 
     def reset(self) -> None:
         """Clear conversation and start fresh."""
@@ -257,7 +263,9 @@ class RemoteAgent:
         self,
         prompt: str,
         timeout: float,
-        on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None
+        on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None,
+        images: Optional[List[str]] = None,
+        files: Optional[List[Dict[str, Any]]] = None,
     ) -> Response:
         """Send prompt via WebSocket and stream events."""
         import websockets
@@ -285,7 +293,7 @@ class RemoteAgent:
         input_id = str(uuid.uuid4())
 
         # Build the INPUT message
-        input_msg = self._build_input_message(prompt, input_id, is_direct)
+        input_msg = self._build_input_message(prompt, input_id, is_direct, images, files)
 
         try:
             async with websockets.connect(ws_url) as ws:
@@ -379,7 +387,14 @@ class RemoteAgent:
             self._status = "idle"
             raise TimeoutError(f"Request timed out after {timeout}s")
 
-    def _build_input_message(self, prompt: str, input_id: str, is_direct: bool = False) -> Dict[str, Any]:
+    def _build_input_message(
+        self,
+        prompt: str,
+        input_id: str,
+        is_direct: bool = False,
+        images: Optional[List[str]] = None,
+        files: Optional[List[Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """Build INPUT message with optional signing."""
         input_msg: Dict[str, Any] = {
             "type": "INPUT",
@@ -395,6 +410,12 @@ class RemoteAgent:
         # Add session for conversation continuation
         if self._current_session:
             input_msg["session"] = self._current_session
+
+        # Add multimodal attachments
+        if images:
+            input_msg["images"] = images
+        if files:
+            input_msg["files"] = files
 
         # Sign if keys provided
         if self._keys:

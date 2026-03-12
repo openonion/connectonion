@@ -592,3 +592,102 @@ def test_agent_input_without_images_unchanged():
     # Content should be a simple string when no images
     assert isinstance(user_message['content'], str)
     assert user_message['content'] == "Hello"
+
+
+def test_agent_input_with_files():
+    """Test that agent.input() handles files parameter correctly."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="I received the PDF file.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="file_agent", llm=mock_llm, log=False)
+
+    test_file = {"name": "report.pdf", "data": "data:application/pdf;base64,JVBERi0xLjQK"}
+
+    result = agent.input("Analyze this document", files=[test_file])
+
+    assert "pdf" in result.lower()
+
+    # Verify message format
+    messages = mock_llm.last_call["messages"]
+    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+
+    content = user_message['content']
+    assert isinstance(content, list)
+    assert len(content) == 2  # 1 text + 1 file
+
+    assert content[0]['type'] == 'text'
+    assert content[0]['text'] == "Analyze this document"
+
+    assert content[1]['type'] == 'file'
+    assert content[1]['file']['name'] == "report.pdf"
+    assert content[1]['file']['data'] == "data:application/pdf;base64,JVBERi0xLjQK"
+
+
+def test_agent_input_with_images_and_files():
+    """Test that agent.input() handles both images and files together."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="I see an image and a file.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="multi_agent", llm=mock_llm, log=False)
+
+    test_image = "data:image/png;base64,iVBORw0KGgo"
+    test_file = {"name": "data.csv", "data": "data:text/csv;base64,bmFtZSxhZ2U="}
+
+    agent.input("Analyze these", images=[test_image], files=[test_file])
+
+    messages = mock_llm.last_call["messages"]
+    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+
+    content = user_message['content']
+    assert isinstance(content, list)
+    assert len(content) == 3  # 1 text + 1 image + 1 file
+
+    assert content[0]['type'] == 'text'
+    assert content[1]['type'] == 'image_url'
+    assert content[2]['type'] == 'file'
+    assert content[2]['file']['name'] == "data.csv"
+
+
+def test_agent_input_with_multiple_files():
+    """Test that agent.input() handles multiple files correctly."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="I received both files.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="multi_file_agent", llm=mock_llm, log=False)
+
+    test_files = [
+        {"name": "report.pdf", "data": "data:application/pdf;base64,JVBERi0xLjQK"},
+        {"name": "data.csv", "data": "data:text/csv;base64,bmFtZSxhZ2U="},
+    ]
+
+    agent.input("Compare these documents", files=test_files)
+
+    messages = mock_llm.last_call["messages"]
+    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+
+    content = user_message['content']
+    assert isinstance(content, list)
+    assert len(content) == 3  # 1 text + 2 files
+
+    file_items = [item for item in content if item['type'] == 'file']
+    assert len(file_items) == 2
+    assert file_items[0]['file']['name'] == "report.pdf"
+    assert file_items[1]['file']['name'] == "data.csv"

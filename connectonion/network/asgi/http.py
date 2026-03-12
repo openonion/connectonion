@@ -281,7 +281,9 @@ async def handle_http(
 
         # Extract session for conversation continuation
         session = data.get("session")
-        result = route_handlers["input"](storage, prompt, session)
+        images = data.get("images")
+        files = data.get("files")
+        result = route_handlers["input"](storage, prompt, session, images=images, files=files)
         await send_json(send, result)
 
     elif method == "GET" and path.startswith("/sessions/"):

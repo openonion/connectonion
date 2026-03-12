@@ -124,11 +124,11 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
     """
     agent_name = agent_metadata["name"]
 
-    def handle_input(storage, prompt, session=None, connection=None, images=None):
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images)
+    def handle_input(storage, prompt, session=None, connection=None, images=None, files=None):
+        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
 
-    def handle_ws_input(storage, prompt, connection, session=None, images=None):
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images)
+    def handle_ws_input(storage, prompt, connection, session=None, images=None, files=None):
+        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
 
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
