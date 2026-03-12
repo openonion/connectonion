@@ -87,8 +87,8 @@ SAFE_TOOLS = {
     'task',
     # Documentation
     'load_guide',
-    # Planning - enter freely, write plan freely
-    'enter_plan_mode', 'write_plan',
+    # Planning - enter freely (write_plan needs approval for user feedback)
+    'enter_plan_mode',
     # Task management
     'task_output',
     # User interaction
