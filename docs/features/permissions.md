@@ -280,6 +280,39 @@ When multiple permissions could match:
     type: never
 ```
 
+### Bash Command Chain Validation
+
+Config permissions support **bash command chains** using bashlex parser. When agent executes `pwd && ls -F`, ALL commands must be permitted.
+
+**How it works:**
+1. Parse chain with bashlex: `"pwd && ls -F"` → `["pwd", "ls"]`
+2. Check each command against permissions
+3. Auto-approve only if ALL commands are whitelisted
+
+**Example - All permitted:**
+```yaml
+permissions:
+  "Bash(pwd)": {allowed: true, ...}
+  "Bash(ls *)": {allowed: true, ...}
+```
+Command: `pwd && ls -F` → ✅ Auto-approved (both permitted)
+
+**Example - Partial permission:**
+```yaml
+permissions:
+  "Bash(pwd)": {allowed: true, ...}
+  # rm NOT whitelisted
+```
+Command: `pwd && rm -rf /` → ❌ Requires approval (rm not permitted)
+
+**Supported constructs:**
+- AND: `cmd1 && cmd2`
+- OR: `cmd1 || cmd2`
+- Pipe: `cmd1 | cmd2`
+- Semicolon: `cmd1; cmd2`
+
+**Security:** One dangerous command = whole chain rejected.
+
 ### Common Workflows
 
 **Development Agent:**

@@ -294,6 +294,66 @@ permissions:
       type: never
 ```
 
+## Bash Command Chain Permissions
+
+Uses **bashlex** to parse and validate command chains - ALL commands must be permitted.
+
+### How It Works
+
+When bash executes `pwd && ls -F`:
+
+1. **Parse** with bashlex → `["pwd", "ls"]`
+2. **Check** each command against permissions
+3. **Approve** only if ALL commands are whitelisted
+4. **Reject** if ANY command lacks permission
+
+### Examples
+
+**✅ All Permitted:**
+```yaml
+permissions:
+  "Bash(pwd)": {allowed: true, ...}
+  "Bash(ls *)": {allowed: true, ...}
+```
+
+Command: `pwd && ls -F`
+- ✅ pwd permitted
+- ✅ ls permitted
+- **Result:** Auto-approved ⚡
+
+**❌ Partial Permission:**
+```yaml
+permissions:
+  "Bash(pwd)": {allowed: true, ...}
+  # rm is NOT whitelisted
+```
+
+Command: `pwd && rm -rf /`
+- ✅ pwd permitted
+- ❌ rm NOT permitted
+- **Result:** Requires approval ⚠️
+
+### Supported Syntax
+
+bashlex handles all bash constructs:
+
+| Syntax | Example | Commands Extracted |
+|--------|---------|-------------------|
+| AND (`&&`) | `pwd && ls` | `["pwd", "ls"]` |
+| OR (`\|\|`) | `test -f file \|\| echo no` | `["test", "echo"]` |
+| Pipe (`\|`) | `cat file \| grep test` | `["cat", "grep"]` |
+| Semicolon (`;`) | `echo a; echo b` | `["echo", "echo"]` |
+| Complex | `sw_vers; df -h \| grep /` | `["sw_vers", "df", "grep"]` |
+
+### Security
+
+**Whitelist-first:** One dangerous command = whole chain rejected.
+
+```bash
+# ❌ REJECTED even though pwd is safe
+pwd && rm -rf /
+```
+
 ### See Also
 
 - [Host Configuration](../network/host-config.md) - Complete host.yaml reference
