@@ -369,6 +369,55 @@ class Console:
 
         self.print(f"{tool_display}{' ' * padding}{status}")
 
+    def log_permission_granted(self, tool_name: str, tool_args: Dict[str, Any], source: str, reason: str) -> None:
+        """Log permission granted for a tool.
+
+        [co]   ⚡ bash: pwd && ls -F                config (.co/host.yaml) safe chain
+        [co]   ⚡ write(file_path="*.md")          user (session) approved
+        """
+        # Format tool display (shorter for permission logs)
+        if tool_name == 'bash' and 'command' in tool_args:
+            cmd = tool_args['command']
+            # Truncate long commands
+            if len(cmd) > 35:
+                tool_display = f"bash: {cmd[:32]}..."
+            else:
+                tool_display = f"bash: {cmd}"
+        else:
+            tool_display = self._format_tool_display(tool_name, tool_args, max_width=35)
+
+        # Format source with color and location
+        from pathlib import Path
+        if source == 'config':
+            config_path = Path.cwd() / '.co' / 'host.yaml'
+            if config_path.exists():
+                # Show absolute path for debugging
+                abs_path = str(config_path.absolute())
+                source_display = f"[{BRAND_COLOR}]config[/{BRAND_COLOR}] [{DIM_COLOR}]{abs_path}[/{DIM_COLOR}]"
+            else:
+                # Fallback to template if local config doesn't exist
+                template_path = Path(__file__).parent / 'network' / 'host' / 'host.yaml'
+                abs_template = str(template_path.absolute())
+                source_display = f"[{BRAND_COLOR}]config[/{BRAND_COLOR}] [{DIM_COLOR}]{abs_template}[/{DIM_COLOR}]"
+        elif source == 'user':
+            source_display = f"[{SUCCESS_COLOR}]user[/{SUCCESS_COLOR}] [{DIM_COLOR}](session)[/{DIM_COLOR}]"
+        elif source == 'skill':
+            source_display = f"[yellow]skill[/yellow] [{DIM_COLOR}](turn)[/{DIM_COLOR}]"
+        elif source == 'safe':
+            source_display = f"[{DIM_COLOR}]safe[/{DIM_COLOR}] [{DIM_COLOR}](built-in)[/{DIM_COLOR}]"
+        else:
+            source_display = f"[{DIM_COLOR}]{source}[/{DIM_COLOR}]"
+
+        # Build the log line with ⚡ symbol
+        # Target ~40 chars for tool, rest for source + reason
+        tool_part = f"  {LLM_DONE_SYMBOL} {tool_display}"
+        visible_tool_len = len(f"  {LLM_DONE_SYMBOL} ") + len(tool_display.replace('bash: ', '').split('(')[0]) + 15  # Rough estimate
+        padding = max(2, 42 - visible_tool_len)
+
+        # Combine: tool | source | reason
+        log_line = f"[{DIM_COLOR}]{tool_part}[/{DIM_COLOR}]{' ' * padding}{source_display} [{DIM_COLOR}]{reason}[/{DIM_COLOR}]"
+        self.print(log_line)
+
     def _format_tool_display(self, name: str, args: Dict[str, Any], max_width: int = 45) -> str:
         """Format tool call with smart truncation.
 
