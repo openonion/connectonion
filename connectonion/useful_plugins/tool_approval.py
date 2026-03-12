@@ -118,33 +118,28 @@ def _extract_commands_from_bash(command: str) -> list[str]:
     Returns:
         List of command names (just names, no args)
     """
-    try:
-        import bashlex
+    import bashlex
 
-        parts = bashlex.parse(command)
-        commands = []
+    parts = bashlex.parse(command)
+    commands = []
 
-        def extract_from_node(node):
-            """Recursively extract commands from AST node."""
-            if node.kind == 'command':
-                # Get first word (command name)
-                for part in node.parts:
-                    if part.kind == 'word':
-                        commands.append(part.word)
-                        break
-            elif hasattr(node, 'parts'):
-                # Recurse into child nodes
-                for part in node.parts:
-                    extract_from_node(part)
+    def extract_from_node(node):
+        """Recursively extract commands from AST node."""
+        if node.kind == 'command':
+            # Get first word (command name)
+            for part in node.parts:
+                if part.kind == 'word':
+                    commands.append(part.word)
+                    break
+        elif hasattr(node, 'parts'):
+            # Recurse into child nodes
+            for part in node.parts:
+                extract_from_node(part)
 
-        for tree in parts:
-            extract_from_node(tree)
+    for tree in parts:
+        extract_from_node(tree)
 
-        return commands if commands else [command.split()[0] if command.split() else command]
-
-    except Exception:
-        parts = command.split()
-        return [parts[0]] if parts else [command]
+    return commands if commands else [command.split()[0] if command.split() else command]
 
 
 def _check_bash_chain_permitted(command: str, permissions: dict) -> tuple[bool, str]:
