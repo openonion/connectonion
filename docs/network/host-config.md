@@ -259,6 +259,224 @@ INFO: File upload: 15 file(s), 45.20MB total - doc1.pdf, doc2.pdf, ...
 WARNING: File upload rejected: too many files (15 > 10)
 ```
 
+### Tool Permissions
+
+Auto-approve safe tools without requiring user approval each time. Uses the unified permissions structure for granular control.
+
+```yaml
+# Tool permissions - auto-approve safe commands
+permissions:
+  # Simple tool name - matches any call
+  "read_file":
+    allowed: true
+    source: config
+    reason: safe read operation
+    expires:
+      type: never
+
+  # Exact bash command
+  "Bash(git status)":
+    allowed: true
+    source: config
+    reason: safe read-only git command
+    expires:
+      type: never
+
+  # Wildcard matching - command prefix
+  "Bash(git diff *)":
+    allowed: true
+    source: config
+    reason: safe git diff commands
+    expires:
+      type: never
+
+  # Parameter matching - only specific files
+  "write":
+    allowed: true
+    source: config
+    reason: safe documentation edits
+    match:
+      file_path: "*.md"
+    expires:
+      type: never
+
+  # Read files in specific directory
+  "read_file":
+    allowed: true
+    source: config
+    reason: safe to read docs
+    match:
+      file_path: "docs/**/*"
+    expires:
+      type: never
+```
+
+**Permission Patterns:**
+
+| Pattern | Matches | Example |
+|---------|---------|---------|
+| `"read_file"` | Any call to read_file | All file reads |
+| `"Bash(git status)"` | Exact command match | Only `git status` |
+| `"Bash(git diff *)"` | Command prefix wildcard | `git diff`, `git diff HEAD`, etc. |
+| `"Bash(git *)"` | All commands with prefix | Any git command |
+| With `match` field | Parameter-level matching | `write` to `*.md` files only |
+
+**Parameter Matching:**
+
+Use the `match` field to approve tools based on specific parameter values:
+
+```yaml
+permissions:
+  # Auto-approve writes to markdown files only
+  "write":
+    allowed: true
+    source: config
+    reason: safe documentation edits
+    match:
+      file_path: "*.md"
+    expires:
+      type: never
+
+  # Auto-approve edits in docs directory
+  "edit":
+    allowed: true
+    source: config
+    reason: safe doc edits
+    match:
+      file_path: "docs/**/*.md"
+    expires:
+      type: never
+
+  # Auto-approve bash with timeout limit
+  "bash":
+    allowed: true
+    source: config
+    reason: safe short commands
+    match:
+      timeout: "30000"  # Exact match on timeout parameter
+    expires:
+      type: never
+```
+
+**Unified Permission Structure:**
+
+All permissions use the same structure:
+- `allowed`: Boolean - whether to allow the tool
+- `source`: String - where permission came from (`config`, `user`, `skill`, `safe`, `default`)
+- `reason`: String - why this permission was granted (shown in logs)
+- `match`: Object (optional) - parameter-level matching rules
+- `expires`: Object - when permission expires
+  - `type: never` - permanent (config-based)
+  - `type: session_end` - expires when session ends (runtime approvals)
+  - `type: turn_end` - expires when turn ends (skills)
+
+**Priority Order:**
+
+When multiple permissions could match, priority is:
+1. Runtime approvals (`source: user`) - highest priority
+2. Config permissions (`source: config`) - from host.yaml
+3. Default permissions (`source: default`) - built-in safe tools
+4. Safe tools (`source: safe`) - read-only operations (always allowed)
+
+**Best Practices:**
+
+```yaml
+# ✅ DO: Auto-approve safe read-only commands
+permissions:
+  "Bash(git status)":
+    allowed: true
+    source: config
+    reason: safe read-only
+    expires:
+      type: never
+
+# ✅ DO: Use parameter matching for file operations
+permissions:
+  "write":
+    allowed: true
+    source: config
+    reason: safe doc edits
+    match:
+      file_path: "*.md"
+    expires:
+      type: never
+
+# ❌ DON'T: Auto-approve dangerous commands
+permissions:
+  "Bash(rm -rf *)":  # Never auto-approve destructive commands
+    allowed: true
+
+# ❌ DON'T: Auto-approve all bash commands
+permissions:
+  "bash":  # Too broad without match field
+    allowed: true
+```
+
+**Use Cases:**
+
+```yaml
+# Development workflow - auto-approve git and tests
+permissions:
+  "Bash(git status)":
+    allowed: true
+    source: config
+    reason: safe git read
+    expires:
+      type: never
+  "Bash(git diff *)":
+    allowed: true
+    source: config
+    reason: safe git read
+    expires:
+      type: never
+  "Bash(pytest *)":
+    allowed: true
+    source: config
+    reason: safe test execution
+    expires:
+      type: never
+
+# Documentation agent - auto-approve doc edits
+permissions:
+  "write":
+    allowed: true
+    source: config
+    reason: documentation updates
+    match:
+      file_path: "docs/**/*.md"
+    expires:
+      type: never
+  "edit":
+    allowed: true
+    source: config
+    reason: documentation updates
+    match:
+      file_path: "docs/**/*.md"
+    expires:
+      type: never
+
+# Code review agent - read-only access
+permissions:
+  "read_file":
+    allowed: true
+    source: config
+    reason: code review access
+    expires:
+      type: never
+  "glob":
+    allowed: true
+    source: config
+    reason: find files
+    expires:
+      type: never
+  "grep":
+    allowed: true
+    source: config
+    reason: search code
+    expires:
+      type: never
+```
+
 ---
 
 ## Examples

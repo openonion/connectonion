@@ -46,8 +46,9 @@ Client Protocol:
 """
 
 from typing import TYPE_CHECKING
+from pathlib import Path
 
-from ..core.events import before_each_tool, before_iteration, before_iteration
+from ..core.events import before_each_tool, before_iteration, on_agent_ready
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -273,6 +274,20 @@ def check_approval(agent: 'Agent') -> None:
         ValueError: If tool rejected or blocked by mode
     """
     # =================================================================
+    # Apply config permissions (FIRST TIME ONLY)
+    # =================================================================
+    # Config permissions are loaded at agent_ready and stored on agent instance
+    # On first tool execution, copy them into session['permissions']
+    if hasattr(agent, '_config_permissions') and agent._config_permissions:
+        if 'permissions' not in agent.current_session:
+            agent.current_session['permissions'] = {}
+
+        # Only add config permissions that aren't already in session
+        for pattern, perm_config in agent._config_permissions.items():
+            if pattern not in agent.current_session['permissions']:
+                agent.current_session['permissions'][pattern] = perm_config
+
+    # =================================================================
     # Check unified permissions (HIGHEST PRIORITY)
     # =================================================================
     pending = agent.current_session.get('pending_tool')
@@ -297,14 +312,31 @@ def check_approval(agent: 'Agent') -> None:
         if permissions:
             # Import pattern matcher from skills plugin
             from .skills import matches_permission_pattern
+            import fnmatch
 
             # Check each permission in the dict
             for pattern, perm in permissions.items():
                 if not perm.get('allowed'):
                     continue
 
-                # Try pattern match
+                # First check basic pattern match (tool name or Bash command)
                 if matches_permission_pattern(tool_name, tool_args, [pattern]):
+                    # Check if there's a match field for parameter-level matching
+                    match_config = perm.get('match')
+                    if match_config:
+                        # Parameter matching - all conditions must match
+                        all_match = True
+                        for param_name, param_pattern in match_config.items():
+                            actual_value = tool_args.get(param_name, '')
+                            # Use fnmatch for glob pattern matching
+                            if not fnmatch.fnmatch(str(actual_value), str(param_pattern)):
+                                all_match = False
+                                break
+
+                        if not all_match:
+                            continue  # This permission doesn't match, try next
+
+                    # Pattern matched (and params matched if match field exists)
                     reason = perm.get('reason', 'unknown')
                     _log(agent, f"[dim]⚡ {tool_name} ({reason})[/dim]")
                     return
@@ -508,6 +540,47 @@ def get_current_mode(agent: 'Agent') -> str:
     return _get_mode(agent)
 
 
+@on_agent_ready
+def load_config_permissions(agent: 'Agent') -> None:
+    """Load permissions from host.yaml on agent initialization.
+
+    Reads permissions from .co/host.yaml (project) or falls back to
+    the template in the package if project config doesn't exist.
+
+    Uses unified permission structure with source='config'.
+    """
+    import yaml
+
+    # Try project-specific config first
+    co_dir = Path.cwd() / '.co'
+    host_yaml = co_dir / 'host.yaml'
+
+    # Fall back to template if project config doesn't exist
+    if not host_yaml.exists():
+        # Load from package template
+        template_path = Path(__file__).parent.parent / 'network' / 'host' / 'host.yaml'
+        if template_path.exists():
+            host_yaml = template_path
+        else:
+            return
+
+    # Load YAML config
+    with open(host_yaml, 'r', encoding='utf-8') as f:
+        config = yaml.safe_load(f) or {}
+
+    # Get permissions from config
+    permissions_config = config.get('permissions')
+    if not permissions_config:
+        return
+
+    # Validate permissions structure
+    if not isinstance(permissions_config, dict):
+        return
+
+    # Store config permissions on agent (applied on first tool execution)
+    agent._config_permissions = permissions_config
+
+
 @before_iteration
 def poll_mode_changes(agent: 'Agent') -> None:
     """Poll for mode_change signals at iteration start.
@@ -529,7 +602,7 @@ def poll_mode_changes(agent: 'Agent') -> None:
 
 # Export as plugin (list of event handlers)
 # Usage: Agent("name", plugins=[tool_approval])
-tool_approval = [poll_mode_changes, check_approval]
+tool_approval = [load_config_permissions, poll_mode_changes, check_approval]
 
 # Export mode functions for external use
 __all__ = [

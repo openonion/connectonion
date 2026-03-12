@@ -38,6 +38,7 @@ def load_host_config(co_dir: Path = None, **code_params) -> dict:
     3. Default values (hardcoded)
 
     File size limits are specified in MB and converted to bytes internally.
+    Permissions are loaded as-is from YAML (unified permission structure).
 
     Args:
         co_dir: Path to .co directory (defaults to ./.co/)
@@ -45,6 +46,7 @@ def load_host_config(co_dir: Path = None, **code_params) -> dict:
 
     Returns:
         Config dict from YAML with code param overrides and defaults
+        Includes 'permissions' field if defined in host.yaml
     """
     if co_dir is None:
         co_dir = Path.cwd() / '.co'

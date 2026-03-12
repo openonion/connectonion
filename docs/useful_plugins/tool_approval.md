@@ -140,6 +140,165 @@ send_email, post, delete, remove
 
 Tools not in either list are treated as safe (no approval needed).
 
+## Config-Based Auto-Approval
+
+Auto-approve safe commands permanently via `host.yaml` configuration. Config permissions never expire and apply to all sessions.
+
+### Configuration
+
+Add permissions to `.co/host.yaml`:
+
+```yaml
+# .co/host.yaml
+permissions:
+  # Simple tool name - matches any call
+  "read_file":
+    allowed: true
+    source: config
+    reason: safe read operation
+    expires:
+      type: never
+
+  # Exact bash command
+  "Bash(git status)":
+    allowed: true
+    source: config
+    reason: safe git read
+    expires:
+      type: never
+
+  # Wildcard - matches command prefix
+  "Bash(git diff *)":
+    allowed: true
+    source: config
+    reason: safe git diff
+    expires:
+      type: never
+
+  # Parameter matching - file pattern
+  "write":
+    allowed: true
+    source: config
+    reason: safe doc edits
+    match:
+      file_path: "*.md"
+    expires:
+      type: never
+```
+
+### Pattern Types
+
+**Simple Tool Name**
+```yaml
+"read_file":  # Matches any call to read_file
+  allowed: true
+  source: config
+  reason: safe read operation
+  expires:
+    type: never
+```
+
+**Exact Bash Command**
+```yaml
+"Bash(git status)":  # Only matches exact command
+  allowed: true
+  source: config
+  reason: safe git read
+  expires:
+    type: never
+```
+
+**Wildcard Bash Command**
+```yaml
+"Bash(git diff *)":  # Matches any command starting with "git diff "
+  allowed: true
+  source: config
+  reason: safe git diff
+  expires:
+    type: never
+```
+
+**Parameter Matching**
+```yaml
+"write":
+  allowed: true
+  source: config
+  reason: safe doc edits
+  match:
+    file_path: "*.md"  # Only matches write calls to *.md files
+  expires:
+    type: never
+```
+
+### Priority Order
+
+Config permissions integrate with the existing approval system:
+
+1. **Safe tools** - Always approved (SAFE_TOOLS list)
+2. **Config permissions** - Loaded from host.yaml (`source: config`)
+3. **Skill permissions** - Temporary, turn-scoped (`source: skill`)
+4. **Session approvals** - User approved for session (`source: user`)
+5. **Runtime approval** - Ask user (if none of above match)
+
+### Terminal Logging
+
+```
+⚡ Bash(git status) (safe git read)    # Auto-approved from config
+⚡ write (safe doc edits)              # Auto-approved from config (matched *.md)
+✓ bash approved (session)              # User approved (not in config)
+```
+
+### Examples
+
+**Development Agent**
+```yaml
+permissions:
+  "Bash(git status)":
+    allowed: true
+    source: config
+    reason: safe git read
+    expires:
+      type: never
+  "Bash(git diff *)":
+    allowed: true
+    source: config
+    reason: safe git diff
+    expires:
+      type: never
+  "Bash(pytest *)":
+    allowed: true
+    source: config
+    reason: safe tests
+    expires:
+      type: never
+```
+
+**Documentation Agent**
+```yaml
+permissions:
+  "write":
+    allowed: true
+    source: config
+    reason: doc updates
+    match:
+      file_path: "docs/**/*.md"
+    expires:
+      type: never
+  "edit":
+    allowed: true
+    source: config
+    reason: doc updates
+    match:
+      file_path: "docs/**/*.md"
+    expires:
+      type: never
+```
+
+### See Also
+
+- [Host Configuration](../network/host-config.md) - Complete host.yaml reference
+- [Permissions](../features/permissions.md) - Unified permissions system
+
 ## Client Protocol
 
 ### Server sends

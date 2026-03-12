@@ -10,6 +10,43 @@ reload: false
 # max_file_size: 10                 # MB per file (both WebSocket and HTTP)
 # max_files_per_request: 10         # Max number of files in one request
 
+# Auto-approve tool permissions - uncomment to enable
+# Uses unified permission structure for granular control
+# permissions:
+#   # Simple tool name - matches any call
+#   "read_file":
+#     allowed: true
+#     source: config
+#     reason: safe read operation
+#     expires:
+#       type: never
+#
+#   # Bash with exact command
+#   "Bash(git status)":
+#     allowed: true
+#     source: config
+#     reason: safe read-only git command
+#     expires:
+#       type: never
+#
+#   # Bash with wildcard - matches command prefix
+#   "Bash(git diff *)":
+#     allowed: true
+#     source: config
+#     reason: safe git diff commands
+#     expires:
+#       type: never
+#
+#   # Parameter matching - write to markdown files only
+#   "write":
+#     allowed: true
+#     source: config
+#     reason: safe documentation edits
+#     match:
+#       file_path: "*.md"
+#     expires:
+#       type: never
+
 # summary: "What your agent does"
 # examples:
 #   - "Example prompt 1"

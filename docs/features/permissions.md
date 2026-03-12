@@ -7,17 +7,18 @@ ConnectOnion provides multiple permission mechanisms to balance safety and autom
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ 1. SAFE_TOOLS - Always auto-approved                       │
-│    FileTools.read_file, FileTools.glob, FileTools.grep     │
+│    read_file, glob, grep (read-only operations)            │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 2. Skills - Temporary scoped permissions (one turn)         │
+│ 2. Config Permissions - Project-level auto-approve         │
+│    host.yaml: Bash(git status), write(*.md), etc.          │
+│    Never expires, applies to all sessions                  │
+└─────────────────────────────────────────────────────────────┘
+                              ↓
+┌─────────────────────────────────────────────────────────────┐
+│ 3. Skills - Temporary scoped permissions (one turn)         │
 │    /commit → auto-approve git commands for this turn only  │
-└─────────────────────────────────────────────────────────────┘
-                              ↓
-┌─────────────────────────────────────────────────────────────┐
-│ 3. Plan Mode - Auto-edit in planning phase                 │
-│    Edit tool auto-approved when agent.is_planning=True     │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
@@ -33,40 +34,61 @@ ConnectOnion provides multiple permission mechanisms to balance safety and autom
 
 ## Quick Start
 
+```yaml
+# .co/host.yaml - Configure project-level permissions
+permissions:
+  "Bash(git status)":
+    allowed: true
+    source: config
+    reason: safe git read
+    expires:
+      type: never
+  "write":
+    allowed: true
+    source: config
+    reason: safe doc edits
+    match:
+      file_path: "*.md"
+    expires:
+      type: never
+```
+
 ```python
-from connectonion import Agent
-from connectonion.useful_tools import FileTools
+from connectonion import Agent, host
+from connectonion.useful_tools import bash, write, read_file
 from connectonion.useful_plugins import skills, tool_approval
 
-file_tools = FileTools()
-agent = Agent(
-    "assistant",
-    tools=[file_tools],
-    plugins=[skills, tool_approval]
-)
+def create_agent():
+    return Agent(
+        "assistant",
+        tools=[bash, write, read_file],
+        plugins=[skills, tool_approval]
+    )
 
-# Safe tools - auto-approved
+host(create_agent)  # Loads permissions from .co/host.yaml
+
+# Safe tools - always auto-approved
 agent.input("Read the README")
-# → read_file auto-approved ✓
+# → read_file auto-approved (SAFE_TOOLS) ✓
+
+# Config permissions - auto-approved from host.yaml
+agent.input("Check git status")
+# → Bash(git status) auto-approved (config permission) ✓
+
+agent.input("Update the docs")
+# → write(file_path="docs/guide.md") auto-approved (config permission with match) ✓
+# → write(file_path="src/main.py") requires approval (doesn't match *.md) ✗
 
 # Skills - scoped permissions
 # User types: /commit
 # → git commands auto-approved for this turn only ✓
 # → Turn ends, permissions cleared ✓
 
-# Plan mode - auto-edit during planning
-agent.is_planning = True
-agent.input("Plan how to add a feature")
-# → edit auto-approved during planning ✓
-
-agent.is_planning = False
-# → edit requires approval again ✓
-
 # Session memory - remember decisions
 agent.input("Run tests")
-# → bash approval needed (first time)
+# → bash("pytest") approval needed (first time, not in config)
 # → User approves for "session"
-# → Future bash calls auto-approved ✓
+# → Future pytest calls auto-approved for this session ✓
 
 # Dangerous operations - always ask
 agent.input("Delete all files")
@@ -94,11 +116,282 @@ SAFE_TOOLS = [
 
 ```python
 agent.input("Find all Python files and read main.py")
-# → FileTools.glob("**/*.py") - auto-approved ✓
-# → FileTools.read_file("main.py") - auto-approved ✓
+# → glob("**/*.py") - auto-approved ✓
+# → read_file("main.py") - auto-approved ✓
 ```
 
-## 2. Skills - Temporary Scoped Permissions with Snapshot/Restore
+## 2. Config Permissions - Project-Level Auto-Approve
+
+Permanent permissions defined in `.co/host.yaml` that auto-approve safe commands without asking each time.
+
+### Configuration
+
+Add permissions to your `host.yaml`:
+
+```yaml
+# .co/host.yaml
+trust: careful
+port: 8000
+
+# Auto-approve safe commands
+permissions:
+  # Simple tool name - matches any call
+  "read_file":
+    allowed: true
+    source: config
+    reason: safe read operation
+    expires:
+      type: never
+
+  # Exact bash command
+  "Bash(git status)":
+    allowed: true
+    source: config
+    reason: safe read-only git command
+    expires:
+      type: never
+
+  # Wildcard matching - command prefix
+  "Bash(git diff *)":
+    allowed: true
+    source: config
+    reason: safe git diff commands
+    expires:
+      type: never
+
+  # Parameter matching - only specific files
+  "write":
+    allowed: true
+    source: config
+    reason: safe documentation edits
+    match:
+      file_path: "*.md"
+    expires:
+      type: never
+```
+
+### Pattern Types
+
+**1. Simple Tool Name**
+```yaml
+"read_file":
+  allowed: true
+  source: config
+  reason: safe read operation
+  expires:
+    type: never
+```
+Matches any call to `read_file` with any parameters.
+
+**2. Exact Bash Command**
+```yaml
+"Bash(git status)":
+  allowed: true
+  source: config
+  reason: safe git read
+  expires:
+    type: never
+```
+Only matches exact command `git status`.
+
+**3. Wildcard Bash Command**
+```yaml
+"Bash(git diff *)":
+  allowed: true
+  source: config
+  reason: safe git diff
+  expires:
+    type: never
+```
+Matches any command starting with `git diff ` (e.g., `git diff HEAD`, `git diff --staged`).
+
+**4. Parameter Matching**
+```yaml
+"write":
+  allowed: true
+  source: config
+  reason: safe doc edits
+  match:
+    file_path: "*.md"
+  expires:
+    type: never
+```
+Matches `write` calls only when `file_path` ends with `.md`.
+
+### Unified Permission Structure
+
+All permissions use the same structure:
+
+```yaml
+"pattern":
+  allowed: true|false          # Whether to allow
+  source: config|user|skill|safe|default  # Where it came from
+  reason: "description"        # Why it was granted (shown in logs)
+  match:                       # Optional: parameter-level matching
+    param_name: "pattern"
+  expires:
+    type: never|session_end|turn_end  # When it expires
+```
+
+### Priority Order
+
+When multiple permissions could match:
+
+1. **Runtime approvals** (`source: user`) - highest priority
+2. **Config permissions** (`source: config`) - from host.yaml
+3. **Default permissions** (`source: default`) - built-in safe tools
+4. **Safe tools** (`source: safe`) - read-only operations
+
+### Parameter Matching Examples
+
+**Write to specific directories:**
+```yaml
+"write":
+  allowed: true
+  source: config
+  reason: safe doc edits
+  match:
+    file_path: "docs/**/*.md"
+  expires:
+    type: never
+```
+
+**Edit in specific paths:**
+```yaml
+"edit":
+  allowed: true
+  source: config
+  reason: safe config edits
+  match:
+    file_path: "*.{yaml,yml,json}"
+  expires:
+    type: never
+```
+
+**Bash with timeout limits:**
+```yaml
+"bash":
+  allowed: true
+  source: config
+  reason: safe short commands
+  match:
+    timeout: "30000"  # Exact match on timeout parameter
+  expires:
+    type: never
+```
+
+### Common Workflows
+
+**Development Agent:**
+```yaml
+permissions:
+  "Bash(git status)":
+    allowed: true
+    source: config
+    reason: safe git read
+    expires:
+      type: never
+  "Bash(git diff *)":
+    allowed: true
+    source: config
+    reason: safe git diff
+    expires:
+      type: never
+  "Bash(pytest *)":
+    allowed: true
+    source: config
+    reason: safe test execution
+    expires:
+      type: never
+```
+
+**Documentation Agent:**
+```yaml
+permissions:
+  "write":
+    allowed: true
+    source: config
+    reason: doc updates
+    match:
+      file_path: "docs/**/*.md"
+    expires:
+      type: never
+  "edit":
+    allowed: true
+    source: config
+    reason: doc updates
+    match:
+      file_path: "docs/**/*.md"
+    expires:
+      type: never
+```
+
+**Code Review Agent (read-only):**
+```yaml
+permissions:
+  "read_file":
+    allowed: true
+    source: config
+    reason: code review
+    expires:
+      type: never
+  "glob":
+    allowed: true
+    source: config
+    reason: find files
+    expires:
+      type: never
+  "grep":
+    allowed: true
+    source: config
+    reason: search code
+    expires:
+      type: never
+```
+
+### Best Practices
+
+✅ **DO:**
+- Auto-approve safe read-only commands (`git status`, `git log`)
+- Use parameter matching for file operations (`*.md`, `docs/**/*`)
+- Keep `source: config` and `expires: never` for permanent rules
+- Add descriptive `reason` fields for debugging
+
+❌ **DON'T:**
+- Auto-approve destructive commands (`rm -rf`, `git push --force`)
+- Use wildcards too broadly (`Bash(*)` matches everything)
+- Auto-approve all bash without `match` field
+- Forget to test patterns with actual tool calls
+
+### Example
+
+```python
+# .co/host.yaml has:
+# permissions:
+#   "Bash(git status)":
+#     allowed: true
+#     source: config
+#     ...
+
+from connectonion import Agent, host
+from connectonion.useful_tools import bash
+
+def create_agent():
+    return Agent("dev-assistant", tools=[bash])
+
+host(create_agent)  # Loads permissions from .co/host.yaml
+
+# Later, in conversation:
+agent.input("Check git status")
+# → Bash(git status) - auto-approved (config permission) ✓
+# → No approval prompt shown to user
+
+agent.input("Run npm install")
+# → Bash(npm install) - requires approval ✗
+# → User sees approval prompt (not in config)
+```
+
+## 3. Skills - Temporary Scoped Permissions with Snapshot/Restore
 
 Pre-packaged workflows with **one-turn** automatic tool approval that preserves user approvals.
 
@@ -228,7 +521,7 @@ Create a well-formatted git commit.
 
 See [Skills](skills.md) for complete documentation.
 
-## 3. Plan Mode - Auto-Edit During Planning
+## 4. Plan Mode - Auto-Edit During Planning
 
 When `agent.is_planning = True`, the `edit` tool is auto-approved.
 
@@ -292,7 +585,7 @@ agent.input("Implement the plan")
 # → bash requires approval ✗
 ```
 
-## 4. Session Memory - Remember User Decisions
+## 5. Session Memory - Remember User Decisions
 
 When user approves a tool, remember the decision for the session.
 
@@ -366,7 +659,7 @@ def check_approval(agent):
     # ... ask user for approval
 ```
 
-## 5. Tool Approval - Ask User for Dangerous Operations
+## 6. Tool Approval - Ask User for Dangerous Operations
 
 Web-based approval UI for dangerous tools.
 
