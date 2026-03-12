@@ -190,7 +190,7 @@ class ToolCall:
 
 # Import TokenUsage from usage module
 from .usage import TokenUsage, calculate_cost
-from .exceptions import InsufficientCreditsError, LLMConnectionError
+from .exceptions import InsufficientCreditsError, LLMConnectionError, ProviderServiceError
 
 
 @dataclass
@@ -1026,6 +1026,8 @@ class OpenOnionLLM(LLM):
         except openai.APIStatusError as e:
             if e.status_code == 402:
                 raise InsufficientCreditsError(e) from e
+            elif e.status_code == 503:
+                raise ProviderServiceError(e) from e
             logger.error(f"APIStatusError: status={e.status_code}, message={e.message}, body={getattr(e, 'body', None)}")
             raise
         except (openai.APITimeoutError, openai.APIConnectionError) as e:

@@ -115,5 +115,29 @@ class LLMConnectionError(Exception):
         )
 
 
+class ProviderServiceError(Exception):
+    """Raised when the LLM provider API returns a service error (503)."""
+
+    def __init__(self, original_error):
+        self.status_code = getattr(original_error, 'status_code', 503)
+        body = getattr(original_error, 'body', getattr(original_error, 'message', str(original_error)))
+
+        # Extract detail from body if it's a dict
+        if isinstance(body, dict):
+            self.detail = body.get('detail', str(body))
+        else:
+            self.detail = str(body)
+
+        message = (
+            f"\n{'='*70}\n"
+            f"❌ Provider Service Error (HTTP {self.status_code})\n"
+            f"{'='*70}\n\n"
+            f"{self.detail}\n\n"
+            f"{'='*70}\n"
+        )
+        super().__init__(message)
+        self.__cause__ = original_error
+
+
 class ToolRejectedError(ValueError):
     """Raised when a user rejects a tool execution request."""
