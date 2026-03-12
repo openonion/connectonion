@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: None (standalone module) | imported by [agent.py, __init__.py] | tested by [tests/test_events.py]
   Data flow: Wrapper functions tag event handlers with _event_type attribute → Agent organizes handlers by type → Agent invokes handlers at specific lifecycle points passing agent instance
   State/Effects: Event handlers receive agent instance and can modify agent.current_session (messages, trace, etc.)
-  Integration: exposes on_agent_ready(), after_user_input(), before_iteration(), after_iteration(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete()
+  Integration: exposes on_agent_ready(), after_user_input(), before_iteration(), after_iteration(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete(), on_stop_signal()
   Performance: Minimal overhead - just function attribute checking and iteration over handler lists
   Errors: Event handler exceptions propagate and stop agent execution (fail fast)
 """
@@ -314,4 +314,26 @@ def on_complete(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]
     """
     for fn in funcs:
         fn._event_type = 'on_complete'  # type: ignore
+    return funcs[0] if len(funcs) == 1 else list(funcs)
+
+
+def on_stop_signal(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+    """
+    Mark function(s) as on_stop_signal event handlers.
+
+    Fires when stop_signal is set in the session, before the iteration loop exits.
+    Use for: cleanup of interrupted operations, saving checkpoints, rolling back
+    partial changes, notifying user of interruption.
+
+    Supports both decorator and wrapper syntax:
+        @on_stop_signal
+        def cleanup(agent):
+            rollback_partial_changes()
+            save_checkpoint(agent.current_session)
+            print("⚠️  Operation interrupted - state saved")
+
+        on_events=[on_stop_signal(handler1, handler2)]
+    """
+    for fn in funcs:
+        fn._event_type = 'on_stop_signal'  # type: ignore
     return funcs[0] if len(funcs) == 1 else list(funcs)

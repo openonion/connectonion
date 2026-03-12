@@ -82,7 +82,8 @@ class Agent:
             'after_each_tool': [],     # Fires after EACH tool (don't add messages here!)
             'after_tools': [],         # Fires ONCE after ALL tools (safe for messages)
             'on_error': [],
-            'on_complete': []
+            'on_complete': [],
+            'on_stop_signal': []
         }
 
         # Register plugin events (flatten list of lists)
@@ -391,6 +392,7 @@ class Agent:
 
             # Check if plugin set stop_signal (stop loop, wait for user input)
             if self.current_session.pop('stop_signal', None):
+                self._invoke_events('on_stop_signal')
                 return "What would you like me to do?"
 
         # Hit max iterations
