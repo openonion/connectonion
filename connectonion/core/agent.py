@@ -265,7 +265,8 @@ class Agent:
             uploads_dir = self.logger.co_dir / "uploads"
             uploads_dir.mkdir(parents=True, exist_ok=True)
             for f in files:
-                file_path = uploads_dir / f["name"]
+                safe_name = Path(f["name"]).name
+                file_path = uploads_dir / safe_name
                 # Decode base64 data URL and write to disk
                 data_url = f["data"]
                 if "," in data_url:

@@ -703,3 +703,25 @@ def test_agent_input_with_multiple_files(tmp_path):
     reminder_text = content[1]['text']
     assert "report.pdf" in reminder_text
     assert "data.csv" in reminder_text
+
+
+def test_agent_input_file_path_traversal(tmp_path):
+    """Test that malicious filenames with path traversal are sanitized."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="Done.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="safe_agent", llm=mock_llm, log=False, co_dir=tmp_path / ".co")
+
+    test_file = {"name": "../../etc/passwd", "data": "data:text/plain;base64,cm9vdA=="}
+
+    agent.input("Read this", files=[test_file])
+
+    # File should be saved as just "passwd" inside .co/uploads/, not outside
+    assert (tmp_path / ".co" / "uploads" / "passwd").exists()
+    assert not (tmp_path / "etc").exists()
