@@ -25,7 +25,7 @@ import pytest
 import asyncio
 import json
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
-from connectonion.network.connect import RemoteAgent, connect, Response
+from connectonion.network.connect import RemoteAgent, connect, Response, StationStatus
 
 
 class TestResponse:
@@ -437,6 +437,208 @@ class TestIntegration:
         assert any(e["type"] == "thinking" for e in agent.ui)
         assert any(e["type"] == "tool_call" and e["status"] == "done" for e in agent.ui)
         assert any(e["type"] == "agent" for e in agent.ui)
+
+
+class TestStationStatus:
+    """Test StationStatus dataclass."""
+
+    def test_station_status_defaults(self):
+        """Test StationStatus with minimal fields."""
+        status = StationStatus(online=True, relay_registered=True)
+        assert status.online is True
+        assert status.relay_registered is True
+        assert status.endpoint is None
+        assert status.uptime is None
+        assert status.agent_name is None
+        assert status.session is None
+        assert status.last_activity is None
+
+    def test_station_status_all_fields(self):
+        """Test StationStatus with all fields populated."""
+        session = {"messages": [{"role": "user", "content": "hi"}]}
+        status = StationStatus(
+            online=True,
+            relay_registered=True,
+            endpoint="http://localhost:8000",
+            uptime=3600,
+            agent_name="my-agent",
+            session=session,
+            last_activity=1700000000.0,
+        )
+        assert status.uptime == 3600
+        assert status.agent_name == "my-agent"
+        assert status.session == session
+        assert status.last_activity == 1700000000.0
+
+    def test_station_status_offline(self):
+        """Test StationStatus when agent is offline."""
+        status = StationStatus(online=False, relay_registered=False)
+        assert status.online is False
+        assert status.relay_registered is False
+
+
+class TestCheckStatus:
+    """Test check_status() and check_status_async()."""
+
+    @pytest.mark.asyncio
+    async def test_check_status_online_via_relay(self):
+        """Test check_status when relay reports agent online."""
+        agent = RemoteAgent("0x" + "a" * 64, relay_url="ws://localhost:9000")
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            "online": True,
+            "endpoints": ["http://localhost:8000"]
+        }
+
+        mock_health = Mock()
+        mock_health.status_code = 200
+        mock_health.json.return_value = {
+            "status": "healthy",
+            "agent": "test-agent",
+            "uptime": 120
+        }
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[mock_response, mock_health])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            status = await agent.check_status_async()
+
+        assert status.online is True
+        assert status.relay_registered is True
+        assert status.uptime == 120
+        assert status.agent_name == "test-agent"
+        assert status.endpoint == "http://localhost:8000"
+
+    @pytest.mark.asyncio
+    async def test_check_status_offline(self):
+        """Test check_status when relay reports agent offline."""
+        agent = RemoteAgent("0x" + "a" * 64, relay_url="ws://localhost:9000")
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"online": False, "endpoints": []}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            status = await agent.check_status_async()
+
+        assert status.online is False
+        assert status.relay_registered is False
+        assert status.session is None
+
+    @pytest.mark.asyncio
+    async def test_check_status_with_existing_session(self):
+        """Test check_status includes existing session data."""
+        agent = RemoteAgent("0x" + "a" * 64, relay_url="ws://localhost:9000")
+        agent._current_session = {
+            "messages": [
+                {"role": "user", "content": "hi", "timestamp": 1700000000.0}
+            ],
+            "created": 1699999990.0,
+        }
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"online": True, "endpoints": []}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            status = await agent.check_status_async()
+
+        assert status.online is True
+        assert status.session is not None
+        assert status.last_activity == 1700000000.0
+
+    @pytest.mark.asyncio
+    async def test_check_status_relay_unreachable(self):
+        """Test check_status when relay is unreachable."""
+        agent = RemoteAgent("0x" + "a" * 64, relay_url="ws://localhost:9000")
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=Exception("Connection refused"))
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            status = await agent.check_status_async()
+
+        assert status.online is False
+        assert status.relay_registered is False
+
+    @pytest.mark.asyncio
+    async def test_check_status_health_probe_fails(self):
+        """Test check_status when health probe fails but relay says online."""
+        agent = RemoteAgent("0x" + "a" * 64, relay_url="ws://localhost:9000")
+
+        mock_relay_response = Mock()
+        mock_relay_response.status_code = 200
+        mock_relay_response.json.return_value = {
+            "online": True,
+            "endpoints": ["http://localhost:8000"]
+        }
+
+        mock_health = Mock()
+        mock_health.status_code = 500
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(side_effect=[mock_relay_response, mock_health])
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            status = await agent.check_status_async()
+
+        # Relay says online, but no direct endpoint confirmed
+        assert status.online is True
+        assert status.relay_registered is True
+        assert status.endpoint is None
+        assert status.uptime is None
+
+    def test_check_status_sync_raises_in_async(self):
+        """Test check_status() raises in async context."""
+        async def test():
+            agent = RemoteAgent("0x" + "a" * 64)
+            with pytest.raises(RuntimeError) as exc_info:
+                agent.check_status()
+            assert "check_status_async" in str(exc_info.value)
+
+        asyncio.run(test())
+
+    @pytest.mark.asyncio
+    async def test_check_status_session_fallback_to_created(self):
+        """Test last_activity falls back to session created timestamp."""
+        agent = RemoteAgent("0x" + "a" * 64, relay_url="ws://localhost:9000")
+        agent._current_session = {
+            "messages": [{"role": "user", "content": "hi"}],  # No timestamp
+            "created": 1699999990.0,
+        }
+
+        mock_response = Mock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {"online": False, "endpoints": []}
+
+        mock_client = AsyncMock()
+        mock_client.get = AsyncMock(return_value=mock_response)
+        mock_client.__aenter__ = AsyncMock(return_value=mock_client)
+        mock_client.__aexit__ = AsyncMock(return_value=False)
+
+        with patch('httpx.AsyncClient', return_value=mock_client):
+            status = await agent.check_status_async()
+
+        assert status.last_activity == 1699999990.0
 
 
 if __name__ == "__main__":

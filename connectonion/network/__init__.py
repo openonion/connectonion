@@ -21,7 +21,7 @@ This module contains:
 
 from .host import host, create_app, SessionStorage, Session
 from .io import IO, WebSocketIO
-from .connect import connect, RemoteAgent, Response
+from .connect import connect, RemoteAgent, Response, StationStatus
 from .relay import connect as relay_connect, serve_loop
 from .announce import create_announce_message
 from .trust import TrustAgent, Decision, get_default_trust_level, TRUST_LEVELS, parse_policy
@@ -37,6 +37,7 @@ __all__ = [
     "connect",
     "RemoteAgent",
     "Response",
+    "StationStatus",
     "relay_connect",
     "serve_loop",
     "create_announce_message",

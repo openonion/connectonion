@@ -124,6 +124,33 @@ async def resolve_endpoint(
 
 
 @dataclass
+class StationStatus:
+    """Status of a remote agent station.
+
+    Provides information about whether a remote agent is reachable,
+    how long it's been running, and whether there's an existing session
+    that can be resumed.
+
+    Usage:
+        >>> agent = connect("0x...")
+        >>> status = agent.check_status()
+        >>> if status.online and status.session:
+        ...     # Resume existing conversation
+        ...     response = agent.input("Continue where we left off")
+        >>> elif status.online:
+        ...     # Start fresh
+        ...     response = agent.input("Hello")
+    """
+    online: bool                                    # Whether the agent is reachable
+    relay_registered: bool                          # Whether the relay knows about this agent
+    endpoint: Optional[str] = None                  # Best direct endpoint (if resolved)
+    uptime: Optional[int] = None                    # Agent uptime in seconds (from /health)
+    agent_name: Optional[str] = None                # Agent name (from /health or /info)
+    session: Optional[Dict[str, Any]] = None        # Existing session (from client state)
+    last_activity: Optional[float] = None           # Unix timestamp of last session activity
+
+
+@dataclass
 class Response:
     """Response from remote agent."""
     text: str       # Agent's response or question
@@ -251,6 +278,99 @@ class RemoteAgent:
         self._current_session = None
         self._ui_events = []
         self._status = "idle"
+
+    def check_status(self, timeout: float = 5.0) -> StationStatus:
+        """
+        Check if the remote agent is online and whether an existing session can be resumed.
+
+        Queries the relay for registration status, probes direct endpoints for
+        health info, and checks local session state for resumability.
+
+        Args:
+            timeout: Seconds to wait for each network probe (default 5)
+
+        Returns:
+            StationStatus with online/offline state, uptime, and session info
+
+        Example:
+            >>> agent = connect("0x...")
+            >>> status = agent.check_status()
+            >>> print(status.online)        # True/False
+            >>> print(status.uptime)        # 3600 (seconds)
+            >>> print(status.session)       # existing session dict or None
+        """
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "check_status() cannot be used inside async context. "
+                "Use 'await agent.check_status_async()' instead."
+            )
+        except RuntimeError as e:
+            if "check_status() cannot be used" in str(e):
+                raise
+        return asyncio.run(self.check_status_async(timeout))
+
+    async def check_status_async(self, timeout: float = 5.0) -> StationStatus:
+        """Async version of check_status()."""
+        https_relay = self._relay_url.replace("wss://", "https://").replace("ws://", "http://").rstrip("/")
+
+        relay_registered = False
+        endpoints = []
+
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            # Step 1: Query relay for agent registration
+            try:
+                response = await client.get(f"{https_relay}/api/relay/agents/{self.address}")
+                if response.status_code == 200:
+                    agent_info = response.json()
+                    relay_registered = agent_info.get("online", False)
+                    endpoints = agent_info.get("endpoints", [])
+            except Exception:
+                pass
+
+            # Step 2: Try to probe direct endpoints for health info
+            sorted_eps = _sort_endpoints(endpoints) if endpoints else []
+            http_endpoints = [ep for ep in sorted_eps if ep.startswith("http://") or ep.startswith("https://")]
+
+            best_endpoint = None
+            uptime = None
+            agent_name = None
+
+            for http_url in http_endpoints:
+                try:
+                    health_resp = await client.get(f"{http_url}/health")
+                    if health_resp.status_code == 200:
+                        health = health_resp.json()
+                        if health.get("status") == "healthy":
+                            best_endpoint = http_url
+                            uptime = health.get("uptime")
+                            agent_name = health.get("agent")
+                            break
+                except Exception:
+                    continue
+
+        # Step 3: Check local session state
+        session = self._current_session
+        last_activity = None
+        if session:
+            messages = session.get("messages", [])
+            if messages:
+                last_msg = messages[-1]
+                last_activity = last_msg.get("timestamp")
+            if not last_activity:
+                last_activity = session.get("created")
+
+        online = relay_registered or (best_endpoint is not None)
+
+        return StationStatus(
+            online=online,
+            relay_registered=relay_registered,
+            endpoint=best_endpoint,
+            uptime=uptime,
+            agent_name=agent_name,
+            session=session,
+            last_activity=last_activity,
+        )
 
     async def _try_resolve_endpoint(self) -> None:
         """Try to resolve endpoint for the agent address. Only attempts once."""
