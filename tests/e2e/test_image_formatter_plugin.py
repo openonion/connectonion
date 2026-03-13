@@ -124,22 +124,23 @@ class TestImageFormatterPluginE2E:
         assert "Screenshot captured" in tool_msg['content']
         assert "iVBORw0KGgo" not in tool_msg['content']
 
-        # Find the assistant message with image
-        assistant_image_msg = next(
+        # Find the user message with image (plugin inserts user message, not assistant)
+        user_image_msg = next(
             (msg for msg in messages
-             if msg.get('role') == 'assistant'
+             if msg.get('role') == 'user'
              and isinstance(msg.get('content'), list)
              and any(item.get('type') == 'image_url' for item in msg['content'])),
             None
         )
-        assert assistant_image_msg is not None
+        assert user_image_msg is not None
 
         # Verify image content structure
-        content = assistant_image_msg['content']
+        content = user_image_msg['content']
         text_part = next(item for item in content if item['type'] == 'text')
         image_part = next(item for item in content if item['type'] == 'image_url')
 
-        assert 'tool' in text_part['text'].lower()
+        assert 'image' in text_part['text'].lower()
+        assert 'take_screenshot' in text_part['text'].lower()
         assert 'data:image/png;base64,' in image_part['image_url']['url']
         assert 'iVBORw0KGgo' in image_part['image_url']['url']
 
@@ -189,18 +190,18 @@ class TestImageFormatterPluginE2E:
         # Verify messages were still formatted correctly
         messages = agent.current_session['messages']
 
-        # Find assistant message with image
-        assistant_image_msg = next(
+        # Find user message with image (plugin inserts user message, not assistant)
+        user_image_msg = next(
             (msg for msg in messages
-             if msg.get('role') == 'assistant'
+             if msg.get('role') == 'user'
              and isinstance(msg.get('content'), list)
              and any(item.get('type') == 'image_url' for item in msg['content'])),
             None
         )
-        assert assistant_image_msg is not None
+        assert user_image_msg is not None
 
         # Verify image is in the message
-        content = assistant_image_msg['content']
+        content = user_image_msg['content']
         image_part = next(item for item in content if item['type'] == 'image_url')
         assert 'data:image/png;base64,' in image_part['image_url']['url']
 
@@ -268,16 +269,16 @@ class TestImageFormatterPluginE2E:
         # Verify both images were sent to WebSocket
         assert mock_io.send_image.call_count == 2
 
-        # Verify both images are in messages
+        # Verify both images are in messages (plugin inserts user messages, not assistant)
         messages = agent.current_session['messages']
-        assistant_image_msgs = [
+        user_image_msgs = [
             msg for msg in messages
-            if msg.get('role') == 'assistant'
+            if msg.get('role') == 'user'
             and isinstance(msg.get('content'), list)
             and any(item.get('type') == 'image_url' for item in msg['content'])
         ]
 
-        assert len(assistant_image_msgs) == 2
+        assert len(user_image_msgs) == 2
 
 
 if __name__ == "__main__":
