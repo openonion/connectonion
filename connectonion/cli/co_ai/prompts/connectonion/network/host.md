@@ -229,16 +229,7 @@ curl -X POST http://localhost:8000/input \
     "messages": [...],
     "trace": [...],
     "turn": 1
-  },
-  "images": [                     // Optional - base64 data URLs
-    "data:image/png;base64,iVBOR..."
-  ],
-  "files": [                      // Optional - base64 encoded files
-    {
-      "name": "document.pdf",
-      "data": "data:application/pdf;base64,JVBERi..."
-    }
-  ]
+  }
 }
 ```
 
@@ -321,7 +312,7 @@ curl http://localhost:8000/health
 
 ### GET /info
 
-Agent capabilities and metadata, including accepted input types and file limits.
+Agent capabilities and metadata.
 
 ```bash
 curl http://localhost:8000/info
@@ -333,17 +324,8 @@ curl http://localhost:8000/info
   "name": "translator",
   "address": "0x3d4017c3...",
   "tools": ["translate", "detect_language"],
-  "model": "co/gemini-2.5-pro",
   "trust": "careful",
-  "version": "0.4.1",
-  "accepted_inputs": {
-    "text": true,
-    "images": true,
-    "files": {
-      "max_file_size_mb": 10,
-      "max_files_per_request": 10
-    }
-  }
+  "version": "0.4.1"
 }
 ```
 
@@ -416,9 +398,7 @@ const ws = new WebSocket("ws://localhost:8000/ws");
 ```javascript
 ws.send(JSON.stringify({
   type: "INPUT",
-  prompt: "Translate hello to Spanish",
-  images: ["data:image/png;base64,..."],  // Optional
-  files: [{ name: "doc.pdf", data: "data:application/pdf;base64,..." }]  // Optional
+  prompt: "Translate hello to Spanish"
 }));
 ```
 
@@ -1030,8 +1010,6 @@ def host(
     result_ttl: int = 86400,
     relay_url: str = "wss://oo.openonion.ai/ws/announce",
     reload: bool = False,
-    max_file_size: int = 10,               # MB per file
-    max_files_per_request: int = 10,
 ) -> None
 ```
 
@@ -1046,8 +1024,6 @@ def host(
 | `result_ttl` | `int` | `86400` | How long server keeps results (24h) |
 | `relay_url` | `str` | production | P2P relay server |
 | `reload` | `bool` | `False` | Auto-reload on changes |
-| `max_file_size` | `int` | `10` | Max file size in MB (both WS and HTTP) |
-| `max_files_per_request` | `int` | `10` | Max number of files in one request |
 
 ### host.app()
 
