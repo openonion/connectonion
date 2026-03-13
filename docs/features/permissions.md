@@ -2,35 +2,82 @@
 
 ConnectOnion provides multiple permission mechanisms to balance safety and automation. This guide explains how they work together.
 
+## Unified Permission System
+
+**Core Concept**: All permissions use a single, consistent data structure at runtime. Whether from config files, skills, or user approvals, every permission is stored the same way in `session['permissions']`.
+
+```python
+# All permissions use this unified format:
+session['permissions'] = {
+    "tool_name": {
+        "allowed": True,
+        "source": "config"|"skill"|"user"|"safe",
+        "reason": "description",
+        "when": {"param": "pattern"},  # Optional: granular matching
+        "expires": {"type": "never"|"turn_end"|"session_end"}
+    }
+}
+```
+
+**Key Insight**: You don't need to understand 5 different permission formats - everything becomes this unified structure at runtime.
+
 ## Permission Layers
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │ 1. SAFE_TOOLS - Always auto-approved                       │
 │    read_file, glob, grep (read-only operations)            │
+│    Stored as: source='safe', expires='never'               │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ 2. Config Permissions - Project-level auto-approve         │
 │    host.yaml: Bash(git status), write(*.md), etc.          │
-│    Never expires, applies to all sessions                  │
+│    Stored as: source='config', expires='never'             │
+│    Pattern: Bash() → 'bash' with when:{command: '...'}     │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ 3. Skills - Temporary scoped permissions (one turn)         │
 │    /commit → auto-approve git commands for this turn only  │
+│    Stored as: source='skill', expires='turn_end'           │
+│    Preserves user approvals via snapshot/restore           │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
-│ 4. Session Memory - Remember user decisions                │
-│    User approved bash once → auto-approve for session      │
+│ 4. User Approvals - Tool-level session memory              │
+│    User approves 'bash' once → ALL bash commands allowed   │
+│    Stored as: source='user', expires='session_end'         │
+│    **TOOL-LEVEL**: Approving "bash npm" = approve ALL bash │
 └─────────────────────────────────────────────────────────────┘
                               ↓
 ┌─────────────────────────────────────────────────────────────┐
 │ 5. Tool Approval - Ask user for dangerous operations       │
 │    bash, edit, write → require explicit user approval      │
+│    If no permission in unified dict → ask user             │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Tool-Level vs Command-Specific Approvals
+
+**Critical**: User approvals are **tool-level**, not command-specific. This is different from config/skill permissions.
+
+```python
+# Config/Skill permissions can be granular:
+session['permissions']['bash'] = {
+    "source": "config",
+    "when": {"command": "git status"}  # Only matches "git status"
+}
+
+# User approvals are tool-level:
+session['permissions']['bash'] = {
+    "source": "user",
+    "reason": "approved for session"
+    # NO 'when' field - matches ALL bash commands
+}
+```
+
+**Why?** User approvals prioritize convenience for development workflows. If you approve "bash", you trust bash commands for the session. Config/skills use granular matching for safety.
 
 ## Quick Start
 
@@ -94,6 +141,88 @@ agent.input("Run tests")
 agent.input("Delete all files")
 # → User approval required (destructive operation)
 ```
+
+## Unified Permission Format
+
+All permission sources (config, skills, user, safe) use the same runtime structure:
+
+```python
+session['permissions'] = {
+    "tool_name": {
+        "allowed": bool,             # Allow or block
+        "source": str,               # Where it came from
+        "reason": str,               # Why it was granted
+        "when": dict,                # Optional: parameter matching
+        "expires": dict              # When it expires
+    }
+}
+```
+
+### Config Files Use Bash() Pattern
+
+**User-facing config** (in `.co/host.yaml`):
+```yaml
+permissions:
+  "Bash(git status)":  # User-friendly pattern
+    allowed: true
+    source: config
+    reason: safe git read
+    expires:
+      type: never
+```
+
+**Runtime format** (internal):
+```python
+session['permissions']['bash'] = {
+    "allowed": True,
+    "source": "config",
+    "reason": "safe git read",
+    "when": {"command": "git status"},  # Converted to 'when' field
+    "expires": {"type": "never"}
+}
+```
+
+**Conversion happens automatically** - you write `Bash(git status)` in config, it becomes `bash` with `when:{command: "git status"}` at runtime.
+
+### Tool-Level User Approvals
+
+When users approve tools during execution, approval is **tool-level**:
+
+```python
+# User approves "bash npm install" → Stored as:
+session['permissions']['bash'] = {
+    "allowed": True,
+    "source": "user",
+    "reason": "approved for session",
+    # NO 'when' field → matches ALL bash commands
+    "expires": {"type": "session_end"}
+}
+```
+
+**Why tool-level?**
+- Convenience: Approving once means trusting the tool for session
+- Development workflow: Don't re-approve every npm/pytest/git command
+- Clear intent: "I trust bash" vs "I only trust this specific command"
+
+**Security**: Config and skills can use granular `when` field. User approvals are simpler.
+
+### Snapshot/Restore Pattern (Skills)
+
+Skills preserve user approvals using snapshot/restore:
+
+```python
+# Before skill:
+permissions = {"write": {source: "user", ...}}
+
+# During skill:
+snapshot = deepcopy(permissions)  # Save user approvals
+permissions["bash"] = {source: "skill", when: {command: "git *"}, ...}  # Add skill perms
+
+# After skill:
+permissions = snapshot  # Restore - user's 'write' preserved, skill's 'bash' cleared
+```
+
+**Result**: Skills grant temporary permissions without losing user approvals.
 
 ## 1. SAFE_TOOLS - Always Auto-Approved
 
