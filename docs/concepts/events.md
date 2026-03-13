@@ -72,6 +72,7 @@ agent = Agent(
 | `after_each_tool`  | After each tool completes      | Per tool call      | Log performance, side effects (no message changes!)    |
 | `after_tools`      | After ALL tools in round       | Once per round     | Add reflection, **ONLY place safe to modify messages** |
 | `on_error`         | When tool fails                | Per tool error     | Custom error handling, retries                         |
+| `on_tool_not_found`| When LLM requests unknown tool | Per missing tool   | Custom error messages, fuzzy matching, tool suggestions |
 | `after_iteration`  | End of iteration (after tools) | Once per iteration | Checkpoints, stop loop via `stop_loop_result`          |
 | `on_stop_signal`   | When stop_signal is set        | Once per stop      | Cleanup interrupted ops, save checkpoints, rollback    |
 | `on_complete`      | After agent finishes           | Once per input()   | Metrics, cleanup, final summary                        |
@@ -117,6 +118,7 @@ TURN START
 │   ├─ after_llm
 │   └─ (no after_iteration - not continuing)
 │
+├─ on_tool_not_found             ← if LLM called a tool that doesn't exist
 ├─ on_stop_signal                ← if interrupted by stop_signal
 └─ on_complete                   ← turn ends
 ```
@@ -143,8 +145,8 @@ def my_event(agent):
     agent.current_session['turn']      # Current turn number
     agent.current_session['user_prompt'] # Current user input
 
-    # Only in before_each_tool events:
-    agent.current_session['pending_tool']  # Tool about to execute
+    # Only in before_each_tool and on_tool_not_found events:
+    agent.current_session['pending_tool']  # Tool about to execute (or missing)
     # {'name': 'bash', 'arguments': {'command': 'ls'}, 'id': 'call_123'}
 
     # Modify the agent:
@@ -358,6 +360,42 @@ def handle_tool_error(agent):
 
 agent = Agent("assistant", tools=[search], on_events=[on_error(handle_tool_error)])
 ```
+
+### Tool Not Found Handler (on_tool_not_found)
+
+Use `on_tool_not_found` to intercept cases where the LLM requests a tool that doesn't exist. Handlers can return a custom error message string that the LLM will receive instead of the default `"Tool 'x' not found"`.
+
+```python
+from connectonion import Agent, on_tool_not_found
+
+@on_tool_not_found
+def suggest_similar_tool(agent) -> str:
+    pending = agent.current_session['pending_tool']
+    tool_name = pending['name']
+    available = list(agent.tools._tools.keys())
+
+    # Simple prefix matching for suggestions
+    similar = [t for t in available if t.startswith(tool_name[:3])]
+    if similar:
+        return f"Tool '{tool_name}' not found. Did you mean: {', '.join(similar)}?"
+    return f"Tool '{tool_name}' not found. Available tools: {available}"
+
+agent = Agent("assistant", tools=[search, write], on_events=[suggest_similar_tool])
+```
+
+**Key points:**
+- `pending_tool` is set in session before the event fires: `{'name': ..., 'arguments': ..., 'id': ...}`
+- Return a string from the handler to override the default error message
+- Return `None` (or don't return) to use the default `"Tool 'x' not found"` message
+- After `on_tool_not_found`, the `on_error` event also fires (since tool status is `not_found`)
+
+**Use cases for `on_tool_not_found`:**
+- Fuzzy tool name matching ("srch" → "search")
+- Dynamic tool loading on demand
+- Better error messages listing available tools
+- Tool usage analytics (track which tools the LLM tries to call)
+
+---
 
 ### Task Completion Handler (on_complete)
 

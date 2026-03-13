@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [llm.py, tool_factory.py, prompts.py, decorators.py, logger.py, tool_executor.py, tool_registry.py] | imported by [__init__.py, debug_agent/__init__.py] | tested by [tests/test_agent.py, tests/test_agent_prompts.py, tests/test_agent_workflows.py]
   Data flow: receives user prompt: str from Agent.input() → creates/extends current_session with messages → calls llm.complete() with tool schemas → receives LLMResponse with tool_calls → executes tools via tool_executor.execute_and_record_tools() → appends tool results to messages → repeats loop until no tool_calls or max_iterations → logger logs to .co/logs/{name}.log and .co/evals/{name}.yaml → returns final response: str
   State/Effects: modifies self.current_session['messages', 'trace', 'turn', 'iteration'] | writes to .co/logs/{name}.log and .co/evals/ via logger.py
-  Integration: exposes Agent(name, tools, system_prompt, model, log, quiet), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation() | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path | quiet=True suppresses console but keeps eval logging | trust enforcement moved to host() for network access control
+  Integration: exposes Agent(name, tools, system_prompt, model, log, quiet), .input(prompt), .execute_tool(name, args), .add_tool(func), .remove_tool(name), .list_tools(), .reset_conversation(), ._invoke_events(event_type), ._invoke_events_with_return(event_type) | tools stored in ToolRegistry with attribute access (agent.tools.tool_name) and instance storage (agent.tools.gmail) | tool execution delegates to tool_executor module | log defaults to .co/logs/ (None), can be True (current dir), False (disabled), or custom path | quiet=True suppresses console but keeps eval logging | trust enforcement moved to host() for network access control
   Performance: max_iterations=100 default (configurable per-input) | session state persists across turns for multi-turn conversations | ToolRegistry provides O(1) tool lookup via .get() or attribute access
   Errors: LLM errors bubble up | tool execution errors captured in trace and returned to LLM for retry
 """
@@ -84,7 +84,8 @@ class Agent:
             'after_tools': [],         # Fires ONCE after ALL tools (safe for messages)
             'on_error': [],
             'on_complete': [],
-            'on_stop_signal': []
+            'on_stop_signal': [],
+            'on_tool_not_found': [],  # Fires when LLM requests a non-existent tool
         }
 
         # Register plugin events (flatten list of lists)
@@ -187,6 +188,15 @@ class Agent:
         """Invoke all event handlers for given type. Exceptions propagate (fail fast)."""
         for handler in self.events.get(event_type, []):
             handler(self)
+
+    def _invoke_events_with_return(self, event_type: str):
+        """Invoke all event handlers for given type, return first non-None result."""
+        result = None
+        for handler in self.events.get(event_type, []):
+            ret = handler(self)
+            if ret is not None and result is None:
+                result = ret
+        return result
 
     def _register_event(self, event_func: EventHandler):
         """
