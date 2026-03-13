@@ -715,6 +715,14 @@ curl -X POST http://localhost:8000/input \
   }'
 ```
 
+**How files are handled internally:** Unlike images (which are passed directly to the LLM as visual content), file data is **not** inserted into the LLM messages. Instead:
+
+1. The file is decoded from base64 and saved to `.co/uploads/{filename}`
+2. The agent receives a system reminder with the file path
+3. The agent's tools can then read the file from disk
+
+This means your agent needs tools that can read files (e.g. a file reader tool) to process uploaded files.
+
 ### File Size Limits
 
 File uploads are validated against configurable limits (default: 10MB per file, 10 files per request). Configure in `host.yaml`:
