@@ -260,7 +260,7 @@ def test_parameter_matching_with_match_field(tmp_path, monkeypatch):
                 'allowed': True,
                 'source': 'config',
                 'reason': 'safe doc edits',
-                'match': {
+                'when': {
                     'file_path': '*.md'
                 },
                 'expires': {'type': 'never'}
@@ -309,7 +309,7 @@ def test_parameter_matching_rejects_non_matching(tmp_path, monkeypatch):
                 'allowed': True,
                 'source': 'config',
                 'reason': 'safe doc edits',
-                'match': {
+                'when': {
                     'file_path': '*.md'
                 },
                 'expires': {'type': 'never'}
@@ -360,7 +360,7 @@ def test_glob_pattern_matching_in_match_field(tmp_path, monkeypatch):
                 'allowed': True,
                 'source': 'config',
                 'reason': 'safe doc edits',
-                'match': {
+                'when': {
                     'file_path': 'docs/**/*.md'
                 },
                 'expires': {'type': 'never'}

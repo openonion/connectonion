@@ -295,7 +295,7 @@ permissions:
     allowed: true
     source: config
     reason: safe documentation edits
-    match:
+    when:
       file_path: "*.md"
     expires:
       type: never
@@ -305,7 +305,7 @@ permissions:
     allowed: true
     source: config
     reason: safe to read docs
-    match:
+    when:
       file_path: "docs/**/*"
     expires:
       type: never
@@ -332,7 +332,7 @@ permissions:
     allowed: true
     source: config
     reason: safe documentation edits
-    match:
+    when:
       file_path: "*.md"
     expires:
       type: never
@@ -342,7 +342,7 @@ permissions:
     allowed: true
     source: config
     reason: safe doc edits
-    match:
+    when:
       file_path: "docs/**/*.md"
     expires:
       type: never
@@ -352,7 +352,7 @@ permissions:
     allowed: true
     source: config
     reason: safe short commands
-    match:
+    when:
       timeout: "30000"  # Exact match on timeout parameter
     expires:
       type: never
@@ -396,7 +396,7 @@ permissions:
     allowed: true
     source: config
     reason: safe doc edits
-    match:
+    when:
       file_path: "*.md"
     expires:
       type: never
@@ -442,7 +442,7 @@ permissions:
     allowed: true
     source: config
     reason: documentation updates
-    match:
+    when:
       file_path: "docs/**/*.md"
     expires:
       type: never
@@ -450,7 +450,7 @@ permissions:
     allowed: true
     source: config
     reason: documentation updates
-    match:
+    when:
       file_path: "docs/**/*.md"
     expires:
       type: never

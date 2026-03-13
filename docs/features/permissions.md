@@ -47,7 +47,7 @@ permissions:
     allowed: true
     source: config
     reason: safe doc edits
-    match:
+    when:
       file_path: "*.md"
     expires:
       type: never
@@ -164,7 +164,7 @@ permissions:
     allowed: true
     source: config
     reason: safe documentation edits
-    match:
+    when:
       file_path: "*.md"
     expires:
       type: never
@@ -211,7 +211,7 @@ Matches any command starting with `git diff ` (e.g., `git diff HEAD`, `git diff 
   allowed: true
   source: config
   reason: safe doc edits
-  match:
+  when:
     file_path: "*.md"
   expires:
     type: never
@@ -227,7 +227,7 @@ All permissions use the same structure:
   allowed: true|false          # Whether to allow
   source: config|user|skill|safe|default  # Where it came from
   reason: "description"        # Why it was granted (shown in logs)
-  match:                       # Optional: parameter-level matching
+  when:                       # Optional: parameter-level matching
     param_name: "pattern"
   expires:
     type: never|session_end|turn_end  # When it expires
@@ -250,7 +250,7 @@ When multiple permissions could match:
   allowed: true
   source: config
   reason: safe doc edits
-  match:
+  when:
     file_path: "docs/**/*.md"
   expires:
     type: never
@@ -262,7 +262,7 @@ When multiple permissions could match:
   allowed: true
   source: config
   reason: safe config edits
-  match:
+  when:
     file_path: "*.{yaml,yml,json}"
   expires:
     type: never
@@ -274,7 +274,7 @@ When multiple permissions could match:
   allowed: true
   source: config
   reason: safe short commands
-  match:
+  when:
     timeout: "30000"  # Exact match on timeout parameter
   expires:
     type: never
@@ -345,7 +345,7 @@ permissions:
     allowed: true
     source: config
     reason: doc updates
-    match:
+    when:
       file_path: "docs/**/*.md"
     expires:
       type: never
@@ -353,7 +353,7 @@ permissions:
     allowed: true
     source: config
     reason: doc updates
-    match:
+    when:
       file_path: "docs/**/*.md"
     expires:
       type: never

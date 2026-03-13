@@ -180,7 +180,7 @@ permissions:
     allowed: true
     source: config
     reason: safe doc edits
-    match:
+    when:
       file_path: "*.md"
     expires:
       type: never
@@ -224,7 +224,7 @@ permissions:
   allowed: true
   source: config
   reason: safe doc edits
-  match:
+  when:
     file_path: "*.md"  # Only matches write calls to *.md files
   expires:
     type: never
@@ -305,7 +305,7 @@ permissions:
     allowed: true
     source: config
     reason: doc updates
-    match:
+    when:
       file_path: "docs/**/*.md"
     expires:
       type: never
@@ -313,7 +313,7 @@ permissions:
     allowed: true
     source: config
     reason: doc updates
-    match:
+    when:
       file_path: "docs/**/*.md"
     expires:
       type: never
