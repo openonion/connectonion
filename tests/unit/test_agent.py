@@ -592,3 +592,136 @@ def test_agent_input_without_images_unchanged():
     # Content should be a simple string when no images
     assert isinstance(user_message['content'], str)
     assert user_message['content'] == "Hello"
+
+
+def test_agent_input_with_files(tmp_path):
+    """Test that agent.input() saves files to .co/uploads/ and adds system reminder."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="I received the PDF file.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="file_agent", llm=mock_llm, log=False, co_dir=tmp_path / ".co")
+
+    test_file = {"name": "report.pdf", "data": "data:application/pdf;base64,JVBERi0xLjQK"}
+
+    result = agent.input("Analyze this document", files=[test_file])
+
+    assert "pdf" in result.lower()
+
+    # Verify file was saved to disk
+    saved_path = tmp_path / ".co" / "uploads" / "report.pdf"
+    assert saved_path.exists()
+    assert saved_path.read_bytes() == b"%PDF-1.4\n"
+
+    # Verify message format: text + system reminder (no raw file data)
+    messages = mock_llm.last_call["messages"]
+    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+
+    content = user_message['content']
+    assert isinstance(content, list)
+    assert len(content) == 2  # 1 text + 1 system reminder
+
+    assert content[0]['type'] == 'text'
+    assert content[0]['text'] == "Analyze this document"
+
+    assert content[1]['type'] == 'text'
+    assert "report.pdf" in content[1]['text']
+    assert "<system-reminder>" in content[1]['text']
+    assert str(saved_path) in content[1]['text']
+
+
+def test_agent_input_with_images_and_files(tmp_path):
+    """Test that agent.input() handles both images and files together."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="I see an image and a file.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="multi_agent", llm=mock_llm, log=False, co_dir=tmp_path / ".co")
+
+    test_image = "data:image/png;base64,iVBORw0KGgo"
+    test_file = {"name": "data.csv", "data": "data:text/csv;base64,bmFtZSxhZ2U="}
+
+    agent.input("Analyze these", images=[test_image], files=[test_file])
+
+    messages = mock_llm.last_call["messages"]
+    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+
+    content = user_message['content']
+    assert isinstance(content, list)
+    assert len(content) == 3  # 1 text + 1 image + 1 system reminder
+
+    assert content[0]['type'] == 'text'
+    assert content[1]['type'] == 'image_url'
+    assert content[2]['type'] == 'text'
+    assert "data.csv" in content[2]['text']
+
+    # Verify file saved
+    assert (tmp_path / ".co" / "uploads" / "data.csv").exists()
+
+
+def test_agent_input_with_multiple_files(tmp_path):
+    """Test that agent.input() saves multiple files and lists all paths in reminder."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="I received both files.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="multi_file_agent", llm=mock_llm, log=False, co_dir=tmp_path / ".co")
+
+    test_files = [
+        {"name": "report.pdf", "data": "data:application/pdf;base64,JVBERi0xLjQK"},
+        {"name": "data.csv", "data": "data:text/csv;base64,bmFtZSxhZ2U="},
+    ]
+
+    agent.input("Compare these documents", files=test_files)
+
+    # Verify both files saved
+    assert (tmp_path / ".co" / "uploads" / "report.pdf").exists()
+    assert (tmp_path / ".co" / "uploads" / "data.csv").exists()
+
+    messages = mock_llm.last_call["messages"]
+    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+
+    content = user_message['content']
+    assert isinstance(content, list)
+    assert len(content) == 2  # 1 text + 1 system reminder with both file paths
+
+    reminder_text = content[1]['text']
+    assert "report.pdf" in reminder_text
+    assert "data.csv" in reminder_text
+
+
+def test_agent_input_file_path_traversal(tmp_path):
+    """Test that malicious filenames with path traversal are sanitized."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(
+            content="Done.",
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+
+    agent = Agent(name="safe_agent", llm=mock_llm, log=False, co_dir=tmp_path / ".co")
+
+    test_file = {"name": "../../etc/passwd", "data": "data:text/plain;base64,cm9vdA=="}
+
+    agent.input("Read this", files=[test_file])
+
+    # File should be saved as just "passwd" inside .co/uploads/, not outside
+    assert (tmp_path / ".co" / "uploads" / "passwd").exists()
+    assert not (tmp_path / "etc").exists()

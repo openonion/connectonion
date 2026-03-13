@@ -111,7 +111,7 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
     return metadata, sample
 
 
-def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent):
+def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict):
     """Create route handler dict for ASGI app.
 
     Args:
@@ -121,20 +121,25 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
                         creating agents for health/info endpoints.
         result_ttl: How long to keep results on server in seconds
         trust_agent: TrustAgent instance for trust operations
+        config: Host config dict (includes file upload limits)
     """
+    from .config import validate_files
+
     agent_name = agent_metadata["name"]
 
-    def handle_input(storage, prompt, session=None, connection=None, images=None):
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images)
+    def handle_input(storage, prompt, session=None, connection=None, images=None, files=None):
+        validate_files(files, config)
+        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
 
-    def handle_ws_input(storage, prompt, connection, session=None, images=None):
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images)
+    def handle_ws_input(storage, prompt, connection, session=None, images=None, files=None):
+        validate_files(files, config)
+        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
 
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
 
     def handle_info(trust, trust_config=None):
-        return info_handler(agent_metadata, trust, trust_config)
+        return info_handler(agent_metadata, trust, trust_config, config)
 
     def handle_admin_logs():
         return admin_logs_handler(agent_name)
@@ -417,7 +422,7 @@ def host(
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent)
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, config)
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -482,7 +487,8 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent)
+    from .config import DEFAULT_FILE_LIMITS
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS)
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,

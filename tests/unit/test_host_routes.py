@@ -306,6 +306,40 @@ class TestInfoHandler:
 
         assert "onboard" not in result
 
+    def test_returns_accepted_inputs_with_file_limits(self):
+        """info_handler includes accepted_inputs with file size limits."""
+        metadata = {
+            "name": "agent",
+            "tools": [],
+            "address": "0x123",
+        }
+        mock_trust = Mock()
+        mock_trust.trust = "open"
+
+        result = info_handler(metadata, mock_trust)
+
+        accepted = result["accepted_inputs"]
+        assert accepted["text"] is True
+        assert accepted["images"] is True
+        assert accepted["files"]["max_file_size_mb"] == 10
+        assert accepted["files"]["max_files_per_request"] == 10
+
+    def test_accepted_inputs_uses_custom_config(self):
+        """info_handler uses host_config for file limits."""
+        metadata = {
+            "name": "agent",
+            "tools": [],
+            "address": "0x123",
+        }
+        mock_trust = Mock()
+        mock_trust.trust = "open"
+        custom_config = {"max_file_size": 50, "max_files_per_request": 5}
+
+        result = info_handler(metadata, mock_trust, host_config=custom_config)
+
+        assert result["accepted_inputs"]["files"]["max_file_size_mb"] == 50
+        assert result["accepted_inputs"]["files"]["max_files_per_request"] == 5
+
 
 class TestAdminLogsHandler:
     """Test admin_logs_handler route."""
@@ -503,6 +537,51 @@ class TestAdminTrustHandlers:
 
         trust_agent.remove_admin.assert_called_once_with("0xadmin")
         assert result["success"] is True
+
+
+class TestValidateFiles:
+    """Test file upload validation from config.py."""
+
+    def test_accepts_valid_files(self):
+        """validate_files passes for files within limits."""
+        from connectonion.network.host.config import validate_files
+
+        files = [{"name": "doc.pdf", "data": "x" * 1000}]
+        config = {"max_file_size": 10, "max_files_per_request": 10}
+        validate_files(files, config)  # Should not raise
+
+    def test_rejects_oversized_file(self):
+        """validate_files raises ValueError for file exceeding max_file_size."""
+        from connectonion.network.host.config import validate_files
+
+        # 2MB of data, but limit is 1MB
+        files = [{"name": "big.pdf", "data": "x" * (2 * 1024 * 1024)}]
+        config = {"max_file_size": 1, "max_files_per_request": 10}
+        with pytest.raises(ValueError, match="File too large"):
+            validate_files(files, config)
+
+    def test_rejects_too_many_files(self):
+        """validate_files raises ValueError when file count exceeds limit."""
+        from connectonion.network.host.config import validate_files
+
+        files = [{"name": f"file{i}.txt", "data": "x"} for i in range(5)]
+        config = {"max_file_size": 10, "max_files_per_request": 3}
+        with pytest.raises(ValueError, match="Too many files"):
+            validate_files(files, config)
+
+    def test_none_files_passes(self):
+        """validate_files accepts None without error."""
+        from connectonion.network.host.config import validate_files
+
+        config = {"max_file_size": 10, "max_files_per_request": 10}
+        validate_files(None, config)  # Should not raise
+
+    def test_empty_files_passes(self):
+        """validate_files accepts empty list without error."""
+        from connectonion.network.host.config import validate_files
+
+        config = {"max_file_size": 10, "max_files_per_request": 10}
+        validate_files([], config)  # Should not raise
 
 
 if __name__ == "__main__":

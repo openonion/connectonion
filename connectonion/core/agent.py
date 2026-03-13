@@ -12,6 +12,7 @@ LLM-Note:
 import os
 import sys
 import time
+import base64
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
 from .llm import LLM, create_llm, TokenUsage
@@ -218,7 +219,8 @@ class Agent:
         self.events[event_type].append(event_func)
 
     def input(self, prompt: str, max_iterations: Optional[int] = None,
-              session: Optional[Dict] = None, images: list[str] | None = None) -> str:
+              session: Optional[Dict] = None, images: list[str] | None = None,
+              files: list[dict] | None = None) -> str:
         """Provide input to the agent and get response.
 
         Args:
@@ -226,6 +228,9 @@ class Agent:
             max_iterations: Override agent's max_iterations for this request
             session: Optional session to continue a conversation.
             images: Optional list of base64 data URLs for multimodal input
+            files: Optional list of file dicts with keys:
+                - name: filename (e.g. "report.pdf")
+                - data: base64-encoded data URL (e.g. "data:application/pdf;base64,...")
 
         Returns:
             The agent's response after processing the input
@@ -254,11 +259,34 @@ class Agent:
             # Start YAML session logging
             self.logger.start_session(self.system_prompt)
 
-        # Add user message to conversation (multimodal if images provided)
-        if images:
+        # Save uploaded files to .co/uploads/ and build file path references
+        saved_files = []
+        if files:
+            uploads_dir = self.logger.co_dir / "uploads"
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            for f in files:
+                safe_name = Path(f["name"]).name
+                file_path = uploads_dir / safe_name
+                # Decode base64 data URL and write to disk
+                data_url = f["data"]
+                if "," in data_url:
+                    raw_data = base64.b64decode(data_url.split(",", 1)[1])
+                else:
+                    raw_data = base64.b64decode(data_url)
+                file_path.write_bytes(raw_data)
+                saved_files.append(str(file_path))
+
+        # Add user message to conversation (multimodal if images or files provided)
+        if images or saved_files:
             content = [{"type": "text", "text": prompt}]
-            for img in images:
+            for img in (images or []):
                 content.append({"type": "image_url", "image_url": {"url": img}})
+            if saved_files:
+                file_list = "\n".join(f"- {p}" for p in saved_files)
+                content.append({
+                    "type": "text",
+                    "text": f"<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
+                })
             self.current_session['messages'].append({"role": "user", "content": content})
         else:
             self.current_session['messages'].append({"role": "user", "content": prompt})

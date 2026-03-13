@@ -135,6 +135,7 @@ async def handle_websocket(
                 # Extract session for conversation continuation (same as HTTP)
                 session = data.get("session")
                 images = data.get("images")
+                files = data.get("files")
 
                 # Create IO for bidirectional communication
                 io = WebSocketIO()
@@ -144,7 +145,7 @@ async def handle_websocket(
 
                 def run_agent():
                     try:
-                        result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images)
+                        result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files)
                     except Exception as e:
                         error_holder[0] = str(e)
                     agent_done.set()
