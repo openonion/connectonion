@@ -284,7 +284,7 @@ class Agent:
                 file_list = "\n".join(f"- {p}" for p in saved_files)
                 content.append({
                     "type": "text",
-                    "text": f"<system-reminder>The user uploaded the following files:\n{file_list}\nRead these files to fulfill the user's request.</system-reminder>"
+                    "text": f"<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
                 })
             self.current_session['messages'].append({"role": "user", "content": content})
         else:
