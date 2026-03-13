@@ -12,6 +12,7 @@ LLM-Note:
 import os
 import sys
 import time
+import base64
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
 from .llm import LLM, create_llm, TokenUsage
@@ -258,15 +259,32 @@ class Agent:
             # Start YAML session logging
             self.logger.start_session(self.system_prompt)
 
+        # Save uploaded files to .co/uploads/ and build file path references
+        saved_files = []
+        if files:
+            uploads_dir = self.logger.co_dir / "uploads"
+            uploads_dir.mkdir(parents=True, exist_ok=True)
+            for f in files:
+                file_path = uploads_dir / f["name"]
+                # Decode base64 data URL and write to disk
+                data_url = f["data"]
+                if "," in data_url:
+                    raw_data = base64.b64decode(data_url.split(",", 1)[1])
+                else:
+                    raw_data = base64.b64decode(data_url)
+                file_path.write_bytes(raw_data)
+                saved_files.append(str(file_path))
+
         # Add user message to conversation (multimodal if images or files provided)
-        if images or files:
+        if images or saved_files:
             content = [{"type": "text", "text": prompt}]
             for img in (images or []):
                 content.append({"type": "image_url", "image_url": {"url": img}})
-            for f in (files or []):
+            if saved_files:
+                file_list = "\n".join(f"- {p}" for p in saved_files)
                 content.append({
-                    "type": "file",
-                    "file": {"name": f["name"], "data": f["data"]}
+                    "type": "text",
+                    "text": f"<system-reminder>The user uploaded the following files:\n{file_list}\nRead these files to fulfill the user's request.</system-reminder>"
                 })
             self.current_session['messages'].append({"role": "user", "content": content})
         else:

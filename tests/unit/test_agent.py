@@ -594,8 +594,8 @@ def test_agent_input_without_images_unchanged():
     assert user_message['content'] == "Hello"
 
 
-def test_agent_input_with_files():
-    """Test that agent.input() handles files parameter correctly."""
+def test_agent_input_with_files(tmp_path):
+    """Test that agent.input() saves files to .co/uploads/ and adds system reminder."""
     mock_llm = MockLLM(responses=[
         LLMResponse(
             content="I received the PDF file.",
@@ -605,7 +605,7 @@ def test_agent_input_with_files():
         )
     ])
 
-    agent = Agent(name="file_agent", llm=mock_llm, log=False)
+    agent = Agent(name="file_agent", llm=mock_llm, log=False, co_dir=tmp_path / ".co")
 
     test_file = {"name": "report.pdf", "data": "data:application/pdf;base64,JVBERi0xLjQK"}
 
@@ -613,23 +613,29 @@ def test_agent_input_with_files():
 
     assert "pdf" in result.lower()
 
-    # Verify message format
+    # Verify file was saved to disk
+    saved_path = tmp_path / ".co" / "uploads" / "report.pdf"
+    assert saved_path.exists()
+    assert saved_path.read_bytes() == b"%PDF-1.4\n"
+
+    # Verify message format: text + system reminder (no raw file data)
     messages = mock_llm.last_call["messages"]
     user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
 
     content = user_message['content']
     assert isinstance(content, list)
-    assert len(content) == 2  # 1 text + 1 file
+    assert len(content) == 2  # 1 text + 1 system reminder
 
     assert content[0]['type'] == 'text'
     assert content[0]['text'] == "Analyze this document"
 
-    assert content[1]['type'] == 'file'
-    assert content[1]['file']['name'] == "report.pdf"
-    assert content[1]['file']['data'] == "data:application/pdf;base64,JVBERi0xLjQK"
+    assert content[1]['type'] == 'text'
+    assert "report.pdf" in content[1]['text']
+    assert "<system-reminder>" in content[1]['text']
+    assert str(saved_path) in content[1]['text']
 
 
-def test_agent_input_with_images_and_files():
+def test_agent_input_with_images_and_files(tmp_path):
     """Test that agent.input() handles both images and files together."""
     mock_llm = MockLLM(responses=[
         LLMResponse(
@@ -640,7 +646,7 @@ def test_agent_input_with_images_and_files():
         )
     ])
 
-    agent = Agent(name="multi_agent", llm=mock_llm, log=False)
+    agent = Agent(name="multi_agent", llm=mock_llm, log=False, co_dir=tmp_path / ".co")
 
     test_image = "data:image/png;base64,iVBORw0KGgo"
     test_file = {"name": "data.csv", "data": "data:text/csv;base64,bmFtZSxhZ2U="}
@@ -652,16 +658,19 @@ def test_agent_input_with_images_and_files():
 
     content = user_message['content']
     assert isinstance(content, list)
-    assert len(content) == 3  # 1 text + 1 image + 1 file
+    assert len(content) == 3  # 1 text + 1 image + 1 system reminder
 
     assert content[0]['type'] == 'text'
     assert content[1]['type'] == 'image_url'
-    assert content[2]['type'] == 'file'
-    assert content[2]['file']['name'] == "data.csv"
+    assert content[2]['type'] == 'text'
+    assert "data.csv" in content[2]['text']
+
+    # Verify file saved
+    assert (tmp_path / ".co" / "uploads" / "data.csv").exists()
 
 
-def test_agent_input_with_multiple_files():
-    """Test that agent.input() handles multiple files correctly."""
+def test_agent_input_with_multiple_files(tmp_path):
+    """Test that agent.input() saves multiple files and lists all paths in reminder."""
     mock_llm = MockLLM(responses=[
         LLMResponse(
             content="I received both files.",
@@ -671,7 +680,7 @@ def test_agent_input_with_multiple_files():
         )
     ])
 
-    agent = Agent(name="multi_file_agent", llm=mock_llm, log=False)
+    agent = Agent(name="multi_file_agent", llm=mock_llm, log=False, co_dir=tmp_path / ".co")
 
     test_files = [
         {"name": "report.pdf", "data": "data:application/pdf;base64,JVBERi0xLjQK"},
@@ -680,14 +689,17 @@ def test_agent_input_with_multiple_files():
 
     agent.input("Compare these documents", files=test_files)
 
+    # Verify both files saved
+    assert (tmp_path / ".co" / "uploads" / "report.pdf").exists()
+    assert (tmp_path / ".co" / "uploads" / "data.csv").exists()
+
     messages = mock_llm.last_call["messages"]
     user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
 
     content = user_message['content']
     assert isinstance(content, list)
-    assert len(content) == 3  # 1 text + 2 files
+    assert len(content) == 2  # 1 text + 1 system reminder with both file paths
 
-    file_items = [item for item in content if item['type'] == 'file']
-    assert len(file_items) == 2
-    assert file_items[0]['file']['name'] == "report.pdf"
-    assert file_items[1]['file']['name'] == "data.csv"
+    reminder_text = content[1]['text']
+    assert "report.pdf" in reminder_text
+    assert "data.csv" in reminder_text
