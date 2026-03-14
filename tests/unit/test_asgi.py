@@ -25,6 +25,7 @@ from connectonion.network.asgi import (
     read_body,
 )
 from connectonion.network.io import WebSocketIO
+from connectonion.network.host.session import ActiveSessionRegistry
 
 
 class TestWebSocketIOInASGI:
@@ -230,7 +231,8 @@ class TestHandleWebSocket:
             "ws_input": lambda storage, prompt, conn, session=None: {"result": "result", "session_id": "123", "duration_ms": 100, "session": {}},
         }
 
-        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
+        registry = ActiveSessionRegistry()
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, registry=registry, trust="open")
 
         assert {"type": "websocket.accept"} in sent_messages
 
@@ -247,8 +249,9 @@ class TestHandleWebSocket:
             sent_messages.append(msg)
 
         handlers = {}
+        registry = ActiveSessionRegistry()
 
-        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, registry=registry, trust="open")
 
         close_msg = [m for m in sent_messages if m.get("type") == "websocket.close"]
         assert len(close_msg) == 1
@@ -363,8 +366,9 @@ class TestHandleWebSocket:
             "auth": lambda *args, **kwargs: (None, "0x", False, "unauthorized: invalid signature"),
             "ws_input": lambda storage, p, c, session=None: {"result": "result", "session_id": "123", "duration_ms": 100, "session": {}},
         }
+        registry = ActiveSessionRegistry()
 
-        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, registry=registry, trust="open")
 
         # Find ERROR message
         error_msgs = [
@@ -397,8 +401,9 @@ class TestCreateApp:
             "admin_sessions": lambda: {"sessions": []},
         }
         storage = Mock()
+        registry = ActiveSessionRegistry()
 
-        app = create_app(route_handlers=handlers, storage=storage)
+        app = create_app(route_handlers=handlers, storage=storage, registry=registry)
 
         assert callable(app)
 
@@ -409,8 +414,9 @@ class TestCreateApp:
             "auth": lambda *args, **kwargs: ("prompt", "id", True, None),
         }
         storage = Mock()
+        registry = ActiveSessionRegistry()
 
-        app = create_app(route_handlers=handlers, storage=storage)
+        app = create_app(route_handlers=handlers, storage=storage, registry=registry)
 
         scope = {"type": "http", "method": "GET", "path": "/health", "headers": []}
         sent = []

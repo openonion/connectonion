@@ -287,7 +287,7 @@ class TestCreateRouteHandlers:
     def test_creates_ws_input_handler(self, create_mock_agent, mock_trust_agent):
         """Test that _create_route_handlers creates ws_input handler."""
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
+        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent, config={})
 
         assert "ws_input" in handlers
         assert callable(handlers["ws_input"])
@@ -295,7 +295,7 @@ class TestCreateRouteHandlers:
     def test_creates_all_required_handlers(self, create_mock_agent, mock_trust_agent):
         """Test that _create_route_handlers creates all required handlers."""
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
+        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent, config={})
 
         required = ["input", "session", "sessions", "health", "info", "auth", "ws_input", "admin_logs", "admin_sessions", "trust_agent"]
         for key in required:
@@ -305,7 +305,7 @@ class TestCreateRouteHandlers:
         """Test that ws_input calls the factory to create fresh agent."""
         from connectonion.network.host.session import SessionStorage
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
+        handlers = host_module._create_route_handlers(create_mock_agent, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent, config={})
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
         mock_connection = Mock()
 
@@ -329,7 +329,7 @@ class TestCreateRouteHandlers:
             return agent
 
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(tracking_factory, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
+        handlers = host_module._create_route_handlers(tracking_factory, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent, config={})
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
         mock_connection = Mock()
 
@@ -350,7 +350,7 @@ class TestCreateRouteHandlers:
             return agent
 
         agent_metadata = {"name": "test_agent", "tools": [], "address": "0xtest"}
-        handlers = host_module._create_route_handlers(mock_factory, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent)
+        handlers = host_module._create_route_handlers(mock_factory, agent_metadata, result_ttl=3600, trust_agent=mock_trust_agent, config={})
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
         mock_connection = Mock()
 

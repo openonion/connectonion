@@ -28,6 +28,7 @@ from connectonion.network.asgi.websocket import (
     _handle_onboard_submit,
     _handle_admin_message,
 )
+from connectonion.network.host.session import ActiveSessionRegistry
 
 
 def _extract_ws_messages(sent_messages):
@@ -90,6 +91,7 @@ class TestHandleWebSocketOnboardRequired:
             scope, receive, send,
             route_handlers=handlers,
             storage=Mock(),
+            registry=ActiveSessionRegistry(),
             trust="careful",
         )
 
@@ -133,6 +135,7 @@ class TestHandleWebSocketOnboardRequired:
             scope, receive, send,
             route_handlers=handlers,
             storage=Mock(),
+            registry=ActiveSessionRegistry(),
             trust="careful",
         )
 
