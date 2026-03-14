@@ -1,29 +1,29 @@
-"""Unit tests for connectonion/network/host/session.py
+"""Unit tests for connectonion/network/host/session/ package
 
 Tests cover:
 - Session model (Pydantic BaseModel)
 - SessionStorage JSONL file operations
-- Session save, get, list operations
+- Session save, get, list, checkpoint operations
 - Expiration handling
 - Running vs completed sessions
+- Session merge logic
+- ActiveSessionRegistry for reconnection
+- Session to ChatItem conversion for UI
 """
-"""
-LLM-Note: Tests for host session
-
-What it tests:
-- Host Session functionality
-
-Components under test:
-- Module: host_session
-"""
-
 
 import json
 import time
+import threading
 import pytest
 from pathlib import Path
 
-from connectonion.network.host.session import Session, SessionStorage
+from connectonion.network.host.session import (
+    Session,
+    SessionStorage,
+    merge_sessions,
+    ActiveSessionRegistry,
+    session_to_chat_items,
+)
 
 
 class TestSession:
@@ -443,6 +443,248 @@ class TestSessionStorageCheckpoint:
         result = storage.get('exp-test')
         assert result.expires is not None
         assert result.expires > now + 86000  # Close to 24h
+
+
+class TestMergeSessions:
+    """Test merge_sessions() function."""
+
+    def test_server_wins_when_higher_iteration(self):
+        """Server session wins when it has higher iteration count."""
+        client = {'session_id': 'test', 'iteration': 5}
+        server = {'session_id': 'test', 'iteration': 10}
+
+        merged, server_won = merge_sessions(client, server)
+
+        assert server_won is True
+        assert merged == server
+
+    def test_client_wins_when_higher_iteration(self):
+        """Client session wins when it has higher iteration count."""
+        client = {'session_id': 'test', 'iteration': 10}
+        server = {'session_id': 'test', 'iteration': 5}
+
+        merged, server_won = merge_sessions(client, server)
+
+        assert server_won is False
+        assert merged == client
+
+    def test_timestamp_tiebreaker_when_equal_iteration(self):
+        """Falls back to timestamp when iterations are equal."""
+        client = {'session_id': 'test', 'iteration': 5, 'updated': 1000}
+        server = {'session_id': 'test', 'iteration': 5, 'updated': 2000}
+
+        merged, server_won = merge_sessions(client, server)
+
+        assert server_won is True
+        assert merged == server
+
+    def test_client_wins_timestamp_tiebreaker(self):
+        """Client wins when equal iterations and newer timestamp."""
+        client = {'session_id': 'test', 'iteration': 5, 'updated': 2000}
+        server = {'session_id': 'test', 'iteration': 5, 'updated': 1000}
+
+        merged, server_won = merge_sessions(client, server)
+
+        assert server_won is False
+        assert merged == client
+
+    def test_handles_missing_iteration(self):
+        """Handles sessions without iteration field (defaults to 0)."""
+        client = {'session_id': 'test'}
+        server = {'session_id': 'test', 'iteration': 1}
+
+        merged, server_won = merge_sessions(client, server)
+
+        assert server_won is True
+
+    def test_handles_missing_updated(self):
+        """Handles sessions without updated field (defaults to 0)."""
+        client = {'session_id': 'test', 'iteration': 5}
+        server = {'session_id': 'test', 'iteration': 5}
+
+        merged, server_won = merge_sessions(client, server)
+
+        # Equal iteration, equal timestamp (both 0), client wins as default
+        assert server_won is False
+
+
+class TestActiveSessionRegistry:
+    """Test ActiveSessionRegistry class."""
+
+    def test_register_and_get(self):
+        """Register a session and retrieve it."""
+        registry = ActiveSessionRegistry()
+        mock_io = object()
+        mock_thread = threading.Thread(target=lambda: None)
+
+        registry.register('sess-1', mock_io, mock_thread)
+        session = registry.get('sess-1')
+
+        assert session is not None
+        assert session.session_id == 'sess-1'
+        assert session.io == mock_io
+        assert session.status == 'running'
+
+    def test_get_returns_none_for_missing(self):
+        """get() returns None for non-existent session."""
+        registry = ActiveSessionRegistry()
+
+        assert registry.get('nonexistent') is None
+
+    def test_update_ping(self):
+        """update_ping() updates last_ping timestamp."""
+        registry = ActiveSessionRegistry()
+        mock_thread = threading.Thread(target=lambda: None)
+        registry.register('sess-1', object(), mock_thread)
+
+        old_ping = registry.get('sess-1').last_ping
+        time.sleep(0.01)
+        registry.update_ping('sess-1')
+        new_ping = registry.get('sess-1').last_ping
+
+        assert new_ping > old_ping
+
+    def test_mark_suspended(self):
+        """mark_suspended() changes status to suspended."""
+        registry = ActiveSessionRegistry()
+        mock_thread = threading.Thread(target=lambda: None)
+        registry.register('sess-1', object(), mock_thread)
+
+        registry.mark_suspended('sess-1')
+
+        assert registry.get('sess-1').status == 'suspended'
+
+    def test_mark_completed(self):
+        """mark_completed() changes status to completed."""
+        registry = ActiveSessionRegistry()
+        mock_thread = threading.Thread(target=lambda: None)
+        registry.register('sess-1', object(), mock_thread)
+
+        registry.mark_completed('sess-1')
+
+        assert registry.get('sess-1').status == 'completed'
+
+    def test_list_active(self):
+        """list_active() returns running and suspended sessions."""
+        registry = ActiveSessionRegistry()
+        mock_thread = threading.Thread(target=lambda: None)
+
+        registry.register('running-1', object(), mock_thread)
+        registry.register('suspended-1', object(), mock_thread)
+        registry.register('completed-1', object(), mock_thread)
+
+        registry.mark_suspended('suspended-1')
+        registry.mark_completed('completed-1')
+
+        active = registry.list_active()
+
+        assert 'running-1' in active
+        assert 'suspended-1' in active
+        assert 'completed-1' not in active
+
+    def test_count(self):
+        """count() returns total sessions."""
+        registry = ActiveSessionRegistry()
+        mock_thread = threading.Thread(target=lambda: None)
+
+        assert registry.count() == 0
+
+        registry.register('sess-1', object(), mock_thread)
+        registry.register('sess-2', object(), mock_thread)
+
+        assert registry.count() == 2
+
+
+class TestSessionToChatItems:
+    """Test session_to_chat_items() function."""
+
+    def test_converts_user_messages(self):
+        """Converts user messages to user ChatItems."""
+        session = {
+            'messages': [
+                {'role': 'user', 'content': 'Hello'},
+            ],
+            'trace': [],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert len(items) == 1
+        assert items[0]['type'] == 'user'
+        assert items[0]['content'] == 'Hello'
+
+    def test_converts_assistant_messages(self):
+        """Converts assistant messages to agent ChatItems."""
+        session = {
+            'messages': [
+                {'role': 'assistant', 'content': 'Hi there'},
+            ],
+            'trace': [],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert len(items) == 1
+        assert items[0]['type'] == 'agent'
+        assert items[0]['content'] == 'Hi there'
+
+    def test_converts_trace_to_tool_calls(self):
+        """Converts trace entries to tool_call ChatItems."""
+        session = {
+            'messages': [],
+            'trace': [
+                {'tool_name': 'bash', 'args': {'command': 'ls'}, 'result': 'file.txt', 'timing_ms': 50},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert len(items) == 1
+        assert items[0]['type'] == 'tool_call'
+        assert items[0]['name'] == 'bash'
+        assert items[0]['result'] == 'file.txt'
+
+    def test_tool_call_status_mapping(self):
+        """Maps trace status to tool_call status correctly."""
+        session = {
+            'messages': [],
+            'trace': [
+                {'tool_name': 'read', 'status': 'error'},
+                {'tool_name': 'write', 'status': 'running'},
+                {'tool_name': 'edit', 'status': 'done'},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert items[0]['status'] == 'error'
+        assert items[1]['status'] == 'running'
+        assert items[2]['status'] == 'done'
+
+    def test_handles_empty_session(self):
+        """Handles empty session gracefully."""
+        session = {}
+
+        items = session_to_chat_items(session)
+
+        assert items == []
+
+    def test_generates_unique_ids(self):
+        """Generates unique IDs for each item."""
+        session = {
+            'messages': [
+                {'role': 'user', 'content': 'A'},
+                {'role': 'assistant', 'content': 'B'},
+            ],
+            'trace': [
+                {'tool_name': 'bash'},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        ids = [item['id'] for item in items]
+        assert len(ids) == len(set(ids))  # All unique
 
 
 if __name__ == "__main__":
