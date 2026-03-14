@@ -56,6 +56,9 @@ class Agent:
         # I/O to client (None locally, injected by host() for WebSocket)
         self.io = None
 
+        # Session storage (None locally, injected by host() for persistence)
+        self.storage = None
+
         # Token usage tracking
         self.total_cost: float = 0.0  # Cumulative cost in USD
         self.last_usage: Optional[TokenUsage] = None  # From most recent LLM call

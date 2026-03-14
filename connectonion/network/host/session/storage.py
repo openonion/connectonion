@@ -1,13 +1,12 @@
 """
 Purpose: Persistent session storage for hosted agent requests with TTL expiry
 LLM-Note:
-  Dependencies: imports from [pydantic.BaseModel, pathlib, json, time] | imported by [network/host/routes.py, network/host/server.py] | tested by [tests/network/test_session_storage.py]
-  Data flow: save(session) appends Session to JSONL file (.co/session_results.jsonl) → get(session_id) reads file backwards → returns latest matching session if not expired → list() loads all sessions → filters expired ones → sorts by created desc
-  State/Effects: writes to .co/session_results.jsonl (append-only) | creates .co/ directory | auto-expires sessions based on expires timestamp | last entry wins (duplicates overridden by latest)
-  Integration: exposes Session(session_id, status, prompt, result, created, expires, duration_ms) Pydantic model | SessionStorage(path) with .save(session), .get(session_id) → Session|None, .list() → list[Session] | used by routes to persist and retrieve agent execution results
-  Performance: append-only writes (fast) | linear scan on read (acceptable for thousands of sessions) | file-based (simple, no DB required) | TTL filtering prevents unbounded growth
-  Errors: returns None if session not found or expired | creates parent directory if missing | no exceptions raised
-Session storage for hosted agents.
+  Dependencies: imports from [pydantic, pathlib, json, time] | imported by [routes.py, server.py, __init__.py] | tested by [tests/network/test_session_storage.py]
+  Data flow: save(session) appends to JSONL → get(session_id) reads backwards, returns latest if not expired → list() loads all, filters expired
+  State/Effects: writes to .co/session_results.jsonl (append-only) | creates .co/ directory if missing
+  Integration: exposes Session (Pydantic model), SessionStorage class with save/get/list | used by routes.py input_handler, websocket.py
+  Performance: append-only writes O(1) | linear scan on read O(n) - acceptable for thousands of sessions
+  Errors: returns None if session not found or expired | creates parent directory if missing
 """
 
 import json
@@ -19,17 +18,12 @@ from pydantic import BaseModel
 
 
 class Session(BaseModel):
-    """Session record for tracking agent requests.
-
-    Uses Pydantic BaseModel for:
-    - Native JSON serialization via .model_dump()
-    - Type validation
-    - API response compatibility
-    """
+    """Session record for agent requests."""
     session_id: str
     status: str
     prompt: str
     result: Optional[str] = None
+    session: Optional[dict] = None  # Full context: messages, trace, iteration, updated
     created: Optional[float] = None
     expires: Optional[float] = None
     duration_ms: Optional[int] = None
@@ -56,7 +50,6 @@ class SessionStorage:
             data = json.loads(line)
             if data["session_id"] == session_id:
                 session = Session(**data)
-                # Return if running or not expired
                 if session.status == "running" or not session.expires or session.expires > now:
                     return session
                 return None  # Expired
@@ -71,8 +64,21 @@ class SessionStorage:
             for line in f:
                 data = json.loads(line)
                 sessions[data["session_id"]] = Session(**data)
-        # Filter out expired non-running sessions
         valid = [s for s in sessions.values()
                  if s.status == "running" or not s.expires or s.expires > now]
-        # Sort by created desc (newest first)
         return sorted(valid, key=lambda s: s.created or 0, reverse=True)
+
+    def checkpoint(self, session: dict) -> None:
+        """Save session checkpoint before blocking operation (approval, ask_user)."""
+        session_id = session.get('session_id')
+        if not session_id:
+            return
+        record = Session(
+            session_id=session_id,
+            status="waiting_approval",
+            prompt="",
+            session=session,
+            created=time.time(),
+            expires=time.time() + 86400,
+        )
+        self.save(record)

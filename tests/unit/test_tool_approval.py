@@ -74,11 +74,22 @@ class FakeIO:
         return result
 
 
+class FakeStorage:
+    """Fake storage for testing."""
+
+    def __init__(self):
+        self.checkpoints = []
+
+    def checkpoint(self, session):
+        self.checkpoints.append(session.copy())
+
+
 class FakeAgent:
     """Fake agent for testing."""
 
-    def __init__(self, io=None):
+    def __init__(self, io=None, storage=None):
         self.io = io
+        self.storage = storage
         self.current_session = {
             'messages': [],
             'trace': [],
@@ -249,6 +260,52 @@ class TestDangerousTools:
         # Saved with tool name only (not command-level) in unified permissions
         assert 'write' in agent.current_session['permissions']
         assert agent.current_session['permissions']['write']['source'] == 'user'
+
+
+class TestCheckpoint:
+    """Test checkpoint before blocking."""
+
+    def test_checkpoint_called_before_approval_request(self):
+        """checkpoint() is called before sending approval_needed."""
+        storage = FakeStorage()
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, storage=storage)
+        agent.current_session['session_id'] = 'test-session'
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'npm install'},
+        }
+
+        check_approval(agent)
+
+        assert len(storage.checkpoints) == 1
+        assert storage.checkpoints[0]['session_id'] == 'test-session'
+
+    def test_no_checkpoint_without_storage(self):
+        """No error when storage is None."""
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, storage=None)
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'npm install'},
+        }
+
+        # Should not raise
+        check_approval(agent)
+
+    def test_no_checkpoint_for_safe_tools(self):
+        """checkpoint() not called for safe tools."""
+        storage = FakeStorage()
+        io = FakeIO()
+        agent = FakeAgent(io=io, storage=storage)
+        agent.current_session['pending_tool'] = {
+            'name': 'read',
+            'arguments': {},
+        }
+
+        check_approval(agent)
+
+        assert len(storage.checkpoints) == 0
 
 
 class TestRejection:

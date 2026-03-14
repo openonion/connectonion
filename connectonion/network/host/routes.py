@@ -2,11 +2,17 @@
 Purpose: HTTP/WebSocket route handlers for agent hosting endpoints
 LLM-Note:
   Dependencies: imports from [network/host/session.py, connectonion/__init__.py] | imported by [network/host/server.py, network/asgi/http.py, network/asgi/websocket.py] | tested by [tests/network/test_host_routes.py]
-  Data flow: receives HTTP request → input_handler() calls create_agent() for fresh instance → server generates session_id (new) or uses existing (continuation) → calls agent.input(prompt, session) → stores result in SessionStorage → returns {session_id, status, result, duration_ms, session}
-  State/Effects: reads/writes SessionStorage via storage.save()/get()/list() | factory creates fresh agent per request (prevents state bleeding) | writes session records with TTL expiry | session_id always server-generated
-  Integration: exposes input_handler(create_agent, storage, prompt, result_ttl, session, connection), session_handler(storage, session_id), sessions_handler(storage), health_handler(agent_name, start_time), info_handler(agent_metadata, trust), admin_logs_handler(agent_name), admin_sessions_handler() | used by server.py and ASGI adapters
-  Performance: factory creates fresh agent per request (thread-safe, no deep copy issues) | SessionStorage TTL auto-cleanup | session continuation via session dict (multi-turn conversations)
+  Data flow: receives HTTP request → input_handler() calls create_agent() for fresh instance → uses client's session_id (or generates fallback if missing) → calls agent.input(prompt, session) → stores result in SessionStorage → returns {session_id, status, result, duration_ms, session}
+  State/Effects: reads/writes SessionStorage via storage.save()/get()/list() | factory creates fresh agent per request (prevents state bleeding) | writes session records with TTL expiry
+  Integration: exposes input_handler, session_handler, sessions_handler, health_handler, info_handler, admin_*_handler | used by server.py and ASGI adapters
+  Performance: factory creates fresh agent per request (thread-safe) | SessionStorage TTL auto-cleanup | session continuation via session dict
   Errors: session_handler returns None if session_id not found | admin_logs_handler returns {"error": "..."} if log file missing
+
+Session ID ownership:
+  - Client generates UUID on first request (TypeScript SDK: generateUUID())
+  - Server uses client's session_id for storage and reconnection
+  - Server only generates fallback UUID if client didn't provide one (backwards compatibility)
+  - Security: session_id is correlation ID, not credential. Ed25519 signature provides auth.
 Route handlers for hosted agents.
 """
 
@@ -15,34 +21,59 @@ import uuid
 from pathlib import Path
 from typing import Callable
 
-from .session import Session, SessionStorage
+from .session import Session, SessionStorage, merge_sessions, session_to_chat_items
 
 
 def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, result_ttl: int,
                   session: dict | None = None, connection=None, images: list[str] | None = None,
                   files: list[dict] | None = None) -> dict:
-    """POST /input (and WebSocket /ws)
+    """POST /input (and WebSocket /ws) with session merge and UI conversion
 
     Args:
         create_agent: Factory function that returns a fresh Agent instance
         storage: SessionStorage for persisting results
         prompt: The user's prompt
         result_ttl: How long to keep the result on server
-        session: Optional conversation session for continuation
+        session: Optional conversation session for continuation (from client)
         connection: WebSocket connection for bidirectional I/O (None for HTTP)
         images: Optional list of base64 data URLs for multimodal input
         files: Optional list of file dicts with name and base64 data
+
+    Returns:
+        {
+            'session_id': str,
+            'status': 'done',
+            'result': str,
+            'duration_ms': int,
+            'session': dict,  # Full session context
+            'chat_items': list[dict],  # UI-ready ChatItems
+            'server_newer': bool  # True if server session was newer
+        }
     """
     agent = create_agent()  # Fresh instance per request
     agent.io = connection  # WebSocket connection or None for HTTP
+    agent.storage = storage  # Session storage for checkpointing
     now = time.time()
 
-    # Server generates session_id (new session) or uses existing (continuation)
-    # NOTE: We mutate `session` dict here, but it's safe - the dict is created
-    # fresh from json.loads() per request, not shared anywhere.
-    session = session or {}
-    session_id = session.get('session_id') or str(uuid.uuid4())
-    session['session_id'] = session_id
+    # Session ID: client-generated (preferred) or server fallback
+    session_id = session.get('session_id') if session else None
+    server_newer = False
+
+    # Merge with server state if continuing existing session
+    if session_id:
+        stored = storage.get(session_id)
+        if stored and stored.session:
+            session, server_newer = merge_sessions(
+                client_session=session,
+                server_session=stored.session
+            )
+
+    # Fallback: generate server-side UUID if client didn't provide one
+    # (backwards compatibility for clients that don't generate session_id)
+    if not session_id:
+        session_id = str(uuid.uuid4())
+        session = session or {}
+        session['session_id'] = session_id
 
     # Create storage record
     record = Session(
@@ -54,24 +85,33 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     )
     storage.save(record)
 
-    # TODO: If agent.input() throws, record stays "running" until TTL expires.
-    # This is acceptable: client gets 500 error, record expires naturally.
+    # Run agent with merged session
     start = time.time()
     result = agent.input(prompt, session=session, images=images, files=files)
     duration_ms = int((time.time() - start) * 1000)
 
+    # Update session timestamp
+    agent.current_session['updated'] = time.time()
+
+    # Save complete session to storage
     record.status = "done"
     record.result = result
     record.duration_ms = duration_ms
+    record.session = agent.current_session  # Save full session context
     storage.save(record)
 
-    # Return result with updated session for client to continue conversation
+    # Convert session to ChatItems for UI
+    chat_items = session_to_chat_items(agent.current_session)
+
+    # Return result with session and UI data
     return {
         "session_id": session_id,
         "status": "done",
         "result": result,
         "duration_ms": duration_ms,
-        "session": agent.current_session
+        "session": agent.current_session,
+        "chat_items": chat_items,  # UI-ready format
+        "server_newer": server_newer,  # Tell client we merged
     }
 
 

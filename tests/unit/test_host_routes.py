@@ -153,6 +153,19 @@ class TestInputHandler:
         create_agent.assert_called_once()
         mock_agent.input.assert_called_once()
 
+    def test_injects_storage_into_agent(self, tmp_path):
+        """input_handler injects storage into agent for checkpointing."""
+        storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
+
+        mock_agent = Mock()
+        mock_agent.input.return_value = "Response"
+        mock_agent.current_session = {}
+
+        create_agent = Mock(return_value=mock_agent)
+        input_handler(create_agent, storage, "Hello", result_ttl=3600)
+
+        assert mock_agent.storage == storage
+
 
 class TestSessionHandler:
     """Test session_handler route."""

@@ -10,7 +10,15 @@ LLM-Note:
 Host an agent over HTTP/WebSocket.
 """
 
-from .session import Session, SessionStorage
+from .session import (
+    Session,
+    SessionStorage,
+    ActiveSession,
+    ActiveSessionRegistry,
+    start_cleanup_job,
+    merge_sessions,
+    session_to_chat_items,
+)
 from .auth import (
     verify_signature,
     extract_and_authenticate,
@@ -39,6 +47,11 @@ __all__ = [
     # Session
     "Session",
     "SessionStorage",
+    "ActiveSession",
+    "ActiveSessionRegistry",
+    "start_cleanup_job",
+    "merge_sessions",
+    "session_to_chat_items",
     # Auth
     "verify_signature",
     "extract_and_authenticate",

@@ -549,6 +549,10 @@ def check_approval(agent: 'Agent') -> None:
     if tool_name == 'exit_plan_mode':
         approval_msg['plan_content'] = agent.current_session.get('pending_plan_content', '')
 
+    # Checkpoint before blocking (enables reconnection recovery)
+    if agent.storage:
+        agent.storage.checkpoint(agent.current_session)
+
     agent.io.send(approval_msg)
 
     # Wait for client response (BLOCKS)

@@ -400,5 +400,50 @@ class TestSessionStorageList:
         assert result[0].session_id == "no_created"
 
 
+class TestSessionStorageCheckpoint:
+    """Test SessionStorage.checkpoint() method."""
+
+    def test_checkpoint_saves_session(self, tmp_path):
+        """checkpoint() saves session with waiting_approval status."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        session = {
+            'session_id': 'test-123',
+            'messages': [{'role': 'user', 'content': 'Hello'}],
+            'iteration': 5,
+        }
+        storage.checkpoint(session)
+
+        result = storage.get('test-123')
+        assert result is not None
+        assert result.status == 'waiting_approval'
+        assert result.session['session_id'] == 'test-123'
+        assert result.session['iteration'] == 5
+
+    def test_checkpoint_without_session_id_does_nothing(self, tmp_path):
+        """checkpoint() does nothing if session has no session_id."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        session = {'messages': [], 'iteration': 1}
+        storage.checkpoint(session)
+
+        assert not path.exists() or path.read_text() == ''
+
+    def test_checkpoint_sets_24h_expiry(self, tmp_path):
+        """checkpoint() sets 24 hour TTL."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        now = time.time()
+        session = {'session_id': 'exp-test'}
+        storage.checkpoint(session)
+
+        result = storage.get('exp-test')
+        assert result.expires is not None
+        assert result.expires > now + 86000  # Close to 24h
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
