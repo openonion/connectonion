@@ -16,6 +16,7 @@ from typing import Optional, List
 from dotenv import load_dotenv
 
 from .. import __version__
+from .tips import show_tip
 
 # Load global keys.env for all CLI commands
 _global_keys = Path.home() / ".co" / "keys.env"
@@ -36,8 +37,13 @@ def version_callback(value: bool):
 def main(
     ctx: typer.Context,
     version: bool = typer.Option(False, "--version", "-v", callback=version_callback, is_eager=True),
+    quiet: bool = typer.Option(False, "--quiet", "-q", help="Suppress tips and quiet output"),
 ):
     """ConnectOnion - A simple Python framework for creating AI agents."""
+    # Store quiet flag in context for tips module
+    ctx.ensure_object(dict)
+    ctx.obj["quiet"] = quiet
+    
     if ctx.invoked_subcommand is None:
         _show_help()
 
@@ -274,7 +280,17 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
 
 def cli():
     """Entry point."""
-    app()
+    # Add a finally callback to show tips after commands
+    try:
+        app()
+    finally:
+        # Show tip if not quiet mode
+        import sys
+        if "--quiet" not in sys.argv and "-q" not in sys.argv:
+            # Get the last command from argv
+            if len(sys.argv) > 1:
+                command = sys.argv[1]
+                show_tip(command)
 
 
 if __name__ == "__main__":
