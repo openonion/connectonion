@@ -16,6 +16,7 @@ import time
 import threading
 import pytest
 from pathlib import Path
+from unittest.mock import Mock
 
 from connectonion.network.host.session import (
     Session,
@@ -685,6 +686,280 @@ class TestSessionToChatItems:
 
         ids = [item['id'] for item in items]
         assert len(ids) == len(set(ids))  # All unique
+
+
+class TestReconnectionScenarios:
+    """End-to-end reconnection scenario tests."""
+
+    def test_checkpoint_then_reconnect_from_storage(self, tmp_path):
+        """Full flow: checkpoint during approval → disconnect → reconnect from storage."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        # 1. Agent running, waiting for approval - checkpoint saved
+        session = {
+            'session_id': 'sess-123',
+            'messages': [
+                {'role': 'user', 'content': 'Deploy the app'},
+                {'role': 'assistant', 'content': 'I need to run bash command'},
+            ],
+            'trace': [{'tool_name': 'bash', 'status': 'pending'}],
+            'iteration': 5,
+            'updated': time.time(),
+        }
+        storage.checkpoint(session)
+
+        # 2. Client disconnects (simulated by just time passing)
+
+        # 3. Client reconnects - load from storage
+        restored = storage.get('sess-123')
+
+        assert restored is not None
+        assert restored.status == 'waiting_approval'
+        assert restored.session['iteration'] == 5
+        assert len(restored.session['messages']) == 2
+
+    def test_reconnect_with_outdated_client_state(self, tmp_path):
+        """Server continued while client was disconnected - server wins merge."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        # Server state: continued to iteration 10
+        server_session = {
+            'session_id': 'sess-456',
+            'iteration': 10,
+            'messages': [
+                {'role': 'user', 'content': 'Hello'},
+                {'role': 'assistant', 'content': 'First response'},
+                {'role': 'assistant', 'content': 'Continued working...'},
+            ],
+            'updated': time.time(),
+        }
+        storage.checkpoint(server_session)
+
+        # Client state: stale at iteration 5
+        client_session = {
+            'session_id': 'sess-456',
+            'iteration': 5,
+            'messages': [
+                {'role': 'user', 'content': 'Hello'},
+                {'role': 'assistant', 'content': 'First response'},
+            ],
+            'updated': time.time() - 100,
+        }
+
+        # Load server state and merge
+        stored = storage.get('sess-456')
+        merged, server_won = merge_sessions(client_session, stored.session)
+
+        assert server_won is True
+        assert merged['iteration'] == 10
+        assert len(merged['messages']) == 3
+
+    def test_reconnect_with_newer_client_state(self, tmp_path):
+        """Client has newer state than server - client wins merge."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        # Server state: old checkpoint at iteration 3
+        server_session = {
+            'session_id': 'sess-789',
+            'iteration': 3,
+            'messages': [{'role': 'user', 'content': 'Hello'}],
+            'updated': time.time() - 1000,
+        }
+        storage.checkpoint(server_session)
+
+        # Client state: continued locally to iteration 8
+        client_session = {
+            'session_id': 'sess-789',
+            'iteration': 8,
+            'messages': [
+                {'role': 'user', 'content': 'Hello'},
+                {'role': 'assistant', 'content': 'Response'},
+                {'role': 'user', 'content': 'Follow up'},
+            ],
+            'updated': time.time(),
+        }
+
+        stored = storage.get('sess-789')
+        merged, server_won = merge_sessions(client_session, stored.session)
+
+        assert server_won is False
+        assert merged['iteration'] == 8
+        assert len(merged['messages']) == 3
+
+    def test_active_registry_reconnection_flow(self):
+        """Test reconnection via ActiveSessionRegistry for running agents."""
+        registry = ActiveSessionRegistry()
+        mock_io = Mock()
+        mock_io._outgoing = Mock()
+        mock_thread = threading.Thread(target=lambda: None)
+
+        # 1. New session starts
+        registry.register('active-sess', mock_io, mock_thread)
+        assert registry.get('active-sess').status == 'running'
+
+        # 2. Client disconnects
+        registry.mark_suspended('active-sess')
+        assert registry.get('active-sess').status == 'suspended'
+
+        # 3. Client reconnects - same IO queue
+        session = registry.get('active-sess')
+        assert session.io == mock_io  # Same queue, agent can continue
+
+        # 4. Update ping on reconnect
+        old_ping = session.last_ping
+        time.sleep(0.01)
+        registry.update_ping('active-sess')
+        assert registry.get('active-sess').last_ping > old_ping
+
+    def test_expired_session_not_restored(self, tmp_path):
+        """Expired sessions should not be restorable."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        # Save expired session
+        now = time.time()
+        session = Session(
+            session_id='expired-sess',
+            status='waiting_approval',
+            prompt='Task',
+            session={'iteration': 5},
+            created=now - 100000,  # Long ago
+            expires=now - 1000,     # Already expired
+        )
+        storage.save(session)
+
+        # Should not be retrievable
+        restored = storage.get('expired-sess')
+        assert restored is None
+
+    def test_waiting_approval_not_expired_before_ttl(self, tmp_path):
+        """waiting_approval sessions stay valid within 24h TTL."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        session = {'session_id': 'valid-sess', 'iteration': 3}
+        storage.checkpoint(session)
+
+        # Should be retrievable within TTL
+        restored = storage.get('valid-sess')
+        assert restored is not None
+        assert restored.status == 'waiting_approval'
+
+    def test_multiple_checkpoints_last_wins(self, tmp_path):
+        """Multiple checkpoints for same session - last one wins."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        # First checkpoint at iteration 5
+        storage.checkpoint({'session_id': 'multi-cp', 'iteration': 5})
+
+        # Second checkpoint at iteration 8
+        storage.checkpoint({'session_id': 'multi-cp', 'iteration': 8})
+
+        # Third checkpoint at iteration 12
+        storage.checkpoint({'session_id': 'multi-cp', 'iteration': 12})
+
+        restored = storage.get('multi-cp')
+        assert restored.session['iteration'] == 12
+
+    def test_registry_cleanup_expired_sessions(self):
+        """Test cleanup removes expired sessions from registry."""
+        registry = ActiveSessionRegistry()
+        mock_thread = threading.Thread(target=lambda: None)
+
+        # Register and immediately complete
+        registry.register('to-cleanup', object(), mock_thread)
+        registry.mark_completed('to-cleanup')
+
+        # Manually set created time to past (>30s for completed)
+        with registry._lock:
+            registry._sessions['to-cleanup'].created = time.time() - 100
+
+        # Cleanup should remove it
+        removed = registry.cleanup_expired()
+        assert removed == 1
+        assert registry.get('to-cleanup') is None
+
+    def test_running_session_not_cleaned_up(self):
+        """Running sessions should not be cleaned up."""
+        registry = ActiveSessionRegistry()
+        mock_thread = threading.Thread(target=lambda: None)
+
+        registry.register('still-running', object(), mock_thread)
+
+        # Manually set old timestamps
+        with registry._lock:
+            registry._sessions['still-running'].created = time.time() - 10000
+            registry._sessions['still-running'].last_ping = time.time()  # But recent ping
+
+        # Should NOT be cleaned up
+        removed = registry.cleanup_expired()
+        assert removed == 0
+        assert registry.get('still-running') is not None
+
+
+class TestCheckpointApprovalFlow:
+    """Test checkpoint behavior during approval flow."""
+
+    def test_checkpoint_preserves_pending_tool(self, tmp_path):
+        """Checkpoint should preserve pending_tool for resume."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        session = {
+            'session_id': 'tool-sess',
+            'pending_tool': {
+                'name': 'bash',
+                'arguments': {'command': 'npm install'},
+                'id': 'call_123',
+            },
+            'iteration': 7,
+        }
+        storage.checkpoint(session)
+
+        restored = storage.get('tool-sess')
+        assert restored.session['pending_tool']['name'] == 'bash'
+        assert restored.session['pending_tool']['arguments']['command'] == 'npm install'
+
+    def test_checkpoint_preserves_permissions(self, tmp_path):
+        """Checkpoint should preserve session permissions."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        session = {
+            'session_id': 'perm-sess',
+            'permissions': {
+                'bash': {'allowed': True, 'source': 'user'},
+                'read': {'allowed': True, 'source': 'safe'},
+            },
+            'iteration': 3,
+        }
+        storage.checkpoint(session)
+
+        restored = storage.get('perm-sess')
+        assert restored.session['permissions']['bash']['source'] == 'user'
+
+    def test_checkpoint_preserves_trace(self, tmp_path):
+        """Checkpoint should preserve tool execution trace."""
+        path = tmp_path / "sessions.jsonl"
+        storage = SessionStorage(str(path))
+
+        session = {
+            'session_id': 'trace-sess',
+            'trace': [
+                {'tool_name': 'read', 'result': 'file content', 'timing_ms': 50},
+                {'tool_name': 'bash', 'status': 'pending'},
+            ],
+            'iteration': 4,
+        }
+        storage.checkpoint(session)
+
+        restored = storage.get('trace-sess')
+        assert len(restored.session['trace']) == 2
+        assert restored.session['trace'][0]['result'] == 'file content'
 
 
 if __name__ == "__main__":
