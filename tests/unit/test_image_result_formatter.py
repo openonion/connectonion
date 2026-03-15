@@ -144,14 +144,14 @@ class TestFormatImageResult:
         # Check tool message was shortened
         assert 'Screenshot captured' in agent.current_session['messages'][0]['content']
 
-        # Check assistant message with image was inserted
+        # Check user message with image was inserted (images are added as user messages)
         assert len(agent.current_session['messages']) == 2
-        assistant_msg = agent.current_session['messages'][1]
-        assert assistant_msg['role'] == 'assistant'
-        assert isinstance(assistant_msg['content'], list)
+        image_msg = agent.current_session['messages'][1]
+        assert image_msg['role'] == 'user'
+        assert isinstance(image_msg['content'], list)
 
         # Check image content structure
-        content = assistant_msg['content']
+        content = image_msg['content']
         assert content[0]['type'] == 'text'
         assert content[1]['type'] == 'image_url'
         assert 'data:image/png;base64' in content[1]['image_url']['url']

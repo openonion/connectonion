@@ -11,7 +11,7 @@ LLM-Note:
 Constants Overview:
     VALID_MODES = {'safe', 'plan', 'accept_edits'}
         - safe: dangerous tools need approval (default)
-        - plan: read-only only, exit_plan_mode needs approval
+        - plan: read-only only, exit_plan_and_implement needs approval
         - accept_edits: file edits auto-approved
 
     DANGEROUS_TOOLS: bash, write, edit, send_email, delete, etc.
@@ -30,7 +30,7 @@ Tool Classification:
 # =============================================================================
 # Three modes control approval behavior:
 #   - 'safe' (default): Dangerous tools need approval
-#   - 'plan': Read-only tools only, exit_plan_mode shows plan for approval
+#   - 'plan': Read-only tools only, exit_plan_and_implement shows plan for approval
 #   - 'accept_edits': File edit tools auto-approved, other dangerous tools need approval
 #
 # Other modes (handled by separate plugins via skip_tool_approval flag):
@@ -60,8 +60,8 @@ DANGEROUS_TOOLS = {
     'send_email', 'post',
     # Deletion
     'delete', 'remove',
-    # Plan approval - exit_plan_mode shows plan for user review
-    'exit_plan_mode',
+    # Plan approval - exit_plan_and_implement shows plan for user review
+    'exit_plan_and_implement',
 }
 
 # File edit tools - auto-approved in 'accept_edits' mode

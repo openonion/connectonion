@@ -67,7 +67,7 @@ oo -y "task"                      # Auto-approve file changes
 **Files:** `read_file`, `edit`, `write`
 **Execute:** `bash`
 **Sub-agents:** `task` (explore, plan)
-**Plan Mode:** `enter_plan_mode`, `exit_plan_mode`
+**Plan Mode:** `enter_plan_mode`, `exit_plan_and_implement`
 **Interaction:** `ask_user`, `confirm`
 **Skills:** `skill` (auto-invoked when relevant)
 **Background:** `run_background`, `task_output`, `kill_task`

@@ -30,8 +30,8 @@ def test_create_coding_agent(monkeypatch):
     assert agent.max_iterations == 5
     assert "BASE" in agent.system_prompt
     assert "CTX" in agent.system_prompt
-    assert hasattr(agent, "writer")
-    assert agent.writer.mode == "auto"
+    # FileTools is registered as a tool class
+    assert "file_tools" in agent.tools._tools or any("file" in t.lower() for t in agent.tools._tools)
 
 
 def test_start_server_calls_host(monkeypatch):

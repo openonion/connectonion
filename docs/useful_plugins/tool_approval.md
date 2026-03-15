@@ -121,7 +121,7 @@ Read-only operations that never modify state:
 ```
 read, read_file, glob, grep, search
 list_files, get_file_info, task, load_guide
-enter_plan_mode, exit_plan_mode, write_plan
+enter_plan_mode, exit_plan_and_implement, write_plan
 task_output, ask_user
 ```
 

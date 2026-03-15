@@ -23,7 +23,8 @@ class TestSubagentsPlugin:
             name="test-agent",
             tools=[],
             plugins=[subagents],
-            model="co/gemini-2.5-flash"
+            model="co/gemini-2.5-flash",
+            quiet=True
         )
 
         # Verify task tool was registered
@@ -60,7 +61,7 @@ class TestSubagentsPlugin:
         # Verify frontmatter
         fm = config['frontmatter']
         assert fm['name'] == 'explore'
-        assert fm['model'] == 'co/gemini-2.5-flash'
+        assert fm['model'] == 'co/gemini-2.5-pro'
         assert fm['max_iterations'] == 15
         assert 'glob' in fm['tools']
         assert 'grep' in fm['tools']
@@ -143,7 +144,8 @@ With multiple lines.
             name="test-agent",
             tools=[],
             plugins=[subagents],
-            model="co/gemini-2.5-flash"
+            model="co/gemini-2.5-flash",
+            quiet=True
         )
 
         result = task(agent, "test prompt", "invalid-agent-type")

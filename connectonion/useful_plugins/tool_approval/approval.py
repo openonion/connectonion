@@ -34,8 +34,8 @@ Mode System (session['mode']):
 
     plan:
         - Read-only tools: auto-approved
-        - Dangerous tools: BLOCKED (except exit_plan_mode)
-        - exit_plan_mode: needs approval (shows plan to user)
+        - Dangerous tools: BLOCKED (except exit_plan_and_implement)
+        - exit_plan_and_implement: needs approval (shows plan to user)
         - Used for: planning phase before execution
 
     accept_edits:
@@ -324,7 +324,7 @@ def _get_mode(agent: 'Agent') -> str:
 
     Modes:
         'safe': Dangerous tools need approval (default)
-        'plan': Read-only tools only, exit_plan_mode needs approval
+        'plan': Read-only tools only, exit_plan_and_implement needs approval
         'accept_edits': No approvals, agent runs freely
     """
     return agent.current_session.get('mode', DEFAULT_MODE)
@@ -396,7 +396,7 @@ def check_approval(agent: 'Agent') -> None:
 
     Mode behavior:
         'safe': Dangerous tools need approval
-        'plan': Only read-only tools allowed, exit_plan_mode needs approval
+        'plan': Only read-only tools allowed, exit_plan_and_implement needs approval
         'accept_edits': File edit tools auto-approved, other dangerous tools need approval
 
     Other plugins can set session['skip_tool_approval'] = True to bypass all checks.
@@ -503,18 +503,18 @@ def check_approval(agent: 'Agent') -> None:
         # Other dangerous tools fall through to approval logic
 
     # =================================================================
-    # MODE: plan - Read-only tools only, exit_plan_mode needs approval
+    # MODE: plan - Read-only tools only, exit_plan_and_implement needs approval
     # =================================================================
     if mode == 'plan':
-        # exit_plan_mode is the only dangerous tool allowed - needs approval to show plan
-        if tool_name == 'exit_plan_mode':
+        # exit_plan_and_implement is the only dangerous tool allowed - needs approval to show plan
+        if tool_name == 'exit_plan_and_implement':
             pass  # Fall through to approval logic below
         # Block other dangerous tools in plan mode
         elif tool_name in DANGEROUS_TOOLS:
             raise ValueError(
                 f"Tool '{tool_name}' is blocked in Plan Mode. "
                 "Use read-only tools to explore, write your plan with write_plan(), "
-                "then call exit_plan_mode() when ready for approval."
+                "then call exit_plan_and_implement() when ready for approval."
             )
         # Safe tools are allowed
         else:
@@ -545,8 +545,8 @@ def check_approval(agent: 'Agent') -> None:
     if batch_remaining:
         approval_msg['batch_remaining'] = batch_remaining
 
-    # For exit_plan_mode, include plan content for display
-    if tool_name == 'exit_plan_mode':
+    # For exit_plan_and_implement, include plan content for display
+    if tool_name == 'exit_plan_and_implement':
         approval_msg['plan_content'] = agent.current_session.get('pending_plan_content', '')
 
     # Checkpoint before blocking (enables reconnection recovery)
@@ -567,8 +567,8 @@ def check_approval(agent: 'Agent') -> None:
     approved = response.get('approved', False)
 
     if approved:
-        # For exit_plan_mode, restore previous mode
-        if tool_name == 'exit_plan_mode':
+        # For exit_plan_and_implement, restore previous mode
+        if tool_name == 'exit_plan_and_implement':
             previous_mode = agent.current_session.get('previous_mode', 'safe')
             _set_mode(agent, previous_mode)
             _log(agent, f"[green]✓ Plan approved, returning to {previous_mode} mode[/green]")

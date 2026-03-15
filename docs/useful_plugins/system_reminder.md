@@ -169,7 +169,7 @@ This is a gentle reminder - ignore if not applicable.
 ---
 name: plan-mode-exited
 triggers:
-  - tool: exit_plan_mode
+  - tool: exit_plan_and_implement
 ---
 
 <system-reminder>

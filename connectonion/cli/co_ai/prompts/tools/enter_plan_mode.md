@@ -49,7 +49,7 @@ evals:
 1. `enter_plan_mode()` — switch to spec-design mode
 2. Ask clarifying questions if the design is unclear
 3. `write_plan()` — write the agent spec in YAML format above
-4. `exit_plan_mode()` — user reviews and approves the spec
+4. `exit_plan_and_implement()` — user reviews and approves the spec
 5. After approval: `co create <name> --template <template>` then edit `agent.py`
 
 ## READ-ONLY Restrictions

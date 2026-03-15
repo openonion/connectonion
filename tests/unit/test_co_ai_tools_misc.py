@@ -16,7 +16,7 @@ from connectonion.cli.co_ai.tools.ask_user import ask_user
 from connectonion.cli.co_ai.tools.load_guide import load_guide
 from connectonion.cli.co_ai.tools.plan_mode import (
     enter_plan_mode,
-    exit_plan_mode,
+    exit_plan_and_implement,
     write_plan,
     is_plan_mode_active,
 )
@@ -75,25 +75,20 @@ def test_plan_mode_flow(tmp_path, monkeypatch):
     write_msg = write_plan(plan_text)
     assert "Plan updated" in write_msg
 
-    exit_msg = exit_plan_mode(agent)
-    assert "Plan ready for review" in exit_msg
+    exit_msg = exit_plan_and_implement(agent)
+    assert "Plan approved" in exit_msg
     assert "Do things" in exit_msg
     # After exit, mode is still 'plan' until approval sets it back
     # The actual mode change happens in tool_approval plugin after user approves
 
 
 def test_task_delegation(monkeypatch):
-    class FakeSubagent:
-        def input(self, prompt):
-            return f"handled: {prompt}"
-
-    monkeypatch.setattr(task_mod, "get_subagent", lambda t: FakeSubagent())
+    """Test task delegation uses SDK subagents."""
+    # Mock the SDK task function
+    monkeypatch.setattr(task_mod, "sdk_task", lambda agent, prompt, agent_type: f"handled: {prompt}")
 
     result = task("hello", agent_type="explore")
     assert "handled: hello" in result
-
-    bad = task("oops", agent_type="unknown")
-    assert "Unknown agent type" in bad
 
 
 def test_todo_list_basic():

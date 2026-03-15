@@ -21,8 +21,7 @@ TEMPLATE_ROOT = ROOT / "connectonion" / "cli" / "templates"
 # Keep explicit module paths for coverage tracking
 TEMPLATE_MODULES = [
     "connectonion.cli.templates.minimal.agent",
-    "connectonion.cli.templates.meta-agent.agent",
-    "connectonion.cli.templates.playwright.agent",
+    "connectonion.cli.templates.browser.agent",
     "connectonion.cli.templates.web-research.agent",
 ]
 
@@ -46,14 +45,51 @@ class StubXray:
         return func
 
 
+class StubBrowserAutomation:
+    def __init__(self, *args, **kwargs):
+        pass
+
+
 def _load_with_stub(path: Path):
+    # Create stub modules
     stub = types.ModuleType("connectonion")
     stub.Agent = StubAgent
     stub.llm_do = lambda *a, **k: "llm"
     stub.xray = StubXray()
+    # Add all file tools the templates import
+    stub.bash = lambda *a, **k: "bash"
+    stub.read_file = lambda *a, **k: "content"
+    stub.edit = lambda *a, **k: "edited"
+    stub.glob = lambda *a, **k: []
+    stub.grep = lambda *a, **k: []
+    stub.write = lambda *a, **k: "wrote"
 
-    original = sys.modules.get("connectonion")
+    # Stub submodules
+    stub_useful_plugins = types.ModuleType("connectonion.useful_plugins")
+    stub_useful_plugins.image_result_formatter = []
+    stub_useful_plugins.tool_approval = []
+    stub_useful_plugins.ui_stream = []
+
+    stub_useful_tools = types.ModuleType("connectonion.useful_tools")
+    stub_browser_tools = types.ModuleType("connectonion.useful_tools.browser_tools")
+    stub_browser_tools.BrowserAutomation = StubBrowserAutomation
+
+    # Save originals
+    originals = {}
+    modules_to_stub = [
+        "connectonion",
+        "connectonion.useful_plugins",
+        "connectonion.useful_tools",
+        "connectonion.useful_tools.browser_tools",
+    ]
+    for mod_name in modules_to_stub:
+        originals[mod_name] = sys.modules.get(mod_name)
+
+    # Install stubs
     sys.modules["connectonion"] = stub
+    sys.modules["connectonion.useful_plugins"] = stub_useful_plugins
+    sys.modules["connectonion.useful_tools"] = stub_useful_tools
+    sys.modules["connectonion.useful_tools.browser_tools"] = stub_browser_tools
 
     name = f"_template_{path.stem}_{abs(hash(str(path)))}"
     spec = importlib.util.spec_from_file_location(name, path)
@@ -62,11 +98,12 @@ def _load_with_stub(path: Path):
     try:
         spec.loader.exec_module(module)  # type: ignore[union-attr]
     finally:
-        # restore original connectonion
-        if original is not None:
-            sys.modules["connectonion"] = original
-        else:
-            sys.modules.pop("connectonion", None)
+        # Restore originals
+        for mod_name in modules_to_stub:
+            if originals[mod_name] is not None:
+                sys.modules[mod_name] = originals[mod_name]
+            else:
+                sys.modules.pop(mod_name, None)
     return module
 
 
@@ -77,16 +114,13 @@ def test_template_minimal_loads():
     # Note: result is only defined inside if __name__ == "__main__" block
 
 
-def test_template_meta_agent_loads():
-    path = TEMPLATE_ROOT / "meta-agent" / "agent.py"
+def test_template_browser_loads():
+    path = TEMPLATE_ROOT / "browser" / "agent.py"
     module = _load_with_stub(path)
-    assert isinstance(module.agent, StubAgent)
-
-
-def test_template_playwright_loads():
-    path = TEMPLATE_ROOT / "playwright" / "agent.py"
-    module = _load_with_stub(path)
-    assert isinstance(module.agent, StubAgent)
+    # Browser template uses create_agent() factory function
+    assert callable(module.create_agent)
+    agent = module.create_agent()
+    assert isinstance(agent, StubAgent)
 
 
 def test_template_web_research_functions(tmp_path):

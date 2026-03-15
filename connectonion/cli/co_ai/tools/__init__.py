@@ -11,7 +11,7 @@ This package provides a comprehensive toolkit for AI agents to interact with cod
 Key exports:
 - File tools: FileTools (read_file, edit, multi_edit, write, glob, grep)
 - Task tools: task, run_background, task_output, kill_task
-- Planning tools: enter_plan_mode, exit_plan_mode, write_plan
+- Planning tools: enter_plan_mode, exit_plan_and_implement, write_plan
 - Interaction tools: ask_user, load_guide
 - Utilities: TodoList
 
@@ -37,7 +37,7 @@ Task Tools:
 
 Planning Tools:
     - enter_plan_mode: Switch to planning mode
-    - exit_plan_mode: Exit planning mode
+    - exit_plan_and_implement: Exit planning mode
     - write_plan: Write plan content
 
 Interaction Tools:
@@ -61,7 +61,7 @@ from connectonion.cli.co_ai.tools.task import task
 from connectonion.cli.co_ai.tools.background import run_background, task_output, kill_task
 
 # Planning tools (CLI-specific)
-from connectonion.cli.co_ai.tools.plan_mode import enter_plan_mode, exit_plan_mode, write_plan
+from connectonion.cli.co_ai.tools.plan_mode import enter_plan_mode, exit_plan_and_implement, write_plan
 
 # Interaction tools (CLI-specific)
 from connectonion.cli.co_ai.tools.ask_user import ask_user
@@ -77,7 +77,7 @@ __all__ = [
     "kill_task",
     # Planning tools
     "enter_plan_mode",
-    "exit_plan_mode",
+    "exit_plan_and_implement",
     "write_plan",
     # Interaction tools
     "ask_user",

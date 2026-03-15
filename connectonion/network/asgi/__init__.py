@@ -25,6 +25,7 @@ def create_app(
     *,
     route_handlers: dict,
     storage,
+    registry,  # ActiveSessionRegistry for WebSocket reconnection
     trust: str = "careful",
     trust_config: dict | None = None,
     blacklist: list | None = None,
@@ -37,6 +38,7 @@ def create_app(
     Args:
         route_handlers: Dict of route handler functions
         storage: SessionStorage instance
+        registry: ActiveSessionRegistry for WebSocket reconnection
         trust: Trust level (open/careful/strict)
         trust_config: Parsed YAML config from trust policy (for /info onboard)
         blacklist: Blocked identities
@@ -92,6 +94,7 @@ def create_app(
                 send,
                 route_handlers=route_handlers,
                 storage=storage,
+                registry=registry,
                 trust=trust,
                 blacklist=blacklist,
                 whitelist=whitelist,

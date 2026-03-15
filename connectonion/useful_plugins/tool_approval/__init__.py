@@ -28,7 +28,7 @@ Tool Classification:
 
 Mode System:
 - "safe" (default): Dangerous tools need approval
-- "plan": Read-only only, exit_plan_mode needs approval (shows plan)
+- "plan": Read-only only, exit_plan_and_implement needs approval (shows plan)
 - "accept_edits": File edits auto-approved, other dangerous tools need approval
 - "ulw": Handled by ulw plugin - bypasses all approvals
 

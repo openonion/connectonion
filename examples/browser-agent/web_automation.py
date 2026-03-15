@@ -26,14 +26,12 @@ State: maintains browser/page/current_url | screenshots auto-save to screenshots
 from typing import Optional, List, Dict, Any, Literal
 from pathlib import Path
 from connectonion import xray, llm_do
+from connectonion.useful_tools.browser_tools import scroll, element_finder, highlight_screenshot
 from playwright.sync_api import sync_playwright, Page, Browser, Playwright
 import base64
 import json
 import logging
 from pydantic import BaseModel, Field
-import scroll
-import element_finder
-import highlight_screenshot
 
 # Load prompts from files
 _BASE_DIR = Path(__file__).parent

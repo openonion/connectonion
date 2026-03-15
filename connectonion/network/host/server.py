@@ -415,6 +415,11 @@ def host(
 
     storage = SessionStorage()
 
+    # Create Active Session Registry for WebSocket reconnection
+    from .session import ActiveSessionRegistry, start_cleanup_job
+    registry = ActiveSessionRegistry()
+    start_cleanup_job(registry)  # Start background cleanup
+
     # Create TrustAgent instance - the single interface for all trust operations
     # Users can subclass TrustAgent to customize (e.g., database-backed admin storage)
     if isinstance(trust, TrustAgent):
@@ -437,6 +442,7 @@ def host(
     app = asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,
+        registry=registry,  # Active session registry for reconnection
         trust=trust_agent,  # Pass resolved TrustAgent, not raw trust
         trust_config=trust_config,
         blacklist=blacklist,
@@ -473,9 +479,14 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         # uvicorn myagent:app --workers 4
     """
     from .auth import get_agent_address
+    from .session import ActiveSessionRegistry, start_cleanup_job
 
     if storage is None:
         storage = SessionStorage()
+
+    # Create Active Session Registry for WebSocket reconnection
+    registry = ActiveSessionRegistry()
+    start_cleanup_job(registry)
 
     # Extract metadata once at startup
     agent_metadata, sample = _extract_agent_metadata(create_agent)
@@ -492,6 +503,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,
+        registry=registry,
         trust=trust_agent,  # Pass resolved TrustAgent, not raw trust
         blacklist=blacklist,
         whitelist=whitelist,

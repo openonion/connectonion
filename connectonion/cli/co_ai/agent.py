@@ -7,7 +7,7 @@ Key function:
 Tools included:
 - File operations: glob, grep, read_file, edit, FileWriter
 - Task management: task, TodoList
-- Planning: enter_plan_mode, exit_plan_mode, write_plan
+- Planning: enter_plan_mode, exit_plan_and_implement, write_plan
 - Background tasks: run_background, task_output, kill_task
 - User interaction: ask_user, skill, load_guide
 - Shell: bash (with approval flow)
@@ -37,7 +37,7 @@ from .context import load_project_context
 from .prompts.assembler import assemble_prompt
 from .tools import (
     FileTools,
-    enter_plan_mode, exit_plan_mode, write_plan,
+    enter_plan_mode, exit_plan_and_implement, write_plan,
     ask_user,
     run_background, task_output, kill_task,
     load_guide,
@@ -66,7 +66,7 @@ def create_coding_agent(
         bash,
         # task is now provided by subagents plugin (no need to import from .tools)
         enter_plan_mode,
-        exit_plan_mode,
+        exit_plan_and_implement,
         write_plan,
         todo,
         skill,

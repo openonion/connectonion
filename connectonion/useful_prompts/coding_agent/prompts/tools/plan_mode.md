@@ -22,7 +22,7 @@ Enter read-only planning phase to design implementation before coding.
 1. **Enter plan mode** with `enter_plan_mode()`
 2. **Explore codebase** using glob, grep, read_file (read-only)
 3. **Write plan** to `.co/PLAN.md` with `write_plan()`
-4. **Exit plan mode** with `exit_plan_mode()` when ready
+4. **Exit plan mode** with `exit_plan_and_implement()` when ready
 
 ## READ-ONLY Restrictions
 

@@ -103,6 +103,7 @@ def block_bash_file_creation(agent: 'Agent') -> None:
                 'tool': tool_name,
                 'reason': 'file_creation',
                 'message': 'Use Write tool instead of bash for creating files',
+                'command': command,
             })
 
         raise ValueError(
@@ -129,6 +130,7 @@ def block_bash_file_creation(agent: 'Agent') -> None:
                 'tool': tool_name,
                 'reason': 'file_reading',
                 'message': 'Use read_file tool instead of bash for reading files',
+                'command': command,
             })
 
         raise ValueError(
