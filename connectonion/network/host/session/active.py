@@ -2,7 +2,7 @@
 Purpose: In-memory registry preserving running agents across WebSocket reconnections
 LLM-Note:
   Dependencies: imports from [time, threading, dataclasses] | imported by [server.py, websocket.py, __init__.py] | tested by [tests/network/test_active_sessions.py]
-  Data flow: websocket.py calls register(session_id, io, thread) → stores ActiveSession → client disconnects → mark_suspended() → client reconnects → get(session_id) returns same IO queue → agent finishes → mark_completed() → cleanup_expired() removes after TTL
+  Data flow: websocket.py calls register(session_id, io, thread) → stores ActiveSession → client disconnects → mark_suspended() → client reconnects → get(session_id) returns same IO queue → agent finishes → mark_completed() → cleanup_expired() removes after 10min idle
   State/Effects: in-memory dict with threading.Lock | no persistence | background cleanup thread runs every 60s
   Integration: exposes ActiveSession dataclass, ActiveSessionRegistry class, start_cleanup_job() | used by websocket.py for reconnection, server.py creates instance
   Performance: O(1) lookup/insert | lock contention minimal (short critical sections) | cleanup runs in daemon thread
@@ -13,7 +13,7 @@ Lifecycle:
     DISCONNECT: mark_suspended() → status='suspended', agent keeps running
     RECONNECT: get() → returns same IO queue
     FINISHED: mark_completed() → status='completed'
-    EXPIRED: cleanup_expired() removes after TTL (30s completed, 10min suspended, 30min orphaned)
+    EXPIRED: cleanup_expired() removes any non-running session after 10min idle (no client ping)
 """
 
 import time
@@ -82,17 +82,10 @@ class ActiveSessionRegistry:
 
         with self._lock:
             for sid, sess in self._sessions.items():
-                age = now - sess.created
                 idle = now - sess.last_ping
 
-                # Completed: 30s grace period
-                if sess.status == 'completed' and age > 30:
-                    to_remove.append(sid)
-                # Suspended: 10min idle
-                elif sess.status == 'suspended' and idle > 600:
-                    to_remove.append(sid)
-                # Orphaned: 30min old + 10min idle
-                elif age > 1800 and idle > 600:
+                # Any non-running session: clean up after 10min idle
+                if sess.status != 'running' and idle > 600:
                     to_remove.append(sid)
 
             for sid in to_remove:

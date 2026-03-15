@@ -866,7 +866,7 @@ class TestReconnectionScenarios:
         assert restored.session['iteration'] == 12
 
     def test_registry_cleanup_expired_sessions(self):
-        """Test cleanup removes expired sessions from registry."""
+        """Completed sessions are cleaned up after 10min idle."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
 
@@ -874,9 +874,9 @@ class TestReconnectionScenarios:
         registry.register('to-cleanup', object(), mock_thread)
         registry.mark_completed('to-cleanup')
 
-        # Manually set created time to past (>30s for completed)
+        # Manually set last_ping to past (idle >10min)
         with registry._lock:
-            registry._sessions['to-cleanup'].created = time.time() - 100
+            registry._sessions['to-cleanup'].last_ping = time.time() - 700
 
         # Cleanup should remove it
         removed = registry.cleanup_expired()

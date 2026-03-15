@@ -7,6 +7,7 @@ Connect and collaborate between agents with automatic reliability and recovery.
 - [host.md](host.md) - Make agents network-accessible with `host()`
 - [connect.md](connect.md) - Connect to remote agents with `connect()`
 - [connection.md](connection.md) - Stream events and communicate with clients
+- [session-reconnect.md](session-reconnect.md) - WebSocket reconnection and session recovery
 
 ## Key Features
 

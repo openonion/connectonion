@@ -509,68 +509,208 @@ println(agent.ui)        // All events for rendering
 
 ---
 
-## React / Vue Integration
+## React: useAgent() Hook
 
-For reactive UI updates, use framework-specific hooks:
+The `connectonion/react` subpath exports a React hook with state management and localStorage persistence.
 
-### React
+### Basic Usage
 
 ```tsx
-import { useAgent } from 'connectonion/react';
+import { useAgent } from 'connectonion/react'
 
-function ChatUI() {
-    const agent = useAgent('0x...');
+function ChatPage() {
+  const {
+    ui,              // ChatItem[] — all streaming events
+    status,          // 'idle' | 'working' | 'waiting'
+    isProcessing,    // true while agent is working
+    mode,            // approval mode
+    input,           // send a message
+    respond,         // answer ask_user
+    respondToApproval,
+    respondToPlanReview,
+    setMode,
+    reset,
+  } = useAgent("0x3d4017c3e843...", {
+    sessionId: "my-session-123"  // required — auto-persisted to localStorage
+  })
 
-    return (
-        <div>
-            {agent.ui.map(item => {
-                switch (item.type) {
-                    case 'user':      return <UserBubble key={item.id} {...item} />;
-                    case 'agent':     return <AgentBubble key={item.id} {...item} />;
-                    case 'thinking':  return <Thinking key={item.id} />;
-                    case 'tool_call': return <ToolCard key={item.id} {...item} />;
-                    case 'ask_user':  return <QuestionForm key={item.id} {...item} onAnswer={agent.send} />;
-                }
-            })}
-            <Input onSend={agent.send} disabled={agent.status === 'working'} />
-        </div>
-    );
+  return (
+    <div>
+      {ui.map(item => {
+        if (item.type === 'user') return <UserMsg key={item.id}>{item.content}</UserMsg>
+        if (item.type === 'agent') return <AgentMsg key={item.id}>{item.content}</AgentMsg>
+        if (item.type === 'thinking') return <Thinking key={item.id} />
+        if (item.type === 'tool_call') return <ToolCall key={item.id} name={item.name} />
+        if (item.type === 'ask_user') return (
+          <AskUser
+            key={item.id}
+            question={item.text}
+            options={item.options}
+            onAnswer={(answer) => respond(answer)}
+          />
+        )
+        if (item.type === 'approval_needed') return (
+          <Approval
+            key={item.id}
+            tool={item.tool}
+            onApprove={() => respondToApproval(true, 'once')}
+            onReject={() => respondToApproval(false, 'once')}
+          />
+        )
+        return null
+      })}
+      <Input onSend={(msg) => input(msg)} disabled={isProcessing} />
+    </div>
+  )
 }
 ```
 
-### Vue
-
-```vue
-<script setup>
-import { useAgent } from 'connectonion/vue';
-
-const agent = useAgent('0x...');
-</script>
-
-<template>
-    <div v-for="item in agent.ui" :key="item.id">
-        <UserBubble v-if="item.type === 'user'" v-bind="item" />
-        <AgentBubble v-if="item.type === 'agent'" v-bind="item" />
-        <Thinking v-if="item.type === 'thinking'" />
-        <ToolCard v-if="item.type === 'tool_call'" v-bind="item" />
-        <QuestionForm v-if="item.type === 'ask_user'" v-bind="item" @answer="agent.send" />
-    </div>
-    <Input @send="agent.send" :disabled="agent.status === 'working'" />
-</template>
-```
-
-### Hook Interface
-
-All hooks return the same interface:
+### Hook Return Interface
 
 ```ts
-const agent = useAgent('0x...');
+const agent = useAgent(address, { sessionId })
 
-agent.ui        // UIEvent[] - reactive, auto updates
-agent.status    // 'idle' | 'working' | 'waiting' - reactive
-agent.send()    // Send message
-agent.reset()   // Clear conversation
+// State (reactive)
+agent.ui: ChatItem[]           // All events for rendering
+agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
+agent.isProcessing: boolean    // true while agent working
+agent.mode: ApprovalMode       // 'safe' | 'plan' | 'accept_edits' | 'ulw'
+agent.error: Error | null
+agent.sessionId: string
+
+// Actions
+agent.input(prompt, options?)       // Send message
+agent.respond(answer)               // Answer ask_user
+agent.respondToApproval(approved, scope, mode?, feedback?)
+agent.respondToPlanReview(message)
+agent.respondToUlwTurnsReached(action, options?)
+agent.submitOnboard(options)        // Submit invite code / payment
+agent.setMode(mode, options?)       // Change approval mode
+agent.setPrompt(prompt)             // Set persistent system prompt
+agent.reset()                       // Clear conversation
 ```
+
+### Session Persistence
+
+The hook automatically saves state to localStorage:
+- Key: `co:agent:{address}:session:{sessionId}`
+- Page refresh restores the full conversation
+- No manual save/load needed
+
+### Interactive Features
+
+Agents can ask questions, request approval, and present plans:
+
+```typescript
+// Ask User — agent needs information
+// Event: { type: 'ask_user', text: 'Which city?', options: ['Sydney', 'Tokyo'] }
+respond("Sydney")
+respond(["Sydney", "Tokyo"])  // multi-select
+
+// Tool Approval — agent wants to run a dangerous tool
+// Event: { type: 'approval_needed', tool: 'shell', arguments: { cmd: 'rm -rf /tmp' } }
+respondToApproval(true, 'once')      // approve once
+respondToApproval(true, 'session')   // approve for session
+respondToApproval(false, 'once', 'reject_explain', 'Too dangerous')
+
+// Plan Review — agent presenting a plan
+// Event: { type: 'plan_review', plan_content: '1. Research\n2. Analyze' }
+respondToPlanReview("Looks good, proceed")
+respondToPlanReview("Skip step 2")
+```
+
+---
+
+## oo-chat: Open-Source Reference Client
+
+[oo-chat](https://github.com/openonion/oo-chat) is an open-source Next.js chat client built on the TypeScript SDK. It's a complete working example.
+
+### Architecture
+
+```
+┌──────────────────────────────────────────────────┐
+│  oo-chat (Next.js)                               │
+│                                                   │
+│  app/[address]/[sessionId]/page.tsx               │
+│    └─ useAgentSDK()     ← elapsed time, pending   │
+│         └─ useAgent()   ← connectonion/react      │
+│              └─ connect()  ← WebSocket to agent   │
+│                                                   │
+│  <Chat />                                         │
+│    ├─ <ChatMessages />  ← renders ui: ChatItem[]  │
+│    ├─ <AskUser />       ← from pendingAskUser     │
+│    ├─ <Approval />      ← from pendingApproval    │
+│    └─ <ChatInput />     ← calls send()            │
+└──────────────────────────────────────────────────┘
+         │ WebSocket
+         ▼
+┌──────────────────────────────────────────────────┐
+│  Hosted Agent (Python)                            │
+│  host(agent)                                      │
+└──────────────────────────────────────────────────┘
+```
+
+### File Structure
+
+```
+oo-chat/
+├── app/[address]/[sessionId]/page.tsx   ← session page (uses useAgentSDK)
+├── components/chat/
+│   ├── chat.tsx                         ← main Chat component
+│   ├── chat-input.tsx                   ← message input
+│   ├── chat-messages.tsx                ← message list (renders ChatItem[])
+│   ├── use-agent-sdk.ts                 ← wrapper hook around useAgent()
+│   └── messages/
+│       ├── tool-call.tsx                ← tool call card
+│       └── tools/plan-card.tsx          ← plan review UI
+└── package.json                         ← depends on connectonion
+```
+
+### How It Connects
+
+```tsx
+// app/[address]/[sessionId]/page.tsx
+import { useAgentSDK } from '@/components/chat/use-agent-sdk'
+
+export default function ChatSession({ params }) {
+  const { address, sessionId } = params
+
+  const {
+    ui,
+    isLoading,
+    elapsedTime,
+    pendingAskUser,
+    pendingApproval,
+    pendingPlanReview,
+    mode,
+    send,
+    respondToAskUser,
+    respondToApproval,
+    respondToPlanReview,
+    setMode,
+    clear,
+  } = useAgentSDK({ agentAddress: address, sessionId })
+
+  return (
+    <Chat
+      ui={ui}
+      isLoading={isLoading}
+      elapsedTime={elapsedTime}
+      onSend={(msg, images) => send(msg, images)}
+      pendingAskUser={pendingAskUser}
+      onAskUserResponse={respondToAskUser}
+      pendingApproval={pendingApproval}
+      onApprovalResponse={respondToApproval}
+      pendingPlanReview={pendingPlanReview}
+      onPlanReviewResponse={respondToPlanReview}
+      mode={mode}
+      onModeChange={setMode}
+    />
+  )
+}
+```
+
+`useAgentSDK` is a thin wrapper around `useAgent()` that adds elapsed time tracking and extracts pending states (ask_user, approval, plan_review) from the `ui` array for easy conditional rendering.
 
 ---
 
@@ -601,49 +741,49 @@ class RemoteAgent:
     status: str              # 'idle' | 'working' | 'waiting'
 ```
 
-### useAgent() (React/Vue)
+### useAgent() (React)
 
 ```ts
-const agent = useAgent('0x...');
+const agent = useAgent(address, { sessionId })
 
-agent.ui        // Reactive - auto updates when data changes
-agent.status    // Reactive - 'idle' | 'working' | 'waiting'
-agent.send()    // Send message to agent
-agent.reset()   // Clear conversation
+// State (reactive)
+agent.ui: ChatItem[]           // All events for rendering
+agent.status: AgentStatus      // 'idle' | 'working' | 'waiting'
+agent.isProcessing: boolean
+agent.mode: ApprovalMode       // 'safe' | 'plan' | 'accept_edits' | 'ulw'
+
+// Actions
+agent.input(prompt)            // Send message
+agent.respond(answer)          // Answer ask_user
+agent.respondToApproval(approved, scope)
+agent.respondToPlanReview(message)
+agent.setMode(mode)            // Change approval mode
+agent.reset()                  // Clear conversation
 ```
 
-### Data Types
+### ChatItem Types (TypeScript)
+
+```typescript
+type ChatItem =
+  | { id, type: 'user', content, images? }
+  | { id, type: 'agent', content, images? }
+  | { id, type: 'thinking', status, model?, duration_ms? }
+  | { id, type: 'tool_call', name, args?, status, result?, timing_ms? }
+  | { id, type: 'ask_user', text, options, multi_select }
+  | { id, type: 'approval_needed', tool, arguments, description? }
+  | { id, type: 'plan_review', plan_content }
+  | { id, type: 'tool_blocked', tool, reason, message, command? }
+  | { id, type: 'onboard_required', methods, paymentAmount? }
+  | { id, type: 'ulw_turns_reached', turns_used, max_turns }
+```
+
+### Data Types (Python)
 
 ```python
 @dataclass
 class Response:
     text: str       # Agent's response
     done: bool      # True = complete, False = needs input
-
-# Server trace events (what server sends)
-@dataclass
-class ServerEvent:
-    id: str
-    type: str       # 'user' | 'agent' | 'thinking' | 'tool_call' | 'tool_result' | 'ask_user'
-
-# UI events (what client renders) - tool_result merged into tool_call
-@dataclass
-class UIEvent:
-    id: str
-    type: str       # 'user' | 'agent' | 'thinking' | 'tool_call' | 'ask_user'
-
-    # For user/agent
-    content: Optional[str]
-
-    # For tool_call (merged from tool_call + tool_result)
-    name: Optional[str]
-    status: Optional[str]    # 'running' | 'done' | 'error'
-    result: Optional[str]
-
-    # For ask_user
-    text: Optional[str]
-    options: Optional[List[str]]    # Required when type == 'ask_user'
-    multi_select: Optional[bool]    # Required when type == 'ask_user'
 ```
 
 ---
@@ -737,25 +877,30 @@ response = agent.input("task")
 ## Summary
 
 ```python
-# Python / TypeScript / Swift / Kotlin
+# Python
 agent = connect("0x...")
 response = agent.input("task")
 agent.ui      # All events for UI rendering
 agent.status  # 'idle' | 'working' | 'waiting'
 ```
 
-```tsx
-// React / Vue (reactive)
-const agent = useAgent('0x...');
-agent.ui      // Reactive - auto updates
-agent.send()  // Send message
+```typescript
+// TypeScript
+const agent = connect("0x...")
+const response = await agent.input("task")
+agent.ui      // ChatItem[] for rendering
 ```
 
-**Server events:** `user`, `agent`, `thinking`, `tool_call`, `tool_result`, `ask_user`
+```tsx
+// React
+const { ui, input, respond, respondToApproval } = useAgent("0x...", { sessionId })
+```
 
-**UI events:** `user`, `agent`, `thinking`, `tool_call`, `ask_user` (tool_result merged into tool_call)
+**Event types:** `user`, `agent`, `thinking`, `tool_call`, `ask_user`, `approval_needed`, `plan_review`, `tool_blocked`
 
-**One UI type = one component.** That's it.
+**One event type = one UI component.** Render `ui` array, handle interactive events with `respond()` / `respondToApproval()` / `respondToPlanReview()`.
+
+**Reference implementation:** [oo-chat](https://github.com/openonion/oo-chat) — open-source Next.js chat client built on the TypeScript SDK.
 
 ---
 
