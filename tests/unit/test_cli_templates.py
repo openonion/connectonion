@@ -123,13 +123,13 @@ def test_template_browser_loads():
     assert isinstance(agent, StubAgent)
 
 
-def test_template_web_research_functions(tmp_path):
+def test_template_web_research_functions(tmp_path, monkeypatch):
     path = TEMPLATE_ROOT / "web-research" / "agent.py"
     module = _load_with_stub(path)
 
     assert "Searching for" in module.search_web("topic")
 
-    # Patch requests.get in module
+    # Patch requests.get in module using monkeypatch (auto-restored after test)
     class Resp:
         status_code = 200
         text = "hello world"
@@ -137,7 +137,7 @@ def test_template_web_research_functions(tmp_path):
         def raise_for_status(self):
             return None
 
-    module.requests.get = lambda *a, **k: Resp()
+    monkeypatch.setattr(module.requests, "get", lambda *a, **k: Resp())
 
     data = module.extract_data("http://example.com")
     assert data["status"] == 200
