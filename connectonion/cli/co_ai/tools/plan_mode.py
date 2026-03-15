@@ -7,19 +7,19 @@ before writing code. Enables user approval workflow for complex changes.
 Key functions:
 - enter_plan_mode(): Start planning phase with template
 - write_plan(content): Update implementation plan
-- exit_plan_and_implement(): Request user approval, then implement
+- exit_plan_and_implement(): Send plan for review via io.send/receive, then implement
 - is_plan_mode_active(agent): Check current state
 
 Workflow:
 1. enter_plan_mode() - Sets up .co/PLAN.md template
 2. Explore codebase (glob/grep/read_file)
 3. write_plan() - Document implementation approach
-4. exit_plan_and_implement() - Display plan, wait for user approval, then implement
+4. exit_plan_and_implement() - Send plan_review via io, wait for response, then implement
 5. Proceed with implementation after approval
 
 Three modes:
 - 'safe': Dangerous tools need approval (default)
-- 'plan': Read-only tools only, exit_plan_and_implement shows plan for approval
+- 'plan': Read-only tools only, exit_plan_and_implement sends plan for review
 - 'accept_edits': No approvals, agent runs freely
 
 Agent can enter plan mode via enter_plan_mode().
@@ -27,11 +27,12 @@ User can switch modes via WebSocket mode_change message.
 
 State management:
 - Mode stored in agent.current_session['mode']
+- Plan path stored in agent.current_session['plan_path']
+- Previous mode stored in agent.current_session['previous_mode']
 - Plan file at .co/PLAN.md
 """
 
 from pathlib import Path
-from typing import Optional
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -47,10 +48,6 @@ from rich.markdown import Markdown
 # - tool_executor injects agent at runtime
 
 console = Console()
-
-# Plan mode state (module-level for simplicity)
-_plan_file_path: Optional[Path] = None
-_previous_mode: Optional[str] = None  # Mode before entering plan mode
 
 
 def get_plan_file_path(session_id: str = None) -> Path:
@@ -91,22 +88,22 @@ def enter_plan_mode(agent=None) -> str:
         3. write_plan(content) - Document your plan
         4. exit_plan_and_implement() - Get user approval, then implement
     """
-    global _plan_file_path, _previous_mode
-
     # Check if already in plan mode
     if agent and agent.current_session.get('mode') == 'plan':
         return "Already in plan mode. Use exit_plan_and_implement() when ready for user approval."
 
-    # Save previous mode to restore after plan approval
+    # Save previous mode and set plan path in session
     if agent:
-        _previous_mode = agent.current_session.get('mode', 'safe')
-        # Set mode to 'plan' and notify frontend
+        agent.current_session['previous_mode'] = agent.current_session.get('mode', 'safe')
         agent.current_session['mode'] = 'plan'
         if agent.io:
             agent.io.send({'type': 'mode_changed', 'mode': 'plan', 'triggered_by': 'agent'})
 
     session_id = agent.current_session.get('session_id') if agent else None
-    _plan_file_path = get_plan_file_path(session_id)
+    plan_path = get_plan_file_path(session_id)
+
+    if agent:
+        agent.current_session['plan_path'] = str(plan_path)
 
     # Create initial plan file
     initial_content = """# Implementation Plan
@@ -135,7 +132,7 @@ def enter_plan_mode(agent=None) -> str:
 *Plan created by agent. Waiting for user approval.*
 """
 
-    _plan_file_path.write_text(initial_content, encoding="utf-8")
+    plan_path.write_text(initial_content, encoding="utf-8")
 
     console.print(Panel(
         "[bold green]Entered Plan Mode[/]\n\n"
@@ -144,7 +141,7 @@ def enter_plan_mode(agent=None) -> str:
         "2. [cyan]Design[/] - Write your implementation plan\n"
         "3. [cyan]Document[/] - Use write_plan() to save your plan\n"
         "4. [cyan]Exit[/] - Call exit_plan_and_implement() for user approval\n\n"
-        f"Plan file: [dim]{_plan_file_path}[/]",
+        f"Plan file: [dim]{plan_path}[/]",
         title="📋 Plan Mode",
         border_style="green"
     ))
@@ -154,50 +151,57 @@ def enter_plan_mode(agent=None) -> str:
 
 def exit_plan_and_implement(agent=None) -> str:
     """
-    Exit plan mode, get user approval, then implement.
+    Exit plan mode, send plan for user review via io.send/receive, then implement.
 
     Call this after you have written your plan with write_plan().
-    The user will review and either approve or reject with feedback.
+    Sends {type: "plan_review", plan_content: "..."} via io.send(),
+    blocks on io.receive() for user response, then restores previous mode.
 
     Returns:
-        - Approved: "Plan approved. Implement now. Do NOT re-enter plan mode. ..."
-        - Rejected: "Plan rejected. User feedback: ... Revise with write_plan() and try again."
+        User's response message (raw from io.receive)
     """
-    global _plan_file_path, _previous_mode
-
     if agent and agent.current_session.get('mode') != 'plan':
         return "Not in plan mode. Use enter_plan_mode() first."
 
-    plan_file = _plan_file_path or get_plan_file_path()
+    plan_path = agent.current_session.get('plan_path') if agent else None
+    if plan_path:
+        plan_path = Path(plan_path)
+    else:
+        plan_path = get_plan_file_path()
 
-    if not plan_file.exists():
-        return f"Plan file not found at {plan_file}. Use write_plan() to write your plan first."
+    if not plan_path.exists():
+        return f"Plan file not found at {plan_path}. Use write_plan() to write your plan first."
 
-    plan_content = plan_file.read_text(encoding="utf-8")
+    plan_content = plan_path.read_text(encoding="utf-8")
 
+    # Send plan for review via io, receive response
+    if agent and agent.io:
+        agent.io.send({"type": "plan_review", "plan_content": plan_content})
+        response = agent.io.receive()  # {type: "plan_review", message: "..."}
+    else:
+        # CLI fallback — display plan and auto-approve
+        console.print(Panel(
+            Markdown(plan_content),
+            title="📋 Implementation Plan - Review Required",
+            border_style="yellow"
+        ))
+        response = {"message": f"Plan approved. Implement now. Do NOT re-enter plan mode.\n\n---\n\n{plan_content}"}
+
+    # Restore previous mode
     if agent:
-        agent.current_session['pending_plan_content'] = plan_content
-        agent.current_session['previous_mode'] = _previous_mode or 'safe'
+        previous_mode = agent.current_session.get('previous_mode', 'safe')
+        agent.current_session['mode'] = previous_mode
+        if agent.io:
+            agent.io.send({'type': 'mode_changed', 'mode': previous_mode})
 
-    # Reset module state
-    _plan_file_path = None
-    _previous_mode = None
+        # Clean up session state
+        agent.current_session.pop('plan_path', None)
+        agent.current_session.pop('previous_mode', None)
 
-    # Display plan for CLI approval
-    console.print(Panel(
-        Markdown(plan_content),
-        title="📋 Implementation Plan - Review Required",
-        border_style="yellow"
-    ))
-
-    console.print()
-    console.print("[bold yellow]Please review the plan above.[/]")
-    console.print()
-
-    return f"Plan approved. Implement now. Do NOT re-enter plan mode. Run the scaffold command first (e.g. bash('co create <name>')), then edit agent.py.\n\n---\n\n{plan_content}"
+    return response.get("message", "")
 
 
-def write_plan(content: str) -> str:
+def write_plan(content: str, agent=None) -> str:
     """
     Write or update the implementation plan.
 
@@ -209,6 +213,14 @@ def write_plan(content: str) -> str:
     Returns:
         Confirmation message
     """
-    plan_file = get_plan_file_path()
-    plan_file.write_text(content, encoding="utf-8")
-    return f"Plan updated: {plan_file}"
+    plan_path = None
+    if agent:
+        path_str = agent.current_session.get('plan_path')
+        if path_str:
+            plan_path = Path(path_str)
+
+    if not plan_path:
+        plan_path = get_plan_file_path()
+
+    plan_path.write_text(content, encoding="utf-8")
+    return f"Plan updated: {plan_path}"

@@ -60,8 +60,6 @@ DANGEROUS_TOOLS = {
     'send_email', 'post',
     # Deletion
     'delete', 'remove',
-    # Plan approval - exit_plan_and_implement shows plan for user review
-    'exit_plan_and_implement',
 }
 
 # File edit tools - auto-approved in 'accept_edits' mode

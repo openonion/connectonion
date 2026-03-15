@@ -61,25 +61,33 @@ def test_load_guide_existing_and_missing():
 def test_plan_mode_flow(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
-    # Create fake agent with session
+    # Create fake agent with io that returns plan_review response
+    io = FakeIO([{"type": "plan_review", "approved": True, "message": "Looks good, implement it."}])
     agent = SimpleNamespace(
         current_session={'mode': 'safe'},
-        io=None,
+        io=io,
     )
 
     msg = enter_plan_mode(agent)
     assert "Entered plan mode" in msg
     assert is_plan_mode_active(agent) is True
+    assert 'plan_path' in agent.current_session
 
     plan_text = "# Plan\n\nDo things."
-    write_msg = write_plan(plan_text)
+    write_msg = write_plan(plan_text, agent=agent)
     assert "Plan updated" in write_msg
 
     exit_msg = exit_plan_and_implement(agent)
-    assert "Plan approved" in exit_msg
-    assert "Do things" in exit_msg
-    # After exit, mode is still 'plan' until approval sets it back
-    # The actual mode change happens in tool_approval plugin after user approves
+    assert "Looks good" in exit_msg
+    # After exit, mode is restored to previous mode
+    assert agent.current_session['mode'] == 'safe'
+    # Session state cleaned up
+    assert 'plan_path' not in agent.current_session
+    assert 'previous_mode' not in agent.current_session
+    # Verify plan_review was sent via io
+    plan_review_sent = [m for m in io.sent if m.get('type') == 'plan_review']
+    assert len(plan_review_sent) == 1
+    assert "Do things" in plan_review_sent[0]['plan_content']
 
 
 def test_task_delegation(monkeypatch):

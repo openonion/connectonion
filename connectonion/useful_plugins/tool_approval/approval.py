@@ -34,8 +34,8 @@ Mode System (session['mode']):
 
     plan:
         - Read-only tools: auto-approved
-        - Dangerous tools: BLOCKED (except exit_plan_and_implement)
-        - exit_plan_and_implement: needs approval (shows plan to user)
+        - Dangerous tools: BLOCKED
+        - exit_plan_and_implement: handles its own io.send/receive (not in DANGEROUS_TOOLS)
         - Used for: planning phase before execution
 
     accept_edits:
@@ -506,11 +506,8 @@ def check_approval(agent: 'Agent') -> None:
     # MODE: plan - Read-only tools only, exit_plan_and_implement needs approval
     # =================================================================
     if mode == 'plan':
-        # exit_plan_and_implement is the only dangerous tool allowed - needs approval to show plan
-        if tool_name == 'exit_plan_and_implement':
-            pass  # Fall through to approval logic below
-        # Block other dangerous tools in plan mode
-        elif tool_name in DANGEROUS_TOOLS:
+        # Block dangerous tools in plan mode (exit_plan_and_implement handles its own io.send/receive)
+        if tool_name in DANGEROUS_TOOLS:
             raise ValueError(
                 f"Tool '{tool_name}' is blocked in Plan Mode. "
                 "Use read-only tools to explore, write your plan with write_plan(), "
@@ -545,10 +542,6 @@ def check_approval(agent: 'Agent') -> None:
     if batch_remaining:
         approval_msg['batch_remaining'] = batch_remaining
 
-    # For exit_plan_and_implement, include plan content for display
-    if tool_name == 'exit_plan_and_implement':
-        approval_msg['plan_content'] = agent.current_session.get('pending_plan_content', '')
-
     # Checkpoint before blocking (enables reconnection recovery)
     if agent.storage:
         agent.storage.checkpoint(agent.current_session)
@@ -567,16 +560,6 @@ def check_approval(agent: 'Agent') -> None:
     approved = response.get('approved', False)
 
     if approved:
-        # For exit_plan_and_implement, restore previous mode
-        if tool_name == 'exit_plan_and_implement':
-            previous_mode = agent.current_session.get('previous_mode', 'safe')
-            _set_mode(agent, previous_mode)
-            _log(agent, f"[green]✓ Plan approved, returning to {previous_mode} mode[/green]")
-            # Clean up
-            agent.current_session.pop('pending_plan_content', None)
-            agent.current_session.pop('previous_mode', None)
-            return
-
         # Save to session if scope is "session"
         scope = response.get('scope', 'once')
         if scope == 'session':
