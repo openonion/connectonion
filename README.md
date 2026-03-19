@@ -70,48 +70,113 @@ host(agent)  # HTTP server + P2P relay - other agents can now discover and call 
 
 ## ✨ Why ConnectOnion?
 
-<table>
-<tr>
-<td width="33%">
+Most frameworks give you a way to call LLMs. ConnectOnion gives you everything around it — so you only write prompt and tools.
 
-### 🎯 **Simple API**
-Just one `Agent` class. Your functions become tools automatically. Start in 2 lines, not 200.
+### Built-in AI Programmer
 
-</td>
-<td width="33%">
+```bash
+co ai   # Opens a chat interface with an AI that deeply understands ConnectOnion
+```
 
-### 🚀 **Production Ready**
-Battle-tested with GPT-5, Gemini 2.5, Claude Opus 4.1. Logging, debugging, trust system built-in.
+`co ai` is an AI coding assistant built *with* ConnectOnion. It writes working agent code because it knows the framework inside out. Fully open-source — inspect it, modify it, build your own.
 
-</td>
-<td width="33%">
+### Built-in Frontend & Backend — Just Write Prompt and Tools
 
-### 🌍 **Open Source**
-MIT licensed. Community-driven. Join 1000+ developers building the future of AI agents.
+Traditional path: write agent logic → build FastAPI backend → build React frontend → wire APIs → deploy.
 
-</td>
-</tr>
-<tr>
-<td width="33%">
+ConnectOnion path: **write prompt and tools → deploy.**
 
-### 🔌 **Plugin System**
-Add reflection & reasoning to any agent in one line. Extensible and composable.
+- Backend: framework handles the API layer
+- Frontend: [chat.openonion.ai](https://chat.openonion.ai) — ready-to-use chat interface
+- All open-source, customizable, but you don't start from zero
 
-</td>
-<td width="33%">
+### Ready-to-Use Tool Ecosystem
 
-### 🔍 **Interactive Debugging**
-Pause at breakpoints with `@xray`, inspect state, modify variables on-the-fly.
+Import and use — no schema writing, no interface wiring:
 
-</td>
-<td width="33%">
+```python
+from connectonion import bash, Shell                                    # Command execution
+from connectonion.useful_tools import FileTools                         # File system (with safety tracking)
+from connectonion.useful_tools.browser_tools import BrowserAutomation   # Natural language browser automation
 
-### ⚡ **No Boilerplate**
-Scale from prototypes to production systems without rewriting code.
+from connectonion import Gmail, Outlook              # Email
+from connectonion import GoogleCalendar              # Calendar
+from connectonion import Memory                      # Persistent memory
+from connectonion import TodoList                    # Task tracking
+```
 
-</td>
-</tr>
-</table>
+Need to customize? Copy the source into your project:
+
+```bash
+co copy Gmail     # Copies Gmail tool source code to your project for modification
+```
+
+### Built-in Approval System
+
+Dangerous operations (bash commands, file deletion) automatically trigger approval — no permission logic needed from you.
+
+```python
+from connectonion.useful_plugins import tool_approval, shell_approval
+
+agent = Agent("assistant", tools=[bash], plugins=[shell_approval])
+# Shell commands now require approval before execution
+```
+
+Plugin-based: turn it off, customize it, or replace it entirely.
+
+### Skills System — Auto-Discovery, Claude Code Compatible
+
+Reusable workflows with automatic permission scoping:
+
+```python
+from connectonion.useful_plugins import skills
+
+agent = Agent("assistant", tools=[file_tools], plugins=[skills])
+
+# User types /commit → skill loads → git commands auto-approved → permission cleared after execution
+```
+
+Three-level auto-discovery (project → user → built-in):
+```
+.co/skills/skill-name/SKILL.md      # Project-level (highest priority)
+~/.co/skills/skill-name/SKILL.md    # User-level
+builtin/skill-name/SKILL.md         # Built-in
+```
+
+Automatically loads Claude Code skills from `.claude/skills/` — no conversion needed.
+
+### 12 Lifecycle Hooks + Plugin System
+
+Inject logic at any point in the agent execution cycle:
+
+```python
+from connectonion import Agent, after_tools, llm_do
+from connectonion.useful_plugins import re_act, eval, auto_compact, subagents
+
+# Built-in plugins — same capabilities as Claude Code, open to any agent
+agent = Agent("researcher", tools=[search], plugins=[
+    re_act,         # Reflect + plan after each tool call
+    auto_compact,   # Auto-compress context at 90% capacity
+    subagents,      # Spawn sub-agents with independent tools and prompts
+])
+```
+
+Hooks: `after_user_input`, `before_iteration`, `before_llm`, `after_llm`, `before_tools`, `before_each_tool`, `after_each_tool`, `after_tools`, `on_error`, `after_iteration`, `on_stop_signal`, `on_complete`
+
+Plugins are just lists of event handlers — visible, modifiable, `co copy`-able.
+
+### Multi-Agent Trust System (Fast Rules)
+
+When agents call each other, trust decisions happen **before LLM involvement** — zero token cost for 90% of cases:
+
+```python
+agent = Agent(
+    name="production",
+    trust="careful"    # whitelist → allow, unknown → ask LLM, blocked → deny
+)
+```
+
+Three presets: `open` (dev), `careful` (staging), `strict` (production).
 
 ---
 
