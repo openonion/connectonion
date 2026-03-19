@@ -151,15 +151,18 @@ Inject logic at any point in the agent execution cycle:
 
 ```python
 from connectonion import Agent, after_tools, llm_do
-from connectonion.useful_plugins import re_act, eval, auto_compact, subagents
+from connectonion.useful_plugins import re_act, eval, auto_compact, subagents, ulw
 
 # Built-in plugins — same capabilities as Claude Code, open to any agent
 agent = Agent("researcher", tools=[search], plugins=[
     re_act,         # Reflect + plan after each tool call
     auto_compact,   # Auto-compress context at 90% capacity
     subagents,      # Spawn sub-agents with independent tools and prompts
+    ulw,            # Ultra Light Work — fully autonomous mode
 ])
 ```
+
+These plugins mirror Claude Code's internal capabilities — `auto_compact`, `subagents`, `ulw` directly correspond to Claude Code's context compression, sub-agent spawning, and autonomous work mode. ConnectOnion makes these capabilities available to any agent you build.
 
 Hooks: `after_user_input`, `before_iteration`, `before_llm`, `after_llm`, `before_tools`, `before_each_tool`, `after_each_tool`, `after_tools`, `on_error`, `after_iteration`, `on_stop_signal`, `on_complete`
 
