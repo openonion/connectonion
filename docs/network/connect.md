@@ -11,7 +11,7 @@
 │                            YOUR APPLICATION                                 │
 │  ┌──────────────┐        ┌──────────────┐        ┌──────────────────────┐  │
 │  │ React/Vue    │        │  Python      │        │  Swift/Kotlin        │  │
-│  │ useAgent()   │        │  connect()   │        │  connect()           │  │
+│  │ useAgentForHumanForHuman()   │        │  connect()   │        │  connect()           │  │
 │  └──────┬───────┘        └──────┬───────┘        └──────────┬───────────┘  │
 │         │                       │                           │              │
 └─────────┼───────────────────────┼───────────────────────────┼──────────────┘
@@ -373,7 +373,7 @@ Note: Relay /ws/input does not forward streaming events. Use direct host /ws for
 | `connectonion/network/connect.py` | Python client - RemoteAgent class |
 | `connectonion/network/relay.py` | Agent-side relay connection |
 | `connectonion-ts/src/connect.ts` | TypeScript client - same API |
-| `connectonion-ts/src/react/index.ts` | useAgent React hook |
+| `connectonion-ts/src/react/index.ts` | useAgentForHuman React hook |
 | `oo-api/relay/routes.py` | Relay server endpoints |
 
 ---
@@ -509,14 +509,14 @@ println(agent.ui)        // All events for rendering
 
 ---
 
-## React: useAgent() Hook
+## React: useAgentForHumanForHuman() Hook
 
 The `connectonion/react` subpath exports a React hook with state management and localStorage persistence.
 
 ### Basic Usage
 
 ```tsx
-import { useAgent } from 'connectonion/react'
+import { useAgentForHuman } from 'connectonion/react'
 
 function ChatPage() {
   const {
@@ -530,7 +530,7 @@ function ChatPage() {
     respondToPlanReview,
     setMode,
     reset,
-  } = useAgent("0x3d4017c3e843...", {
+  } = useAgentForHuman("0x3d4017c3e843...", {
     sessionId: "my-session-123"  // required — auto-persisted to localStorage
   })
 
@@ -568,7 +568,7 @@ function ChatPage() {
 ### Hook Return Interface
 
 ```ts
-const agent = useAgent(address, { sessionId })
+const agent = useAgentForHuman(address, { sessionId })
 
 // State (reactive)
 agent.ui: ChatItem[]           // All events for rendering
@@ -632,8 +632,8 @@ respondToPlanReview("Skip step 2")
 │  oo-chat (Next.js)                               │
 │                                                   │
 │  app/[address]/[sessionId]/page.tsx               │
-│    └─ useAgentSDK()     ← elapsed time, pending   │
-│         └─ useAgent()   ← connectonion/react      │
+│    └─ useAgentForHumanSDK()     ← elapsed time, pending   │
+│         └─ useAgentForHumanForHuman()   ← connectonion/react      │
 │              └─ connect()  ← WebSocket to agent   │
 │                                                   │
 │  <Chat />                                         │
@@ -654,12 +654,12 @@ respondToPlanReview("Skip step 2")
 
 ```
 oo-chat/
-├── app/[address]/[sessionId]/page.tsx   ← session page (uses useAgentSDK)
+├── app/[address]/[sessionId]/page.tsx   ← session page (uses useAgentForHumanSDK)
 ├── components/chat/
 │   ├── chat.tsx                         ← main Chat component
 │   ├── chat-input.tsx                   ← message input
 │   ├── chat-messages.tsx                ← message list (renders ChatItem[])
-│   ├── use-agent-sdk.ts                 ← wrapper hook around useAgent()
+│   ├── use-agent-sdk.ts                 ← wrapper hook around useAgentForHumanForHuman()
 │   └── messages/
 │       ├── tool-call.tsx                ← tool call card
 │       └── tools/plan-card.tsx          ← plan review UI
@@ -670,7 +670,7 @@ oo-chat/
 
 ```tsx
 // app/[address]/[sessionId]/page.tsx
-import { useAgentSDK } from '@/components/chat/use-agent-sdk'
+import { useAgentForHumanSDK } from '@/components/chat/use-agent-sdk'
 
 export default function ChatSession({ params }) {
   const { address, sessionId } = params
@@ -689,7 +689,7 @@ export default function ChatSession({ params }) {
     respondToPlanReview,
     setMode,
     clear,
-  } = useAgentSDK({ agentAddress: address, sessionId })
+  } = useAgentForHumanSDK({ agentAddress: address, sessionId })
 
   return (
     <Chat
@@ -710,7 +710,7 @@ export default function ChatSession({ params }) {
 }
 ```
 
-`useAgentSDK` is a thin wrapper around `useAgent()` that adds elapsed time tracking and extracts pending states (ask_user, approval, plan_review) from the `ui` array for easy conditional rendering.
+`useAgentForHumanSDK` is a thin wrapper around `useAgentForHumanForHuman()` that adds elapsed time tracking and extracts pending states (ask_user, approval, plan_review) from the `ui` array for easy conditional rendering.
 
 ---
 
@@ -741,10 +741,10 @@ class RemoteAgent:
     status: str              # 'idle' | 'working' | 'waiting'
 ```
 
-### useAgent() (React)
+### useAgentForHumanForHuman() (React)
 
 ```ts
-const agent = useAgent(address, { sessionId })
+const agent = useAgentForHuman(address, { sessionId })
 
 // State (reactive)
 agent.ui: ChatItem[]           // All events for rendering
@@ -893,7 +893,7 @@ agent.ui      // ChatItem[] for rendering
 
 ```tsx
 // React
-const { ui, input, respond, respondToApproval } = useAgent("0x...", { sessionId })
+const { ui, input, respond, respondToApproval } = useAgentForHuman("0x...", { sessionId })
 ```
 
 **Event types:** `user`, `agent`, `thinking`, `tool_call`, `ask_user`, `approval_needed`, `plan_review`, `tool_blocked`

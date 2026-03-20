@@ -307,7 +307,7 @@ ws.send(JSON.stringify({ type: "INPUT", prompt: "Search for Python docs" }));
 ```typescript
 import { useState, useEffect, useCallback } from 'react';
 
-function useAgent(wsUrl: string) {
+function useAgentForHuman(wsUrl: string) {
     const [events, setEvents] = useState([]);
     const [pendingApproval, setPendingApproval] = useState(null);
     const [ws, setWs] = useState(null);
@@ -347,7 +347,7 @@ function useAgent(wsUrl: string) {
 
 ```tsx
 function AgentChat() {
-    const { events, pendingApproval, send, approve } = useAgent("ws://localhost:8000/ws");
+    const { events, pendingApproval, send, approve } = useAgentForHuman("ws://localhost:8000/ws");
 
     return (
         <div>
