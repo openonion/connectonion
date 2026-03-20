@@ -1,29 +1,39 @@
 # WebSocket Session Lifecycle
 
+> See [WebSocket Protocol](websocket-protocol.md) for the full CONNECT/INPUT protocol specification.
+
 ## Complete Message Flow (Client → Server → Client)
+
+### Phase 0: Client Sends CONNECT
+
+**Client (TypeScript SDK):**
+```typescript
+// 1. Open WebSocket
+const ws = new WebSocket("wss://agent-server/ws");
+
+// 2. Authenticate and get session
+ws.send(JSON.stringify({
+  type: "CONNECT",
+  to: "0xAgentAddress",
+  session_id: "session-456",     // Optional: resume existing session
+  payload: { to: "0xAgent...", timestamp: 1702234567 },
+  from: "0xClientPublicKey",
+  signature: "0x..."
+}));
+
+// 3. Server responds with CONNECTED
+// { type: "CONNECTED", session_id: "session-456", status: "new" }
+```
 
 ### Phase 1: Client Sends INPUT
 
 **Client (TypeScript SDK):**
 ```typescript
-// User calls: agent.input("What is Python?")
-
-1. Client creates INPUT message:
-{
+// After CONNECTED, send prompt (no signature needed)
+ws.send(JSON.stringify({
   type: "INPUT",
-  input_id: "uuid-123",
-  prompt: "What is Python?",
-  session: {                    // ← Sent from client
-    session_id: "session-456",
-    messages: [...],
-    turn: 2
-  },
-  payload: {...},
-  signature: "..."
-}
-
-2. Send via WebSocket
-ws.send(JSON.stringify(message))
+  prompt: "What is Python?"
+}));
 ```
 
 **Server (Python SDK):**

@@ -53,13 +53,15 @@ register()
 
 ## Reconnection Flow
 
-The key insight: the **IO queues survive the WebSocket**. When a client reconnects, the server reattaches the same queues to the new connection. The agent thread never knows the difference.
+The key insight: the **IO queues survive the WebSocket**. When a client reconnects with `CONNECT { session_id }`, the server reattaches the same queues to the new connection. The agent thread never knows the difference.
+
+See [WebSocket Protocol](websocket-protocol.md) for the full CONNECT/INPUT protocol specification.
 
 ```
 Time   Client              WebSocket Handler    Agent Thread
 ────   ──────              ─────────────────    ────────────
-T+0    INPUT ─────────────► accept
-                            register()
+T+0    CONNECT ───────────► accept, auth
+       INPUT ─────────────► register()
                             spawn thread ───────► agent.input() starts
 T+5                        ◄─────────────────── io.send(thinking)
        ◄── thinking ────────
@@ -71,11 +73,13 @@ T+15                       ◄────────────────�
 T+20   ✕ DISCONNECT         mark_suspended()
                             (queues stay alive)   (still blocked)
 
-T+25   RECONNECT ──────────► registry.get() → FOUND
-                             drain queued events
-       ◄── queued events ───
+T+25   WS open
+       CONNECT ───────────► registry.get() → FOUND
+       { session_id }       reattach IO queues
+       ◄── CONNECTED ──────  { status: "running" }
+       ◄── queued events ── drain buffer
                              update_ping()
-                             pump same IO queues
+                             start PING/PONG
        approve ────────────► io._incoming.put() ► io.receive() unblocks
                                                    agent continues...
 
@@ -88,8 +92,25 @@ T+35                        ◄────────────────�
 **What happened:**
 1. Agent asked for approval at T+15, blocked waiting
 2. Client disconnected at T+20 — agent stayed blocked, events buffered
-3. Client reconnected at T+25 — got buffered events, sent approval
+3. Client reconnected at T+25 with `CONNECT { session_id }` — got buffered events, sent approval
 4. Agent unblocked and finished normally
+
+### Auto-Reconnect (Browser)
+
+After a page refresh, the client automatically reconnects:
+
+```
+Page loads → Zustand hydrates → session_id exists
+    │
+    ▼
+Open WebSocket → CONNECT { session_id }
+    │
+    ├─ CONNECTED { status: "running" }  → receive buffered events, resume
+    ├─ CONNECTED { status: "completed" } → show result
+    └─ CONNECTED { status: "expired" }   → show cached UI as history
+```
+
+No manual "Retry" button needed.
 
 ---
 

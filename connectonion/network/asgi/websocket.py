@@ -18,7 +18,9 @@ ASGI Protocol Types (not our custom types - this is the ASGI spec):
 - websocket.close      : We send to close the connection
 
 Our Application Types (sent inside websocket.send text payload):
-- INPUT              : Client sends prompt with session_id
+- CONNECT            : Client authenticates + links to agent + allocates/resumes session
+- CONNECTED          : Server responds with session_id and status
+- INPUT              : Client sends prompt (after CONNECT, no auth needed)
 - OUTPUT             : Server sends final result with session_id
 - ERROR              : Server sends error message
 - PING               : Server keep-alive (every 30s)
@@ -33,6 +35,7 @@ Our Application Types (sent inside websocket.send text payload):
 - ADMIN_UNBLOCK      : Client (admin) requests unblock
 - ADMIN_GET_LEVEL    : Client (admin) requests client level
 - ADMIN_RESULT       : Server sends admin action result
+- SESSION_STATUS     : Client requests session status, server responds with status
 - (trace events)     : thinking, tool_result, approval_needed, etc.
 """
 
@@ -80,6 +83,12 @@ async def handle_websocket(
     # ASGI: accept the WebSocket connection
     await send({"type": "websocket.accept"})
 
+    # Connection-level state (set by CONNECT, used by subsequent INPUTs)
+    conn_authenticated = False
+    conn_identity = None
+    conn_session_id = None
+    conn_session = None
+
     # ASGI message loop
     while True:
         msg = await receive()  # ASGI: wait for next message
@@ -95,6 +104,23 @@ async def handle_websocket(
 
             msg_type = data.get("type")
 
+            # Handle SESSION_STATUS (client checking if session is alive)
+            if msg_type == "SESSION_STATUS":
+                sid = (data.get("session") or {}).get("session_id")
+                if not sid:
+                    await send({"type": "websocket.send",
+                               "text": json.dumps({"type": "SESSION_STATUS", "session_id": None, "status": "not_found"})})
+                    continue
+                active = registry.get(sid)
+                if active:
+                    status = active.status
+                else:
+                    stored = storage.get(sid)
+                    status = "completed" if stored else "not_found"
+                await send({"type": "websocket.send",
+                           "text": json.dumps({"type": "SESSION_STATUS", "session_id": sid, "status": status})})
+                continue
+
             # Handle ONBOARD_SUBMIT (stranger submitting invite code or payment)
             if msg_type == "ONBOARD_SUBMIT":
                 await _handle_onboard_submit(data, send, route_handlers)
@@ -105,10 +131,113 @@ async def handle_websocket(
                 await _handle_admin_message(data, send, route_handlers)
                 continue
 
-            if msg_type == "INPUT":  # Our app type: client wants to run agent
-                prompt, identity, sig_valid, err = route_handlers["auth"](
+            # Handle CONNECT (authenticate + link to agent + allocate/resume session)
+            if msg_type == "CONNECT":
+                _, identity, sig_valid, err = route_handlers["auth"](
                     data, trust, blacklist=blacklist, whitelist=whitelist
                 )
+
+                # Onboarding check
+                if err and "forbidden" in err.lower():
+                    trust_agent = route_handlers["trust_agent"]
+                    onboard_info = _get_onboard_requirements(trust_agent)
+                    if onboard_info:
+                        await send({"type": "websocket.send",
+                                   "text": json.dumps({"type": "ONBOARD_REQUIRED", "identity": identity, **onboard_info})})
+                        continue
+
+                if err:
+                    await send({"type": "websocket.send",
+                               "text": json.dumps({"type": "ERROR", "message": err})})
+                    continue
+
+                # Store authenticated identity on connection
+                conn_authenticated = True
+                conn_identity = identity
+
+                # Session allocation/resume
+                session = data.get("session")
+                session_id = data.get("session_id") or ((session or {}).get("session_id"))
+                conn_session = session
+                conn_session_id = session_id
+
+                # Determine session status
+                status = "new"
+                if session_id:
+                    active = registry.get(session_id)
+                    if active and active.status in ('running', 'suspended'):
+                        status = "running"
+                    elif active and active.status == 'completed':
+                        status = "completed"
+                    else:
+                        stored = storage.get(session_id)
+                        if stored:
+                            status = "completed" if stored.status == "done" else "expired"
+                        else:
+                            status = "expired"
+
+                # Send CONNECTED response
+                await send({"type": "websocket.send",
+                           "text": json.dumps({"type": "CONNECTED", "session_id": session_id, "status": status})})
+
+                # If reconnecting to running session, reattach IO and start piping
+                if status == "running":
+                    io = active.io
+                    agent_finished = active.agent_finished
+
+                    # Drain queued events from IO
+                    while not io._outgoing.empty():
+                        try:
+                            event = io._outgoing.get_nowait()
+                            await send({"type": "websocket.send",
+                                       "text": json.dumps(event, default=pydantic_json_encoder)})
+                        except queue.Empty:
+                            break
+
+                    registry.update_ping(session_id)
+
+                    # Pipe messages until agent finishes or client disconnects
+                    client_disconnected = await _pipe_ws_io(receive, send, io, agent_finished, registry, session_id)
+
+                    if client_disconnected:
+                        registry.mark_suspended(session_id)
+                    else:
+                        # Agent completed - send OUTPUT
+                        from ..host.session import session_to_chat_items
+                        stored = storage.get(session_id)
+                        if stored and stored.status == "done":
+                            chat_items = session_to_chat_items(stored.session or {})
+                            await send({"type": "websocket.send",
+                                       "text": json.dumps({
+                                           "type": "OUTPUT",
+                                           "result": stored.result,
+                                           "session_id": session_id,
+                                           "duration_ms": stored.duration_ms,
+                                           "session": stored.session,
+                                           "chat_items": chat_items,
+                                       }, default=pydantic_json_encoder)})
+                continue
+
+            if msg_type == "INPUT":  # Our app type: client wants to run agent
+                # Two-step flow: if CONNECT was sent, skip auth
+                if conn_authenticated:
+                    prompt = data.get("prompt")
+                    if not prompt:
+                        await send({"type": "websocket.send",
+                                   "text": json.dumps({"type": "ERROR", "message": "prompt required"})})
+                        continue
+
+                    identity = conn_identity
+                    session = data.get("session") or conn_session or {}
+                    images = data.get("images")
+                    files = data.get("files")
+                    session_id = conn_session_id or (session.get('session_id') if session else None)
+                    err = None
+                else:
+                    # Legacy single-step flow: backward compat for old clients
+                    prompt, identity, sig_valid, err = route_handlers["auth"](
+                        data, trust, blacklist=blacklist, whitelist=whitelist
+                    )
 
                 # Check if stranger needs onboarding
                 if err and "forbidden" in err.lower():
@@ -145,11 +274,7 @@ async def handle_websocket(
                 if active and active.status == 'running':
                     # RECONNECTION: Client reconnecting to running agent
                     io = active.io
-                    agent_done = threading.Event()
-
-                    # Check if agent thread is still alive
-                    if not active.thread.is_alive():
-                        agent_done.set()
+                    agent_finished = active.agent_finished  # same event agent thread will signal
 
                     # Send reconnected event
                     await send({"type": "websocket.send",
@@ -167,8 +292,8 @@ async def handle_websocket(
                     # Update ping timestamp
                     registry.update_ping(session_id)
 
-                    # Continue pumping messages
-                    client_disconnected = await _pump_messages(receive, send, io, agent_done, registry, session_id)
+                    # Continue piping messages
+                    client_disconnected = await _pipe_ws_io(receive, send, io, agent_finished, registry, session_id)
 
                     if client_disconnected:
                         registry.mark_suspended(session_id)
@@ -208,38 +333,25 @@ async def handle_websocket(
 
                     # Create IO for bidirectional communication
                     io = WebSocketIO()
-                    agent_done = threading.Event()
+                    agent_finished = threading.Event()
                     result_holder = [None]
                     error_holder = [None]
-
-                    # Holder for the actual session_id (may be new or existing)
-                    session_id_holder = [session_id]
 
                     def run_agent():
                         try:
                             result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files)
-                            actual_session_id = result_holder[0].get('session_id')
-                            session_id_holder[0] = actual_session_id
-
-                            # Register new sessions (those without initial session_id)
-                            if not session_id and actual_session_id:
-                                registry.register(actual_session_id, io, threading.current_thread())
-
-                            registry.mark_completed(actual_session_id)
+                            registry.mark_completed(session_id)
                         except Exception as e:
                             error_holder[0] = str(e)
-                        agent_done.set()
+                        agent_finished.set()
 
-                    # Start agent in thread
+                    # Start agent in thread and register immediately for reconnection
                     agent_thread = threading.Thread(target=run_agent, daemon=True)
                     agent_thread.start()
+                    registry.register(session_id, io, agent_thread, agent_finished)
 
-                    # Register existing session for reconnection
-                    if session_id:
-                        registry.register(session_id, io, agent_thread)
-
-                    # Pump messages between WebSocket and IO
-                    client_disconnected = await _pump_messages(receive, send, io, agent_done, registry, session_id)
+                    # Pipe messages between WebSocket and IO
+                    client_disconnected = await _pipe_ws_io(receive, send, io, agent_finished, registry, session_id)
 
                     # Send error or final result (skip if client disconnected)
                     if client_disconnected:
@@ -269,9 +381,9 @@ async def handle_websocket(
                                    "text": json.dumps({"type": "ERROR", "message": "Agent completed without result"})})
 
 
-async def _pump_messages(ws_receive, ws_send, io: WebSocketIO, agent_done: threading.Event,
-                         registry=None, session_id=None) -> bool:
-    """Pump messages between WebSocket and IO queues with keep-alive.
+async def _pipe_ws_io(ws_receive, ws_send, io: WebSocketIO, agent_finished: threading.Event,
+                      registry=None, session_id=None) -> bool:
+    """Pipe messages between WebSocket and IO queues with keep-alive.
 
     Runs until agent completes. Handles:
     - Outgoing: io._outgoing queue -> WebSocket (agent events)
@@ -282,29 +394,14 @@ async def _pump_messages(ws_receive, ws_send, io: WebSocketIO, agent_done: threa
         True if client disconnected before agent completed, False otherwise.
         When True, caller should skip sending final OUTPUT (client is gone,
         but result is already saved to SessionStorage for polling recovery).
-
-    Keep-alive mechanism:
-        - send_ping() task sends PING every 30s
-        - Client responds with PONG (handled in receive_incoming)
-        - Keeps connection alive through proxies/firewalls
-        - Client can detect dead connection if no PING for 60s
-
-    Implementation note:
-        Uses asyncio.Event for signaling disconnect between nested async functions.
-        This is preferred over `nonlocal` boolean because:
-        - No risk of forgetting `nonlocal` keyword (which would create local var)
-        - Clearer intent: Event.set()/is_set() vs boolean reassignment
-        - Thread-safe if needed in future
     """
     loop = asyncio.get_event_loop()
 
-    # Signal for client disconnect - shared between send/receive tasks
-    # Using Event instead of boolean avoids `nonlocal` complexity
     disconnected = asyncio.Event()
 
     async def send_outgoing():
         """Send outgoing messages from IO to WebSocket."""
-        while not agent_done.is_set() and not disconnected.is_set():
+        while not agent_finished.is_set() and not disconnected.is_set():
             try:
                 event = await loop.run_in_executor(
                     None, lambda: io._outgoing.get(timeout=0.05)
@@ -324,7 +421,7 @@ async def _pump_messages(ws_receive, ws_send, io: WebSocketIO, agent_done: threa
 
     async def receive_incoming():
         """Receive incoming messages from WebSocket to IO."""
-        while not agent_done.is_set():
+        while not agent_finished.is_set():
             try:
                 msg = await asyncio.wait_for(ws_receive(), timeout=0.1)
                 if msg["type"] == "websocket.receive":
@@ -349,9 +446,9 @@ async def _pump_messages(ws_receive, ws_send, io: WebSocketIO, agent_done: threa
 
     async def send_ping():
         """Send PING messages every 30 seconds to keep connection alive."""
-        while not agent_done.is_set() and not disconnected.is_set():
+        while not agent_finished.is_set() and not disconnected.is_set():
             await asyncio.sleep(30)  # Send ping every 30 seconds
-            if not agent_done.is_set() and not disconnected.is_set():
+            if not agent_finished.is_set() and not disconnected.is_set():
                 try:
                     await ws_send({"type": "websocket.send", "text": json.dumps({"type": "PING"})})
                 except Exception:
@@ -362,7 +459,7 @@ async def _pump_messages(ws_receive, ws_send, io: WebSocketIO, agent_done: threa
     recv_task = asyncio.create_task(receive_incoming())
     ping_task = asyncio.create_task(send_ping())
 
-    while not agent_done.is_set():
+    while not agent_finished.is_set():
         await asyncio.sleep(0.05)
 
     # Cancel all tasks

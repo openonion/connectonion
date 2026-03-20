@@ -481,27 +481,48 @@ curl http://localhost:8000/admin/sessions \
 
 ## WebSocket API
 
-WebSocket provides real-time communication with automatic keep-alive and session recovery.
+WebSocket provides real-time communication with automatic keep-alive and session recovery. The protocol separates **connection** from **messaging** — connect first, then send messages.
 
-### Connect
+See [WebSocket Protocol](websocket-protocol.md) for the full specification.
+
+### Step 1: Open WebSocket
 
 ```javascript
 const ws = new WebSocket("ws://localhost:8000/ws");
 ```
 
-### Send INPUT
+### Step 2: CONNECT (authenticate + get session)
+
+```javascript
+ws.onopen = () => {
+  ws.send(JSON.stringify({
+    type: "CONNECT",
+    to: "0x3d4017c3e843...",           // Agent address
+    // session_id: "550e8400-...",      // Optional: resume existing session
+    payload: { to: "0x3d4017c3e843...", timestamp: Date.now() / 1000 },
+    from: "0xYourPublicKey",
+    signature: "0x..."
+  }));
+};
+```
+
+Server responds with `CONNECTED`:
+```json
+{ "type": "CONNECTED", "session_id": "550e8400-...", "status": "new" }
+```
+
+### Step 3: INPUT (send prompts)
 
 ```javascript
 ws.send(JSON.stringify({
   type: "INPUT",
   prompt: "Translate hello to Spanish",
-  session: {
-    session_id: "550e8400-e29b-41d4-a716-446655440000"  // Optional: for session continuity
-  },
-  images: ["data:image/png;base64,..."],  // Optional: base64 data URLs
+  images: ["data:image/png;base64,..."],  // Optional
   files: [{ name: "doc.pdf", data: "data:application/pdf;base64,..." }]  // Optional
 }));
 ```
+
+No signature needed — the connection is already authenticated by CONNECT.
 
 ### Receive Messages
 
@@ -509,17 +530,22 @@ ws.send(JSON.stringify({
 ws.onmessage = (event) => {
   const msg = JSON.parse(event.data);
 
-  if (msg.type === "PING") {
-    // Server keep-alive check (every 30s)
-    ws.send(JSON.stringify({ type: "PONG" }));
-  } else if (msg.type === "OUTPUT") {
-    console.log("Result:", msg.result);
-    console.log("Session ID:", msg.session_id);
-  } else if (msg.type === "ERROR") {
-    console.error("Error:", msg.message);
-  } else {
-    // tool_call, tool_result, thinking, ask_user, approval_needed, etc.
-    console.log("Event:", msg);
+  switch (msg.type) {
+    case "CONNECTED":
+      console.log("Session:", msg.session_id, "Status:", msg.status);
+      break;
+    case "PING":
+      ws.send(JSON.stringify({ type: "PONG" }));
+      break;
+    case "OUTPUT":
+      console.log("Result:", msg.result);
+      break;
+    case "ERROR":
+      console.error("Error:", msg.message);
+      break;
+    default:
+      // tool_call, tool_result, thinking, ask_user, approval_needed, etc.
+      console.log("Event:", msg);
   }
 };
 ```
@@ -528,76 +554,61 @@ ws.onmessage = (event) => {
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
-| INPUT | Client → Agent | Send prompt with optional session |
-| OUTPUT | Agent → Client | Final result + session data |
-| PING | Agent → Client | Connection keep-alive (every 30s) |
-| PONG | Client → Agent | Acknowledge keep-alive |
-| tool_call | Agent → Client | Tool started |
-| tool_result | Agent → Client | Tool completed |
-| thinking | Agent → Client | Agent is processing |
-| ask_user | Agent → Client | Agent needs input |
-| approval_needed | Agent → Client | Tool approval required |
-| ERROR | Agent → Client | Error message |
+| CONNECT | Client → Server | Authenticate + link to agent + allocate/resume session |
+| CONNECTED | Server → Client | Session info (session_id, status) |
+| INPUT | Client → Server | Send prompt (no auth needed, connection is trusted) |
+| OUTPUT | Server → Client | Final result + session data |
+| PING | Server → Client | Connection keep-alive (every 30s) |
+| PONG | Client → Server | Acknowledge keep-alive |
+| tool_call | Server → Client | Tool started |
+| tool_result | Server → Client | Tool completed |
+| thinking | Server → Client | Agent is processing |
+| ask_user | Server → Client | Agent needs input |
+| approval_needed | Server → Client | Tool approval required |
+| ERROR | Server → Client | Error message |
 
 ### Connection Keep-Alive
 
-The server automatically sends **PING** messages every 30 seconds to keep the connection alive and detect dead connections:
+The server sends **PING** every 30 seconds after CONNECTED. Client must respond with PONG:
 
 ```javascript
-ws.onmessage = (event) => {
-  const msg = JSON.parse(event.data);
-
-  if (msg.type === "PING") {
-    // Respond immediately to keep connection alive
-    ws.send(JSON.stringify({ type: "PONG" }));
-  }
-};
+if (msg.type === "PING") {
+  ws.send(JSON.stringify({ type: "PONG" }));
+}
 ```
-
-**Why it matters:**
-- Keeps connection alive through proxies and firewalls
-- Detects dead connections within 60 seconds
-- Prevents silent connection failures
 
 ### Session Recovery
 
-If your WebSocket disconnects (network failure, timeout, page refresh), you can recover the result using the session_id:
+If your WebSocket disconnects (network failure, page refresh), reconnect with `CONNECT { session_id }`:
 
-**1. Generate and save session_id before connecting:**
 ```javascript
-const sessionId = crypto.randomUUID();
-localStorage.setItem('active_session', sessionId);
-```
-
-**2. Include session_id in INPUT:**
-```javascript
+// Reconnect to existing session
 ws.send(JSON.stringify({
-  type: "INPUT",
-  prompt: "Long running task...",
-  session: { session_id: sessionId }
+  type: "CONNECT",
+  to: "0x3d4017c3e843...",
+  session_id: savedSessionId,       // ← resume this session
+  payload: { ... },
+  from: "0x...",
+  signature: "0x..."
 }));
+
+// Server responds:
+// { type: "CONNECTED", session_id: "...", status: "running" }
+// → followed by buffered events the client missed
 ```
 
-**3. If connection drops, poll for result:**
-```javascript
-ws.onerror = async () => {
-  // Connection failed, try to recover result
-  const response = await fetch(`http://localhost:8000/sessions/${sessionId}`);
-  const data = await response.json();
+If the session expired from memory, poll the HTTP endpoint:
 
-  if (data.status === "done") {
-    console.log("Recovered result:", data.result);
-  } else if (data.status === "running") {
-    // Still processing, poll again after delay
-    setTimeout(() => pollForResult(sessionId), 10000);
-  }
-};
+```javascript
+const response = await fetch(`http://localhost:8000/sessions/${sessionId}`);
+const data = await response.json();
+// { status: "done", result: "..." }
 ```
 
 **Session lifecycle:**
 - Results stored for **24 hours** (configurable via `result_ttl`)
-- Status can be `"running"` or `"done"`
-- Supports recovery after network failures, timeouts, or page refreshes
+- Status: `"new"` | `"running"` | `"completed"` | `"expired"`
+- Auto-reconnection on page refresh (client sends CONNECT with session_id)
 
 ---
 
