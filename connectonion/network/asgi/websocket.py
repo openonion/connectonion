@@ -188,6 +188,7 @@ async def handle_websocket(
                            "text": json.dumps(connected_msg, default=pydantic_json_encoder)})
 
                 # If agent is executing, reattach IO and pipe events
+                # TODO(#119): io._closed may be True from previous disconnect — need to reopen
                 if status == "executing":
                     console.print(f"  [dim]↻ reattaching to running agent[/dim]")
                     io = active.io
@@ -258,6 +259,8 @@ async def handle_websocket(
                 result_holder = [None]
                 error_holder = [None]
 
+                # TODO(#119): wrap in try/finally — if agent crashes, agent_finished never fires
+                # and _pipe_ws_io hangs forever. Also need to reopen io on reattach.
                 def run_agent():
                     result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files)
                     registry.mark_connected(session_id)
