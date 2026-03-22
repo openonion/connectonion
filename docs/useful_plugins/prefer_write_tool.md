@@ -1,6 +1,6 @@
 # prefer_write_tool
 
-Block bash file operations, remind agent to use proper tools instead.
+Block bash file creation, soft-remind for file reading.
 
 ## Problem
 
@@ -20,15 +20,16 @@ cat config.json
 head -n 10 README.md
 ```
 
-This is an anti-pattern because:
-- Bypasses proper tool UI/diffs/approval flow
-- Escaping issues with special characters
-- Harder to review and track changes
-- No line numbers or formatting for reading
+File creation via bash bypasses proper tool UI/diffs/approval flow, has escaping issues, and is harder to review.
+
+File reading via bash works but misses line numbers, formatting, and control that `read_file` provides.
 
 ## Solution
 
-This plugin detects bash file operations **before execution** and rejects them with a system reminder telling the agent to use the proper tools (read_file, write, edit).
+This plugin uses two strategies:
+
+- **File creation** → **hard block** — raises `ValueError`, agent must use `Write` or `Edit` tool instead
+- **File reading** → **soft reminder** — command runs normally, but a `<system-reminder>` is appended to the tool result suggesting `read_file`
 
 ## Usage
 
@@ -45,26 +46,26 @@ agent = Agent(
 
 ## Detected Patterns
 
-**File Creation (blocked):**
+**File Creation (hard blocked):**
 - `cat <<EOF > file.py` - heredoc redirection
 - `echo "..." > file.py` - output redirection
 - `printf "..." > file.py` - printf redirection
-- `cmd > file` - any output redirection
-- `cmd >> file` - append redirection
+- `cmd > ./file` - output redirection to path
+- `cmd >> ./file` - append redirection to path
 - `tee file.py` - tee command
 
-**File Reading (blocked):**
-- `cat file.txt` - read file contents
+**File Reading (soft reminder):**
+- `cat file.txt` - standalone cat (not piped)
 - `head file.txt` - read first lines
 - `tail file.log` - read last lines
 - `less file.txt` - page through file
 - `more file.txt` - page through file
 
+Note: `cat file | grep pattern` (piped cat) is **not** detected — piping is legitimate bash usage.
+
 ## What Happens
 
-When detected, the tool is rejected and the agent receives a system reminder:
-
-**For file creation:**
+**For file creation (blocked):**
 ```
 Bash file creation blocked.
 
@@ -79,21 +80,26 @@ For editing existing files:
 </system-reminder>
 ```
 
-**For file reading:**
+**For file reading (soft reminder appended to result):**
 ```
-Bash file reading blocked.
+[actual command output here]
 
 <system-reminder>
-You tried to read a file using bash. This is blocked.
-
-Use the read_file tool instead:
+You used bash to read a file. Consider using the read_file tool instead:
   read_file(file_path="/path/to/file.txt")
 
 Why: read_file provides line numbers, proper formatting, and better control.
 </system-reminder>
 ```
 
-The agent will then use the proper tools (read_file, write, edit).
+The command still runs — the reminder just nudges the agent toward better tools.
+
+## How It Works
+
+The plugin exports two event handlers:
+
+1. `block_bash_file_creation` (`before_each_tool`) — detects file creation patterns and raises `ValueError` to block execution. For file reading, sets a session flag instead.
+2. `remind_read_file` (`after_each_tool`) — if the flag is set, appends a system reminder to the tool result message.
 
 ## Combining with tool_approval
 

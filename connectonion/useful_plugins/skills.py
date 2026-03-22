@@ -67,14 +67,22 @@ Permission Patterns:
 
 import os
 import re
+from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Dict, Any, List
 from copy import deepcopy
 
-from ..core.events import after_user_input, on_complete, before_each_tool
+from ..core.events import after_user_input, on_complete, before_each_tool, on_agent_ready
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
+
+
+@dataclass
+class SkillInfo:
+    name: str
+    description: str
+    location: str  # project | claude-project | user | claude-user | builtin
 
 
 # =============================================================================
@@ -96,21 +104,23 @@ def _get_skill_paths(skill_name: str) -> List[Path]:
         List of Path objects in priority order
     """
     paths = []
-
-    # 1. Project-level: .co/skills/skill-name/SKILL.md
-    project_path = Path.cwd() / '.co' / 'skills' / skill_name / 'SKILL.md'
-    paths.append(project_path)
-
-    # 2. User-level: ~/.co/skills/skill-name/SKILL.md
     home = Path.home()
-    user_path = home / '.co' / 'skills' / skill_name / 'SKILL.md'
-    paths.append(user_path)
 
-    # 3. Built-in: connectonion/cli/co_ai/skills/builtin/skill-name/SKILL.md
-    # Find the builtin skills directory relative to this file
+    # 1. Project-level ConnectOnion: .co/skills/skill-name/SKILL.md
+    paths.append(Path.cwd() / '.co' / 'skills' / skill_name / 'SKILL.md')
+
+    # 2. Project-level Claude Code: .claude/skills/skill-name/SKILL.md
+    paths.append(Path.cwd() / '.claude' / 'skills' / skill_name / 'SKILL.md')
+
+    # 3. User-level ConnectOnion: ~/.co/skills/skill-name/SKILL.md
+    paths.append(home / '.co' / 'skills' / skill_name / 'SKILL.md')
+
+    # 4. User-level Claude Code: ~/.claude/skills/skill-name/SKILL.md
+    paths.append(home / '.claude' / 'skills' / skill_name / 'SKILL.md')
+
+    # 5. Built-in: connectonion/cli/co_ai/skills/builtin/skill-name/SKILL.md
     builtin_base = Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin'
-    builtin_path = builtin_base / skill_name / 'SKILL.md'
-    paths.append(builtin_path)
+    paths.append(builtin_base / skill_name / 'SKILL.md')
 
     return paths
 
@@ -166,27 +176,36 @@ def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
     return frontmatter, instructions
 
 
-def _discover_all_skills() -> List[Dict[str, str]]:
-    """Discover all available skills for system prompt.
+def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Path] = None) -> List['SkillInfo']:
+    """Discover all available skills from ConnectOnion and Claude Code directories.
+
+    Args:
+        co_dir: Path to .co directory (defaults to cwd/.co)
+        project_dir: Project root (defaults to co_dir.parent or cwd)
 
     Returns:
-        List of dicts with 'name', 'description', 'location'
+        List of SkillInfo with 'name', 'description', 'location'
     """
-    skills = []
-    seen_names = set()
+    base = project_dir or (co_dir.parent if co_dir else Path.cwd())
+    co_base = co_dir or (base / '.co')
+    builtin_base = Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin'
 
-    # Check all three locations for each potential skill
-    # Priority: project > user > builtin
-    for location, base_path in [
-        ('project', Path.cwd() / '.co' / 'skills'),
+    seen = set()
+    result = []
+
+    search_paths = [
+        ('project', co_base / 'skills'),
+        ('claude-project', base / '.claude' / 'skills'),
         ('user', Path.home() / '.co' / 'skills'),
-        ('builtin', Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin')
-    ]:
-        if not base_path.exists():
+        ('claude-user', Path.home() / '.claude' / 'skills'),
+        ('builtin', builtin_base),
+    ]
+
+    for location, skills_dir in search_paths:
+        if not skills_dir.exists():
             continue
 
-        # Find all SKILL.md files
-        for skill_dir in base_path.iterdir():
+        for skill_dir in skills_dir.iterdir():
             if not skill_dir.is_dir():
                 continue
 
@@ -194,26 +213,19 @@ def _discover_all_skills() -> List[Dict[str, str]]:
             if not skill_file.exists():
                 continue
 
-            skill_name = skill_dir.name
-
-            # Skip if already seen (higher priority wins)
-            if skill_name in seen_names:
+            name = skill_dir.name
+            if name in seen:
                 continue
 
-            seen_names.add(skill_name)
+            seen.add(name)
 
-            # Parse frontmatter for description
             content = skill_file.read_text()
             frontmatter, _ = _parse_skill_content(content)
             description = frontmatter.get('description', 'No description')
 
-            skills.append({
-                'name': skill_name,
-                'description': description,
-                'location': location
-            })
+            result.append(SkillInfo(name=name, description=description, location=location))
 
-    return skills
+    return result
 
 
 # =============================================================================
@@ -224,9 +236,8 @@ def _grant_skill_permissions(agent: 'Agent', skill_name: str, patterns: List[str
     """Grant skill permissions using unified permission structure with 'when' field.
 
     Takes snapshot of current permissions before granting to preserve user approvals.
-    Converts patterns to unified format:
-    - "Bash(git status)" → "bash" with when: {command: "git status"}
-    - "read_file" → "read_file" (simple tool name)
+    Keeps Bash(X) as the key (no collapse across multiple patterns) and adds 'when'
+    for runtime fnmatch command matching and future extra-param extensibility.
 
     Args:
         agent: Agent instance
@@ -241,14 +252,12 @@ def _grant_skill_permissions(agent: 'Agent', skill_name: str, patterns: List[str
     if 'permissions' not in agent.current_session:
         agent.current_session['permissions'] = {}
 
-    # Grant permissions for each pattern
     turn = agent.current_session.get('turn', 0)
     for pattern in patterns:
-        # Convert pattern to unified format
         if pattern.startswith('Bash(') and pattern.endswith(')'):
-            # "Bash(git status)" → "bash" with when: {command: "git status"}
-            command_pattern = pattern[5:-1]  # Extract "git status"
-            tool_name = 'bash'
+            # Keep Bash(X) as key — no collapse when multiple patterns present.
+            # Add 'when' for runtime fnmatch check against full command.
+            command_pattern = pattern[5:-1]
             permission = {
                 'allowed': True,
                 'source': 'skill',
@@ -256,17 +265,15 @@ def _grant_skill_permissions(agent: 'Agent', skill_name: str, patterns: List[str
                 'when': {'command': command_pattern},
                 'expires': {'type': 'turn_end'}
             }
+            agent.current_session['permissions'][pattern] = permission
         else:
-            # Simple tool name: "read_file" → "read_file"
-            tool_name = pattern
             permission = {
                 'allowed': True,
                 'source': 'skill',
                 'reason': f'{skill_name} skill (turn {turn})',
                 'expires': {'type': 'turn_end'}
             }
-
-        agent.current_session['permissions'][tool_name] = permission
+            agent.current_session['permissions'][pattern] = permission
 
 
 def _restore_permissions(agent: 'Agent') -> None:
@@ -281,6 +288,13 @@ def _restore_permissions(agent: 'Agent') -> None:
 # =============================================================================
 # SKILL INVOCATION
 # =============================================================================
+
+@on_agent_ready
+def setup_skills(agent: 'Agent') -> None:
+    """Populate agent.skills on startup."""
+    co_dir = getattr(agent, 'co_dir', None)
+    agent.skills = _discover_all_skills(co_dir=co_dir)
+
 
 @after_user_input
 def handle_skill_invocation(agent: 'Agent') -> None:
@@ -322,9 +336,9 @@ def handle_skill_invocation(agent: 'Agent') -> None:
     # Replace user message with skill instructions
     messages[-1]['content'] = instructions
 
-    # Log skill invocation
-    if hasattr(agent, 'logger') and agent.logger:
-        agent.logger.print(f"[cyan]🎯 Skill: {skill_name}[/cyan]")
+    if agent.logger.console:
+        description = frontmatter.get('description', '')
+        agent.logger.console.print_skill_invocation(skill_name, description)
 
 
 @on_complete
@@ -352,8 +366,9 @@ def skill(agent: 'Agent', name: str) -> str:
     """
     skill_data = _load_skill(name)
     if not skill_data:
-        available = _discover_all_skills()
-        skill_list = "\n".join(f"- {s['name']}: {s['description']}" for s in available)
+        co_dir = getattr(agent, 'co_dir', None)
+        available = _discover_all_skills(co_dir=co_dir)
+        skill_list = "\n".join(f"- {s.name}: {s.description}" for s in available)
         return f"Skill '{name}' not found. Available skills:\n{skill_list}"
 
     frontmatter = skill_data['frontmatter']
@@ -375,7 +390,8 @@ def _inject_skills_to_system_prompt(agent: 'Agent') -> None:
 
     Adds a section listing all discoverable skills so the LLM knows what's available.
     """
-    skills_list = _discover_all_skills()
+    co_dir = getattr(agent, 'co_dir', None)
+    skills_list = _discover_all_skills(co_dir=co_dir)
     if not skills_list:
         return
 
@@ -384,7 +400,7 @@ def _inject_skills_to_system_prompt(agent: 'Agent') -> None:
     skills_text += "Pre-packaged workflows you can invoke:\n\n"
 
     for skill in skills_list:
-        skills_text += f"- `/{skill['name']}`: {skill['description']}\n"
+        skills_text += f"- `/{skill.name}`: {skill.description}\n"
 
     skills_text += "\nUser can type `/skill-name` or you can call the skill() tool.\n"
 
@@ -398,11 +414,12 @@ def _inject_skills_to_system_prompt(agent: 'Agent') -> None:
 
 # Export as plugin (list of event handlers)
 # Usage: Agent("name", plugins=[skills, tool_approval])
-skills = [handle_skill_invocation, cleanup_scope]
+skills = [setup_skills, handle_skill_invocation, cleanup_scope]
 
 # Export helper functions for tool_approval integration
 __all__ = [
     'skills',
     'skill',
+    'SkillInfo',
     'matches_permission_pattern',
 ]

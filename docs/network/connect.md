@@ -11,7 +11,7 @@
 │                            YOUR APPLICATION                                 │
 │  ┌──────────────┐        ┌──────────────┐        ┌──────────────────────┐  │
 │  │ React/Vue    │        │  Python      │        │  Swift/Kotlin        │  │
-│  │ useAgentForHumanForHuman()   │        │  connect()   │        │  connect()           │  │
+│  │ useAgentForHuman()   │        │  connect()   │        │  connect()           │  │
 │  └──────┬───────┘        └──────┬───────┘        └──────────┬───────────┘  │
 │         │                       │                           │              │
 └─────────┼───────────────────────┼───────────────────────────┼──────────────┘
@@ -263,12 +263,14 @@ const agent = connect("0x123...", {
 ┌─────────────────────────────────────────────────────┐
 │  Normal Operation (WebSocket)                       │
 ├─────────────────────────────────────────────────────┤
-│  1. Connect via WebSocket                           │
-│  2. Send INPUT with session_id                      │
-│  3. Receive PING every 30s, respond with PONG       │
-│  4. Receive streaming events                        │
-│  5. Receive OUTPUT (result)                         │
-│  6. Close connection                                │
+│  1. Open WebSocket                                  │
+│  2. Send CONNECT { session_id?, auth }              │
+│  3. Receive CONNECTED { session_id, status }        │
+│  4. Send INPUT { prompt }                           │
+│  5. Receive PING every 30s, respond with PONG       │
+│  6. Receive streaming events                        │
+│  7. Receive OUTPUT (result)                         │
+│  8. Keep WS open for next message                   │
 └─────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────┐
@@ -509,7 +511,7 @@ println(agent.ui)        // All events for rendering
 
 ---
 
-## React: useAgentForHumanForHuman() Hook
+## React: useAgentForHuman() Hook
 
 The `connectonion/react` subpath exports a React hook with state management and localStorage persistence.
 
@@ -632,8 +634,8 @@ respondToPlanReview("Skip step 2")
 │  oo-chat (Next.js)                               │
 │                                                   │
 │  app/[address]/[sessionId]/page.tsx               │
-│    └─ useAgentForHumanSDK()     ← elapsed time, pending   │
-│         └─ useAgentForHumanForHuman()   ← connectonion/react      │
+│    └─ useAgentSDK()     ← elapsed time, pending   │
+│         └─ useAgentForHuman()   ← connectonion/react      │
 │              └─ connect()  ← WebSocket to agent   │
 │                                                   │
 │  <Chat />                                         │
@@ -654,12 +656,12 @@ respondToPlanReview("Skip step 2")
 
 ```
 oo-chat/
-├── app/[address]/[sessionId]/page.tsx   ← session page (uses useAgentForHumanSDK)
+├── app/[address]/[sessionId]/page.tsx   ← session page (uses useAgentSDK)
 ├── components/chat/
 │   ├── chat.tsx                         ← main Chat component
 │   ├── chat-input.tsx                   ← message input
 │   ├── chat-messages.tsx                ← message list (renders ChatItem[])
-│   ├── use-agent-sdk.ts                 ← wrapper hook around useAgentForHumanForHuman()
+│   ├── use-agent-sdk.ts                 ← wrapper hook around useAgentForHuman()
 │   └── messages/
 │       ├── tool-call.tsx                ← tool call card
 │       └── tools/plan-card.tsx          ← plan review UI
@@ -670,7 +672,7 @@ oo-chat/
 
 ```tsx
 // app/[address]/[sessionId]/page.tsx
-import { useAgentForHumanSDK } from '@/components/chat/use-agent-sdk'
+import { useAgentSDK } from '@/components/chat/use-agent-sdk'
 
 export default function ChatSession({ params }) {
   const { address, sessionId } = params
@@ -689,7 +691,7 @@ export default function ChatSession({ params }) {
     respondToPlanReview,
     setMode,
     clear,
-  } = useAgentForHumanSDK({ agentAddress: address, sessionId })
+  } = useAgentSDK({ agentAddress: address, sessionId })
 
   return (
     <Chat
@@ -710,7 +712,7 @@ export default function ChatSession({ params }) {
 }
 ```
 
-`useAgentForHumanSDK` is a thin wrapper around `useAgentForHumanForHuman()` that adds elapsed time tracking and extracts pending states (ask_user, approval, plan_review) from the `ui` array for easy conditional rendering.
+`useAgentSDK` is a thin wrapper around `useAgentForHuman()` that adds elapsed time tracking and extracts pending states (ask_user, approval, plan_review) from the `ui` array for easy conditional rendering.
 
 ---
 
@@ -741,7 +743,7 @@ class RemoteAgent:
     status: str              # 'idle' | 'working' | 'waiting'
 ```
 
-### useAgentForHumanForHuman() (React)
+### useAgentForHuman() (React)
 
 ```ts
 const agent = useAgentForHuman(address, { sessionId })

@@ -1,25 +1,21 @@
 """
-Purpose: Reject bash file operations and remind agent to use proper tools instead
+Purpose: Block bash file creation and soft-remind for file reading
 LLM-Note:
   Dependencies: imports from [core/events.py] | imported by [useful_plugins/__init__.py]
-  Data flow: before_each_tool fires → detect bash file operations → raise ValueError with system reminder
-  State/Effects: none (rejects tool before execution)
+  Data flow: before_each_tool fires → block file creation (ValueError) or flag file reading →
+             after_each_tool fires → append soft reminder to tool result for file reading
+  State/Effects: sets session['_prefer_read_file_reminder'] flag for soft reminders
   Integration: exposes prefer_write_tool plugin list
-  Errors: raises ValueError when bash tries to create or read files
+  Errors: raises ValueError only for bash file creation
 
-Prefer Write Tool Plugin - Block bash file operations, remind to use proper tools.
+Prefer Write Tool Plugin - Block bash file creation, soft-remind for file reading.
 
 AI models often use bash commands for file operations:
-- Creating: `cat <<EOF > file.py`, `echo > file.py`
-- Reading: `cat file.txt`, `head file.txt`, `tail file.txt`
+- Creating: `cat <<EOF > file.py`, `echo > file.py` → BLOCKED
+- Reading: `cat file.txt`, `head file.txt`, `tail file.txt` → SOFT REMINDER
 
-This is an anti-pattern because:
-1. Bypasses proper tool UI/diffs/approval flow
-2. Escaping issues with special characters
-3. Harder to review and track
-4. No line numbers or formatting
-
-This plugin detects these patterns BEFORE execution and rejects with a reminder.
+File creation is blocked because it bypasses tool UI/diffs/approval flow.
+File reading is allowed but a system reminder suggests using read_file tool instead.
 
 Usage:
     from connectonion import Agent
@@ -31,35 +27,34 @@ Usage:
 import re
 from typing import TYPE_CHECKING
 
-from ..core.events import before_each_tool
+from ..core.events import before_each_tool, after_each_tool
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
 
 
-# Patterns that indicate bash is being used to create/write files
+# Patterns that indicate bash is being used to create/write files (hard blocked)
 FILE_CREATION_PATTERNS = [
     re.compile(r"cat\s+<<"),              # cat <<EOF, cat <<'EOF', cat << 'EOF'
     re.compile(r">\s*\S+\.\w+\s*<<"),     # > file.py <<EOF
-    re.compile(r"echo\s+.*>\s*\S+"),      # echo "..." > file
-    re.compile(r"printf\s+.*>\s*\S+"),    # printf "..." > file
+    re.compile(r"echo\s+.*[^2]>\s*\S+"),  # echo "..." > file (but not 2>)
+    re.compile(r"printf\s+.*[^2]>\s*\S+"),# printf "..." > file (but not 2>)
     re.compile(r"tee\s+\S+"),             # tee file.py
-    re.compile(r">\s*[~/\.]"),            # > file, > ./file, > ~/file, > /path
-    re.compile(r">>\s*[~/\.]"),           # >> file, >> ./file, >> ~/file, >> /path
-    re.compile(r"\s+>\s+\S+"),            # cmd > file (with spaces)
-    re.compile(r"\s+>>\s+\S+"),           # cmd >> file (with spaces)
+    re.compile(r"(?<!\d)>\s*[~\.]"),      # > ./file, > ~/file (not 2>/dev/null)
+    re.compile(r"(?<!\d)>>\s*[~\.]"),     # >> ./file, >> ~/file
 ]
 
-# Patterns that indicate bash is being used to read files
+# Patterns that indicate bash is being used to read files (standalone, not in pipelines)
+# These trigger a soft reminder, not a hard block
 FILE_READING_PATTERNS = [
-    re.compile(r"^\s*cat\s+\S+"),      # cat file.txt (at start of command)
-    re.compile(r"[;&|]\s*cat\s+\S+"),  # ... && cat file.txt
-    re.compile(r"^\s*head\s+\S+"),     # head file.txt
-    re.compile(r"[;&|]\s*head\s+\S+"), # ... && head file.txt
-    re.compile(r"^\s*tail\s+\S+"),     # tail file.txt
-    re.compile(r"[;&|]\s*tail\s+\S+"), # ... && tail file.txt
-    re.compile(r"^\s*less\s+\S+"),     # less file.txt
-    re.compile(r"^\s*more\s+\S+"),     # more file.txt
+    re.compile(r"^\s*cat\s+\S+\s*$"),           # cat file.txt (standalone, no pipe)
+    re.compile(r"[;&]\s*cat\s+\S+\s*$"),        # ... && cat file.txt (standalone at end)
+    re.compile(r"^\s*head\s+\S+"),              # head file.txt
+    re.compile(r"[;&|]\s*head\s+\S+"),          # ... && head file.txt
+    re.compile(r"^\s*tail\s+\S+"),              # tail file.txt
+    re.compile(r"[;&|]\s*tail\s+\S+"),          # ... && tail file.txt
+    re.compile(r"^\s*less\s+\S+"),              # less file.txt
+    re.compile(r"^\s*more\s+\S+"),              # more file.txt
 ]
 
 
@@ -81,7 +76,7 @@ def _is_file_reading_command(command: str) -> bool:
 
 @before_each_tool
 def block_bash_file_creation(agent: 'Agent') -> None:
-    """Block bash commands that create/read files, remind to use proper tools."""
+    """Block bash file creation. Flag file reading for soft reminder."""
     pending = agent.current_session.get('pending_tool')
     if not pending:
         return
@@ -92,7 +87,7 @@ def block_bash_file_creation(agent: 'Agent') -> None:
 
     command = pending['arguments'].get('command', '')
 
-    # Check for file creation
+    # File creation → hard block (raises ValueError)
     if _is_file_creation_command(command):
         if hasattr(agent, 'logger') and agent.logger:
             agent.logger.print("[yellow]⚠ Blocked bash file creation. Use Write tool instead.[/yellow]")
@@ -119,30 +114,30 @@ def block_bash_file_creation(agent: 'Agent') -> None:
             "</system-reminder>"
         )
 
-    # Check for file reading
+    # Check for file reading — soft flag, don't block
     if _is_file_reading_command(command):
+        agent.current_session['_prefer_read_file_reminder'] = True
         if hasattr(agent, 'logger') and agent.logger:
-            agent.logger.print("[yellow]⚠ Blocked bash file reading. Use read_file tool instead.[/yellow]")
-
-        if agent.io:
-            agent.io.send({
-                'type': 'tool_blocked',
-                'tool': tool_name,
-                'reason': 'file_reading',
-                'message': 'Use read_file tool instead of bash for reading files',
-                'command': command,
-            })
-
-        raise ValueError(
-            "Bash file reading blocked."
-            "\n\n<system-reminder>"
-            "You tried to read a file using bash (cat, head, tail, etc). This is blocked.\n\n"
-            "Use the read_file tool instead:\n"
-            "  read_file(file_path=\"/path/to/file.txt\")\n\n"
-            "Why: read_file provides line numbers, proper formatting, and better control.\n"
-            "Do NOT retry with bash. Use read_file tool now."
-            "</system-reminder>"
-        )
+            agent.logger.print("[yellow]⚠ Consider using read_file tool instead of bash for reading files.[/yellow]")
 
 
-prefer_write_tool = [block_bash_file_creation]
+@after_each_tool
+def remind_read_file(agent: 'Agent') -> None:
+    """Append soft system reminder to tool result when bash was used to read files."""
+    if not agent.current_session.pop('_prefer_read_file_reminder', False):
+        return
+
+    messages = agent.current_session.get('messages', [])
+    for msg in reversed(messages):
+        if msg.get('role') == 'tool':
+            msg['content'] = msg.get('content', '') + (
+                "\n\n<system-reminder>"
+                "You used bash to read a file. Consider using the read_file tool instead:\n"
+                "  read_file(file_path=\"/path/to/file.txt\")\n\n"
+                "Why: read_file provides line numbers, proper formatting, and better control."
+                "</system-reminder>"
+            )
+            break
+
+
+prefer_write_tool = [block_bash_file_creation, remind_read_file]

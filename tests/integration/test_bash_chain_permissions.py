@@ -255,5 +255,126 @@ def test_extract_commands_from_bash():
     assert "grep" in cmds
 
 
+def test_when_field_blocks_unmatched_command():
+    """Test that 'when' field in permission prevents false 'config permitted'.
+
+    Bug: load_config_permissions converts Bash(X) patterns to 'bash' key with 'when' field.
+    check_bash_chain_permitted must check 'when' at runtime using the FULL subcommand,
+    otherwise ANY bash command matches the 'bash' key and gets approved as "config permitted".
+
+    Scenario: permissions has bash key with when={command: 'npm test'}.
+    'timeout 300 bash script.sh' should NOT be permitted.
+    """
+    from connectonion.useful_plugins.tool_approval.bash_parser import check_bash_chain_permitted
+
+    permissions = {
+        'bash': {
+            'allowed': True,
+            'source': 'config',
+            'reason': 'safe npm test',
+            'when': {'command': 'npm test'},
+        }
+    }
+
+    permitted, reason, source = check_bash_chain_permitted('timeout 300 bash /path/to/script.sh', permissions)
+    assert not permitted, "timeout should NOT match a permission scoped to 'npm test'"
+
+
+def test_when_field_allows_exact_matching_command():
+    """Test that 'when' field permits the exact command it describes."""
+    from connectonion.useful_plugins.tool_approval.bash_parser import check_bash_chain_permitted
+
+    permissions = {
+        'bash': {
+            'allowed': True,
+            'source': 'config',
+            'when': {'command': 'npm test'},
+        }
+    }
+
+    permitted, reason, source = check_bash_chain_permitted('npm test', permissions)
+    assert permitted, "npm test should match when.command='npm test'"
+    assert source == 'config'
+
+
+def test_when_wildcard_matches_full_subcommand():
+    """Test that wildcard pattern in 'when' matches the full subcommand including args.
+
+    'ls *' should match 'ls -F' (with args) AND bare 'ls' (no args).
+    * means zero-or-more args, so bare commands are covered too.
+    'git *' should match 'git status', NOT 'timeout 300 git status' (different executable).
+    """
+    from connectonion.useful_plugins.tool_approval.bash_parser import check_bash_chain_permitted
+
+    permissions = {
+        'bash': {
+            'allowed': True,
+            'source': 'config',
+            'when': {'command': 'ls *'},
+        }
+    }
+
+    # Full subcommand with args matches 'ls *'
+    permitted, _, _ = check_bash_chain_permitted('ls -F', permissions)
+    assert permitted, "ls -F should match when.command='ls *'"
+
+    # Bare 'ls' (no args) also matches — * means zero-or-more args
+    permitted, _, _ = check_bash_chain_permitted('ls', permissions)
+    assert permitted, "bare 'ls' should also match when.command='ls *'"
+
+
+def test_when_wildcard_git_blocks_different_executable():
+    """Test that 'git *' permission does not permit 'timeout ... git ...'."""
+    from connectonion.useful_plugins.tool_approval.bash_parser import check_bash_chain_permitted
+
+    permissions = {
+        'bash': {
+            'allowed': True,
+            'source': 'config',
+            'when': {'command': 'git *'},
+        }
+    }
+
+    # git status matches
+    permitted, _, _ = check_bash_chain_permitted('git status', permissions)
+    assert permitted, "git status should match when.command='git *'"
+
+    # timeout is a different executable — should not match 'git *'
+    permitted, _, _ = check_bash_chain_permitted('timeout 300 git status', permissions)
+    assert not permitted, "timeout should not match when.command='git *'"
+
+
+def test_no_when_field_matches_any_bash():
+    """Test that a 'bash' permission without 'when' matches any bash command."""
+    from connectonion.useful_plugins.tool_approval.bash_parser import check_bash_chain_permitted
+
+    permissions = {
+        'bash': {
+            'allowed': True,
+            'source': 'user',
+            'reason': 'user approved all bash',
+        }
+    }
+
+    permitted, _, _ = check_bash_chain_permitted('timeout 300 bash /path/script.sh', permissions)
+    assert permitted, "bash permission without 'when' should allow any command"
+
+
+def test_extract_subcommands():
+    """Test that _extract_subcommands returns full (name, text) pairs."""
+    from connectonion.useful_plugins.tool_approval.bash_parser import _extract_subcommands
+
+    result = _extract_subcommands('pwd && ls -F')
+    assert result == [('pwd', 'pwd'), ('ls', 'ls -F')]
+
+    result = _extract_subcommands('git status')
+    assert result == [('git', 'git status')]
+
+    names = [r[0] for r in _extract_subcommands('cat file.txt | grep test')]
+    assert names == ['cat', 'grep']
+    texts = [r[1] for r in _extract_subcommands('cat file.txt | grep test')]
+    assert texts[1] == 'grep test'
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

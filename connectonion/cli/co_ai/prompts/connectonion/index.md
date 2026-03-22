@@ -95,7 +95,7 @@ Use `load_guide(path)` to load detailed documentation.
 | `useful_plugins/tool_approval` | User approval before dangerous tool calls |
 | `useful_plugins/auto_compact` | Context window management |
 | `useful_plugins/image_result_formatter` | Format base64 images for vision models |
-| `useful_plugins/prefer_write_tool` | Nudges toward write over edit for new files |
+| `useful_plugins/prefer_write_tool` | Block bash file creation, soft-remind for file reading |
 | `useful_plugins/ulw` | Ultra work mode — autonomous multi-turn sessions |
 | `useful_plugins/gmail_plugin` | Email approval and CRM sync |
 | `useful_plugins/calendar_plugin` | Calendar operation approval |

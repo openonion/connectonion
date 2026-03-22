@@ -152,9 +152,10 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
         "name": agent_metadata["name"],
         "address": agent_metadata["address"],
         "tools": agent_metadata["tools"],
-        "model": agent_metadata.get("model", "unknown"),  # Add model info
+        "model": agent_metadata.get("model", "unknown"),
         "trust": trust.trust,  # Extract level string from TrustAgent
         "version": __version__,
+        "skills": agent_metadata.get("skills", []),
         "accepted_inputs": {
             "text": True,
             "images": True,

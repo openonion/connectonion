@@ -58,7 +58,6 @@ def create_mock_agent(mock_llm):
     return factory
 
 
-@pytest.mark.skip(reason="Relay implementation changed to lifespan-based; tests need rewrite")
 class TestHostRelayKeyManagement:
     """Test key loading and generation in host() with relay_url."""
 
@@ -73,9 +72,10 @@ class TestHostRelayKeyManagement:
         with patch.object(Path, 'cwd', return_value=tmp_path):
             with patch('connectonion.address.load', return_value=mock_addr_data) as mock_load:
                 with patch('connectonion.address.generate') as mock_generate:
-                    with patch.object(host_module, '_create_relay_lifespan', return_value=None):
+                    # _create_relay_lifespan returns (on_startup, on_shutdown) tuple
+                    with patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())):
                         with patch('uvicorn.run'):
-                            with patch.object(host_module, 'Console'):
+                            with patch.object(host_module, '_print_host_banner'):
                                 host_module.host(create_mock_agent, relay_url="ws://test")
 
                                 mock_load.assert_called_once()
@@ -93,16 +93,16 @@ class TestHostRelayKeyManagement:
             with patch('connectonion.address.load', return_value=None) as mock_load:
                 with patch('connectonion.address.generate', return_value=mock_generated_addr) as mock_generate:
                     with patch('connectonion.address.save') as mock_save:
-                        with patch.object(host_module, '_create_relay_lifespan', return_value=None):
+                        # _create_relay_lifespan returns (on_startup, on_shutdown) tuple
+                        with patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())):
                             with patch('uvicorn.run'):
-                                with patch.object(host_module, 'Console'):
+                                with patch.object(host_module, '_print_host_banner'):
                                     host_module.host(create_mock_agent, relay_url="ws://test")
 
                                     mock_generate.assert_called_once()
                                     mock_save.assert_called_once()
 
 
-@pytest.mark.skip(reason="Relay implementation changed to lifespan-based; tests need rewrite")
 class TestHostRelayConnection:
     """Test relay connection handling in host()."""
 
@@ -112,9 +112,9 @@ class TestHostRelayConnection:
 
         with patch.object(Path, 'cwd', return_value=tmp_path):
             with patch('connectonion.address.load', return_value=mock_addr):
-                with patch.object(host_module, '_create_relay_lifespan') as mock_relay:
+                with patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())) as mock_relay:
                     with patch('uvicorn.run'):
-                        with patch.object(host_module, 'Console'):
+                        with patch.object(host_module, '_print_host_banner'):
                             host_module.host(create_mock_agent)  # Uses default relay_url
 
                             # Relay lifespan is created when relay is enabled
@@ -130,9 +130,9 @@ class TestHostRelayConnection:
 
         with patch.object(Path, 'cwd', return_value=tmp_path):
             with patch('connectonion.address.load', return_value=mock_addr):
-                with patch.object(host_module, '_create_relay_lifespan') as mock_relay:
+                with patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())) as mock_relay:
                     with patch('uvicorn.run'):
-                        with patch.object(host_module, 'Console'):
+                        with patch.object(host_module, '_print_host_banner'):
                             host_module.host(create_mock_agent, relay_url=custom_url)
 
                             mock_relay.assert_called_once()
@@ -147,84 +147,17 @@ class TestHostRelayConnection:
             with patch('connectonion.address.load', return_value=mock_addr):
                 with patch.object(host_module, '_create_relay_lifespan') as mock_relay:
                     with patch('uvicorn.run'):
-                        with patch.object(host_module, 'Console'):
+                        with patch.object(host_module, '_print_host_banner'):
                             host_module.host(create_mock_agent, relay_url=None)
 
                             mock_relay.assert_not_called()
 
 
-@pytest.mark.skip(reason="_start_relay_background was replaced with _create_relay_lifespan")
-class TestStartRelayBackground:
-    """Test _start_relay_background function (skipped - function removed)."""
-
-    def test_creates_announce_message_with_system_prompt(self, create_mock_agent):
-        """Test that relay uses provided agent_summary."""
-        agent_summary = "I am a helpful translation agent"
-        mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}
-
-        with patch('connectonion.announce.create_announce_message') as mock_announce:
-            with patch('connectonion.relay.connect'):
-                with patch('threading.Thread') as mock_thread:
-                    mock_thread.return_value = Mock()
-                    host_module._start_relay_background(create_mock_agent, "ws://test", mock_addr, agent_summary)
-
-                    mock_announce.assert_called_once()
-                    call_args = mock_announce.call_args[0]
-                    assert call_args[1] == agent_summary
-
-    def test_truncates_long_system_prompt(self, create_mock_agent):
-        """Test that very long summaries are passed as-is (truncation happens in host())."""
-        # Note: truncation now happens in host() before calling _start_relay_background
-        agent_summary = "A" * 1000  # Already truncated by host()
-        mock_addr = {'address': '0xtest', 'signing_key': Mock()}
-
-        with patch('connectonion.announce.create_announce_message') as mock_announce:
-            with patch('connectonion.relay.connect'):
-                with patch('threading.Thread') as mock_thread:
-                    mock_thread.return_value = Mock()
-                    host_module._start_relay_background(create_mock_agent, "ws://test", mock_addr, agent_summary)
-
-                    summary = mock_announce.call_args[0][1]
-                    assert len(summary) == 1000
-
-    def test_uses_agent_name_if_no_system_prompt(self, create_mock_agent):
-        """Test that agent name fallback is used when passed."""
-        # Note: the fallback logic now happens in host(), not _start_relay_background
-        agent_summary = "test_agent agent"
-        mock_addr = {'address': '0xtest', 'signing_key': Mock()}
-
-        with patch('connectonion.announce.create_announce_message') as mock_announce:
-            with patch('connectonion.relay.connect'):
-                with patch('threading.Thread') as mock_thread:
-                    mock_thread.return_value = Mock()
-                    host_module._start_relay_background(create_mock_agent, "ws://test", mock_addr, agent_summary)
-
-                    summary = mock_announce.call_args[0][1]
-                    assert summary == "test_agent agent"
-
-    def test_starts_daemon_thread(self, create_mock_agent):
-        """Test that relay runs in daemon thread."""
-        mock_addr = {'address': '0xtest', 'signing_key': Mock()}
-
-        with patch('connectonion.announce.create_announce_message'):
-            with patch('connectonion.relay.connect'):
-                with patch('threading.Thread') as mock_thread:
-                    mock_thread_instance = Mock()
-                    mock_thread.return_value = mock_thread_instance
-
-                    host_module._start_relay_background(create_mock_agent, "ws://test", mock_addr, "test summary")
-
-                    mock_thread.assert_called_once()
-                    assert mock_thread.call_args[1]['daemon'] is True
-                    mock_thread_instance.start.assert_called_once()
-
-
-@pytest.mark.skip(reason="Console output logic changed; tests need rewrite")
 class TestHostConsoleOutput:
     """Test console output during host()."""
 
     def test_host_displays_address(self, tmp_path, create_mock_agent):
-        """Test that host() displays agent address."""
+        """Test that host() calls _print_host_banner with correct address."""
         mock_addr = {
             'address': '0x1234567890abcdef',
             'short_address': 'co/test',
@@ -233,46 +166,43 @@ class TestHostConsoleOutput:
 
         with patch.object(Path, 'cwd', return_value=tmp_path):
             with patch('connectonion.address.load', return_value=mock_addr):
-                with patch.object(host_module, '_create_relay_lifespan', return_value=None):
+                with patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())):
                     with patch('uvicorn.run'):
-                        with patch.object(host_module, 'Panel') as mock_panel:
-                            with patch.object(host_module, 'Console'):
-                                host_module.host(create_mock_agent, relay_url="ws://test")
+                        with patch.object(host_module, '_print_host_banner') as mock_banner:
+                            host_module.host(create_mock_agent, relay_url="ws://test")
 
-                                # Check Panel was called with address in content
-                                mock_panel.assert_called_once()
-                                panel_content = mock_panel.call_args[0][0]
-                                assert '0x1234567890abcdef' in panel_content
+                            # Check _print_host_banner was called with address in kwargs
+                            mock_banner.assert_called_once()
+                            call_kwargs = mock_banner.call_args[1]
+                            assert call_kwargs['address'] == '0x1234567890abcdef'
 
     def test_host_displays_relay_status_enabled(self, tmp_path, create_mock_agent):
-        """Test that host() shows relay enabled status."""
+        """Test that host() passes relay_url to banner when enabled."""
         mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}
 
         with patch.object(Path, 'cwd', return_value=tmp_path):
             with patch('connectonion.address.load', return_value=mock_addr):
-                with patch.object(host_module, '_create_relay_lifespan', return_value=None):
+                with patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())):
                     with patch('uvicorn.run'):
-                        with patch.object(host_module, 'Panel') as mock_panel:
-                            with patch.object(host_module, 'Console'):
-                                host_module.host(create_mock_agent, relay_url="ws://custom")
+                        with patch.object(host_module, '_print_host_banner') as mock_banner:
+                            host_module.host(create_mock_agent, relay_url="ws://custom")
 
-                                panel_content = mock_panel.call_args[0][0]
-                                assert 'ws://custom' in panel_content
+                            call_kwargs = mock_banner.call_args[1]
+                            assert call_kwargs['relay_url'] == "ws://custom"
 
     def test_host_displays_relay_status_disabled(self, tmp_path, create_mock_agent):
-        """Test that host() shows relay disabled status."""
+        """Test that host() passes relay_url=None to banner when disabled."""
         mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}
 
         with patch.object(Path, 'cwd', return_value=tmp_path):
             with patch('connectonion.address.load', return_value=mock_addr):
-                with patch.object(host_module, '_create_relay_lifespan', return_value=None):
+                with patch.object(host_module, '_create_relay_lifespan') as mock_relay:
                     with patch('uvicorn.run'):
-                        with patch.object(host_module, 'Panel') as mock_panel:
-                            with patch.object(host_module, 'Console'):
-                                host_module.host(create_mock_agent, relay_url=None)
+                        with patch.object(host_module, '_print_host_banner') as mock_banner:
+                            host_module.host(create_mock_agent, relay_url=None)
 
-                                panel_content = mock_panel.call_args[0][0]
-                                assert 'disabled' in panel_content
+                            call_kwargs = mock_banner.call_args[1]
+                            assert call_kwargs['relay_url'] is None
 
 
 class TestCreateRouteHandlers:

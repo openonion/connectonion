@@ -66,8 +66,8 @@ class TestHandleWebSocketOnboardRequired:
                 return {
                     "type": "websocket.receive",
                     "text": json.dumps({
-                        "type": "INPUT",
-                        "payload": {"prompt": "hello", "timestamp": 1234567890},
+                        "type": "CONNECT",
+                        "payload": {"timestamp": 1234567890},
                         "from": "0xuser",
                         "signature": "0xsig",
                     }),
@@ -113,8 +113,8 @@ class TestHandleWebSocketOnboardRequired:
                 return {
                     "type": "websocket.receive",
                     "text": json.dumps({
-                        "type": "INPUT",
-                        "payload": {"prompt": "hello", "timestamp": 1234567890},
+                        "type": "CONNECT",
+                        "payload": {"timestamp": 1234567890},
                         "from": "0xuser",
                         "signature": "0xsig",
                     }),

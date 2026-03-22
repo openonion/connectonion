@@ -70,15 +70,17 @@ class TestPermissionGranting:
 
         _grant_skill_permissions(agent, 'commit', ['Bash(git status)', 'Bash(git diff *)', 'read_file'])
 
-        # Skill permissions should be added (unified format: bash patterns→'bash' key)
-        assert 'bash' in agent.current_session['permissions']
+        # Skill permissions should be added (each Bash pattern as separate key)
+        assert 'Bash(git status)' in agent.current_session['permissions']
+        assert 'Bash(git diff *)' in agent.current_session['permissions']
         assert 'read_file' in agent.current_session['permissions']
 
-        # Check permission structure (unified format has 'when' field)
-        bash_perm = agent.current_session['permissions']['bash']
+        # Check permission structure (has 'when' field for bash patterns)
+        bash_perm = agent.current_session['permissions']['Bash(git status)']
         assert bash_perm['allowed'] == True
         assert bash_perm['source'] == 'skill'
         assert bash_perm['reason'] == 'commit skill (turn 5)'
+        assert bash_perm['when'] == {'command': 'git status'}
         assert bash_perm['expires'] == {'type': 'turn_end'}
 
     def test_grant_preserves_user_approvals(self):
@@ -98,9 +100,9 @@ class TestPermissionGranting:
         # User approval for different tool should still be in permissions
         assert 'write' in agent.current_session['permissions']
         assert agent.current_session['permissions']['write']['source'] == 'user'
-        # Skill permission should also be there (unified format: key='bash')
-        assert 'bash' in agent.current_session['permissions']
-        assert agent.current_session['permissions']['bash']['source'] == 'skill'
+        # Skill permission should also be there (key='Bash(git status)')
+        assert 'Bash(git status)' in agent.current_session['permissions']
+        assert agent.current_session['permissions']['Bash(git status)']['source'] == 'skill'
 
     def test_restore_permissions_restores_snapshot(self):
         """Test that restore removes skill permissions and keeps user approvals."""
@@ -116,8 +118,8 @@ class TestPermissionGranting:
         }
         agent.current_session['_permission_snapshot'] = deepcopy(agent.current_session['permissions'])
 
-        # Add skill permission (unified format)
-        agent.current_session['permissions']['bash'] = {
+        # Add skill permission
+        agent.current_session['permissions']['Bash(git status)'] = {
             'allowed': True,
             'source': 'skill',
             'reason': 'commit skill (turn 5)',
@@ -132,7 +134,7 @@ class TestPermissionGranting:
         assert 'write' in agent.current_session['permissions']
         assert agent.current_session['permissions']['write']['source'] == 'user'
         # Skill permission should be gone
-        assert 'bash' not in agent.current_session['permissions']
+        assert 'Bash(git status)' not in agent.current_session['permissions']
         # Snapshot should be removed
         assert '_permission_snapshot' not in agent.current_session
 
@@ -248,8 +250,8 @@ class TestSkillInvocation:
         # Message should be replaced with instructions
         assert agent.current_session['messages'][-1]['content'] == 'Create a git commit'
 
-        # Permissions should be granted (unified format)
-        assert 'bash' in agent.current_session['permissions']
+        # Permissions should be granted (each Bash pattern as separate key)
+        assert 'Bash(git status)' in agent.current_session['permissions']
         assert 'read_file' in agent.current_session['permissions']
 
         # Snapshot should exist
@@ -327,10 +329,11 @@ class TestPluginStructure:
     def test_skills_plugin_has_correct_handlers(self):
         """Test that skills plugin exports correct event handlers."""
         assert isinstance(skills, list)
-        assert len(skills) == 2
+        assert len(skills) == 3
 
-        # Should have after_user_input and on_complete handlers
+        # Should have setup, after_user_input and on_complete handlers
         handler_names = [h.__name__ for h in skills]
+        assert 'setup_skills' in handler_names
         assert 'handle_skill_invocation' in handler_names
         assert 'cleanup_scope' in handler_names
 
@@ -371,24 +374,25 @@ class TestIntegrationScenarios:
 
         # During turn 5: both user and skill permissions should exist
         assert 'write' in agent.current_session['permissions']
-        # Skill permissions use unified format (key='bash')
-        assert 'bash' in agent.current_session['permissions']
+        # Skill permissions use separate keys per Bash pattern
+        assert 'Bash(git status)' in agent.current_session['permissions']
+        assert 'Bash(git diff *)' in agent.current_session['permissions']
 
         # User approval should have correct metadata
         assert agent.current_session['permissions']['write']['source'] == 'user'
 
-        # Skill permissions should have correct metadata (unified format)
-        assert agent.current_session['permissions']['bash']['source'] == 'skill'
-        assert 'turn 5' in agent.current_session['permissions']['bash']['reason']
+        # Skill permissions should have correct metadata
+        assert agent.current_session['permissions']['Bash(git status)']['source'] == 'skill'
+        assert 'turn 5' in agent.current_session['permissions']['Bash(git status)']['reason']
 
         # Turn ends
         cleanup_scope(agent)
 
         # After turn: only user approval remains
         assert 'write' in agent.current_session['permissions']
-        # Skill permission gone
-        bash_perm = agent.current_session['permissions'].get('bash', {})
-        assert bash_perm.get('source') != 'skill'
+        # Skill permissions gone
+        assert 'Bash(git status)' not in agent.current_session['permissions']
+        assert 'Bash(git diff *)' not in agent.current_session['permissions']
 
     def test_snapshot_restore_preserves_multiple_user_approvals(self):
         """Test that snapshot/restore preserves multiple user approvals."""
@@ -401,11 +405,11 @@ class TestIntegrationScenarios:
             'edit': {'source': 'user', 'expires': {'type': 'session_end'}}
         }
 
-        # Grant skill permissions (will overwrite bash temporarily)
+        # Grant skill permissions (adds Bash(git status) and read_file)
         _grant_skill_permissions(agent, 'commit', ['Bash(git status)', 'read_file'])
 
-        # All approvals should exist during skill (bash overwritten, +read_file added)
-        assert len(agent.current_session['permissions']) == 4
+        # All approvals should exist during skill (3 user + 2 skill = 5)
+        assert len(agent.current_session['permissions']) == 5
 
         # Restore
         _restore_permissions(agent)

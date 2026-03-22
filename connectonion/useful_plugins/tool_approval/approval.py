@@ -651,15 +651,12 @@ def load_config_permissions(agent: 'Agent') -> None:
             template_config = yaml.safe_load(f) or {}
         template_permissions = template_config.get('permissions')
         if template_permissions and isinstance(template_permissions, dict):
-            # Convert Bash() patterns in template too
             converted_template = {}
             for pattern, perm in template_permissions.items():
                 if pattern.startswith('Bash(') and pattern.endswith(')'):
+                    # Keep Bash(X) as key (no collapse), add 'when' for runtime matching
                     command_pattern = pattern[5:-1]
-                    converted_template['bash'] = {
-                        **perm,
-                        'when': {'command': command_pattern}
-                    }
+                    converted_template[pattern] = {**perm, 'when': {'command': command_pattern}}
                 else:
                     converted_template[pattern] = perm
             agent.current_session['permissions'].update(converted_template)
@@ -674,18 +671,13 @@ def load_config_permissions(agent: 'Agent') -> None:
 
         permissions_config = config.get('permissions')
         if permissions_config and isinstance(permissions_config, dict):
-            # Convert Bash() patterns to 'when' format for runtime consistency
             converted_permissions = {}
             for pattern, perm in permissions_config.items():
-                # Convert "Bash(git status)" → "bash" with when: {command: "git status"}
                 if pattern.startswith('Bash(') and pattern.endswith(')'):
-                    command_pattern = pattern[5:-1]  # Extract "git status" from "Bash(git status)"
-                    converted_permissions['bash'] = {
-                        **perm,
-                        'when': {'command': command_pattern}
-                    }
+                    # Keep Bash(X) as key (avoids collapse), add 'when' for runtime fnmatch check
+                    command_pattern = pattern[5:-1]
+                    converted_permissions[pattern] = {**perm, 'when': {'command': command_pattern}}
                 else:
-                    # Keep as-is for non-Bash patterns
                     converted_permissions[pattern] = perm
 
             # Merge converted permissions (overrides template, but preserve user approvals)
@@ -697,7 +689,7 @@ def load_config_permissions(agent: 'Agent') -> None:
             agent.current_session['permissions_source'] = str(host_yaml.name)
 
             # Log where permissions were loaded from (once, at startup)
-            if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+            if hasattr(agent, 'logger') and agent.logger and getattr(agent.logger, 'console', None):
                 count = len(permissions_config)
                 agent.logger.console.print(
                     f"[dim]Loaded {count} permission(s) from {host_yaml.name}[/dim]"

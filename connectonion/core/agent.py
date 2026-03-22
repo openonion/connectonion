@@ -47,6 +47,7 @@ class Agent:
         co_dir: Optional[Union[str, Path]] = None
     ):
         self.name = name
+        self.co_dir = Path(co_dir) if co_dir else Path(".co")
         self.system_prompt = load_system_prompt(system_prompt)
         self.max_iterations = max_iterations
 
@@ -154,7 +155,8 @@ class Agent:
                 model=self.llm.model,
                 tools=len(self.tools),
                 log_dir=log_dir,
-                llm=self.llm
+                llm=self.llm,
+                skills=getattr(self, 'skills', []),
             )
 
     def _next_trace_id(self) -> str:

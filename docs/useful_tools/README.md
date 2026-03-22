@@ -6,8 +6,10 @@ Pre-built tools for common agent tasks.
 
 | Tool | Purpose | Import |
 |------|---------|--------|
-| [Shell](shell.md) | Execute shell commands | `from connectonion import Shell` |
+| [bash](bash.md) | Execute bash commands (Unix/Mac) | `from connectonion import bash` |
+| [Shell](shell.md) | Execute shell commands (cross-platform) | `from connectonion import Shell` |
 | [FileTools](file_tools.md) | Read/edit files with safety tracking | `from connectonion.useful_tools import FileTools` |
+| [BrowserAutomation](browser_tools.md) | Natural language browser automation | `from connectonion.useful_tools.browser_tools import BrowserAutomation` |
 | [DiffWriter](diff_writer.md) | Edit files with diffs | `from connectonion import DiffWriter` |
 | [TodoList](todo_list.md) | Track task progress | `from connectonion import TodoList` |
 | [WebFetch](web_fetch.md) | Fetch web content | `from connectonion import WebFetch` |
@@ -64,9 +66,13 @@ See [co copy](../cli/copy.md) for full details.
 ## Categories
 
 ### File Operations
+- **bash** - Run bash commands, return output (Unix/Mac)
+- **Shell** - Run commands, scripts, git (cross-platform)
 - **FileTools** - Read/edit files with safety tracking (read-before-edit, stale-read detection)
-- **Shell** - Run commands, scripts, git
 - **DiffWriter** - Edit files with visual diffs (legacy)
+
+### Browser
+- **BrowserAutomation** - Natural language browser automation with persistent sessions
 
 ### Communication
 - **Gmail** - Send/read Gmail

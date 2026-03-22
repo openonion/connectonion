@@ -491,14 +491,13 @@ See [WebSocket Protocol](websocket-protocol.md) for the full specification.
 const ws = new WebSocket("ws://localhost:8000/ws");
 ```
 
-### Step 2: CONNECT (authenticate + get session)
+### Step 2: INIT (authenticate + new session)
 
 ```javascript
 ws.onopen = () => {
   ws.send(JSON.stringify({
-    type: "CONNECT",
-    to: "0x3d4017c3e843...",           // Agent address
-    // session_id: "550e8400-...",      // Optional: resume existing session
+    type: "INIT",
+    to: "0x3d4017c3e843...",
     payload: { to: "0x3d4017c3e843...", timestamp: Date.now() / 1000 },
     from: "0xYourPublicKey",
     signature: "0x..."
@@ -516,13 +515,11 @@ Server responds with `CONNECTED`:
 ```javascript
 ws.send(JSON.stringify({
   type: "INPUT",
-  prompt: "Translate hello to Spanish",
-  images: ["data:image/png;base64,..."],  // Optional
-  files: [{ name: "doc.pdf", data: "data:application/pdf;base64,..." }]  // Optional
+  prompt: "Translate hello to Spanish"
 }));
 ```
 
-No signature needed — the connection is already authenticated by CONNECT.
+No signature needed — the connection is already authenticated by INIT.
 
 ### Receive Messages
 
@@ -544,7 +541,6 @@ ws.onmessage = (event) => {
       console.error("Error:", msg.message);
       break;
     default:
-      // tool_call, tool_result, thinking, ask_user, approval_needed, etc.
       console.log("Event:", msg);
   }
 };
@@ -554,11 +550,12 @@ ws.onmessage = (event) => {
 
 | Type | Direction | Purpose |
 |------|-----------|---------|
-| CONNECT | Client → Server | Authenticate + link to agent + allocate/resume session |
+| INIT | Client → Server | Authenticate + new session |
+| ATTACH | Client → Server | Authenticate + resume existing session |
 | CONNECTED | Server → Client | Session info (session_id, status) |
-| INPUT | Client → Server | Send prompt (no auth needed, connection is trusted) |
+| INPUT | Client → Server | Send prompt (no auth needed) |
 | OUTPUT | Server → Client | Final result + session data |
-| PING | Server → Client | Connection keep-alive (every 30s) |
+| PING | Server → Client | Keep-alive (every 30s) |
 | PONG | Client → Server | Acknowledge keep-alive |
 | tool_call | Server → Client | Tool started |
 | tool_result | Server → Client | Tool completed |
@@ -567,34 +564,20 @@ ws.onmessage = (event) => {
 | approval_needed | Server → Client | Tool approval required |
 | ERROR | Server → Client | Error message |
 
-### Connection Keep-Alive
-
-The server sends **PING** every 30 seconds after CONNECTED. Client must respond with PONG:
-
-```javascript
-if (msg.type === "PING") {
-  ws.send(JSON.stringify({ type: "PONG" }));
-}
-```
-
 ### Session Recovery
 
-If your WebSocket disconnects (network failure, page refresh), reconnect with `CONNECT { session_id }`:
+If your WebSocket disconnects, reconnect with `ATTACH`:
 
 ```javascript
-// Reconnect to existing session
 ws.send(JSON.stringify({
-  type: "CONNECT",
+  type: "ATTACH",
   to: "0x3d4017c3e843...",
-  session_id: savedSessionId,       // ← resume this session
+  session_id: savedSessionId,
   payload: { ... },
   from: "0x...",
   signature: "0x..."
 }));
-
-// Server responds:
-// { type: "CONNECTED", session_id: "...", status: "running" }
-// → followed by buffered events the client missed
+// → CONNECTED { status: "running" } + buffered events
 ```
 
 If the session expired from memory, poll the HTTP endpoint:
@@ -602,7 +585,6 @@ If the session expired from memory, poll the HTTP endpoint:
 ```javascript
 const response = await fetch(`http://localhost:8000/sessions/${sessionId}`);
 const data = await response.json();
-// { status: "done", result: "..." }
 ```
 
 **Session lifecycle:**

@@ -15,7 +15,7 @@ Tools included:
 Plugins included:
 - eval: Session persistence for debugging
 - system_reminder: Contextual hints
-- prefer_write_tool: Nudges toward using Write over Edit
+- prefer_write_tool: Block bash file creation, soft-remind for file reading
 - tool_approval: Approval flow for dangerous operations
 - auto_compact: Context window management
 - ulw: Ultra work mode (autonomous N-turn sessions with continuation)
@@ -46,6 +46,7 @@ from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
 from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents
+from connectonion.useful_plugins.skills import skills as skills_plugin
 
 
 PROMPTS_DIR = Path(__file__).parent / "prompts"
@@ -88,7 +89,7 @@ def create_coding_agent(
         system_prompt += f"\n\n---\n\n{project_context}"
 
     # Use SDK's subagents plugin instead of custom task implementation
-    plugins = [subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw]
+    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw]
 
     agent = Agent(
         name="oo",

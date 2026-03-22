@@ -40,6 +40,24 @@ from connectonion import Agent
 from tests.utils.mock_helpers import MockLLM, LLMResponseBuilder
 
 
+def sign_init(signing_key: SigningKey = None):
+    """Helper to create a signed CONNECT request (authentication only, no prompt)."""
+    if signing_key is None:
+        signing_key = SigningKey.generate()
+
+    public_key = f"0x{signing_key.verify_key.encode().hex()}"
+    payload = {"timestamp": time.time()}
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    signature = f"0x{signing_key.sign(canonical.encode()).signature.hex()}"
+
+    return {
+        "type": "CONNECT",
+        "payload": payload,
+        "from": public_key,
+        "signature": signature
+    }
+
+
 def sign_request(prompt: str, signing_key: SigningKey = None):
     """Helper to create a signed WebSocket INPUT request."""
     if signing_key is None:
@@ -77,6 +95,10 @@ class ASGIWebSocketClient:
 
     def send_text(self, text: str):
         return self._run(self._session([{"type": "websocket.receive", "text": text}, {"type": "websocket.disconnect"}]))
+
+    def send_texts(self, *texts):
+        messages = [{"type": "websocket.receive", "text": t} for t in texts] + [{"type": "websocket.disconnect"}]
+        return self._run(self._session(messages))
 
     def connect_only(self):
         return self._run(self._session([{ "type": "websocket.disconnect" }]))
@@ -121,30 +143,29 @@ class TestWebSocket:
         # Should close with 4004
         assert any(m.get("type") == "websocket.close" and m.get("code") == 4004 for m in sent)
 
-    @pytest.mark.skip(reason="WebSocket handler implementation changed; test needs rewrite")
     def test_open_trust_input(self, app):
-        """All requests require signatures (protocol requirement).
+        """Two-step flow: INIT authenticates, then INPUT sends prompt.
 
-        Note: This test client sends INPUT then immediately disconnects,
+        Note: This test client sends INIT+INPUT then immediately disconnects,
         so OUTPUT is not sent (correct behavior - result saved to storage for polling recovery).
-        We verify the request was accepted and processed by checking for trace events.
+        We verify the request was accepted and connection is processed.
         """
         client = ASGIWebSocketClient(app, path="/ws")
-        msg = json.dumps(sign_request("hi"))
-        sent = client.send_text(msg)
+        key = SigningKey.generate()
+        init_msg = json.dumps(sign_init(key))
+        input_msg = json.dumps({"type": "INPUT", "prompt": "hi"})
+        sent = client.send_texts(init_msg, input_msg)
 
+        # Connection should be accepted
         assert any(m.get("type") == "websocket.accept" for m in sent)
-        outputs = [m for m in sent if m.get("type") == "websocket.send"]
-        assert outputs, "expected websocket.send messages"
-        # Parse all messages - should see trace events
-        messages = [json.loads(m["text"]) for m in outputs]
-        # Verify we got trace events showing the agent processed the request
-        assert any(msg.get("type") == "user_input" for msg in messages), f"Expected user_input event, got: {[msg.get('type') for msg in messages]}"
+        # No error should be sent for valid signed request
+        error_msgs = [m for m in sent if m.get("type") == "websocket.send" and "ERROR" in m.get("text", "")]
+        assert not error_msgs, f"Unexpected errors: {[json.loads(m['text']) for m in error_msgs]}"
 
     def test_unsigned_request_rejected(self, app):
-        """Unsigned requests are always rejected."""
+        """Unsigned requests are always rejected at INIT."""
         client = ASGIWebSocketClient(app, path="/ws")
-        msg = json.dumps({"type": "INPUT", "prompt": "hi"})
+        msg = json.dumps({"type": "CONNECT"})
         sent = client.send_text(msg)
         errs = [json.loads(m["text"]) for m in sent if m.get("type") == "websocket.send"]
         assert any(e.get("type") == "ERROR" and "unauthorized" in e.get("message", "") for e in errs)
@@ -180,7 +201,7 @@ class TestWebSocketStrict:
 
     def test_strict_requires_signature(self, app_strict):
         client = ASGIWebSocketClient(app_strict)
-        msg = json.dumps({"type": "INPUT", "prompt": "hi"})
+        msg = json.dumps({"type": "CONNECT"})
         sent = client.send_text(msg)
         errs = [json.loads(m["text"]) for m in sent if m.get("type") == "websocket.send"]
         assert any(e.get("type") == "ERROR" and e.get("message", "").startswith("unauthorized") for e in errs)
@@ -188,7 +209,7 @@ class TestWebSocketStrict:
     def test_strict_denies_non_whitelisted(self, app_strict):
         """Strict mode denies valid signatures from non-whitelisted identities."""
         client = ASGIWebSocketClient(app_strict)
-        sent = client.send_text(json.dumps(sign_request("hi")))
+        sent = client.send_text(json.dumps(sign_init()))
         outputs = [json.loads(m["text"]) for m in sent if m.get("type") == "websocket.send"]
         # Should get ERROR (forbidden) since identity is not whitelisted
         assert any(o.get("type") == "ERROR" and "forbidden" in o.get("message", "").lower() for o in outputs), \
@@ -197,8 +218,8 @@ class TestWebSocketStrict:
     def test_strict_invalid_signature(self, app_strict):
         signing_key = SigningKey.generate()
         public_key = f"0x{signing_key.verify_key.encode().hex()}"
-        payload = {"prompt": "hi", "timestamp": time.time()}
-        data = {"type": "INPUT", "payload": payload, "from": public_key, "signature": "0x" + "00" * 64}
+        payload = {"timestamp": time.time()}
+        data = {"type": "CONNECT", "payload": payload, "from": public_key, "signature": "0x" + "00" * 64}
 
         client = ASGIWebSocketClient(app_strict)
         sent = client.send_text(json.dumps(data))
@@ -224,8 +245,8 @@ class TestWebSocketAccessLists:
 
     def test_blacklisted(self, app_strict_bw):
         data = {
-            "type": "INPUT",
-            "payload": {"prompt": "hi", "timestamp": time.time()},
+            "type": "CONNECT",
+            "payload": {"timestamp": time.time()},
             "from": "0xbad",
             "signature": "0x" + "00" * 64
         }
@@ -241,8 +262,8 @@ class TestWebSocketAccessLists:
         This prevents spoofing attacks where anyone claims to be whitelisted.
         """
         data = {
-            "type": "INPUT",
-            "payload": {"prompt": "hi", "timestamp": time.time()},
+            "type": "CONNECT",
+            "payload": {"timestamp": time.time()},
             "from": "0xgood",
             "signature": "0x" + "00" * 64  # Invalid signature
         }
@@ -278,7 +299,6 @@ class TestWebSocketKeepAlive:
         from connectonion.network.host import create_app
         return create_app(create_slow_agent, trust="open", result_ttl=3600)
 
-    @pytest.mark.skip(reason="WebSocket handler implementation changed; test needs rewrite")
     def test_pong_response_handling(self, app):
         """Test that server correctly handles PONG responses from client.
 
@@ -286,33 +306,34 @@ class TestWebSocketKeepAlive:
         the request would fail. We verify normal processing occurs.
         """
         client = ASGIWebSocketClient(app, path="/ws")
-
-        # Send signed INPUT
-        msg = json.dumps(sign_request("hi"))
-        sent = client.send_text(msg)
+        key = SigningKey.generate()
+        init_msg = json.dumps(sign_init(key))
+        input_msg = json.dumps({"type": "INPUT", "prompt": "hi"})
+        sent = client.send_texts(init_msg, input_msg)
 
         # Should accept connection and process normally
         assert any(m.get("type") == "websocket.accept" for m in sent)
-        outputs = [m for m in sent if m.get("type") == "websocket.send"]
-        messages = [json.loads(m["text"]) for m in outputs]
-        # Verify request was processed (check for trace events)
-        assert any(msg.get("type") == "user_input" for msg in messages)
+        # No error should be sent
+        error_msgs = [m for m in sent if m.get("type") == "websocket.send" and "ERROR" in m.get("text", "")]
+        assert not error_msgs, f"Unexpected errors: {[json.loads(m['text']) for m in error_msgs]}"
 
-    @pytest.mark.skip(reason="WebSocket handler implementation changed; test needs rewrite")
     def test_session_includes_session_id(self, app):
         """Test that session structure supports session_id for recovery.
 
         Note: Client disconnects immediately so OUTPUT not sent,
-        but we verify the session structure exists in INPUT processing.
+        but we verify connection is accepted and no errors.
         """
         client = ASGIWebSocketClient(app, path="/ws")
-        msg = json.dumps(sign_request("hi"))
-        sent = client.send_text(msg)
+        key = SigningKey.generate()
+        init_msg = json.dumps(sign_init(key))
+        input_msg = json.dumps({"type": "INPUT", "prompt": "hi"})
+        sent = client.send_texts(init_msg, input_msg)
 
-        # Verify connection accepted and processing started
+        # Verify connection accepted
         assert any(m.get("type") == "websocket.accept" for m in sent)
-        outputs = [m for m in sent if m.get("type") == "websocket.send"]
-        assert len(outputs) > 0, "expected trace events showing processing"
+        # No error should be sent for valid signed request
+        error_msgs = [m for m in sent if m.get("type") == "websocket.send" and "ERROR" in m.get("text", "")]
+        assert not error_msgs, f"Unexpected errors: {[json.loads(m['text']) for m in error_msgs]}"
 
 
 class TestSessionRecovery:

@@ -305,7 +305,10 @@ class TestStreamInput:
         """Test _stream_input adds user event to UI."""
         agent = RemoteAgent("0x123")
 
-        mock_ws = create_mock_ws([json.dumps({"type": "OUTPUT", "result": "Done", "session": {}})])
+        mock_ws = create_mock_ws([
+            json.dumps({"type": "CONNECTED", "session_id": "s1", "status": "new"}),
+            json.dumps({"type": "OUTPUT", "result": "Done", "session": {}}),
+        ])
 
         with patch('websockets.connect', return_value=mock_ws):
             await agent._stream_input("Hello", 30.0)
@@ -318,7 +321,10 @@ class TestStreamInput:
         """Test _stream_input returns Response object."""
         agent = RemoteAgent("0x123")
 
-        mock_ws = create_mock_ws([json.dumps({"type": "OUTPUT", "result": "Task done", "session": {}})])
+        mock_ws = create_mock_ws([
+            json.dumps({"type": "CONNECTED", "session_id": "s1", "status": "new"}),
+            json.dumps({"type": "OUTPUT", "result": "Task done", "session": {}}),
+        ])
 
         with patch('websockets.connect', return_value=mock_ws):
             response = await agent._stream_input("Do something", 30.0)
@@ -332,7 +338,10 @@ class TestStreamInput:
         """Test _stream_input returns done=False on ask_user event."""
         agent = RemoteAgent("0x123")
 
-        mock_ws = create_mock_ws([json.dumps({"type": "ask_user", "text": "Which date?"})])
+        mock_ws = create_mock_ws([
+            json.dumps({"type": "CONNECTED", "session_id": "s1", "status": "new"}),
+            json.dumps({"type": "ask_user", "text": "Which date?"}),
+        ])
 
         with patch('websockets.connect', return_value=mock_ws):
             response = await agent._stream_input("Book flight", 30.0)
@@ -346,7 +355,10 @@ class TestStreamInput:
         """Test _stream_input raises on ERROR message."""
         agent = RemoteAgent("0x123")
 
-        mock_ws = create_mock_ws([json.dumps({"type": "ERROR", "message": "Agent not found"})])
+        mock_ws = create_mock_ws([
+            json.dumps({"type": "CONNECTED", "session_id": "s1", "status": "new"}),
+            json.dumps({"type": "ERROR", "message": "Agent not found"}),
+        ])
 
         with patch('websockets.connect', return_value=mock_ws):
             with pytest.raises(ConnectionError) as exc_info:
@@ -360,6 +372,7 @@ class TestStreamInput:
         agent = RemoteAgent("0x123")
 
         mock_ws = create_mock_ws([
+            json.dumps({"type": "CONNECTED", "session_id": "s1", "status": "new"}),
             json.dumps({"type": "tool_call", "id": "t1", "name": "search", "args": {}}),
             json.dumps({"type": "tool_result", "id": "t1", "result": "Found", "status": "success"}),
             json.dumps({"type": "OUTPUT", "result": "Done", "session": {}})
@@ -384,7 +397,7 @@ class TestStreamInput:
             def __init__(self, agent_ref):
                 self.agent = agent_ref
                 self.status_during_recv = None
-                self.called = False
+                self.call_count = 0
 
             async def __aenter__(self):
                 return self
@@ -396,8 +409,10 @@ class TestStreamInput:
                 pass
 
             async def recv(self):
-                if not self.called:
-                    self.called = True
+                self.call_count += 1
+                if self.call_count == 1:
+                    return json.dumps({"type": "CONNECTED", "session_id": "s1", "status": "new"})
+                if self.call_count == 2:
                     self.status_during_recv = self.agent.status
                     return json.dumps({"type": "OUTPUT", "result": "Done", "session": {}})
                 raise Exception("No more messages")
@@ -418,6 +433,7 @@ class TestIntegration:
     async def test_full_workflow_async(self):
         """Test full workflow: connect() -> input_async() -> Response."""
         mock_ws = create_mock_ws([
+            json.dumps({"type": "CONNECTED", "session_id": "s1", "status": "new"}),
             json.dumps({"type": "thinking"}),
             json.dumps({"type": "tool_call", "id": "t1", "name": "translate", "args": {"text": "hello"}}),
             json.dumps({"type": "tool_result", "id": "t1", "result": "hola", "status": "success"}),

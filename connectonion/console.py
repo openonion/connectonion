@@ -102,7 +102,8 @@ class Console:
         tools: Union[List[str], int] = 0,
         log_dir: Optional[str] = None,
         llm: Any = None,
-        balance: Optional[float] = None
+        balance: Optional[float] = None,
+        skills: Optional[List[Any]] = None,
     ) -> None:
         """Print the ConnectOnion banner (Onion Stack style).
 
@@ -131,8 +132,17 @@ class Console:
             tools_count = tools
         tools_str = f"{tools_count} tool{'s' if tools_count != 1 else ''}" if tools_count else ""
 
-        # Build meta line: model · tools
-        meta_parts = [p for p in [model, tools_str] if p]
+        # Build skills string
+        skills_str = ""
+        if skills:
+            names = [s.name for s in skills]
+            if len(names) <= 4:
+                skills_str = f"{len(names)} skill{'s' if len(names) != 1 else ''} ({', '.join(names)})"
+            else:
+                skills_str = f"{len(names)} skills"
+
+        # Build meta line: model · tools · skills
+        meta_parts = [p for p in [model, tools_str, skills_str] if p]
         meta_line = " · ".join(meta_parts)
 
         # Check if using OpenOnion managed keys (free credits from Aaron)
@@ -209,6 +219,19 @@ class Console:
                 for line in plain_lines:
                     f.write(f"{line}\n")
                 f.write("\n")
+
+    def print_skills(self, skills: List[Any]) -> None:
+        """Print loaded skills after agent banner."""
+        if not skills:
+            return
+        names = '  '.join(f'[cyan]/{s.name}[/cyan]' for s in skills)
+        _rich_console.print(f"      [{DIM_COLOR}]skills:[/{DIM_COLOR}] {names}")
+        _rich_console.print()
+
+    def print_skill_invocation(self, skill_name: str, description: str = "") -> None:
+        """Print when a skill is triggered by user /command."""
+        desc = f"  [dim]{description}[/dim]" if description else ""
+        _rich_console.print(f"{_prefix()} [bold cyan]/{skill_name}[/bold cyan]{desc}")
 
     def print(self, message: str, style: str = None, use_prefix: bool = True):
         """Print message to console and/or log file.

@@ -518,13 +518,13 @@ class TestActiveSessionRegistry:
         mock_io = object()
         mock_thread = threading.Thread(target=lambda: None)
 
-        registry.register('sess-1', mock_io, mock_thread)
+        registry.register('sess-1', mock_io, mock_thread, threading.Event())
         session = registry.get('sess-1')
 
         assert session is not None
         assert session.session_id == 'sess-1'
         assert session.io == mock_io
-        assert session.status == 'running'
+        assert session.status == 'executing'
 
     def test_get_returns_none_for_missing(self):
         """get() returns None for non-existent session."""
@@ -536,7 +536,7 @@ class TestActiveSessionRegistry:
         """update_ping() updates last_ping timestamp."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
-        registry.register('sess-1', object(), mock_thread)
+        registry.register('sess-1', object(), mock_thread, threading.Event())
 
         old_ping = registry.get('sess-1').last_ping
         time.sleep(0.01)
@@ -549,39 +549,39 @@ class TestActiveSessionRegistry:
         """mark_suspended() changes status to suspended."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
-        registry.register('sess-1', object(), mock_thread)
+        registry.register('sess-1', object(), mock_thread, threading.Event())
 
         registry.mark_suspended('sess-1')
 
         assert registry.get('sess-1').status == 'suspended'
 
-    def test_mark_completed(self):
-        """mark_completed() changes status to completed."""
+    def test_mark_connected(self):
+        """mark_connected() changes status to connected."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
-        registry.register('sess-1', object(), mock_thread)
+        registry.register('sess-1', object(), mock_thread, threading.Event())
 
-        registry.mark_completed('sess-1')
+        registry.mark_connected('sess-1')
 
-        assert registry.get('sess-1').status == 'completed'
+        assert registry.get('sess-1').status == 'connected'
 
     def test_list_active(self):
         """list_active() returns running and suspended sessions."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
 
-        registry.register('running-1', object(), mock_thread)
-        registry.register('suspended-1', object(), mock_thread)
-        registry.register('completed-1', object(), mock_thread)
+        registry.register('executing-1', object(), mock_thread, threading.Event())
+        registry.register('suspended-1', object(), mock_thread, threading.Event())
+        registry.register('connected-1', object(), mock_thread, threading.Event())
 
         registry.mark_suspended('suspended-1')
-        registry.mark_completed('completed-1')
+        registry.mark_connected('connected-1')
 
         active = registry.list_active()
 
-        assert 'running-1' in active
+        assert 'executing-1' in active
         assert 'suspended-1' in active
-        assert 'completed-1' not in active
+        assert 'connected-1' not in active
 
     def test_count(self):
         """count() returns total sessions."""
@@ -590,8 +590,8 @@ class TestActiveSessionRegistry:
 
         assert registry.count() == 0
 
-        registry.register('sess-1', object(), mock_thread)
-        registry.register('sess-2', object(), mock_thread)
+        registry.register('sess-1', object(), mock_thread, threading.Event())
+        registry.register('sess-2', object(), mock_thread, threading.Event())
 
         assert registry.count() == 2
 
@@ -797,8 +797,8 @@ class TestReconnectionScenarios:
         mock_thread = threading.Thread(target=lambda: None)
 
         # 1. New session starts
-        registry.register('active-sess', mock_io, mock_thread)
-        assert registry.get('active-sess').status == 'running'
+        registry.register('active-sess', mock_io, mock_thread, threading.Event())
+        assert registry.get('active-sess').status == 'executing'
 
         # 2. Client disconnects
         registry.mark_suspended('active-sess')
@@ -866,13 +866,13 @@ class TestReconnectionScenarios:
         assert restored.session['iteration'] == 12
 
     def test_registry_cleanup_expired_sessions(self):
-        """Completed sessions are cleaned up after 10min idle."""
+        """Connected sessions are cleaned up after 10min idle."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
 
-        # Register and immediately complete
-        registry.register('to-cleanup', object(), mock_thread)
-        registry.mark_completed('to-cleanup')
+        # Register and mark connected (agent finished)
+        registry.register('to-cleanup', object(), mock_thread, threading.Event())
+        registry.mark_connected('to-cleanup')
 
         # Manually set last_ping to past (idle >10min)
         with registry._lock:
@@ -888,7 +888,7 @@ class TestReconnectionScenarios:
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
 
-        registry.register('still-running', object(), mock_thread)
+        registry.register('still-running', object(), mock_thread, threading.Event())
 
         # Manually set old timestamps
         with registry._lock:

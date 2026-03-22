@@ -103,10 +103,13 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
         (metadata dict, sample_agent) - sample_agent for additional extraction
     """
     sample = create_agent()
+    raw_skills = getattr(sample, 'skills', [])
     metadata = {
         "name": sample.name,
         "tools": sample.tools.names(),
-        "model": sample.llm.model,  # Add model to metadata
+        "model": sample.llm.model,
+        "skills": [{"name": s.name, "description": s.description, "location": s.location}
+                   for s in raw_skills],
     }
     return metadata, sample
 

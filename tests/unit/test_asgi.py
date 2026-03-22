@@ -19,7 +19,7 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 from connectonion.network.asgi import (
     handle_websocket,
-    _pump_messages,
+    _pipe_ws_io,
     create_app,
     send_json,
     read_body,
@@ -78,13 +78,13 @@ class TestWebSocketIOInASGI:
 
 
 @pytest.mark.asyncio
-class TestPumpMessages:
-    """Test _pump_messages async function."""
+class TestPipeWsIo:
+    """Test _pipe_ws_io async function."""
 
     async def test_sends_outgoing_messages_to_websocket(self):
         """Test that outgoing queue messages are sent to WebSocket."""
         conn = WebSocketIO()
-        agent_done = threading.Event()
+        agent_finished = threading.Event()
         sent_messages = []
 
         async def mock_receive():
@@ -100,12 +100,12 @@ class TestPumpMessages:
 
         # Mark agent done quickly
         def mark_done():
-            asyncio.get_event_loop().call_later(0.1, agent_done.set)
+            asyncio.get_event_loop().call_later(0.1, agent_finished.set)
 
-        threading.Thread(target=lambda: (asyncio.run(asyncio.sleep(0.05)), agent_done.set())).start()
+        threading.Thread(target=lambda: (asyncio.run(asyncio.sleep(0.05)), agent_finished.set())).start()
 
         await asyncio.wait_for(
-            _pump_messages(mock_receive, mock_send, conn, agent_done),
+            _pipe_ws_io(mock_receive, mock_send, conn, agent_finished),
             timeout=2.0
         )
 
@@ -122,22 +122,22 @@ class TestPumpMessages:
     async def test_routes_incoming_to_connection(self):
         """Test that WebSocket messages are routed to connection incoming queue."""
         conn = WebSocketIO()
-        agent_done = threading.Event()
+        agent_finished = threading.Event()
         receive_count = [0]
 
         async def mock_receive():
             receive_count[0] += 1
             if receive_count[0] == 1:
                 return {"type": "websocket.receive", "text": '{"approved": true}'}
-            # Second call - set agent_done and return disconnect
-            agent_done.set()
+            # Second call - set agent_finished and return disconnect
+            agent_finished.set()
             return {"type": "websocket.disconnect"}
 
         async def mock_send(msg):
             pass
 
         await asyncio.wait_for(
-            _pump_messages(mock_receive, mock_send, conn, agent_done),
+            _pipe_ws_io(mock_receive, mock_send, conn, agent_finished),
             timeout=2.0
         )
 
@@ -147,14 +147,14 @@ class TestPumpMessages:
 
 
     async def test_returns_true_when_client_disconnects(self):
-        """Test that _pump_messages returns True when client disconnects.
+        """Test that _pipe_ws_io returns True when client disconnects.
 
         This allows the caller to skip sending OUTPUT to a closed connection.
         The result is still saved to SessionStorage by input_handler, so
         clients can fetch it via GET /sessions/{session_id} on reconnect.
         """
         conn = WebSocketIO()
-        agent_done = threading.Event()
+        agent_finished = threading.Event()
 
         async def mock_receive():
             # Simulate immediate disconnect
@@ -167,26 +167,26 @@ class TestPumpMessages:
         def complete_agent():
             import time
             time.sleep(0.05)
-            agent_done.set()
+            agent_finished.set()
 
         threading.Thread(target=complete_agent).start()
 
-        # _pump_messages should return True (client disconnected)
+        # _pipe_ws_io should return True (client disconnected)
         disconnected = await asyncio.wait_for(
-            _pump_messages(mock_receive, mock_send, conn, agent_done),
+            _pipe_ws_io(mock_receive, mock_send, conn, agent_finished),
             timeout=2.0
         )
 
         assert disconnected is True
 
     async def test_returns_false_when_agent_completes_normally(self):
-        """Test that _pump_messages returns False when agent completes without disconnect."""
+        """Test that _pipe_ws_io returns False when agent completes without disconnect."""
         conn = WebSocketIO()
-        agent_done = threading.Event()
+        agent_finished = threading.Event()
 
         async def mock_receive():
             # Keep waiting forever - client never disconnects
-            # _pump_messages will cancel this task when agent completes
+            # _pipe_ws_io will cancel this task when agent completes
             await asyncio.sleep(10)
             return {"type": "websocket.disconnect"}
 
@@ -197,12 +197,12 @@ class TestPumpMessages:
         def complete_agent():
             import time
             time.sleep(0.05)
-            agent_done.set()
+            agent_finished.set()
 
         threading.Thread(target=complete_agent).start()
 
         disconnected = await asyncio.wait_for(
-            _pump_messages(mock_receive, mock_send, conn, agent_done),
+            _pipe_ws_io(mock_receive, mock_send, conn, agent_finished),
             timeout=2.0
         )
 
@@ -257,13 +257,13 @@ class TestHandleWebSocket:
         assert len(close_msg) == 1
         assert close_msg[0]["code"] == 4004
 
-    @pytest.mark.skip(reason="WebSocket handler implementation changed; test needs rewrite")
     async def test_handles_input_message(self):
-        """Test that INPUT message triggers agent execution."""
+        """Test that CONNECT + INPUT triggers agent execution."""
         scope = {"path": "/ws", "type": "websocket"}
         sent_messages = []
         message_count = [0]
         storage = Mock()
+        storage.get.return_value = None
 
         async def receive():
             message_count[0] += 1
@@ -271,12 +271,22 @@ class TestHandleWebSocket:
                 return {
                     "type": "websocket.receive",
                     "text": json.dumps({
-                        "type": "INPUT",
-                        "payload": {"prompt": "hello", "timestamp": 1234567890},
+                        "type": "CONNECT",
+                        "payload": {"timestamp": 1234567890},
                         "from": "0xtest",
                         "signature": "0xsig"
                     })
                 }
+            if message_count[0] == 2:
+                return {
+                    "type": "websocket.receive",
+                    "text": json.dumps({
+                        "type": "INPUT",
+                        "prompt": "hello"
+                    })
+                }
+            # Give time for agent thread to complete
+            await asyncio.sleep(0.1)
             return {"type": "websocket.disconnect"}
 
         async def send(msg):
@@ -285,36 +295,43 @@ class TestHandleWebSocket:
         agent_called = [False]
         connection_received = [None]
 
-        def mock_ws_input(storage, prompt, connection, session=None):
+        def mock_ws_input(storage, prompt, connection, session=None, images=None, files=None):
             agent_called[0] = True
             connection_received[0] = connection
-            return {"result": "Agent response", "session_id": "123", "duration_ms": 100, "session": {}}
+            return {"result": "Agent response", "session_id": "123", "duration_ms": 100, "session": {}, "status": "done"}
 
         handlers = {
             "auth": lambda *args, **kwargs: ("hello", "0xtest", True, None),
             "ws_input": mock_ws_input,
+            "trust_agent": Mock(config={}),
         }
 
-        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
+        registry = ActiveSessionRegistry()
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, registry=registry, trust="open")
 
         assert agent_called[0] is True
         assert connection_received[0] is not None
         assert isinstance(connection_received[0], WebSocketIO)
 
-    @pytest.mark.skip(reason="WebSocket handler implementation changed; test needs rewrite")
     async def test_sends_output_after_agent_completes(self):
         """Test that OUTPUT message is sent after agent completes."""
         scope = {"path": "/ws", "type": "websocket"}
         sent_messages = []
         message_count = [0]
         storage = Mock()
+        storage.get.return_value = None
 
         async def receive():
             message_count[0] += 1
             if message_count[0] == 1:
                 return {
                     "type": "websocket.receive",
-                    "text": json.dumps({"type": "INPUT", "payload": {"prompt": "test", "timestamp": 123}, "from": "0x", "signature": "0x"})
+                    "text": json.dumps({"type": "CONNECT", "payload": {"timestamp": 123}, "from": "0x", "signature": "0x"})
+                }
+            if message_count[0] == 2:
+                return {
+                    "type": "websocket.receive",
+                    "text": json.dumps({"type": "INPUT", "prompt": "test"})
                 }
             # Give time for agent to complete
             await asyncio.sleep(0.1)
@@ -325,10 +342,12 @@ class TestHandleWebSocket:
 
         handlers = {
             "auth": lambda *args, **kwargs: ("test", "0x", True, None),
-            "ws_input": lambda storage, p, c, session=None: {"result": "Expected result", "session_id": "abc-123", "duration_ms": 50, "session": {}},
+            "ws_input": lambda storage, p, c, session=None, images=None, files=None: {"result": "Expected result", "session_id": "abc-123", "duration_ms": 50, "session": {}, "status": "done"},
+            "trust_agent": Mock(config={}),
         }
 
-        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, trust="open")
+        registry = ActiveSessionRegistry()
+        await handle_websocket(scope, receive, send, route_handlers=handlers, storage=storage, registry=registry, trust="open")
 
         # Find OUTPUT message
         output_msgs = [
@@ -344,7 +363,7 @@ class TestHandleWebSocket:
         assert output_data["duration_ms"] == 50
 
     async def test_auth_error_sends_error_message(self):
-        """Test that auth errors are sent back to client."""
+        """Test that auth errors are sent back to client on INIT."""
         scope = {"path": "/ws", "type": "websocket"}
         sent_messages = []
         message_count = [0]
@@ -355,7 +374,7 @@ class TestHandleWebSocket:
             if message_count[0] == 1:
                 return {
                     "type": "websocket.receive",
-                    "text": json.dumps({"type": "INPUT", "payload": {"prompt": "test"}, "from": "0x", "signature": "0x"})
+                    "text": json.dumps({"type": "CONNECT", "payload": {"timestamp": 123}, "from": "0x", "signature": "0x"})
                 }
             return {"type": "websocket.disconnect"}
 
