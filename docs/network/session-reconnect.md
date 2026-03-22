@@ -27,33 +27,41 @@ Two layers handle session survival:
 ## Session Lifecycle
 
 ```
-register()
-    │
-    ▼
- RUNNING ──────────────────────► COMPLETED
-    │            agent finishes       │
-    │                                 │
-    ▼ client disconnects              │ 10min idle
- SUSPENDED                           ▼
-    │                              REMOVED
-    │ client reconnects
-    ▼
- RUNNING (same IO queues)
+    ╭──────────╮
+    │   new    │◄───── session_id not found / first connect
+    ╰────┬─────╯
+         │ CONNECT
+         ↓
+    ╭──────────╮            ╭───────────╮
+    │connected │◄───────────│ suspended │
+    │ (idle)   │  reconnect │ (grace)   │
+    ╰────┬─────╯            ╰─────┬─────╯
+         │ INPUT                  │ 10min idle
+         ↓                        ↓
+    ╭──────────╮            ╭──────────╮
+    │executing │            │ REMOVED  │
+    ╰────┬─────╯            ╰──────────╯
+         │
+    ┌────┴────────────────────┐
+    ↓ agent done              ↓ WS disconnects
+    ╭──────────╮         ╭───────────╮
+    │connected │         │ suspended │
+    ╰──────────╯         ╰───────────╯
 ```
 
 | Transition | Trigger | What happens |
 |---|---|---|
-| → RUNNING | `register()` | Agent thread spawned, IO queues created |
-| → SUSPENDED | Client WebSocket drops | Agent keeps running, queues buffer events |
-| → RUNNING | Client reconnects with same session_id | Same IO queues reattached to new WebSocket |
-| → COMPLETED | Agent finishes | Result saved to JSONL, session stays in memory |
+| → EXECUTING | `register()` on INPUT | Agent thread spawned, IO queues created |
+| → SUSPENDED | Client WebSocket drops | Agent may keep running, queues buffer events |
+| → CONNECTED | Agent finishes (OUTPUT) | Session alive, idle, ready for next INPUT |
+| → CONNECTED | Client reconnects | Same session reattached to new WebSocket |
 | → REMOVED | 10min idle (no client ping) | Freed from memory |
 
 ---
 
 ## Reconnection Flow
 
-The key insight: the **IO queues survive the WebSocket**. When a client reconnects with `CONNECT { session_id }`, the server reattaches the same queues to the new connection. The agent thread never knows the difference.
+The key insight: the **IO queues survive the WebSocket**. When a client reconnects with `CONNECT { session_id }`, the server finds the running session and reattaches the same queues to the new connection. The agent thread never knows the difference.
 
 See [WebSocket Protocol](websocket-protocol.md) for the full CONNECT/INPUT protocol specification.
 
@@ -61,6 +69,7 @@ See [WebSocket Protocol](websocket-protocol.md) for the full CONNECT/INPUT proto
 Time   Client              WebSocket Handler    Agent Thread
 ────   ──────              ─────────────────    ────────────
 T+0    CONNECT ───────────► accept, auth
+       ◄── CONNECTED ──────  { session_id, status: "new" }
        INPUT ─────────────► register()
                             spawn thread ───────► agent.input() starts
 T+5                        ◄─────────────────── io.send(thinking)
@@ -74,7 +83,7 @@ T+20   ✕ DISCONNECT         mark_suspended()
                             (queues stay alive)   (still blocked)
 
 T+25   WS open
-       CONNECT ───────────► registry.get() → FOUND
+       CONNECT ───────────► registry.get() → FOUND (running)
        { session_id }       reattach IO queues
        ◄── CONNECTED ──────  { status: "running" }
        ◄── queued events ── drain buffer
@@ -84,16 +93,19 @@ T+25   WS open
                                                    agent continues...
 
 T+35                        ◄─────────────────── agent finishes
-                             mark_completed()
+                             mark_connected()
                              save to JSONL
-       ◄── OUTPUT ──────────
+       ◄── OUTPUT ──────────  session → "connected" (alive, ready for more)
+
+T+40   INPUT ─────────────► new agent thread  ► agent.input() starts
+                             (same session, next turn)
 ```
 
 **What happened:**
 1. Agent asked for approval at T+15, blocked waiting
 2. Client disconnected at T+20 — agent stayed blocked, events buffered
-3. Client reconnected at T+25 with `CONNECT { session_id }` — got buffered events, sent approval
-4. Agent unblocked and finished normally
+3. Client reconnected at T+25 with `CONNECT { session_id, session }` — server found executing session, piped buffered events, client sent approval
+4. Agent unblocked and finished — session stays alive ("connected"), ready for next INPUT
 
 ### Auto-Reconnect (Browser)
 
@@ -103,14 +115,14 @@ After a page refresh, the client automatically reconnects:
 Page loads → Zustand hydrates → session_id exists
     │
     ▼
-Open WebSocket → CONNECT { session_id }
+Open WebSocket → CONNECT { session_id, session: {messages} }
     │
-    ├─ CONNECTED { status: "running" }  → receive buffered events, resume
-    ├─ CONNECTED { status: "completed" } → show result
-    └─ CONNECTED { status: "expired" }   → show cached UI as history
+    ├─ CONNECTED { status: "executing" }  → agent running, events stream in
+    ├─ CONNECTED { status: "connected" }  → session alive, send INPUT when ready
+    └─ CONNECTED { status: "new" }        → session expired, start fresh (client has history)
 ```
 
-No manual "Retry" button needed.
+One message handles all cases. No "completed" or "expired" death states.
 
 ---
 
@@ -160,10 +172,10 @@ Client                    Server
 
 ## Session Cleanup
 
-One rule for all non-running sessions:
+One rule: clean up idle sessions that aren't executing:
 
 ```
-             status != 'running'
+             status in ('connected', 'suspended')
              AND idle > 10min
                    │
                    ▼
@@ -174,7 +186,8 @@ One rule for all non-running sessions:
           └────────────────┘
 ```
 
-- **No special cases.** Completed, suspended — same rule.
+- **Never clean up executing sessions** (agent still running).
+- **Connected and suspended** use the same 10min idle rule.
 - **Results already on disk.** JSONL storage has the final result.
 - **Client can still poll.** `GET /sessions/{id}` works for 24h.
 - **Background job** runs every 60s to sweep expired sessions.
@@ -190,7 +203,7 @@ Client gone                 Server
                               │
                               │  agent finishes
                               │  save result to .co/session_results.jsonl
-                              │  mark_completed()
+                              │  mark_connected()
                               │
                               │  ... 10min idle ...
                               │
@@ -228,6 +241,47 @@ iteration: 5                iteration: 10
 | Server continued (iteration 10 vs 5) | Server wins |
 | Client newer (iteration 8 vs 3) | Client wins |
 | Tie (same iteration) | Higher `updated` timestamp wins |
+
+---
+
+## Known Issue: Reconnect During Approval Blocks
+
+When a client refreshes while the agent is blocked waiting for approval (e.g., bash tool), reconnection fails. Here's the bug chain:
+
+```
+Time   What happens
+────   ─────────────────────────────────────────────
+T+0    Agent sends approval_needed, blocks on io.receive()
+T+5    Client refreshes → WebSocket disconnects
+       → _pipe_ws_io detects disconnect
+       → io.close() puts {"type": "io_closed"} sentinel in io._incoming
+       → io.receive() unblocks with sentinel
+       → Agent treats it as "connection closed" error
+       → If agent crashes: run_agent() has NO try/finally
+         → agent_finished.set() NEVER fires
+         → _pipe_ws_io hangs forever waiting for agent_finished
+T+10   New WebSocket connects → CONNECT { session_id }
+       → registry.get() finds session, status still 'executing'
+       → Reattach path: uses SAME io object
+       → BUT io._closed = True → io.send() drops all events
+       → Agent can't send to new client
+```
+
+### Three bugs
+
+1. **`run_agent()` has no error handling** — if agent crashes, `agent_finished.set()` never fires, `_pipe_ws_io` hangs forever.
+
+2. **Reattach uses closed IO** — on reconnect, the server reattaches to the old `io` object which has `_closed = True`. Agent's `io.send()` silently drops all events.
+
+3. **Two `_pipe_ws_io` loops compete** — the old loop (stuck waiting for `agent_finished`) and the new loop (from reattach) both reference the same `agent_finished` event, causing race conditions on completion.
+
+### Fix plan
+
+1. **`run_agent()`: wrap in try/finally** — always set `agent_finished`, capture error in `error_holder`.
+
+2. **Reattach: reopen IO** — reset `io._closed = False` so the agent can send events through the new WebSocket.
+
+3. **Old `_pipe_ws_io`: detect it's been superseded** — when a new connection reattaches, the old pipe should stop waiting and exit cleanly.
 
 ---
 

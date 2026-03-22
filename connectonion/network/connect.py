@@ -1,39 +1,17 @@
 """
-Purpose: Client interface for connecting to remote agents with real-time UI updates
+Client interface for connecting to remote agents with real-time UI updates.
 
-Lifecycle (Client Side):
+Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
+See docs/network/websocket-protocol.md for full specification.
+
+Lifecycle:
   1. connect(address) creates RemoteAgent instance
-  2. agent.input(prompt) opens WebSocket to relay /ws/input endpoint
-  3. Sends INPUT message: {type: "INPUT", input_id, to, prompt, session?}
-  4. Receives streaming events: tool_call, tool_result, thinking, assistant
-  5. If stranger: ONBOARD_REQUIRED → callback provides credentials → ONBOARD_SUBMIT → ONBOARD_SUCCESS → retry
-  6. Receives final OUTPUT: {type: "OUTPUT", result, session} or ask_user
-  7. Returns Response(text, done) - done=False means agent asked a question
-
-Message Flow:
-  Client → /ws/input → Relay → forwards to Agent's /ws/announce connection
-  Agent processes → sends OUTPUT → Relay resolves pending_outputs future
-  Relay → forwards OUTPUT → Client receives response
-
-Onboard Flow (for strangers connecting to careful/strict agents):
-  Client: INPUT
-  Server: ONBOARD_REQUIRED {methods: ["invite_code", "payment"], payment_amount: N}
-  Client: calls on_onboard callback to get credentials
-  Client: ONBOARD_SUBMIT {invite_code: "...", payment: N}
-  Server: ONBOARD_SUCCESS {level: "contact", message: "..."}
-  Client: INPUT (retry original prompt)
-  Server: OUTPUT
-
-Related Files:
-  - oo-api/relay/routes.py: Relay server WebSocket endpoints
-  - connectonion/network/relay.py: Agent-side relay connection (serve_loop)
-  - connectonion-ts/src/connect.ts: TypeScript equivalent of this file
-
-LLM-Note:
-  Dependencies: imports from [asyncio, json, uuid, time, websockets, address, dataclasses]
-  Data flow: connect(address) → RemoteAgent → input() → WebSocket /ws/input → events → Response
-  State/Effects: current_session synced from server | ui transforms server events
-  Integration: exposes connect(), RemoteAgent with .input(), .input_async(), .ui, .status
+  2. agent.input(prompt) opens WebSocket, sends CONNECT to authenticate
+  3. Server responds with CONNECTED { session_id, status }
+  4. Client sends INPUT { prompt }
+  5. Receives streaming events: tool_call, tool_result, thinking, assistant
+  6. Receives final OUTPUT or ask_user
+  7. Returns Response(text, done)
 """
 
 import asyncio
@@ -292,11 +270,43 @@ class RemoteAgent:
         # Generate input_id for routing/response matching
         input_id = str(uuid.uuid4())
 
-        # Build the INPUT message
+        # Build the CONNECT and INPUT messages
+        connect_msg = self._build_connect_message(is_direct)
         input_msg = self._build_input_message(prompt, input_id, is_direct, images, files)
 
         try:
             async with websockets.connect(ws_url) as ws:
+                # Authenticate first
+                await ws.send(json.dumps(connect_msg))
+
+                # Wait for CONNECTED
+                while True:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                    event = json.loads(raw)
+                    if event.get("type") == "CONNECTED":
+                        sid = event.get("session_id")
+                        if sid and not self._current_session:
+                            self._current_session = {"session_id": sid}
+                        elif sid and self._current_session:
+                            self._current_session["session_id"] = sid
+                        break
+                    elif event.get("type") == "ERROR":
+                        self._status = "idle"
+                        raise ConnectionError(f"Auth error: {event.get('message', event.get('error'))}")
+                    elif event.get("type") == "ONBOARD_REQUIRED":
+                        # Handle onboard during connect
+                        methods = event.get("methods", [])
+                        payment_amount = event.get("payment_amount")
+                        self._add_ui_event({"type": "onboard_required", "methods": methods, "payment_amount": payment_amount})
+                        if on_onboard:
+                            credentials = on_onboard(methods, payment_amount)
+                        else:
+                            credentials = self._prompt_onboard(methods, payment_amount)
+                        submit_msg = self._build_onboard_submit(credentials)
+                        await ws.send(json.dumps(submit_msg))
+                        # Continue waiting for CONNECTED or ONBOARD_SUCCESS
+
+                # Now send INPUT
                 await ws.send(json.dumps(input_msg))
 
                 # Stream events until OUTPUT or timeout
@@ -387,6 +397,33 @@ class RemoteAgent:
             self._status = "idle"
             raise TimeoutError(f"Request timed out after {timeout}s")
 
+    def _build_connect_message(self, is_direct: bool = False) -> Dict[str, Any]:
+        """Build CONNECT message with signing."""
+        connect_msg: Dict[str, Any] = {
+            "type": "CONNECT",
+            "timestamp": int(time.time())
+        }
+
+        if not is_direct:
+            connect_msg["to"] = self.address
+
+        if self._current_session and self._current_session.get("session_id"):
+            connect_msg["session_id"] = self._current_session["session_id"]
+
+        # Send conversation history with CONNECT
+        if self._current_session:
+            connect_msg["session"] = self._current_session
+
+        if self._keys:
+            payload: Dict[str, Any] = {"to": self.address, "timestamp": connect_msg["timestamp"]}
+            canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+            signature = addr.sign(self._keys, canonical.encode())
+            connect_msg["payload"] = payload
+            connect_msg["from"] = self._keys["address"]
+            connect_msg["signature"] = signature.hex()
+
+        return connect_msg
+
     def _build_input_message(
         self,
         prompt: str,
@@ -407,9 +444,7 @@ class RemoteAgent:
         if not is_direct:
             input_msg["to"] = self.address
 
-        # Add session for conversation continuation
-        if self._current_session:
-            input_msg["session"] = self._current_session
+        # Session goes with CONNECT, not INPUT
 
         # Add multimodal attachments
         if images:

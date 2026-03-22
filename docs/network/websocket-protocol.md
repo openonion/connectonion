@@ -1,38 +1,78 @@
 # WebSocket Protocol
 
-> Connect first, then message. The connection IS the session.
+> CONNECT to start or resume, INPUT to message. Session stays alive between executions.
 
 ---
 
 ## Overview
 
-The WebSocket protocol separates **connection** from **messaging**. This follows the same pattern as Socket.IO, Phoenix Channels, and ActionCable.
+Two client message types, two intents:
+
+| Message | Intent | When |
+|---------|--------|------|
+| `CONNECT` | "Authenticate me, restore my session" | First message on every WebSocket |
+| `INPUT` | "Run this prompt" | After CONNECT |
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    WebSocket Lifecycle                        │
-│                                                              │
-│   1. Open WebSocket                                         │
-│   2. CONNECT  →  authenticate + link to agent + get session │
-│   3. INPUT    →  send prompt (as many as needed)            │
-│   4. Close    →  session survives for reconnection          │
-│                                                              │
-│   On reconnect: CONNECT with session_id → resume            │
-└─────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│                    WebSocket Lifecycle                          │
+│                                                                │
+│   Every connection:  WS open → CONNECT → CONNECTED → ...      │
+│                                                                │
+│   CONNECT carries:   auth + session (conversation history)     │
+│   INPUT carries:     just the prompt (session already set)     │
+│                                                                │
+│   Server decides:    new / connected / executing               │
+│                                                                │
+└────────────────────────────────────────────────────────────────┘
 ```
-
-**Two message types, two concerns:**
-
-| Message | Purpose |
-|---------|---------|
-| `CONNECT` | Authenticate, link to agent, allocate or resume session |
-| `INPUT` | Send a prompt to the agent |
-
-Everything else (OUTPUT, PING, events) flows from the server.
 
 ---
 
-## Protocol Flow
+## Session Lifecycle
+
+```
+════════════════════════════════════════════════════════════════════
+  SESSION = connection.  EXECUTION = one INPUT → OUTPUT cycle.
+  Session outlives executions. Multiple INPUTs per session.
+════════════════════════════════════════════════════════════════════
+
+    ╭──────────╮
+    │   new    │◄──────────────────── session_id not found
+    ╰────┬─────╯
+         │ CONNECT
+         ↓
+    ╭──────────╮
+    │connected │◄──── agent done (OUTPUT) ◄──── user reconnects
+    ╰────┬─────╯                                (within 10min)
+         │ INPUT
+         ↓
+    ╭──────────╮
+    │executing │──── agent working (LLM → tools → LLM)
+    ╰────┬─────╯
+         │
+    ┌────┴────────────────────┐
+    │                         │
+    ↓ agent done              ↓ WS disconnects
+    ╭──────────╮         ╭───────────╮
+    │connected │         │ suspended │
+    │ (idle)   │         │ (grace)   │
+    ╰──────────╯         ╰─────┬─────╯
+         │                     │
+         │ next INPUT          ├── reconnect within 10min → connected
+         ↓                     │
+    ╭──────────╮               └── 10min idle → removed
+    │executing │
+    ╰──────────╯
+
+
+    Key insight: "completed" is NOT a session state.
+    It's an execution state. The session stays alive.
+```
+
+---
+
+## Protocol Flows
 
 ### New Session
 
@@ -41,78 +81,87 @@ Client                                    Server
   │                                         │
   │── WS open ────────────────────────────►│
   │                                         │
-  │── CONNECT ───────────────────────────►│  verify signature
-  │   { to, auth }                         │  create agent instance
-  │                                         │  allocate session_id
+  │── CONNECT ─────────────────────────────►│  verify Ed25519 signature
+  │   { auth, session: {messages} }         │  no session_id → new session
+  │                                         │  store conversation history
   │                                         │
-  │◄── CONNECTED ─────────────────────────│  { session_id, status: "new" }
+  │◄── CONNECTED ──────────────────────────│  { session_id: "abc", status: "new" }
   │                                         │
-  │◄── PING ──────────────────────────────│  keep-alive starts (every 30s)
-  │── PONG ──────────────────────────────►│
+  │◄── PING ───────────────────────────────│  keep-alive starts (every 30s)
+  │── PONG ────────────────────────────────►│
   │                                         │
-  │── INPUT ─────────────────────────────►│  run agent with prompt
-  │   { prompt }                           │
+  │── INPUT ───────────────────────────────►│  run agent with prompt
+  │   { prompt: "hello" }                   │  (no session in INPUT)
   │                                         │
-  │◄── thinking ──────────────────────────│  stream events
-  │◄── tool_call ─────────────────────────│
-  │◄── tool_result ───────────────────────│
-  │◄── OUTPUT ────────────────────────────│  { result, session }
+  │◄── thinking ───────────────────────────│  stream events
+  │◄── tool_call ──────────────────────────│
+  │◄── OUTPUT ─────────────────────────────│  { result, session }
+  │                                         │  session → "connected" (not dead)
   │                                         │
-  │── INPUT ─────────────────────────────►│  another prompt, same session
-  │   { prompt }                           │
-  │◄── ... ───────────────────────────────│
-  │◄── OUTPUT ────────────────────────────│
+  │── INPUT ───────────────────────────────►│  same WS, same session
+  │   { prompt: "tell me more" }            │
+  │◄── ... ────────────────────────────────│
+  │◄── OUTPUT ─────────────────────────────│
 ```
 
-### Reconnect After Disconnect
+### Resume After Page Refresh (agent still running)
 
 ```
 Client                                    Server
   │                                         │
-  │    (agent still running on server)      │
+  │    (agent still executing on server)    │
   │                                         │
   │── WS open ────────────────────────────►│
   │                                         │
-  │── CONNECT ───────────────────────────►│  verify signature
-  │   { to, session_id, auth }             │  registry.get(session_id)
-  │                                         │  → found, status: running
-  │                                         │  reattach IO queues
+  │── CONNECT ─────────────────────────────►│  verify signature
+  │   { session_id: "abc", session: {...} } │  registry.get("abc") → executing
+  │                                         │  merge sessions if server newer
   │                                         │
-  │◄── CONNECTED ─────────────────────────│  { session_id, status: "running" }
-  │◄── buffered event ───────────────────│  drain queued events
-  │◄── buffered event ───────────────────│
-  │◄── PING ──────────────────────────────│  keep-alive resumes
-  │── PONG ──────────────────────────────►│
+  │◄── CONNECTED ──────────────────────────│  { session_id: "abc", status: "executing" }
+  │◄── buffered events ───────────────────│  drain queued events
+  │◄── PING ───────────────────────────────│  keep-alive resumes
   │                                         │
   │◄── stream events ─────────────────────│  live again
-  │◄── OUTPUT ────────────────────────────│
+  │◄── OUTPUT ─────────────────────────────│
 ```
 
-### Reconnect After Session Completed
+### Resume After Page Refresh (agent finished)
+
+```
+Client                                    Server
+  │                                         │
+  │    (agent finished while client away)   │
+  │                                         │
+  │── WS open ────────────────────────────►│
+  │                                         │
+  │── CONNECT ─────────────────────────────►│  verify signature
+  │   { session_id: "abc", session: {...} } │  registry.get("abc") → connected
+  │                                         │  merge: server has newer data
+  │                                         │
+  │◄── CONNECTED ──────────────────────────│  { session_id: "abc",
+  │                                         │    status: "connected",
+  │                                         │    server_newer: true,
+  │                                         │    session: {merged},
+  │                                         │    chat_items: [...] }
+  │                                         │
+  │    (client updates UI with server data) │
+  │                                         │
+  │── INPUT ───────────────────────────────►│  ready for next prompt
+  │   { prompt: "what else?" }              │
+  │◄── ... ────────────────────────────────│
+  │◄── OUTPUT ─────────────────────────────│
+```
+
+### Session Not Found (expired or never existed)
 
 ```
 Client                                    Server
   │                                         │
   │── WS open ────────────────────────────►│
+  │── CONNECT { session_id: "abc" } ──────►│  not in registry
+  │◄── CONNECTED ──────────────────────────│  { session_id: "abc", status: "new" }
   │                                         │
-  │── CONNECT ───────────────────────────►│  registry.get(session_id)
-  │   { to, session_id, auth }             │  → found, status: completed
-  │                                         │
-  │◄── CONNECTED ─────────────────────────│  { session_id, status: "completed",
-  │                                         │    result: "..." }
-```
-
-### Reconnect After Session Expired
-
-```
-Client                                    Server
-  │                                         │
-  │── WS open ────────────────────────────►│
-  │                                         │
-  │── CONNECT ───────────────────────────►│  registry.get(session_id)
-  │   { to, session_id, auth }             │  → not found
-  │                                         │
-  │◄── CONNECTED ─────────────────────────│  { session_id, status: "expired" }
+  │── INPUT ───────────────────────────────►│  fresh session, full history from CONNECT
 ```
 
 ---
@@ -123,17 +172,14 @@ Client                                    Server
 
 #### CONNECT
 
-First message after WebSocket opens. Authenticates and links to an agent.
+Authenticate, restore session, and sync conversation. **Always the first message.**
 
 ```json
 {
   "type": "CONNECT",
-  "to": "0x3d4017c3e843...",
   "session_id": "550e8400-...",
-  "payload": {
-    "to": "0x3d4017c3e843...",
-    "timestamp": 1702234567
-  },
+  "session": { "messages": [...], "mode": "safe" },
+  "payload": { "to": "0x3d4017c3e843...", "timestamp": 1702234567 },
   "from": "0xClientPublicKey",
   "signature": "0x..."
 }
@@ -141,15 +187,24 @@ First message after WebSocket opens. Authenticates and links to an agent.
 
 | Field | Required | Description |
 |-------|----------|-------------|
-| `to` | Yes | Agent's public address |
-| `session_id` | No | Existing session to resume. Omit for new session. |
+| `session_id` | No | Session to resume. Omit for new session. |
+| `session` | No | Conversation history (messages, mode, etc.) |
 | `payload` | Yes | Signed payload for authentication |
 | `from` | Yes | Client's public address |
 | `signature` | Yes | Ed25519 signature of payload |
 
+Server response based on state:
+
+| session_id | Server state | Response status | Server action |
+|------------|-------------|-----------------|---------------|
+| Not provided | — | `"new"` | Allocate new session |
+| Provided | In registry, executing | `"executing"` | Reattach IO, pipe buffered events |
+| Provided | In registry, connected/suspended | `"connected"` | Merge sessions, reset idle timer |
+| Provided | Not found | `"new"` | Allocate new session (same id) |
+
 #### INPUT
 
-Send a prompt to the connected agent. Only valid after CONNECTED.
+Send a prompt. Only valid after CONNECTED. **No session data — just the prompt.**
 
 ```json
 {
@@ -160,17 +215,7 @@ Send a prompt to the connected agent. Only valid after CONNECTED.
 }
 ```
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `prompt` | Yes | Natural language prompt |
-| `images` | No | Base64 data URLs |
-| `files` | No | Named file attachments |
-
-No signature needed — the WebSocket connection is already authenticated by CONNECT.
-
 #### PONG
-
-Acknowledge server PING. Send immediately on receiving PING.
 
 ```json
 { "type": "PONG" }
@@ -178,52 +223,44 @@ Acknowledge server PING. Send immediately on receiving PING.
 
 #### ASK_USER_RESPONSE
 
-Answer an agent's question.
-
 ```json
 { "type": "ASK_USER_RESPONSE", "answer": "Python 3" }
 ```
 
 #### APPROVAL_RESPONSE
 
-Approve or reject a tool execution.
-
 ```json
 { "type": "APPROVAL_RESPONSE", "approved": true, "scope": "once" }
-```
-
-#### SESSION_STATUS
-
-Check if a session exists without connecting to it.
-
-```json
-{ "type": "SESSION_STATUS", "session": { "session_id": "550e8400-..." } }
 ```
 
 ### Server → Client
 
 #### CONNECTED
 
-Response to CONNECT. Contains session info.
+Response to CONNECT.
 
 ```json
 {
   "type": "CONNECTED",
   "session_id": "550e8400-...",
-  "status": "new"
+  "status": "new",
+  "server_newer": true,
+  "session": { "messages": [...] },
+  "chat_items": [...]
 }
 ```
 
-| `status` | Meaning |
-|----------|---------|
-| `"new"` | New session allocated |
-| `"running"` | Resumed — agent still executing. Buffered events follow. |
-| `"completed"` | Session finished. Result included. |
-| `"expired"` | Session no longer in memory. Poll `/sessions/{id}` for result. |
+| `status` | Meaning | Client action |
+|----------|---------|---------------|
+| `"new"` | Fresh session | Send INPUT when ready |
+| `"connected"` | Session alive, idle | Send INPUT when ready |
+| `"executing"` | Agent still running | Wait for events/OUTPUT |
+
+`server_newer`, `session`, and `chat_items` are only included when the server's session data is newer than the client's (e.g., agent completed while client was away).
 
 #### OUTPUT
 
-Agent completed. Contains result and session state.
+Execution completed. **Session stays alive for next INPUT.**
 
 ```json
 {
@@ -231,26 +268,19 @@ Agent completed. Contains result and session state.
   "result": "Hola",
   "session_id": "550e8400-...",
   "duration_ms": 1250,
-  "session": {
-    "session_id": "550e8400-...",
-    "messages": [...],
-    "trace": [...],
-    "turn": 2
-  }
+  "session": { "messages": [...], "trace": [...], "turn": 2 }
 }
 ```
 
 #### PING
 
-Keep-alive. Sent every 30 seconds. Client must respond with PONG.
+Keep-alive. Sent every 30 seconds.
 
 ```json
 { "type": "PING" }
 ```
 
 #### Stream Events
-
-Sent during agent execution:
 
 | Type | Description |
 |------|-------------|
@@ -261,7 +291,6 @@ Sent during agent execution:
 | `approval_needed` | Tool requires approval |
 | `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
-| `intent` | Intent analysis |
 
 #### ERROR
 
@@ -271,29 +300,76 @@ Sent during agent execution:
 
 ---
 
+## Architecture Diagram
+
+```
+════════════════════════════════════════════════════════════════════
+
+  ╔══════════════╗                    ╔═══════════════════════════╗
+  ║   oo-chat    ║                    ║     Agent Server          ║
+  ║  (browser)   ║                    ║  (Python SDK + host())    ║
+  ╠══════════════╣                    ╠═══════════════════════════╣
+  ║              ║                    ║                           ║
+  ║ localStorage ║    WebSocket       ║  ┌─────────────────────┐  ║
+  ║ ┌──────────┐ ║   ┌──────────┐    ║  │ ActiveSessionRegistry│  ║
+  ║ │ session  │ ║───│ /ws      │────║──│                     │  ║
+  ║ │ chatItems│ ║   └──────────┘    ║  │ session_id → {      │  ║
+  ║ │ messages │ ║    CONNECT ──►    ║  │   io, thread,       │  ║
+  ║ └──────────┘ ║    ◄── CONNECTED  ║  │   status, last_ping │  ║
+  ║              ║    INPUT ────►    ║  │ }                   │  ║
+  ║ TS SDK       ║    ◄── events     ║  └─────────┬───────────┘  ║
+  ║ RemoteAgent  ║    ◄── OUTPUT     ║            │              ║
+  ║              ║    PING/PONG      ║            ↓              ║
+  ╚══════════════╝                    ║  ┌─────────────────────┐  ║
+                                      ║  │ SessionStorage      │  ║
+                                      ║  │ (.co/session_       │  ║
+                                      ║  │  results.jsonl)     │  ║
+                                      ║  └─────────────────────┘  ║
+                                      ╚═══════════════════════════╝
+
+  Data Ownership:
+  ┌────────────────────────────────────────────────────────────────┐
+  │ Client owns: conversation history (localStorage)              │
+  │ Server owns: execution state (registry), results (storage)    │
+  │ CONNECT syncs: client → server (session), server → client     │
+  │                (if server_newer)                               │
+  └────────────────────────────────────────────────────────────────┘
+
+════════════════════════════════════════════════════════════════════
+```
+
+---
+
+## Separation of Concerns
+
+```
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│   Connection    │  │  Conversation   │  │   Execution     │
+│                 │  │                 │  │                 │
+│ WebSocket + auth│  │ Message history │  │ One INPUT→OUTPUT│
+│ PING/PONG       │  │ Owned by client │  │ Agent thread    │
+│ Persistent      │  │ Sent via CONNECT│  │ Temporary       │
+│                 │  │ Merged on server│  │                 │
+│ Dies: WS close  │  │ Dies: never     │  │ Dies: OUTPUT    │
+│ + 10min grace   │  │ (localStorage)  │  │                 │
+└─────────────────┘  └─────────────────┘  └─────────────────┘
+```
+
+---
+
 ## Authentication
 
-Authentication happens once, on CONNECT. Ed25519 signature proves identity.
+Authentication happens once, on CONNECT.
 
 ```
 CONNECT (signed)          INPUT (not signed)
   │                          │
   ▼                          ▼
 Server verifies            Server trusts
-signature → OK             (same WS connection,
-                            already authenticated)
+signature → OK             (same WS, already authenticated)
 ```
 
-**Why not sign every message?**
-
-The WebSocket is a point-to-point TCP connection over TLS (WSS). Once authenticated:
-- TLS encrypts everything in transit
-- Only the connected client can send messages on this socket
-- No one can inject messages into an existing WS connection
-
-Signing every message would be redundant. The connection itself is the trust boundary.
-
-**Trust levels still apply:**
+Trust levels:
 
 | Trust Level | CONNECT Behavior |
 |-------------|-----------------|
@@ -303,86 +379,105 @@ Signing every message would be redundant. The connection itself is the trust bou
 
 ---
 
-## Connection vs Messaging
-
-### Before (v0.8.x)
-
-INPUT did everything — authenticate, connect, allocate session, send prompt:
+## Client Reconnect
 
 ```
-WS open → INPUT { prompt, session, auth } → events → OUTPUT → WS close
-WS open → INPUT { prompt, session, auth } → events → OUTPUT → WS close
-           ↑ re-authenticate every time
-           ↑ new WS connection per message
+Page loads → Zustand hydrates → session_id exists?
+  │
+  ├── Yes → CONNECT { session_id, session: {messages} }
+  │           │
+  │           ├── "new"       → session expired, start fresh (client has history)
+  │           ├── "connected" → session alive, ready for INPUT
+  │           └── "executing" → agent running, events will stream
+  │
+  └── No  → show empty state, wait for user input
+              → CONNECT (no session_id) on first message
 ```
-
-### After (v0.9.x)
-
-CONNECT and INPUT are separate concerns:
-
-```
-WS open → CONNECT { auth } → CONNECTED
-           INPUT { prompt } → events → OUTPUT
-           INPUT { prompt } → events → OUTPUT
-           INPUT { prompt } → events → OUTPUT
-           ↑ one connection, multiple messages
-           ↑ authenticate once
-```
-
-| Concern | Before | After |
-|---------|--------|-------|
-| Authentication | Every INPUT | Once on CONNECT |
-| Session allocation | Implicit in INPUT | Explicit in CONNECT |
-| Reconnection | Send INPUT with empty prompt (hack) | Send CONNECT with session_id |
-| Multiple messages | New WS per message | Same WS connection |
-| Separation | Mixed | Clean |
 
 ---
 
-## Client Auto-Reconnect
+## Before vs After
 
-After a page refresh or network drop, the client should automatically reconnect:
+### Before (v0.9.x) — INIT + ATTACH
 
 ```
-Page loads
-  │
-  ▼
-Zustand hydrates from localStorage
-  │
-  ├── session_id exists?
-  │     │
-  │     ▼
-  │   Open WebSocket
-  │   Send CONNECT { session_id }
-  │     │
-  │     ├── CONNECTED { status: "running" }
-  │     │     → receive buffered events
-  │     │     → resume live streaming
-  │     │
-  │     ├── CONNECTED { status: "completed" }
-  │     │     → show cached result
-  │     │
-  │     └── CONNECTED { status: "expired" }
-  │           → show cached UI as history
-  │
-  └── no session?
-        → show empty state
+WS open → INIT { auth }    → CONNECTED { status: "new" }
+           INPUT { prompt, session }  → events → OUTPUT → session dies
 ```
 
-The client reconnects automatically. No "Retry" button needed.
+### v0.10.x — CONNECT (unified)
+
+```
+WS open → CONNECT { auth, session_id? } → CONNECTED { status }
+           INPUT { prompt, session }     → events → OUTPUT → session dies
+```
+
+### v0.11.x — Session survives execution (current)
+
+```
+WS open → CONNECT { auth, session_id?, session }
+           → CONNECTED { status: new/connected/executing }
+
+           INPUT { prompt }   → events → OUTPUT  (session stays alive)
+           INPUT { prompt }   → events → OUTPUT  (again, same session)
+           INPUT { prompt }   → events → OUTPUT  (and again)
+
+WS close → 10min grace → session cleaned up
+```
 
 ---
 
-## Comparison with Other Protocols
+## Server Console Output
 
-| Protocol | Connect | Message | Reconnect |
-|----------|---------|---------|-----------|
-| Socket.IO | CONNECT { sid } | MESSAGE { data } | CONNECT { sid } |
-| Phoenix Channels | JOIN { topic } | PUSH { event } | JOIN { topic } |
-| ActionCable | SUBSCRIBE { channel } | MESSAGE { data } | SUBSCRIBE { channel } |
-| **ConnectOnion** | **CONNECT { to, session_id }** | **INPUT { prompt }** | **CONNECT { session_id }** |
+The WebSocket handler prints structured status lines to the server console. Designed for quick scanning: routine messages are compact, data flow events are indented sub-lines.
 
-Same pattern. Connect first, then message.
+### Connection lifecycle
+
+```
+⚡ ws+ 127.0.0.1 (0 active)        # new WebSocket, show active session count
+✓ CONNECT identity=0x2f3d... session=aad5... status=new
+✓ INPUT identity=0x2f3d... session=aad5... prompt=hello world...
+⚡ ws- (1 active)                    # disconnect, show remaining sessions
+```
+
+### Data flow visibility
+
+When client data is accepted, merged, or reattached, indented sub-lines show what's happening:
+
+```
+✓ CONNECT identity=0x2f3d... session=aad5... status=connected
+  ↑ client session: 4 messages       # client sent conversation history
+  ↕ merged sessions (server newer)   # server had newer data, merged
+```
+
+```
+✓ CONNECT identity=0x2f3d... session=aad5... status=executing
+  ↻ reattaching to running agent     # reconnecting to in-progress execution
+```
+
+```
+✓ INPUT identity=0x2f3d... session=aad5... prompt=analyze this...
+  ↑ 2 images, 1 files                # client sent attachments
+```
+
+### What's suppressed
+
+Routine message types that already have their own status lines don't print a generic `← WS recv:` line:
+- `CONNECT`, `INPUT`, `SESSION_STATUS`, `PONG`
+
+Non-routine types still print:
+```
+← WS recv: ONBOARD_SUBMIT
+← WS recv: ADMIN_PROMOTE
+```
+
+### Error lines
+
+```
+✗ CONNECT auth error: forbidden
+✗ INPUT rejected: not authenticated (send CONNECT first)
+✗ agent error: <exception message>
+```
 
 ---
 

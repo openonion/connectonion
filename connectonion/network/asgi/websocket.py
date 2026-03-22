@@ -1,48 +1,32 @@
 """
-Purpose: WebSocket bidirectional communication for ASGI server with real-time agent I/O and keep-alive
-LLM-Note:
-  Dependencies: imports from [network/io/websocket.py, network/asgi/http.py pydantic_json_encoder, asyncio, json, queue, threading] | imported by [network/asgi/__init__.py] | tested by [tests/network/test_asgi_websocket.py]
-  Data flow: handle_websocket() accepts connection → receives INPUT message with prompt+session → authenticates via route_handlers["auth"] → starts agent in background thread with WebSocketIO → sends PING every 30s for keep-alive → agent sends events via io.log()/send() → forwards to client via websocket.send → client responds with PONG to PING → client sends ASK_USER_RESPONSE for approvals → io receives via queue → agent resumes → returns OUTPUT with result+session_id → result saved to SessionStorage even if client disconnects
-  State/Effects: maintains WebSocket connection during agent execution | runs agent in daemon thread (non-blocking) | uses queue.Queue for thread-safe I/O between agent and WebSocket | no persistent state (connection-scoped) | results persisted to .co/session_results.jsonl for 24h TTL
-  Integration: exposes handle_websocket(scope, receive, send, route_handlers, storage, trust, blacklist, whitelist) | uses WebSocketIO for bidirectional I/O | supports session continuation (same as HTTP) | message types: INPUT (client), OUTPUT/ERROR (server), PING (server), PONG (client), ASK_USER_RESPONSE (client), trace events (server) | clients can poll GET /sessions/{id} to recover results after disconnect
-  Performance: async WebSocket handling | agent runs in separate thread to avoid blocking | queue-based message passing | streams events in real-time (thinking, tool_result, approval_needed) | PING task keeps connection alive through proxies/firewalls
-  Errors: sends ERROR message for invalid JSON, auth failures, missing prompt | closes connection with code 4004 for wrong path | catches exceptions in agent thread and sends ERROR | saves result to storage even on disconnect (enables polling recovery)
 WebSocket handling for ASGI with keep-alive and session recovery.
 
-ASGI Protocol Types (not our custom types - this is the ASGI spec):
-- websocket.connect    : ASGI sends when client wants to connect
-- websocket.accept     : We send to accept the connection
-- websocket.receive    : ASGI sends when client sends a message
-- websocket.send       : We send to deliver a message to client
-- websocket.disconnect : ASGI sends when client disconnects
-- websocket.close      : We send to close the connection
+Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
+See docs/network/websocket-protocol.md for full specification.
 
-Our Application Types (sent inside websocket.send text payload):
-- CONNECT            : Client authenticates + links to agent + allocates/resumes session
-- CONNECTED          : Server responds with session_id and status
-- INPUT              : Client sends prompt (after CONNECT, no auth needed)
-- OUTPUT             : Server sends final result with session_id
-- ERROR              : Server sends error message
-- PING               : Server keep-alive (every 30s)
-- PONG               : Client acknowledges keep-alive
-- ASK_USER_RESPONSE  : Client responds to approval request
-- ONBOARD_REQUIRED   : Server sends when stranger needs to onboard
-- ONBOARD_SUBMIT     : Client sends invite_code or payment
-- ONBOARD_SUCCESS    : Server confirms onboard complete
-- ADMIN_PROMOTE      : Client (admin) requests promote
-- ADMIN_DEMOTE       : Client (admin) requests demote
-- ADMIN_BLOCK        : Client (admin) requests block
-- ADMIN_UNBLOCK      : Client (admin) requests unblock
-- ADMIN_GET_LEVEL    : Client (admin) requests client level
-- ADMIN_RESULT       : Server sends admin action result
-- SESSION_STATUS     : Client requests session status, server responds with status
-- (trace events)     : thinking, tool_result, approval_needed, etc.
+Client → Server:
+- CONNECT          : Authenticate + find/create session. First message on every WS.
+- INPUT            : Send prompt (after CONNECT)
+- PONG             : Acknowledge keep-alive
+- ASK_USER_RESPONSE, APPROVAL_RESPONSE, PLAN_REVIEW_RESPONSE, ULW_RESPONSE
+- ONBOARD_SUBMIT   : Submit invite code or payment
+- SESSION_STATUS   : Check if a session is alive
+- ADMIN_*          : Admin actions (promote, demote, block, unblock)
+
+Server → Client:
+- CONNECTED        : Response to CONNECT { session_id, status: new/running/completed }
+- OUTPUT           : Final result
+- ERROR            : Error
+- PING             : Keep-alive (every 30s)
+- ONBOARD_REQUIRED, ONBOARD_SUCCESS
+- Stream events    : thinking, tool_call, tool_result, ask_user, approval_needed, etc.
 """
 
 import asyncio
 import json
 import queue
 import threading
+import uuid
 
 from rich.console import Console
 from ..io import WebSocketIO
@@ -82,6 +66,8 @@ async def handle_websocket(
 
     # ASGI: accept the WebSocket connection
     await send({"type": "websocket.accept"})
+    client_ip = scope.get('client', ('?',))[0]
+    console.print(f"[dim]⚡ ws+[/dim] [green]{client_ip}[/green] [dim]({registry.count()} active)[/dim]")
 
     # Connection-level state (set by CONNECT, used by subsequent INPUTs)
     conn_authenticated = False
@@ -93,16 +79,20 @@ async def handle_websocket(
     while True:
         msg = await receive()  # ASGI: wait for next message
         if msg["type"] == "websocket.disconnect":  # ASGI: client disconnected
+            console.print(f"[dim]⚡ ws-[/dim] [dim]({registry.count()} active)[/dim]")
             break
         if msg["type"] == "websocket.receive":  # ASGI: client sent a message
             try:
                 data = json.loads(msg.get("text", "{}"))  # Our app data is inside "text"
             except json.JSONDecodeError:
-                await send({"type": "websocket.send",  # ASGI: send message to client
+                await send({"type": "websocket.send",
                            "text": json.dumps({"type": "ERROR", "message": "Invalid JSON"})})
                 continue
 
             msg_type = data.get("type")
+            # Routine types already print their own status lines — skip the generic log
+            if msg_type not in ("CONNECT", "INPUT", "SESSION_STATUS", "PONG"):
+                console.print(f"[dim]← WS recv: {msg_type}[/dim]")
 
             # Handle SESSION_STATUS (client checking if session is alive)
             if msg_type == "SESSION_STATUS":
@@ -113,10 +103,9 @@ async def handle_websocket(
                     continue
                 active = registry.get(sid)
                 if active:
-                    status = active.status
+                    status = active.status  # 'executing' | 'connected' | 'suspended'
                 else:
-                    stored = storage.get(sid)
-                    status = "completed" if stored else "not_found"
+                    status = "not_found"
                 await send({"type": "websocket.send",
                            "text": json.dumps({"type": "SESSION_STATUS", "session_id": sid, "status": status})})
                 continue
@@ -131,13 +120,13 @@ async def handle_websocket(
                 await _handle_admin_message(data, send, route_handlers)
                 continue
 
-            # Handle CONNECT (authenticate + link to agent + allocate/resume session)
+            # Handle CONNECT — authenticate + find/create session
+            # Server decides status based on session state
             if msg_type == "CONNECT":
                 _, identity, sig_valid, err = route_handlers["auth"](
                     data, trust, blacklist=blacklist, whitelist=whitelist
                 )
 
-                # Onboarding check
                 if err and "forbidden" in err.lower():
                     trust_agent = route_handlers["trust_agent"]
                     onboard_info = _get_onboard_requirements(trust_agent)
@@ -147,45 +136,63 @@ async def handle_websocket(
                         continue
 
                 if err:
+                    console.print(f"[red]✗ CONNECT auth error:[/red] {err}")
                     await send({"type": "websocket.send",
                                "text": json.dumps({"type": "ERROR", "message": err})})
                     continue
 
-                # Store authenticated identity on connection
                 conn_authenticated = True
                 conn_identity = identity
-
-                # Session allocation/resume
-                session = data.get("session")
-                session_id = data.get("session_id") or ((session or {}).get("session_id"))
-                conn_session = session
+                session_id = data.get("session_id") or str(uuid.uuid4())
                 conn_session_id = session_id
 
-                # Determine session status
-                status = "new"
+                # Accept session (conversation history) from client
+                conn_session = data.get("session")
+                server_newer = False
+
+                if conn_session:
+                    msg_count = len(conn_session.get("messages", []))
+                    console.print(f"  [dim]↑ client session: {msg_count} messages[/dim]")
+
+                # Merge with server-stored session if available
                 if session_id:
-                    active = registry.get(session_id)
-                    if active and active.status in ('running', 'suspended'):
-                        status = "running"
-                    elif active and active.status == 'completed':
-                        status = "completed"
-                    else:
-                        stored = storage.get(session_id)
-                        if stored:
-                            status = "completed" if stored.status == "done" else "expired"
-                        else:
-                            status = "expired"
+                    from ..host.session import merge_sessions, session_to_chat_items
+                    stored = storage.get(session_id)
+                    if stored and stored.session:
+                        client = conn_session or {}
+                        conn_session, server_newer = merge_sessions(
+                            client_session=client,
+                            server_session=stored.session
+                        )
+                        if server_newer:
+                            console.print(f"  [dim]↕ merged sessions (server newer)[/dim]")
 
-                # Send CONNECTED response
+                # Look up session state — server decides
+                active = registry.get(session_id)
+                if active and active.status == 'executing':
+                    status = "executing"
+                elif active and active.status in ('connected', 'suspended'):
+                    status = "connected"
+                    registry.update_ping(session_id)
+                else:
+                    status = "new"
+
+                console.print(f"[green]✓ CONNECT[/green] identity={identity[:16]}... session={session_id[:8]}... status={status}{' (server_newer)' if server_newer else ''}")
+
+                connected_msg = {"type": "CONNECTED", "session_id": session_id, "status": status}
+                if server_newer and conn_session:
+                    connected_msg["server_newer"] = True
+                    connected_msg["session"] = conn_session
+                    connected_msg["chat_items"] = session_to_chat_items(conn_session)
                 await send({"type": "websocket.send",
-                           "text": json.dumps({"type": "CONNECTED", "session_id": session_id, "status": status})})
+                           "text": json.dumps(connected_msg, default=pydantic_json_encoder)})
 
-                # If reconnecting to running session, reattach IO and start piping
-                if status == "running":
+                # If agent is executing, reattach IO and pipe events
+                if status == "executing":
+                    console.print(f"  [dim]↻ reattaching to running agent[/dim]")
                     io = active.io
                     agent_finished = active.agent_finished
 
-                    # Drain queued events from IO
                     while not io._outgoing.empty():
                         try:
                             event = io._outgoing.get_nowait()
@@ -196,13 +203,11 @@ async def handle_websocket(
 
                     registry.update_ping(session_id)
 
-                    # Pipe messages until agent finishes or client disconnects
                     client_disconnected = await _pipe_ws_io(receive, send, io, agent_finished, registry, session_id)
 
                     if client_disconnected:
                         registry.mark_suspended(session_id)
                     else:
-                        # Agent completed - send OUTPUT
                         from ..host.session import session_to_chat_items
                         stored = storage.get(session_id)
                         if stored and stored.status == "done":
@@ -218,167 +223,75 @@ async def handle_websocket(
                                        }, default=pydantic_json_encoder)})
                 continue
 
-            if msg_type == "INPUT":  # Our app type: client wants to run agent
-                # Two-step flow: if CONNECT was sent, skip auth
-                if conn_authenticated:
-                    prompt = data.get("prompt")
-                    if not prompt:
-                        await send({"type": "websocket.send",
-                                   "text": json.dumps({"type": "ERROR", "message": "prompt required"})})
-                        continue
-
-                    identity = conn_identity
-                    session = data.get("session") or conn_session or {}
-                    images = data.get("images")
-                    files = data.get("files")
-                    session_id = conn_session_id or (session.get('session_id') if session else None)
-                    err = None
-                else:
-                    # Legacy single-step flow: backward compat for old clients
-                    prompt, identity, sig_valid, err = route_handlers["auth"](
-                        data, trust, blacklist=blacklist, whitelist=whitelist
-                    )
-
-                # Check if stranger needs onboarding
-                if err and "forbidden" in err.lower():
-                    # Get onboard requirements from trust config
-                    trust_agent = route_handlers["trust_agent"]
-                    onboard_info = _get_onboard_requirements(trust_agent)
-                    if onboard_info:
-                        await send({"type": "websocket.send",
-                                   "text": json.dumps({
-                                       "type": "ONBOARD_REQUIRED",
-                                       "identity": identity,
-                                       **onboard_info
-                                   })})
-                        continue
-
-                if err:
+            if msg_type == "INPUT":
+                if not conn_authenticated:
+                    console.print(f"[red]✗ INPUT rejected:[/red] not authenticated (send CONNECT first)")
                     await send({"type": "websocket.send",
-                               "text": json.dumps({"type": "ERROR", "message": err})})
+                               "text": json.dumps({"type": "ERROR", "message": "authenticate first (send CONNECT)"})})
                     continue
+
+                prompt = data.get("prompt")
                 if not prompt:
                     await send({"type": "websocket.send",
                                "text": json.dumps({"type": "ERROR", "message": "prompt required"})})
                     continue
 
-                # Extract session for conversation continuation
-                session = data.get("session")
+                console.print(f"[green]✓ INPUT[/green] identity={conn_identity[:16] if conn_identity else '?'}... session={conn_session_id[:8] if conn_session_id else '?'}... prompt={prompt[:50]}...")
+
+                # Session from CONNECT, fallback to INPUT for old clients
+                session = conn_session or data.get("session") or {}
                 images = data.get("images")
                 files = data.get("files")
-                session_id = session.get('session_id') if session else None
+                attachments = []
+                if images:
+                    attachments.append(f"{len(images)} images")
+                if files:
+                    attachments.append(f"{len(files)} files")
+                if attachments:
+                    console.print(f"  [dim]↑ {', '.join(attachments)}[/dim]")
+                session_id = conn_session_id
 
-                # Check if reconnecting to existing session
-                active = registry.get(session_id) if session_id else None
+                from ..host.session import session_to_chat_items
 
-                if active and active.status == 'running':
-                    # RECONNECTION: Client reconnecting to running agent
-                    io = active.io
-                    agent_finished = active.agent_finished  # same event agent thread will signal
+                io = WebSocketIO()
+                agent_finished = threading.Event()
+                result_holder = [None]
+                error_holder = [None]
 
-                    # Send reconnected event
-                    await send({"type": "websocket.send",
-                               "text": json.dumps({"type": "RECONNECTED", "session_id": session_id})})
+                def run_agent():
+                    result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files)
+                    registry.mark_connected(session_id)
+                    agent_finished.set()
 
-                    # Drain queued events from IO
-                    while not io._outgoing.empty():
-                        try:
-                            event = io._outgoing.get_nowait()
-                            await send({"type": "websocket.send",
-                                       "text": json.dumps(event, default=pydantic_json_encoder)})
-                        except queue.Empty:
-                            break
+                agent_thread = threading.Thread(target=run_agent, daemon=True)
+                agent_thread.start()
+                registry.register(session_id, io, agent_thread, agent_finished)
 
-                    # Update ping timestamp
-                    registry.update_ping(session_id)
+                client_disconnected = await _pipe_ws_io(receive, send, io, agent_finished, registry, session_id)
 
-                    # Continue piping messages
-                    client_disconnected = await _pipe_ws_io(receive, send, io, agent_finished, registry, session_id)
-
-                    if client_disconnected:
-                        registry.mark_suspended(session_id)
-                    else:
-                        # Agent completed - get result from storage and send OUTPUT
-                        from ..host.session import session_to_chat_items
-                        stored = storage.get(session_id)
-                        if stored and stored.status == "done":
-                            chat_items = session_to_chat_items(stored.session or {})
-                            await send({"type": "websocket.send",
-                                       "text": json.dumps({
-                                           "type": "OUTPUT",
-                                           "result": stored.result,
-                                           "session_id": session_id,
-                                           "duration_ms": stored.duration_ms,
-                                           "session": stored.session,
-                                           "chat_items": chat_items,
-                                       }, default=pydantic_json_encoder)})
-
-                else:
-                    # NEW SESSION: Create fresh agent and IO
-                    # Merge with server state if session exists
-                    from ..host.session import merge_sessions, session_to_chat_items
-                    server_newer = False
-
+                if client_disconnected:
                     if session_id:
-                        stored = storage.get(session_id)
-                        if stored and stored.session:
-                            session, server_newer = merge_sessions(
-                                client_session=session,
-                                server_session=stored.session
-                            )
-                            if server_newer:
-                                # Send merge notification
-                                await send({"type": "websocket.send",
-                                           "text": json.dumps({"type": "SESSION_MERGED", "server_newer": True})})
-
-                    # Create IO for bidirectional communication
-                    io = WebSocketIO()
-                    agent_finished = threading.Event()
-                    result_holder = [None]
-                    error_holder = [None]
-
-                    def run_agent():
-                        try:
-                            result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files)
-                            registry.mark_completed(session_id)
-                        except Exception as e:
-                            error_holder[0] = str(e)
-                        agent_finished.set()
-
-                    # Start agent in thread and register immediately for reconnection
-                    agent_thread = threading.Thread(target=run_agent, daemon=True)
-                    agent_thread.start()
-                    registry.register(session_id, io, agent_thread, agent_finished)
-
-                    # Pipe messages between WebSocket and IO
-                    client_disconnected = await _pipe_ws_io(receive, send, io, agent_finished, registry, session_id)
-
-                    # Send error or final result (skip if client disconnected)
-                    if client_disconnected:
-                        if session_id:
-                            registry.mark_suspended(session_id)
-                    elif error_holder[0]:
-                        await send({"type": "websocket.send",
-                                   "text": json.dumps({"type": "ERROR", "message": error_holder[0]})})
-                    elif result_holder[0]:
-                        result = result_holder[0]
-
-                        # Convert to ChatItems for UI
-                        chat_items = session_to_chat_items(result.get('session', {}))
-
-                        await send({"type": "websocket.send",
-                                   "text": json.dumps({
-                                       "type": "OUTPUT",
-                                       "result": result["result"],
-                                       "session_id": result["session_id"],
-                                       "duration_ms": result["duration_ms"],
-                                       "session": result["session"],
-                                       "chat_items": chat_items,
-                                       "server_newer": server_newer
-                                   }, default=pydantic_json_encoder)})
-                    else:
-                        await send({"type": "websocket.send",
-                                   "text": json.dumps({"type": "ERROR", "message": "Agent completed without result"})})
+                        registry.mark_suspended(session_id)
+                elif error_holder[0]:
+                    await send({"type": "websocket.send",
+                               "text": json.dumps({"type": "ERROR", "message": error_holder[0]})})
+                elif result_holder[0]:
+                    result = result_holder[0]
+                    # Update conn_session for next INPUT on same WS
+                    conn_session = result.get('session', {})
+                    chat_items = session_to_chat_items(conn_session)
+                    await send({"type": "websocket.send",
+                               "text": json.dumps({
+                                   "type": "OUTPUT",
+                                   "result": result["result"],
+                                   "session_id": result["session_id"],
+                                   "duration_ms": result["duration_ms"],
+                                   "session": conn_session,
+                                   "chat_items": chat_items,
+                               }, default=pydantic_json_encoder)})
+                else:
+                    await send({"type": "websocket.send",
+                               "text": json.dumps({"type": "ERROR", "message": "Agent completed without result"})})
 
 
 async def _pipe_ws_io(ws_receive, ws_send, io: WebSocketIO, agent_finished: threading.Event,
