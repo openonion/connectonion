@@ -6,30 +6,41 @@
 
 ### Phase 0: Client Sends CONNECT
 
-**Client (TypeScript SDK):**
+One message for both new and resumed sessions. Server decides behavior based on session state.
+
+**New session:**
 ```typescript
-// 1. Open WebSocket
 const ws = new WebSocket("wss://agent-server/ws");
 
-// 2. Authenticate and get session
 ws.send(JSON.stringify({
   type: "CONNECT",
-  to: "0xAgentAddress",
-  session_id: "session-456",     // Optional: resume existing session
   payload: { to: "0xAgent...", timestamp: 1702234567 },
   from: "0xClientPublicKey",
   signature: "0x..."
 }));
+// → CONNECTED { session_id: "session-456", status: "new" }
+```
 
-// 3. Server responds with CONNECTED
-// { type: "CONNECTED", session_id: "session-456", status: "new" }
+**Resume session (same message, just add session_id):**
+```typescript
+ws.send(JSON.stringify({
+  type: "CONNECT",
+  session_id: "session-456",
+  payload: { to: "0xAgent...", timestamp: 1702234567 },
+  from: "0xClientPublicKey",
+  signature: "0x..."
+}));
+// → CONNECTED { session_id: "session-456", status: "running" }
+//   (if session still running, buffered events follow)
+// → CONNECTED { session_id: "session-456", status: "new" }
+//   (if session expired or not found, treated as new)
 ```
 
 ### Phase 1: Client Sends INPUT
 
 **Client (TypeScript SDK):**
 ```typescript
-// After CONNECTED, send prompt (no signature needed)
+// After CONNECTED, send prompt (no signature needed — already authenticated)
 ws.send(JSON.stringify({
   type: "INPUT",
   prompt: "What is Python?"
@@ -334,3 +345,15 @@ async def send_ping():
 **Implement Option 1 (attach session to all trace events)**
 
 This solves the critical timing issue where connection drops during `ask_user` or `approval_needed` would lose context. PING messages are less critical since they happen every 30s and we'll have recent session data from the last trace event.
+
+---
+
+## Related: Reconnection Bug
+
+Even when the client successfully reconnects via CONNECT, there are server-side bugs that prevent the reattach from working correctly:
+
+1. **`run_agent()` lacks error handling** — if agent crashes on `io_closed` sentinel, `agent_finished` never fires
+2. **Reattach uses closed IO** — `io._closed = True` causes `io.send()` to drop events silently
+3. **Competing `_pipe_ws_io` loops** — old and new loops race on the same `agent_finished` event
+
+See [session-reconnect.md](session-reconnect.md#known-issue-reconnect-during-approval-blocks) for the full bug analysis and fix plan.

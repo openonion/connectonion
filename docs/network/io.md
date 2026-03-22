@@ -470,6 +470,33 @@ host(agent)
 
 ---
 
+## WebSocketIO Internals
+
+The hosted IO implementation (`WebSocketIO`) bridges async WebSocket to sync agent code via two thread-safe queues:
+
+```
+Agent Thread (sync)          WebSocket Handler (async)
+  io.send(event) ──►  _outgoing queue  ──► ws.send()
+  io.receive()   ◄──  _incoming queue  ◄── ws.receive()
+```
+
+### close() behavior
+
+When a client disconnects, `io.close()` is called:
+
+1. Sets `_closed = True` — subsequent `io.send()` calls silently drop events
+2. Puts `{"type": "io_closed"}` sentinel in `_incoming` — unblocks any waiting `io.receive()`
+
+The agent receives the sentinel instead of the expected response (e.g., `APPROVAL_RESPONSE`). Agent code should handle this gracefully.
+
+### Reconnection caveat
+
+On reconnect, the same io object is reused with a new WebSocket handler pumping the same queues. **However**, `_closed` remains `True` from the disconnect, so `io.send()` drops all events. The reattach path must reset `_closed = False` for the agent to communicate with the new client.
+
+See [session-reconnect.md](session-reconnect.md) for the full reconnection flow and known issues.
+
+---
+
 ## Custom Adapters
 
 Implement your own IO for custom transports:
