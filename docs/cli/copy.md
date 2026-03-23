@@ -111,28 +111,39 @@ co copy Gmail --force
 
 | Name | File | Description |
 |------|------|-------------|
-| gmail | gmail.py | Gmail integration (OAuth, send/receive) |
-| outlook | outlook.py | Outlook/Microsoft email |
-| google_calendar | google_calendar.py | Google Calendar events |
-| microsoft_calendar | microsoft_calendar.py | Microsoft Calendar |
-| memory | memory.py | Persistent agent memory |
-| web_fetch | web_fetch.py | Web scraping tool |
-| shell | shell.py | Shell command execution |
+| ask_user | ask_user.py | Ask user for input during agent execution |
+| bash | bash.py | Bash command execution (Unix/Mac) |
 | diff_writer | diff_writer.py | File editing with diffs |
-| todo_list | todo_list.py | Task list management |
+| get_emails | get_emails.py | Fetch emails from inbox |
+| gmail | gmail.py | Gmail integration (OAuth, send/receive) |
+| google_calendar | google_calendar.py | Google Calendar events |
+| memory | memory.py | Persistent agent memory |
+| microsoft_calendar | microsoft_calendar.py | Microsoft Calendar |
+| outlook | outlook.py | Outlook/Microsoft email |
+| send_email | send_email.py | Send emails |
+| shell | shell.py | Shell command execution (cross-platform) |
 | slash_command | slash_command.py | Custom command extension |
+| terminal | terminal.py | Interactive terminal sessions |
+| todo_list | todo_list.py | Task list management |
+| web_fetch | web_fetch.py | Web scraping tool |
 
 ## Available Plugins
 
 | Name | File | Description |
 |------|------|-------------|
-| re_act | re_act.py | ReAct prompting pattern |
-| eval | eval.py | Evaluation plugin |
-| image_result_formatter | image_result_formatter.py | Base64 image handling |
-| shell_approval | shell_approval.py | User confirmation for shell |
-| gmail_plugin | gmail_plugin.py | Gmail OAuth flow |
+| auto_compact | auto_compact.py | Auto-compress context when nearing limit |
 | calendar_plugin | calendar_plugin.py | Google Calendar integration |
+| eval | eval.py | Task completion evaluation |
+| gmail_plugin | gmail_plugin.py | Gmail OAuth flow |
+| image_result_formatter | image_result_formatter.py | Base64 image handling |
+| prefer_write_tool | prefer_write_tool.py | Guide agent to prefer write tool over shell |
+| re_act | re_act.py | ReAct prompting pattern |
+| shell_approval | shell_approval.py | User confirmation for shell commands |
+| skills | skills.py | Auto-discover and load skills (.co/skills/, .claude/skills/) |
+| subagents | subagents.py | Sub-agent task delegation |
 | system_reminder | system_reminder.py | Inject contextual reminders into tool results |
+| ui_stream | ui_stream.py | Stream agent output to UI |
+| ulw | ulw.py | Ultra Light Work - autonomous continuous execution |
 
 ### Plugins with Prompts
 
@@ -218,11 +229,34 @@ co copy re_act
 co copy gmail outlook
 ```
 
+## Available TUI Components
+
+| Name | File | Description |
+|------|------|-------------|
+| chat | chat.py | Chat interface component |
+| divider | divider.py | Visual divider component |
+| dropdown | dropdown.py | Dropdown selector |
+| footer | footer.py | Footer bar component |
+| fuzzy | fuzzy.py | Fuzzy search component |
+| input | input.py | Text input component |
+| keys | keys.py | Key binding handler |
+| pick | pick.py | Item picker component |
+| providers | providers.py | Model provider selector |
+| status_bar | status_bar.py | Status bar component |
+
 ## Available Prompts
 
 | Name | Directory | Description |
 |------|-----------|-------------|
 | coding_agent | coding_agent/ | Coding Agent Prompt - modular prompt template for coding assistants |
+
+## Available Trust Policies
+
+| Name | File | Description |
+|------|------|-------------|
+| trust/open | open.md | Development - allow all requests |
+| trust/careful | careful.md | Testing - whitelist + LLM for unknowns |
+| trust/strict | strict.md | Production - whitelist only |
 
 ## See Also
 

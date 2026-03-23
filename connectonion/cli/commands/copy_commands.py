@@ -18,27 +18,37 @@ console = Console()
 # Registry of copyable tools
 TOOLS = {
     "ask_user": "ask_user.py",
-    "gmail": "gmail.py",
-    "outlook": "outlook.py",
-    "google_calendar": "google_calendar.py",
-    "microsoft_calendar": "microsoft_calendar.py",
-    "memory": "memory.py",
-    "web_fetch": "web_fetch.py",
-    "shell": "shell.py",
+    "bash": "bash.py",
     "diff_writer": "diff_writer.py",
-    "todo_list": "todo_list.py",
+    "get_emails": "get_emails.py",
+    "gmail": "gmail.py",
+    "google_calendar": "google_calendar.py",
+    "memory": "memory.py",
+    "microsoft_calendar": "microsoft_calendar.py",
+    "outlook": "outlook.py",
+    "send_email": "send_email.py",
+    "shell": "shell.py",
     "slash_command": "slash_command.py",
+    "terminal": "terminal.py",
+    "todo_list": "todo_list.py",
+    "web_fetch": "web_fetch.py",
 }
 
 # Registry of copyable plugins
 PLUGINS = {
-    "re_act": "re_act.py",
-    "eval": "eval.py",
-    "image_result_formatter": "image_result_formatter.py",
-    "shell_approval": "shell_approval.py",
-    "gmail_plugin": "gmail_plugin.py",
+    "auto_compact": "auto_compact.py",
     "calendar_plugin": "calendar_plugin.py",
+    "eval": "eval.py",
+    "gmail_plugin": "gmail_plugin.py",
+    "image_result_formatter": "image_result_formatter.py",
+    "prefer_write_tool": "prefer_write_tool.py",
+    "re_act": "re_act.py",
+    "shell_approval": "shell_approval.py",
+    "skills": "skills.py",
+    "subagents": "subagents.py",
     "system_reminder": "system_reminder.py",
+    "ui_stream": "ui_stream.py",
+    "ulw": "ulw.py",
 }
 
 # Plugins that also need prompts copied
@@ -49,13 +59,15 @@ PLUGIN_PROMPTS = {
 # Registry of copyable TUI components
 TUI = {
     "chat": "chat.py",
-    "fuzzy": "fuzzy.py",
     "divider": "divider.py",
-    "footer": "footer.py",
-    "status_bar": "status_bar.py",
     "dropdown": "dropdown.py",
-    "pick": "pick.py",
+    "footer": "footer.py",
+    "fuzzy": "fuzzy.py",
+    "input": "input.py",
     "keys": "keys.py",
+    "pick": "pick.py",
+    "providers": "providers.py",
+    "status_bar": "status_bar.py",
 }
 
 # Registry of copyable prompt templates (directories)

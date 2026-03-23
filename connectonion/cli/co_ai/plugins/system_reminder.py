@@ -38,6 +38,8 @@ if TYPE_CHECKING:
 
 # Default reminders directory
 REMINDERS_DIR = Path(__file__).parent.parent / "prompts" / "system-reminders"
+# Prompts directory for build context (workflow, index, examples)
+PROMPTS_DIR = Path(__file__).parent.parent / "prompts"
 
 
 class IntentAnalysis(BaseModel):
@@ -132,6 +134,29 @@ def _find_intent_reminder(reminders, intent):
     return None
 
 
+def _load_build_context():
+    """Load workflow, ConnectOnion index, and examples for agent-building tasks."""
+    parts = []
+
+    # Workflow (agent creation workflow)
+    workflow_file = PROMPTS_DIR / "workflow.md"
+    if workflow_file.exists():
+        parts.append(workflow_file.read_text())
+
+    # ConnectOnion framework index (API reference + guides table)
+    co_index = PROMPTS_DIR / "connectonion" / "index.md"
+    if co_index.exists():
+        parts.append(co_index.read_text())
+
+    # ConnectOnion examples
+    examples_dir = PROMPTS_DIR / "connectonion" / "examples"
+    if examples_dir.exists():
+        for example_file in sorted(examples_dir.glob("*.md")):
+            parts.append(example_file.read_text())
+
+    return "\n\n---\n\n".join(parts)
+
+
 # Load reminders once at import
 _REMINDERS = _load_reminders(REMINDERS_DIR)
 
@@ -188,13 +213,13 @@ def detect_intent(agent: 'Agent') -> None:
         'is_build': analysis.is_build,
     }
 
-    # Only inject system reminder for build tasks
+    # Load full build context (workflow, index, examples) for build tasks
     if analysis.is_build:
-        content = _find_intent_reminder(_REMINDERS, 'build')
-        if content:
+        build_context = _load_build_context()
+        if build_context:
             agent.current_session['messages'].append({
                 'role': 'user',
-                'content': f"\n\n{content}"
+                'content': f"<system-reminder>\n{build_context}\n</system-reminder>"
             })
 
 

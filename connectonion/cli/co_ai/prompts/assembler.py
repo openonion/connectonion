@@ -202,26 +202,10 @@ def assemble_prompt(
         content = main_file.read_text()
         parts.append(interpolate(content, ctx_dict))
 
-    # 2. Workflow (agent creation workflow)
-    workflow_file = prompts_path / "workflow.md"
-    if workflow_file.exists():
-        content = workflow_file.read_text()
-        parts.append(interpolate(content, ctx_dict))
+    # 2. Workflow, ConnectOnion index, and examples are loaded on-demand
+    # by the system_reminder plugin when intent is "build agent"
 
-    # 3. ConnectOnion framework prompt (index always included)
-    co_index = prompts_path / "connectonion" / "index.md"
-    if co_index.exists():
-        content = co_index.read_text()
-        parts.append(interpolate(content, ctx_dict))
-
-    # 4. ConnectOnion examples (all loaded for one-shot correct)
-    examples_dir = prompts_path / "connectonion" / "examples"
-    if examples_dir.exists():
-        for example_file in sorted(examples_dir.glob("*.md")):
-            content = example_file.read_text()
-            parts.append(interpolate(content, ctx_dict))
-
-    # 5. Tool descriptions (for each available tool)
+    # 3. Tool descriptions (for each available tool)
     tools_dir = prompts_path / "tools"
     if tools_dir.exists() and tools:
         for tool in tools:

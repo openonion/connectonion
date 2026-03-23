@@ -78,14 +78,6 @@ class BrowserAutomation:
         self._screenshots = []
         self._headless = headless
         self.screenshots_dir = str(SCREENSHOTS_DIR)
-        # Auto-initialize browser so it's ready immediately
-        self._initialize_browser()
-
-    def _initialize_browser(self):
-        """Initialize the browser instance on startup."""
-        if not PLAYWRIGHT_AVAILABLE:
-            return
-        self.open_browser(headless=self._headless)
 
     def open_browser(self, headless: bool = True) -> str:
         """Open a new browser window.

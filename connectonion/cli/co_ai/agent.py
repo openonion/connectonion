@@ -45,7 +45,8 @@ from .tools import (
 from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
-from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents
+from connectonion.useful_tools.browser_tools import BrowserAutomation
+from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents, image_result_formatter
 from connectonion.useful_plugins.skills import skills as skills_plugin
 
 
@@ -61,9 +62,11 @@ def create_coding_agent(
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
+    browser = BrowserAutomation(headless=True)
 
     tools = [
         file_tools,
+        browser,
         bash,
         # task is now provided by subagents plugin (no need to import from .tools)
         enter_plan_mode,
@@ -89,7 +92,7 @@ def create_coding_agent(
         system_prompt += f"\n\n---\n\n{project_context}"
 
     # Use SDK's subagents plugin instead of custom task implementation
-    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw]
+    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw, image_result_formatter]
 
     agent = Agent(
         name="oo",
