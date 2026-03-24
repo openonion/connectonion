@@ -247,6 +247,145 @@ class BrowserAutomation:
         print(f"\n[browser] CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
         return f"Clicked [{element.index}] '{element.text}' at ({x}, {y})"
 
+    def hover(self, description: str) -> str:
+        """Hover over an element using natural language description.
+
+        Moves the mouse over the element without clicking. Useful for triggering
+        hover menus, tooltips, and reaction pickers (e.g. LinkedIn reactions).
+        """
+        if not self.page:
+            return "Browser not open"
+
+        element = element_finder.find_element(self.page, description)
+        import time as _time
+
+        if element.frame.startswith("shadow-"):
+            x = element.x + element.width // 2
+            y = element.y + element.height // 2
+            self.page.mouse.move(x, y)
+            _time.sleep(1)
+            print(f"\n[browser] HOVERED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
+            return f"Hovered [{element.index}] {element.tag} '{element.text}' (shadow DOM)"
+
+        if element.frame != "main":
+            frame = None
+            for f in self.page.frames:
+                if f.name == element.frame or (hasattr(f, '_impl') and element.frame in (f.url or "")):
+                    frame = f
+                    break
+            locator = frame.locator(element.locator) if frame else self.page.locator(element.locator)
+        else:
+            locator = self.page.locator(element.locator)
+
+        if locator.count() > 0:
+            box = locator.first.bounding_box()
+            if box:
+                x = box['x'] + box['width'] / 2
+                y = box['y'] + box['height'] / 2
+                self.page.mouse.move(x, y)
+                _time.sleep(1)
+                print(f"\n[browser] HOVERED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
+                return f"Hovered [{element.index}] {element.tag} '{element.text}'"
+
+        x = element.x + element.width // 2
+        y = element.y + element.height // 2
+        self.page.mouse.move(x, y)
+        _time.sleep(1)
+        print(f"\n[browser] HOVERED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
+        return f"Hovered [{element.index}] '{element.text}' at ({x}, {y})"
+
+    def right_click(self, description: str) -> str:
+        """Right-click on an element using natural language description.
+
+        Opens context menus. Uses element_finder for AI-powered element matching.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        element = element_finder.find_element(self.page, description)
+        import time as _time
+
+        if element.frame.startswith("shadow-"):
+            x = element.x + element.width // 2
+            y = element.y + element.height // 2
+            self.page.mouse.click(x, y, button="right")
+            _time.sleep(1)
+            print(f"\n[browser] RIGHT-CLICKED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
+            return f"Right-clicked [{element.index}] {element.tag} '{element.text}' (shadow DOM)"
+
+        if element.frame != "main":
+            frame = None
+            for f in self.page.frames:
+                if f.name == element.frame or (hasattr(f, '_impl') and element.frame in (f.url or "")):
+                    frame = f
+                    break
+            locator = frame.locator(element.locator) if frame else self.page.locator(element.locator)
+        else:
+            locator = self.page.locator(element.locator)
+
+        if locator.count() > 0:
+            box = locator.first.bounding_box()
+            if box:
+                x = box['x'] + box['width'] / 2
+                y = box['y'] + box['height'] / 2
+                self.page.mouse.click(x, y, button="right")
+                _time.sleep(1)
+                print(f"\n[browser] RIGHT-CLICKED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
+                return f"Right-clicked [{element.index}] {element.tag} '{element.text}'"
+
+        x = element.x + element.width // 2
+        y = element.y + element.height // 2
+        self.page.mouse.click(x, y, button="right")
+        _time.sleep(1)
+        print(f"\n[browser] RIGHT-CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
+        return f"Right-clicked [{element.index}] '{element.text}' at ({x}, {y})"
+
+    def double_click(self, description: str) -> str:
+        """Double-click on an element using natural language description.
+
+        Useful for selecting text, opening items, or triggering double-click actions.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        element = element_finder.find_element(self.page, description)
+        import time as _time
+
+        if element.frame.startswith("shadow-"):
+            x = element.x + element.width // 2
+            y = element.y + element.height // 2
+            self.page.mouse.dblclick(x, y)
+            _time.sleep(1)
+            print(f"\n[browser] DOUBLE-CLICKED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
+            return f"Double-clicked [{element.index}] {element.tag} '{element.text}' (shadow DOM)"
+
+        if element.frame != "main":
+            frame = None
+            for f in self.page.frames:
+                if f.name == element.frame or (hasattr(f, '_impl') and element.frame in (f.url or "")):
+                    frame = f
+                    break
+            locator = frame.locator(element.locator) if frame else self.page.locator(element.locator)
+        else:
+            locator = self.page.locator(element.locator)
+
+        if locator.count() > 0:
+            box = locator.first.bounding_box()
+            if box:
+                x = box['x'] + box['width'] / 2
+                y = box['y'] + box['height'] / 2
+                self.page.mouse.dblclick(x, y)
+                _time.sleep(1)
+                print(f"\n[browser] DOUBLE-CLICKED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
+                return f"Double-clicked [{element.index}] {element.tag} '{element.text}'"
+
+        x = element.x + element.width // 2
+        y = element.y + element.height // 2
+        self.page.mouse.dblclick(x, y)
+        _time.sleep(1)
+        print(f"\n[browser] DOUBLE-CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
+        return f"Double-clicked [{element.index}] '{element.text}' at ({x}, {y})"
+
     def keyboard_type(self, text: str) -> str:
         """Type text using keyboard input (Playwright keyboard API wrapper).
 
