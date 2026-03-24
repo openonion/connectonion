@@ -91,7 +91,7 @@ def extract_elements(page) -> List[InteractiveElement]:
     """
     raw = page.evaluate(_get_extract_js())
 
-    # Debug: Write all elements to file for inspection
+    # Write elements to file for inspection
     debug_dir = Path.home() / ".co" / "debug"
     debug_dir.mkdir(parents=True, exist_ok=True)
     debug_file = debug_dir / "elements.json"
@@ -99,26 +99,12 @@ def extract_elements(page) -> List[InteractiveElement]:
     with open(debug_file, 'w') as f:
         json.dump(raw, f, indent=2)
 
-    # Count iframe elements
-    main_elements = [el for el in raw if el.get('frame') == 'main']
-    iframe_elements = [el for el in raw if el.get('frame') != 'main']
+    # Count elements by frame context
+    main_els = [el for el in raw if el.get('frame') == 'main']
+    other_els = [el for el in raw if el.get('frame') != 'main']
+    frame_names = set(el.get('frame') for el in other_els) if other_els else set()
 
-    print(f"\n[element_finder] DEBUG: Extracted {len(raw)} raw elements from page")
-    print(f"[element_finder] DEBUG:   - Main document: {len(main_elements)} elements")
-    print(f"[element_finder] DEBUG:   - Iframes: {len(iframe_elements)} elements")
-    if iframe_elements:
-        iframe_names = set(el.get('frame') for el in iframe_elements)
-        print(f"[element_finder] DEBUG:   - Iframe names: {', '.join(iframe_names)}")
-    print(f"[element_finder] DEBUG: Wrote all elements to {debug_file}")
-
-    # Show elements with placeholders
-    placeholders = [el for el in raw if el.get('placeholder')]
-    if placeholders:
-        print(f"[element_finder] DEBUG: Found {len(placeholders)} elements with placeholders:")
-        for el in placeholders[:5]:
-            print(f"  - [{el['index']}] {el['tag']} placeholder=\"{el['placeholder']}\" at ({el['x']},{el['y']})")
-    else:
-        print("[element_finder] DEBUG: No elements with placeholder attribute found!")
+    print(f"\n[element_finder] Extracted {len(raw)} elements (main: {len(main_els)}, other: {len(other_els)} [{', '.join(frame_names)}])")
 
     return [InteractiveElement(**el) for el in raw]
 

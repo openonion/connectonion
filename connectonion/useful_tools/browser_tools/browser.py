@@ -188,7 +188,18 @@ class BrowserAutomation:
 
         element = element_finder.find_element(self.page, description)
 
-        # Get the appropriate locator context (main page or iframe)
+        # Get the appropriate locator context (main page, iframe, or shadow DOM)
+        if element.frame.startswith("shadow-"):
+            # Shadow DOM element — use coordinates directly (locators can't pierce shadow DOM)
+            import time as _time
+            x = element.x + element.width // 2
+            y = element.y + element.height // 2
+            self.page.mouse.click(x, y)
+            self._save_context()
+            _time.sleep(1)
+            print(f"\n[browser] CLICKED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
+            return f"Clicked [{element.index}] {element.tag} '{element.text}' (shadow DOM)"
+
         if element.frame != "main":
             # Element is inside an iframe - find the frame first
             frame = None
@@ -201,12 +212,13 @@ class BrowserAutomation:
                 locator = frame.locator(element.locator)
                 print(f"[browser] DEBUG: Element in iframe '{element.frame}', using frame locator")
             else:
-                # Iframe not found - fallback to main page (shouldn't happen)
                 locator = self.page.locator(element.locator)
                 print(f"[browser] WARNING: Iframe '{element.frame}' not found, using main page locator")
         else:
             # Element is in main document
             locator = self.page.locator(element.locator)
+
+        import time as _time
 
         if locator.count() > 0:
             box = locator.first.bounding_box()
@@ -215,11 +227,13 @@ class BrowserAutomation:
                 y = box['y'] + box['height'] / 2
                 self.page.mouse.click(x, y)
                 self._save_context()
+                _time.sleep(1)  # Wait for DOM changes (modals, dropdowns, etc.)
                 print(f"\n[browser] CLICKED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
                 return f"Clicked [{element.index}] {element.tag} '{element.text}'"
 
             locator.first.click(force=True)
             self._save_context()
+            _time.sleep(1)
             print(f"\n[browser] CLICKED (force) element [{element.index}] {element.tag} text='{element.text}'\n")
             return f"Clicked [{element.index}] {element.tag} '{element.text}' (force)"
 
@@ -228,6 +242,7 @@ class BrowserAutomation:
         y = element.y + element.height // 2
         self.page.mouse.click(x, y)
         self._save_context()
+        _time.sleep(1)
         print(f"\n[browser] CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
         return f"Clicked [{element.index}] '{element.text}' at ({x}, {y})"
 

@@ -8,12 +8,18 @@
  * 2. Injects a unique `data-browser-agent-id` attribute into each
  * 3. Returns element data with bounding boxes for LLM matching
  * 4. Recursively extracts elements from iframes (SCORM, embedded content, etc.)
+ * 5. Traverses shadow DOMs (e.g., LinkedIn modals rendered in shadow roots)
  *
  * IFRAME HANDLING:
  * - Extracts from main document first
  * - Then recursively extracts from all accessible iframes
  * - Each element tracks its frame context via `frame` field
  * - Cross-origin iframes are skipped (browser security restriction)
+ *
+ * SHADOW DOM HANDLING:
+ * - After main document extraction, scans all elements for shadowRoot
+ * - Extracts interactive elements from each open shadow root
+ * - Elements tracked with `shadow-{hostId}` frame context
  */
 (() => {
     const results = [];
@@ -100,13 +106,10 @@
     }
 
     /**
-     * Extract interactive elements from a document context (main page or iframe).
+     * Extract interactive elements from a document context (main page, iframe, or shadow root).
      *
-     * This function is reusable across different document contexts - it works on
-     * the main page document as well as iframe contentDocuments.
-     *
-     * @param {Document} document - The document to extract from (main or iframe)
-     * @param {string} frameContext - Frame identifier ('main' or iframe name/id)
+     * @param {Document} document - The document to extract from (main, iframe, or shadowRoot)
+     * @param {string} frameContext - Frame identifier ('main', iframe name, or 'shadow-{id}')
      * @param {Window} window - The window context for computed styles
      * @returns {Array} Array of extracted element objects
      */
@@ -123,9 +126,10 @@
             const isClickable = window.getComputedStyle(el).cursor === 'pointer';
             const hasTabIndex = el.hasAttribute('tabindex') && el.tabIndex >= 0;
             const hasClickHandler = el.onclick !== null || el.hasAttribute('onclick');
+            const isContentEditable = el.getAttribute('contenteditable') === 'true';
 
             if (!isInteractiveTag && !isInteractiveRole && !isClickable &&
-                !hasTabIndex && !hasClickHandler) {
+                !hasTabIndex && !hasClickHandler && !isContentEditable) {
                 return;
             }
 
@@ -185,6 +189,15 @@
     // Extract from main document
     const mainElements = extractFromDocument(document, 'main', window);
     results.push(...mainElements);
+
+    // Extract from shadow DOMs (e.g., LinkedIn modals rendered in shadow roots)
+    document.querySelectorAll('*').forEach(el => {
+        if (el.shadowRoot) {
+            const shadowId = el.id || el.tagName.toLowerCase();
+            const shadowElements = extractFromDocument(el.shadowRoot, `shadow-${shadowId}`, window);
+            results.push(...shadowElements);
+        }
+    });
 
     // Extract from all iframes recursively
     const iframes = document.querySelectorAll('iframe');
