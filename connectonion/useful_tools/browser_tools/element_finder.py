@@ -77,6 +77,7 @@ class ElementMatch(BaseModel):
     """LLM's element selection result."""
     index: int = Field(..., description="Index of the matching element, or -1 if no match found")
     confidence: float = Field(..., description="Confidence 0-1")
+    ambiguous: bool = Field(default=False, description="True if multiple elements match equally well and you cannot confidently pick one (e.g. multiple Like buttons in a feed)")
     reasoning: str = Field(..., description="Why this element matches, or why no match was found")
     alternatives: Optional[List[int]] = Field(default=None, description="List of alternative element indices that might match (if no exact match)")
 
@@ -195,7 +196,25 @@ def find_element(
     )
 
     if result.index == -1:
-        raise ElementNotFoundError(f"{result.reasoning}\nSuggested alternatives: {result.alternatives}")
+        alt_str = ""
+        if result.alternatives:
+            alt_str = "\nSuggested alternatives:\n" + "\n".join(
+                f"  [{elements[i].index}] {elements[i].tag} text='{elements[i].text}' aria='{elements[i].aria_label}' pos=({elements[i].x},{elements[i].y})"
+                for i in result.alternatives if 0 <= i < len(elements)
+            )
+        raise ElementNotFoundError(f"{result.reasoning}{alt_str}")
+
+    if result.ambiguous and result.alternatives:
+        candidates = [result.index] + result.alternatives
+        candidates_str = "\n".join(
+            f"  [{elements[i].index}] {elements[i].tag} text='{elements[i].text}' aria='{elements[i].aria_label}' pos=({elements[i].x},{elements[i].y})"
+            for i in candidates if 0 <= i < len(elements)
+        )
+        raise ElementNotFoundError(
+            f"Ambiguous: multiple elements match '{description}'.\n"
+            f"Candidates:\n{candidates_str}\n"
+            f"Be more specific — include author name, position, or a unique attribute."
+        )
 
     if 0 <= result.index < len(elements):
         selected = elements[result.index]

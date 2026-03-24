@@ -98,4 +98,10 @@ Consider:
 - In reasoning, explain why no match was found
 - In alternatives, provide a list of 3-5 element indices that are the closest matches (most similar or most likely what the user meant)
 
+**IMPORTANT: If MULTIPLE elements match equally well (e.g. multiple "Like" buttons in a feed, multiple "Submit" buttons):**
+- Set ambiguous=true
+- Set index to the best guess
+- In alternatives, list ALL matching element indices
+- In reasoning, explain why you can't confidently pick one
+
 Return the index of the best matching element, or -1 if no match found.
