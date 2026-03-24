@@ -14,7 +14,7 @@ from rich.console import Console
 console = Console()
 
 
-def handle_browser(command: str, headless: bool = True):
+def handle_browser(command: str, headless: bool = False):
     """Execute browser automation commands - guide browser to do something.
 
     This is an alternative to the -b flag. Both 'co -b' and 'co browser' are supported.

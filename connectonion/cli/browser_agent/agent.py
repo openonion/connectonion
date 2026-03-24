@@ -16,7 +16,7 @@ from connectonion.useful_tools.browser_tools import BrowserAutomation
 PROMPT_PATH = Path(__file__).parent / "prompts" / "agent.md"
 
 
-def execute_browser_command(command: str, headless: bool = True) -> str:
+def execute_browser_command(command: str, headless: bool = False) -> str:
     """Execute a browser command using natural language.
 
     Returns the agent's natural language response directly.

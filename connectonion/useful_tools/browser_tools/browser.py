@@ -62,7 +62,7 @@ class BrowserAutomation:
     This ensures session persistence even if the process crashes.
     """
 
-    def __init__(self, use_chrome_profile: bool = True, headless: bool = True):
+    def __init__(self, use_chrome_profile: bool = True, headless: bool = False):
         """Initialize browser automation.
 
         Args:
@@ -80,14 +80,16 @@ class BrowserAutomation:
         self._headless = headless
         self.screenshots_dir = str(SCREENSHOTS_DIR)
 
-    def open_browser(self, headless: bool = True) -> str:
+    def open_browser(self, headless: bool = None) -> str:
         """Open a new browser window.
 
         Args:
-            headless: If True, browser runs without visible window.
+            headless: If True, browser runs without visible window. Defaults to the value set in __init__.
 
         Note: If use_chrome_profile=True, Chrome must be completely closed.
         """
+        if headless is None:
+            headless = self._headless
         if not PLAYWRIGHT_AVAILABLE:
             return "Browser tools not installed. Run: pip install playwright && playwright install chromium"
 
@@ -247,6 +249,18 @@ class BrowserAutomation:
         print(f"\n[browser] CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
         return f"Clicked [{element.index}] '{element.text}' at ({x}, {y})"
 
+    def mouse_click(self, x: int, y: int) -> str:
+        """Click at exact screen coordinates. Use after hover() to click items in
+        hover menus (like LinkedIn reactions) without re-scanning the DOM which
+        would dismiss the menu."""
+        if not self.page:
+            return "Browser not open"
+        import time as _time
+        self.page.mouse.click(x, y)
+        _time.sleep(1)
+        print(f"\n[browser] CLICKED at ({x},{y})\n")
+        return f"Clicked at ({x}, {y})"
+
     def hover(self, description: str) -> str:
         """Hover over an element using natural language description.
 
@@ -263,36 +277,27 @@ class BrowserAutomation:
             x = element.x + element.width // 2
             y = element.y + element.height // 2
             self.page.mouse.move(x, y)
-            _time.sleep(1)
-            print(f"\n[browser] HOVERED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
-            return f"Hovered [{element.index}] {element.tag} '{element.text}' (shadow DOM)"
-
-        if element.frame != "main":
+        elif element.frame != "main":
             frame = None
             for f in self.page.frames:
                 if f.name == element.frame or (hasattr(f, '_impl') and element.frame in (f.url or "")):
                     frame = f
                     break
             locator = frame.locator(element.locator) if frame else self.page.locator(element.locator)
+            if locator.count() > 0:
+                locator.first.hover()
+            else:
+                self.page.mouse.move(element.x + element.width // 2, element.y + element.height // 2)
         else:
             locator = self.page.locator(element.locator)
+            if locator.count() > 0:
+                locator.first.hover()
+            else:
+                self.page.mouse.move(element.x + element.width // 2, element.y + element.height // 2)
 
-        if locator.count() > 0:
-            box = locator.first.bounding_box()
-            if box:
-                x = box['x'] + box['width'] / 2
-                y = box['y'] + box['height'] / 2
-                self.page.mouse.move(x, y)
-                _time.sleep(1)
-                print(f"\n[browser] HOVERED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
-                return f"Hovered [{element.index}] {element.tag} '{element.text}'"
-
-        x = element.x + element.width // 2
-        y = element.y + element.height // 2
-        self.page.mouse.move(x, y)
         _time.sleep(1)
-        print(f"\n[browser] HOVERED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
-        return f"Hovered [{element.index}] '{element.text}' at ({x}, {y})"
+        print(f"\n[browser] HOVERED element [{element.index}] {element.tag} text='{element.text}'\n")
+        return f"Hovered [{element.index}] {element.tag} '{element.text}'"
 
     def right_click(self, description: str) -> str:
         """Right-click on an element using natural language description.
