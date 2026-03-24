@@ -23,6 +23,7 @@ Features:
 
 import os
 import base64
+import platform
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -285,6 +286,15 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
 
         self.page.keyboard.press(key)
         return f"Pressed: '{key}'"
+
+    def get_system_info(self) -> str:
+        """Get the operating system info. Call this before using keyboard shortcuts so you know which modifier key to use (Meta on macOS, Control on Windows/Linux)."""
+        system = platform.system()
+        if system == "Darwin":
+            return "OS: macOS. Use Meta for shortcuts (Meta+a select all, Meta+c copy, Meta+v paste, Meta+z undo)."
+        elif system == "Windows":
+            return "OS: Windows. Use Control for shortcuts (Control+a select all, Control+c copy, Control+v paste, Control+z undo)."
+        return "OS: Linux. Use Control for shortcuts (Control+a select all, Control+c copy, Control+v paste, Control+z undo)."
 
     def get_text(self) -> str:
         """Get all visible text from the page."""
