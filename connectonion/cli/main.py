@@ -161,7 +161,7 @@ def browser(
 def ai(
     prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
-    model: str = typer.Option("co/claude-opus-4-5", "--model", "-m", help="Model to use"),
+    model: str = typer.Option("co/gemini-3-flash-preview", "--model", "-m", help="Model to use"),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
 ):
     """Start AI coding agent or run one-shot prompt."""
