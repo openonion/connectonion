@@ -73,6 +73,7 @@ TUI = {
 # Registry of copyable prompt templates (directories)
 PROMPTS = {
     "coding_agent": "coding_agent",
+    "cc_prompt": "cc_prompt",
 }
 
 # Registry of copyable trust policies

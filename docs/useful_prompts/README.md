@@ -7,6 +7,7 @@ Pre-built prompt structures for common agent patterns. Copy to your project and 
 | Template | Purpose | Use Case |
 |----------|---------|----------|
 | [coding_agent](coding_agent.md) | Coding Agent Prompt | CLI coding tools, code review bots |
+| [cc_prompt](cc_prompt.md) | Claude Code System Prompt | Reference for Claude Code's 110+ prompt pieces |
 
 ## Philosophy
 

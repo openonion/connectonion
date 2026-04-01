@@ -249,6 +249,7 @@ co copy gmail outlook
 | Name | Directory | Description |
 |------|-----------|-------------|
 | coding_agent | coding_agent/ | Coding Agent Prompt - modular prompt template for coding assistants |
+| cc_prompt | cc_prompt/ | Claude Code System Prompt - 250 prompt pieces organized by category |
 
 ## Available Trust Policies
 

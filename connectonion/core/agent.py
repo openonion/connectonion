@@ -271,7 +271,9 @@ class Agent:
             uploads_dir.mkdir(parents=True, exist_ok=True)
             for f in files:
                 safe_name = Path(f["name"]).name
-                file_path = uploads_dir / safe_name
+                # Add timestamp prefix to avoid collisions
+                prefix = str(int(time.time()))
+                file_path = uploads_dir / f"{prefix}_{safe_name}"
                 # Decode base64 data URL and write to disk
                 data_url = f["data"]
                 if "," in data_url:
@@ -279,19 +281,22 @@ class Agent:
                 else:
                     raw_data = base64.b64decode(data_url)
                 file_path.write_bytes(raw_data)
-                saved_files.append(str(file_path))
+                saved_files.append(str(file_path.resolve()))
 
-        # Add user message to conversation (multimodal if images or files provided)
-        if images or saved_files:
+        if saved_files and self.logger.console:
+            names = [Path(p).name for p in saved_files]
+            self.logger.console.print(f"  [dim]↑ {len(saved_files)} file(s): {', '.join(names)}[/dim]")
+
+        # Append file paths to prompt so the agent knows about uploaded files
+        if saved_files:
+            file_list = "\n".join(f"- {p}" for p in saved_files)
+            prompt += f"\n\n<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
+
+        # Add user message to conversation (multimodal if images provided)
+        if images:
             content = [{"type": "text", "text": prompt}]
-            for img in (images or []):
+            for img in images:
                 content.append({"type": "image_url", "image_url": {"url": img}})
-            if saved_files:
-                file_list = "\n".join(f"- {p}" for p in saved_files)
-                content.append({
-                    "type": "text",
-                    "text": f"<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
-                })
             self.current_session['messages'].append({"role": "user", "content": content})
         else:
             self.current_session['messages'].append({"role": "user", "content": prompt})
@@ -308,6 +313,14 @@ class Agent:
             'turn': self.current_session['turn'],
             'ts': turn_start,
         })
+
+        if saved_files:
+            self._record_trace({
+                'type': 'files_received',
+                'files': [{'name': Path(p).name, 'path': p} for p in saved_files],
+                'turn': self.current_session['turn'],
+                'ts': time.time(),
+            })
 
         # Invoke after_user_input events
         self._invoke_events('after_user_input')

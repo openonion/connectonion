@@ -27,8 +27,15 @@ def session_to_chat_items(session: dict) -> list[dict]:
         elif role == 'assistant':
             items.append({'id': f"msg-{idx}", 'type': 'agent', 'content': msg.get('content', '')})
 
-    # Trace → tool_call items
+    # Trace → tool_call + files_received items
     for idx, entry in enumerate(session.get('trace', [])):
+        if entry.get('type') == 'files_received':
+            items.append({
+                'id': f"files-{idx}",
+                'type': 'files_received',
+                'files': entry.get('files', []),
+            })
+            continue
         tool_name = entry.get('tool_name')
         if tool_name:
             status = 'error' if entry.get('status') == 'error' else 'running' if entry.get('status') == 'running' else 'done'

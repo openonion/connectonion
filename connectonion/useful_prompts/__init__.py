@@ -18,6 +18,7 @@ Usage:
 
 Available prompts:
     - coding_agent/  : Coding Agent Prompt - modular template for coding assistants
+    - cc_prompt/     : Claude Code System Prompt - 250 prompt pieces organized by category
 
 See README.md for details.
 """

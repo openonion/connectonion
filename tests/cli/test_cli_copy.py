@@ -157,6 +157,30 @@ class TestCopyCommand:
         assert result.exit_code == 0
         assert "Copied:" in result.output
 
+    def test_copy_cc_prompt_creates_prompts_dir(self):
+        """Test copying cc_prompt creates prompts/cc_prompt/ directory with categorized files."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ['copy', 'cc_prompt'])
+
+        assert result.exit_code == 0
+        assert "Copied:" in result.output
+
+        cc_dir = Path(self.test_dir) / "prompts" / "cc_prompt"
+        assert cc_dir.exists()
+        assert (cc_dir / "README.md").exists()
+        assert (cc_dir / "prompts" / "system").is_dir()
+        assert (cc_dir / "prompts" / "agents").is_dir()
+        assert (cc_dir / "prompts" / "tools").is_dir()
+        assert (cc_dir / "prompts" / "skills").is_dir()
+        assert (cc_dir / "prompts" / "reminders").is_dir()
+        assert (cc_dir / "prompts" / "data").is_dir()
+
+        # Verify files exist in each category
+        assert len(list((cc_dir / "prompts" / "system").glob("*.md"))) > 0
+        assert len(list((cc_dir / "prompts" / "tools").glob("*.md"))) > 0
+        assert len(list((cc_dir / "prompts" / "agents").glob("*.md"))) > 0
+
     def test_copy_unknown_item(self):
         """Test copy shows error for unknown item."""
         from connectonion.cli.main import cli
@@ -197,6 +221,15 @@ class TestCopyListOutput:
 
         for plugin in plugins:
             assert plugin in result.output, f"Plugin {plugin} should be in list"
+
+    def test_list_shows_cc_prompt(self):
+        """Test list shows cc_prompt in available prompts."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ['copy', '--list'])
+
+        assert "cc_prompt" in result.output
+        assert "prompt" in result.output
 
     def test_list_shows_usage_hint(self):
         """Test list shows usage hint at the end."""
