@@ -1,6 +1,6 @@
-# co copy - Copy Tools, Plugins & Prompts
+# co copy - Copy Tools, Plugins, Skills & Prompts
 
-Copy built-in tools, plugins, and prompt templates to your project for customization.
+Copy built-in tools, plugins, skills, and prompt templates to your project for customization.
 
 ## Quick Start
 
@@ -13,6 +13,9 @@ co copy Gmail
 
 # Copy a plugin
 co copy re_act
+
+# Copy a skill (installs to .co/skills/, usable as /ship-feature)
+co copy ship-feature
 
 # Copy a prompt template
 co copy coding_agent
@@ -250,6 +253,20 @@ co copy gmail outlook
 |------|-----------|-------------|
 | coding_agent | coding_agent/ | Coding Agent Prompt - modular prompt template for coding assistants |
 | cc_prompt | cc_prompt/ | Claude Code System Prompt - 250 prompt pieces organized by category |
+
+## Available Skills
+
+Skills are copied to `.co/skills/<name>/` and auto-discovered by the skills plugin as `/skill-name`.
+
+| Name | Description |
+|------|-------------|
+| ship-feature | Ship a feature end-to-end — update tests, docs, docs-site, then release to PyPI |
+
+```bash
+co copy ship-feature
+# → .co/skills/ship-feature/SKILL.md
+# → invoke with /ship-feature
+```
 
 ## Available Trust Policies
 

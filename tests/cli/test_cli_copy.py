@@ -181,6 +181,18 @@ class TestCopyCommand:
         assert len(list((cc_dir / "prompts" / "tools").glob("*.md"))) > 0
         assert len(list((cc_dir / "prompts" / "agents").glob("*.md"))) > 0
 
+    def test_copy_skill_creates_co_skills_dir(self):
+        """Test copying a skill creates .co/skills/<name>/ directory."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ['copy', 'ship-feature'])
+
+        assert result.exit_code == 0
+        assert "Copied:" in result.output
+        skill_dir = Path(self.test_dir) / ".co" / "skills" / "ship-feature"
+        assert skill_dir.exists()
+        assert (skill_dir / "SKILL.md").exists()
+
     def test_copy_unknown_item(self):
         """Test copy shows error for unknown item."""
         from connectonion.cli.main import cli
@@ -230,6 +242,15 @@ class TestCopyListOutput:
 
         assert "cc_prompt" in result.output
         assert "prompt" in result.output
+
+    def test_list_shows_skills(self):
+        """Test list shows available skills."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ['copy', '--list'])
+
+        assert "ship-feature" in result.output
+        assert "skill" in result.output
 
     def test_list_shows_usage_hint(self):
         """Test list shows usage hint at the end."""

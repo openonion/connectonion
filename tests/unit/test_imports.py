@@ -23,6 +23,7 @@ MODULES = [
     "connectonion.cli.commands.eval_commands",
     "connectonion.cli.commands.project_cmd_lib",
     "connectonion.useful_prompts.coding_agent.assembler",
+    "connectonion.useful_skills",
 ]
 
 
