@@ -33,7 +33,7 @@ Run in parallel:
 
 Find the relevant test file:
 - `glob("tests/**/*.py")` — find all test files
-- Match test file to changed source file (e.g. `connectonion/agent.py` → `tests/unit/test_agent.py`)
+- Match test file to changed source file (e.g. `src/agent.py` → `tests/unit/test_agent.py`)
 
 Update the test file:
 - Add or update test cases that cover the new behavior
@@ -74,26 +74,33 @@ cd docs-site && git add . && git commit -m "Update docs for <feature>" && git pu
 
 ### 5a. Determine new version
 
-Read current version:
+Find and read the current version — check these locations in order:
 ```bash
-grep "__version__" connectonion/__init__.py
+grep -r "__version__" --include="*.py" -l   # find which file has version
+cat pyproject.toml | grep "^version"         # or pyproject.toml
+cat setup.py | grep "version="               # or setup.py
 ```
 
-Apply versioning rules (from VERSIONING.md):
+Apply versioning rules (read VERSIONING.md if it exists, otherwise use semver):
 - PATCH +1 for bug fixes, docs, small improvements
 - MINOR bump for new user-facing features
-- PATCH rolls to MINOR at .10 (e.g. 0.8.9 → 0.9.0, not 0.8.10)
+- If VERSIONING.md exists, follow its rollover rules exactly
 
-### 5b. Update version in all files
+### 5b. Update version in all files that contain it
 
-Update these files with the new version:
-1. `connectonion/__init__.py` — `__version__ = "X.Y.Z"`
-2. `setup.py` — `version="X.Y.Z"`
+Search for every file containing the current version string and update each one:
+```bash
+grep -r "X.Y.Z" --include="*.py" --include="*.toml" --include="*.cfg" -l
+```
+
+Common locations: `__init__.py`, `pyproject.toml`, `setup.py`, `setup.cfg`
 
 ### 5c. Commit, tag, push
 
+Stage only what changed — do NOT blindly stage all files:
 ```bash
-git add connectonion/__init__.py setup.py tests/ docs/
+git add -p   # or stage specific files that were actually modified
+git status   # confirm what's staged before committing
 git commit -m "Release vX.Y.Z: <feature description>"
 git tag vX.Y.Z
 git push
@@ -103,11 +110,11 @@ git push origin vX.Y.Z
 ### 5d. Build and publish to PyPI
 
 ```bash
-python setup.py sdist bdist_wheel
-twine upload dist/*
+python -m build
+twine upload dist/*X.Y.Z*
 ```
 
-Confirm upload succeeded by checking the output for "View at: https://pypi.org/project/connectonion/X.Y.Z/"
+Confirm upload succeeded by checking the output for "View at: https://pypi.org/project/<package>/X.Y.Z/"
 
 ## Checklist
 
