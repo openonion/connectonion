@@ -15,7 +15,7 @@ from rich.table import Table
 
 console = Console()
 
-# Registry of copyable tools
+# Registry of copyable tools (single files)
 TOOLS = {
     "ask_user": "ask_user.py",
     "bash": "bash.py",
@@ -34,7 +34,13 @@ TOOLS = {
     "web_fetch": "web_fetch.py",
 }
 
-# Registry of copyable plugins
+# Registry of copyable tool directories
+TOOL_DIRS = {
+    "browser_tools": "browser_tools",
+    "file_tools": "file_tools",
+}
+
+# Registry of copyable plugins (single files)
 PLUGINS = {
     "auto_compact": "auto_compact.py",
     "calendar_plugin": "calendar_plugin.py",
@@ -49,6 +55,11 @@ PLUGINS = {
     "system_reminder": "system_reminder.py",
     "ui_stream": "ui_stream.py",
     "ulw": "ulw.py",
+}
+
+# Registry of copyable plugin directories
+PLUGIN_DIRS = {
+    "tool_approval": "tool_approval",
 }
 
 # Plugins that also need prompts copied
@@ -122,6 +133,12 @@ def handle_copy(
             dest_dir = Path(path) if path else current_dir / "tools"
             copy_file(source, dest_dir, force)
 
+        # Check if it's a tool directory
+        elif name_lower in TOOL_DIRS:
+            source = useful_tools_dir / TOOL_DIRS[name_lower]
+            dest_dir = Path(path) if path else current_dir / "tools"
+            copy_directory(source, dest_dir, force)
+
         # Check if it's a plugin
         elif name_lower in PLUGINS:
             source = useful_plugins_dir / PLUGINS[name_lower]
@@ -133,6 +150,12 @@ def handle_copy(
                 prompt_source = useful_prompts_dir / PLUGIN_PROMPTS[name_lower]
                 prompt_dest = Path(path) if path else current_dir / "prompts"
                 copy_directory(prompt_source, prompt_dest, force)
+
+        # Check if it's a plugin directory
+        elif name_lower in PLUGIN_DIRS:
+            source = useful_plugins_dir / PLUGIN_DIRS[name_lower]
+            dest_dir = Path(path) if path else current_dir / "plugins"
+            copy_directory(source, dest_dir, force)
 
         # Check if it's a TUI component
         elif name_lower in TUI:
@@ -204,8 +227,14 @@ def show_available_items():
     for name, file in sorted(TOOLS.items()):
         table.add_row(name, "tool", file)
 
+    for name, dir_name in sorted(TOOL_DIRS.items()):
+        table.add_row(name, "tool (dir)", f"{dir_name}/")
+
     for name, file in sorted(PLUGINS.items()):
         table.add_row(name, "plugin", file)
+
+    for name, dir_name in sorted(PLUGIN_DIRS.items()):
+        table.add_row(name, "plugin (dir)", f"{dir_name}/")
 
     for name, dir_name in sorted(PROMPTS.items()):
         table.add_row(name, "prompt", f"{dir_name}/")
