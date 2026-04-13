@@ -51,11 +51,19 @@ agent = Agent("a", plugins=[re_act, logger])
 | Plugin | Purpose | Docs |
 |--------|---------|------|
 | `skills` | Invoke pre-packaged workflows with scoped permissions | [skills.md](skills.md) |
+| `subagents` | Run tasks in parallel sub-agents | [subagents.md](../useful_plugins/subagents.md) |
 | `re_act` | Planning + reflection (ReAct pattern) | [re_act.md](../useful_plugins/re_act.md) |
 | `eval` | Task evaluation for debugging | [eval.md](../useful_plugins/eval.md) |
 | `image_result_formatter` | Format images for vision models | [image_result_formatter.md](../useful_plugins/image_result_formatter.md) |
 | `shell_approval` | Approve shell commands before execution | [shell_approval.md](../useful_plugins/shell_approval.md) |
 | `tool_approval` | Web-based approval for dangerous tools | [tool_approval.md](../useful_plugins/tool_approval.md) |
+| `ui_stream` | Stream agent events to WebSocket clients | [ui_stream.md](../useful_plugins/ui_stream.md) |
+| `system_reminder` | Inject contextual reminders into tool results | [system_reminder.md](../useful_plugins/system_reminder.md) |
+| `auto_compact` | Compact conversation when context gets large | [auto_compact.md](../useful_plugins/auto_compact.md) |
+| `prefer_write_tool` | Guide agent to prefer write over edit for new files | [prefer_write_tool.md](../useful_plugins/prefer_write_tool.md) |
+| `ulw` | Ultra-light workflow: pause loop for user input | [ulw.md](../useful_plugins/ulw.md) |
+| `gmail_plugin` | Gmail OAuth flow | [gmail_plugin.md](../useful_plugins/gmail_plugin.md) |
+| `calendar_plugin` | Google Calendar OAuth flow | [calendar_plugin.md](../useful_plugins/calendar_plugin.md) |
 
 ```python
 from connectonion.useful_plugins import skills, re_act, eval, image_result_formatter, tool_approval

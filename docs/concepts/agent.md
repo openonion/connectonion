@@ -43,10 +43,11 @@ Agent(
     tools=[func1, func2],                 # Optional: functions agent can call
     system_prompt="You are helpful",      # Optional: personality/behavior
     model="co/gemini-2.5-pro",            # Optional: LLM model (default: co/gemini-2.5-pro)
-    max_iterations=10,                    # Optional: how many tool calls allowed
+    max_iterations=100,                   # Optional: how many tool calls allowed (default: 100)
     api_key="sk-...",                     # Optional: override environment variable
     llm=custom_llm,                       # Optional: bring your own LLM instance
-    trust="tested",                       # Optional: security verification
+    plugins=[my_plugin],                  # Optional: list of plugin event handler lists
+    on_events=[after_llm(handler)],       # Optional: custom event handlers
     quiet=False,                          # Optional: suppress console output
     log=True                              # Optional: logging configuration
 )
@@ -241,7 +242,7 @@ Final Response (when LLM is done)
 
 The agent loops until:
 - LLM provides a final answer (no more tool calls), OR
-- Max iterations reached (default: 10)
+- Max iterations reached (default: 100)
 
 ---
 
@@ -283,10 +284,10 @@ result = agent.execute_tool("calculator", {"expression": "2+2"})
 # Returns:
 {
   "name": "calculator",
-  "arguments": {"expression": "2+2"},
+  "args": {"expression": "2+2"},
   "result": "4",
   "status": "success",      # or "error", "not_found"
-  "timing": 1.23            # milliseconds
+  "timing_ms": 1.23         # milliseconds
 }
 ```
 
@@ -718,50 +719,29 @@ See [xray.md](../debug/xray.md) for complete debugging guide and [console.md](..
 
 ---
 
-## Trust & Security
+## Tool Approval & Security
 
-Add verification before risky tools execute:
-
-### Trust Levels
+Use the `tool_approval` plugin to add web-based approval for dangerous tool calls:
 
 ```python
+from connectonion.useful_plugins import tool_approval, shell_approval
+
+# Web-based approval (for hosted agents)
 agent = Agent(
     "bot",
-    tools=[delete_database],
-    trust="tested"  # Requires manual approval before execution
+    tools=[bash],
+    plugins=[tool_approval]
+)
+
+# CLI approval for shell commands
+agent = Agent(
+    "bot",
+    tools=[bash],
+    plugins=[shell_approval]
 )
 ```
 
-**Trust levels:**
-- `"open"` - No verification (default)
-- `"tested"` - Manual approval required
-- `"strict"` - Both manual approval + verification logic
-
-### Trust Policies (Natural Language)
-
-```python
-agent = Agent(
-    "bot",
-    tools=[deploy_code],
-    trust="policies/production.md"  # Checks against policy file
-)
-```
-
-### Custom Trust Agent
-
-```python
-# Create a verifier agent
-verifier = Agent("security", tools=[scan_code, check_safety])
-
-# Use it to verify tools
-agent = Agent(
-    "bot",
-    tools=[risky_tool],
-    trust=verifier  # Custom verification logic
-)
-```
-
-See [trust.md](trust.md) for complete security guide.
+See [tool_approval.md](../useful_plugins/tool_approval.md) and [shell_approval.md](../useful_plugins/shell_approval.md) for complete docs.
 
 ---
 
@@ -914,8 +894,8 @@ import pytest
 
 @pytest.mark.real_api
 def test_real_agent():
-    """Requires OPENAI_API_KEY in environment."""
-    agent = Agent("test", tools=[search], model="gpt-4o-mini")
+    """Requires OPENONION_API_KEY or GEMINI_API_KEY in environment."""
+    agent = Agent("test", tools=[search], model="co/gemini-2.5-flash")
     result = agent.input("Search for Python")
     assert "Python" in result
 
@@ -1054,7 +1034,7 @@ agent.input("Find Python docs")
 
 ### Complex Case
 ```python
-trust_agent = Agent("verifier", tools=[scan_code])
+from connectonion.useful_plugins import shell_approval
 
 agent = Agent(
     name="production",
@@ -1062,7 +1042,7 @@ agent = Agent(
     tools=[deploy, rollback, monitor],
     system_prompt=Path("prompts/ops.md"),
     max_iterations=30,
-    trust=trust_agent,
+    plugins=[shell_approval],
     log="/var/log/agents/production.log"
 )
 

@@ -141,4 +141,4 @@ def save_research(topic: str, findings: str, filename: str = None) -> Dict:
 
 - [Tools](../concepts/tools.md) - Add custom tools
 - [llm_do](../concepts/llm_do.md) - One-shot LLM calls
-- [Playwright Template](playwright.md) - For dynamic content
+- [Browser Template](browser.md) - For dynamic content requiring browser automation

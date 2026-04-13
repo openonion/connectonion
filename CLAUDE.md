@@ -102,10 +102,10 @@ python -m pytest tests/unit/test_agent.py::test_specific_function
 ```bash
 # Create new agent project
 co create my-agent                    # Minimal template (default)
-co create my-bot --template playwright    # Browser automation
-co create emailer --template email-agent  # Email automation
+co create my-bot --template browser       # Browser automation
+co create coder --template coder          # Coding agent
 
-# Available templates: minimal, playwright, email-agent, meta-agent, web-research
+# Available templates: minimal, coder, browser, web-research
 
 # Initialize in existing directory
 co init                               # Add .co folder only
@@ -173,9 +173,8 @@ connectonion/
 │   │   ├── commands/               # CLI command implementations
 │   │   └── templates/              # Agent templates
 │   │       ├── minimal/
-│   │       ├── playwright/
-│   │       ├── email-agent/
-│   │       ├── meta-agent/
+│   │       ├── coder/
+│   │       ├── browser/
 │   │       └── web-research/
 │   ├── useful_tools/               # Built-in tools
 │   │   ├── send_email.py

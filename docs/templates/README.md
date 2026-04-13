@@ -10,32 +10,32 @@ co create my-agent --template <template-name>
 
 | Template | Best For | Key Tools |
 |----------|----------|-----------|
-| [minimal](minimal.md) | Getting started, learning | `calculator` |
-| [playwright](playwright.md) | Web automation, scraping | Browser control, screenshots |
-| [meta-agent](meta-agent.md) | Building agents, dev assistance | Docs search, shell, todos |
+| [minimal](minimal.md) | General-purpose default | `bash`, `read_file`, `edit`, `glob`, `grep`, `write`, `BrowserAutomation` |
+| [coder](coder.md) | Coding tasks, file editing | `bash`, `read_file`, `edit`, `glob`, `grep`, `write` |
+| [browser](browser.md) | Web automation, scraping | Browser control, screenshots |
 | [web-research](web-research.md) | Research, data extraction | Web search, analysis |
 
 ## Quick Comparison
 
 ### minimal
-Simple starting point with one tool. Perfect for learning ConnectOnion basics.
+Default starting point. Includes file tools (`bash`, `read_file`, `edit`, `glob`, `grep`, `write`) and browser automation (`BrowserAutomation`) with `image_result_formatter` and `tool_approval` plugins.
 
 ```bash
 co create my-bot --template minimal
 ```
 
-### playwright
-Full browser automation with 11 tools. Scrape websites, fill forms, take screenshots.
+### coder
+Coding assistant with filesystem and shell access. Read, edit, search, and run code.
 
 ```bash
-co create browser-bot --template playwright
+co create my-coder --template coder
 ```
 
-### meta-agent
-Development assistant that knows ConnectOnion. Query docs, run shell commands, manage todos.
+### browser
+Full browser automation. Scrape websites, fill forms, take screenshots.
 
 ```bash
-co create dev-helper --template meta-agent
+co create browser-bot --template browser
 ```
 
 ### web-research

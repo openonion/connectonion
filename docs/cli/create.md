@@ -204,9 +204,10 @@ All projects use the global identity (address + email) from `~/.co`. Run `co sta
 ### Available Templates
 
 1. **minimal** - Basic agent with simple tools
-2. **web-research** - Web scraping and research capabilities
-3. **playwright** - Browser automation
-4. **custom** - AI-generated based on your description
+2. **coder** - Filesystem + shell access for coding tasks
+3. **browser** - Browser automation with Playwright
+4. **web-research** - Web scraping and research capabilities
+5. **custom** - AI-generated based on your description
 
 ### Template Selection
 
@@ -229,7 +230,7 @@ co create [name] [options]
 
 Options:
   [name]                    Project name (optional, will prompt)
-  --template, -t            Template to use (minimal/web-research/playwright/custom)
+  --template, -t            Template to use (minimal/coder/browser/web-research/custom)
   --description, -d         Description for custom template
   --no-ai                   Disable AI features (not recommended)
   --key                     API key to use (overrides global)

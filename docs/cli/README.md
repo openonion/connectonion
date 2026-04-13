@@ -53,12 +53,12 @@ Creates a new directory with complete agent project.
 ```bash
 co create my-agent              # Interactive
 co create my-agent --yes        # Skip prompts
-co create my-agent -t playwright # Specify template
+co create my-agent -t browser    # Specify template
 ```
 
 **Options:**
 - `[name]` - Project name (creates directory)
-- `--template, -t` - Template: `minimal` (default), `playwright`, `custom`
+- `--template, -t` - Template: `minimal` (default), `coder`, `browser`, `web-research`, `custom`
 - `--key` - API key (auto-detects provider)
 - `--description` - For custom templates
 - `--yes, -y` - Skip all prompts
@@ -66,7 +66,9 @@ co create my-agent -t playwright # Specify template
 
 **Templates:**
 - **minimal** - Basic agent with simple tools
-- **playwright** - Browser automation
+- **coder** - Filesystem + shell access for coding tasks
+- **browser** - Browser automation with Playwright
+- **web-research** - Web scraping and research
 - **custom** - AI-generated from description
 
 **Examples:**
@@ -75,7 +77,7 @@ co create my-agent -t playwright # Specify template
 co create my-agent
 
 # With template
-co create scraper -t playwright
+co create scraper -t browser
 
 # Custom AI-generated
 co create email-bot -t custom --description "Monitor Gmail and respond to urgent emails"
@@ -124,7 +126,7 @@ cd my-django-app
 co init
 
 # With template
-co init --template playwright
+co init --template browser
 
 # Update docs only
 co init  # Refreshes .co/docs/ to latest version
@@ -624,7 +626,7 @@ cd my-project && co init
 co create learn -t minimal
 
 # Browser work? Use template
-co create scraper -t playwright
+co create scraper -t browser
 
 # Specific needs? AI generates
 co create custom -t custom --description "Your needs"

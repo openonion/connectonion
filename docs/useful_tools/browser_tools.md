@@ -80,6 +80,29 @@ browser.click("email input field")       # Uses AI to find by description
 
 Element finding uses a vision LLM — describe what you see, not a CSS selector.
 
+### Hover and Advanced Mouse
+
+```python
+browser.hover("the Like button")         # Hover to reveal menus/tooltips
+browser.take_screenshot()                # See what appeared
+browser.mouse_click(x, y)               # Click exact coordinates (for hover menus)
+
+browser.right_click("the file icon")    # Open context menu
+browser.double_click("the file name")   # Double-click to open/select
+```
+
+`mouse_click(x, y)` is useful after `hover()` — clicking by description would re-scan the DOM and dismiss the hover menu.
+
+### System Info
+
+```python
+info = browser.get_system_info()
+# → "OS: macOS. Use Meta for shortcuts (Meta+a select all, Meta+c copy...)"
+# → "OS: Windows. Use Control for shortcuts..."
+```
+
+Call this before using keyboard shortcuts to get the correct modifier key for the current OS.
+
 ### Typing
 
 ```python
@@ -138,8 +161,8 @@ browser.set_viewport(375, 812)   # iPhone
 ## Headless vs Visible
 
 ```python
-BrowserAutomation(headless=True)   # Default — runs in background (faster)
-BrowserAutomation(headless=False)  # Opens visible browser window
+BrowserAutomation(headless=False)  # Default — opens visible browser window
+BrowserAutomation(headless=True)   # Runs in background (faster, no window)
 ```
 
 ## Use with Agent

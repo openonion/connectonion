@@ -7,12 +7,17 @@ Pre-built plugins that extend agent behavior via event hooks.
 | Plugin | Purpose | Import |
 |--------|---------|--------|
 | [skills](../concepts/skills.md) | Invoke workflows with scoped permissions | `from connectonion.useful_plugins import skills` |
+| [subagents](subagents.md) | Run tasks in parallel sub-agents | `from connectonion.useful_plugins import subagents` |
 | [tool_approval](tool_approval.md) | Web-based tool approval | `from connectonion.useful_plugins import tool_approval` |
 | [re_act](re_act.md) | ReAct reasoning pattern | `from connectonion.useful_plugins import re_act` |
 | [eval](eval.md) | Task evaluation/debugging | `from connectonion.useful_plugins import eval` |
 | [system_reminder](system_reminder.md) | Inject contextual guidance | `from connectonion.useful_plugins import system_reminder` |
 | [image_result_formatter](image_result_formatter.md) | Format images for vision | `from connectonion.useful_plugins import image_result_formatter` |
 | [shell_approval](shell_approval.md) | Shell command approval | `from connectonion.useful_plugins import shell_approval` |
+| [ui_stream](ui_stream.md) | Stream events to WebSocket clients | `from connectonion.useful_plugins import ui_stream` |
+| [auto_compact](auto_compact.md) | Compact conversation when context fills up | `from connectonion.useful_plugins import auto_compact` |
+| [prefer_write_tool](prefer_write_tool.md) | Guide agent to prefer write for new files | `from connectonion.useful_plugins import prefer_write_tool` |
+| [ulw](ulw.md) | Ultra-light workflow: pause for user input | `from connectonion.useful_plugins import ulw` |
 | [gmail_plugin](gmail_plugin.md) | Gmail OAuth flow | `from connectonion.useful_plugins import gmail_plugin` |
 | [calendar_plugin](calendar_plugin.md) | Calendar OAuth flow | `from connectonion.useful_plugins import calendar_plugin` |
 
@@ -57,6 +62,7 @@ See [co copy](../cli/copy.md) for full details.
 
 ### Workflows
 - **skills** - Pre-packaged workflows with scoped permissions (/commit, /deploy, etc.)
+- **subagents** - Run tasks in parallel sub-agents
 
 ### Security
 - **tool_approval** - Web-based approval for dangerous tools
@@ -70,13 +76,23 @@ See [co copy](../cli/copy.md) for full details.
 
 ### Guidance
 - **system_reminder** - Inject contextual reminders into tool results
+- **prefer_write_tool** - Guide agent to prefer write over edit for new files
 
 ### Media
 - **image_result_formatter** - Convert base64 images for vision models
 
+### Context Management
+- **auto_compact** - Compact conversation when context window fills up
+
+### User Interaction
+- **ulw** - Ultra-light workflow: pause loop and wait for user input
+
+### Streaming
+- **ui_stream** - Stream agent trace events to WebSocket clients
+
 ### OAuth
 - **gmail_plugin** - Handle Gmail authentication flow
-- **calendar_plugin** - Handle Calendar authentication flow
+- **calendar_plugin** - Handle Google Calendar authentication flow
 
 ## Event Lifecycle
 

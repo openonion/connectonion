@@ -4,7 +4,7 @@ The full Claude Code system prompt collection, extracted from Claude Code's comp
 
 ## What's Inside
 
-Claude Code doesn't use a single system prompt. It has 110+ prompt pieces:
+Claude Code doesn't use a single system prompt. It has 250 prompt pieces:
 
 - **System prompts** - Core behavior, tool usage, tone, security, planning
 - **Agent prompts** - Specialized agents (Explore, Plan, general-purpose, etc.)
@@ -13,23 +13,22 @@ Claude Code doesn't use a single system prompt. It has 110+ prompt pieces:
 - **System reminders** - Contextual injections (plan mode, hooks, memory, etc.)
 - **Data files** - API references, SDK patterns, model catalog
 
-## Local Copy
-
-```bash
-# Cloned at:
-platform/claude-code-system-prompts/
-
-# Browse system prompts
-ls platform/claude-code-system-prompts/system-prompts/
-
-# Browse tools
-ls platform/claude-code-system-prompts/tools/
-```
-
 ## Usage with `co copy`
 
 ```bash
-co copy claude_code_system_prompt
+co copy cc_prompt
+```
+
+This copies the full prompt collection to `./prompts/cc_prompt/` in your project, organized by category:
+
+```
+prompts/cc_prompt/
+├── agents/       # Specialized agent prompts (Explore, Plan, etc.)
+├── data/         # API references, SDK patterns, model catalog
+├── reminders/    # Contextual system reminders
+├── skills/       # Built-in slash commands
+├── system/       # Core behavior prompts
+└── tools/        # Per-tool descriptions and guidance
 ```
 
 ## Why This Matters

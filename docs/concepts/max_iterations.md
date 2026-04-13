@@ -353,7 +353,7 @@ safe_agent = Agent("safe", tools=[...], max_iterations=5)
 
 ## The One-Minute Summary
 
-1. **Most agents are fine with default `max_iterations=10`**
+1. **Most agents are fine with default `max_iterations=100`**
 2. **Simple bots can use 5, complex ones need 20-30**
 3. **Override per-task when needed: `agent.input(prompt, max_iterations=X)`**
 4. **If you see "Maximum iterations reached", just increase the limit**

@@ -81,21 +81,21 @@ pip install connectonion
 ### Initialize a Project
 
 ```bash
-# Create meta-agent (default) - ConnectOnion development assistant
-mkdir meta-agent
-cd meta-agent
+# Create a minimal agent (default)
+mkdir my-agent
+cd my-agent
 co init
 
 # Create web automation agent
-mkdir playwright-agent  
-cd playwright-agent
-co init --template playwright
+mkdir browser-agent
+cd browser-agent
+co init --template browser
 ```
 
 ### CLI Options
 
 - `co init` - Initialize a new agent project
-  - `--template, -t` - Choose template: `meta-agent` (default), `playwright`, `basic` (alias)
+  - `--template, -t` - Choose template: `minimal` (default), `coder`, `browser`, `web-research`, `custom`
   - `--with-examples` - Include additional example tools
   - `--force` - Overwrite existing files
 
@@ -115,26 +115,23 @@ my-project/
 
 ### Available Templates
 
-**Meta-Agent (Default)** - ConnectOnion development assistant with built-in tools:
-- `answer_connectonion_question()` - Expert answers from embedded docs
-- `create_agent_from_template()` - Generate complete agent code
-- `generate_tool_code()` - Create tool functions
-- `create_test_for_agent()` - Generate pytest test suites
-- `think()` - Self-reflection to analyze task completion
-- `generate_todo_list()` - Create structured plans (uses GPT-4o-mini)
-- `suggest_project_structure()` - Architecture recommendations
+**minimal (Default)** - General-purpose agent with file tools and browser automation:
+- `bash` - Run shell commands
+- `read_file`, `edit`, `glob`, `grep`, `write` - Filesystem tools
+- `BrowserAutomation` - Full browser control (navigate, click, screenshot, etc.)
+- Plugins: `image_result_formatter`, `tool_approval`
 
-**Playwright Template** - Web automation with stateful browser control:
-- `start_browser()` - Launch browser instance
-- `navigate()` - Go to URLs
-- `scrape_content()` - Extract page content
-- `fill_form()` - Fill and submit forms
-- `take_screenshot()` - Capture pages
-- `extract_links()` - Get all links
-- `execute_javascript()` - Run JS code
-- `close_browser()` - Clean up resources
+**coder** - Coding assistant with filesystem and shell access:
+- `bash`, `read_file`, `edit`, `glob`, `grep`, `write`
+- `max_iterations=50` for complex multi-step coding tasks
 
-Note: Playwright template requires `pip install playwright && playwright install`
+**browser** - Dedicated browser automation agent:
+- `BrowserAutomation` (headless, max_iterations=200)
+- Plugins: `image_result_formatter`, `ui_stream`
+- Note: requires `pip install playwright && playwright install chromium`
+
+**web-research** - Web research and data extraction:
+- `search_web`, `extract_data`, `analyze_data`, `save_research`
 
 ### Interactive Features
 
@@ -178,7 +175,7 @@ agent = Agent(
     name="my_assistant",
     system_prompt="You are a helpful assistant.",
     tools=[search, calculate]
-    # max_iterations=10 (default)
+    # max_iterations=100 (default)
 )
 
 # 3. Use agent

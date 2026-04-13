@@ -75,7 +75,7 @@ def get_time() -> str:
 agent = Agent(
     name="assistant",
     tools=[calculate, search, get_time],
-    max_iterations=10  # Default for general purpose agents
+    max_iterations=100  # Default for general purpose agents
 )
 
 # It can use multiple tools in one request!
@@ -116,21 +116,16 @@ result = agent.input("Hello!")
 
 ## Track Everything (Automatic!)
 
-ConnectOnion tracks all agent behavior automatically:
+ConnectOnion tracks all agent behavior automatically to `.co/logs/{name}.log` and `.co/evals/`:
 
 ```python
-# See what your agent has been doing
-print(agent.history.summary())
+# Check token usage after a task
+result = agent.input("What is 42 * 17?")
+print(f"Cost: ${agent.total_cost:.4f}")
+print(f"Context used: {agent.context_percent:.1f}%")
 ```
 
-**Output:**
-
-```
-Agent: assistant
-Total tasks: 3
-Tools used: calculate (2), search (1), get_time (1)
-Activity logged to: .co/logs/assistant.log
-```
+All sessions are also saved as YAML in `.co/evals/` for evaluation and replay.
 
 ## Real Example
 
@@ -167,15 +162,21 @@ assistant.input("What's in greeting.txt?")
 ConnectOnion provides different templates for common use cases:
 
 ```bash
-# Create with minimal template (default)
+# Create with minimal template (default - includes file tools + browser)
 co create my-agent
 
-# Create with playwright template
-co create my-browser-bot --template playwright
+# Create with coder template (bash + file editing, no browser)
+co create my-coder --template coder
+
+# Create with browser template (dedicated browser automation)
+co create my-browser-bot --template browser
+
+# Create with web-research template
+co create my-researcher --template web-research
 
 # Initialize in existing directory
 co init  # Adds .co folder only
-co init --template playwright  # Adds full template
+co init --template coder  # Adds full template
 ```
 
 ## Copy & Customize Built-in Tools
