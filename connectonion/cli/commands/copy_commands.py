@@ -94,6 +94,11 @@ TRUST = {
     "strict": "strict.md",
 }
 
+# Registry of copyable skills (directories with SKILL.md, copied to .co/skills/)
+SKILLS = {
+    "ship-feature": "ship-feature",
+}
+
 
 def handle_copy(
     names: List[str],
@@ -111,12 +116,14 @@ def handle_copy(
     # Get source directories using import system (works for installed packages)
     import connectonion.useful_tools as tools_module
     import connectonion.useful_plugins as plugins_module
+    import connectonion.useful_skills as skills_module
     import connectonion.tui as tui_module
     import connectonion.useful_prompts as prompts_module
     import connectonion
 
     useful_tools_dir = Path(tools_module.__file__).parent
     useful_plugins_dir = Path(plugins_module.__file__).parent
+    useful_skills_dir = Path(skills_module.__file__).parent
     tui_dir = Path(tui_module.__file__).parent
     useful_prompts_dir = Path(prompts_module.__file__).parent
     # Trust policies are in the main package's prompts/trust/ directory
@@ -175,6 +182,12 @@ def handle_copy(
             source = trust_dir / TRUST[policy_name]
             dest_dir = Path(path) if path else current_dir / "prompts" / "trust"
             copy_file(source, dest_dir, force)
+
+        # Check if it's a skill (copied to .co/skills/ so it's auto-discovered)
+        elif name_lower in SKILLS:
+            source = useful_skills_dir / SKILLS[name_lower]
+            dest_dir = Path(path) if path else current_dir / ".co" / "skills"
+            copy_directory(source, dest_dir, force)
 
         else:
             console.print(f"[red]Unknown: {name}[/red]")
@@ -242,10 +255,14 @@ def show_available_items():
     for name, file in sorted(TRUST.items()):
         table.add_row(f"trust/{name}", "trust", file)
 
+    for name, dir_name in sorted(SKILLS.items()):
+        table.add_row(name, "skill", f"{dir_name}/")
+
     for name, file in sorted(TUI.items()):
         table.add_row(name, "tui", file)
 
     console.print(table)
     console.print("\n[dim]Usage: co copy <name> [--path ./custom/][/dim]")
+    console.print("[dim]Skills are copied to .co/skills/<name>/ and auto-discovered as /skill-name[/dim]")
     console.print("[dim]Prompts are copied as directories to ./prompts/<name>/[/dim]")
     console.print("[dim]Trust policies are copied to ./prompts/trust/<name>.md[/dim]")
