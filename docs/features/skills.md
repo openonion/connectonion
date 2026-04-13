@@ -286,6 +286,17 @@ Built-in skills are in `connectonion/cli/co_ai/skills/builtin/`.
 
 Users can override by creating same-named skill in project or user level.
 
+### 4. Copyable Skill (from useful_skills/)
+
+`connectonion/useful_skills/` contains ready-made skills you copy into your project:
+
+```bash
+co copy ship-feature
+# → .co/skills/ship-feature/SKILL.md
+```
+
+Unlike built-in skills, copyable skills are meant to be edited after copying. See [useful_skills/](../useful_skills/) for the full list.
+
 ## Permission Patterns
 
 ### Exact Match
@@ -647,6 +658,7 @@ Permission scope auto-clears at turn end. If it persists:
 
 ## Related
 
+- [Built-in Skills](../useful_skills/) - Copyable skills (ship-feature, etc.)
 - [Permissions](permissions.md) - Complete permission system overview
 - [Plugins](plugins.md) - Plugin system overview
 - [Events](events.md) - Available event hooks
