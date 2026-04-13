@@ -42,33 +42,41 @@ Update the test file:
 
 ## Step 3: Update docs/
 
-Find relevant doc file:
-- `glob("docs/**/*.md")` — find all doc files
-- Match doc file to the changed feature area
+**This step is required. Do not skip.**
 
-Update the doc:
-- Reflect the new behavior, new parameters, new examples
-- Keep it concise — update only the parts that changed
-- Do NOT rewrite sections that are still accurate
+Find ALL docs that need updating:
+```bash
+glob("docs/**/*.md")
+```
+
+For each changed area:
+- If a doc file exists for it — update it with the new behavior, params, examples
+- If no doc file exists — create one (look at neighboring files for format)
+- Also check index/README files (e.g. `docs/cli/README.md`, `docs/useful_tools/README.md`) — update the table of contents if you added something new
+
+Commit docs/ changes as part of the release commit (not separately).
 
 ## Step 4: Update docs-site
 
-The docs-site is a separate Next.js repo at `docs-site/`. It mirrors the `docs/` content but with richer formatting.
+**This step is required. Do not skip even if docs-site/ is not present locally.**
 
+docs-site is a separate Next.js git repo. Check if it's cloned:
 ```bash
-# Check what docs-site pages cover the changed area
-glob("docs-site/**/*.{tsx,mdx,md}")
+ls docs-site/
 ```
 
-Update the corresponding page:
-- Match content to what you updated in `docs/`
-- Respect the existing component structure (use `CommandBlock`, `CodeBlock`, etc.)
-- Keep changes minimal and accurate
+If `docs-site/` exists:
+- Find the corresponding page: `glob("docs-site/app/**/*.{tsx,mdx}")`
+- Update it to match what you changed in `docs/`
+- Respect existing component structure (`CommandBlock`, `CodeBlock`, etc.)
+- Commit and push it as a separate commit in that repo:
+  ```bash
+  cd docs-site && git add . && git commit -m "Update docs for <feature>" && git push && cd ..
+  ```
 
-Commit the docs-site change separately:
-```bash
-cd docs-site && git add . && git commit -m "Update docs for <feature>" && git push && cd ..
-```
+If `docs-site/` does NOT exist locally:
+- Tell the user explicitly: "docs-site was not updated — clone it and run `co copy ship-feature --force` to re-run"
+- Do NOT silently skip — the user must know this is incomplete
 
 ## Step 5: Release
 
@@ -128,7 +136,8 @@ Confirm upload succeeded by checking the output for "View at: https://pypi.org/p
 
 ## Notes
 
-- Skip docs-site step if `docs-site/` directory doesn't exist or has no relevant page
+- docs/ and docs-site are both required — never silently skip either
+- If docs-site is missing locally, warn the user instead of skipping
 - If the user says "skip release", stop after docs-site
 - If the user specifies a version explicitly, use that instead of auto-calculating
 - Never force-push or amend published commits
