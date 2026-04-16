@@ -368,6 +368,17 @@ def host(
     from ... import address
     from .config import load_host_config, load_list_file
 
+    # Accept agent instance directly: host(agent) → wrap in factory
+    # Warning: shared state across all requests (not isolated per request)
+    if not callable(create_agent):
+        _agent_instance = create_agent
+        create_agent = lambda: _agent_instance
+        console = Console()
+        console.print(
+            "[yellow]Warning: host(agent) — pass a factory function instead: "
+            "host(lambda: Agent(...)) for per-request isolation.[/yellow]"
+        )
+
     # Resolve co_dir: explicit > cwd/.co (project default)
     if co_dir is None:
         co_dir = Path.cwd() / '.co'

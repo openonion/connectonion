@@ -97,8 +97,6 @@ def handle_status():
     config = _load_config()
     agent_info = config.get("agent", {})
 
-    # Decode JWT to extract public_key and re-authenticate to get fresh data
-    import jwt
     import time
     from ... import address
 
