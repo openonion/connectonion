@@ -48,7 +48,7 @@ def test_authentication():
     print("  • Ed25519 signature-based authentication")
     print("  • Timestamped message signing")
     print("  • JWT token retrieval")
-    print("  • Token persistence to config.toml\n")
+    print("  • Token persistence to host.yaml\n")
 
     # Load agent keys
     co_dir = Path(".co")
@@ -98,7 +98,7 @@ def test_authentication():
             print(f"   Token: {token[:30]}...")
 
             # Save token to config
-            config_path = co_dir / "config.toml"
+            config_path = co_dir / "host.yaml"
             config = toml.load(config_path) if config_path.exists() else {}
             if "auth" not in config:
                 config["auth"] = {}
@@ -107,7 +107,7 @@ def test_authentication():
             with open(config_path, "w") as f:
                 toml.dump(config, f)
 
-            print(f"💾 Token saved to .co/config.toml")
+            print(f"💾 Token saved to .co/host.yaml")
             return token
         else:
             print(f"❌ Authentication failed: {response.status_code}")
@@ -135,9 +135,9 @@ def test_co_o4_mini(token=None):
     print("  • Simple completion API call\n")
 
     # Check for config
-    config_path = Path(".co/config.toml")
+    config_path = Path(".co/host.yaml")
     if not config_path.exists():
-        print("❌ No config found at .co/config.toml")
+        print("❌ No config found at .co/host.yaml")
         print("   Run authentication test first")
         return False
 
@@ -290,7 +290,7 @@ def test_full_integration():
 
             # Update config with email info
             co_dir = Path(".co")
-            config_path = co_dir / "config.toml"
+            config_path = co_dir / "host.yaml"
             config = toml.load(config_path)
             if "agent" not in config:
                 config["agent"] = {}

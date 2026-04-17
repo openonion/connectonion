@@ -29,7 +29,7 @@ $ co create my-first-agent
   ✓ Generating master keypair
   ✓ Your address: 0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a
   ✓ Your email: 0x7a9f3b2c@mail.openonion.ai
-  ✓ Creating ~/.co/config.toml
+  ✓ Creating ~/.co/host.yaml
   ✓ Creating ~/.co/keys.env (ready for your API keys)
 
 🧅 ConnectOnion Project Creator
@@ -105,7 +105,7 @@ $ co create another-agent
 
 ```
 ~/.co/
-├── config.toml          # Global configuration with address & email
+├── host.yaml          # Global configuration with address & email
 ├── keys.env             # Shared API keys
 ├── keys/                # Master identity
 │   ├── agent.key        # Private key (for signing)
@@ -133,7 +133,7 @@ Note: Projects use global address/email by default.
 
 ## Configuration Files
 
-### Global Config (`~/.co/config.toml`)
+### Global Config (`~/.co/host.yaml`)
 
 ```toml
 [connectonion]

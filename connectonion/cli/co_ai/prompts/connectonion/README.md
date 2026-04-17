@@ -1274,7 +1274,7 @@ Every agent automatically gets an email address:
 
 ### Email Configuration
 
-Your email is stored in `~/.co/config.toml` (global config):
+Your email is stored in `~/.co/host.yaml` (global config):
 ```toml
 [agent]
 address = "0x04e1c4ae3c57d716383153479dae869e51e86d43d88db8dfa22fba7533f3968d"

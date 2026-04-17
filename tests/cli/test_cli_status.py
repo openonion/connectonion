@@ -2,7 +2,7 @@
 
 Tests cover:
 - _load_api_key: Load API key from env var, .env, ~/.co/keys.env
-- _load_config: Load config from .co/host.yaml or ~/.co/config.toml
+- _load_config: Load config from .co/host.yaml or ~/.co/host.yaml
 - handle_status: Display account status without re-authenticating
 """
 
@@ -117,7 +117,7 @@ class TestLoadConfig:
                 os.chdir(original_cwd)
 
     def test_load_config_from_global(self):
-        """Test loading config from ~/.co/config.toml when local doesn't exist."""
+        """Test loading config from ~/.co/host.yaml when local doesn't exist."""
         with tempfile.TemporaryDirectory() as tmpdir:
             original_cwd = os.getcwd()
             os.chdir(tmpdir)
@@ -125,7 +125,7 @@ class TestLoadConfig:
             fake_home.mkdir()
             co_dir = fake_home / ".co"
             co_dir.mkdir()
-            config_file = co_dir / "config.toml"
+            config_file = co_dir / "host.yaml"
             config_file.write_text('[agent]\nname = "global-agent"\n')
 
             try:

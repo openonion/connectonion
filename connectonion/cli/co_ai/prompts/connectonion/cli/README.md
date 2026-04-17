@@ -434,7 +434,7 @@ On first use, ConnectOnion creates global configuration:
 
 ```
 ~/.co/
-├── config.toml          # Global identity and settings
+├── host.yaml          # Global identity and settings
 ├── keys.env             # Shared API keys
 ├── keys/                # Master Ed25519 keypair
 │   ├── agent.key        # Private key (NEVER share)
@@ -504,7 +504,7 @@ $ co create my-first-agent
 ✨ Setting up global configuration...
   ✓ Generated master keypair
   ✓ Your address: 0x7a9f...7f8a
-  ✓ Created ~/.co/config.toml
+  ✓ Created ~/.co/host.yaml
   ✓ Created ~/.co/keys.env
 
 🔐 Authenticating with OpenOnion...

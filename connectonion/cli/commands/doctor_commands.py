@@ -71,7 +71,7 @@ def handle_doctor():
 
     # Check for host.yaml (project config)
     local_config = Path(".co") / "host.yaml"
-    global_config = Path.home() / ".co" / "config.toml"
+    global_config = Path.home() / ".co" / "host.yaml"
 
     if local_config.exists():
         config_table.add_row("Config", f"[green]✓[/green] {local_config}")

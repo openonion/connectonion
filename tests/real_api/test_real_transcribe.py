@@ -55,9 +55,9 @@ def test_transcribe_openonion_proxy(audio_file):
     """Test transcription using OpenOnion proxy."""
     if not os.getenv("OPENONION_API_KEY"):
         # Try loading from config
-        config_path = Path.home() / ".connectonion" / ".co" / "config.toml"
+        config_path = Path.home() / ".connectonion" / ".co" / "host.yaml"
         if not config_path.exists():
-            pytest.skip("OPENONION_API_KEY not set and no config.toml")
+            pytest.skip("OPENONION_API_KEY not set and no host.yaml")
 
     from connectonion import transcribe
 

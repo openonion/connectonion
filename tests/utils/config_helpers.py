@@ -114,7 +114,7 @@ def create_test_project(base_dir: Path = None) -> Path:
     keys_dir.mkdir(exist_ok=True)
     
     # Write test config
-    config_path = co_dir / "config.toml"
+    config_path = co_dir / "host.yaml"
     with open(config_path, "w") as f:
         toml.dump(TEST_CONFIG_TOML, f)
     

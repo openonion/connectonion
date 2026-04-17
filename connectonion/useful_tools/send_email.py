@@ -11,7 +11,7 @@ LLM-Note:
 
 import os
 import json
-import toml
+import yaml
 import requests
 from pathlib import Path
 from typing import Dict, Optional
@@ -161,21 +161,22 @@ def get_agent_email() -> Optional[str]:
         if not co_dir.exists():
             return None
     
-    config_path = co_dir / "config.toml"
+    config_path = co_dir / "host.yaml"
     if not config_path.exists():
         return None
-    
+
     try:
-        config = toml.load(config_path)
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f) or {}
         agent_config = config.get("agent", {})
-        
+
         # Get email or generate from address
         email = agent_config.get("email")
         if not email:
             address = agent_config.get("address", "")
             if address and address.startswith("0x"):
                 email = f"{address[:10]}@mail.openonion.ai"
-        
+
         return email
     except Exception:
         return None
@@ -193,12 +194,13 @@ def is_email_active() -> bool:
         if not co_dir.exists():
             return False
     
-    config_path = co_dir / "config.toml"
+    config_path = co_dir / "host.yaml"
     if not config_path.exists():
         return False
-    
+
     try:
-        config = toml.load(config_path)
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f) or {}
         agent_config = config.get("agent", {})
         return agent_config.get("email_active", False)
     except Exception:

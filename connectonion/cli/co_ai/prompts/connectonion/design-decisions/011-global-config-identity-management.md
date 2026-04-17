@@ -52,7 +52,7 @@ project2/.co/
 ### After: One Identity, Many Projects
 ```
 ~/.co/                          # GLOBAL
-├── config.toml                 # Your identity (address + email)
+├── host.yaml                 # Your identity (address + email)
 ├── keys.env                    # Your API keys (one place!)
 └── keys/
     └── master.key              # Your keypair
@@ -71,7 +71,7 @@ project2/.co/
 Every user gets ONE identity when they first run `co create`:
 
 ```toml
-# ~/.co/config.toml
+# ~/.co/host.yaml
 [agent]
 address = "0x7b78b4cf850331c4b26dac089eb9cd84493483eccbf0e067f1c36e1c7f570e6b"
 short_address = "0x7b78...0e6b"
@@ -150,7 +150,7 @@ requirements = [
 ### 3. One Source of Truth
 
 ```
-~/.co/config.toml    → Global identity (address + email)
+~/.co/host.yaml    → Global identity (address + email)
 ~/.co/keys.env       → API keys
 ~/.co/keys/          → Cryptographic keys
 
@@ -168,7 +168,7 @@ $ co create my-first-agent
   ✓ Generated master keypair
   ✓ Your address: 0x7b78...0e6b
   ✓ Your email: 0x7b78b4cf@openonion.ai
-  ✓ Created ~/.co/config.toml
+  ✓ Created ~/.co/host.yaml
   ✓ Created ~/.co/keys.env
 
 ✔ Enter your API key: sk-proj-xxx
