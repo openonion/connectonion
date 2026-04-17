@@ -388,25 +388,20 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     else:
         console.print(f"[yellow]⚠️  Warning: Documentation not found at {docs_source}[/yellow]")
 
-    # Create host.yaml (unified config for host() and co deploy)
+    # Create host.yaml from template (unified config for host() and co deploy)
     host_yaml_path = co_dir / "host.yaml"
     if not host_yaml_path.exists():
-        host_yaml_content = f"""name: {name}
+        # Load template from network/host/host.yaml
+        template_path = Path(__file__).parent.parent.parent / "network" / "host" / "host.yaml"
+        with open(template_path, "r", encoding="utf-8") as f:
+            template_content = f.read()
+        # Prepend project-specific fields
+        project_header = f"""name: {name}
 entrypoint: agent.py
 env: .env
-trust: careful
-port: 8000
-workers: 1
-relay_url: wss://oo.openonion.ai
-reload: false
-
-# summary: "What your agent does"
-# examples:
-#   - "Example prompt 1"
-#   - "Example prompt 2"
 """
         with open(host_yaml_path, "w", encoding='utf-8') as f:
-            f.write(host_yaml_content)
+            f.write(project_header + template_content)
         files_created.append(".co/host.yaml")
 
     # Create .env file - copy from global keys.env

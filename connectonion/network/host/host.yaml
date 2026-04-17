@@ -3,7 +3,7 @@ trust: careful
 port: 8000
 workers: 1
 result_ttl: 86400
-relay_url: wss://oo.openonion.ai/ws/announce
+relay_url: wss://oo.openonion.ai
 reload: false
 
 # File upload limits - uncomment to customize
