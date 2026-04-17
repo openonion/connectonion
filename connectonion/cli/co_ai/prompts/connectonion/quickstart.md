@@ -215,7 +215,7 @@ my-agent/
 ├── co-vibecoding-principles-docs-contexts-all-in-one.md  # Complete framework docs
 ├── .gitignore                                            # Git configuration
 └── .co/                                                  # ConnectOnion metadata
-    ├── config.toml
+    ├── host.yaml
     └── docs/
         └── co-vibecoding-principles-docs-contexts-all-in-one.md
 ```

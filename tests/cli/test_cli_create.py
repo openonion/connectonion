@@ -53,7 +53,7 @@ class TestCliCreate:
             # Check directory was created
             assert os.path.exists('my-agent')
             assert os.path.exists('my-agent/agent.py')
-            assert os.path.exists('my-agent/.co/config.toml')
+            assert os.path.exists('my-agent/.co/host.yaml')
 
     def test_create_without_name_prompts(self):
         """Test that create without name auto-generates directory name from template."""
@@ -250,7 +250,7 @@ class TestCliCreate:
             base_path = 'complete-agent'
             assert os.path.exists(f'{base_path}/agent.py')
             assert os.path.exists(f'{base_path}/.co')
-            assert os.path.exists(f'{base_path}/.co/config.toml')
+            assert os.path.exists(f'{base_path}/.co/host.yaml')
 
     def test_create_adds_agent_config_path_to_env(self):
         """Test that create adds AGENT_CONFIG_PATH to project .env file."""

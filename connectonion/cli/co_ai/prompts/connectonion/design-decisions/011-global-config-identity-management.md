@@ -40,13 +40,13 @@ project1/.co/
 ├── keys/
 │   ├── agent.key        # Unique keypair
 │   └── recovery.txt     # Unique recovery phrase
-└── config.toml          # address: 0x1234..., email: 0x1234@openonion.ai
+└── host.yaml            # project config
 
 project2/.co/
 ├── keys/
 │   ├── agent.key        # Different keypair
 │   └── recovery.txt     # Different recovery phrase
-└── config.toml          # address: 0x5678..., email: 0x5678@openonion.ai
+└── host.yaml            # project config
 ```
 
 ### After: One Identity, Many Projects
@@ -58,10 +58,10 @@ project2/.co/
     └── master.key              # Your keypair
 
 project1/.co/
-└── config.toml                 # Uses global address + email
+└── host.yaml                   # Project config
 
 project2/.co/
-└── config.toml                 # Same global address + email
+└── host.yaml                   # Project config
 ```
 
 ## The Complete Design

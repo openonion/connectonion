@@ -64,7 +64,7 @@ my-agent/
 ├── prompt.md           # System prompt (optional)
 ├── .env                # API keys
 ├── .co/
-│   ├── config.toml     # Project config
+│   ├── host.yaml       # Project config
 │   └── docs/           # ConnectOnion docs for AI
 ├── requirements.txt    # Dependencies
 └── README.md           # Project documentation

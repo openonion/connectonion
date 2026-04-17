@@ -90,7 +90,7 @@ my-agent/
 ├── agent.py                 # Main agent
 ├── .env                     # API keys (from ~/.co/keys.env)
 ├── .co/
-│   ├── config.toml          # Project config
+│   ├── host.yaml            # Project config
 │   └── docs/                # Framework docs
 ├── co-vibecoding-principles-docs-contexts-all-in-one.md
 └── .gitignore               # Safe defaults
@@ -284,7 +284,7 @@ co doctor
   - Package installation path
 
 - **Configuration**
-  - Config files (`.co/config.toml`)
+  - Config files (`.co/host.yaml`)
   - Keys directory (`.co/keys/`)
   - API keys in `.env` files
   - Agent identity
@@ -311,7 +311,7 @@ $ co doctor
 └──────────────────────────────────────────┘
 
 ┌─ Configuration ──────────────────────────┐
-│ Config         ✓ .co/config.toml         │
+│ Config         ✓ .co/host.yaml            │
 │ Keys           ✓ .co/keys/agent.key      │
 │ API Key        ✓ Found in environment    │
 │ Key Preview    sk-proj-abc123...         │
@@ -757,7 +757,7 @@ co deploy
 
 **Requirements:**
 - Git repository with committed code
-- `.co/config.toml` (created by `co create` or `co init`)
+- `.co/host.yaml` (created by `co create` or `co init`)
 - Authenticated (`co auth`)
 
 **Example:**
@@ -767,7 +767,7 @@ $ co deploy
 Deploying to ConnectOnion Cloud...
 
   Project: my-agent
-  Secrets: 3 keys
+  Env vars: 3 keys
 
 Uploading...
 Building...

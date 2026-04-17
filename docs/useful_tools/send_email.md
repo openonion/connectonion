@@ -37,7 +37,7 @@ from tools.send_email import send_email  # Your local copy
 
 ```bash
 # 1. Check if email is activated
-cat .co/config.toml | grep email_active
+cat ~/.co/config.toml | grep email_active
 # If false, run: co auth
 
 # 2. Test directly
@@ -142,7 +142,7 @@ Every agent automatically gets an email address:
 
 ### Check your email address
 
-Your email address is configured when you run `co create` or `co init` and stored in `.co/config.toml`:
+Your email address is configured when you run `co create` or `co init` and stored in `~/.co/config.toml` (global config):
 
 ```toml
 [agent]
@@ -185,7 +185,7 @@ $ co auth  # Run this anytime to activate
 
 To check your email status:
 ```bash
-$ cat .co/config.toml | grep email
+$ cat ~/.co/config.toml | grep email
 email = "0x04e1c4ae@mail.openonion.ai"
 email_active = true  # true = active, false = inactive
 ```
@@ -361,7 +361,7 @@ Automatic rate limiting prevents abuse:
 ### Behind the Scenes
 
 - Email address configured during `co create` or `co init`
-- Stored in `.co/config.toml` for your project
+- Stored in `~/.co/config.toml` (global config)
 - Uses Resend API for delivery via `mail.openonion.ai` domain
 - Automatic retry on temporary failures
 - Logs all emails for debugging
@@ -373,7 +373,7 @@ Automatic rate limiting prevents abuse:
 
 1. **Check activation status**:
    ```bash
-   cat .co/config.toml | grep email_active
+   cat ~/.co/config.toml | grep email_active
    # Should show: email_active = true
    ```
    If false, run `co auth` to activate.

@@ -54,7 +54,7 @@ class TestCliInit:
             # Check required files were created
             assert os.path.exists("agent.py")
             assert os.path.exists(".env")  # CLI creates .env, not .env.example
-            assert os.path.exists(".co/config.toml")
+            assert os.path.exists(".co/host.yaml")
 
     def test_init_creates_valid_python_file(self):
         """Test that generated agent.py is valid Python."""
@@ -73,7 +73,7 @@ class TestCliInit:
             assert "from connectonion import Agent" in code
 
     def test_init_creates_config_file(self):
-        """Test that init creates proper config.toml."""
+        """Test that init creates proper host.yaml."""
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
@@ -81,12 +81,11 @@ class TestCliInit:
             assert result.exit_code == 0
 
             # Check config file
-            import toml
-            with open(".co/config.toml") as f:
-                config = toml.load(f)
+            with open(".co/host.yaml") as f:
+                config = yaml.safe_load(f)
 
-            assert "project" in config
-            assert "cli" in config
+            assert "name" in config
+            assert "entrypoint" in config
 
     def test_init_with_template_parameter(self):
         """Test init with --template parameter."""
@@ -240,7 +239,7 @@ class TestCliInit:
             # Check directory structure
             assert os.path.exists(".co")
             assert os.path.isdir(".co")
-            assert os.path.exists(".co/config.toml")
+            assert os.path.exists(".co/host.yaml")
 
     def test_init_creates_agent_address_in_env(self):
         """Test that init creates AGENT_ADDRESS in .env file."""
@@ -265,13 +264,12 @@ class TestCliInit:
             result = self.runner.invoke(cli, ['init'])
             assert result.exit_code == 0
 
-            # Check config.toml
-            import toml
-            with open(".co/config.toml") as f:
-                config = toml.load(f)
+            # Check host.yaml
+            with open(".co/host.yaml") as f:
+                config = yaml.safe_load(f)
 
             # Should use managed model by default
-            assert config.get("agent", {}).get("default_model") == "co/gemini-2.5-pro"
+            assert config.get("default_model") == "co/gemini-2.5-pro"
 
     def test_init_creates_agent_config_path_in_env(self):
         """Test that init creates AGENT_CONFIG_PATH in .env file."""

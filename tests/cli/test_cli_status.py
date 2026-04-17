@@ -2,7 +2,7 @@
 
 Tests cover:
 - _load_api_key: Load API key from env var, .env, ~/.co/keys.env
-- _load_config: Load config from .co/config.toml or ~/.co/config.toml
+- _load_config: Load config from .co/host.yaml or ~/.co/config.toml
 - handle_status: Display account status without re-authenticating
 """
 
@@ -98,7 +98,7 @@ class TestLoadConfig:
     """Tests for _load_config function."""
 
     def test_load_config_from_local(self):
-        """Test loading config from local .co/config.toml."""
+        """Test loading config from local .co/host.yaml."""
         with tempfile.TemporaryDirectory() as tmpdir:
             original_cwd = os.getcwd()
             os.chdir(tmpdir)
@@ -106,13 +106,13 @@ class TestLoadConfig:
             # Create local config
             co_dir = Path(tmpdir) / ".co"
             co_dir.mkdir()
-            config_file = co_dir / "config.toml"
-            config_file.write_text('[agent]\nname = "local-agent"\n')
+            config_file = co_dir / "host.yaml"
+            config_file.write_text('name: local-agent\nentrypoint: agent.py\n')
 
             try:
                 from connectonion.cli.commands.status_commands import _load_config
                 result = _load_config()
-                assert result.get("agent", {}).get("name") == "local-agent"
+                assert result.get("name") == "local-agent"
             finally:
                 os.chdir(original_cwd)
 

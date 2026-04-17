@@ -132,7 +132,7 @@ OPENONION_API_KEY=your_token_here
 ```
 
 ### ConnectOnion Project Metadata
-- Stored in `.co/config.toml`
+- Stored in `~/.co/config.toml` (global config)
 - Agent address, email, default model settings
 - Do not modify manually - managed by `co` CLI
 

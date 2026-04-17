@@ -3,7 +3,7 @@ Purpose: Create new ConnectOnion project in new directory with template files, a
 LLM-Note:
   Dependencies: imports from [os, signal, sys, shutil, toml, datetime, pathlib, rich.console, rich.prompt, rich.panel, __version__, address, auth_commands.authenticate, project_cmd_lib] | imported by [cli/main.py via handle_create()] | uses templates from [cli/templates/{minimal,playwright}] | tested by [tests/cli/test_cli_create.py]
   Data flow: receives args (name, ai, key, template, description, yes) from CLI parser → validate_project_name() checks name validity → ensure_global_config() creates ~/.co/ with master keypair if needed → check_environment_for_api_keys() detects existing keys → interactive_menu() or api_key_setup_menu() gets user choices → generate_custom_template_with_name() if template='custom' → create new directory with project name → copy template files from cli/templates/{template}/ to new dir → authenticate() to get OPENONION_API_KEY → create .env with API keys → create .co/config.toml with project metadata and global identity → copy vibe coding docs → create .gitignore → display success message with next steps
-  State/Effects: modifies ~/.co/ (config.toml, keys.env, keys/, logs/) on first run | creates new directory {name}/ in current dir | writes to {name}/: .co/config.toml, .env, agent.py (if template), .gitignore, co-vibecoding-principles-docs-contexts-all-in-one.md | calls authenticate() which writes OPENONION_API_KEY to ~/.co/keys.env | copies template files | writes to stdout via rich.Console
+  State/Effects: modifies ~/.co/ (config.toml, keys.env, keys/, logs/) on first run | creates new directory {name}/ in current dir | writes to {name}/: .co/host.yaml, .env, agent.py (if template), .gitignore | calls authenticate() which writes OPENONION_API_KEY to ~/.co/keys.env | copies template files | writes to stdout via rich.Console
   Integration: exposes handle_create(name, ai, key, template, description, yes) | similar to init.py but creates new directory first | calls ensure_global_config() for global identity | calls authenticate(global_co_dir, save_to_project=False) for managed keys | uses template files from cli/templates/ | relies on project_cmd_lib for shared functions | uses address.generate() for Ed25519 keypair | template options: 'minimal' (default), 'playwright', 'custom'
   Performance: authenticate() makes network call (2-5s) | generate_custom_template_with_name() calls LLM API if template='custom' | directory creation is O(1) | template file copying is O(n) files
   Errors: fails if project name invalid (spaces, special chars) | fails if directory already exists | fails if cli/templates/{template}/ not found | fails if API key invalid during authenticate() | catches KeyboardInterrupt during interactive menus (cleans up partial state)
@@ -388,31 +388,26 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     else:
         console.print(f"[yellow]⚠️  Warning: Documentation not found at {docs_source}[/yellow]")
 
-    # Create config.toml (simplified - agent metadata now in .env)
-    config = {
-        "project": {
-            "name": name,
-            "created": datetime.now().isoformat(),
-            "framework_version": __version__,
-            "secrets": ".env",  # Path to secrets file
-        },
-        "cli": {
-            "version": "1.0.0",
-            "command": f"co create {name}",
-            "template": template,
-        },
-        "agent": {
-            "algorithm": "ed25519",
-            "default_model": "co/gemini-2.5-pro",  # Default to managed keys
-            "max_iterations": 10,
-            "created_at": datetime.now().isoformat(),
-        },
-    }
+    # Create host.yaml (unified config for host() and co deploy)
+    host_yaml_path = co_dir / "host.yaml"
+    if not host_yaml_path.exists():
+        host_yaml_content = f"""name: {name}
+entrypoint: agent.py
+env: .env
+trust: careful
+port: 8000
+workers: 1
+relay_url: wss://oo.openonion.ai
+reload: false
 
-    config_path = co_dir / "config.toml"
-    with open(config_path, "w", encoding='utf-8') as f:
-        toml.dump(config, f)
-    files_created.append(".co/config.toml")
+# summary: "What your agent does"
+# examples:
+#   - "Example prompt 1"
+#   - "Example prompt 2"
+"""
+        with open(host_yaml_path, "w", encoding='utf-8') as f:
+            f.write(host_yaml_content)
+        files_created.append(".co/host.yaml")
 
     # Create .env file - copy from global keys.env
     env_path = project_dir / ".env"

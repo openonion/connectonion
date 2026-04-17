@@ -98,10 +98,11 @@ co init
 1. Creates `C:\Users\王小明\.co\` directory
 2. Generates Ed25519 keys → Saves to `C:\Users\王小明\.co\keys\agent.key`
 3. Writes recovery phrase → `C:\Users\王小明\.co\keys\recovery.txt` (UTF-8)
-4. Creates config → `C:\Users\王小明\.co\config.toml` (UTF-8)
-5. Skips chmod (Windows doesn't support it)
-6. Authenticates with OpenOnion API
-7. Saves API token → `C:\Users\王小明\.co\keys.env` (UTF-8)
+4. Creates global config → `C:\Users\王小明\.co\config.toml` (UTF-8)
+5. Creates project config → `.co\host.yaml` (UTF-8)
+6. Skips chmod (Windows doesn't support it)
+7. Authenticates with OpenOnion API
+8. Saves API token → `C:\Users\王小明\.co\keys.env` (UTF-8)
 
 **Result:** ✅ Everything works perfectly!
 
