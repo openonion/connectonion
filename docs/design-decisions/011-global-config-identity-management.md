@@ -70,12 +70,12 @@ project2/.co/
 
 Every user gets ONE identity when they first run `co create`:
 
-```toml
+```yaml
 # ~/.co/host.yaml
-[agent]
-address = "0x7b78b4cf850331c4b26dac089eb9cd84493483eccbf0e067f1c36e1c7f570e6b"
-short_address = "0x7b78...0e6b"
-email = "0x7b78b4cf@openonion.ai"  # Derived from address
+agent:
+  address: "0x7b78b4cf850331c4b26dac089eb9cd84493483eccbf0e067f1c36e1c7f570e6b"
+  short_address: "0x7b78...0e6b"
+  email: "0x7b78b4cf@openonion.ai"  # Derived from address
 ```
 
 This identity is **automatically copied** to every project:

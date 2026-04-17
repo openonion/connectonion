@@ -36,25 +36,25 @@ Created by `co create` or `co init`. Contains project-specific runtime data.
 
 The `host.yaml` file exists only in the global `~/.co/` directory:
 
-```toml
-[connectonion]
-framework_version = "0.0.7"
-created = "2025-01-15T10:30:00.000000"
+```yaml
+connectonion:
+  framework_version: "0.0.7"
+  created: "2025-01-15T10:30:00.000000"
 
-[cli]
-version = "1.0.0"
+cli:
+  version: "1.0.0"
 
-[agent]
-address = "0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
-short_address = "0x7a9f...7f8a"
-email = "0x7a9f3b2c@mail.openonion.ai"
-created_at = "2025-01-15T10:30:00.000000"
-algorithm = "ed25519"
-default_model = "co/gemini-2.5-pro"
-max_iterations = 10
+agent:
+  address: "0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
+  short_address: "0x7a9f...7f8a"
+  email: "0x7a9f3b2c@mail.openonion.ai"
+  created_at: "2025-01-15T10:30:00.000000"
+  algorithm: ed25519
+  default_model: "co/gemini-2.5-pro"
+  max_iterations: 10
 
-[auth]
-token = "eyJhbGciOiJI..."  # JWT for network auth
+auth:
+  token: "eyJhbGciOiJI..."  # JWT for network auth
 ```
 
 ## Keys Directory
