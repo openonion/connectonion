@@ -126,7 +126,7 @@ class TestLoadConfig:
             co_dir = fake_home / ".co"
             co_dir.mkdir()
             config_file = co_dir / "host.yaml"
-            config_file.write_text('[agent]\nname = "global-agent"\n')
+            config_file.write_text('agent:\n  name: global-agent\n')
 
             try:
                 with patch.object(Path, 'home', return_value=fake_home):
