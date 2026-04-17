@@ -257,19 +257,22 @@ class TestCliInit:
                 assert "AGENT_ADDRESS=" in content or "OPENONION_API_KEY=" in content
 
     def test_init_uses_managed_model_by_default(self):
-        """Test that init sets default model to co/gemini-2.5-pro."""
+        """Test that init sets default model to co/gemini-2.5-pro in global config."""
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
             result = self.runner.invoke(cli, ['init'])
             assert result.exit_code == 0
 
-            # Check host.yaml
-            with open(".co/host.yaml") as f:
-                config = yaml.safe_load(f)
+            # default_model is in global ~/.co/host.yaml, not project .co/host.yaml
+            global_config_path = Path.home() / ".co" / "host.yaml"
+            assert global_config_path.exists()
+            with open(global_config_path) as f:
+                global_config = yaml.safe_load(f)
 
             # Should use managed model by default
-            assert config.get("default_model") == "co/gemini-2.5-pro"
+            agent_config = global_config.get("agent", {})
+            assert agent_config.get("default_model") == "co/gemini-2.5-pro"
 
     def test_init_creates_agent_config_path_in_env(self):
         """Test that init creates AGENT_CONFIG_PATH in .env file."""
