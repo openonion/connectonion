@@ -14,7 +14,6 @@ import re
 import sys
 import time
 import shutil
-import toml
 from rich.console import Console
 from rich.prompt import Prompt, Confirm, IntPrompt
 from rich.progress import Progress, SpinnerColumn, TextColumn

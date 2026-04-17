@@ -11,7 +11,6 @@ LLM-Note:
 
 import sys
 import time
-import toml
 import requests
 import json
 import webbrowser

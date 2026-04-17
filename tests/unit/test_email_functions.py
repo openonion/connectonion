@@ -13,7 +13,7 @@ Components under test:
 from unittest.mock import patch, MagicMock, mock_open
 from pathlib import Path
 import tempfile
-import toml
+import yaml
 import json
 import os
 import sys
@@ -239,28 +239,31 @@ def test_mark_read_api_error(mock_post):
 # -------- helper function tests -------- #
 
 @patch('pathlib.Path.exists')
-@patch('toml.load')
-def test_get_agent_email(mock_toml_load, mock_exists):
+@patch('connectonion.useful_tools.send_email.yaml.safe_load')
+@patch('builtins.open', new_callable=mock_open)
+def test_get_agent_email(mock_file, mock_yaml_load, mock_exists):
     mock_exists.return_value = True
-    mock_toml_load.return_value = TEST_CONFIG_TOML
+    mock_yaml_load.return_value = TEST_CONFIG_TOML
     email = get_agent_email()
     assert email == TEST_ACCOUNT["email"]
 
 
 @patch('pathlib.Path.exists')
-@patch('toml.load')
-def test_get_agent_email_generated(mock_toml_load, mock_exists):
+@patch('connectonion.useful_tools.send_email.yaml.safe_load')
+@patch('builtins.open', new_callable=mock_open)
+def test_get_agent_email_generated(mock_file, mock_yaml_load, mock_exists):
     mock_exists.return_value = True
-    mock_toml_load.return_value = {"agent": {"address": "0xabcdef1234567890"}}
+    mock_yaml_load.return_value = {"agent": {"address": "0xabcdef1234567890"}}
     email = get_agent_email()
     assert email == "0xabcdef12@mail.openonion.ai"
 
 
 @patch('pathlib.Path.exists')
-@patch('toml.load')
-def test_is_email_active(mock_toml_load, mock_exists):
+@patch('connectonion.useful_tools.send_email.yaml.safe_load')
+@patch('builtins.open', new_callable=mock_open)
+def test_is_email_active(mock_file, mock_yaml_load, mock_exists):
     mock_exists.return_value = True
-    mock_toml_load.return_value = {"agent": {"email_active": True}}
+    mock_yaml_load.return_value = {"agent": {"email_active": True}}
     active = is_email_active()
     assert active is True
 

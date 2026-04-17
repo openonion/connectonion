@@ -166,7 +166,6 @@ import anthropic
 # google-genai not needed - using OpenAI-compatible endpoint instead
 import requests
 from pathlib import Path
-import toml
 from pydantic import BaseModel
 
 
