@@ -334,6 +334,87 @@ class TestCliInit:
                 assert "Authentication with OpenOnion" in content
                 assert "@mail.openonion.ai" in content
 
+    def test_init_ensure_global_config_writes_yaml(self, tmp_path, monkeypatch):
+        """Test that ensure_global_config writes valid YAML to ~/.co/host.yaml."""
+        fake_home = tmp_path / "fake_home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['init'])
+            assert result.exit_code == 0
+
+            global_config_path = fake_home / ".co" / "host.yaml"
+            assert global_config_path.exists()
+
+            # Must be valid YAML, not TOML
+            with open(global_config_path) as f:
+                config = yaml.safe_load(f)
+
+            assert isinstance(config, dict)
+            assert "connectonion" in config
+            assert "agent" in config
+            assert config["agent"]["default_model"] == "co/gemini-2.5-pro"
+
+            # Verify it's YAML format (no TOML brackets)
+            raw = global_config_path.read_text()
+            assert "[connectonion]" not in raw
+            assert "[agent]" not in raw
+
+    def test_init_host_yaml_from_template(self):
+        """Test that init generates host.yaml from network/host/host.yaml template."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['init'])
+            assert result.exit_code == 0
+
+            with open(".co/host.yaml") as f:
+                content = f.read()
+
+            # Project-specific header fields
+            assert content.startswith("name:")
+            assert "entrypoint: agent.py" in content
+            assert "env: .env" in content
+
+            # Template fields from network/host/host.yaml
+            config = yaml.safe_load(content)
+            assert config["trust"] == "careful"
+            assert config["port"] == 8000
+            assert config["relay_url"] == "wss://oo.openonion.ai"
+            assert "permissions" in config
+
+    def test_init_host_yaml_has_permissions_from_template(self):
+        """Test that generated host.yaml includes permissions from template."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['init'])
+            assert result.exit_code == 0
+
+            config = yaml.safe_load(open(".co/host.yaml"))
+            permissions = config.get("permissions", {})
+
+            # Check key permissions from template
+            assert permissions.get("read", {}).get("allowed") is True
+            assert permissions.get("glob", {}).get("allowed") is True
+            assert permissions.get("grep", {}).get("allowed") is True
+
+    def test_init_host_yaml_matches_template_relay_url(self):
+        """Test that relay_url is base URL only (client appends /ws/announce)."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['init'])
+            assert result.exit_code == 0
+
+            config = yaml.safe_load(open(".co/host.yaml"))
+            # Must be base URL — client code in relay.py auto-appends /ws/announce
+            assert config["relay_url"] == "wss://oo.openonion.ai"
+            assert not config["relay_url"].endswith("/ws/announce")
+
     def test_init_copies_all_docs_to_co_docs(self):
         """Test that init copies all documentation to .co/docs/ folder."""
         with self.runner.isolated_filesystem():

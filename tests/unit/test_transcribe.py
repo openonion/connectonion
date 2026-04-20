@@ -113,3 +113,75 @@ class TestTranscribeUnit:
 
             assert result == "Test transcription via proxy"
             mock_post.assert_called_once()
+
+
+class TestGetApiKey:
+    """Tests for _get_api_key reading from host.yaml."""
+
+    def test_co_model_reads_from_host_yaml(self, tmp_path, monkeypatch):
+        """Test that co/ model reads jwt_token from ~/.co/host.yaml."""
+        import yaml
+
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        # Create ~/.co/host.yaml with auth token
+        co_dir = fake_home / ".co"
+        co_dir.mkdir()
+        config = {"auth": {"jwt_token": "yaml-jwt-token-123"}}
+        with open(co_dir / "host.yaml", "w") as f:
+            yaml.dump(config, f)
+
+        # Clear env so it falls through to file
+        monkeypatch.delenv("OPENONION_API_KEY", raising=False)
+
+        from connectonion.transcribe import _get_api_key
+        assert _get_api_key("co/gemini-3-flash-preview") == "yaml-jwt-token-123"
+
+    def test_co_model_env_takes_precedence_over_yaml(self, tmp_path, monkeypatch):
+        """Test that OPENONION_API_KEY env var takes precedence over host.yaml."""
+        import yaml
+
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
+        # Create ~/.co/host.yaml with auth token
+        co_dir = fake_home / ".co"
+        co_dir.mkdir()
+        config = {"auth": {"jwt_token": "yaml-token"}}
+        with open(co_dir / "host.yaml", "w") as f:
+            yaml.dump(config, f)
+
+        # Set env var — should win
+        monkeypatch.setenv("OPENONION_API_KEY", "env-token")
+
+        from connectonion.transcribe import _get_api_key
+        assert _get_api_key("co/gemini-3-flash-preview") == "env-token"
+
+    def test_co_model_no_yaml_no_env_raises(self, tmp_path, monkeypatch):
+        """Test that missing both env and host.yaml raises ValueError."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.delenv("OPENONION_API_KEY", raising=False)
+
+        from connectonion.transcribe import _get_api_key
+        with pytest.raises(ValueError, match="OpenOnion API key required"):
+            _get_api_key("co/gemini-3-flash-preview")
+
+    def test_co_model_empty_yaml_raises(self, tmp_path, monkeypatch):
+        """Test that empty host.yaml raises ValueError."""
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+        monkeypatch.delenv("OPENONION_API_KEY", raising=False)
+
+        co_dir = fake_home / ".co"
+        co_dir.mkdir()
+        (co_dir / "host.yaml").write_text("")
+
+        from connectonion.transcribe import _get_api_key
+        with pytest.raises(ValueError, match="OpenOnion API key required"):
+            _get_api_key("co/gemini-3-flash-preview")
