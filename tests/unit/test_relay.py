@@ -42,8 +42,11 @@ class TestRelayConnection:
 
             result = await relay.connect()
 
-            # Should connect to production relay
-            mock_connect.assert_called_once_with("wss://oo.openonion.ai/ws/announce")
+            mock_connect.assert_called_once_with(
+                "wss://oo.openonion.ai/ws/announce",
+                ping_interval=20,
+                ping_timeout=20,
+            )
             assert result == mock_ws
 
     @pytest.mark.asyncio
@@ -56,8 +59,11 @@ class TestRelayConnection:
 
             result = await relay.connect(custom_url)
 
-            # Base URL should have /ws/announce appended
-            mock_connect.assert_called_once_with("ws://localhost:8000/ws/announce")
+            mock_connect.assert_called_once_with(
+                "ws://localhost:8000/ws/announce",
+                ping_interval=20,
+                ping_timeout=20,
+            )
             assert result == mock_ws
 
     @pytest.mark.asyncio
@@ -342,35 +348,31 @@ class TestServeLoop:
             assert error_printed
 
     @pytest.mark.asyncio
-    async def test_serve_loop_heartbeat_on_timeout(self):
-        """Test that heartbeat ANNOUNCE is sent after timeout."""
+    async def test_serve_loop_heartbeat_runs_concurrently(self):
+        """Test that heartbeat ANNOUNCE is sent concurrently while waiting for tasks."""
         mock_ws = AsyncMock()
         announce_msg = {
             "type": "ANNOUNCE",
             "address": "0xtest",
+            "summary": "test",
+            "endpoints": [],
             "timestamp": 12345
         }
 
-        # First recv: timeout (for heartbeat), second recv: ConnectionClosed to exit
-        async def recv_with_timeout_then_close():
-            # First call raises TimeoutError
-            if not hasattr(recv_with_timeout_then_close, 'called'):
-                recv_with_timeout_then_close.called = True
-                raise asyncio.TimeoutError()
-            # Second call closes connection
+        # recv blocks for a bit then closes — heartbeat should fire during the wait
+        async def slow_recv_then_close():
+            await asyncio.sleep(0.15)
             raise websockets.exceptions.ConnectionClosed(None, None)
 
-        mock_ws.recv.side_effect = recv_with_timeout_then_close
+        mock_ws.recv.side_effect = slow_recv_then_close
 
         async def dummy_handler(prompt):
             return "response"
 
         with patch('rich.console.Console.print'):
-            with patch('asyncio.get_event_loop') as mock_loop:
-                mock_loop.return_value.time.return_value = 99999
-                await relay.serve_loop(mock_ws, announce_msg, dummy_handler, heartbeat_interval=1)
+            await relay.serve_loop(mock_ws, announce_msg, dummy_handler, heartbeat_interval=0.05)
 
-        # Should have sent at least 2 ANNOUNCEs (initial + heartbeat)
+        # Should have sent initial ANNOUNCE + at least 1 heartbeat
         announce_count = sum(
             1 for call in mock_ws.send.call_args_list
             if json.loads(call[0][0]).get("type") == "ANNOUNCE"
@@ -398,37 +400,47 @@ class TestServeLoop:
             assert closed_printed
 
     @pytest.mark.asyncio
-    async def test_serve_loop_custom_heartbeat_interval(self):
-        """Test that serve_loop accepts custom heartbeat interval without errors."""
+    async def test_serve_loop_heartbeat_during_task_processing(self):
+        """Test that heartbeats continue while a task is being processed."""
         mock_ws = AsyncMock()
-        announce_msg = {"type": "ANNOUNCE", "address": "0xtest", "timestamp": 1}
+        announce_msg = {
+            "type": "ANNOUNCE",
+            "address": "0xtest",
+            "summary": "test",
+            "endpoints": [],
+            "timestamp": 1,
+        }
 
-        # Simulate timeout after custom interval
+        input_msg = {
+            "type": "INPUT",
+            "input_id": "task1",
+            "prompt": "slow task",
+        }
+
         call_count = 0
 
-        async def recv_with_custom_interval():
+        async def recv_sequence():
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                # First call: timeout (triggers heartbeat)
-                raise asyncio.TimeoutError()
-            else:
-                # Second call: close connection
-                raise websockets.exceptions.ConnectionClosed(None, None)
+                return json.dumps(input_msg)
+            raise websockets.exceptions.ConnectionClosed(None, None)
 
-        mock_ws.recv.side_effect = recv_with_custom_interval
+        mock_ws.recv.side_effect = recv_sequence
 
-        async def dummy_handler(prompt):
-            return "response"
+        async def slow_handler(prompt):
+            # Simulate slow LLM call — heartbeat should fire during this
+            await asyncio.sleep(0.15)
+            return "done"
 
         with patch('rich.console.Console.print'):
-            with patch('asyncio.get_event_loop') as mock_loop:
-                mock_loop.return_value.time.return_value = 99999
-                # Should complete without error with custom interval
-                await relay.serve_loop(mock_ws, announce_msg, dummy_handler, heartbeat_interval=120)
+            await relay.serve_loop(mock_ws, announce_msg, slow_handler, heartbeat_interval=0.05)
 
-        # Verify serve_loop ran and sent heartbeat
-        assert call_count >= 2, "Should have handled timeout and then connection close"
+        # Should have sent: initial ANNOUNCE + at least 1 heartbeat + OUTPUT
+        sent_types = [json.loads(c[0][0]).get("type") for c in mock_ws.send.call_args_list]
+        assert sent_types[0] == "ANNOUNCE"
+        assert "OUTPUT" in sent_types
+        assert sent_types.count("ANNOUNCE") >= 2, "Heartbeat should fire during slow task"
 
 
 class TestRelayIntegration:

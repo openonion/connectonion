@@ -28,7 +28,7 @@ Related Files:
 LLM-Note:
   Dependencies: imports from [json, asyncio, typing, websockets]
   Data flow: connect() → /ws/announce → serve_loop() → INPUT → task_handler → OUTPUT
-  State/Effects: WebSocket connection to relay | heartbeat every 60s
+  State/Effects: WebSocket connection to relay | concurrent heartbeat every 60s | ping_interval=20s
   Integration: exposes connect(), send_announce(), wait_for_task(), serve_loop()
 """
 
@@ -55,7 +55,11 @@ async def connect(relay_url: str = "wss://oo.openonion.ai"):
     ws_url = f"{relay_url.rstrip('/')}/ws/announce"
     # TODO: Future connection metadata (observed_ip, ICE candidates) should be
     #       attached to ANNOUNCE so relay can return best endpoints to clients.
-    return await websockets.connect(ws_url)
+    return await websockets.connect(
+        ws_url,
+        ping_interval=20,
+        ping_timeout=20,
+    )
 
 
 async def send_announce(websocket, announce_message: Dict[str, Any]):
@@ -150,7 +154,7 @@ async def serve_loop(
     websocket,
     announce_message: Dict[str, Any],
     task_handler,
-    heartbeat_interval: int = 300,
+    heartbeat_interval: int = 60,
     addr_data: Dict[str, Any] = None
 ):
     """
@@ -158,7 +162,7 @@ async def serve_loop(
 
     This handles:
     - Initial ANNOUNCE
-    - Periodic heartbeat ANNOUNCE (every 60s) with fresh signature
+    - Concurrent heartbeat ANNOUNCE (every 60s) — runs independently of task processing
     - Receiving and processing TASK messages
     - Sending responses
 
@@ -187,45 +191,52 @@ async def serve_loop(
     endpoints = announce_message.get("endpoints", [])
     relay_url = announce_message.get("relay")
 
-    # Main loop
-    while True:
+    async def _heartbeat():
+        """Send periodic heartbeat ANNOUNCEs, independent of task processing."""
+        while True:
+            await asyncio.sleep(heartbeat_interval)
+            try:
+                if addr_data:
+                    fresh_announce = announce_module.create_announce_message(
+                        addr_data, summary, endpoints=endpoints, relay=relay_url
+                    )
+                    await send_announce(websocket, fresh_announce)
+                else:
+                    announce_message["timestamp"] = int(asyncio.get_event_loop().time())
+                    await send_announce(websocket, announce_message)
+                console.print(f"{prefix} [red]♥[/red]")
+            except websockets.exceptions.ConnectionClosed:
+                break
+
+    heartbeat_task = asyncio.create_task(_heartbeat())
+
+    try:
+        while True:
+            try:
+                task = await wait_for_task(websocket)
+
+                if task.get("type") == "INPUT":
+                    console.print(f"{prefix} [dim]Input received[/dim]")
+
+                    result = await task_handler(task["prompt"])
+
+                    output_message = {
+                        "type": "OUTPUT",
+                        "input_id": task["input_id"],
+                        "result": result
+                    }
+                    await websocket.send(json.dumps(output_message))
+                    console.print(f"{prefix} [green]Output sent[/green]")
+
+                elif task.get("type") == "ERROR":
+                    console.print(f"{prefix} [red]Relay error: {task.get('error')}[/red]")
+
+            except websockets.exceptions.ConnectionClosed:
+                console.print(f"{prefix} [dim]Relay disconnected[/dim]")
+                break
+    finally:
+        heartbeat_task.cancel()
         try:
-            # Wait for message with timeout to allow heartbeat
-            task = await wait_for_task(websocket, timeout=heartbeat_interval)
-
-            # Handle INPUT message
-            if task.get("type") == "INPUT":
-                console.print(f"{prefix} [dim]Input received[/dim]")
-
-                # Process with handler
-                result = await task_handler(task["prompt"])
-
-                # Send OUTPUT response
-                output_message = {
-                    "type": "OUTPUT",
-                    "input_id": task["input_id"],
-                    "result": result
-                }
-                await websocket.send(json.dumps(output_message))
-                console.print(f"{prefix} [green]Output sent[/green]")
-
-            elif task.get("type") == "ERROR":
-                console.print(f"{prefix} [red]Relay error: {task.get('error')}[/red]")
-
-        except asyncio.TimeoutError:
-            # Time for heartbeat ANNOUNCE - create fresh message with new timestamp and signature
-            if addr_data:
-                # Re-create message with fresh timestamp and signature
-                fresh_announce = announce_module.create_announce_message(
-                    addr_data, summary, endpoints=endpoints, relay=relay_url
-                )
-                await send_announce(websocket, fresh_announce)
-            else:
-                # Fallback: just update timestamp (signature will be invalid)
-                announce_message["timestamp"] = int(asyncio.get_event_loop().time())
-                await send_announce(websocket, announce_message)
-            console.print(f"{prefix} [red]♥[/red]")
-
-        except websockets.exceptions.ConnectionClosed:
-            console.print(f"{prefix} [dim]Relay disconnected[/dim]")
-            break
+            await heartbeat_task
+        except asyncio.CancelledError:
+            pass
