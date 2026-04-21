@@ -2,8 +2,8 @@
 Purpose: Initialize ConnectOnion project in current directory with template files, authentication, and configuration
 LLM-Note:
   Dependencies: imports from [os, sys, shutil, subprocess, toml, datetime, pathlib, rich.console, rich.prompt, __version__, address, auth_commands.authenticate, project_cmd_lib] | imported by [cli/main.py via handle_init()] | uses templates from [cli/templates/{minimal,playwright}] | tested by [tests/cli/test_cli_init.py]
-  Data flow: receives args (ai, key, template, description, yes, force) from CLI parser → ensure_global_config() creates ~/.co/ with master keypair if needed → check_environment_for_api_keys() detects existing keys → api_key_setup_menu() or detect_api_provider() validates API key → generate_custom_template() if template='custom' → copy template files from cli/templates/{template}/ to current dir → authenticate() to get OPENONION_API_KEY → create/update .env with API keys from ~/.co/keys.env → create .co/config.toml with project metadata and global identity → copy vibe coding docs to .co/docs/ and project root → update .gitignore if git repo → display success message with next steps
-  State/Effects: modifies ~/.co/ (config.toml, keys.env, keys/, logs/) on first run | writes to current dir: .co/config.toml, .env, agent.py (if template), .gitignore, co-vibecoding-principles-docs-contexts-all-in-one.md | calls authenticate() which writes OPENONION_API_KEY to ~/.co/keys.env | copies template files (agent.py, requirements.txt, etc.) | creates temp_project_dir during auth flow (cleaned up at end) | writes to stdout via rich.Console
+  Data flow: receives args (ai, key, template, description, yes, force) from CLI parser → ensure_global_config() creates ~/.co/ with master keypair if needed → check_environment_for_api_keys() detects existing keys → api_key_setup_menu() or detect_api_provider() validates API key → generate_custom_template() if template='custom' → copy template files from cli/templates/{template}/ to current dir → authenticate() to get OPENONION_API_KEY → create/update .env with API keys from ~/.co/keys.env → create .co/host.yaml with project metadata and global identity → copy vibe coding docs to .co/docs/ and project root → update .gitignore if git repo → display success message with next steps
+  State/Effects: modifies ~/.co/ (host.yaml, keys.env, keys/, logs/) on first run | writes to current dir: .co/host.yaml, .env, agent.py (if template), .gitignore | calls authenticate() which writes OPENONION_API_KEY to ~/.co/keys.env | copies template files (agent.py, requirements.txt, etc.) | creates temp_project_dir during auth flow (cleaned up at end) | writes to stdout via rich.Console
   Integration: exposes handle_init(ai, key, template, description, yes, force) | calls ensure_global_config() to create global identity | calls authenticate(global_co_dir, save_to_project=False) for managed keys | uses template files from cli/templates/ | relies on project_cmd_lib for shared functions | uses address.generate() and address.save() for Ed25519 keypair | template options: 'minimal', 'playwright', 'custom', 'none' (default)
   Performance: authenticate() makes network call to backend (2-5s) | generate_custom_template() calls LLM API if template='custom' | template file copying is O(n) files | config/env file operations are I/O bound
   Errors: fails if cli/templates/{template}/ not found | fails if API key invalid during authenticate() | warns if directory not empty (requires --force or confirmation) | warns for special directories (home, root, system dirs) | skips duplicate .env keys (safe append) | creates temp_project_dir but cleans up on completion
@@ -13,7 +13,7 @@ import os
 import sys
 import shutil
 import subprocess
-import toml
+import yaml
 from datetime import datetime
 from pathlib import Path
 from typing import Optional, Dict, Any
@@ -47,12 +47,12 @@ console = Console()
 def ensure_global_config() -> Dict[str, Any]:
     """Simple function to ensure ~/.co/ exists with global identity."""
     global_dir = Path.home() / ".co"
-    config_path = global_dir / "config.toml"
+    config_path = global_dir / "host.yaml"
 
     # If exists, just load and return
     if config_path.exists():
         with open(config_path, 'r', encoding='utf-8') as f:
-            return toml.load(f)
+            return yaml.safe_load(f) or {}
 
     # First time - create global config
     console.print(f"\n🚀 Welcome to ConnectOnion!")
@@ -88,8 +88,8 @@ def ensure_global_config() -> Dict[str, Any]:
 
     # Save config
     with open(config_path, 'w', encoding='utf-8') as f:
-        toml.dump(config, f)
-    console.print(f"  ✓ Created ~/.co/config.toml")
+        yaml.dump(config, f, default_flow_style=False)
+    console.print(f"  ✓ Created ~/.co/host.yaml")
 
     # Create keys.env with config path and agent address
     keys_env = global_dir / "keys.env"
@@ -362,38 +362,27 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 
     # Use global identity instead of generating project keys
     # NO PROJECT KEYS - we use global address/email
-    # Reload global config to get updated email_active after authentication
-    global_config = toml.load(global_co_dir / "config.toml") if (global_co_dir / "config.toml").exists() else global_config
-    addr_data = global_config.get("agent", global_identity)  # Use updated global identity
+    addr_data = global_config.get("agent", global_identity)
 
     # Note: We're NOT creating project-specific keys anymore
     # If user wants project-specific keys, they'll use 'co address' command
 
-    # Create config.toml (simplified - address/email now in .env)
-    config = {
-        "project": {
-            "name": os.path.basename(current_dir) or "connectonion-agent",
-            "created": datetime.now().isoformat(),
-            "framework_version": __version__,
-            "secrets": ".env",  # Path to secrets file
-        },
-        "cli": {
-            "version": "1.0.0",
-            "command": "co init",
-            "template": template,
-        },
-        "agent": {
-            "algorithm": "ed25519",
-            "default_model": "co/gemini-2.5-pro",  # Use managed model by default
-            "max_iterations": 10,
-            "created_at": datetime.now().isoformat(),
-        },
-    }
-
-    config_path = co_dir / "config.toml"
-    with open(config_path, "w", encoding='utf-8') as f:
-        toml.dump(config, f)
-    files_created.append(".co/config.toml")
+    # Create host.yaml from template (unified config for host() and co deploy)
+    host_yaml_path = co_dir / "host.yaml"
+    if not host_yaml_path.exists():
+        project_name = os.path.basename(current_dir) or "connectonion-agent"
+        # Load template from network/host/host.yaml
+        template_path = Path(__file__).parent.parent.parent / "network" / "host" / "host.yaml"
+        with open(template_path, "r", encoding="utf-8") as f:
+            template_content = f.read()
+        # Prepend project-specific fields
+        project_header = f"""name: {project_name}
+entrypoint: agent.py
+env: .env
+"""
+        with open(host_yaml_path, "w", encoding='utf-8') as f:
+            f.write(project_header + template_content)
+        files_created.append(".co/host.yaml")
 
     # Handle .gitignore if in git repo
     if (Path(current_dir) / ".git").exists():
@@ -455,16 +444,4 @@ todo.md
 
     # Clean up temporary project directory if created for authentication
     if temp_project_dir and temp_project_dir.exists():
-        # Copy the auth token to the current project
-        temp_config = temp_project_dir / ".co" / "config.toml"
-        current_config = Path(current_dir) / ".co" / "config.toml"
-        if temp_config.exists() and current_config.exists():
-            temp_data = toml.load(temp_config)
-            current_data = toml.load(current_config)
-            if "auth" in temp_data:
-                current_data["auth"] = temp_data["auth"]
-                with open(current_config, "w", encoding='utf-8') as f:
-                    toml.dump(current_data, f)
-
-        # Remove the temp directory
         shutil.rmtree(temp_project_dir)

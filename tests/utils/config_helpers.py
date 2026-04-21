@@ -98,25 +98,25 @@ def create_test_project(base_dir: Path = None) -> Path:
         Path to the created project directory
     """
     import tempfile
-    import toml
-    
+    import yaml
+
     if base_dir is None:
         base_dir = Path(tempfile.mkdtemp(prefix="co_test_"))
     else:
         base_dir = Path(base_dir)
         base_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Create .co directory structure
     co_dir = base_dir / ".co"
     co_dir.mkdir(exist_ok=True)
-    
+
     keys_dir = co_dir / "keys"
     keys_dir.mkdir(exist_ok=True)
-    
+
     # Write test config
-    config_path = co_dir / "config.toml"
+    config_path = co_dir / "host.yaml"
     with open(config_path, "w") as f:
-        toml.dump(TEST_CONFIG_TOML, f)
+        yaml.dump(TEST_CONFIG_TOML, f, default_flow_style=False)
     
     # Write test keys (for testing only)
     public_key_path = keys_dir / "public_key.txt"

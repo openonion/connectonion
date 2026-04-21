@@ -132,7 +132,7 @@ OPENONION_API_KEY=your_token_here
 ```
 
 ### ConnectOnion Project Metadata
-- Stored in `.co/config.toml`
+- Stored in `~/.co/host.yaml` (global config)
 - Agent address, email, default model settings
 - Do not modify manually - managed by `co` CLI
 
@@ -235,7 +235,7 @@ browser-agent/
 │   ├── test_direct.py   # Direct browser tests
 │   └── README.md        # Test documentation
 ├── .co/
-│   ├── config.toml      # ConnectOnion project config
+│   ├── host.yaml      # ConnectOnion project config
 │   ├── evals/           # Eval logs (YAML format)
 │   └── keys/            # Agent keypair (gitignored)
 ├── screenshots/         # Auto-generated screenshots (gitignored)

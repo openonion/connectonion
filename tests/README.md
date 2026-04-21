@@ -242,7 +242,7 @@ else:
 
 1. **"Email not activated"**
    - Run `co auth` to activate email
-   - Check `email_active` in `.co/config.toml`
+   - Check `email_active` in `~/.co/host.yaml` (global config)
 
 2. **"No JWT token"**
    - Set `CONNECTONION_JWT_TOKEN` environment variable

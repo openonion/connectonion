@@ -47,7 +47,7 @@ class TestCliInit:
             # Check core files exist
             assert os.path.exists('agent.py')
             assert os.path.exists('.env')  # CLI creates .env, not .env.example
-            assert os.path.exists('.co/config.toml')
+            assert os.path.exists('.co/host.yaml')
 
             # Verify agent.py is valid Python
             with open('agent.py') as f:
@@ -57,12 +57,12 @@ class TestCliInit:
             # Check agent.py references ConnectOnion
             assert 'from connectonion import Agent' in code
 
-            # Check config.toml has correct structure
-            import toml
-            with open('.co/config.toml') as f:
-                config = toml.load(f)
-                assert 'project' in config
-                assert 'cli' in config
+            # Check host.yaml has correct structure
+            import yaml
+            with open('.co/host.yaml') as f:
+                config = yaml.safe_load(f)
+                assert 'name' in config
+                assert 'entrypoint' in config
 
     def test_init_templates(self):
         """Test that different templates create appropriate agents."""

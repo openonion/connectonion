@@ -29,7 +29,7 @@ $ co create my-first-agent
   ✓ Generating master keypair
   ✓ Your address: 0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a
   ✓ Your email: 0x7a9f3b2c@mail.openonion.ai
-  ✓ Creating ~/.co/config.toml
+  ✓ Creating ~/.co/host.yaml
   ✓ Creating ~/.co/keys.env (ready for your API keys)
 
 🧅 ConnectOnion Project Creator
@@ -105,7 +105,7 @@ $ co create another-agent
 
 ```
 ~/.co/
-├── config.toml          # Global configuration with address & email
+├── host.yaml          # Global configuration with address & email
 ├── keys.env             # Shared API keys
 ├── keys/                # Master identity
 │   ├── agent.key        # Private key (for signing)
@@ -121,7 +121,7 @@ my-agent/
 ├── agent.py             # Main agent implementation
 ├── .env                 # API keys (from ~/.co/keys.env)
 ├── .co/
-│   ├── config.toml     # Project config (uses global address/email)
+│   ├── host.yaml       # Project config
 │   └── docs/           # Framework documentation
 │       ├── co-vibe-coding-all-in-one.md
 │       └── connectonion.md
@@ -133,55 +133,37 @@ Note: Projects use global address/email by default.
 
 ## Configuration Files
 
-### Global Config (`~/.co/config.toml`)
+### Global Config (`~/.co/host.yaml`)
 
-```toml
-[connectonion]
-framework_version = "0.0.7"
-created = "2025-01-15T10:30:00.000000"
+```yaml
+connectonion:
+  framework_version: "0.0.7"
+  created: "2025-01-15T10:30:00.000000"
 
-[cli]
-version = "1.0.0"
+cli:
+  version: "1.0.0"
 
-[agent]
-# Global address and email used by all projects
-address = "0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
-short_address = "0x7a9f...7f8a"
-email = "0x7a9f3b2c@mail.openonion.ai"
-email_active = true
-created_at = "2025-01-15T10:30:00.000000"
-algorithm = "ed25519"
-default_model = "co/gemini-2.5-pro"
-max_iterations = 10
+agent:
+  # Global address and email used by all projects
+  address: "0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
+  short_address: "0x7a9f...7f8a"
+  email: "0x7a9f3b2c@mail.openonion.ai"
+  email_active: true
+  created_at: "2025-01-15T10:30:00.000000"
+  algorithm: ed25519
+  default_model: "co/gemini-2.5-pro"
+  max_iterations: 10
 
-[auth]
-token = "eyJhbGciOiJI..."  # If authenticated with network
+auth:
+  token: "eyJhbGciOiJI..."  # If authenticated with network
 ```
 
-### Project Config (`.co/config.toml`)
+### Project Config (`.co/host.yaml`)
 
-```toml
-[project]
-name = "my-agent"
-template = "minimal"
-created = "2025-01-15T11:00:00.000000"
-
-[connectonion]
-framework_version = "0.0.7"
-
-[cli]
-version = "1.0.0"
-command = "co create my-agent"
-
-[agent]
-# Copies global address and email
-address = "0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
-short_address = "0x7a9f...7f8a"
-email = "0x7a9f3b2c@mail.openonion.ai"
-email_active = true
-algorithm = "ed25519"
-default_model = "co/gemini-2.5-pro"
-max_iterations = 10
+```yaml
+name: my-agent
+entrypoint: agent.py
+env: .env
 ```
 
 ### API Keys (`.env`)
@@ -258,7 +240,7 @@ The CLI automatically detects API key providers:
 ### AI Enabled by Default
 
 AI features are always enabled because agents need LLMs. To disable (not recommended):
-1. Edit `.co/config.toml` after creation
+1. Edit `.co/host.yaml` after creation
 2. Use `--no-ai` flag (limits functionality)
 
 ### Global Identity Reuse

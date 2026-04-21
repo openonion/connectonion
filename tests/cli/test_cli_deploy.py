@@ -45,7 +45,7 @@ class TestCliDeploy:
 
             # Create .co folder but no .git
             os.makedirs(".co")
-            Path(".co/config.toml").write_text('[project]\nname = "test-agent"')
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
 
             result = self.runner.invoke(cli, ['deploy'])
             assert "Not a git repository" in result.output
@@ -74,7 +74,7 @@ class TestCliDeploy:
             subprocess.run(['git', 'config', 'user.name', 'Test'], capture_output=True)
 
             os.makedirs(".co")
-            Path(".co/config.toml").write_text('[project]\nname = "test-agent"')
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
 
             # Clear any existing API key
             with patch.dict(os.environ, {}, clear=True):
@@ -96,7 +96,7 @@ class TestCliDeploy:
             subprocess.run(['git', 'config', 'user.name', 'Test'], capture_output=True)
 
             os.makedirs(".co")
-            Path(".co/config.toml").write_text('[project]\nname = "test-agent"')
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
             Path("agent.py").write_text('print("hello")')
 
             subprocess.run(['git', 'add', '.'], capture_output=True)
@@ -229,7 +229,7 @@ class TestCliDeploy:
             subprocess.run(['git', 'config', 'user.name', 'Test'], capture_output=True)
 
             os.makedirs(".co")
-            Path(".co/config.toml").write_text('[project]\nname = "test-agent"')
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
             Path("agent.py").write_text('from connectonion import host\nhost(None)')
 
             subprocess.run(['git', 'add', '.'], capture_output=True)
@@ -255,7 +255,7 @@ class TestCliDeploy:
             # Create project structure
             os.makedirs(".git")
             os.makedirs(".co")
-            Path(".co/config.toml").write_text('[project]\nname = "test-agent"')
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
 
             from connectonion.cli.commands.deploy_commands import _get_api_key
 

@@ -33,7 +33,7 @@ def test_receive_emails():
         return False
 
     # Check config
-    config_path = co_dir / "config.toml"
+    config_path = co_dir / "host.yaml"
     if config_path.exists():
         with open(config_path) as f:
             config_content = f.read()

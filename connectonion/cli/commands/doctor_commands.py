@@ -69,15 +69,16 @@ def handle_doctor():
     config_table.add_column("Check", style="cyan")
     config_table.add_column("Status")
 
-    # Check for config.toml
-    local_config = Path(".co") / "config.toml"
-    global_config = Path.home() / ".co" / "config.toml"
+    # Check for host.yaml (project config)
+    local_config = Path(".co") / "host.yaml"
+    global_config = Path.home() / ".co" / "host.yaml"
 
     if local_config.exists():
         config_table.add_row("Config", f"[green]✓[/green] {local_config}")
-        import toml
-        config = toml.load(local_config)
-        agent_name = config.get("agent", {}).get("name", "Not set")
+        import yaml
+        with open(local_config, 'r') as f:
+            config = yaml.safe_load(f) or {}
+        agent_name = config.get("name", "Not set")
         config_table.add_row("Agent Name", f"[dim]{agent_name}[/dim]")
     elif global_config.exists():
         config_table.add_row("Config", f"[green]✓[/green] {global_config}")

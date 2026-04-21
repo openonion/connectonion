@@ -70,10 +70,11 @@ def _get_api_key(model: str) -> str:
         api_key = os.getenv("OPENONION_API_KEY")
         if not api_key:
             # Try loading from config file
-            config_path = Path.home() / ".co" / "config.toml"
+            config_path = Path.home() / ".co" / "host.yaml"
             if config_path.exists():
-                import toml
-                config = toml.load(config_path)
+                import yaml
+                with open(config_path) as f:
+                    config = yaml.safe_load(f) or {}
                 api_key = config.get("auth", {}).get("jwt_token")
         if not api_key:
             raise ValueError(

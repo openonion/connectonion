@@ -2,15 +2,15 @@
 Purpose: Display account status including balance, usage, and email configuration without re-authenticating
 LLM-Note:
   Dependencies: imports from [os, toml, requests, pathlib, rich.console, rich.panel, dotenv.load_dotenv, jwt, address] | imported by [cli/main.py via handle_status()] | calls backend at [https://oo.openonion.ai/api/v1/auth] | tested by [tests/cli/test_cli_status.py]
-  Data flow: receives no args → _load_api_key() checks OPENONION_API_KEY from env/local .env/global ~/.co/keys.env → _load_config() loads agent info from .co/config.toml or ~/.co/config.toml → address.load() reads Ed25519 keypair → creates fresh auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth to get current user data → displays balance, credits, total spent, email, agent ID → warns if balance <= 0
-  State/Effects: no state modifications | makes network GET request to oo.openonion.ai | reads from env vars, .env, ~/.co/keys.env, config.toml | writes to stdout via rich.Console and rich.Panel | does NOT update any files
+  Data flow: receives no args → _load_api_key() checks OPENONION_API_KEY from env/local .env/global ~/.co/keys.env → _load_config() loads agent info from .co/host.yaml or ~/.co/host.yaml → address.load() reads Ed25519 keypair → creates fresh auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth to get current user data → displays balance, credits, total spent, email, agent ID → warns if balance <= 0
+  State/Effects: no state modifications | makes network GET request to oo.openonion.ai | reads from env vars, .env, ~/.co/keys.env, host.yaml | writes to stdout via rich.Console and rich.Panel | does NOT update any files
   Integration: exposes handle_status() for CLI | similar to authenticate() but read-only | relies on address module for signature generation | uses requests for HTTP calls | displays Rich panel with account info | checks OPENONION_API_KEY in 3 locations (priority: env var > local .env > global ~/.co/keys.env)
   Performance: network call to backend (1-2s) | signature generation is fast (<10ms) | file I/O for config and .env files
   Errors: fails gracefully if OPENONION_API_KEY not found (prints message to run 'co auth') | fails if keys missing in .co/keys/ | fails if backend unreachable (prints HTTP error) | handles response errors with status code display
 """
 
 import os
-import toml
+import yaml
 import requests
 from pathlib import Path
 from rich.console import Console
@@ -56,20 +56,22 @@ def _load_api_key() -> str:
 
 
 def _load_config() -> dict:
-    """Load config from .co/config.toml or ~/.co/config.toml.
+    """Load config from .co/host.yaml or ~/.co/host.yaml.
 
     Returns:
         Config dict if found, empty dict otherwise
     """
-    # Check local .co/config.toml first
-    local_config = Path(".co") / "config.toml"
+    # Check local .co/host.yaml first
+    local_config = Path(".co") / "host.yaml"
     if local_config.exists():
-        return toml.load(local_config)
+        with open(local_config, 'r') as f:
+            return yaml.safe_load(f) or {}
 
-    # Check global ~/.co/config.toml
-    global_config = Path.home() / ".co" / "config.toml"
+    # Check global ~/.co/host.yaml
+    global_config = Path.home() / ".co" / "host.yaml"
     if global_config.exists():
-        return toml.load(global_config)
+        with open(global_config, 'r') as f:
+            return yaml.safe_load(f) or {}
 
     return {}
 
