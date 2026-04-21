@@ -613,26 +613,21 @@ def test_agent_input_with_files(tmp_path):
 
     assert "pdf" in result.lower()
 
-    # Verify file was saved to disk
-    saved_path = tmp_path / ".co" / "uploads" / "report.pdf"
-    assert saved_path.exists()
-    assert saved_path.read_bytes() == b"%PDF-1.4\n"
+    # Verify file was saved to disk (with timestamp prefix)
+    uploads_dir = tmp_path / ".co" / "uploads"
+    saved_files = list(uploads_dir.glob("*_report.pdf"))
+    assert len(saved_files) == 1
+    assert saved_files[0].read_bytes() == b"%PDF-1.4\n"
 
-    # Verify message format: text + system reminder (no raw file data)
+    # Verify system reminder was appended to prompt with file path
     messages = mock_llm.last_call["messages"]
     user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
 
     content = user_message['content']
-    assert isinstance(content, list)
-    assert len(content) == 2  # 1 text + 1 system reminder
-
-    assert content[0]['type'] == 'text'
-    assert content[0]['text'] == "Analyze this document"
-
-    assert content[1]['type'] == 'text'
-    assert "report.pdf" in content[1]['text']
-    assert "<system-reminder>" in content[1]['text']
-    assert str(saved_path) in content[1]['text']
+    assert isinstance(content, str)
+    assert "Analyze this document" in content
+    assert "<system-reminder>" in content
+    assert "report.pdf" in content
 
 
 def test_agent_input_with_images_and_files(tmp_path):
@@ -658,15 +653,15 @@ def test_agent_input_with_images_and_files(tmp_path):
 
     content = user_message['content']
     assert isinstance(content, list)
-    assert len(content) == 3  # 1 text + 1 image + 1 system reminder
-
+    # Images make it multimodal; file reminder is appended to prompt text
     assert content[0]['type'] == 'text'
+    assert "data.csv" in content[0]['text']
+    assert "<system-reminder>" in content[0]['text']
     assert content[1]['type'] == 'image_url'
-    assert content[2]['type'] == 'text'
-    assert "data.csv" in content[2]['text']
 
-    # Verify file saved
-    assert (tmp_path / ".co" / "uploads" / "data.csv").exists()
+    # Verify file saved (with timestamp prefix)
+    uploads_dir = tmp_path / ".co" / "uploads"
+    assert len(list(uploads_dir.glob("*_data.csv"))) == 1
 
 
 def test_agent_input_with_multiple_files(tmp_path):
@@ -689,20 +684,18 @@ def test_agent_input_with_multiple_files(tmp_path):
 
     agent.input("Compare these documents", files=test_files)
 
-    # Verify both files saved
-    assert (tmp_path / ".co" / "uploads" / "report.pdf").exists()
-    assert (tmp_path / ".co" / "uploads" / "data.csv").exists()
+    # Verify both files saved (with timestamp prefix)
+    uploads_dir = tmp_path / ".co" / "uploads"
+    assert len(list(uploads_dir.glob("*_report.pdf"))) == 1
+    assert len(list(uploads_dir.glob("*_data.csv"))) == 1
 
     messages = mock_llm.last_call["messages"]
     user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
 
     content = user_message['content']
-    assert isinstance(content, list)
-    assert len(content) == 2  # 1 text + 1 system reminder with both file paths
-
-    reminder_text = content[1]['text']
-    assert "report.pdf" in reminder_text
-    assert "data.csv" in reminder_text
+    assert isinstance(content, str)
+    assert "report.pdf" in content
+    assert "data.csv" in content
 
 
 def test_agent_input_file_path_traversal(tmp_path):
@@ -722,6 +715,7 @@ def test_agent_input_file_path_traversal(tmp_path):
 
     agent.input("Read this", files=[test_file])
 
-    # File should be saved as just "passwd" inside .co/uploads/, not outside
-    assert (tmp_path / ".co" / "uploads" / "passwd").exists()
+    # File should be saved as just "passwd" (with timestamp) inside .co/uploads/, not outside
+    uploads_dir = tmp_path / ".co" / "uploads"
+    assert len(list(uploads_dir.glob("*_passwd"))) == 1
     assert not (tmp_path / "etc").exists()

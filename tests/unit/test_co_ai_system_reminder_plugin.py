@@ -64,6 +64,8 @@ def test_detect_intent_and_inject_tool(monkeypatch):
 
     monkeypatch.setattr(plugin, "_REMINDERS", {"r": {"content": "REM", "intent": "build", "triggers": []}})
     monkeypatch.setattr(plugin, "llm_do", lambda *a, **k: Intent("understood", True))
+    # detect_intent injects build context (workflow + index + examples), not reminders
+    monkeypatch.setattr(plugin, "_load_build_context", lambda: "BUILD_CONTEXT")
 
     agent = SimpleNamespace(
         current_session={"user_prompt": "build", "messages": []},
@@ -74,7 +76,7 @@ def test_detect_intent_and_inject_tool(monkeypatch):
     plugin.detect_intent(agent)
 
     assert agent.current_session["intent"]["is_build"] is True
-    assert any("REM" in m["content"] for m in agent.current_session["messages"])
+    assert any("BUILD_CONTEXT" in m["content"] for m in agent.current_session["messages"])
 
     # tool reminder injection
     plugin._REMINDERS = {
