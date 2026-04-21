@@ -75,21 +75,6 @@ async def handle_websocket(
     conn_session_id = None
     conn_session = None
 
-    # Persistent PING for the entire connection lifetime (not just during INPUT processing).
-    # Without this, the TS SDK's ping monitor closes the WebSocket after 60s of no PING.
-    ws_closed = asyncio.Event()
-
-    async def _connection_ping():
-        while not ws_closed.is_set():
-            await asyncio.sleep(30)
-            if not ws_closed.is_set():
-                try:
-                    await send({"type": "websocket.send", "text": json.dumps({"type": "PING"})})
-                except Exception:
-                    break
-
-    ping_task = asyncio.create_task(_connection_ping())
-
     # ASGI message loop
     while True:
         msg = await receive()  # ASGI: wait for next message
@@ -311,24 +296,15 @@ async def handle_websocket(
                     await send({"type": "websocket.send",
                                "text": json.dumps({"type": "ERROR", "message": "Agent completed without result"})})
 
-    # Clean up connection-level ping task
-    ws_closed.set()
-    ping_task.cancel()
-    try:
-        await ping_task
-    except asyncio.CancelledError:
-        pass
-
 
 async def _pipe_ws_io(ws_receive, ws_send, io: WebSocketIO, agent_finished: threading.Event,
                       registry=None, session_id=None) -> bool:
-    """Pipe messages between WebSocket and IO queues.
+    """Pipe messages between WebSocket and IO queues with keep-alive.
 
     Runs until agent completes. Handles:
     - Outgoing: io._outgoing queue -> WebSocket (agent events)
     - Incoming: WebSocket -> io._incoming queue (approval responses, PONG)
-
-    PING is handled by the connection-level ping task in handle_websocket().
+    - Keep-alive: PING messages every 30s to detect dead connections
 
     Returns:
         True if client disconnected before agent completed, False otherwise.
@@ -384,16 +360,33 @@ async def _pipe_ws_io(ws_receive, ws_send, io: WebSocketIO, agent_finished: thre
             except asyncio.TimeoutError:
                 continue
 
+    async def send_ping():
+        """Send PING messages every 30 seconds to keep connection alive."""
+        while not agent_finished.is_set() and not disconnected.is_set():
+            await asyncio.sleep(30)  # Send ping every 30 seconds
+            if not agent_finished.is_set() and not disconnected.is_set():
+                try:
+                    await ws_send({"type": "websocket.send", "text": json.dumps({"type": "PING"})})
+                except Exception:
+                    # Connection likely closed, stop pinging
+                    break
+
     send_task = asyncio.create_task(send_outgoing())
     recv_task = asyncio.create_task(receive_incoming())
+    ping_task = asyncio.create_task(send_ping())
 
     while not agent_finished.is_set():
         await asyncio.sleep(0.05)
 
-    # Cancel recv task (send_task drains remaining messages)
+    # Cancel all tasks
     recv_task.cancel()
+    ping_task.cancel()
     try:
         await recv_task
+    except asyncio.CancelledError:
+        pass
+    try:
+        await ping_task
     except asyncio.CancelledError:
         pass
     await send_task

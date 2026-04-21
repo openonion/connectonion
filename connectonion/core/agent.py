@@ -277,7 +277,9 @@ class Agent:
             uploads_dir.mkdir(parents=True, exist_ok=True)
             for f in files:
                 safe_name = Path(f["name"]).name
-                file_path = uploads_dir / safe_name
+                # Add timestamp prefix to avoid collisions
+                prefix = str(int(time.time()))
+                file_path = uploads_dir / f"{prefix}_{safe_name}"
                 # Decode base64 data URL and write to disk
                 data_url = f["data"]
                 if "," in data_url:
@@ -291,20 +293,16 @@ class Agent:
             names = [Path(p).name for p in saved_files]
             self.logger.console.print(f"  [dim]↑ {len(saved_files)} file(s): {', '.join(names)}[/dim]")
 
-        # Build file reminder as separate content item
-        file_reminder = None
+        # Append file paths to prompt so the agent knows about uploaded files
         if saved_files:
             file_list = "\n".join(f"- {p}" for p in saved_files)
-            file_reminder = f"<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
+            prompt += f"\n\n<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
 
-        # Add user message to conversation (multimodal if images or files provided)
-        if images or file_reminder:
+        # Add user message to conversation (multimodal if images provided)
+        if images:
             content = [{"type": "text", "text": prompt}]
-            if images:
-                for img in images:
-                    content.append({"type": "image_url", "image_url": {"url": img}})
-            if file_reminder:
-                content.append({"type": "text", "text": file_reminder})
+            for img in images:
+                content.append({"type": "image_url", "image_url": {"url": img}})
             self.current_session['messages'].append({"role": "user", "content": content})
         else:
             self.current_session['messages'].append({"role": "user", "content": prompt})

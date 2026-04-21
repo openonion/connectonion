@@ -52,12 +52,10 @@ def test_prompt_context_and_assemble(tmp_path):
     )
 
     assert "Hello World" in out
+    assert "Tool? yes" in out
     assert "Foo tool is foo" in out
-    # workflow.md, index, and examples are loaded on-demand by system_reminder plugin,
-    # not during base prompt assembly
-    assert "Tool? yes" not in out
-    assert "Index" not in out
-    assert "Example" not in out
+    assert "Index" in out
+    assert "Example" in out
 
     reminder = load_reminder(str(prompts), "plan_mode", extra_vars={"PROJECT": "Test"})
     assert reminder.startswith("<system-reminder>")
