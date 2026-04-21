@@ -34,27 +34,23 @@ Created by `co create` or `co init`. Contains project-specific runtime data.
 
 ## host.yaml Reference
 
-The `host.yaml` file exists only in the global `~/.co/` directory:
+The project `.co/host.yaml` configures `host()` and `co deploy`:
 
 ```yaml
-connectonion:
-  framework_version: "0.0.7"
-  created: "2025-01-15T10:30:00.000000"
-
-cli:
-  version: "1.0.0"
-
-agent:
-  address: "0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
-  short_address: "0x7a9f...7f8a"
-  email: "0x7a9f3b2c@mail.openonion.ai"
-  created_at: "2025-01-15T10:30:00.000000"
-  algorithm: ed25519
-  default_model: "co/gemini-2.5-pro"
-  max_iterations: 10
-
-auth:
-  token: "eyJhbGciOiJI..."  # JWT for network auth
+name: my-agent
+entrypoint: agent.py
+env: .env
+trust: careful
+port: 8000
+workers: 1
+relay_url: wss://oo.openonion.ai
+permissions:
+  "read_file":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
 ```
 
 ## Keys Directory
