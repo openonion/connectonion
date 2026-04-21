@@ -152,7 +152,7 @@ class TestHandleResetDeletion:
     @patch('connectonion.cli.commands.reset_commands.Prompt.ask')
     @patch('connectonion.cli.commands.reset_commands.address')
     @patch('connectonion.cli.commands.reset_commands.authenticate')
-    def test_reset_deletes_config_toml(self, mock_auth, mock_address, mock_ask, mock_console):
+    def test_reset_deletes_host_yaml(self, mock_auth, mock_address, mock_ask, mock_console):
         """Test reset deletes ~/.co/host.yaml."""
         mock_ask.return_value = 'Y'
         mock_auth.return_value = True
