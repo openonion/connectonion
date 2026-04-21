@@ -29,7 +29,6 @@ $ co create my-first-agent
   ✓ Generating master keypair
   ✓ Your address: 0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a
   ✓ Your email: 0x7a9f3b2c@mail.openonion.ai
-  ✓ Creating ~/.co/host.yaml
   ✓ Creating ~/.co/keys.env (ready for your API keys)
 
 🧅 ConnectOnion Project Creator

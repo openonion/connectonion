@@ -160,7 +160,7 @@ The `.co` directory follows ConnectOnion's philosophy of progressive disclosure:
 
 ### View Your Agent Address
 ```bash
-cat ~/.co/host.yaml | grep address
+grep AGENT_ADDRESS ~/.co/keys.env
 ```
 
 ### Backup Your Identity
@@ -173,11 +173,6 @@ cat ~/.co/keys/recovery.txt
 ### Add API Key
 ```bash
 echo "NEW_API_KEY=xxx" >> ~/.co/keys.env
-```
-
-### Check Framework Version
-```bash
-cat ~/.co/host.yaml | grep framework_version
 ```
 
 ## FAQ

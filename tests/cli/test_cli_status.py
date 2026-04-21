@@ -2,7 +2,6 @@
 
 Tests cover:
 - _load_api_key: Load API key from env var, .env, ~/.co/keys.env
-- _load_config: Load config from .co/host.yaml or ~/.co/host.yaml
 - handle_status: Display account status without re-authenticating
 """
 
@@ -90,65 +89,6 @@ class TestLoadApiKey:
                         from connectonion.cli.commands.status_commands import _load_api_key
                         result = _load_api_key()
                         # Should be None or empty when not found
-            finally:
-                os.chdir(original_cwd)
-
-
-class TestLoadConfig:
-    """Tests for _load_config function."""
-
-    def test_load_config_from_local(self):
-        """Test loading config from local .co/host.yaml."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            original_cwd = os.getcwd()
-            os.chdir(tmpdir)
-
-            # Create local config
-            co_dir = Path(tmpdir) / ".co"
-            co_dir.mkdir()
-            config_file = co_dir / "host.yaml"
-            config_file.write_text('name: local-agent\nentrypoint: agent.py\n')
-
-            try:
-                from connectonion.cli.commands.status_commands import _load_config
-                result = _load_config()
-                assert result.get("name") == "local-agent"
-            finally:
-                os.chdir(original_cwd)
-
-    def test_load_config_from_global(self):
-        """Test loading config from ~/.co/host.yaml when local doesn't exist."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            original_cwd = os.getcwd()
-            os.chdir(tmpdir)
-            fake_home = Path(tmpdir) / "fake_home"
-            fake_home.mkdir()
-            co_dir = fake_home / ".co"
-            co_dir.mkdir()
-            config_file = co_dir / "host.yaml"
-            config_file.write_text('agent:\n  name: global-agent\n')
-
-            try:
-                with patch.object(Path, 'home', return_value=fake_home):
-                    from connectonion.cli.commands.status_commands import _load_config
-                    result = _load_config()
-                    assert result.get("agent", {}).get("name") == "global-agent"
-            finally:
-                os.chdir(original_cwd)
-
-    def test_load_config_returns_empty_dict_when_not_found(self):
-        """Test _load_config returns empty dict when no config exists."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            original_cwd = os.getcwd()
-            os.chdir(tmpdir)
-            fake_home = Path(tmpdir) / "fake_home"
-            fake_home.mkdir()
-
-            try:
-                with patch.object(Path, 'home', return_value=fake_home):
-                    from connectonion.cli.commands.status_commands import _load_config
-                    result = _load_config()
-                    assert result == {}
             finally:
                 os.chdir(original_cwd)
 

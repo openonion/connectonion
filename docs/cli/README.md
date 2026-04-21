@@ -505,7 +505,6 @@ $ co create my-first-agent
 ✨ Setting up global configuration...
   ✓ Generated master keypair
   ✓ Your address: 0x7a9f...7f8a
-  ✓ Created ~/.co/host.yaml
   ✓ Created ~/.co/keys.env
 
 🔐 Authenticating with OpenOnion...

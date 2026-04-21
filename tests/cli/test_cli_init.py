@@ -256,23 +256,21 @@ class TestCliInit:
                 # Should have AGENT_ADDRESS (and possibly OPENONION_API_KEY from mock)
                 assert "AGENT_ADDRESS=" in content or "OPENONION_API_KEY=" in content
 
-    def test_init_uses_managed_model_by_default(self):
-        """Test that init sets default model to co/gemini-2.5-pro in global config."""
+    def test_init_creates_global_keys(self, tmp_path, monkeypatch):
+        """Test that init creates global ~/.co/keys/agent.key."""
+        fake_home = tmp_path / "fake_home"
+        fake_home.mkdir()
+        monkeypatch.setattr(Path, "home", lambda: fake_home)
+
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
             result = self.runner.invoke(cli, ['init'])
             assert result.exit_code == 0
 
-            # default_model is in global ~/.co/host.yaml, not project .co/host.yaml
-            global_config_path = Path.home() / ".co" / "host.yaml"
-            assert global_config_path.exists()
-            with open(global_config_path) as f:
-                global_config = yaml.safe_load(f)
-
-            # Should use managed model by default
-            agent_config = global_config.get("agent", {})
-            assert agent_config.get("default_model") == "co/gemini-2.5-pro"
+            # Global keys should exist
+            assert (fake_home / ".co" / "keys" / "agent.key").exists()
+            assert (fake_home / ".co" / "keys.env").exists()
 
     def test_init_creates_agent_config_path_in_env(self):
         """Test that init creates AGENT_CONFIG_PATH in .env file."""
@@ -334,8 +332,8 @@ class TestCliInit:
                 assert "Authentication with OpenOnion" in content
                 assert "@mail.openonion.ai" in content
 
-    def test_init_ensure_global_config_writes_yaml(self, tmp_path, monkeypatch):
-        """Test that ensure_global_config writes valid YAML to ~/.co/host.yaml."""
+    def test_init_ensure_global_config_creates_keys_env(self, tmp_path, monkeypatch):
+        """Test that ensure_global_config creates ~/.co/keys.env with agent address."""
         fake_home = tmp_path / "fake_home"
         fake_home.mkdir()
         monkeypatch.setattr(Path, "home", lambda: fake_home)
@@ -346,22 +344,12 @@ class TestCliInit:
             result = self.runner.invoke(cli, ['init'])
             assert result.exit_code == 0
 
-            global_config_path = fake_home / ".co" / "host.yaml"
-            assert global_config_path.exists()
+            keys_env = fake_home / ".co" / "keys.env"
+            assert keys_env.exists()
 
-            # Must be valid YAML, not TOML
-            with open(global_config_path) as f:
-                config = yaml.safe_load(f)
-
-            assert isinstance(config, dict)
-            assert "connectonion" in config
-            assert "agent" in config
-            assert config["agent"]["default_model"] == "co/gemini-2.5-pro"
-
-            # Verify it's YAML format (no TOML brackets)
-            raw = global_config_path.read_text()
-            assert "[connectonion]" not in raw
-            assert "[agent]" not in raw
+            content = keys_env.read_text()
+            assert "AGENT_ADDRESS=" in content
+            assert "AGENT_CONFIG_PATH=" in content
 
     def test_init_host_yaml_from_template(self):
         """Test that init generates host.yaml from network/host/host.yaml template."""
