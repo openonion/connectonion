@@ -1,10 +1,10 @@
 """
 Purpose: Deploy agent projects to ConnectOnion Cloud with git archive packaging and secrets management
 LLM-Note:
-  Dependencies: imports from [os, subprocess, tempfile, time, toml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
-  Data flow: handle_deploy() → validates git repo and .co/config.toml → _get_api_key() loads OPENONION_API_KEY → reads config.toml for project name and secrets path → dotenv_values() loads secrets from .env → git archive creates tarball of HEAD → POST to /api/v1/deploy with tarball + project_name + secrets → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
-  State/Effects: creates temporary tarball file in tempdir | reads .co/config.toml, .env files | makes network POST request | prints progress to stdout via rich.Console | does not modify project files
-  Integration: exposes handle_deploy() for CLI | expects git repo with .co/config.toml containing project.name, project.secrets, deploy.entrypoint | uses Bearer token auth | returns void (prints results)
+  Dependencies: imports from [os, subprocess, tempfile, time, toml, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
+  Data flow: handle_deploy() → validates git repo and .co/config.toml → loads optional host.yaml config → _get_api_key() loads OPENONION_API_KEY → reads config.toml for project name and secrets path → host.yaml config can override entrypoint → dotenv_values() loads secrets from .env → git archive creates tarball of HEAD → POST to /api/v1/deploy with tarball + project_name + secrets → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
+  State/Effects: creates temporary tarball file in tempdir | reads .co/config.toml, host.yaml, .env files | makes network POST request | prints progress to stdout via rich.Console | does not modify project files
+  Integration: exposes handle_deploy() for CLI | supports --config/-c option to specify host.yaml path | expects git repo with .co/config.toml containing project.name, project.secrets, deploy.entrypoint | host.yaml can override entrypoint | uses Bearer token auth | returns void (prints results)
   Performance: git archive is fast | network timeout 600s for upload+build, 10s for status checks | polls every 3s up to 100 times (~5 min)
   Errors: fails if not git repo | fails if not ConnectOnion project (.co/config.toml missing) | fails if no API key | prints backend error messages
 """
@@ -16,14 +16,41 @@ import subprocess
 import tempfile
 import time
 import toml
+import yaml
 import requests
 from pathlib import Path
 from rich.console import Console
 from dotenv import dotenv_values, load_dotenv
+from typing import Optional
 
 console = Console()
 
 API_BASE = "https://oo.openonion.ai"
+
+
+def _load_host_config(config_path: Optional[str] = None) -> dict:
+    """Load host.yaml configuration file.
+    
+    Args:
+        config_path: Path to config file. If None, defaults to host.yaml in current directory.
+    
+    Returns:
+        Dict with configuration values.
+    """
+    if config_path is None:
+        config_path = "host.yaml"
+    
+    config_file = Path(config_path)
+    if not config_file.exists():
+        return {}
+    
+    try:
+        with open(config_file, "r") as f:
+            config = yaml.safe_load(f)
+        return config if config else {}
+    except yaml.YAMLError as e:
+        console.print(f"[yellow]Warning: Failed to parse {config_path}: {e}[/yellow]")
+        return {}
 
 
 def _check_host_export(entrypoint: str) -> bool:
@@ -63,11 +90,20 @@ def _get_api_key() -> str:
     return None
 
 
-def handle_deploy():
-    """Deploy agent to ConnectOnion Cloud."""
+def handle_deploy(config_path: Optional[str] = None):
+    """Deploy agent to ConnectOnion Cloud.
+    
+    Args:
+        config_path: Path to config file (default: host.yaml)
+    """
     console.print("\n[cyan]Deploying to ConnectOnion Cloud...[/cyan]\n")
 
     project_dir = Path.cwd()
+
+    # Load host.yaml configuration
+    host_config = _load_host_config(config_path)
+    if host_config:
+        console.print(f"[dim]Loaded config: {config_path or 'host.yaml'}[/dim]")
 
     # Must be a git repo
     if not (project_dir / ".git").exists():
@@ -75,8 +111,8 @@ def handle_deploy():
         return
 
     # Must be a ConnectOnion project
-    config_path = Path(".co") / "config.toml"
-    if not config_path.exists():
+    config_path_obj = Path(".co") / "config.toml"
+    if not config_path_obj.exists():
         console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
         return
 
@@ -86,10 +122,24 @@ def handle_deploy():
         console.print("[red]No API key. Run 'co auth' first.[/red]")
         return
 
-    config = toml.load(config_path)
+    config = toml.load(config_path_obj)
+    
+    # Get values from config.toml
     project_name = config.get("project", {}).get("name", "unnamed-agent")
     secrets_path = config.get("project", {}).get("secrets", ".env")
     entrypoint = config.get("deploy", {}).get("entrypoint", "agent.py")
+    
+    # Override with host.yaml config if present
+    if host_config:
+        # Project name from host.yaml (summary can serve as name)
+        if "summary" in host_config and not config.get("project", {}).get("name"):
+            project_name = host_config["summary"].split()[0].lower().replace(" ", "-")
+        # Entrypoint
+        if "entrypoint" in host_config:
+            entrypoint = host_config["entrypoint"]
+        # Port (informational)
+        if "port" in host_config:
+            port = host_config["port"]
 
     # Validate entrypoint exists
     if not Path(entrypoint).exists():

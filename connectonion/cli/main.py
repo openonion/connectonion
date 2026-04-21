@@ -97,10 +97,12 @@ def create(
 
 
 @app.command()
-def deploy():
+def deploy(
+    config: Optional[str] = typer.Option(None, "--config", "-c", help="Config file (default: host.yaml)"),
+):
     """Deploy to ConnectOnion Cloud."""
     from .commands.deploy_commands import handle_deploy
-    handle_deploy()
+    handle_deploy(config_path=config)
 
 
 @app.command()
