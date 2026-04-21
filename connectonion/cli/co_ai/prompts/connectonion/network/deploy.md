@@ -53,28 +53,85 @@ Re-deploying the same project updates the same URL (like Heroku).
 ### How It Works
 
 ```
-co deploy → Upload source → We build and run → Returns URL
+co deploy → Upload git archive → Build Docker image → Run container → Returns URL
 ```
 
-You upload source code, we handle the rest.
+You upload source code, we handle the rest. Each deploy creates a new version (keeps last 5).
 
 ### Configuration
 
 ```yaml
 # .co/host.yaml
-name: my-agent
-entrypoint: agent.py
-env: .env
+name: my-agent          # Project name (used in URL)
+entrypoint: agent.py    # Script to run in container
+env: .env               # Environment file to load
+trust: careful          # Trust level for incoming requests
+
+# Agent info — displayed on the frontend landing page
+summary: "What your agent does"
+examples:
+  - "Example prompt 1"
+  - "Example prompt 2"
 ```
 
 ### Environment Variables
 
-Environment variables from `.env` are securely passed to your agent:
+Variables from your `.env` file are securely passed to your agent container:
 
 ```bash
 # .env
-OPENAI_API_KEY=sk-xxx
+OPENONION_API_KEY=eyJ...    # Required for co/ models
+OPENAI_API_KEY=sk-xxx       # Third-party API keys
 DATABASE_URL=postgres://...
+```
+
+---
+
+## After Deployment
+
+### Access Your Agent
+
+Your deployed agent exposes these endpoints:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/input` | POST | Send prompt, get response |
+| `/ws` | WebSocket | Real-time streaming |
+| `/info` | GET | Agent metadata (name, tools, trust, examples) |
+| `/health` | GET | Health check |
+| `/docs` | GET | Interactive API docs |
+| `/admin/logs` | GET | Activity logs (requires API key) |
+
+### Frontend (oo-chat)
+
+Users can interact with your agent at:
+
+```
+https://chat.openonion.ai/{your_agent_address}
+```
+
+The landing page shows:
+- Agent name, model, trust level
+- Tools and skills your agent has
+- `summary` and `examples` from `host.yaml` as suggested prompts
+- Chat input for conversation
+
+### Connect from Code
+
+**Python SDK:**
+```python
+from connectonion import connect
+
+agent = connect("0x7a9f3b2c...")
+response = agent.input("Hello!")
+print(response.text)
+```
+
+**HTTP:**
+```bash
+curl -X POST https://my-agent-0x7a9f3b2c.agents.openonion.ai/input \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Hello"}'
 ```
 
 ---
