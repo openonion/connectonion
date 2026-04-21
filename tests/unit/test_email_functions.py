@@ -237,9 +237,12 @@ def test_mark_read_api_error(mock_post):
 
 
 # -------- helper function tests -------- #
+# Note: We patch 'yaml.safe_load' globally instead of
+# 'connectonion.useful_tools.send_email.yaml.safe_load' because
+# __init__.py re-exports the send_email function, shadowing the module name.
 
 @patch('pathlib.Path.exists')
-@patch('connectonion.useful_tools.send_email.yaml.safe_load')
+@patch('yaml.safe_load')
 @patch('builtins.open', new_callable=mock_open)
 def test_get_agent_email(mock_file, mock_yaml_load, mock_exists):
     mock_exists.return_value = True
@@ -249,7 +252,7 @@ def test_get_agent_email(mock_file, mock_yaml_load, mock_exists):
 
 
 @patch('pathlib.Path.exists')
-@patch('connectonion.useful_tools.send_email.yaml.safe_load')
+@patch('yaml.safe_load')
 @patch('builtins.open', new_callable=mock_open)
 def test_get_agent_email_generated(mock_file, mock_yaml_load, mock_exists):
     mock_exists.return_value = True
@@ -259,7 +262,7 @@ def test_get_agent_email_generated(mock_file, mock_yaml_load, mock_exists):
 
 
 @patch('pathlib.Path.exists')
-@patch('connectonion.useful_tools.send_email.yaml.safe_load')
+@patch('yaml.safe_load')
 @patch('builtins.open', new_callable=mock_open)
 def test_is_email_active(mock_file, mock_yaml_load, mock_exists):
     mock_exists.return_value = True

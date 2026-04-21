@@ -1,7 +1,7 @@
 """
 Purpose: Authenticate with OpenOnion backend using Ed25519 signature-based authentication to obtain JWT for managed keys
 LLM-Note:
-  Dependencies: imports from [sys, time, toml, requests, pathlib, rich.console, rich.progress, rich.panel, address] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | calls backend at [https://api.openonion.ai/api/auth/login] | tested by [tests/cli/test_cli_auth.py]
+  Dependencies: imports from [sys, time, yaml, requests, pathlib, rich.console, rich.progress, rich.panel, address] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | calls backend at [https://api.openonion.ai/api/auth/login] | tested by [tests/cli/test_cli_auth.py]
   Data flow: receives co_dir: Path from caller → address.load(co_dir) reads Ed25519 keypair from .co/keys/ → creates auth message with timestamp → address.sign() creates signature → POST to /api/auth/login with {public_key, message, signature, timestamp} → backend verifies signature → receives JWT token → saves to ~/.co/keys.env as OPENONION_API_KEY → optionally saves to project .env if save_to_project=True → displays balance and email status → returns success bool
   State/Effects: modifies ~/.co/keys.env (adds/updates OPENONION_API_KEY and AGENT_EMAIL) | optionally modifies project .env if save_to_project=True | makes network POST request to api.openonion.ai | chmod 0o600 on .env files (Unix/Mac) | writes to stdout via rich.Console with progress spinner | updates ~/.co/host.yaml with email_active status
   Integration: exposes handle_auth() for CLI and authenticate(co_dir, save_to_project) for programmatic use | called by init.py and create.py during project setup | relies on address module for Ed25519 keypair operations | uses requests for HTTP calls | displays Rich progress spinner during network call | backend creates account on first auth (no separate registration)
@@ -232,12 +232,11 @@ def handle_auth():
         use_global = True
 
         if not co_dir.exists() or not (co_dir / "keys" / "agent.key").exists():
-            console.print("\n❌ [bold red]No agent keys found[/bold red]")
-            console.print("\n[cyan]Initialize ConnectOnion first:[/cyan]")
-            console.print("  [bold]co init[/bold]     Add to current directory")
-            console.print("  [bold]co create[/bold]   Create new project folder")
-            console.print("\n[dim]Both set up ~/.co/ with your keys[/dim]\n")
-            return
+            # Auto-create global config with keypair
+            console.print("\n[cyan]No agent keys found. Setting up global configuration...[/cyan]")
+            from .init import ensure_global_config
+            ensure_global_config()
+            co_dir = Path.home() / ".co"
         else:
             console.print("📂 Using global ConnectOnion keys (~/.co)", style="cyan")
 

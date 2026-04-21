@@ -11,6 +11,19 @@ Run:
     # Full cycle: deploy → verify → delete
     DEPLOY_API_URL=https://oo.openonion.ai pytest tests/e2e/test_deploy.py::test_deploy_and_cleanup -v -s
 """
+"""
+LLM-Note: E2E tests for agent deployment
+
+What it tests:
+- get_auth_token: JWT authentication with Ed25519 signing
+- Agent deployment workflow to production infrastructure
+- Full lifecycle: deploy → verify → cleanup
+- Requires DEPLOY_API_URL environment variable
+
+Components under test:
+- connectonion.cli.commands.deploy_commands (deployment infrastructure)
+- Production deployment API integration
+"""
 
 import io
 import json
@@ -48,12 +61,12 @@ def get_auth_token(api_url: str) -> str:
     signed = signing_key.sign(message.encode())
     signature = signed.signature.hex()
 
-    r = requests.post(
+    response = requests.post(
         f"{api_url}/api/v1/auth",
         json={"public_key": public_key, "signature": signature, "message": message},
         timeout=10,
     )
-    return r.json().get("token")
+    return response.json().get("token")
 
 
 def create_agent_tarball(api_key: str = "") -> io.BytesIO:
@@ -87,7 +100,7 @@ agent = Agent(
 )
 
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", 8000))
+    port = int(os.getenv("PORT", 8080))
     host(agent, port=port, trust="open")
 '''
         info = tarfile.TarInfo(name="agent.py")
@@ -108,13 +121,13 @@ def wait_for_running(api_url: str, deployment_id: str, headers: dict, timeout: i
     """Wait for deployment to be running."""
     start = time.time()
     while time.time() - start < timeout:
-        r = requests.get(
+        response = requests.get(
             f"{api_url}/api/v1/deploy/{deployment_id}/status",
             headers=headers,
             timeout=10,
         )
-        if r.status_code == 200:
-            data = r.json()
+        if response.status_code == 200:
+            data = response.json()
             status = data.get("status")
             if status == "running":
                 return data
@@ -152,16 +165,16 @@ def test_deploy_manual(api_url):
     env_vars = json.dumps({"OPENONION_API_KEY": auth_token})
 
     print(f"\nDeploying {project_name}...")
-    r = requests.post(
+    response = requests.post(
         f"{api_url}/api/v1/deploy",
         files={"package": ("agent.tar.gz", tarball, "application/gzip")},
         data={"project_name": project_name, "entrypoint": "agent.py", "env_vars": env_vars},
         headers=auth_headers,
         timeout=300,
     )
-    assert r.status_code == 200, f"Deploy failed: {r.text}"
+    assert response.status_code == 200, f"Deploy failed: {response.text}"
 
-    result = r.json()
+    result = response.json()
     deployment_id = result.get("id")
     url = result.get("url")
 
@@ -196,16 +209,16 @@ def test_deploy_and_cleanup(api_url):
 
     # 1. Deploy
     print(f"\n1. Deploying {project_name}...")
-    r = requests.post(
+    response = requests.post(
         f"{api_url}/api/v1/deploy",
         files={"package": ("agent.tar.gz", tarball, "application/gzip")},
         data={"project_name": project_name, "entrypoint": "agent.py", "env_vars": env_vars},
         headers=auth_headers,
         timeout=300,
     )
-    assert r.status_code == 200, f"Deploy failed: {r.text}"
+    assert response.status_code == 200, f"Deploy failed: {response.text}"
 
-    result = r.json()
+    result = response.json()
     deployment_id = result.get("id")
     url = result.get("url")
     print(f"   ID: {deployment_id}")
@@ -261,7 +274,7 @@ def test_deploy_and_cleanup(api_url):
     print("7. Verifying Caddy route removed...")
     time.sleep(2)
     try:
-        r = requests.get(f"{url}/health", timeout=10)
+        response = requests.get(f"{url}/health", timeout=10)
         assert r.status_code != 200, f"Agent still accessible after delete: {r.status_code}"
         print(f"   Route removed (got {r.status_code})")
     except requests.exceptions.RequestException as e:
