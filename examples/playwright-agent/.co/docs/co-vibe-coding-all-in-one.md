@@ -79,7 +79,7 @@ my-project/
 ├── prompt.md          # System prompt (markdown)
 ├── .env.example       # Environment variables template
 ├── .co/               # ConnectOnion metadata
-│   ├── host.yaml    # Project configuration
+│   ├── config.toml    # Project configuration
 │   └── docs/
 │       └── connectonion.md  # Embedded framework documentation
 └── .gitignore         # Git ignore rules (if in git repo)

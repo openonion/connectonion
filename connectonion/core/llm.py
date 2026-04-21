@@ -102,7 +102,7 @@ Required (pick one):
   - OPENAI_API_KEY: For OpenAI models
   - ANTHROPIC_API_KEY: For Claude models
   - GEMINI_API_KEY or GOOGLE_API_KEY: For Gemini models
-  - OPENONION_API_KEY: For co/ managed keys (or from ~/.co/host.yaml)
+  - OPENONION_API_KEY: For co/ managed keys (from .env or ~/.co/keys.env)
   - GROQ_API_KEY: For groq/ prefixed models
   - OPENROUTER_API_KEY: For openrouter/ prefixed models
   - OPENROUTER_HTTP_REFERER: Optional attribution header for OpenRouter

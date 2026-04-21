@@ -131,27 +131,6 @@ my-agent/
 
 Note: Projects use global address/email by default.
 
-## Configuration Files
-
-### Project Config (`.co/host.yaml`)
-
-```yaml
-name: my-agent
-entrypoint: agent.py
-env: .env
-```
-
-### API Keys (`.env`)
-
-Automatically copied from `~/.co/keys.env`:
-
-```bash
-# my-agent/.env
-OPENAI_API_KEY=sk-proj-xxx
-ANTHROPIC_API_KEY=sk-ant-xxx
-# Any other keys from global config
-```
-
 ## Address and Email Management
 
 All projects use the global identity (address + email) from `~/.co`. Run `co status` to view your address and email.

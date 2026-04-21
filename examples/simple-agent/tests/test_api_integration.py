@@ -22,7 +22,7 @@ import os
 import sys
 import time
 import json
-import yaml
+import toml
 import requests
 from pathlib import Path
 
@@ -48,7 +48,7 @@ def test_authentication():
     print("  • Ed25519 signature-based authentication")
     print("  • Timestamped message signing")
     print("  • JWT token retrieval")
-    print("  • Token persistence to host.yaml\n")
+    print("  • Token persistence to config.toml\n")
 
     # Load agent keys
     co_dir = Path(".co")
@@ -98,20 +98,16 @@ def test_authentication():
             print(f"   Token: {token[:30]}...")
 
             # Save token to config
-            config_path = co_dir / "host.yaml"
-            if config_path.exists():
-                with open(config_path) as f:
-                    config = yaml.safe_load(f) or {}
-            else:
-                config = {}
+            config_path = co_dir / "config.toml"
+            config = toml.load(config_path) if config_path.exists() else {}
             if "auth" not in config:
                 config["auth"] = {}
             config["auth"]["token"] = token
 
             with open(config_path, "w") as f:
-                yaml.dump(config, f, default_flow_style=False)
+                toml.dump(config, f)
 
-            print(f"💾 Token saved to .co/host.yaml")
+            print(f"💾 Token saved to .co/config.toml")
             return token
         else:
             print(f"❌ Authentication failed: {response.status_code}")
@@ -139,14 +135,13 @@ def test_co_o4_mini(token=None):
     print("  • Simple completion API call\n")
 
     # Check for config
-    config_path = Path(".co/host.yaml")
+    config_path = Path(".co/config.toml")
     if not config_path.exists():
-        print("❌ No config found at .co/host.yaml")
+        print("❌ No config found at .co/config.toml")
         print("   Run authentication test first")
         return False
 
-    with open(config_path) as f:
-        config = yaml.safe_load(f) or {}
+    config = toml.load(config_path)
     if "auth" not in config or "token" not in config["auth"]:
         print("❌ No auth token in config")
         print("   Run authentication test first")
@@ -295,16 +290,15 @@ def test_full_integration():
 
             # Update config with email info
             co_dir = Path(".co")
-            config_path = co_dir / "host.yaml"
-            with open(config_path) as f:
-                config = yaml.safe_load(f) or {}
+            config_path = co_dir / "config.toml"
+            config = toml.load(config_path)
             if "agent" not in config:
                 config["agent"] = {}
             config["agent"]["email"] = data["agent_email"]
             config["agent"]["email_active"] = True
 
             with open(config_path, "w") as f:
-                yaml.dump(config, f, default_flow_style=False)
+                toml.dump(config, f)
 
             print(f"✅ Email settings updated in config")
             email_ok = True

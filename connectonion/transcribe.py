@@ -69,14 +69,6 @@ def _get_api_key(model: str) -> str:
         # Use OpenOnion managed keys
         api_key = os.getenv("OPENONION_API_KEY")
         if not api_key:
-            # Try loading from config file
-            config_path = Path.home() / ".co" / "host.yaml"
-            if config_path.exists():
-                import yaml
-                with open(config_path) as f:
-                    config = yaml.safe_load(f) or {}
-                api_key = config.get("auth", {}).get("jwt_token")
-        if not api_key:
             raise ValueError(
                 "OpenOnion API key required for co/ models. "
                 "Run `co auth` to authenticate or set OPENONION_API_KEY."

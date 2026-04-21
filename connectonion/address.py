@@ -226,15 +226,12 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
 
         config_path = co_dir / "host.yaml"
         if config_path.exists():
-            try:
-                import yaml
-                with open(config_path, 'r') as f:
-                    config = yaml.safe_load(f) or {}
-                if "agent" in config:
-                    email = config["agent"].get("email", email)
-                    email_active = config["agent"].get("email_active", False)
-            except Exception:
-                pass  # Use defaults if config reading fails
+            import yaml
+            with open(config_path, 'r') as f:
+                config = yaml.safe_load(f) or {}
+            if "agent" in config:
+                email = config["agent"].get("email", email)
+                email_active = config["agent"].get("email_active", False)
         
         result = {
             "address": address,
