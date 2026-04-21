@@ -13,6 +13,7 @@ import os
 import sys
 import time
 import base64
+from contextvars import ContextVar
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
 from .llm import LLM, create_llm, TokenUsage
@@ -26,6 +27,10 @@ from ..debug.decorators import (
 from ..logger import Logger
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .events import EventHandler
+
+
+# ContextVar so child agents created during tool execution inherit parent IO
+_parent_io: ContextVar = ContextVar('_parent_io', default=None)
 
 
 class Agent:
@@ -55,7 +60,8 @@ class Agent:
         self.current_session = None
 
         # I/O to client (None locally, injected by host() for WebSocket)
-        self.io = None
+        # Child agents inherit parent IO via ContextVar
+        self.io = _parent_io.get()
 
         # Session storage (None locally, injected by host() for persistence)
         self.storage = None
@@ -325,11 +331,18 @@ class Agent:
         # Invoke after_user_input events
         self._invoke_events('after_user_input')
 
+        # Propagate IO to child agents via ContextVar
+        _token = _parent_io.set(self.io) if self.io else None
+
         # Process
         self.current_session['iteration'] = 0  # Reset iteration for this turn
-        result = self._run_iteration_loop(
-            max_iterations or self.max_iterations
-        )
+        try:
+            result = self._run_iteration_loop(
+                max_iterations or self.max_iterations
+            )
+        finally:
+            if _token is not None:
+                _parent_io.reset(_token)
 
         # Calculate duration
         duration = time.time() - turn_start
