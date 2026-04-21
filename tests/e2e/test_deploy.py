@@ -35,25 +35,11 @@ pytestmark = [
 
 
 def get_auth_token(api_url: str) -> str:
-    """Authenticate and get JWT token using test keys."""
-    from nacl.signing import SigningKey
-    from nacl.encoding import HexEncoder
-
-    private_key = "a" * 64
-    signing_key = SigningKey(private_key, encoder=HexEncoder)
-    public_key = signing_key.verify_key.encode(encoder=HexEncoder).decode()
-
-    timestamp = int(time.time())
-    message = f"ConnectOnion-Auth-{public_key}-{timestamp}"
-    signed = signing_key.sign(message.encode())
-    signature = signed.signature.hex()
-
-    r = requests.post(
-        f"{api_url}/api/v1/auth",
-        json={"public_key": public_key, "signature": signature, "message": message},
-        timeout=10,
-    )
-    return r.json().get("token")
+    """Get auth token from OPENONION_API_KEY env var (existing account)."""
+    token = os.getenv("OPENONION_API_KEY")
+    if not token:
+        pytest.skip("Set OPENONION_API_KEY to run deploy tests")
+    return token
 
 
 def create_agent_tarball(api_key: str = "") -> io.BytesIO:
@@ -104,14 +90,14 @@ if __name__ == "__main__":
     return tarball
 
 
-def wait_for_running(api_url: str, deployment_id: str, headers: dict, timeout: int = 180) -> dict:
+def wait_for_running(api_url: str, deployment_id: str, headers: dict, timeout: int = 300) -> dict:
     """Wait for deployment to be running."""
     start = time.time()
     while time.time() - start < timeout:
         r = requests.get(
             f"{api_url}/api/v1/deploy/{deployment_id}/status",
             headers=headers,
-            timeout=10,
+            timeout=30,
         )
         if r.status_code == 200:
             data = r.json()
@@ -218,8 +204,19 @@ def test_deploy_and_cleanup(api_url):
 
     # 3. Verify agent health endpoint (confirms Caddy routing + SSL works)
     print("3. Verifying agent health...")
-    time.sleep(5)  # Wait for Caddy SSL cert
-    r = requests.get(f"{url}/health", timeout=30)
+    # Caddy needs time to obtain Let's Encrypt cert for new subdomain
+    for attempt in range(6):
+        time.sleep(10)
+        try:
+            r = requests.get(f"{url}/health", timeout=30)
+            if r.status_code == 200:
+                break
+        except requests.exceptions.SSLError:
+            print(f"   SSL not ready (attempt {attempt + 1}/6)...")
+            continue
+        except requests.exceptions.ConnectionError:
+            print(f"   Connection not ready (attempt {attempt + 1}/6)...")
+            continue
     assert r.status_code == 200, f"Health check failed: {r.text}"
     health = r.json()
     assert health.get("status") == "healthy", f"Unhealthy: {health}"
@@ -227,10 +224,17 @@ def test_deploy_and_cleanup(api_url):
 
     # 4. Verify agent input endpoint (confirms full agent + tools work)
     print("4. Verifying agent input...")
+    # /input requires signed requests (ConnectOnion protocol)
+    from connectonion import address as addr
+    keys = addr.generate()
+    prompt = "what is 5*5?"
+    payload = {"prompt": prompt, "timestamp": int(time.time())}
+    canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
+    signature = addr.sign(keys, canonical.encode())
     r = requests.post(
         f"{url}/input",
-        json={"prompt": "what is 5*5?"},
-        timeout=60,
+        json={"payload": payload, "from": keys["address"], "signature": signature.hex(), "prompt": prompt},
+        timeout=120,
     )
     assert r.status_code == 200, f"Input failed: {r.text}"
     result = r.json()
@@ -242,7 +246,7 @@ def test_deploy_and_cleanup(api_url):
     r = requests.delete(
         f"{api_url}/api/v1/deploy/{deployment_id}",
         headers=auth_headers,
-        timeout=30,
+        timeout=60,
     )
     assert r.status_code == 200, f"Delete failed: {r.text}"
     print("   Deleted")
@@ -252,7 +256,7 @@ def test_deploy_and_cleanup(api_url):
     r = requests.get(
         f"{api_url}/api/v1/deploy/{deployment_id}",
         headers=auth_headers,
-        timeout=10,
+        timeout=30,
     )
     assert r.status_code == 404, f"Still exists: {r.text}"
     print("   Verified (404)")
