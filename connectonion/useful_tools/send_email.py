@@ -184,24 +184,8 @@ def get_agent_email() -> Optional[str]:
 
 def is_email_active() -> bool:
     """Check if the agent's email is activated.
-    
+
     Returns:
         bool: True if email is activated, False otherwise
     """
-    co_dir = Path(".co")
-    if not co_dir.exists():
-        co_dir = Path("../.co")
-        if not co_dir.exists():
-            return False
-    
-    config_path = co_dir / "host.yaml"
-    if not config_path.exists():
-        return False
-
-    try:
-        with open(config_path, 'r') as f:
-            config = yaml.safe_load(f) or {}
-        agent_config = config.get("agent", {})
-        return agent_config.get("email_active", False)
-    except Exception:
-        return False
+    return os.getenv("AGENT_EMAIL_ACTIVE", "").lower() == "true"

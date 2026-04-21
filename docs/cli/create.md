@@ -105,8 +105,7 @@ $ co create another-agent
 
 ```
 ~/.co/
-├── host.yaml          # Global configuration with address & email
-├── keys.env             # Shared API keys
+├── keys.env             # Shared API keys and identity
 ├── keys/                # Master identity
 │   ├── agent.key        # Private key (for signing)
 │   └── recovery.txt     # Recovery phrase

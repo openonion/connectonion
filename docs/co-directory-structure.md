@@ -8,8 +8,7 @@ Created automatically on first `co` command. Stores your identity and shared API
 
 ```
 ~/.co/
-├── host.yaml          # Global configuration (address, default model)
-├── keys.env             # Shared API keys (.env format)
+├── keys.env             # Shared API keys and identity (.env format)
 ├── keys/                # Cryptographic identity
 │   ├── agent.key        # Ed25519 private key (NEVER SHARE)
 │   ├── recovery.txt     # 12-word recovery phrase

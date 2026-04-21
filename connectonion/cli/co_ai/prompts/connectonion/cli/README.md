@@ -434,8 +434,7 @@ On first use, ConnectOnion creates global configuration:
 
 ```
 ~/.co/
-├── host.yaml          # Global identity and settings
-├── keys.env             # Shared API keys
+├── keys.env             # Shared API keys and identity
 ├── keys/                # Master Ed25519 keypair
 │   ├── agent.key        # Private key (NEVER share)
 │   ├── agent.pub        # Public key

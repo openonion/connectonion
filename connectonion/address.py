@@ -3,7 +3,7 @@ Purpose: Generate and manage Ed25519 cryptographic agent identities with seed ph
 LLM-Note:
   Dependencies: imports from [os, pathlib, typing, nacl.signing, mnemonic] | imported by [cli/commands/auth_commands.py] | tested by [tests/test_address.py]
   Data flow: generate() → creates 12-word seed phrase via Mnemonic → derives SigningKey from seed → creates address (0x + hex public key) → returns {address, short_address, email, seed_phrase, signing_key} | recover(seed_phrase) → validates phrase → recreates SigningKey → recreates address
-  State/Effects: save() writes to .co/keys/ directory: agent.key (binary signing key), recovery.txt (seed phrase), DO_NOT_SHARE (warning) | sets file permissions to 0o600 | load() reads from .co/keys/ and .co/host.yaml | no global state
+  State/Effects: save() writes to .co/keys/ directory: agent.key (binary signing key), recovery.txt (seed phrase), DO_NOT_SHARE (warning) | sets file permissions to 0o600 | load() reads from .co/keys/ and env vars (AGENT_EMAIL, AGENT_EMAIL_ACTIVE) | no global state
   Integration: exposes generate(), recover(seed_phrase), save(address_data, co_dir), load(co_dir), verify(address, message, signature), sign(address_data, message) | address format: 0x + 64 hex chars (32 bytes public key) | email format: first 10 chars + @mail.openonion.ai
   Performance: Ed25519 signing is fast (sub-millisecond) | mnemonic generation and validation are fast | file I/O minimal (only on save/load)
   Errors: raises ImportError if pynacl or mnemonic not installed | raises ValueError for invalid recovery phrase | returns None for missing keys (graceful) | verify() returns False for invalid signatures
@@ -220,18 +220,9 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
         if recovery_file.exists():
             seed_phrase = recovery_file.read_text(encoding='utf-8').strip()
         
-        # Try to load email and activation status from host.yaml
-        email = f"{address[:10]}@mail.openonion.ai"  # Default
-        email_active = False  # Default to inactive
-
-        config_path = co_dir / "host.yaml"
-        if config_path.exists():
-            import yaml
-            with open(config_path, 'r') as f:
-                config = yaml.safe_load(f) or {}
-            if "agent" in config:
-                email = config["agent"].get("email", email)
-                email_active = config["agent"].get("email_active", False)
+        # Load email and activation status from environment
+        email = os.getenv("AGENT_EMAIL", f"{address[:10]}@mail.openonion.ai")
+        email_active = os.getenv("AGENT_EMAIL_ACTIVE", "").lower() == "true"
         
         result = {
             "address": address,

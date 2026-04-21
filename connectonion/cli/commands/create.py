@@ -42,15 +42,14 @@ from .project_cmd_lib import (
 console = Console()
 
 
-def ensure_global_config() -> Dict[str, Any]:
-    """Simple function to ensure ~/.co/ exists with global identity."""
+def ensure_global_config() -> None:
+    """Ensure ~/.co/ exists with global identity (keys + keys.env)."""
     global_dir = Path.home() / ".co"
-    config_path = global_dir / "host.yaml"
+    key_file = global_dir / "keys" / "agent.key"
 
-    # If exists, just load and return
-    if config_path.exists():
-        with open(config_path, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f) or {}
+    # If keys exist, already initialized
+    if key_file.exists():
+        return
 
     # First time - create global config
     console.print(f"\n🚀 Welcome to ConnectOnion!")
@@ -66,28 +65,6 @@ def ensure_global_config() -> Dict[str, Any]:
     address.save(addr_data, global_dir)
     console.print(f"  ✓ Generated master keypair")
     console.print(f"  ✓ Your address: {addr_data['short_address']}")
-
-    # Create config (simplified - address/email now in .env)
-    config = {
-        "connectonion": {
-            "framework_version": __version__,
-            "created": datetime.now().isoformat(),
-        },
-        "cli": {
-            "version": "1.0.0",
-        },
-        "agent": {
-            "algorithm": "ed25519",
-            "default_model": "co/gemini-2.5-pro",
-            "max_iterations": 10,
-            "created_at": datetime.now().isoformat(),
-        },
-    }
-
-    # Save config
-    with open(config_path, 'w', encoding='utf-8') as f:
-        yaml.dump(config, f, default_flow_style=False)
-    console.print(f"  ✓ Created ~/.co/host.yaml")
 
     # Create keys.env with config path and agent address
     keys_env = global_dir / "keys.env"
@@ -119,7 +96,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                   template: Optional[str], description: Optional[str], yes: bool):
     """Create a new ConnectOnion project in a new directory."""
     # Ensure global config exists first
-    global_config = ensure_global_config()
+    ensure_global_config()
 
     # Header removed for cleaner output
 

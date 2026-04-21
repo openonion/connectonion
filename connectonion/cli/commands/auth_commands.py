@@ -136,6 +136,7 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
             env_lines = []
             key_found = False
             email_found = False
+            email_active_found = False
             address_found = False
 
             # Read existing keys.env if it exists (preserve AGENT_ADDRESS)
@@ -149,6 +150,9 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
                         elif line.strip().startswith("AGENT_EMAIL="):
                             env_lines.append(f"AGENT_EMAIL={agent_email}\n")
                             email_found = True
+                        elif line.strip().startswith("AGENT_EMAIL_ACTIVE="):
+                            env_lines.append("AGENT_EMAIL_ACTIVE=true\n")
+                            email_active_found = True
                         elif line.strip().startswith("AGENT_ADDRESS="):
                             address_found = True
                             env_lines.append(line)  # Preserve existing address
@@ -171,6 +175,10 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
             # Add email if not found
             if not email_found:
                 env_lines.append(f"AGENT_EMAIL={agent_email}\n")
+
+            # Mark email as active after successful auth
+            if not email_active_found:
+                env_lines.append("AGENT_EMAIL_ACTIVE=true\n")
 
             # Add address if not found (ensure AGENT_ADDRESS is always in global keys.env)
             if not address_found:

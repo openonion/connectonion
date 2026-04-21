@@ -67,11 +67,6 @@ def handle_reset():
         shutil.rmtree(keys_dir)
         console.print("✓ Deleted ~/.co/keys/")
 
-    config_path = global_dir / "host.yaml"
-    if config_path.exists():
-        config_path.unlink()
-        console.print("✓ Deleted ~/.co/host.yaml")
-
     keys_env = global_dir / "keys.env"
     if keys_env.exists():
         keys_env.unlink()
@@ -97,35 +92,12 @@ def handle_reset():
         border_style="yellow"
     ))
 
-    # Create new config
-    from ... import __version__
-    from datetime import datetime
-
-    config = {
-        "connectonion": {
-            "framework_version": __version__,
-            "created": datetime.now().isoformat(),
-        },
-        "cli": {
-            "version": "1.0.0",
-        },
-        "agent": {
-            "address": addr_data["address"],
-            "short_address": addr_data["short_address"],
-            "email": f"{addr_data['address'][:10]}@mail.openonion.ai",
-            "email_active": False,
-            "created_at": datetime.now().isoformat(),
-            "algorithm": "ed25519",
-            "default_model": "co/gemini-2.5-pro",
-            "max_iterations": 10,
-        },
-    }
-
-    with open(config_path, 'w', encoding='utf-8') as f:
-        yaml.dump(config, f, default_flow_style=False)
-    console.print("✓ Created ~/.co/host.yaml")
-
-    keys_env.touch()
+    # Create keys.env with agent address
+    agent_email = f"{addr_data['address'][:10]}@mail.openonion.ai"
+    with open(keys_env, 'w', encoding='utf-8') as f:
+        f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
+        f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
+        f.write(f"AGENT_EMAIL={agent_email}\n")
     if sys.platform != 'win32':
         keys_env.chmod(0o600)
     console.print("✓ Created ~/.co/keys.env")

@@ -55,27 +55,6 @@ def _load_api_key() -> str:
     return None
 
 
-def _load_config() -> dict:
-    """Load config from .co/host.yaml or ~/.co/host.yaml.
-
-    Returns:
-        Config dict if found, empty dict otherwise
-    """
-    # Check local .co/host.yaml first
-    local_config = Path(".co") / "host.yaml"
-    if local_config.exists():
-        with open(local_config, 'r') as f:
-            return yaml.safe_load(f) or {}
-
-    # Check global ~/.co/host.yaml
-    global_config = Path.home() / ".co" / "host.yaml"
-    if global_config.exists():
-        with open(global_config, 'r') as f:
-            return yaml.safe_load(f) or {}
-
-    return {}
-
-
 def handle_status():
     """Check account status without re-authenticating.
 
@@ -94,10 +73,6 @@ def handle_status():
         console.print("\n[cyan]Authenticate first:[/cyan]")
         console.print("  [bold]co auth[/bold]     Authenticate with OpenOnion\n")
         return
-
-    # Load config for agent info
-    config = _load_config()
-    agent_info = config.get("agent", {})
 
     import time
     from ... import address
