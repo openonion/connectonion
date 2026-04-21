@@ -136,9 +136,31 @@ Note: Projects use global address/email by default.
 ### Project Config (`.co/host.yaml`)
 
 ```yaml
-name: my-agent
-entrypoint: agent.py
-env: .env
+name: my-agent              # Project name (used in deploy URL)
+entrypoint: agent.py        # Script to run
+env: .env                   # Environment file to load
+trust: careful              # Trust level: open / careful / strict
+port: 8000                  # Server port
+workers: 1                  # Number of worker processes
+result_ttl: 86400           # Session result TTL in seconds
+relay_url: wss://oo.openonion.ai  # P2P relay server
+reload: false               # Auto-reload on file change (dev only)
+
+# Agent info — displayed on frontend landing page
+# summary: "What your agent does"
+# examples:
+#   - "Example prompt 1"
+#   - "Example prompt 2"
+
+# File upload limits
+# max_file_size: 10         # MB per file
+# max_files_per_request: 10
+
+# Auto-approve tool permissions
+permissions:
+  "read": { allowed: true, source: safe, ... }
+  "read_file": { allowed: true, source: safe, ... }
+  # ... more default permissions
 ```
 
 ### API Keys (`.env`)
@@ -147,9 +169,8 @@ Automatically copied from `~/.co/keys.env`:
 
 ```bash
 # my-agent/.env
-OPENAI_API_KEY=sk-proj-xxx
-ANTHROPIC_API_KEY=sk-ant-xxx
-# Any other keys from global config
+OPENONION_API_KEY=eyJ...
+AGENT_ADDRESS=0x...
 ```
 
 ## Address and Email Management
