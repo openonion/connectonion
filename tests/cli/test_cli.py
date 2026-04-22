@@ -42,11 +42,6 @@ class TestCliInit:
 
             # Run init with template to create agent.py
             result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
-            if result.exit_code != 0:
-                print(f"STDOUT: {result.output}")
-                if result.exception:
-                    import traceback
-                    traceback.print_exception(type(result.exception), result.exception, result.exception.__traceback__)
             assert result.exit_code == 0
 
             # Check core files exist

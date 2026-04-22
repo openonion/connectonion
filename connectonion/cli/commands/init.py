@@ -91,8 +91,6 @@ def ensure_global_config() -> None:
                 f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
     console.print(f"  ✓ Created ~/.co/keys.env")
 
-    return config
-
 
 def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
                 description: Optional[str], yes: bool, force: bool):
