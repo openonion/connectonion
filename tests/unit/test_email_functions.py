@@ -261,18 +261,13 @@ def test_get_agent_email_generated(mock_file, mock_yaml_load, mock_exists):
     assert email == "0xabcdef12@mail.openonion.ai"
 
 
-@patch('pathlib.Path.exists')
-@patch('yaml.safe_load')
-@patch('builtins.open', new_callable=mock_open)
-def test_is_email_active(mock_file, mock_yaml_load, mock_exists):
-    mock_exists.return_value = True
-    mock_yaml_load.return_value = {"agent": {"email_active": True}}
+def test_is_email_active(monkeypatch):
+    monkeypatch.setenv("AGENT_EMAIL_ACTIVE", "true")
     active = is_email_active()
     assert active is True
 
 
-@patch('pathlib.Path.exists')
-def test_is_email_active_no_project(mock_exists):
-    mock_exists.return_value = False
+def test_is_email_active_not_set(monkeypatch):
+    monkeypatch.delenv("AGENT_EMAIL_ACTIVE", raising=False)
     active = is_email_active()
     assert active is False

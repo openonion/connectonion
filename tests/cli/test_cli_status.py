@@ -114,12 +114,10 @@ class TestHandleStatusNoKeys:
 
     @patch('connectonion.cli.commands.status_commands.console')
     @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
     @patch('connectonion.address.load')
-    def test_status_shows_error_no_keys(self, mock_address_load, mock_config, mock_load_key, mock_console):
+    def test_status_shows_error_no_keys(self, mock_address_load, mock_load_key, mock_console):
         """Test status shows error when no keys found."""
         mock_load_key.return_value = "test-api-key"
-        mock_config.return_value = {}
         mock_address_load.return_value = None
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -143,14 +141,12 @@ class TestHandleStatusSuccess:
 
     @patch('connectonion.cli.commands.status_commands.console')
     @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_displays_account_info(self, mock_post, mock_sign, mock_load, mock_config, mock_load_key, mock_console):
+    def test_status_displays_account_info(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status displays account information."""
         mock_load_key.return_value = "test-api-key-12345"
-        mock_config.return_value = {"agent": {"name": "test-agent"}}
         mock_load.return_value = {"address": "0x1234567890abcdef"}
         mock_sign.return_value = b'\x00' * 64  # Dummy signature
 
@@ -190,14 +186,12 @@ class TestHandleStatusSuccess:
 
     @patch('connectonion.cli.commands.status_commands.console')
     @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_shows_low_balance_warning(self, mock_post, mock_sign, mock_load, mock_config, mock_load_key, mock_console):
+    def test_status_shows_low_balance_warning(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status shows warning when balance is low."""
         mock_load_key.return_value = "test-api-key-12345"
-        mock_config.return_value = {}
         mock_load.return_value = {"address": "0x1234567890abcdef"}
         mock_sign.return_value = b'\x00' * 64
 
@@ -236,14 +230,12 @@ class TestHandleStatusApiError:
 
     @patch('connectonion.cli.commands.status_commands.console')
     @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_handles_api_error(self, mock_post, mock_sign, mock_load, mock_config, mock_load_key, mock_console):
+    def test_status_handles_api_error(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status handles API error gracefully."""
         mock_load_key.return_value = "test-api-key"
-        mock_config.return_value = {}
         mock_load.return_value = {"address": "0x1234567890abcdef"}
         mock_sign.return_value = b'\x00' * 64
 
@@ -273,14 +265,12 @@ class TestHandleStatusApiError:
 
     @patch('connectonion.cli.commands.status_commands.console')
     @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_handles_401_unauthorized(self, mock_post, mock_sign, mock_load, mock_config, mock_load_key, mock_console):
+    def test_status_handles_401_unauthorized(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status handles 401 unauthorized error."""
         mock_load_key.return_value = "invalid-api-key"
-        mock_config.return_value = {}
         mock_load.return_value = {"address": "0x1234567890abcdef"}
         mock_sign.return_value = b'\x00' * 64
 
