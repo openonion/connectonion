@@ -188,4 +188,4 @@ def is_email_active() -> bool:
     Returns:
         bool: True if email is activated, False otherwise
     """
-    return os.getenv("AGENT_EMAIL_ACTIVE", "").lower() == "true"
+    return os.getenv("IS_EMAIL_ACTIVE", "").lower() == "true"

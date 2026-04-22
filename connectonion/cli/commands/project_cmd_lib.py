@@ -839,8 +839,240 @@ def get_special_directory_warning(directory: str) -> str:
     return ""
 
 
+GITIGNORE_CONTENT = """\
+# ConnectOnion
+.env
+.co/keys/
+.co/cache/
+.co/logs/
+.co/history/
+*.py[cod]
+__pycache__/
+todo.md
+"""
+
+PROVIDER_TO_ENV = {
+    "openai": "OPENAI_API_KEY",
+    "anthropic": "ANTHROPIC_API_KEY",
+    "google": "GEMINI_API_KEY",
+    "groq": "GROQ_API_KEY",
+    "grok": "XAI_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+    "openonion": "OPENONION_API_KEY",
+}
+
+
+def copy_docs(co_dir: Path) -> bool:
+    """Copy documentation to .co/docs/. Returns True if docs were copied."""
+    docs_dir = co_dir / "docs"
+    if docs_dir.exists():
+        shutil.rmtree(docs_dir)
+    docs_dir.mkdir(exist_ok=True)
+
+    docs_source = get_docs_source()
+
+    if docs_source.exists() and docs_source.is_dir():
+        for item in docs_source.iterdir():
+            if item.name.startswith('.') or item.name == 'archive':
+                continue
+            dest = docs_dir / item.name
+            if item.is_dir():
+                shutil.copytree(item, dest, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, dest)
+        return True
+    else:
+        console.print(f"[yellow]⚠️  Warning: Documentation not found at {docs_source}[/yellow]")
+        return False
+
+
+def create_host_yaml(co_dir: Path, project_name: str) -> bool:
+    """Create .co/host.yaml from template. Returns True if created, False if already exists."""
+    host_yaml_path = co_dir / "host.yaml"
+    if host_yaml_path.exists():
+        return False
+
+    template_path = Path(__file__).parent.parent.parent / "network" / "host" / "host.yaml"
+    with open(template_path, "r", encoding="utf-8") as f:
+        template_content = f.read()
+
+    project_header = f"""name: {project_name}
+entrypoint: agent.py
+"""
+    with open(host_yaml_path, "w", encoding='utf-8') as f:
+        f.write(project_header + template_content)
+
+    console.print(f"  [green]Created[/green] .co/host.yaml")
+    return True
+
+
+def setup_gitignore(project_dir: Path) -> Optional[str]:
+    """Create or update .gitignore if in a git repo. Returns description of what was done, or None."""
+    git_dir = project_dir / ".git"
+    # Also check parent for `co create` inside a git repo
+    parent_git = Path.cwd() / ".git"
+    if not git_dir.exists() and not parent_git.exists():
+        return None
+
+    gitignore_path = project_dir / ".gitignore"
+    if gitignore_path.exists():
+        existing = gitignore_path.read_text(encoding='utf-8')
+        if "# ConnectOnion" not in existing:
+            with open(gitignore_path, "a", encoding='utf-8') as f:
+                f.write("\n" + GITIGNORE_CONTENT)
+            return ".gitignore (updated)"
+        return None
+    else:
+        gitignore_path.write_text(GITIGNORE_CONTENT, encoding='utf-8')
+        return ".gitignore"
+
+
+def print_resources():
+    """Print the standard resources/links block."""
+    console.print("[bold cyan]📚 Resources:[/bold cyan]")
+    console.print(f"   Docs    [dim]→[/dim] [link=https://docs.connectonion.com][blue]https://docs.connectonion.com[/blue][/link]")
+    console.print(f"   Discord [dim]→[/dim] [link=https://discord.gg/4xfD9k8AUF][blue]https://discord.gg/4xfD9k8AUF[/blue][/link]")
+    console.print(f"   GitHub  [dim]→[/dim] [link=https://github.com/openonion/connectonion][blue]https://github.com/openonion/connectonion[/blue][/link] [dim](⭐ star us!)[/dim]")
+    console.print()
+
+
+def load_api_key() -> Optional[str]:
+    """Load OPENONION_API_KEY from environment.
+
+    Checks in order:
+    1. Environment variable
+    2. Local .env file
+    3. Global ~/.co/keys.env file
+
+    Returns:
+        API key if found, None otherwise
+    """
+    from dotenv import load_dotenv
+
+    if api_key := os.getenv("OPENONION_API_KEY"):
+        return api_key
+
+    for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
+        if env_path.exists():
+            load_dotenv(env_path)
+            if api_key := os.getenv("OPENONION_API_KEY"):
+                return api_key
+    return None
+
+
+def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> None:
+    """Read .env, replace/append key=value pairs, write back with 0600.
+
+    Args:
+        env_path: Path to .env file
+        updates: {KEY: value} to upsert. None values are skipped.
+        strip_prefix: Remove ALL lines starting with this prefix first
+                      (for GOOGLE_*, MICROSOFT_* OAuth credential replacement)
+    """
+    # Filter out None values
+    updates = {k: v for k, v in updates.items() if v is not None}
+
+    lines = []
+    found = set()
+
+    if env_path.exists():
+        for line in env_path.read_text().splitlines(keepends=True):
+            stripped = line.strip()
+            if strip_prefix and stripped.startswith(strip_prefix):
+                continue
+            if '=' in stripped and not stripped.startswith('#'):
+                key = stripped.split('=')[0].strip()
+                if key in updates:
+                    lines.append(f"{key}={updates[key]}\n")
+                    found.add(key)
+                    continue
+            lines.append(line)
+
+    for key, value in updates.items():
+        if key not in found:
+            lines.append(f"{key}={value}\n")
+
+    env_path.write_text(''.join(lines))
+    if sys.platform != 'win32':
+        env_path.chmod(0o600)
+
+
+def ensure_global_config() -> None:
+    """Ensure ~/.co/ exists with global identity (keys + keys.env).
+
+    Creates the global config directory, generates an Ed25519 keypair,
+    and writes keys.env with AGENT_CONFIG_PATH and AGENT_ADDRESS.
+    No-op if ~/.co/keys/agent.key already exists.
+    """
+    global_dir = Path.home() / ".co"
+    key_file = global_dir / "keys" / "agent.key"
+
+    # If keys exist, already initialized
+    if key_file.exists():
+        return
+
+    # First time - create global config
+    console.print(f"\n🚀 Welcome to ConnectOnion!")
+    console.print(f"✨ Setting up global configuration...")
+
+    # Create directories
+    global_dir.mkdir(exist_ok=True)
+    (global_dir / "keys").mkdir(exist_ok=True)
+    (global_dir / "logs").mkdir(exist_ok=True)
+
+    # Generate master keys - fail fast if libraries missing
+    addr_data = address.generate()
+    address.save(addr_data, global_dir)
+    console.print(f"  ✓ Generated master keypair")
+    console.print(f"  ✓ Your address: {addr_data['short_address']}")
+
+    # Create keys.env with config path and agent address
+    keys_env = global_dir / "keys.env"
+    if not keys_env.exists():
+        with open(keys_env, 'w', encoding='utf-8') as f:
+            f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
+            f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
+            f.write("# Your agent address (Ed25519 public key) is used for:\n")
+            f.write("#   - Secure agent communication (encrypt/decrypt with private key)\n")
+            f.write("#   - Authentication with OpenOnion managed LLM provider\n")
+            f.write(f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n")
+        if sys.platform != 'win32':
+            os.chmod(keys_env, 0o600)  # Read/write for owner only (Unix/Mac only)
+    else:
+        # keys.env exists but agent.key was missing — update address to match new keypair
+        lines = []
+        config_path_found = False
+        address_updated = False
+        for line in keys_env.read_text().splitlines(keepends=True):
+            if line.strip().startswith('AGENT_ADDRESS='):
+                lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
+                address_updated = True
+            elif line.strip().startswith('AGENT_CONFIG_PATH='):
+                config_path_found = True
+                lines.append(line)
+            else:
+                lines.append(line)
+        if not config_path_found:
+            lines.insert(0, f"AGENT_CONFIG_PATH={global_dir}\n")
+        if not address_updated:
+            lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
+        keys_env.write_text(''.join(lines))
+        if sys.platform != 'win32':
+            os.chmod(keys_env, 0o600)
+    console.print(f"  ✓ Created ~/.co/keys.env")
+
+
 # Export shared utilities for use by init.py and create.py
 __all__ = [
+    'GITIGNORE_CONTENT',
+    'PROVIDER_TO_ENV',
+    'copy_docs',
+    'create_host_yaml',
+    'setup_gitignore',
+    'print_resources',
+    'load_api_key',
+    'upsert_env',
+    'ensure_global_config',
     'LoadingAnimation',
     'validate_project_name',
     'get_special_directory_warning',

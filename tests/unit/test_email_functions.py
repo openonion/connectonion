@@ -262,12 +262,12 @@ def test_get_agent_email_generated(mock_file, mock_yaml_load, mock_exists):
 
 
 def test_is_email_active(monkeypatch):
-    monkeypatch.setenv("AGENT_EMAIL_ACTIVE", "true")
+    monkeypatch.setenv("IS_EMAIL_ACTIVE", "true")
     active = is_email_active()
     assert active is True
 
 
 def test_is_email_active_not_set(monkeypatch):
-    monkeypatch.delenv("AGENT_EMAIL_ACTIVE", raising=False)
+    monkeypatch.delenv("IS_EMAIL_ACTIVE", raising=False)
     active = is_email_active()
     assert active is False

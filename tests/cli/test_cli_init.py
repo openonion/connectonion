@@ -365,8 +365,6 @@ class TestCliInit:
             # Project-specific header fields
             assert content.startswith("name:")
             assert "entrypoint: agent.py" in content
-            assert "env: .env" in content
-
             # Template fields from network/host/host.yaml
             config = yaml.safe_load(content)
             assert config["trust"] == "careful"

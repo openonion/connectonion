@@ -257,11 +257,11 @@ class TestCliDeploy:
             os.makedirs(".co")
             Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
 
-            from connectonion.cli.commands.deploy_commands import _get_api_key
+            from connectonion.cli.commands.project_cmd_lib import load_api_key
 
             # Clear environment and test loading from file
             with patch.dict(os.environ, {}, clear=True):
-                api_key = _get_api_key()
+                api_key = load_api_key()
                 # Note: dotenv may or may not load depending on environment
                 # This test verifies the function doesn't crash
 

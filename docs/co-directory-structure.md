@@ -8,7 +8,10 @@ Created automatically on first `co` command. Stores your identity and shared API
 
 ```
 ~/.co/
-├── keys.env             # Shared API keys and identity (.env format)
+├── keys.env             # Shared identity and API keys (.env format)
+│                        #   AGENT_CONFIG_PATH, AGENT_ADDRESS (co create/init)
+│                        #   OPENONION_API_KEY, AGENT_EMAIL, IS_EMAIL_ACTIVE (co auth)
+│                        #   Third-party API keys (user-added)
 ├── keys/                # Cryptographic identity
 │   ├── agent.key        # Ed25519 private key (NEVER SHARE)
 │   ├── recovery.txt     # 12-word recovery phrase
@@ -38,7 +41,6 @@ The project `.co/host.yaml` configures `host()` and `co deploy`:
 ```yaml
 name: my-agent
 entrypoint: agent.py
-env: .env
 trust: careful
 port: 8000
 workers: 1

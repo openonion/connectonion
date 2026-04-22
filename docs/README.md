@@ -1274,7 +1274,7 @@ Every agent automatically gets an email address:
 Your email is stored in `~/.co/keys.env` as `AGENT_EMAIL`:
 ```bash
 AGENT_EMAIL=0x04e1c4ae@mail.openonion.ai
-AGENT_EMAIL_ACTIVE=true  # Set to true after 'co auth'
+IS_EMAIL_ACTIVE=true  # Set to true after 'co auth'
 ```
 
 ### Using with an Agent

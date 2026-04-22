@@ -338,8 +338,6 @@ class TestCliCreate:
             # Project header
             assert content.startswith("name: tmpl-agent")
             assert "entrypoint: agent.py" in content
-            assert "env: .env" in content
-
             # Template fields
             config = yaml.safe_load(content)
             assert config["trust"] == "careful"

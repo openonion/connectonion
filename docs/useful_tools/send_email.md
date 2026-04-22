@@ -37,7 +37,7 @@ from tools.send_email import send_email  # Your local copy
 
 ```bash
 # 1. Check if email is activated
-grep AGENT_EMAIL_ACTIVE ~/.co/keys.env
+grep IS_EMAIL_ACTIVE ~/.co/keys.env
 # If false, run: co auth
 
 # 2. Test directly
@@ -146,7 +146,7 @@ Your email address is configured when you run `co create` or `co init` and store
 
 ```bash
 AGENT_EMAIL=0x04e1c4ae@mail.openonion.ai
-AGENT_EMAIL_ACTIVE=true  # Set to true after 'co auth'
+IS_EMAIL_ACTIVE=true  # Set to true after 'co auth'
 ```
 
 Access it from your agent:
@@ -184,7 +184,7 @@ To check your email status:
 ```bash
 $ grep AGENT_EMAIL ~/.co/keys.env
 AGENT_EMAIL=0x04e1c4ae@mail.openonion.ai
-AGENT_EMAIL_ACTIVE=true
+IS_EMAIL_ACTIVE=true
 ```
 
 ### Want a custom name?
@@ -370,8 +370,8 @@ Automatic rate limiting prevents abuse:
 
 1. **Check activation status**:
    ```bash
-   grep AGENT_EMAIL_ACTIVE ~/.co/keys.env
-   # Should show: AGENT_EMAIL_ACTIVE=true
+   grep IS_EMAIL_ACTIVE ~/.co/keys.env
+   # Should show: IS_EMAIL_ACTIVE=true
    ```
    If false, run `co auth` to activate.
 

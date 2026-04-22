@@ -1,7 +1,7 @@
 """Unit tests for connectonion/cli/commands/status_commands.py
 
 Tests cover:
-- _load_api_key: Load API key from env var, .env, ~/.co/keys.env
+- load_api_key: Load API key from env var, .env, ~/.co/keys.env
 - handle_status: Display account status without re-authenticating
 """
 
@@ -17,7 +17,7 @@ What it tests:
 - Account status display without re-authentication
 
 Components under test:
-- connectonion.cli.commands.status_commands._load_api_key
+- connectonion.cli.commands.project_cmd_lib.load_api_key
 - connectonion.cli.commands.status_commands._load_config
 - connectonion.cli.commands.status_commands.handle_status
 """
@@ -34,10 +34,10 @@ class TestLoadApiKey:
 
     def test_load_api_key_from_env_var(self):
         """Test loading API key from environment variable."""
-        from connectonion.cli.commands.status_commands import _load_api_key
+        from connectonion.cli.commands.project_cmd_lib import load_api_key
 
         with patch.dict(os.environ, {"OPENONION_API_KEY": "test-key-from-env"}, clear=False):
-            result = _load_api_key()
+            result = load_api_key()
             assert result == "test-key-from-env"
 
     def test_load_api_key_from_local_env(self):
@@ -54,8 +54,8 @@ class TestLoadApiKey:
                 # Clear env var
                 with patch.dict(os.environ, {}, clear=True):
                     # Need to reimport after patching env
-                    from connectonion.cli.commands.status_commands import _load_api_key
-                    result = _load_api_key()
+                    from connectonion.cli.commands.project_cmd_lib import load_api_key
+                    result = load_api_key()
                     # Result depends on dotenv loading
             finally:
                 os.chdir(original_cwd)
@@ -72,7 +72,7 @@ class TestLoadApiKey:
 
             with patch.object(Path, 'home', return_value=fake_home):
                 with patch.dict(os.environ, {}, clear=True):
-                    from connectonion.cli.commands.status_commands import _load_api_key
+                    from connectonion.cli.commands.project_cmd_lib import load_api_key
                     # Result depends on dotenv loading and env state
 
     def test_load_api_key_returns_none_when_not_found(self):
@@ -86,8 +86,8 @@ class TestLoadApiKey:
             try:
                 with patch.object(Path, 'home', return_value=fake_home):
                     with patch.dict(os.environ, {}, clear=True):
-                        from connectonion.cli.commands.status_commands import _load_api_key
-                        result = _load_api_key()
+                        from connectonion.cli.commands.project_cmd_lib import load_api_key
+                        result = load_api_key()
                         # Should be None or empty when not found
             finally:
                 os.chdir(original_cwd)
@@ -97,7 +97,7 @@ class TestHandleStatusNoApiKey:
     """Tests for handle_status when API key is not found."""
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     def test_status_shows_error_no_api_key(self, mock_load_key, mock_console):
         """Test status shows error when no API key found."""
         mock_load_key.return_value = None
@@ -113,7 +113,7 @@ class TestHandleStatusNoKeys:
     """Tests for handle_status when keys are not found."""
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     def test_status_shows_error_no_keys(self, mock_address_load, mock_load_key, mock_console):
         """Test status shows error when no keys found."""
@@ -140,7 +140,7 @@ class TestHandleStatusSuccess:
     """Tests for successful status display."""
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
@@ -185,7 +185,7 @@ class TestHandleStatusSuccess:
                 os.chdir(original_cwd)
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
@@ -229,7 +229,7 @@ class TestHandleStatusApiError:
     """Tests for API error handling."""
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
@@ -264,7 +264,7 @@ class TestHandleStatusApiError:
                 os.chdir(original_cwd)
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')

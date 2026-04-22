@@ -10,84 +10,31 @@ LLM-Note:
 """
 
 import os
-import sys
 import shutil
-import yaml
-from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 from rich.console import Console
 from rich.prompt import Prompt, IntPrompt
-from rich.panel import Panel
 from rich.syntax import Syntax
-from rich.text import Text
 
-from ... import __version__
-from ... import address
 from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
+    PROVIDER_TO_ENV,
+    ensure_global_config,
+    copy_docs,
+    create_host_yaml,
+    setup_gitignore,
+    print_resources,
     LoadingAnimation,
     validate_project_name,
     check_environment_for_api_keys,
     detect_api_provider,
-    get_template_info,
     generate_custom_template_with_name,
-    show_progress,
-    configure_env_for_provider,
-    get_docs_source,
 )
 
 console = Console()
-
-
-def ensure_global_config() -> None:
-    """Ensure ~/.co/ exists with global identity (keys + keys.env)."""
-    global_dir = Path.home() / ".co"
-    key_file = global_dir / "keys" / "agent.key"
-
-    # If keys exist, already initialized
-    if key_file.exists():
-        return
-
-    # First time - create global config
-    console.print(f"\n🚀 Welcome to ConnectOnion!")
-    console.print(f"✨ Setting up global configuration...")
-
-    # Create directories
-    global_dir.mkdir(exist_ok=True)
-    (global_dir / "keys").mkdir(exist_ok=True)
-    (global_dir / "logs").mkdir(exist_ok=True)
-
-    # Generate master keys - fail fast if libraries missing
-    addr_data = address.generate()
-    address.save(addr_data, global_dir)
-    console.print(f"  ✓ Generated master keypair")
-    console.print(f"  ✓ Your address: {addr_data['short_address']}")
-
-    # Create keys.env with config path and agent address
-    keys_env = global_dir / "keys.env"
-    if not keys_env.exists():
-        with open(keys_env, 'w', encoding='utf-8') as f:
-            f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
-            f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
-            f.write("# Your agent address (Ed25519 public key) is used for:\n")
-            f.write("#   - Secure agent communication (encrypt/decrypt with private key)\n")
-            f.write("#   - Authentication with OpenOnion managed LLM provider\n")
-            f.write(f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n")
-        if sys.platform != 'win32':
-            os.chmod(keys_env, 0o600)  # Read/write for owner only (Unix/Mac only)
-    else:
-        # Append if not exists
-        existing = keys_env.read_text()
-        if 'AGENT_CONFIG_PATH=' not in existing:
-            with open(keys_env, 'a', encoding='utf-8') as f:
-                f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
-        if 'AGENT_ADDRESS=' not in existing:
-            with open(keys_env, 'a', encoding='utf-8') as f:
-                f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
-    console.print(f"  ✓ Created ~/.co/keys.env")
 
 
 def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
@@ -340,45 +287,13 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     if not co_dir.exists():
         co_dir.mkdir(exist_ok=True)
 
-    # Create docs directory and copy ALL documentation (always overwrite for latest version)
-    docs_dir = co_dir / "docs"
-    if docs_dir.exists():
-        shutil.rmtree(docs_dir)
-    docs_dir.mkdir(exist_ok=True)
-
-    # Get docs source (works in both dev and installed package)
-    docs_source = get_docs_source()
-
-    # Copy ALL docs to .co/docs/
-    if docs_source.exists() and docs_source.is_dir():
-        for item in docs_source.iterdir():
-            if item.name.startswith('.') or item.name == 'archive':
-                continue
-            dest = docs_dir / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item, dest)
+    # Copy documentation to .co/docs/
+    if copy_docs(co_dir):
         files_created.append(".co/docs/ (full documentation)")
-    else:
-        console.print(f"[yellow]⚠️  Warning: Documentation not found at {docs_source}[/yellow]")
 
     # Create host.yaml from template (unified config for host() and co deploy)
-    host_yaml_path = co_dir / "host.yaml"
-    if not host_yaml_path.exists():
-        # Load template from network/host/host.yaml
-        template_path = Path(__file__).parent.parent.parent / "network" / "host" / "host.yaml"
-        with open(template_path, "r", encoding="utf-8") as f:
-            template_content = f.read()
-        # Prepend project-specific fields
-        project_header = f"""name: {name}
-entrypoint: agent.py
-env: .env
-"""
-        with open(host_yaml_path, "w", encoding='utf-8') as f:
-            f.write(project_header + template_content)
+    if create_host_yaml(co_dir, name):
         files_created.append(".co/host.yaml")
-        console.print(f"  [green]Created[/green] .co/host.yaml")
 
     # Create .env file - copy from global keys.env
     env_path = project_dir / ".env"
@@ -409,18 +324,8 @@ env: .env
         ]
 
         # Add detected API keys
-        provider_to_env = {
-            "openai": "OPENAI_API_KEY",
-            "anthropic": "ANTHROPIC_API_KEY",
-            "google": "GEMINI_API_KEY",
-            "groq": "GROQ_API_KEY",
-            "grok": "XAI_API_KEY",
-            "openrouter": "OPENROUTER_API_KEY",
-            "openonion": "OPENONION_API_KEY",
-        }
-
         for prov, key_value in detected_keys.items():
-            env_var = provider_to_env.get(prov, f"{prov.upper()}_API_KEY")
+            env_var = PROVIDER_TO_ENV.get(prov, f"{prov.upper()}_API_KEY")
             env_lines.append(f"{env_var}={key_value}")
 
         if len(env_lines) == 3:  # Only header, no keys added
@@ -444,21 +349,9 @@ env: .env
         console.print(f"[green]✓ Saved to {env_path}[/green]")
 
     # Create .gitignore if in git repo
-    if (project_dir / ".git").exists() or (Path.cwd() / ".git").exists():
-        gitignore_path = project_dir / ".gitignore"
-        gitignore_content = """
-# ConnectOnion
-.env
-.co/keys/
-.co/cache/
-.co/logs/
-.co/history/
-*.py[cod]
-__pycache__/
-todo.md
-"""
-        gitignore_path.write_text(gitignore_content.lstrip(), encoding='utf-8')
-        files_created.append(".gitignore")
+    gi_result = setup_gitignore(project_dir)
+    if gi_result:
+        files_created.append(gi_result)
 
     # Success message with Rich formatting
     console.print()
@@ -482,9 +375,5 @@ todo.md
     console.print(f"   [cyan].co/docs/[/cyan] for full documentation")
     console.print()
 
-    # Resources - clean format with arrows for better alignment
-    console.print("[bold cyan]📚 Resources:[/bold cyan]")
-    console.print(f"   Docs    [dim]→[/dim] [link=https://docs.connectonion.com][blue]https://docs.connectonion.com[/blue][/link]")
-    console.print(f"   Discord [dim]→[/dim] [link=https://discord.gg/4xfD9k8AUF][blue]https://discord.gg/4xfD9k8AUF[/blue][/link]")
-    console.print(f"   GitHub  [dim]→[/dim] [link=https://github.com/openonion/connectonion][blue]https://github.com/openonion/connectonion[/blue][/link] [dim](⭐ star us!)[/dim]")
-    console.print()
+    # Resources
+    print_resources()

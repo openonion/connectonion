@@ -46,7 +46,7 @@ class TestAuthMicrosoftHelp:
         assert result.exit_code == 0
         assert 'microsoft' in result.output.lower()
 
-    @patch('connectonion.cli.commands.auth_commands._load_api_key')
+    @patch('connectonion.cli.commands.auth_commands.load_api_key')
     def test_auth_microsoft_requires_openonion_auth(self, mock_load_key):
         """Test that co auth microsoft requires prior OpenOnion authentication."""
         mock_load_key.return_value = None

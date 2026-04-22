@@ -10,86 +10,32 @@ LLM-Note:
 """
 
 import os
-import sys
 import shutil
-import subprocess
-import yaml
-from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Optional
 from rich.console import Console
 from rich.prompt import Prompt, Confirm
 from rich.syntax import Syntax
-from rich.text import Text
 
-from ... import __version__
-from ... import address
 from .auth_commands import authenticate
 
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
+    PROVIDER_TO_ENV,
+    ensure_global_config,
+    copy_docs,
+    create_host_yaml,
+    setup_gitignore,
+    print_resources,
     get_special_directory_warning,
     is_directory_empty,
     check_environment_for_api_keys,
-    api_key_setup_menu,
     detect_api_provider,
-    get_template_info,
-    interactive_menu,
     generate_custom_template,
     show_progress,
-    configure_env_for_provider,
-    get_docs_source,
 )
 
 console = Console()
-
-
-def ensure_global_config() -> None:
-    """Ensure ~/.co/ exists with global identity (keys + keys.env)."""
-    global_dir = Path.home() / ".co"
-    key_file = global_dir / "keys" / "agent.key"
-
-    # If keys exist, already initialized
-    if key_file.exists():
-        return
-
-    # First time - create global config
-    console.print(f"\n🚀 Welcome to ConnectOnion!")
-    console.print(f"✨ Setting up global configuration...")
-
-    # Create directories
-    global_dir.mkdir(exist_ok=True)
-    (global_dir / "keys").mkdir(exist_ok=True)
-    (global_dir / "logs").mkdir(exist_ok=True)
-
-    # Generate master keys - fail fast if libraries missing
-    addr_data = address.generate()
-    address.save(addr_data, global_dir)
-    console.print(f"  ✓ Generated master keypair")
-    console.print(f"  ✓ Your address: {addr_data['short_address']}")
-
-    # Create keys.env with config path and agent address
-    keys_env = global_dir / "keys.env"
-    if not keys_env.exists():
-        with open(keys_env, 'w', encoding='utf-8') as f:
-            f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
-            f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
-            f.write("# Your agent address (Ed25519 public key) is used for:\n")
-            f.write("#   - Secure agent communication (encrypt/decrypt with private key)\n")
-            f.write("#   - Authentication with OpenOnion managed LLM provider\n")
-            f.write(f"#   - Email address: {addr_data['address'][:10]}@mail.openonion.ai\n")
-        if sys.platform != 'win32':
-            os.chmod(keys_env, 0o600)  # Read/write for owner only (Unix/Mac only)
-    else:
-        # Append if not exists
-        existing = keys_env.read_text()
-        if 'AGENT_CONFIG_PATH=' not in existing:
-            with open(keys_env, 'a', encoding='utf-8') as f:
-                f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
-        if 'AGENT_ADDRESS=' not in existing:
-            with open(keys_env, 'a', encoding='utf-8') as f:
-                f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
-    console.print(f"  ✓ Created ~/.co/keys.env")
 
 
 def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
@@ -213,8 +159,6 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 
     # AUTHENTICATE FIRST - so we have OPENONION_API_KEY to add to .env
     global_co_dir = Path.home() / ".co"
-    if not global_co_dir.exists():
-        ensure_global_config()
 
     # Authenticate to get OPENONION_API_KEY (always, for everyone)
     auth_success = authenticate(global_co_dir, save_to_project=False)
@@ -224,64 +168,58 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     global_dir = Path.home() / ".co"
     global_keys_env = global_dir / "keys.env"
 
-    # Read existing .env if it exists
-    existing_env_content = ""
-    existing_keys = set()
-    if env_path.exists():
-        with open(env_path, 'r', encoding='utf-8') as f:
-            existing_env_content = f.read()
-            # Parse existing keys
-            for line in existing_env_content.split('\n'):
-                if '=' in line and not line.strip().startswith('#'):
-                    key = line.split('=')[0].strip()
-                    existing_keys.add(key)
+    # Identity keys: always overwrite from global (co reset must propagate)
+    IDENTITY_KEYS = {'AGENT_CONFIG_PATH', 'AGENT_ADDRESS', 'OPENONION_API_KEY',
+                     'AGENT_EMAIL', 'IS_EMAIL_ACTIVE'}
 
-    # Read global keys (now includes OPENONION_API_KEY from auth)
-    keys_to_add = []
+    # Read global keys.env into a dict
+    global_keys = {}  # key -> "KEY=value" line
     if global_keys_env.exists():
         with open(global_keys_env, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
                     key = line.split('=')[0].strip()
-                    if key not in existing_keys:
-                        keys_to_add.append(line)
+                    global_keys[key] = line
 
-    # Add agent address (from global keys.env)
-    if global_keys_env.exists():
-        # Load from global keys.env to get address
-        with open(global_keys_env, 'r', encoding='utf-8') as f:
+    # Read existing .env: overwrite identity keys, track existing keys
+    existing_keys = set()
+    updated_lines = []
+    env_existed = env_path.exists()
+    if env_existed:
+        with open(env_path, 'r', encoding='utf-8') as f:
             for line in f:
-                line = line.strip()
-                if line.startswith('AGENT_ADDRESS=') and 'AGENT_ADDRESS' not in existing_keys:
-                    keys_to_add.append(line)
+                stripped = line.strip()
+                if '=' in stripped and not stripped.startswith('#'):
+                    key = stripped.split('=')[0].strip()
+                    existing_keys.add(key)
+                    if key in IDENTITY_KEYS and key in global_keys:
+                        # Overwrite with global value
+                        updated_lines.append(global_keys[key] + '\n')
+                        continue
+                updated_lines.append(line)
 
-    # Add detected API keys
-    provider_to_env = {
-        "openai": "OPENAI_API_KEY",
-        "anthropic": "ANTHROPIC_API_KEY",
-        "google": "GEMINI_API_KEY",
-        "groq": "GROQ_API_KEY",
-        "grok": "XAI_API_KEY",
-        "openrouter": "OPENROUTER_API_KEY",
-    }
+    # Collect keys to append (not already in .env)
+    keys_to_add = []
+    for key, line in global_keys.items():
+        if key not in existing_keys:
+            keys_to_add.append(line)
     for prov, key_value in detected_keys.items():
-        env_var = provider_to_env.get(prov, f"{prov.upper()}_API_KEY")
+        env_var = PROVIDER_TO_ENV.get(prov, f"{prov.upper()}_API_KEY")
         if env_var not in existing_keys:
             keys_to_add.append(f"{env_var}={key_value}")
 
-    # Write or append to .env
-    if not env_path.exists():
-        # Create new .env
-        if keys_to_add:
-            # Add global config path and default model comment
+    # Write .env
+    if not env_existed:
+        if keys_to_add or global_keys:
             env_content = f"AGENT_CONFIG_PATH={Path.home() / '.co'}\n"
             env_content += "# Default model: co/gemini-2.5-pro (managed keys with free credits)\n\n"
-            env_content += '\n'.join(keys_to_add) + '\n'
+            # Add all global keys + detected keys
+            all_keys = list(global_keys.values()) + [k for k in keys_to_add if k not in global_keys.values()]
+            env_content += '\n'.join(all_keys) + '\n'
             env_path.write_text(env_content, encoding='utf-8')
             console.print(f"[green]✓ Saved to {env_path}[/green]")
         else:
-            # Fallback - should not happen now that we always auth
             env_content = """# Add your LLM API key(s) below (uncomment one and set value)
 # OPENAI_API_KEY=
 # ANTHROPIC_API_KEY=
@@ -295,44 +233,28 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 """
             env_path.write_text(env_content, encoding='utf-8')
         files_created.append(".env")
-    elif keys_to_add:
-        # Append missing keys to existing .env
-        with open(env_path, 'a', encoding='utf-8') as f:
-            if not existing_env_content.endswith('\n'):
-                f.write('\n')
-            f.write('\n# API Keys\n')
-            f.write('\n'.join(keys_to_add) + '\n')
-        console.print(f"[green]✓ Updated {env_path}[/green]")
-        files_created.append(".env (updated)")
     else:
-        console.print("[green]✓ .env already contains all necessary keys[/green]")
+        # Write back with identity keys overwritten + append missing keys
+        content = ''.join(updated_lines)
+        if keys_to_add:
+            if not content.endswith('\n'):
+                content += '\n'
+            content += '\n# API Keys\n'
+            content += '\n'.join(keys_to_add) + '\n'
+        env_path.write_text(content, encoding='utf-8')
+        if keys_to_add or any(k in IDENTITY_KEYS for k in existing_keys):
+            console.print(f"[green]✓ Updated {env_path}[/green]")
+            files_created.append(".env (updated)")
+        else:
+            console.print("[green]✓ .env already contains all necessary keys[/green]")
 
     # Create .co directory with metadata
     co_dir = Path(current_dir) / ".co"
     co_dir.mkdir(exist_ok=True)
 
-    # Create docs directory and copy ALL documentation (always overwrite for latest version)
-    docs_dir = co_dir / "docs"
-    if docs_dir.exists():
-        shutil.rmtree(docs_dir)
-    docs_dir.mkdir(exist_ok=True)
-
-    # Get docs source (works in both dev and installed package)
-    docs_source = get_docs_source()
-
-    # Copy ALL docs to .co/docs/
-    if docs_source.exists() and docs_source.is_dir():
-        for item in docs_source.iterdir():
-            if item.name.startswith('.') or item.name == 'archive':
-                continue
-            dest = docs_dir / item.name
-            if item.is_dir():
-                shutil.copytree(item, dest, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item, dest)
+    # Copy documentation to .co/docs/
+    if copy_docs(co_dir):
         files_created.append(".co/docs/ (full documentation)")
-    else:
-        console.print(f"[yellow]⚠️  Warning: Documentation not found at {docs_source}[/yellow]")
 
     # NO PROJECT KEYS - we use global address/email
 
@@ -340,45 +262,14 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # If user wants project-specific keys, they'll use 'co address' command
 
     # Create host.yaml from template (unified config for host() and co deploy)
-    host_yaml_path = co_dir / "host.yaml"
-    if not host_yaml_path.exists():
-        project_name = os.path.basename(current_dir) or "connectonion-agent"
-        # Load template from network/host/host.yaml
-        template_path = Path(__file__).parent.parent.parent / "network" / "host" / "host.yaml"
-        with open(template_path, "r", encoding="utf-8") as f:
-            template_content = f.read()
-        # Prepend project-specific fields
-        project_header = f"""name: {project_name}
-entrypoint: agent.py
-env: .env
-"""
-        with open(host_yaml_path, "w", encoding='utf-8') as f:
-            f.write(project_header + template_content)
+    host_name = os.path.basename(current_dir) or "connectonion-agent"
+    if create_host_yaml(co_dir, host_name):
         files_created.append(".co/host.yaml")
-        console.print(f"  [green]Created[/green] .co/host.yaml")
 
     # Handle .gitignore if in git repo
-    if (Path(current_dir) / ".git").exists():
-        gitignore_path = Path(current_dir) / ".gitignore"
-        gitignore_content = """
-# ConnectOnion
-.env
-.co/keys/
-.co/cache/
-.co/logs/
-.co/history/
-*.py[cod]
-__pycache__/
-todo.md
-"""
-        if gitignore_path.exists():
-            with open(gitignore_path, "a", encoding='utf-8') as f:
-                if "# ConnectOnion" not in gitignore_path.read_text(encoding='utf-8'):
-                    f.write(gitignore_content)
-            files_created.append(".gitignore (updated)")
-        else:
-            gitignore_path.write_text(gitignore_content.lstrip(), encoding='utf-8')
-            files_created.append(".gitignore")
+    gi_result = setup_gitignore(Path(current_dir))
+    if gi_result:
+        files_created.append(gi_result)
 
     # Success message with Rich formatting
     console.print()
@@ -407,13 +298,9 @@ todo.md
         console.print("[bold yellow]💡 Vibe Coding:[/bold yellow] Use Claude/Cursor/Codex with")
         console.print(f"   [cyan].co/docs/[/cyan] to build your agent")
 
-    # Resources - clean format with arrows for better alignment
+    # Resources
     console.print()
-    console.print("[bold cyan]📚 Resources:[/bold cyan]")
-    console.print(f"   Docs    [dim]→[/dim] [link=https://docs.connectonion.com][blue]https://docs.connectonion.com[/blue][/link]")
-    console.print(f"   Discord [dim]→[/dim] [link=https://discord.gg/4xfD9k8AUF][blue]https://discord.gg/4xfD9k8AUF[/blue][/link]")
-    console.print(f"   GitHub  [dim]→[/dim] [link=https://github.com/openonion/connectonion][blue]https://github.com/openonion/connectonion[/blue][/link] [dim](⭐ star us!)[/dim]")
-    console.print()
+    print_resources()
 
     # Clean up temporary project directory if created for authentication
     if temp_project_dir and temp_project_dir.exists():

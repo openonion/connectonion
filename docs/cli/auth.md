@@ -16,7 +16,7 @@ What `co auth` does:
 - Authenticates your agent and saves a secure token
 - Token is saved to `~/.co/keys.env` as `OPENONION_API_KEY`
 - If your project has a `.env`, it's updated too
-- `~/.co/keys.env` gains `AGENT_EMAIL_ACTIVE=true`
+- `~/.co/keys.env` gains `IS_EMAIL_ACTIVE=true`
 
 What `co auth google` does:
 - Connects your Google account for Gmail Send and Calendar Read

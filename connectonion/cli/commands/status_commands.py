@@ -2,7 +2,7 @@
 Purpose: Display account status including balance, usage, and email configuration without re-authenticating
 LLM-Note:
   Dependencies: imports from [os, yaml, requests, pathlib, rich.console, rich.panel, dotenv.load_dotenv, jwt, address] | imported by [cli/main.py via handle_status()] | calls backend at [https://oo.openonion.ai/api/v1/auth] | tested by [tests/cli/test_cli_status.py]
-  Data flow: receives no args → _load_api_key() checks OPENONION_API_KEY from env/local .env/global ~/.co/keys.env → address.load() reads Ed25519 keypair → creates fresh auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth to get current user data → displays balance, credits, total spent, email, agent ID → warns if balance <= 0
+  Data flow: receives no args → load_api_key() checks OPENONION_API_KEY from env/local .env/global ~/.co/keys.env → address.load() reads Ed25519 keypair → creates fresh auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth to get current user data → displays balance, credits, total spent, email, agent ID → warns if balance <= 0
   State/Effects: no state modifications | makes network GET request to oo.openonion.ai | reads from env vars, .env, ~/.co/keys.env | writes to stdout via rich.Console and rich.Panel | does NOT update any files
   Integration: exposes handle_status() for CLI | similar to authenticate() but read-only | relies on address module for signature generation | uses requests for HTTP calls | displays Rich panel with account info | checks OPENONION_API_KEY in 3 locations (priority: env var > local .env > global ~/.co/keys.env)
   Performance: network call to backend (1-2s) | signature generation is fast (<10ms) | file I/O for .env files
@@ -10,49 +10,14 @@ LLM-Note:
 """
 
 import os
-import yaml
 import requests
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
-from dotenv import load_dotenv
+
+from .project_cmd_lib import load_api_key
 
 console = Console()
-
-
-def _load_api_key() -> str:
-    """Load OPENONION_API_KEY from environment.
-
-    Checks in order:
-    1. Environment variable
-    2. Local .env file
-    3. Global ~/.co/keys.env file
-
-    Returns:
-        API key if found, None otherwise
-    """
-    # Check environment variable first
-    api_key = os.getenv("OPENONION_API_KEY")
-    if api_key:
-        return api_key
-
-    # Check local .env
-    local_env = Path(".env")
-    if local_env.exists():
-        load_dotenv(local_env)
-        api_key = os.getenv("OPENONION_API_KEY")
-        if api_key:
-            return api_key
-
-    # Check global ~/.co/keys.env
-    global_env = Path.home() / ".co" / "keys.env"
-    if global_env.exists():
-        load_dotenv(global_env)
-        api_key = os.getenv("OPENONION_API_KEY")
-        if api_key:
-            return api_key
-
-    return None
 
 
 def handle_status():
@@ -67,7 +32,7 @@ def handle_status():
     - Warnings if balance is low
     """
     # Load API key
-    api_key = _load_api_key()
+    api_key = load_api_key()
     if not api_key:
         console.print("\n❌ [bold red]No API key found[/bold red]")
         console.print("\n[cyan]Authenticate first:[/cyan]")
