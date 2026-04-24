@@ -113,3 +113,22 @@ class TestTranscribeUnit:
 
             assert result == "Test transcription via proxy"
             mock_post.assert_called_once()
+
+
+class TestGetApiKey:
+    """Tests for _get_api_key reading from environment."""
+
+    def test_co_model_reads_from_env(self, monkeypatch):
+        """Test that co/ model reads OPENONION_API_KEY from env."""
+        monkeypatch.setenv("OPENONION_API_KEY", "env-token")
+
+        from connectonion.transcribe import _get_api_key
+        assert _get_api_key("co/gemini-3-flash-preview") == "env-token"
+
+    def test_co_model_no_env_raises(self, monkeypatch):
+        """Test that missing OPENONION_API_KEY raises ValueError."""
+        monkeypatch.delenv("OPENONION_API_KEY", raising=False)
+
+        from connectonion.transcribe import _get_api_key
+        with pytest.raises(ValueError, match="OpenOnion API key required"):
+            _get_api_key("co/gemini-3-flash-preview")

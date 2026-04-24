@@ -24,7 +24,7 @@ What it tests:
 
 Components under test:
 - connectonion.cli.commands.auth_commands (auth google command)
-- connectonion.cli.commands.auth_commands._load_api_key
+- connectonion.cli.commands.project_cmd_lib.load_api_key
 - connectonion.cli.commands.auth_commands._save_google_to_env
 """
 
@@ -52,7 +52,7 @@ class TestAuthGoogleHelp:
         assert result.exit_code == 0
         assert 'google' in result.output.lower()
 
-    @patch('connectonion.cli.commands.auth_commands._load_api_key')
+    @patch('connectonion.cli.commands.auth_commands.load_api_key')
     def test_auth_google_requires_openonion_auth(self, mock_load_key):
         """Test that co auth google requires prior OpenOnion authentication."""
         # Mock _load_api_key to return None (no API key found)
@@ -71,15 +71,15 @@ class TestLoadApiKey:
 
     def test_load_api_key_from_env_var(self):
         """Test loading API key from environment variable."""
-        from connectonion.cli.commands.auth_commands import _load_api_key
+        from connectonion.cli.commands.project_cmd_lib import load_api_key
 
         with patch.dict(os.environ, {'OPENONION_API_KEY': 'test-key-123'}):
-            key = _load_api_key()
+            key = load_api_key()
             assert key == 'test-key-123'
 
     def test_load_api_key_from_local_env(self):
         """Test loading API key from local .env file."""
-        from connectonion.cli.commands.auth_commands import _load_api_key
+        from connectonion.cli.commands.project_cmd_lib import load_api_key
 
         with tempfile.TemporaryDirectory() as tmpdir:
             os.chdir(tmpdir)
@@ -89,12 +89,12 @@ class TestLoadApiKey:
 
             # Clear environment variable
             with patch.dict(os.environ, {}, clear=True):
-                key = _load_api_key()
+                key = load_api_key()
                 assert key == 'local-key-456'
 
     def test_load_api_key_from_global_keys_env(self):
         """Test loading API key from global ~/.co/keys.env."""
-        from connectonion.cli.commands.auth_commands import _load_api_key
+        from connectonion.cli.commands.project_cmd_lib import load_api_key
 
         with tempfile.TemporaryDirectory() as tmpdir:
             os.chdir(tmpdir)
@@ -108,12 +108,12 @@ class TestLoadApiKey:
             # Mock Path.home() to return tmpdir
             with patch('pathlib.Path.home', return_value=Path(tmpdir)):
                 with patch.dict(os.environ, {}, clear=True):
-                    key = _load_api_key()
+                    key = load_api_key()
                     assert key == 'global-key-789'
 
     def test_load_api_key_returns_none_when_not_found(self):
         """Test that _load_api_key returns None when no key found."""
-        from connectonion.cli.commands.auth_commands import _load_api_key
+        from connectonion.cli.commands.project_cmd_lib import load_api_key
 
         with tempfile.TemporaryDirectory() as tmpdir:
             os.chdir(tmpdir)
@@ -121,7 +121,7 @@ class TestLoadApiKey:
             # Mock Path.home() to return tmpdir (no keys.env)
             with patch('pathlib.Path.home', return_value=Path(tmpdir)):
                 with patch.dict(os.environ, {}, clear=True):
-                    key = _load_api_key()
+                    key = load_api_key()
                     assert key is None
 
 

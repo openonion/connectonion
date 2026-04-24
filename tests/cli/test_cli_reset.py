@@ -3,7 +3,7 @@
 Tests cover:
 - handle_reset: DESTRUCTIVE operation that deletes all config
 - User confirmation with 'Y'
-- Deletion of ~/.co/keys/, config.toml, keys.env
+- Deletion of ~/.co/keys/, host.yaml, keys.env
 - Recreation of directory structure
 - New Ed25519 keypair generation
 - Authentication flow after reset
@@ -152,8 +152,8 @@ class TestHandleResetDeletion:
     @patch('connectonion.cli.commands.reset_commands.Prompt.ask')
     @patch('connectonion.cli.commands.reset_commands.address')
     @patch('connectonion.cli.commands.reset_commands.authenticate')
-    def test_reset_deletes_config_toml(self, mock_auth, mock_address, mock_ask, mock_console):
-        """Test reset deletes ~/.co/config.toml."""
+    def test_reset_recreates_keys_env(self, mock_auth, mock_address, mock_ask, mock_console):
+        """Test reset recreates ~/.co/keys.env with new identity."""
         mock_ask.return_value = 'Y'
         mock_auth.return_value = True
         mock_address.generate.return_value = {
@@ -167,15 +167,15 @@ class TestHandleResetDeletion:
             fake_home.mkdir()
             co_dir = fake_home / ".co"
             co_dir.mkdir()
-            config_file = co_dir / "config.toml"
-            config_file.write_text('[agent]\nname = "old-agent"\n')
+            keys_env = co_dir / "keys.env"
+            keys_env.write_text('AGENT_ADDRESS=0xold\n')
 
             with patch.object(Path, 'home', return_value=fake_home):
                 from connectonion.cli.commands.reset_commands import handle_reset
                 handle_reset()
 
-            # Config should be recreated with new content
-            assert config_file.exists()
+            # keys.env should be recreated with new content
+            assert keys_env.exists()
 
     @patch('connectonion.cli.commands.reset_commands.console')
     @patch('connectonion.cli.commands.reset_commands.Prompt.ask')

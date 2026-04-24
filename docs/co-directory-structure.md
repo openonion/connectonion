@@ -8,8 +8,10 @@ Created automatically on first `co` command. Stores your identity and shared API
 
 ```
 ~/.co/
-├── config.toml          # Global configuration (address, default model)
-├── keys.env             # Shared API keys (.env format)
+├── keys.env             # Shared identity and API keys (.env format)
+│                        #   AGENT_CONFIG_PATH, AGENT_ADDRESS (co create/init)
+│                        #   OPENONION_API_KEY, AGENT_EMAIL, IS_EMAIL_ACTIVE (co auth)
+│                        #   Third-party API keys (user-added)
 ├── keys/                # Cryptographic identity
 │   ├── agent.key        # Ed25519 private key (NEVER SHARE)
 │   ├── recovery.txt     # 12-word recovery phrase
@@ -32,29 +34,24 @@ Created by `co create` or `co init`. Contains project-specific runtime data.
 └── sessions/            # YAML session logs for eval/replay
 ```
 
-## config.toml Reference
+## host.yaml Reference
 
-The `config.toml` file exists only in the global `~/.co/` directory:
+The project `.co/host.yaml` configures `host()` and `co deploy`:
 
-```toml
-[connectonion]
-framework_version = "0.0.7"
-created = "2025-01-15T10:30:00.000000"
-
-[cli]
-version = "1.0.0"
-
-[agent]
-address = "0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a"
-short_address = "0x7a9f...7f8a"
-email = "0x7a9f3b2c@mail.openonion.ai"
-created_at = "2025-01-15T10:30:00.000000"
-algorithm = "ed25519"
-default_model = "co/gemini-2.5-pro"
-max_iterations = 10
-
-[auth]
-token = "eyJhbGciOiJI..."  # JWT for network auth
+```yaml
+name: my-agent
+entrypoint: agent.py
+trust: careful
+port: 8000
+workers: 1
+relay_url: wss://oo.openonion.ai
+permissions:
+  "read_file":
+    allowed: true
+    source: safe
+    reason: read-only operation
+    expires:
+      type: never
 ```
 
 ## Keys Directory
@@ -157,7 +154,7 @@ Project `.co/` directories typically contain only runtime data (keys, logs, sess
 The `.co` directory follows ConnectOnion's philosophy of progressive disclosure:
 
 1. **Day 1**: User never looks inside `.co`, everything just works
-2. **Week 1**: User discovers their agent has an address in `config.toml`
+2. **Week 1**: User discovers their agent has an address in `host.yaml`
 3. **Month 1**: User learns about recovery phrases when setting up new machine
 4. **Advanced**: User understands the Ed25519 cryptography when building network features
 
@@ -165,7 +162,7 @@ The `.co` directory follows ConnectOnion's philosophy of progressive disclosure:
 
 ### View Your Agent Address
 ```bash
-cat ~/.co/config.toml | grep address
+grep AGENT_ADDRESS ~/.co/keys.env
 ```
 
 ### Backup Your Identity
@@ -178,11 +175,6 @@ cat ~/.co/keys/recovery.txt
 ### Add API Key
 ```bash
 echo "NEW_API_KEY=xxx" >> ~/.co/keys.env
-```
-
-### Check Framework Version
-```bash
-cat ~/.co/config.toml | grep framework_version
 ```
 
 ## FAQ

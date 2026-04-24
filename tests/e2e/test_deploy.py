@@ -1,8 +1,8 @@
 """
 E2E test for deploying ConnectOnion agents to production.
 
-This test uses the connectonion deploy infrastructure to deploy a real agent
-and verify it's running.
+Deploys a real agent with tools, verifies /health and /input endpoints work,
+then cleans up.
 
 Run:
     # Deploy and print URL (doesn't delete - for manual testing)
@@ -11,7 +11,6 @@ Run:
     # Full cycle: deploy → verify → delete
     DEPLOY_API_URL=https://oo.openonion.ai pytest tests/e2e/test_deploy.py::test_deploy_and_cleanup -v -s
 """
-
 """
 LLM-Note: E2E tests for agent deployment
 
@@ -27,9 +26,9 @@ Components under test:
 """
 
 import io
+import json
 import os
 import tarfile
-import tempfile
 import time
 import uuid
 import pytest
@@ -70,13 +69,11 @@ def get_auth_token(api_url: str) -> str:
     return response.json().get("token")
 
 
-def create_agent_tarball() -> io.BytesIO:
+def create_agent_tarball(api_key: str = "") -> io.BytesIO:
     """Create a deployable ConnectOnion agent tarball.
 
     Uses host(agent) which provides:
     - /input, /sessions, /health, /info, /docs, /ws endpoints
-    - Interactive docs UI at /docs
-    - P2P relay connection
     """
     tarball = io.BytesIO()
 
@@ -130,9 +127,12 @@ def wait_for_running(api_url: str, deployment_id: str, headers: dict, timeout: i
             timeout=10,
         )
         if response.status_code == 200:
-            status = response.json().get("status", {})
-            if status.get("running"):
-                return status
+            data = response.json()
+            status = data.get("status")
+            if status == "running":
+                return data
+            if status == "failed":
+                raise RuntimeError(f"Deploy failed: {data.get('error_message')}")
         time.sleep(5)
         print(".", end="", flush=True)
 
@@ -154,29 +154,23 @@ def test_deploy_manual(api_url):
     """Deploy agent and print URL for manual testing.
 
     Does NOT delete the deployment - use for manual testing.
-    Uses auth token as OPENONION_API_KEY for the deployed agent.
     """
-    # Get auth token - this is also the OPENONION_API_KEY
     auth_token = get_auth_token(api_url)
     auth_headers = {"Authorization": f"Bearer {auth_token}"}
 
     project_name = f"manual-test-{uuid.uuid4().hex[:8]}"
     tarball = create_agent_tarball()
 
-    # Pass auth token as OPENONION_API_KEY for the deployed container
-    secrets = f"OPENONION_API_KEY={auth_token}"
+    # Pass auth token as OPENONION_API_KEY so the deployed agent can call LLMs
+    env_vars = json.dumps({"OPENONION_API_KEY": auth_token})
 
     print(f"\nDeploying {project_name}...")
     response = requests.post(
         f"{api_url}/api/v1/deploy",
         files={"package": ("agent.tar.gz", tarball, "application/gzip")},
-        data={
-            "project_name": project_name,
-            "entrypoint": "agent.py",
-            "secrets": secrets,
-        },
+        data={"project_name": project_name, "entrypoint": "agent.py", "env_vars": env_vars},
         headers=auth_headers,
-        timeout=300,  # Deploy can take several minutes
+        timeout=300,
     )
     assert response.status_code == 200, f"Deploy failed: {response.text}"
 
@@ -195,15 +189,14 @@ def test_deploy_manual(api_url):
     print(f"ID:  {deployment_id}")
     print(f"\nTest commands:")
     print(f"  curl {url}/health")
-    print(f'  curl -X POST {url}/chat -H "Content-Type: application/json" -d \'{{"message": "what is 5*5?"}}\'')
+    print(f'  curl -X POST {url}/input -H "Content-Type: application/json" -d \'{{"prompt": "what is 5*5?"}}\'')
     print(f"\nTo delete:")
-    print(f"  curl -X DELETE {api_url}/api/v1/deploy/{deployment_id} -H 'Authorization: ...'")
+    print(f"  curl -X DELETE {api_url}/api/v1/deploy/{deployment_id} -H 'Authorization: Bearer ...'")
     print(f"{'='*60}\n")
 
 
 def test_deploy_and_cleanup(api_url):
     """Full E2E: deploy → verify health → verify input → delete → verify gone."""
-    # Get auth token - this is also the OPENONION_API_KEY
     auth_token = get_auth_token(api_url)
     auth_headers = {"Authorization": f"Bearer {auth_token}"}
 
@@ -211,19 +204,15 @@ def test_deploy_and_cleanup(api_url):
     tarball = create_agent_tarball()
     deployment_id = None
 
-    # Pass auth token as OPENONION_API_KEY for the deployed container
-    secrets = f"OPENONION_API_KEY={auth_token}"
+    # Pass auth token so deployed agent can call LLMs
+    env_vars = json.dumps({"OPENONION_API_KEY": auth_token})
 
     # 1. Deploy
     print(f"\n1. Deploying {project_name}...")
     response = requests.post(
         f"{api_url}/api/v1/deploy",
         files={"package": ("agent.tar.gz", tarball, "application/gzip")},
-        data={
-            "project_name": project_name,
-            "entrypoint": "agent.py",
-            "secrets": secrets,
-        },
+        data={"project_name": project_name, "entrypoint": "agent.py", "env_vars": env_vars},
         headers=auth_headers,
         timeout=300,
     )
@@ -240,58 +229,55 @@ def test_deploy_and_cleanup(api_url):
     wait_for_running(api_url, deployment_id, auth_headers)
     print(" OK")
 
-    # 3. Verify agent health endpoint (confirms Caddy routing works)
+    # 3. Verify agent health endpoint (confirms Caddy routing + SSL works)
     print("3. Verifying agent health...")
-    # Wait a bit for Caddy SSL cert + container startup
-    time.sleep(5)
-    response = requests.get(f"{url}/health", timeout=30)
-    assert response.status_code == 200, f"Health check failed: {response.text}"
-    health = response.json()
+    time.sleep(5)  # Wait for Caddy SSL cert
+    r = requests.get(f"{url}/health", timeout=30)
+    assert r.status_code == 200, f"Health check failed: {r.text}"
+    health = r.json()
     assert health.get("status") == "healthy", f"Unhealthy: {health}"
     print(f"   Healthy: {health}")
 
-    # 4. Verify agent input endpoint (confirms full agent works)
+    # 4. Verify agent input endpoint (confirms full agent + tools work)
     print("4. Verifying agent input...")
-    response = requests.post(
+    r = requests.post(
         f"{url}/input",
         json={"prompt": "what is 5*5?"},
         timeout=60,
     )
-    assert response.status_code == 200, f"Input failed: {response.text}"
-    result = response.json()
+    assert r.status_code == 200, f"Input failed: {r.text}"
+    result = r.json()
     assert "session_id" in result, f"No session_id: {result}"
     print(f"   Input OK: session_id={result.get('session_id')}")
 
     # 5. Delete
     print("5. Deleting...")
-    response = requests.delete(
+    r = requests.delete(
         f"{api_url}/api/v1/deploy/{deployment_id}",
         headers=auth_headers,
         timeout=30,
     )
-    assert response.status_code == 200, f"Delete failed: {response.text}"
+    assert r.status_code == 200, f"Delete failed: {r.text}"
     print("   Deleted")
 
     # 6. Verify gone from API
     print("6. Verifying cleanup from API...")
-    response = requests.get(
+    r = requests.get(
         f"{api_url}/api/v1/deploy/{deployment_id}",
         headers=auth_headers,
         timeout=10,
     )
-    assert response.status_code == 404, f"Still exists: {response.text}"
+    assert r.status_code == 404, f"Still exists: {r.text}"
     print("   Verified (404)")
 
-    # 7. Verify Caddy route removed (agent URL should fail)
+    # 7. Verify Caddy route removed
     print("7. Verifying Caddy route removed...")
-    time.sleep(2)  # Give Caddy time to update
+    time.sleep(2)
     try:
         response = requests.get(f"{url}/health", timeout=10)
-        # If we get a response, it should NOT be 200 (maybe 502 or 404)
-        assert response.status_code != 200, f"Agent still accessible after delete: {response.status_code}"
-        print(f"   Route removed (got {response.status_code})")
+        assert r.status_code != 200, f"Agent still accessible after delete: {r.status_code}"
+        print(f"   Route removed (got {r.status_code})")
     except requests.exceptions.RequestException as e:
-        # Connection refused or timeout = route is gone (expected)
         print(f"   Route removed (connection failed: {type(e).__name__})")
 
     print("\nE2E deploy test passed!")

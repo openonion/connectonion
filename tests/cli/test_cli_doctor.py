@@ -99,7 +99,7 @@ class TestHandleDoctorConfigChecks:
     @patch('connectonion.cli.commands.doctor_commands.console')
     @patch('connectonion.cli.commands.doctor_commands.shutil.which')
     def test_doctor_detects_local_config(self, mock_which, mock_console):
-        """Test that doctor detects local .co/config.toml."""
+        """Test that doctor detects local .co/host.yaml."""
         mock_which.return_value = '/usr/local/bin/co'
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -109,8 +109,8 @@ class TestHandleDoctorConfigChecks:
             # Create local config
             co_dir = Path(tmpdir) / ".co"
             co_dir.mkdir()
-            config_file = co_dir / "config.toml"
-            config_file.write_text('[agent]\nname = "test-agent"\n')
+            config_file = co_dir / "host.yaml"
+            config_file.write_text('name: test-agent\nentrypoint: agent.py\n')
 
             try:
                 from connectonion.cli.commands.doctor_commands import handle_doctor

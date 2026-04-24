@@ -1,17 +1,16 @@
 """
 Purpose: Authenticate with OpenOnion backend using Ed25519 signature-based authentication to obtain JWT for managed keys
 LLM-Note:
-  Dependencies: imports from [sys, time, toml, requests, pathlib, rich.console, rich.progress, rich.panel, address] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | calls backend at [https://api.openonion.ai/api/auth/login] | tested by [tests/cli/test_cli_auth.py]
+  Dependencies: imports from [sys, time, yaml, requests, pathlib, rich.console, rich.progress, rich.panel, address] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | calls backend at [https://api.openonion.ai/api/auth/login] | tested by [tests/cli/test_cli_auth.py]
   Data flow: receives co_dir: Path from caller → address.load(co_dir) reads Ed25519 keypair from .co/keys/ → creates auth message with timestamp → address.sign() creates signature → POST to /api/auth/login with {public_key, message, signature, timestamp} → backend verifies signature → receives JWT token → saves to ~/.co/keys.env as OPENONION_API_KEY → optionally saves to project .env if save_to_project=True → displays balance and email status → returns success bool
-  State/Effects: modifies ~/.co/keys.env (adds/updates OPENONION_API_KEY and AGENT_EMAIL) | optionally modifies project .env if save_to_project=True | makes network POST request to api.openonion.ai | chmod 0o600 on .env files (Unix/Mac) | writes to stdout via rich.Console with progress spinner | updates ~/.co/config.toml with email_active status
+  State/Effects: modifies ~/.co/keys.env (adds/updates OPENONION_API_KEY and AGENT_EMAIL) | optionally modifies project .env if save_to_project=True | makes network POST request to api.openonion.ai | chmod 0o600 on .env files (Unix/Mac) | writes to stdout via rich.Console with progress spinner | updates ~/.co/keys.env with IS_EMAIL_ACTIVE
   Integration: exposes handle_auth() for CLI and authenticate(co_dir, save_to_project) for programmatic use | called by init.py and create.py during project setup | relies on address module for Ed25519 keypair operations | uses requests for HTTP calls | displays Rich progress spinner during network call | backend creates account on first auth (no separate registration)
-  Performance: network call to backend (2-5s) | signature generation is fast (<10ms) | file I/O for .env and config.toml | retries on network errors (up to 3 attempts with exponential backoff)
+  Performance: network call to backend (2-5s) | signature generation is fast (<10ms) | file I/O for .env and keys.env | retries on network errors (up to 3 attempts with exponential backoff)
   Errors: fails if ~/.co/keys/ missing (no keypair) | fails if backend unreachable (network error) | fails if signature invalid (backend 401) | fails if timestamp expired (5min window) | prints error messages to console and returns False | backend 500 errors bubble up with error details
 """
 
 import sys
 import time
-import toml
 import requests
 import json
 import webbrowser
@@ -23,62 +22,9 @@ from rich.panel import Panel
 from dotenv import load_dotenv
 
 from ... import address
+from .project_cmd_lib import load_api_key, upsert_env
 
 console = Console()
-
-
-def _save_api_key_to_env(co_dir: Path, api_key: str, agent_email: str = None, agent_address: str = None) -> None:
-    """Save OPENONION_API_KEY, AGENT_EMAIL, and AGENT_ADDRESS to .env file.
-
-    Args:
-        co_dir: Path to .co directory
-        api_key: The API key/token to save
-        agent_email: The agent email address to save (optional)
-        agent_address: The full agent address to save (optional)
-    """
-    env_file = co_dir.parent / ".env"
-    env_lines = []
-    key_found = False
-    email_found = False
-    address_found = False
-
-    # Read existing .env if it exists
-    if env_file.exists():
-        with open(env_file, "r", encoding='utf-8') as f:
-            for line in f:
-                if line.strip().startswith("OPENONION_API_KEY="):
-                    env_lines.append(f"OPENONION_API_KEY={api_key}\n")
-                    key_found = True
-                elif line.strip().startswith("AGENT_EMAIL=") and agent_email:
-                    env_lines.append(f"AGENT_EMAIL={agent_email}\n")
-                    email_found = True
-                elif line.strip().startswith("AGENT_ADDRESS=") and agent_address:
-                    env_lines.append(f"AGENT_ADDRESS={agent_address}\n")
-                    address_found = True
-                else:
-                    env_lines.append(line)
-
-    # Add key if not found
-    if not key_found:
-        if env_lines and not env_lines[-1].endswith("\n"):
-            env_lines.append("\n")
-        env_lines.append(f"OPENONION_API_KEY={api_key}\n")
-
-    # Add email if not found and provided
-    if agent_email and not email_found:
-        env_lines.append(f"AGENT_EMAIL={agent_email}\n")
-
-    # Add address if not found and provided
-    if agent_address and not address_found:
-        env_lines.append(f"AGENT_ADDRESS={agent_address}\n")
-
-    # Write .env file
-    with open(env_file, "w", encoding='utf-8') as f:
-        f.writelines(env_lines)
-
-    # Make sure file permissions are restrictive (Unix/Mac only)
-    if sys.platform != 'win32':
-        env_file.chmod(0o600)
 
 
 def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False) -> bool:
@@ -133,68 +79,46 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
 
         if is_global:
             # Save to global keys.env
+            # Note: AGENT_ADDRESS and AGENT_CONFIG_PATH are NOT overwritten here —
+            # they are set by ensure_global_config() / co reset only.
+            # upsert_env will add them if missing but won't touch existing values.
             global_keys_env = co_dir / "keys.env"
-            env_lines = []
-            key_found = False
-            email_found = False
-            address_found = False
-
-            # Read existing keys.env if it exists (preserve AGENT_ADDRESS)
-            config_path_found = False
+            upsert_env(global_keys_env, {
+                "OPENONION_API_KEY": token,
+                "AGENT_EMAIL": agent_email,
+                "IS_EMAIL_ACTIVE": "true",
+            })
+            # Ensure AGENT_ADDRESS and AGENT_CONFIG_PATH exist (append-only, don't overwrite)
             if global_keys_env.exists():
-                with open(global_keys_env, "r", encoding='utf-8') as f:
-                    for line in f:
-                        if line.strip().startswith("OPENONION_API_KEY="):
-                            env_lines.append(f"OPENONION_API_KEY={token}\n")
-                            key_found = True
-                        elif line.strip().startswith("AGENT_EMAIL="):
-                            env_lines.append(f"AGENT_EMAIL={agent_email}\n")
-                            email_found = True
-                        elif line.strip().startswith("AGENT_ADDRESS="):
-                            address_found = True
-                            env_lines.append(line)  # Preserve existing address
-                        elif line.strip().startswith("AGENT_CONFIG_PATH="):
-                            config_path_found = True
-                            env_lines.append(line)  # Preserve existing config path
-                        else:
-                            env_lines.append(line)
-
-            # Add config path if not found (at the beginning)
-            if not config_path_found:
-                env_lines.insert(0, f"AGENT_CONFIG_PATH={co_dir}\n")
-
-            # Add key if not found
-            if not key_found:
-                if env_lines and not env_lines[-1].endswith("\n"):
-                    env_lines.append("\n")
-                env_lines.append(f"OPENONION_API_KEY={token}\n")
-
-            # Add email if not found
-            if not email_found:
-                env_lines.append(f"AGENT_EMAIL={agent_email}\n")
-
-            # Add address if not found (ensure AGENT_ADDRESS is always in global keys.env)
-            if not address_found:
-                env_lines.append(f"AGENT_ADDRESS={public_key}\n")
-
-            # Write global keys.env file
-            with open(global_keys_env, "w", encoding='utf-8') as f:
-                f.writelines(env_lines)
-            if sys.platform != 'win32':
-                global_keys_env.chmod(0o600)
+                existing = global_keys_env.read_text()
+                append_lines = []
+                if 'AGENT_ADDRESS=' not in existing:
+                    append_lines.append(f"AGENT_ADDRESS={public_key}\n")
+                if 'AGENT_CONFIG_PATH=' not in existing:
+                    append_lines.append(f"AGENT_CONFIG_PATH={co_dir}\n")
+                if append_lines:
+                    with open(global_keys_env, 'a', encoding='utf-8') as f:
+                        f.writelines(append_lines)
 
             console.print(f"✓ Saved to {global_keys_env}", style="green")
 
             # Also save to current directory's .env (always create if using global keys and save_to_project=True)
             if save_to_project:
                 local_env_path = Path(".co") if Path(".co").exists() else co_dir
-                _save_api_key_to_env(local_env_path, token, agent_email, public_key)
-                # Show relative path for local .env
+                upsert_env(local_env_path.parent / ".env", {
+                    "OPENONION_API_KEY": token,
+                    "AGENT_EMAIL": agent_email,
+                    "AGENT_ADDRESS": public_key,
+                })
                 local_env_file = Path.cwd() / ".env"
                 console.print(f"✓ Saved to {local_env_file}", style="green")
         else:
             # Save to local project .env
-            _save_api_key_to_env(co_dir, token, agent_email, public_key)
+            upsert_env(co_dir.parent / ".env", {
+                "OPENONION_API_KEY": token,
+                "AGENT_EMAIL": agent_email,
+                "AGENT_ADDRESS": public_key,
+            })
 
         # Simple success message with balance
         balance = user.get('balance_usd', 0.0) if user else 0.0
@@ -233,12 +157,11 @@ def handle_auth():
         use_global = True
 
         if not co_dir.exists() or not (co_dir / "keys" / "agent.key").exists():
-            console.print("\n❌ [bold red]No agent keys found[/bold red]")
-            console.print("\n[cyan]Initialize ConnectOnion first:[/cyan]")
-            console.print("  [bold]co init[/bold]     Add to current directory")
-            console.print("  [bold]co create[/bold]   Create new project folder")
-            console.print("\n[dim]Both set up ~/.co/ with your keys[/dim]\n")
-            return
+            # Auto-create global config with keypair
+            console.print("\n[cyan]No agent keys found. Setting up global configuration...[/cyan]")
+            from .project_cmd_lib import ensure_global_config
+            ensure_global_config()
+            co_dir = Path.home() / ".co"
         else:
             console.print("📂 Using global ConnectOnion keys (~/.co)", style="cyan")
 
@@ -252,83 +175,22 @@ def handle_auth():
         console.print("   • Visit https://discord.gg/4xfD9k8AUF for support")
 
 
-def _load_api_key() -> str:
-    """Load OPENONION_API_KEY from environment.
-
-    Checks in order:
-    1. Environment variable
-    2. Local .env file
-    3. Global ~/.co/keys.env file
-
-    Returns:
-        API key if found, None otherwise
-    """
-    # Check environment variable first
-    api_key = os.getenv("OPENONION_API_KEY")
-    if api_key:
-        return api_key
-
-    # Check local .env
-    local_env = Path(".env")
-    if local_env.exists():
-        load_dotenv(local_env)
-        api_key = os.getenv("OPENONION_API_KEY")
-        if api_key:
-            return api_key
-
-    # Check global ~/.co/keys.env
-    global_env = Path.home() / ".co" / "keys.env"
-    if global_env.exists():
-        load_dotenv(global_env)
-        api_key = os.getenv("OPENONION_API_KEY")
-        if api_key:
-            return api_key
-
-    return None
-
-
 def _save_google_to_env(env_file: Path, credentials: dict) -> None:
-    """Save Google OAuth credentials to .env file.
-
-    Args:
-        env_file: Path to .env file
-        credentials: Dict with access_token, refresh_token, expires_at, google_email, scopes
-    """
-    env_lines = []
-
-    # Read existing .env
-    if env_file.exists():
-        with open(env_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                # Skip existing Google credentials
-                if not line.strip().startswith('GOOGLE_'):
-                    env_lines.append(line)
-
-    # Add Google credentials
-    if not env_lines or not env_lines[-1].endswith('\n'):
-        env_lines.append('\n')
-
-    env_lines.append('# Google OAuth Credentials\n')
-    env_lines.append(f"GOOGLE_ACCESS_TOKEN={credentials['access_token']}\n")
-    env_lines.append(f"GOOGLE_REFRESH_TOKEN={credentials['refresh_token']}\n")
-    env_lines.append(f"GOOGLE_TOKEN_EXPIRES_AT={credentials['expires_at']}\n")
-    env_lines.append(f"GOOGLE_SCOPES={credentials['scopes']}\n")
-    env_lines.append(f"GOOGLE_EMAIL={credentials['google_email']}\n")
-
-    # Write .env
-    with open(env_file, 'w', encoding='utf-8') as f:
-        f.writelines(env_lines)
-
-    # Set permissions (Unix/Mac only)
-    if sys.platform != 'win32':
-        env_file.chmod(0o600)
+    """Save Google OAuth credentials to .env file."""
+    upsert_env(env_file, {
+        "GOOGLE_ACCESS_TOKEN": credentials['access_token'],
+        "GOOGLE_REFRESH_TOKEN": credentials['refresh_token'],
+        "GOOGLE_TOKEN_EXPIRES_AT": credentials['expires_at'],
+        "GOOGLE_SCOPES": credentials['scopes'],
+        "GOOGLE_EMAIL": credentials['google_email'],
+    }, strip_prefix="GOOGLE_")
 
 
 def handle_google_auth():
     """Authenticate with Google OAuth for Gmail/Calendar access."""
 
     # Check if user is authenticated with OpenOnion first
-    api_key = _load_api_key()
+    api_key = load_api_key()
     if not api_key:
         console.print("\n❌ [bold red]Not authenticated with OpenOnion[/bold red]")
         console.print("\n[cyan]Authenticate first:[/cyan]")
@@ -408,47 +270,21 @@ def handle_google_auth():
 
 
 def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:
-    """Save Microsoft OAuth credentials to .env file.
-
-    Args:
-        env_file: Path to .env file
-        credentials: Dict with access_token, refresh_token, expires_at, microsoft_email, scopes
-    """
-    env_lines = []
-
-    # Read existing .env
-    if env_file.exists():
-        with open(env_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                # Skip existing Microsoft credentials
-                if not line.strip().startswith('MICROSOFT_'):
-                    env_lines.append(line)
-
-    # Add Microsoft credentials
-    if not env_lines or not env_lines[-1].endswith('\n'):
-        env_lines.append('\n')
-
-    env_lines.append('# Microsoft OAuth Credentials\n')
-    env_lines.append(f"MICROSOFT_ACCESS_TOKEN={credentials['access_token']}\n")
-    env_lines.append(f"MICROSOFT_REFRESH_TOKEN={credentials['refresh_token']}\n")
-    env_lines.append(f"MICROSOFT_TOKEN_EXPIRES_AT={credentials['expires_at']}\n")
-    env_lines.append(f"MICROSOFT_SCOPES={credentials['scopes']}\n")
-    env_lines.append(f"MICROSOFT_EMAIL={credentials['microsoft_email']}\n")
-
-    # Write .env
-    with open(env_file, 'w', encoding='utf-8') as f:
-        f.writelines(env_lines)
-
-    # Set permissions (Unix/Mac only)
-    if sys.platform != 'win32':
-        env_file.chmod(0o600)
+    """Save Microsoft OAuth credentials to .env file."""
+    upsert_env(env_file, {
+        "MICROSOFT_ACCESS_TOKEN": credentials['access_token'],
+        "MICROSOFT_REFRESH_TOKEN": credentials['refresh_token'],
+        "MICROSOFT_TOKEN_EXPIRES_AT": credentials['expires_at'],
+        "MICROSOFT_SCOPES": credentials['scopes'],
+        "MICROSOFT_EMAIL": credentials['microsoft_email'],
+    }, strip_prefix="MICROSOFT_")
 
 
 def handle_microsoft_auth():
     """Authenticate with Microsoft OAuth for Outlook/Calendar access."""
 
     # Check if user is authenticated with OpenOnion first
-    api_key = _load_api_key()
+    api_key = load_api_key()
     if not api_key:
         console.print("\n❌ [bold red]Not authenticated with OpenOnion[/bold red]")
         console.print("\n[cyan]Authenticate first:[/cyan]")

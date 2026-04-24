@@ -1,7 +1,7 @@
 """
 Purpose: Send emails via OpenOnion API using agent's authenticated email address
 LLM-Note:
-  Dependencies: imports from [os, json, toml, requests, pathlib, typing, dotenv] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/test_email_functions.py, tests/test_real_email.py]
+  Dependencies: imports from [os, json, yaml, requests, pathlib, typing, dotenv] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/test_email_functions.py, tests/test_real_email.py]
   Data flow: Agent calls send_email(to, subject, message) → searches for .env file (cwd → parent dirs → ~/.co/keys.env) → loads OPENONION_API_KEY and AGENT_EMAIL → validates email format → detects HTML vs plain text → POST to oo.openonion.ai/api/email with auth token → returns {success, message_id, from, error}
   State/Effects: reads .env files from filesystem | loads environment variables via dotenv | makes HTTP POST request to OpenOnion API | no local state persistence
   Integration: exposes send_email(to, subject, message) → returns dict | used as agent tool function | requires prior 'co auth' to set OPENONION_API_KEY and AGENT_EMAIL | API endpoint: POST /api/email with Bearer token
@@ -11,7 +11,7 @@ LLM-Note:
 
 import os
 import json
-import toml
+import yaml
 import requests
 from pathlib import Path
 from typing import Dict, Optional
@@ -161,21 +161,22 @@ def get_agent_email() -> Optional[str]:
         if not co_dir.exists():
             return None
     
-    config_path = co_dir / "config.toml"
+    config_path = co_dir / "host.yaml"
     if not config_path.exists():
         return None
-    
+
     try:
-        config = toml.load(config_path)
+        with open(config_path, 'r') as f:
+            config = yaml.safe_load(f) or {}
         agent_config = config.get("agent", {})
-        
+
         # Get email or generate from address
         email = agent_config.get("email")
         if not email:
             address = agent_config.get("address", "")
             if address and address.startswith("0x"):
                 email = f"{address[:10]}@mail.openonion.ai"
-        
+
         return email
     except Exception:
         return None
@@ -183,23 +184,8 @@ def get_agent_email() -> Optional[str]:
 
 def is_email_active() -> bool:
     """Check if the agent's email is activated.
-    
+
     Returns:
         bool: True if email is activated, False otherwise
     """
-    co_dir = Path(".co")
-    if not co_dir.exists():
-        co_dir = Path("../.co")
-        if not co_dir.exists():
-            return False
-    
-    config_path = co_dir / "config.toml"
-    if not config_path.exists():
-        return False
-    
-    try:
-        config = toml.load(config_path)
-        agent_config = config.get("agent", {})
-        return agent_config.get("email_active", False)
-    except Exception:
-        return False
+    return os.getenv("IS_EMAIL_ACTIVE", "").lower() == "true"

@@ -1,8 +1,7 @@
 """Unit tests for connectonion/cli/commands/status_commands.py
 
 Tests cover:
-- _load_api_key: Load API key from env var, .env, ~/.co/keys.env
-- _load_config: Load config from .co/config.toml or ~/.co/config.toml
+- load_api_key: Load API key from env var, .env, ~/.co/keys.env
 - handle_status: Display account status without re-authenticating
 """
 
@@ -18,7 +17,7 @@ What it tests:
 - Account status display without re-authentication
 
 Components under test:
-- connectonion.cli.commands.status_commands._load_api_key
+- connectonion.cli.commands.project_cmd_lib.load_api_key
 - connectonion.cli.commands.status_commands._load_config
 - connectonion.cli.commands.status_commands.handle_status
 """
@@ -35,10 +34,10 @@ class TestLoadApiKey:
 
     def test_load_api_key_from_env_var(self):
         """Test loading API key from environment variable."""
-        from connectonion.cli.commands.status_commands import _load_api_key
+        from connectonion.cli.commands.project_cmd_lib import load_api_key
 
         with patch.dict(os.environ, {"OPENONION_API_KEY": "test-key-from-env"}, clear=False):
-            result = _load_api_key()
+            result = load_api_key()
             assert result == "test-key-from-env"
 
     def test_load_api_key_from_local_env(self):
@@ -55,8 +54,8 @@ class TestLoadApiKey:
                 # Clear env var
                 with patch.dict(os.environ, {}, clear=True):
                     # Need to reimport after patching env
-                    from connectonion.cli.commands.status_commands import _load_api_key
-                    result = _load_api_key()
+                    from connectonion.cli.commands.project_cmd_lib import load_api_key
+                    result = load_api_key()
                     # Result depends on dotenv loading
             finally:
                 os.chdir(original_cwd)
@@ -73,7 +72,7 @@ class TestLoadApiKey:
 
             with patch.object(Path, 'home', return_value=fake_home):
                 with patch.dict(os.environ, {}, clear=True):
-                    from connectonion.cli.commands.status_commands import _load_api_key
+                    from connectonion.cli.commands.project_cmd_lib import load_api_key
                     # Result depends on dotenv loading and env state
 
     def test_load_api_key_returns_none_when_not_found(self):
@@ -87,68 +86,9 @@ class TestLoadApiKey:
             try:
                 with patch.object(Path, 'home', return_value=fake_home):
                     with patch.dict(os.environ, {}, clear=True):
-                        from connectonion.cli.commands.status_commands import _load_api_key
-                        result = _load_api_key()
+                        from connectonion.cli.commands.project_cmd_lib import load_api_key
+                        result = load_api_key()
                         # Should be None or empty when not found
-            finally:
-                os.chdir(original_cwd)
-
-
-class TestLoadConfig:
-    """Tests for _load_config function."""
-
-    def test_load_config_from_local(self):
-        """Test loading config from local .co/config.toml."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            original_cwd = os.getcwd()
-            os.chdir(tmpdir)
-
-            # Create local config
-            co_dir = Path(tmpdir) / ".co"
-            co_dir.mkdir()
-            config_file = co_dir / "config.toml"
-            config_file.write_text('[agent]\nname = "local-agent"\n')
-
-            try:
-                from connectonion.cli.commands.status_commands import _load_config
-                result = _load_config()
-                assert result.get("agent", {}).get("name") == "local-agent"
-            finally:
-                os.chdir(original_cwd)
-
-    def test_load_config_from_global(self):
-        """Test loading config from ~/.co/config.toml when local doesn't exist."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            original_cwd = os.getcwd()
-            os.chdir(tmpdir)
-            fake_home = Path(tmpdir) / "fake_home"
-            fake_home.mkdir()
-            co_dir = fake_home / ".co"
-            co_dir.mkdir()
-            config_file = co_dir / "config.toml"
-            config_file.write_text('[agent]\nname = "global-agent"\n')
-
-            try:
-                with patch.object(Path, 'home', return_value=fake_home):
-                    from connectonion.cli.commands.status_commands import _load_config
-                    result = _load_config()
-                    assert result.get("agent", {}).get("name") == "global-agent"
-            finally:
-                os.chdir(original_cwd)
-
-    def test_load_config_returns_empty_dict_when_not_found(self):
-        """Test _load_config returns empty dict when no config exists."""
-        with tempfile.TemporaryDirectory() as tmpdir:
-            original_cwd = os.getcwd()
-            os.chdir(tmpdir)
-            fake_home = Path(tmpdir) / "fake_home"
-            fake_home.mkdir()
-
-            try:
-                with patch.object(Path, 'home', return_value=fake_home):
-                    from connectonion.cli.commands.status_commands import _load_config
-                    result = _load_config()
-                    assert result == {}
             finally:
                 os.chdir(original_cwd)
 
@@ -157,7 +97,7 @@ class TestHandleStatusNoApiKey:
     """Tests for handle_status when API key is not found."""
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     def test_status_shows_error_no_api_key(self, mock_load_key, mock_console):
         """Test status shows error when no API key found."""
         mock_load_key.return_value = None
@@ -173,13 +113,11 @@ class TestHandleStatusNoKeys:
     """Tests for handle_status when keys are not found."""
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
-    def test_status_shows_error_no_keys(self, mock_address_load, mock_config, mock_load_key, mock_console):
+    def test_status_shows_error_no_keys(self, mock_address_load, mock_load_key, mock_console):
         """Test status shows error when no keys found."""
         mock_load_key.return_value = "test-api-key"
-        mock_config.return_value = {}
         mock_address_load.return_value = None
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -202,15 +140,13 @@ class TestHandleStatusSuccess:
     """Tests for successful status display."""
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_displays_account_info(self, mock_post, mock_sign, mock_load, mock_config, mock_load_key, mock_console):
+    def test_status_displays_account_info(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status displays account information."""
         mock_load_key.return_value = "test-api-key-12345"
-        mock_config.return_value = {"agent": {"name": "test-agent"}}
         mock_load.return_value = {"address": "0x1234567890abcdef"}
         mock_sign.return_value = b'\x00' * 64  # Dummy signature
 
@@ -249,15 +185,13 @@ class TestHandleStatusSuccess:
                 os.chdir(original_cwd)
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_shows_low_balance_warning(self, mock_post, mock_sign, mock_load, mock_config, mock_load_key, mock_console):
+    def test_status_shows_low_balance_warning(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status shows warning when balance is low."""
         mock_load_key.return_value = "test-api-key-12345"
-        mock_config.return_value = {}
         mock_load.return_value = {"address": "0x1234567890abcdef"}
         mock_sign.return_value = b'\x00' * 64
 
@@ -295,15 +229,13 @@ class TestHandleStatusApiError:
     """Tests for API error handling."""
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_handles_api_error(self, mock_post, mock_sign, mock_load, mock_config, mock_load_key, mock_console):
+    def test_status_handles_api_error(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status handles API error gracefully."""
         mock_load_key.return_value = "test-api-key"
-        mock_config.return_value = {}
         mock_load.return_value = {"address": "0x1234567890abcdef"}
         mock_sign.return_value = b'\x00' * 64
 
@@ -332,15 +264,13 @@ class TestHandleStatusApiError:
                 os.chdir(original_cwd)
 
     @patch('connectonion.cli.commands.status_commands.console')
-    @patch('connectonion.cli.commands.status_commands._load_api_key')
-    @patch('connectonion.cli.commands.status_commands._load_config')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_handles_401_unauthorized(self, mock_post, mock_sign, mock_load, mock_config, mock_load_key, mock_console):
+    def test_status_handles_401_unauthorized(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status handles 401 unauthorized error."""
         mock_load_key.return_value = "invalid-api-key"
-        mock_config.return_value = {}
         mock_load.return_value = {"address": "0x1234567890abcdef"}
         mock_sign.return_value = b'\x00' * 64
 

@@ -31,13 +31,18 @@ co deploy
 Deploying to ConnectOnion Cloud...
 
   Project: my-agent
-  Secrets: 3 keys
+  Package: 12.3 KB
+  Env vars: 3 keys
 
 Uploading...
 Building...
 
 Deployed!
 Agent URL: https://my-agent-0x7a9f3b2c.agents.openonion.ai
+
+Container logs:
+  Agent started on port 8000
+  Ready to serve
 ```
 
 URL format: `{project_name}-{your_address[:10]}.agents.openonion.ai`
@@ -47,37 +52,109 @@ Re-deploying the same project updates the same URL (like Heroku).
 ### Requirements
 
 - Git repository with committed code
-- `.co/config.toml` (created by `co create` or `co init`)
+- `.co/host.yaml` (created by `co create` or `co init`)
 - Authenticated (`co auth`)
+- Entrypoint must call `host()` (exports the ASGI app for the container)
 
 ### How It Works
 
 ```
-co deploy → Upload source → We build and run → Returns URL
+co deploy
+  ├─ Validate: git repo? .co/host.yaml? API key? entrypoint has host()?
+  ├─ Package: git archive HEAD → tarball
+  ├─ Collect: load env vars from .env
+  ├─ Upload: POST tarball + project_name + env_vars + entrypoint to API
+  ├─ Build: backend builds Docker image, installs dependencies
+  ├─ Run: starts container with your env vars injected
+  ├─ Poll: checks status every 3s until running (or error)
+  └─ Done: returns agent URL + container logs
 ```
 
-You upload source code, we handle the rest.
+**Step by step:**
+
+1. **Validate locally** — checks that you're in a git repo, `.co/host.yaml` exists, you have an `OPENONION_API_KEY`, and your entrypoint file calls `host()`
+2. **Package source** — runs `git archive` on HEAD to create a tarball (only committed files are included)
+3. **Collect env vars** — reads your `.env` file (API keys, database URLs, etc.) to inject into the container
+4. **Upload** — sends the tarball, project name, entrypoint path, and env vars to the deploy API
+5. **Build & run** — the backend builds a Docker image from your source, installs `requirements.txt`, and starts the container
+6. **Poll status** — CLI checks deployment status every 3 seconds until the container is running or fails
+7. **Show result** — prints the agent URL and fetches the first container logs so you can verify startup
+
+Each deploy creates a new version. The last 5 versions are kept for rollback.
 
 ### Configuration
 
-```toml
-# .co/config.toml
-[project]
-name = "my-agent"
-secrets = ".env"
+```yaml
+# .co/host.yaml
+name: my-agent          # Project name (used in URL)
+entrypoint: agent.py    # Script to run in container
+trust: careful          # Trust level for incoming requests
 
-[deploy]
-entrypoint = "agent.py"
+# Agent info — displayed on the frontend landing page
+summary: "What your agent does"
+examples:
+  - "Example prompt 1"
+  - "Example prompt 2"
 ```
 
-### Secrets
+### Environment Variables
 
-Secrets from `.env` are securely passed to your agent:
+Variables from your `.env` file are securely passed to your agent container:
 
 ```bash
 # .env
-OPENAI_API_KEY=sk-xxx
+OPENONION_API_KEY=eyJ...    # Required for co/ models
+OPENAI_API_KEY=sk-xxx       # Third-party API keys
 DATABASE_URL=postgres://...
+```
+
+---
+
+## After Deployment
+
+### Access Your Agent
+
+Your deployed agent exposes these endpoints:
+
+| Endpoint | Method | Purpose |
+|----------|--------|---------|
+| `/input` | POST | Send prompt, get response |
+| `/ws` | WebSocket | Real-time streaming |
+| `/info` | GET | Agent metadata (name, tools, trust, examples) |
+| `/health` | GET | Health check |
+| `/docs` | GET | Interactive API docs |
+| `/admin/logs` | GET | Activity logs (requires API key) |
+
+### Frontend (oo-chat)
+
+Users can interact with your agent at:
+
+```
+https://chat.openonion.ai/{your_agent_address}
+```
+
+The landing page shows:
+- Agent name, model, trust level
+- Tools and skills your agent has
+- `summary` and `examples` from `host.yaml` as suggested prompts
+- Chat input for conversation
+
+### Connect from Code
+
+**Python SDK:**
+```python
+from connectonion import connect
+
+agent = connect("0x7a9f3b2c...")
+response = agent.input("Hello!")
+print(response.text)
+```
+
+**HTTP:**
+```bash
+curl -X POST https://my-agent-0x7a9f3b2c.agents.openonion.ai/input \
+  -H "Content-Type: application/json" \
+  -d '{"prompt": "Hello"}'
 ```
 
 ---

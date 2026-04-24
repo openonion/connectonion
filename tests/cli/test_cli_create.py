@@ -53,7 +53,7 @@ class TestCliCreate:
             # Check directory was created
             assert os.path.exists('my-agent')
             assert os.path.exists('my-agent/agent.py')
-            assert os.path.exists('my-agent/.co/config.toml')
+            assert os.path.exists('my-agent/.co/host.yaml')
 
     def test_create_without_name_prompts(self):
         """Test that create without name auto-generates directory name from template."""
@@ -250,7 +250,7 @@ class TestCliCreate:
             base_path = 'complete-agent'
             assert os.path.exists(f'{base_path}/agent.py')
             assert os.path.exists(f'{base_path}/.co')
-            assert os.path.exists(f'{base_path}/.co/config.toml')
+            assert os.path.exists(f'{base_path}/.co/host.yaml')
 
     def test_create_adds_agent_config_path_to_env(self):
         """Test that create adds AGENT_CONFIG_PATH to project .env file."""
@@ -321,6 +321,45 @@ class TestCliCreate:
                         assert "Secure agent communication" in content
                         assert "Authentication with OpenOnion" in content
                         assert "@mail.openonion.ai" in content
+
+    def test_create_host_yaml_from_template(self):
+        """Test that create generates host.yaml from network/host/host.yaml template."""
+        import yaml
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['create', 'tmpl-agent',
+                                                '--yes', '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            with open("tmpl-agent/.co/host.yaml") as f:
+                content = f.read()
+
+            # Project header
+            assert content.startswith("name: tmpl-agent")
+            assert "entrypoint: agent.py" in content
+            # Template fields
+            config = yaml.safe_load(content)
+            assert config["trust"] == "careful"
+            assert config["port"] == 8000
+            assert config["relay_url"] == "wss://oo.openonion.ai"
+            assert "permissions" in config
+
+    def test_create_host_yaml_has_permissions_from_template(self):
+        """Test that created host.yaml includes permissions from template."""
+        import yaml
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['create', 'perm-agent',
+                                                '--yes', '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            config = yaml.safe_load(open("perm-agent/.co/host.yaml"))
+            permissions = config.get("permissions", {})
+            assert permissions.get("read", {}).get("allowed") is True
+            assert permissions.get("glob", {}).get("allowed") is True
+            assert permissions.get("grep", {}).get("allowed") is True
 
     def test_create_copies_all_docs_to_co_docs(self):
         """Test that create copies all documentation to .co/docs/ folder."""

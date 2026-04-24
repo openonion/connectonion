@@ -1,9 +1,9 @@
 """
 Purpose: Delete global ConnectOnion configuration and create fresh account with new Ed25519 keypair
 LLM-Note:
-  Dependencies: imports from [sys, shutil, toml, pathlib, rich.console, rich.prompt, rich.panel, address, auth_commands.authenticate, __version__, datetime] | imported by [cli/main.py via handle_reset()] | tested by [tests/cli/test_cli_reset.py]
-  Data flow: receives no args → checks ~/.co/ exists → prompts user for 'Y' confirmation with clear warnings → deletes ~/.co/keys/, ~/.co/config.toml, ~/.co/keys.env → recreates directory structure → address.generate() creates new Ed25519 keypair with seed phrase → address.save() saves to ~/.co/keys/ → creates new config.toml with fresh agent identity → calls authenticate(global_dir, save_to_project=False) to register new account and get bonus credits → displays seed phrase in Rich panel → warns user to update project .env files
-  State/Effects: DESTRUCTIVE OPERATION | deletes entire ~/.co/ directory contents (keys, config, keys.env) | creates fresh ~/.co/ with new keypair | calls authenticate() which creates new backend account and writes OPENONION_API_KEY to keys.env | writes to stdout via rich.Console with warnings and confirmations | existing projects still have old API key (requires manual 'co init' to update)
+  Dependencies: imports from [sys, shutil, yaml, pathlib, rich.console, rich.prompt, rich.panel, address, auth_commands.authenticate, __version__, datetime] | imported by [cli/main.py via handle_reset()] | tested by [tests/cli/test_cli_reset.py]
+  Data flow: receives no args → checks ~/.co/ exists → prompts user for 'Y' confirmation with clear warnings → deletes ~/.co/keys/, ~/.co/keys.env → recreates directory structure → address.generate() creates new Ed25519 keypair with seed phrase → address.save() saves to ~/.co/keys/ → creates fresh keys.env with new agent identity → calls authenticate(global_dir, save_to_project=False) to register new account and get bonus credits → displays seed phrase in Rich panel → warns user to update project .env files
+  State/Effects: DESTRUCTIVE OPERATION | deletes entire ~/.co/ directory contents (keys, keys.env) | creates fresh ~/.co/ with new keypair | calls authenticate() which creates new backend account and writes OPENONION_API_KEY to keys.env | writes to stdout via rich.Console with warnings and confirmations | existing projects still have old API key (requires manual 'co init' to update)
   Integration: exposes handle_reset() for CLI | similar to ensure_global_config() in init.py but deletes first | relies on address.generate() for new Ed25519 keypair | calls authenticate() to register new account | displays seed phrase via Rich panel | requires explicit 'Y' confirmation to proceed
   Performance: file deletion is fast (<100ms) | address.generate() is fast (<100ms) | authenticate() makes network call (2-5s) | config file writes are I/O bound
   Errors: gracefully handles missing ~/.co/ (nothing to reset) | requires uppercase 'Y' for confirmation (case-sensitive) | cancels if user types anything else | authenticate() may fail but reset still completes | warns user about data loss before proceeding
@@ -11,7 +11,7 @@ LLM-Note:
 
 import sys
 import shutil
-import toml
+import yaml
 from pathlib import Path
 from rich.console import Console
 from rich.prompt import Prompt
@@ -67,11 +67,6 @@ def handle_reset():
         shutil.rmtree(keys_dir)
         console.print("✓ Deleted ~/.co/keys/")
 
-    config_path = global_dir / "config.toml"
-    if config_path.exists():
-        config_path.unlink()
-        console.print("✓ Deleted ~/.co/config.toml")
-
     keys_env = global_dir / "keys.env"
     if keys_env.exists():
         keys_env.unlink()
@@ -97,35 +92,12 @@ def handle_reset():
         border_style="yellow"
     ))
 
-    # Create new config
-    from ... import __version__
-    from datetime import datetime
-
-    config = {
-        "connectonion": {
-            "framework_version": __version__,
-            "created": datetime.now().isoformat(),
-        },
-        "cli": {
-            "version": "1.0.0",
-        },
-        "agent": {
-            "address": addr_data["address"],
-            "short_address": addr_data["short_address"],
-            "email": f"{addr_data['address'][:10]}@mail.openonion.ai",
-            "email_active": False,
-            "created_at": datetime.now().isoformat(),
-            "algorithm": "ed25519",
-            "default_model": "co/gemini-2.5-pro",
-            "max_iterations": 10,
-        },
-    }
-
-    with open(config_path, 'w', encoding='utf-8') as f:
-        toml.dump(config, f)
-    console.print("✓ Created ~/.co/config.toml")
-
-    keys_env.touch()
+    # Create keys.env with agent address
+    agent_email = f"{addr_data['address'][:10]}@mail.openonion.ai"
+    with open(keys_env, 'w', encoding='utf-8') as f:
+        f.write(f"AGENT_CONFIG_PATH={global_dir}\n")
+        f.write(f"AGENT_ADDRESS={addr_data['address']}\n")
+        f.write(f"AGENT_EMAIL={agent_email}\n")
     if sys.platform != 'win32':
         keys_env.chmod(0o600)
     console.print("✓ Created ~/.co/keys.env")

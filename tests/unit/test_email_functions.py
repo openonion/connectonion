@@ -13,7 +13,7 @@ Components under test:
 from unittest.mock import patch, MagicMock, mock_open
 from pathlib import Path
 import tempfile
-import toml
+import yaml
 import json
 import os
 import sys
@@ -237,36 +237,37 @@ def test_mark_read_api_error(mock_post):
 
 
 # -------- helper function tests -------- #
+# Note: We patch 'yaml.safe_load' globally instead of
+# 'connectonion.useful_tools.send_email.yaml.safe_load' because
+# __init__.py re-exports the send_email function, shadowing the module name.
 
 @patch('pathlib.Path.exists')
-@patch('toml.load')
-def test_get_agent_email(mock_toml_load, mock_exists):
+@patch('yaml.safe_load')
+@patch('builtins.open', new_callable=mock_open)
+def test_get_agent_email(mock_file, mock_yaml_load, mock_exists):
     mock_exists.return_value = True
-    mock_toml_load.return_value = TEST_CONFIG_TOML
+    mock_yaml_load.return_value = TEST_CONFIG_TOML
     email = get_agent_email()
     assert email == TEST_ACCOUNT["email"]
 
 
 @patch('pathlib.Path.exists')
-@patch('toml.load')
-def test_get_agent_email_generated(mock_toml_load, mock_exists):
+@patch('yaml.safe_load')
+@patch('builtins.open', new_callable=mock_open)
+def test_get_agent_email_generated(mock_file, mock_yaml_load, mock_exists):
     mock_exists.return_value = True
-    mock_toml_load.return_value = {"agent": {"address": "0xabcdef1234567890"}}
+    mock_yaml_load.return_value = {"agent": {"address": "0xabcdef1234567890"}}
     email = get_agent_email()
     assert email == "0xabcdef12@mail.openonion.ai"
 
 
-@patch('pathlib.Path.exists')
-@patch('toml.load')
-def test_is_email_active(mock_toml_load, mock_exists):
-    mock_exists.return_value = True
-    mock_toml_load.return_value = {"agent": {"email_active": True}}
+def test_is_email_active(monkeypatch):
+    monkeypatch.setenv("IS_EMAIL_ACTIVE", "true")
     active = is_email_active()
     assert active is True
 
 
-@patch('pathlib.Path.exists')
-def test_is_email_active_no_project(mock_exists):
-    mock_exists.return_value = False
+def test_is_email_active_not_set(monkeypatch):
+    monkeypatch.delenv("IS_EMAIL_ACTIVE", raising=False)
     active = is_email_active()
     assert active is False

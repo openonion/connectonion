@@ -1,9 +1,9 @@
 """
 Purpose: Unified LLM provider abstraction with factory pattern for OpenAI, Anthropic, Gemini, Groq, Grok, Mistral, OpenRouter, and OpenOnion
 LLM-Note:
-  Dependencies: imports from [abc, typing, dataclasses, json, os, base64, openai, anthropic, requests, pathlib, toml, pydantic, .usage, .exceptions] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py, tests/test_billing_error_agent.py]
+  Dependencies: imports from [abc, typing, dataclasses, json, os, base64, openai, anthropic, requests, pathlib, yaml, pydantic, .usage, .exceptions] | imported by [agent.py, llm_do.py, conftest.py] | tested by [tests/test_llm.py, tests/test_llm_do.py, tests/test_real_*.py, tests/test_billing_error_agent.py]
   Data flow: Agent/llm_do calls create_llm(model, api_key) → factory routes to provider class → Provider.__init__() validates API key → Agent calls complete(messages, tools) OR structured_complete(messages, output_schema) → provider converts to native format → calls API → parses response → returns LLMResponse(content, tool_calls, raw_response) OR Pydantic model instance
-  State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, OPENONION_API_KEY) | reads ~/.co/config.toml for OpenOnion auth | makes HTTP requests to LLM APIs | no caching or persistence
+  State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, OPENONION_API_KEY) | reads OPENONION_API_KEY from env / .env / ~/.co/keys.env | makes HTTP requests to LLM APIs | no caching or persistence
   Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, GroqLLM, GrokLLM, OpenRouterLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
   Performance: stateless (no caching) | synchronous (no streaming) | default max_tokens=8192 for Anthropic (required) | each call hits API
   Errors: raises ValueError for missing API keys, unknown models, invalid parameters | provider-specific errors bubble up (openai.APIError, anthropic.APIError, etc.) | OpenOnionLLM transforms 402 errors to InsufficientCreditsError with formatted message and typed attributes | Pydantic ValidationError for invalid structured output
@@ -82,7 +82,7 @@ Dependencies
 - google.generativeai: Gemini provider implementation
 - pydantic: Structured output validation
 - requests: OpenOnion authentication checks
-- toml: OpenOnion config file parsing
+- yaml: OpenOnion config file parsing
 
 Integration Points
 -----------------
@@ -102,7 +102,7 @@ Required (pick one):
   - OPENAI_API_KEY: For OpenAI models
   - ANTHROPIC_API_KEY: For Claude models
   - GEMINI_API_KEY or GOOGLE_API_KEY: For Gemini models
-  - OPENONION_API_KEY: For co/ managed keys (or from ~/.co/config.toml)
+  - OPENONION_API_KEY: For co/ managed keys (from .env or ~/.co/keys.env)
   - GROQ_API_KEY: For groq/ prefixed models
   - OPENROUTER_API_KEY: For openrouter/ prefixed models
   - OPENROUTER_HTTP_REFERER: Optional attribution header for OpenRouter
@@ -166,7 +166,6 @@ import anthropic
 # google-genai not needed - using OpenAI-compatible endpoint instead
 import requests
 from pathlib import Path
-import toml
 from pydantic import BaseModel
 
 

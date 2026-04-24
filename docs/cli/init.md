@@ -93,7 +93,7 @@ your-project/
 ├── agent.py             # Added if missing (skipped if exists)
 ├── .env                 # APPENDED with API keys (created if missing)
 ├── .co/
-│   ├── config.toml     # Project config (uses global identity)
+│   ├── host.yaml       # Project config (uses global identity)
 │   └── docs/           # ALWAYS UPDATED to latest version
 │       ├── co-vibe-coding-all-in-one.md  # Overwritten
 │       └── connectonion.md                # Overwritten
@@ -107,7 +107,7 @@ your-project/
 | `agent.py` | Skip | Won't overwrite user code |
 | `.env` | **Append** | Adds API keys if missing |
 | `.co/docs/` | **Overwrite** | Always latest documentation |
-| `.co/config.toml` | Update | Preserves custom settings |
+| `.co/host.yaml` | Update | Preserves custom settings |
 | `.gitignore` | Append | Adds ConnectOnion entries |
 
 ## .env Handling Details
@@ -171,7 +171,6 @@ $ co init  # First time ever
   ✓ Generated master keypair
   ✓ Your address: 0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a
   ✓ Your email: 0x7a9f3b2c@mail.openonion.ai
-  ✓ Created ~/.co/config.toml
   ✓ Created ~/.co/keys.env
 
 [continues with project initialization...]
@@ -352,7 +351,7 @@ $ co init
 
 3. **Don't edit framework docs** - They'll be overwritten on update
 
-4. **Commit .co/config.toml** - Track project configuration
+4. **Commit .co/host.yaml** - Track project configuration
 
 5. **Never commit .env** - Keep API keys secret
 
@@ -391,7 +390,7 @@ co init
 
 - Uses your global identity from `~/.co` (address + email)
 - Appends missing API keys to `.env` (creates it if missing)
-- Adds `.co/config.toml` and refreshes `.co/docs/`
+- Adds `.co/host.yaml` and refreshes `.co/docs/`
 - Never overwrites your code (skips existing files)
 
 ## Safe In Existing Folders
