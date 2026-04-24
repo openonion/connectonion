@@ -42,8 +42,11 @@ class TestRelayConnection:
 
             result = await relay.connect()
 
-            # Should connect to production relay
-            mock_connect.assert_called_once_with("wss://oo.openonion.ai/ws/announce")
+            # Should connect to production relay. ping_interval is disabled
+            # because Cloudflare drops WS control frames; see relay.py.
+            mock_connect.assert_called_once_with(
+                "wss://oo.openonion.ai/ws/announce", ping_interval=None
+            )
             assert result == mock_ws
 
     @pytest.mark.asyncio
@@ -56,8 +59,11 @@ class TestRelayConnection:
 
             result = await relay.connect(custom_url)
 
-            # Base URL should have /ws/announce appended
-            mock_connect.assert_called_once_with("ws://localhost:8000/ws/announce")
+            # Base URL should have /ws/announce appended; ping_interval
+            # disabled for CDN compatibility (see relay.py).
+            mock_connect.assert_called_once_with(
+                "ws://localhost:8000/ws/announce", ping_interval=None
+            )
             assert result == mock_ws
 
     @pytest.mark.asyncio
