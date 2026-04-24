@@ -55,7 +55,12 @@ async def connect(relay_url: str = "wss://oo.openonion.ai"):
     ws_url = f"{relay_url.rstrip('/')}/ws/announce"
     # TODO: Future connection metadata (observed_ip, ICE candidates) should be
     #       attached to ANNOUNCE so relay can return best endpoints to clients.
-    return await websockets.connect(ws_url)
+    # ping_interval=None: WebSocket-level PING frames don't survive the
+    # Cloudflare edge in front of the relay, so the default 20s/20s timeout
+    # tears down healthy connections after ~40s. We disable the library's
+    # ping and rely on the ANNOUNCE heartbeat in serve_loop instead — if that
+    # send fails, the outer reconnect loop catches it.
+    return await websockets.connect(ws_url, ping_interval=None)
 
 
 async def send_announce(websocket, announce_message: Dict[str, Any]):
@@ -150,7 +155,7 @@ async def serve_loop(
     websocket,
     announce_message: Dict[str, Any],
     task_handler,
-    heartbeat_interval: int = 300,
+    heartbeat_interval: int = 60,
     addr_data: Dict[str, Any] = None,
     local_port: int = None,
 ):
