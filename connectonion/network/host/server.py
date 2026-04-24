@@ -274,7 +274,10 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
 
                     ws = await relay.connect(relay_url)
                     # Relay status shown in banner - no log needed on first connect
-                    await relay.serve_loop(ws, announce_msg, task_handler, addr_data=addr_data)
+                    await relay.serve_loop(
+                        ws, announce_msg, task_handler,
+                        addr_data=addr_data, local_port=port,
+                    )
                 except asyncio.CancelledError:
                     raise
                 except Exception as e:

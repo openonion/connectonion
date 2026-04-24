@@ -151,7 +151,8 @@ async def serve_loop(
     announce_message: Dict[str, Any],
     task_handler,
     heartbeat_interval: int = 300,
-    addr_data: Dict[str, Any] = None
+    addr_data: Dict[str, Any] = None,
+    local_port: int = None,
 ):
     """
     Main serving loop for agent.
@@ -159,20 +160,20 @@ async def serve_loop(
     This handles:
     - Initial ANNOUNCE
     - Periodic heartbeat ANNOUNCE (every 60s) with fresh signature
-    - Receiving and processing TASK messages
-    - Sending responses
+    - Receiving tagged session messages from the relay proxy and piping them
+      to the agent's own local /ws endpoint (which implements the full
+      CONNECT/CONNECTED/INPUT/streaming/OUTPUT protocol).
+    - Legacy one-shot INPUT → task_handler → OUTPUT (backward compat).
 
     Args:
         websocket: WebSocket connection from connect()
         announce_message: ANNOUNCE message dict (initial message)
-        task_handler: Async function that takes (prompt: str) -> str
-        heartbeat_interval: Seconds between heartbeat ANNOUNCEs (default 60)
+        task_handler: Async function (prompt: str) -> str (legacy path)
+        heartbeat_interval: Seconds between heartbeat ANNOUNCEs
         addr_data: Agent address data for re-signing heartbeat messages
-
-    Example:
-        >>> async def handler(prompt):
-        ...     return agent.input(prompt)
-        >>> await serve_loop(ws, announce_msg, handler, addr_data=addr_data)
+        local_port: Local HTTP port where the agent's /ws endpoint listens.
+            Required for the relay proxy session path; if None, the proxy
+            path is disabled and only the legacy one-shot path works.
     """
     from . import announce as announce_module
     from rich.console import Console
@@ -187,24 +188,66 @@ async def serve_loop(
     endpoints = announce_message.get("endpoints", [])
     relay_url = announce_message.get("relay")
 
+    # sid -> asyncio.Queue of inbound messages from relay (for this session)
+    sessions: Dict[str, asyncio.Queue] = {}
+
+    async def _run_session(sid: str, first_msg: Dict[str, Any]):
+        """Open a loopback WS to the local /ws endpoint and pump messages."""
+        if local_port is None:
+            raise RuntimeError("local_port required for relay proxy sessions")
+        local_url = f"ws://127.0.0.1:{local_port}/ws"
+        queue = sessions[sid]
+        try:
+            async with websockets.connect(local_url) as local_ws:
+                # Forward first message (strip relay-internal fields)
+                await local_ws.send(json.dumps(_strip_relay_fields(first_msg)))
+
+                async def pump_relay_to_local():
+                    while True:
+                        msg = await queue.get()
+                        if msg is None or msg.get("_relay_event") == "close":
+                            return
+                        await local_ws.send(json.dumps(_strip_relay_fields(msg)))
+
+                async def pump_local_to_relay():
+                    async for raw in local_ws:
+                        msg = json.loads(raw)
+                        msg["_relay_sid"] = sid
+                        await websocket.send(json.dumps(msg))
+
+                t_in = asyncio.create_task(pump_relay_to_local())
+                t_out = asyncio.create_task(pump_local_to_relay())
+                done, pending = await asyncio.wait(
+                    {t_in, t_out}, return_when=asyncio.FIRST_COMPLETED
+                )
+                for t in pending:
+                    t.cancel()
+        finally:
+            sessions.pop(sid, None)
+
     # Main loop
     while True:
         try:
-            # Wait for message with timeout to allow heartbeat
             task = await wait_for_task(websocket, timeout=heartbeat_interval)
 
-            # Handle INPUT message
+            # Relay proxy session path (new)
+            sid = task.get("_relay_sid")
+            if sid:
+                if sid in sessions:
+                    await sessions[sid].put(task)
+                else:
+                    sessions[sid] = asyncio.Queue()
+                    asyncio.create_task(_run_session(sid, task))
+                continue
+
+            # Legacy one-shot INPUT → OUTPUT path
             if task.get("type") == "INPUT":
                 console.print(f"{prefix} [dim]Input received[/dim]")
-
-                # Process with handler
                 result = await task_handler(task["prompt"])
-
-                # Send OUTPUT response
                 output_message = {
                     "type": "OUTPUT",
                     "input_id": task["input_id"],
-                    "result": result
+                    "result": result,
                 }
                 await websocket.send(json.dumps(output_message))
                 console.print(f"{prefix} [green]Output sent[/green]")
@@ -213,15 +256,12 @@ async def serve_loop(
                 console.print(f"{prefix} [red]Relay error: {task.get('error')}[/red]")
 
         except asyncio.TimeoutError:
-            # Time for heartbeat ANNOUNCE - create fresh message with new timestamp and signature
             if addr_data:
-                # Re-create message with fresh timestamp and signature
                 fresh_announce = announce_module.create_announce_message(
                     addr_data, summary, endpoints=endpoints, relay=relay_url
                 )
                 await send_announce(websocket, fresh_announce)
             else:
-                # Fallback: just update timestamp (signature will be invalid)
                 announce_message["timestamp"] = int(asyncio.get_event_loop().time())
                 await send_announce(websocket, announce_message)
             console.print(f"{prefix} [red]♥[/red]")
@@ -229,3 +269,8 @@ async def serve_loop(
         except websockets.exceptions.ConnectionClosed:
             console.print(f"{prefix} [dim]Relay disconnected[/dim]")
             break
+
+
+def _strip_relay_fields(msg: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove internal _relay_* tags before handing off to the local handler."""
+    return {k: v for k, v in msg.items() if not k.startswith("_relay_")}
