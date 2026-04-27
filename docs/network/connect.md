@@ -86,15 +86,20 @@ The client:
 ### 3. Agent Processes
 
 ```
-Relay → INPUT → Agent
-        │
-        ├─ agent.input(prompt)
-        │
-        ├─ Streaming events (direct /ws only):
-        │  ← tool_call, tool_result, thinking, assistant, ask_user
-        │
-        └─ OUTPUT → Relay → Client
+Relay → tagged messages → Agent relay loop
+                            │
+                            └─ forwards to local ws://127.0.0.1:8000/ws
+                               (same handler as direct connections)
+                               │
+                               ├─ agent.input(prompt)
+                               │
+                               ├─ Streaming events:
+                               │  ← tool_call, tool_result, thinking, ask_user
+                               │
+                               └─ OUTPUT → relay loop → Relay → Client
 ```
+
+The relay loop on the agent side forwards messages to the agent's own `/ws` endpoint, so relay connections get the same features as direct connections (streaming, tool calls, ask_user, session recovery).
 
 ### 4. Client Receives Response
 

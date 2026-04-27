@@ -171,28 +171,43 @@ ws.onmessage = (e) => console.log(JSON.parse(e.data));
 Persistent connection to relay server for discoverability. Runs automatically.
 
 ```
-Agent                              Relay Server
-  │                                     │
-  │── ANNOUNCE (register) ────────────>│  Every 60s (heartbeat)
-  │   {address, endpoints, tools}       │
-  │                                     │
-  │<─────────────── INPUT ─────────────│  From remote client
-  │   {input_id, prompt}                │
-  │                                     │
-  │── OUTPUT ─────────────────────────>│  Back to client
-  │   {input_id, result}                │
+Client                          Relay Server                        Agent
+  │                                  │                                │
+  │                                  │<── ANNOUNCE (register) ────────│  Every 60s
+  │                                  │    {address, endpoints}        │
+  │                                  │                                │
+  │── CONNECT ─────────────────────>│── tag _relay_sid + forward ──>│
+  │                                  │                                │
+  │<── CONNECTED ──────────────────│<── tag _relay_sid + forward ───│
+  │                                  │                                │
+  │── INPUT ───────────────────────>│── tag _relay_sid + forward ──>│
+  │                                  │                                │
+  │<── streaming events ───────────│<── tag _relay_sid + forward ───│
+  │    (thinking, tool_call, ...)    │                                │
+  │                                  │                                │
+  │<── OUTPUT ─────────────────────│<── tag _relay_sid + forward ───│
 ```
 
-**Flow:**
-1. On startup, agent connects to relay via WebSocket
-2. Agent sends ANNOUNCE with address, endpoints, tools
-3. Relay stores agent info (now discoverable)
-4. Agent re-sends ANNOUNCE every 60s (heartbeat)
-5. When client calls `connect("0xaddress")`:
-   - Client queries relay for agent endpoints
-   - Client tries direct connection first
-   - Falls back to relay routing if needed
-6. Relay forwards INPUT to agent, agent sends OUTPUT back
+**How it works:**
+
+On startup, the agent process runs two things in the same event loop:
+- **ASGI server** on port 8000 — handles direct HTTP and WebSocket connections
+- **Relay loop** — maintains a long-lived WebSocket to `wss://oo.openonion.ai/ws/announce`
+
+When a client connects through the relay:
+
+1. Client opens WebSocket to relay's `/ws/input`
+2. Relay tags each message with a `_relay_sid` (unique per client session) and forwards it to the agent through the announce WebSocket
+3. Agent's relay loop receives the tagged message and opens a local WebSocket to its own `ws://127.0.0.1:8000/ws` — the same endpoint that handles direct connections
+4. The local `/ws` handler processes the full protocol (CONNECT, INPUT, streaming, OUTPUT) as if it were a normal client
+5. Responses flow back: local `/ws` → relay loop (adds `_relay_sid`) → announce WebSocket → relay → client
+
+The relay loop is just a message forwarder — it strips `_relay_sid` tags on the way in, adds them back on the way out. All protocol handling (authentication, session management, IO queues, streaming events) happens in the existing `/ws` handler. This means relay connections get the exact same features as direct connections: streaming, tool calls, ask_user, session recovery, etc.
+
+**Registration:**
+1. Agent sends ANNOUNCE with address and endpoints every 60s
+2. Relay stores agent info (now discoverable)
+3. When client calls `connect("0xaddress")`, SDK tries direct connection first, falls back to relay if needed
 
 ### Heartbeat & Keep-Alive
 

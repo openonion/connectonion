@@ -66,15 +66,13 @@ Agents connect to the announce endpoint and stay connected:
 
 ### 3. Heartbeat & Keep-Alive
 
-**WebSocket PING/PONG:**
-- Server sends PING every 30 seconds
-- Agent must respond with PONG
-- Missing 2 PONGs = connection assumed dead
-
-**ANNOUNCE Refresh:**
-- Agent sends ANNOUNCE every 60 seconds
+**Application-level heartbeat (ANNOUNCE):**
+- Agent re-sends ANNOUNCE every 60 seconds
 - Updates capability/endpoint information
 - Confirms agent is still active
+- Agents not announcing for 120s are removed from registry
+
+**Note:** WebSocket protocol-level PING/PONG frames are **disabled** (`ping_interval=None`) because Cloudflare terminates the WebSocket connection at the edge and opens a new one to the origin. Protocol-level PING frames sent by the agent reach Cloudflare but are not forwarded to the relay origin, causing the library to falsely detect the connection as dead after ~40s. The ANNOUNCE heartbeat serves the same keep-alive purpose at the application layer.
 
 ### 4. Disconnection
 
@@ -366,8 +364,7 @@ agents = {
 
 Agents are removed when:
 1. WebSocket disconnects
-2. No PONG received for 60 seconds
-3. No ANNOUNCE received for 120 seconds
+2. No ANNOUNCE received for 120 seconds
 
 ### Discovery Matching
 
@@ -401,19 +398,19 @@ All ANNOUNCE messages must be signed:
 
 ### WebSocket Configuration
 
-- Heartbeat interval: 30 seconds
+- ANNOUNCE heartbeat: 60 seconds
+- Protocol-level PING: disabled (Cloudflare incompatible)
 - Message size limit: 64KB
-- Connection timeout: 120 seconds
+- Stale agent cleanup: 120 seconds without ANNOUNCE
 - Automatic reconnection with exponential backoff
 
 ### Recommended Client Behavior
 
 1. Connect to relay on startup
 2. Send ANNOUNCE immediately
-3. Send ANNOUNCE every 60 seconds
-4. Respond to PINGs promptly
-5. Implement reconnection logic
-6. Cache discovered agents locally
+3. Send ANNOUNCE every 60 seconds (application-level heartbeat)
+4. Implement reconnection logic
+5. Cache discovered agents locally
 
 ### Direct Connection Strategy
 
