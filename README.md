@@ -736,6 +736,80 @@ It helps others discover the framework and motivates us to keep improving it.
 
 ---
 
+## ❓ FAQ
+
+### General
+
+**What is ConnectOnion?**
+ConnectOnion is a simple, elegant Python framework for building production-ready AI agents. It focuses on keeping simple things simple while making complicated things possible — from single-agent scripts to multi-agent systems with P2P discovery.
+
+**How is ConnectOnion different from LangChain or AutoGen?**
+ConnectOnion takes a minimal approach: you write prompts and tools, and the framework handles the rest. No complex chains, no heavy abstractions. It's designed for developers who want control without boilerplate.
+
+**What Python versions are supported?**
+Python 3.10 or higher. We recommend Python 3.11+ for the best performance and compatibility.
+
+### Getting Started
+
+**Do I need an API key to use ConnectOnion?**
+Yes, you need an OpenAI-compatible API key by default. ConnectOnion supports any LLM provider that follows the OpenAI API format, including OpenAI, Azure OpenAI, and local models via LiteLLM.
+
+**How do I install ConnectOnion?**
+```bash
+pip install connectonion
+```
+Or from source:
+```bash
+git clone https://github.com/openonion/connectonion.git
+cd connectonion && pip install -e .
+```
+
+### Agent Development
+
+**How do I add tools to my agent?**
+Define a Python function with a docstring (used as the tool description) and pass it to the agent:
+```python
+def search(query: str) -> str:
+    """Search for information."""
+    return f"Results for {query}"
+
+agent = Agent(name="assistant", tools=[search])
+```
+
+**What is the Skills system?**
+Skills are auto-discoverable, Claude Code-compatible packages that extend agent capabilities. They follow a standard directory structure and can be shared across agents. See the [Skills documentation](http://docs.connectonion.com) for details.
+
+**How does the approval system work?**
+ConnectOnion has a built-in approval workflow where agents can request human approval before executing sensitive operations. Configure approval rules per-tool or globally using the `trust` parameter.
+
+### Multi-Agent
+
+**How do I connect multiple agents?**
+Use the `host()` function to expose an agent as a remotely callable service. Other agents can discover and call it via P2P relay:
+```python
+from connectonion import Agent, host
+agent = Agent(name="production")
+host(agent)  # Now other agents can discover and call this agent
+```
+
+**What is the Multi-Agent Trust System?**
+The trust system defines rules for inter-agent communication. Use `trust="prompt"` for fast rule-based trust, or implement custom trust policies for production environments.
+
+### Debugging
+
+**How do I debug my agent?**
+ConnectOnion has a built-in interactive debugger:
+```python
+agent = Agent(name="assistant", tools=[search])
+agent.auto_debug()  # Opens an interactive debugging session
+```
+This lets you step through agent execution, inspect tool calls, and fix issues in real-time.
+
+**Where can I find more help?**
+- 📖 [Documentation](http://docs.connectonion.com)
+- 💬 [Discord Community](https://discord.gg/4xfD9k8AUF)
+- 🐛 [GitHub Issues](https://github.com/openonion/connectonion/issues)
+
 ## 🤝 Contributing
 
 We welcome contributions! ConnectOnion is open source and community-driven.
