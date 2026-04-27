@@ -4,30 +4,33 @@ Purpose: Agent-side relay client for registering and serving via central relay s
 Lifecycle (Agent Side):
   1. connect(relay_url) opens WebSocket to /ws/announce
   2. send_announce() sends ANNOUNCE message to register agent
-  3. serve_loop() waits for INPUT messages from relay
-  4. On INPUT: task_handler(prompt) processes → sends OUTPUT back
+  3. serve_loop() receives messages from relay, routes by session_id
+  4. Messages forwarded to local /ws endpoint for full protocol handling
   5. Heartbeat: re-sends ANNOUNCE every 60s to stay registered
 
 Message Flow:
   Agent → ANNOUNCE → Relay (registers in active_connections)
-  Client → INPUT → Relay → forwards to Agent's WebSocket
-  Agent → OUTPUT → Relay → forwards to Client's /ws/input connection
+  Client → CONNECT/INPUT → Relay → forwards to Agent's announce WebSocket
+  Agent serve_loop → forwards to local ws://127.0.0.1:{port}/ws
+  Local /ws handles full protocol (CONNECT/INPUT/streaming/OUTPUT)
+  Responses (with session_id) → serve_loop → Relay → Client
 
 Protocol:
   ANNOUNCE: {type, address, summary, endpoints, signature, timestamp}
-  INPUT:    {type, input_id, prompt, from_address?, session?}
-  OUTPUT:   {type, input_id, result, session?}
-  TODO: Adopt WebRTC-style ICE candidates (host/srflx/relay) and connectivity
-        checks so clients can prefer direct endpoints when possible.
+  INPUT:    {type, input_id, prompt, from_address?, session_id, session?}
+  OUTPUT:   {type, input_id, result, session_id, session?}
+  All events carry session_id (injected by _pipe_ws_io in websocket.py).
+  Relay and serve_loop both route by session_id — no transport-level tags.
 
 Related Files:
-  - oo-api/relay/routes.py: Relay server that receives these messages
+  - oo-api/relay/routes.py: Relay server that forwards messages
+  - connectonion/network/asgi/websocket.py: Local /ws handler (full protocol)
   - connectonion/network/connect.py: Client-side (sends INPUT, receives OUTPUT)
   - connectonion/network/host/server.py: Uses this for relay registration
 
 LLM-Note:
   Dependencies: imports from [json, asyncio, typing, websockets]
-  Data flow: connect() → /ws/announce → serve_loop() → INPUT → task_handler → OUTPUT
+  Data flow: connect() → /ws/announce → serve_loop() → local /ws → agent
   State/Effects: WebSocket connection to relay | heartbeat every 60s
   Integration: exposes connect(), send_announce(), wait_for_task(), serve_loop()
 """
@@ -165,9 +168,10 @@ async def serve_loop(
     This handles:
     - Initial ANNOUNCE
     - Periodic heartbeat ANNOUNCE (every 60s) with fresh signature
-    - Receiving tagged session messages from the relay proxy and piping them
-      to the agent's own local /ws endpoint (which implements the full
-      CONNECT/CONNECTED/INPUT/streaming/OUTPUT protocol).
+    - Receiving session messages from the relay and forwarding them to the
+      agent's own local /ws endpoint (which implements the full
+      CONNECT/CONNECTED/INPUT/streaming/OUTPUT protocol). Messages are
+      routed by session_id, which every event carries.
     - Legacy one-shot INPUT → task_handler → OUTPUT (backward compat).
 
     Args:
@@ -193,32 +197,33 @@ async def serve_loop(
     endpoints = announce_message.get("endpoints", [])
     relay_url = announce_message.get("relay")
 
-    # sid -> asyncio.Queue of inbound messages from relay (for this session)
+    # session_id -> asyncio.Queue of inbound messages from relay
     sessions: Dict[str, asyncio.Queue] = {}
 
-    async def _run_session(sid: str, first_msg: Dict[str, Any]):
+    async def _run_session(session_id: str, first_msg: Dict[str, Any]):
         """Open a loopback WS to the local /ws endpoint and pump messages."""
         if local_port is None:
             raise RuntimeError("local_port required for relay proxy sessions")
         local_url = f"ws://127.0.0.1:{local_port}/ws"
-        queue = sessions[sid]
+        queue = sessions[session_id]
         try:
             async with websockets.connect(local_url) as local_ws:
-                # Forward first message (strip relay-internal fields)
-                await local_ws.send(json.dumps(_strip_relay_fields(first_msg)))
+                # Forward first message
+                await local_ws.send(json.dumps(first_msg))
 
                 async def pump_relay_to_local():
                     while True:
                         msg = await queue.get()
-                        if msg is None or msg.get("_relay_event") == "close":
+                        if msg is None or msg.get("type") == "close":
                             return
-                        await local_ws.send(json.dumps(_strip_relay_fields(msg)))
+                        await local_ws.send(json.dumps(msg))
 
                 async def pump_local_to_relay():
                     async for raw in local_ws:
-                        msg = json.loads(raw)
-                        msg["_relay_sid"] = sid
-                        await websocket.send(json.dumps(msg))
+                        data = json.loads(raw) if isinstance(raw, str) else raw
+                        console.print(f"{prefix} [dim]→ relay: type={data.get('type') if isinstance(data, dict) else '?'} sid={data.get('session_id', '?')[:8] if isinstance(data, dict) else '?'}[/dim]")
+                        # Events already include session_id (injected by _pipe_ws_io)
+                        await websocket.send(raw)
 
                 t_in = asyncio.create_task(pump_relay_to_local())
                 t_out = asyncio.create_task(pump_local_to_relay())
@@ -228,21 +233,22 @@ async def serve_loop(
                 for t in pending:
                     t.cancel()
         finally:
-            sessions.pop(sid, None)
+            sessions.pop(session_id, None)
 
     # Main loop
     while True:
         try:
             task = await wait_for_task(websocket, timeout=heartbeat_interval)
 
-            # Relay proxy session path (new)
-            sid = task.get("_relay_sid")
-            if sid:
-                if sid in sessions:
-                    await sessions[sid].put(task)
+            # Relay proxy session path: route by session_id
+            session_id = task.get("session_id")
+            if session_id:
+                console.print(f"{prefix} [dim]← relay: type={task.get('type')} sid={session_id[:8]}... existing={'yes' if session_id in sessions else 'new'}[/dim]")
+                if session_id in sessions:
+                    await sessions[session_id].put(task)
                 else:
-                    sessions[sid] = asyncio.Queue()
-                    asyncio.create_task(_run_session(sid, task))
+                    sessions[session_id] = asyncio.Queue()
+                    asyncio.create_task(_run_session(session_id, task))
                 continue
 
             # Legacy one-shot INPUT → OUTPUT path
@@ -274,8 +280,3 @@ async def serve_loop(
         except websockets.exceptions.ConnectionClosed:
             console.print(f"{prefix} [dim]Relay disconnected[/dim]")
             break
-
-
-def _strip_relay_fields(msg: Dict[str, Any]) -> Dict[str, Any]:
-    """Remove internal _relay_* tags before handing off to the local handler."""
-    return {k: v for k, v in msg.items() if not k.startswith("_relay_")}

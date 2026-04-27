@@ -55,25 +55,20 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     agent.storage = storage  # Session storage for checkpointing
     now = time.time()
 
-    # Session ID: client-generated (preferred) or server fallback
-    session_id = session.get('session_id') if session else None
+    # Session ID must be provided by caller (WebSocket: from CONNECT, HTTP: generated before calling)
+    session = session or {}
+    session_id = session.get('session_id')
+    if not session_id:
+        raise ValueError("session_id required in session dict")
     server_newer = False
 
     # Merge with server state if continuing existing session
-    if session_id:
-        stored = storage.get(session_id)
-        if stored and stored.session:
-            session, server_newer = merge_sessions(
-                client_session=session,
-                server_session=stored.session
-            )
-
-    # Fallback: generate server-side UUID if client didn't provide one
-    # (backwards compatibility for clients that don't generate session_id)
-    if not session_id:
-        session_id = str(uuid.uuid4())
-        session = session or {}
-        session['session_id'] = session_id
+    stored = storage.get(session_id)
+    if stored and stored.session:
+        session, server_newer = merge_sessions(
+            client_session=session,
+            server_session=stored.session
+        )
 
     # Create storage record
     record = Session(

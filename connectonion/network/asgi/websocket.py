@@ -241,6 +241,7 @@ async def handle_websocket(
 
                 # Session from CONNECT, fallback to INPUT for old clients
                 session = conn_session or data.get("session") or {}
+                session["session_id"] = conn_session_id
                 images = data.get("images")
                 files = data.get("files")
                 attachments = []
@@ -287,7 +288,7 @@ async def handle_websocket(
                                "text": json.dumps({
                                    "type": "OUTPUT",
                                    "result": result["result"],
-                                   "session_id": result["session_id"],
+                                   "session_id": session_id,
                                    "duration_ms": result["duration_ms"],
                                    "session": conn_session,
                                    "chat_items": chat_items,
@@ -322,6 +323,8 @@ async def _pipe_ws_io(ws_receive, ws_send, io: WebSocketIO, agent_finished: thre
                 event = await loop.run_in_executor(
                     None, lambda: io._outgoing.get(timeout=0.05)
                 )
+                if session_id:
+                    event["session_id"] = session_id
                 await ws_send({"type": "websocket.send", "text": json.dumps(event, default=pydantic_json_encoder)})
             except queue.Empty:
                 pass
@@ -331,6 +334,8 @@ async def _pipe_ws_io(ws_receive, ws_send, io: WebSocketIO, agent_finished: thre
             while True:
                 try:
                     event = io._outgoing.get_nowait()
+                    if session_id:
+                        event["session_id"] = session_id
                     await ws_send({"type": "websocket.send", "text": json.dumps(event, default=pydantic_json_encoder)})
                 except queue.Empty:
                     break

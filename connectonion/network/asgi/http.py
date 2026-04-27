@@ -16,6 +16,7 @@ including JSON serialization with Pydantic model support.
 import hmac
 import json
 import os
+import uuid
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -280,7 +281,9 @@ async def handle_http(
             return
 
         # Extract session for conversation continuation
-        session = data.get("session")
+        session = data.get("session") or {}
+        if not session.get("session_id"):
+            session["session_id"] = str(uuid.uuid4())
         images = data.get("images")
         files = data.get("files")
         try:

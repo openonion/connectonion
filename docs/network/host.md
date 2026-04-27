@@ -176,16 +176,16 @@ Client                          Relay Server                        Agent
   │                                  │<── ANNOUNCE (register) ────────│  Every 60s
   │                                  │    {address, endpoints}        │
   │                                  │                                │
-  │── CONNECT ─────────────────────>│── tag _relay_sid + forward ──>│
+  │── CONNECT {session_id} ────────>│── forward as-is ─────────────>│
   │                                  │                                │
-  │<── CONNECTED ──────────────────│<── tag _relay_sid + forward ───│
+  │<── CONNECTED {session_id} ─────│<── route by session_id ────────│
   │                                  │                                │
-  │── INPUT ───────────────────────>│── tag _relay_sid + forward ──>│
+  │── INPUT ───────────────────────>│── forward as-is ─────────────>│
   │                                  │                                │
-  │<── streaming events ───────────│<── tag _relay_sid + forward ───│
+  │<── streaming {session_id} ─────│<── route by session_id ────────│
   │    (thinking, tool_call, ...)    │                                │
   │                                  │                                │
-  │<── OUTPUT ─────────────────────│<── tag _relay_sid + forward ───│
+  │<── OUTPUT {session_id} ────────│<── route by session_id ────────│
 ```
 
 **How it works:**
@@ -196,13 +196,13 @@ On startup, the agent process runs two things in the same event loop:
 
 When a client connects through the relay:
 
-1. Client opens WebSocket to relay's `/ws/input`
-2. Relay tags each message with a `_relay_sid` (unique per client session) and forwards it to the agent through the announce WebSocket
-3. Agent's relay loop receives the tagged message and opens a local WebSocket to its own `ws://127.0.0.1:8000/ws` — the same endpoint that handles direct connections
+1. Client creates a `session_id` and opens WebSocket to relay's `/ws/input`
+2. Relay forwards messages as-is to the agent through the announce WebSocket
+3. Agent's relay loop routes by `session_id` and opens a local WebSocket to its own `ws://127.0.0.1:8000/ws` — the same endpoint that handles direct connections
 4. The local `/ws` handler processes the full protocol (CONNECT, INPUT, streaming, OUTPUT) as if it were a normal client
-5. Responses flow back: local `/ws` → relay loop (adds `_relay_sid`) → announce WebSocket → relay → client
+5. Every response carries `session_id` (injected by the `/ws` handler). Responses flow back: local `/ws` → relay loop → announce WebSocket → relay routes by `session_id` → client
 
-The relay loop is just a message forwarder — it strips `_relay_sid` tags on the way in, adds them back on the way out. All protocol handling (authentication, session management, IO queues, streaming events) happens in the existing `/ws` handler. This means relay connections get the exact same features as direct connections: streaming, tool calls, ask_user, session recovery, etc.
+The relay is a pure forwarder — it doesn't parse or modify messages, just routes by `session_id`. All protocol handling (authentication, session management, IO queues, streaming events) happens in the existing `/ws` handler. This means relay connections get the exact same features as direct connections: streaming, tool calls, ask_user, session recovery, etc.
 
 **Registration:**
 1. Agent sends ANNOUNCE with address and endpoints every 60s
