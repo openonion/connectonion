@@ -22,7 +22,7 @@ import pytest
 
 from connectonion import Agent, connect
 from connectonion.network.host.server import host
-from connectonion.network import address
+from connectonion import address
 
 RELAY_URL = os.environ.get("RELAY_URL", "wss://oo.openonion.ai")
 
