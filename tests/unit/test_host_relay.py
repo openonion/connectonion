@@ -239,17 +239,16 @@ class TestCreateRouteHandlers:
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
         mock_connection = Mock()
 
-        result = handlers["ws_input"](storage, "test prompt", mock_connection)
+        result = handlers["ws_input"](storage, "test prompt", mock_connection,
+                                      session={"session_id": "test-123"})
 
-        # Factory was called and result returned
         assert result["status"] == "done"
-        assert "session_id" in result
+        assert result["session_id"] == "test-123"
 
     def test_ws_input_injects_connection(self, tmp_path, mock_trust_agent):
         """Test that ws_input injects connection into agent."""
         from connectonion.network.host.session import SessionStorage
 
-        # Create a factory that returns a trackable mock
         created_agents = []
         def tracking_factory():
             agent = Mock()
@@ -263,9 +262,9 @@ class TestCreateRouteHandlers:
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
         mock_connection = Mock()
 
-        handlers["ws_input"](storage, "test prompt", mock_connection)
+        handlers["ws_input"](storage, "test prompt", mock_connection,
+                             session={"session_id": "test-123"})
 
-        # Verify connection was injected into the created agent
         assert len(created_agents) == 1
         assert created_agents[0].io == mock_connection
 
@@ -284,11 +283,12 @@ class TestCreateRouteHandlers:
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
         mock_connection = Mock()
 
-        result = handlers["ws_input"](storage, "prompt", mock_connection)
+        result = handlers["ws_input"](storage, "prompt", mock_connection,
+                                      session={"session_id": "test-123"})
 
         assert result["result"] == "expected result"
         assert result["status"] == "done"
-        assert "session_id" in result
+        assert result["session_id"] == "test-123"
         assert "duration_ms" in result
 
 

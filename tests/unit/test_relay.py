@@ -260,11 +260,8 @@ class TestServeLoop:
         # Make wait_for_task raise ConnectionClosed immediately to exit loop
         mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(None, None)
 
-        async def dummy_handler(prompt):
-            return "response"
-
-        with patch('rich.console.Console.print'):  # Suppress Rich console output
-            await relay.serve_loop(mock_ws, announce_msg, dummy_handler)
+        with patch('rich.console.Console.print'):
+            await relay.serve_loop(mock_ws, announce_msg, local_port=8000)
 
         # Should have sent initial ANNOUNCE
         assert mock_ws.send.call_count >= 1
@@ -273,51 +270,18 @@ class TestServeLoop:
         assert sent_msg["type"] == "ANNOUNCE"
 
     @pytest.mark.asyncio
-    async def test_serve_loop_processes_input_message(self):
-        """Test that INPUT messages are processed by task_handler."""
+    async def test_serve_loop_crashes_on_missing_session_id(self):
+        """Messages without session_id (and not ERROR type) crash with KeyError."""
         mock_ws = AsyncMock()
         announce_msg = {"type": "ANNOUNCE", "address": "0xtest", "timestamp": 1}
 
-        input_msg = {
-            "type": "INPUT",
-            "input_id": "task123",
-            "prompt": "Calculate 5+5",
-            "from_address": "0xsender"
-        }
-
-        # First recv: INPUT message, second recv: ConnectionClosed to exit
-        mock_ws.recv.side_effect = [
-            json.dumps(input_msg),
-            websockets.exceptions.ConnectionClosed(None, None)
-        ]
-
-        handler_called = False
-        handler_prompt = None
-
-        async def test_handler(prompt):
-            nonlocal handler_called, handler_prompt
-            handler_called = True
-            handler_prompt = prompt
-            return "10"
+        # Message without session_id — should crash, not silently fall through
+        bad_msg = {"type": "CONNECT", "to": "0xtest"}
+        mock_ws.recv.side_effect = [json.dumps(bad_msg)]
 
         with patch('rich.console.Console.print'):
-            await relay.serve_loop(mock_ws, announce_msg, test_handler)
-
-        # Verify handler was called with prompt
-        assert handler_called
-        assert handler_prompt == "Calculate 5+5"
-
-        # Verify OUTPUT was sent
-        sent_calls = [call[0][0] for call in mock_ws.send.call_args_list]
-        output_sent = False
-        for call_data in sent_calls:
-            msg = json.loads(call_data)
-            if msg.get("type") == "OUTPUT":
-                assert msg["input_id"] == "task123"
-                assert msg["result"] == "10"
-                output_sent = True
-
-        assert output_sent, "OUTPUT message should have been sent"
+            with pytest.raises(KeyError):
+                await relay.serve_loop(mock_ws, announce_msg, local_port=8000)
 
     @pytest.mark.asyncio
     async def test_serve_loop_handles_error_message(self):
@@ -335,14 +299,10 @@ class TestServeLoop:
             websockets.exceptions.ConnectionClosed(None, None)
         ]
 
-        async def dummy_handler(prompt):
-            return "response"
-
-        # Should print error but not crash - uses Rich console.print
+        # Should print error but not crash
         with patch('rich.console.Console.print') as mock_print:
-            await relay.serve_loop(mock_ws, announce_msg, dummy_handler)
+            await relay.serve_loop(mock_ws, announce_msg, local_port=8000)
 
-            # Check that error was printed (code prints "Relay error: {error}")
             print_calls = [str(call) for call in mock_print.call_args_list]
             error_printed = any("Relay error" in str(call) for call in print_calls)
             assert error_printed
@@ -359,22 +319,17 @@ class TestServeLoop:
 
         # First recv: timeout (for heartbeat), second recv: ConnectionClosed to exit
         async def recv_with_timeout_then_close():
-            # First call raises TimeoutError
             if not hasattr(recv_with_timeout_then_close, 'called'):
                 recv_with_timeout_then_close.called = True
                 raise asyncio.TimeoutError()
-            # Second call closes connection
             raise websockets.exceptions.ConnectionClosed(None, None)
 
         mock_ws.recv.side_effect = recv_with_timeout_then_close
 
-        async def dummy_handler(prompt):
-            return "response"
-
         with patch('rich.console.Console.print'):
             with patch('asyncio.get_event_loop') as mock_loop:
                 mock_loop.return_value.time.return_value = 99999
-                await relay.serve_loop(mock_ws, announce_msg, dummy_handler, heartbeat_interval=1)
+                await relay.serve_loop(mock_ws, announce_msg, heartbeat_interval=1, local_port=8000)
 
         # Should have sent at least 2 ANNOUNCEs (initial + heartbeat)
         announce_count = sum(
@@ -391,14 +346,9 @@ class TestServeLoop:
 
         mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(None, None)
 
-        async def dummy_handler(prompt):
-            return "response"
-
-        # Uses Rich console.print, code prints "Relay disconnected"
         with patch('rich.console.Console.print') as mock_print:
-            await relay.serve_loop(mock_ws, announce_msg, dummy_handler)
+            await relay.serve_loop(mock_ws, announce_msg, local_port=8000)
 
-            # Should print disconnection message
             print_calls = [str(call) for call in mock_print.call_args_list]
             closed_printed = any("disconnected" in str(call).lower() for call in print_calls)
             assert closed_printed
@@ -409,31 +359,23 @@ class TestServeLoop:
         mock_ws = AsyncMock()
         announce_msg = {"type": "ANNOUNCE", "address": "0xtest", "timestamp": 1}
 
-        # Simulate timeout after custom interval
         call_count = 0
 
         async def recv_with_custom_interval():
             nonlocal call_count
             call_count += 1
             if call_count == 1:
-                # First call: timeout (triggers heartbeat)
                 raise asyncio.TimeoutError()
             else:
-                # Second call: close connection
                 raise websockets.exceptions.ConnectionClosed(None, None)
 
         mock_ws.recv.side_effect = recv_with_custom_interval
 
-        async def dummy_handler(prompt):
-            return "response"
-
         with patch('rich.console.Console.print'):
             with patch('asyncio.get_event_loop') as mock_loop:
                 mock_loop.return_value.time.return_value = 99999
-                # Should complete without error with custom interval
-                await relay.serve_loop(mock_ws, announce_msg, dummy_handler, heartbeat_interval=120)
+                await relay.serve_loop(mock_ws, announce_msg, heartbeat_interval=120, local_port=8000)
 
-        # Verify serve_loop ran and sent heartbeat
         assert call_count >= 2, "Should have handled timeout and then connection close"
 
 

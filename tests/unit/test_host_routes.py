@@ -58,16 +58,17 @@ class TestInputHandler:
         # Factory function returns mock agent
         create_agent = Mock(return_value=mock_agent)
 
-        result = input_handler(create_agent, storage, "Hello", result_ttl=3600)
+        result = input_handler(create_agent, storage, "Hello", result_ttl=3600,
+                               session={"session_id": "test-123"})
 
-        assert "session_id" in result
+        assert result["session_id"] == "test-123"
         assert result["status"] == "done"
         assert result["result"] == "Agent response"
         assert "duration_ms" in result
         assert "session" in result
 
-    def test_creates_new_session_id(self, tmp_path):
-        """input_handler generates new session_id when not provided."""
+    def test_raises_on_missing_session_id(self, tmp_path):
+        """input_handler raises ValueError when session_id not provided."""
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
 
         mock_agent = Mock()
@@ -75,10 +76,9 @@ class TestInputHandler:
         mock_agent.current_session = {}
 
         create_agent = Mock(return_value=mock_agent)
-        result = input_handler(create_agent, storage, "Hello", result_ttl=3600)
 
-        assert result["session_id"] is not None
-        assert len(result["session_id"]) > 0
+        with pytest.raises(ValueError, match="session_id required"):
+            input_handler(create_agent, storage, "Hello", result_ttl=3600)
 
     def test_uses_existing_session_id(self, tmp_path):
         """input_handler uses session_id from session when provided."""
@@ -95,8 +95,8 @@ class TestInputHandler:
 
         assert result["session_id"] == "existing-123"
 
-    def test_adds_session_id_to_empty_session(self, tmp_path):
-        """input_handler adds session_id to session dict if missing."""
+    def test_raises_on_empty_session(self, tmp_path):
+        """input_handler raises ValueError when session has no session_id."""
         storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
 
         mock_agent = Mock()
@@ -106,10 +106,8 @@ class TestInputHandler:
         session = {"messages": []}  # No session_id
 
         create_agent = Mock(return_value=mock_agent)
-        result = input_handler(create_agent, storage, "Hello", result_ttl=3600, session=session)
-
-        assert "session_id" in session  # Should be mutated
-        assert session["session_id"] == result["session_id"]
+        with pytest.raises(ValueError, match="session_id required"):
+            input_handler(create_agent, storage, "Hello", result_ttl=3600, session=session)
 
     def test_saves_running_then_done(self, tmp_path):
         """input_handler saves session twice (running, then done)."""
@@ -121,7 +119,8 @@ class TestInputHandler:
         mock_agent.current_session = {}
 
         create_agent = Mock(return_value=mock_agent)
-        input_handler(create_agent, storage, "Hello", result_ttl=3600)
+        input_handler(create_agent, storage, "Hello", result_ttl=3600,
+                      session={"session_id": "test-123"})
 
         lines = storage_path.read_text().strip().split("\n")
         assert len(lines) == 2  # Running + Done
@@ -135,7 +134,8 @@ class TestInputHandler:
         mock_agent.current_session = {}
 
         create_agent = Mock(return_value=mock_agent)
-        result = input_handler(create_agent, storage, "Hello", result_ttl=3600)
+        result = input_handler(create_agent, storage, "Hello", result_ttl=3600,
+                               session={"session_id": "test-123"})
 
         assert result["duration_ms"] >= 0
 
@@ -148,7 +148,8 @@ class TestInputHandler:
         mock_agent.current_session = {}
 
         create_agent = Mock(return_value=mock_agent)
-        input_handler(create_agent, storage, "Hello", result_ttl=3600)
+        input_handler(create_agent, storage, "Hello", result_ttl=3600,
+                      session={"session_id": "test-123"})
 
         create_agent.assert_called_once()
         mock_agent.input.assert_called_once()
@@ -162,7 +163,8 @@ class TestInputHandler:
         mock_agent.current_session = {}
 
         create_agent = Mock(return_value=mock_agent)
-        input_handler(create_agent, storage, "Hello", result_ttl=3600)
+        input_handler(create_agent, storage, "Hello", result_ttl=3600,
+                      session={"session_id": "test-123"})
 
         assert mock_agent.storage == storage
 

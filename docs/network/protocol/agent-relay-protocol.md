@@ -480,13 +480,74 @@ async def find_agent(capability):
     return response["agents"]
 ```
 
+## Session Proxy Forwarding
+
+When a client cannot connect directly to an agent, the relay acts as a **transparent message proxy**. The relay forwards messages as-is — it does not parse, modify, or strip any fields.
+
+### How It Works
+
+The relay provides two client-facing WebSocket endpoints:
+
+- **`/ws/announce`** — Agents register here (long-lived connection)
+- **`/ws/input`** — Clients connect here to reach agents
+
+```
+Client                        Relay                         Agent
+  |                             |                              |
+  |-- WS connect /ws/input ---->|                              |
+  |-- CONNECT {session_id} ---->|                              |
+  |                             |-- forward via /ws/announce ->|
+  |                             |                              |-- loopback WS to /ws
+  |                             |                              |-- CONNECT → local /ws
+  |                             |<-- CONNECTED {session_id} ---|
+  |<-- CONNECTED ---------------|                              |
+  |                             |                              |
+  |-- INPUT {session_id} ------>|                              |
+  |                             |-- forward ------------------>|
+  |                             |                              |-- INPUT → local /ws
+  |                             |<-- STREAM_DELTA {session_id}-|
+  |<-- STREAM_DELTA ------------|                              |
+  |                             |<-- OUTPUT {session_id} ------|
+  |<-- OUTPUT ------------------|                              |
+```
+
+### session_id Routing
+
+Every message carries a `session_id` field. This is the sole routing key:
+
+- **Relay (`/ws/input`)**: Maps `session_id → client WebSocket`. Forwards agent responses to the correct client.
+- **Relay (`/ws/announce`)**: Maps `session_id → agent WebSocket`. Forwards client messages to the correct agent.
+- **Agent (`serve_loop`)**: Maps `session_id → asyncio.Queue`. Dispatches to per-session `_run_session` coroutines.
+
+Messages without `session_id` (except ERROR type) are considered protocol violations and will crash the handler.
+
+### Agent-Side: Loopback Architecture
+
+When the agent receives a message via the relay's announce WebSocket, `serve_loop` routes it by `session_id`:
+
+1. **New session**: Creates an `asyncio.Queue` and spawns `_run_session` as a background task.
+2. **Existing session**: Puts the message into the session's queue.
+
+`_run_session` opens a **loopback WebSocket** to `ws://127.0.0.1:{port}/ws` (the agent's own local endpoint). This reuses the full WebSocket protocol handler (`websocket.py`) without reimplementing CONNECT/INPUT/streaming/OUTPUT logic.
+
+Two pump coroutines bridge the relay and local WebSocket:
+
+- **`pump_relay_to_local`**: Reads from the session queue → forwards to local `/ws`
+- **`pump_local_to_relay`**: Reads from local `/ws` → forwards back to relay announce WebSocket
+
+All streaming events (STREAM_DELTA, TOOL_CALL, etc.) include `session_id` injected by `_pipe_ws_io` in `websocket.py`, so the relay can route responses to the correct client without any field manipulation.
+
+### Why Loopback Instead of Direct IO
+
+The agent's WebSocket protocol handler (`websocket.py`) implements CONNECT authentication, session merge, streaming, and all event types. Rather than duplicating this logic in the relay path, `_run_session` creates a local WebSocket connection and forwards messages through it. The protocol handler doesn't know whether the connection came from a direct client or via relay — it's the same code path.
+
 ## Summary
 
 This protocol provides:
 - Simple agent registration via WebSocket
 - Efficient in-memory discovery
 - Direct agent-to-agent connections
-- Minimal relay involvement in actual communication
+- Transparent relay proxy with session_id routing
 - Automatic cleanup of inactive agents
 
-The relay acts purely as a directory service, enabling agents to find and connect to each other directly whenever possible.
+The relay acts as both a directory service (discovery) and a transparent message proxy (when direct connection isn't possible). It never modifies message content — routing is based solely on `session_id`.

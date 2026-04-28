@@ -25,17 +25,23 @@ This ensures complete isolation - tools with state (like BrowserTool)
 don't interfere between concurrent requests.
 """
 
+import asyncio
 from functools import partial
 from pathlib import Path
 from typing import Callable, Union
 
+import uvicorn
+import websockets
 from rich.console import Console
 
+from ... import address
+from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
 from ..trust import TrustAgent, get_default_trust_level, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
-from .session import SessionStorage
 from .auth import extract_and_authenticate
+from .config import load_host_config, load_list_file, validate_files, DEFAULT_FILE_LIMITS
+from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
 from .routes import (
     input_handler,
     session_handler,
@@ -126,8 +132,6 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         trust_agent: TrustAgent instance for trust operations
         config: Host config dict (includes file upload limits)
     """
-    from .config import validate_files
-
     agent_name = agent_metadata["name"]
 
     def handle_input(storage, prompt, session=None, connection=None, images=None, files=None):
@@ -244,9 +248,6 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
     Returns:
         Tuple of (on_startup, on_shutdown) async callbacks
     """
-    import asyncio
-    from .. import announce, relay
-
     console = Console()
     host_prefix = "[magenta]\\[host][/magenta]"
 
@@ -259,13 +260,6 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
         # Discover endpoints once (they don't change)
         endpoints = announce.get_endpoints(port)
 
-        # Task handler - fresh instance for each request
-        # Runs agent.input() in thread pool to avoid blocking event loop
-        async def task_handler(prompt: str) -> str:
-            agent = create_agent()
-            # Run synchronous agent.input() in thread pool
-            return await asyncio.to_thread(agent.input, prompt)
-
         async def relay_loop():
             while True:
                 try:
@@ -273,14 +267,13 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
                     announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
 
                     ws = await relay.connect(relay_url)
-                    # Relay status shown in banner - no log needed on first connect
                     await relay.serve_loop(
-                        ws, announce_msg, task_handler,
+                        ws, announce_msg,
                         addr_data=addr_data, local_port=port,
                     )
                 except asyncio.CancelledError:
                     raise
-                except Exception as e:
+                except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
                     console.print(f"{host_prefix} [yellow]Relay error: {e}, reconnecting...[/yellow]")
                     await asyncio.sleep(5)
 
@@ -367,10 +360,6 @@ def host(
         GET  /admin/logs     - Activity log (requires OPENONION_API_KEY)
         GET  /admin/sessions - Activity sessions (requires OPENONION_API_KEY)
     """
-    import uvicorn
-    from ... import address
-    from .config import load_host_config, load_list_file
-
     # Accept agent instance directly: host(agent) → wrap in factory
     # Warning: shared state across all requests (not isolated per request)
     if not callable(create_agent):
@@ -433,7 +422,6 @@ def host(
     storage = SessionStorage()
 
     # Create Active Session Registry for WebSocket reconnection
-    from .session import ActiveSessionRegistry, start_cleanup_job
     registry = ActiveSessionRegistry()
     start_cleanup_job(registry)  # Start background cleanup
 
@@ -496,7 +484,6 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
         # uvicorn myagent:app --workers 4
     """
     from .auth import get_agent_address
-    from .session import ActiveSessionRegistry, start_cleanup_job
 
     if storage is None:
         storage = SessionStorage()
@@ -515,7 +502,6 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    from .config import DEFAULT_FILE_LIMITS
     route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS)
     return asgi_create_app(
         route_handlers=route_handlers,

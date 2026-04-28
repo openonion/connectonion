@@ -326,7 +326,7 @@ class TestHandleWebSocket:
             if message_count[0] == 1:
                 return {
                     "type": "websocket.receive",
-                    "text": json.dumps({"type": "CONNECT", "payload": {"timestamp": 123}, "from": "0x", "signature": "0x"})
+                    "text": json.dumps({"type": "CONNECT", "session_id": "abc-123", "payload": {"timestamp": 123}, "from": "0x", "signature": "0x"})
                 }
             if message_count[0] == 2:
                 return {
