@@ -150,6 +150,38 @@ async def send_response(
     await websocket.send(message_json)
 
 
+async def _run_session(session_id: str, first_msg: Dict[str, Any], sessions: Dict[str, asyncio.Queue], local_port: int, relay_ws):
+    """Open a loopback WS to the local /ws endpoint and pump messages."""
+    local_url = f"ws://127.0.0.1:{local_port}/ws"
+    queue = sessions[session_id]
+    try:
+        async with websockets.connect(local_url) as local_ws:
+            await local_ws.send(json.dumps(first_msg))
+
+            async def pump_relay_to_local():
+                """Relay → agent: read from queue and forward to local /ws."""
+                while True:
+                    msg = await queue.get()
+                    if msg is None or msg.get("type") == "close":
+                        return
+                    await local_ws.send(json.dumps(msg))
+
+            async def pump_local_to_relay():
+                """Agent → client: read from local /ws and forward to relay."""
+                async for raw in local_ws:
+                    await relay_ws.send(raw)
+
+            t_in = asyncio.create_task(pump_relay_to_local())
+            t_out = asyncio.create_task(pump_local_to_relay())
+            done, pending = await asyncio.wait(
+                {t_in, t_out}, return_when=asyncio.FIRST_COMPLETED
+            )
+            for t in pending:
+                t.cancel()
+    finally:
+        del sessions[session_id]
+
+
 async def serve_loop(
     websocket,
     announce_message: Dict[str, Any],
@@ -184,41 +216,7 @@ async def serve_loop(
     endpoints = announce_message.get("endpoints", [])
     relay_url = announce_message.get("relay")
 
-    # session_id -> asyncio.Queue of inbound messages from relay
     sessions: Dict[str, asyncio.Queue] = {}
-
-    async def _run_session(session_id: str, first_msg: Dict[str, Any]):
-        """Open a loopback WS to the local /ws endpoint and pump messages."""
-        local_url = f"ws://127.0.0.1:{local_port}/ws"
-        queue = sessions[session_id]
-        try:
-            async with websockets.connect(local_url) as local_ws:
-                # Forward the initial CONNECT message to local /ws
-                await local_ws.send(json.dumps(first_msg))
-
-                async def pump_relay_to_local():
-                    """Relay → agent: read from queue and forward to local /ws."""
-                    while True:
-                        msg = await queue.get()
-                        if msg is None or msg.get("type") == "close":
-                            return
-                        await local_ws.send(json.dumps(msg))
-
-                async def pump_local_to_relay():
-                    """Agent → client: read from local /ws and forward to relay."""
-                    async for raw in local_ws:
-                        # Events already include session_id (injected by _pipe_ws_io)
-                        await websocket.send(raw)
-
-                t_in = asyncio.create_task(pump_relay_to_local())
-                t_out = asyncio.create_task(pump_local_to_relay())
-                done, pending = await asyncio.wait(
-                    {t_in, t_out}, return_when=asyncio.FIRST_COMPLETED
-                )
-                for t in pending:
-                    t.cancel()
-        finally:
-            del sessions[session_id]
 
     # Main loop
     while True:
@@ -236,7 +234,7 @@ async def serve_loop(
                 await sessions[session_id].put(task)
             else:
                 sessions[session_id] = asyncio.Queue()
-                asyncio.create_task(_run_session(session_id, task))
+                asyncio.create_task(_run_session(session_id, task, sessions, local_port, websocket))
 
         except asyncio.TimeoutError:
             if addr_data:

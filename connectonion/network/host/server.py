@@ -261,21 +261,12 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
         endpoints = announce.get_endpoints(port)
 
         async def relay_loop():
-            while True:
-                try:
-                    # Create fresh ANNOUNCE message with current timestamp for each connection attempt
-                    announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
-
-                    ws = await relay.connect(relay_url)
-                    await relay.serve_loop(
-                        ws, announce_msg,
-                        addr_data=addr_data, local_port=port,
-                    )
-                except asyncio.CancelledError:
-                    raise
-                except (websockets.exceptions.WebSocketException, ConnectionError, OSError) as e:
-                    console.print(f"{host_prefix} [yellow]Relay error: {e}, reconnecting...[/yellow]")
-                    await asyncio.sleep(5)
+            announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
+            ws = await relay.connect(relay_url)
+            await relay.serve_loop(
+                ws, announce_msg,
+                addr_data=addr_data, local_port=port,
+            )
 
         # Start relay as background task in same event loop
         relay_task = asyncio.create_task(relay_loop())
