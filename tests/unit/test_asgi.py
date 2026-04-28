@@ -19,11 +19,11 @@ from unittest.mock import Mock, AsyncMock, patch, MagicMock
 
 from connectonion.network.asgi import (
     handle_websocket,
-    _pipe_ws_io,
     create_app,
     send_json,
     read_body,
 )
+from connectonion.network.protocol import _pipe_agent_io
 from connectonion.network.io import WebSocketIO
 from connectonion.network.host.session import ActiveSessionRegistry
 
@@ -78,92 +78,71 @@ class TestWebSocketIOInASGI:
 
 
 @pytest.mark.asyncio
-class TestPipeWsIo:
-    """Test _pipe_ws_io async function."""
+class TestPipeAgentIo:
+    """Test _pipe_agent_io async function."""
 
-    async def test_sends_outgoing_messages_to_websocket(self):
-        """Test that outgoing queue messages are sent to WebSocket."""
+    async def test_sends_outgoing_messages_to_client(self):
+        """Test that outgoing queue messages are sent via send_msg."""
         conn = WebSocketIO()
         agent_finished = threading.Event()
         sent_messages = []
 
-        async def mock_receive():
+        async def mock_recv_msg():
             await asyncio.sleep(0.1)
-            return {"type": "websocket.disconnect"}
+            return None
 
-        async def mock_send(msg):
+        async def mock_send_msg(msg):
             sent_messages.append(msg)
 
-        # Put messages in queue
         conn.send({"type": "thinking"})
         conn.send({"type": "tool_call", "name": "search"})
-
-        # Mark agent done quickly
-        def mark_done():
-            asyncio.get_event_loop().call_later(0.1, agent_finished.set)
 
         threading.Thread(target=lambda: (asyncio.run(asyncio.sleep(0.05)), agent_finished.set())).start()
 
         await asyncio.wait_for(
-            _pipe_ws_io(mock_receive, mock_send, conn, agent_finished),
+            _pipe_agent_io(mock_send_msg, mock_recv_msg, conn, agent_finished),
             timeout=2.0
         )
 
-        # Check messages were sent
-        ws_messages = [m for m in sent_messages if m.get("type") == "websocket.send"]
-        assert len(ws_messages) >= 2
-
-        # Parse the sent events
-        events = [json.loads(m["text"]) for m in ws_messages]
-        event_types = [e["type"] for e in events]
+        event_types = [m["type"] for m in sent_messages if m.get("type") not in ("PING",)]
         assert "thinking" in event_types
         assert "tool_call" in event_types
 
     async def test_routes_incoming_to_connection(self):
-        """Test that WebSocket messages are routed to connection incoming queue."""
+        """Test that client messages are routed to connection incoming queue."""
         conn = WebSocketIO()
         agent_finished = threading.Event()
         receive_count = [0]
 
-        async def mock_receive():
+        async def mock_recv_msg():
             receive_count[0] += 1
             if receive_count[0] == 1:
-                return {"type": "websocket.receive", "text": '{"approved": true}'}
-            # Second call - set agent_finished and return disconnect
+                return {"approved": True}
             agent_finished.set()
-            return {"type": "websocket.disconnect"}
+            return None
 
-        async def mock_send(msg):
+        async def mock_send_msg(msg):
             pass
 
         await asyncio.wait_for(
-            _pipe_ws_io(mock_receive, mock_send, conn, agent_finished),
+            _pipe_agent_io(mock_send_msg, mock_recv_msg, conn, agent_finished),
             timeout=2.0
         )
 
-        # Check message was routed to incoming queue
         msg = conn._incoming.get_nowait()
         assert msg["approved"] is True
 
-
     async def test_returns_true_when_client_disconnects(self):
-        """Test that _pipe_ws_io returns True when client disconnects.
-
-        This allows the caller to skip sending OUTPUT to a closed connection.
-        The result is still saved to SessionStorage by input_handler, so
-        clients can fetch it via GET /sessions/{session_id} on reconnect.
-        """
+        """Test that _pipe_agent_io returns True when client disconnects."""
         conn = WebSocketIO()
         agent_finished = threading.Event()
 
-        async def mock_receive():
-            # Simulate immediate disconnect
-            return {"type": "websocket.disconnect"}
+        async def mock_recv_msg():
+            return None
 
-        async def mock_send(msg):
+        async def mock_send_msg(msg):
             pass
 
-        # Start agent completion in background
         def complete_agent():
             import time
             time.sleep(0.05)
@@ -171,29 +150,25 @@ class TestPipeWsIo:
 
         threading.Thread(target=complete_agent).start()
 
-        # _pipe_ws_io should return True (client disconnected)
         disconnected = await asyncio.wait_for(
-            _pipe_ws_io(mock_receive, mock_send, conn, agent_finished),
+            _pipe_agent_io(mock_send_msg, mock_recv_msg, conn, agent_finished),
             timeout=2.0
         )
 
         assert disconnected is True
 
     async def test_returns_false_when_agent_completes_normally(self):
-        """Test that _pipe_ws_io returns False when agent completes without disconnect."""
+        """Test that _pipe_agent_io returns False when agent completes without disconnect."""
         conn = WebSocketIO()
         agent_finished = threading.Event()
 
-        async def mock_receive():
-            # Keep waiting forever - client never disconnects
-            # _pipe_ws_io will cancel this task when agent completes
+        async def mock_recv_msg():
             await asyncio.sleep(10)
-            return {"type": "websocket.disconnect"}
+            return None
 
-        async def mock_send(msg):
+        async def mock_send_msg(msg):
             pass
 
-        # Complete agent quickly
         def complete_agent():
             import time
             time.sleep(0.05)
@@ -202,11 +177,10 @@ class TestPipeWsIo:
         threading.Thread(target=complete_agent).start()
 
         disconnected = await asyncio.wait_for(
-            _pipe_ws_io(mock_receive, mock_send, conn, agent_finished),
+            _pipe_agent_io(mock_send_msg, mock_recv_msg, conn, agent_finished),
             timeout=2.0
         )
 
-        # Agent completed before client disconnected
         assert disconnected is False
 
 

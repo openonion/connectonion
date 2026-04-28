@@ -37,6 +37,7 @@ from rich.console import Console
 from ... import address
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
+from ..protocol import run_protocol
 from ..trust import TrustAgent, get_default_trust_level, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
 from .auth import extract_and_authenticate
@@ -232,32 +233,23 @@ def _print_host_banner(
     console.print()
 
 
-def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: dict, summary: str, port: int):
+def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, session_handler):
     """Create relay startup/shutdown callbacks for ASGI lifespan.
 
-    The relay connection runs in uvicorn's event loop alongside HTTP/WebSocket,
-    allowing the agent to be discovered via P2P network.
-
     Args:
-        create_agent: Factory function that returns a fresh Agent instance
         relay_url: WebSocket URL for P2P relay
         addr_data: Agent address data (public key, address)
         summary: Summary text for relay announcement
         port: HTTP port for endpoint discovery
+        session_handler: async (send_msg, recv_msg) -> None, runs protocol for one relay session
 
     Returns:
         Tuple of (on_startup, on_shutdown) async callbacks
     """
-    console = Console()
-    host_prefix = "[magenta]\\[host][/magenta]"
-
-    # State shared between startup and shutdown
     relay_task = None
 
     async def on_startup():
         nonlocal relay_task
-
-        # Discover endpoints once (they don't change)
         endpoints = announce.get_endpoints(port)
 
         async def relay_loop():
@@ -265,10 +257,9 @@ def _create_relay_lifespan(create_agent: Callable, relay_url: str, addr_data: di
             ws = await relay.connect(relay_url)
             await relay.serve_loop(
                 ws, announce_msg,
-                addr_data=addr_data, local_port=port,
+                addr_data=addr_data, session_handler=session_handler,
             )
 
-        # Start relay as background task in same event loop
         relay_task = asyncio.create_task(relay_loop())
 
     async def on_shutdown():
@@ -431,8 +422,17 @@ def host(
     # Create relay lifespan callbacks (runs in same event loop as HTTP/WebSocket)
     on_startup, on_shutdown = None, None
     if relay_url:
+        session_handler = partial(run_protocol,
+            route_handlers=route_handlers,
+            storage=storage,
+            registry=registry,
+            trust=trust_agent,
+            blacklist=blacklist,
+            whitelist=whitelist,
+            enable_ping=False,
+        )
         on_startup, on_shutdown = _create_relay_lifespan(
-            create_agent, relay_url, addr_data, summary, port
+            relay_url, addr_data, summary, port, session_handler
         )
 
     app = asgi_create_app(

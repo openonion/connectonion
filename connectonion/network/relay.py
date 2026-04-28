@@ -1,39 +1,18 @@
 """
-Purpose: Agent-side relay client for registering and serving via central relay server
+Agent-side relay client for registering and serving via central relay server.
 
-Lifecycle (Agent Side):
+Lifecycle:
   1. connect(relay_url) opens WebSocket to /ws/announce
   2. send_announce() sends ANNOUNCE message to register agent
   3. serve_loop() receives messages from relay, routes by session_id
-  4. Messages forwarded to local /ws endpoint for full protocol handling
+  4. Per-session protocol handling via session_handler callback
   5. Heartbeat: re-sends ANNOUNCE every 60s to stay registered
 
 Message Flow:
   Agent → ANNOUNCE → Relay (registers in active_connections)
   Client → CONNECT/INPUT → Relay → forwards to Agent's announce WebSocket
-  Agent serve_loop → forwards to local ws://127.0.0.1:{port}/ws
-  Local /ws handles full protocol (CONNECT/INPUT/streaming/OUTPUT)
-  Responses (with session_id) → serve_loop → Relay → Client
-
-Protocol:
-  ANNOUNCE: {type, address, summary, endpoints, signature, timestamp}
-  INPUT:    {type, input_id, prompt, from_address?, session_id, session?}
-  OUTPUT:   {type, input_id, result, session_id, session?}
-  All events carry session_id (injected by _pipe_ws_io in websocket.py).
-  Relay and serve_loop both route by session_id — no transport-level tags.
-
-Related Files:
-  - oo-api/relay/routes.py: Relay server that forwards messages
-  - connectonion/network/asgi/websocket.py: Local /ws handler (full protocol)
-  - connectonion/network/connect.py: Client-side (sends INPUT, receives OUTPUT)
-  - connectonion/network/host/server.py: Uses this for relay registration
-
-LLM-Note:
-  Dependencies: imports from [json, asyncio, typing, websockets]
-  Data flow: connect() → /ws/announce → serve_loop() → local /ws → agent
-  State/Effects: WebSocket connection to relay | heartbeat every 60s
-  Integration: exposes connect(), send_announce(), wait_for_task(), serve_loop()
-  Docs: docs/network/protocol/agent-relay-protocol.md
+  serve_loop routes by session_id → session_handler runs protocol directly
+  Responses (with session_id) → Relay → Client
 """
 
 import json
@@ -150,34 +129,28 @@ async def send_response(
     await websocket.send(message_json)
 
 
-async def _run_session(session_id: str, first_msg: Dict[str, Any], sessions: Dict[str, asyncio.Queue], local_port: int, relay_ws):
-    """Open a loopback WS to the local /ws endpoint and pump messages."""
-    local_url = f"ws://127.0.0.1:{local_port}/ws"
-    queue = sessions[session_id]
+async def _run_session(session_id, first_msg, sessions, relay_ws, session_handler):
+    """Create relay transport adapters and run protocol handler for one session."""
+    from .asgi.http import pydantic_json_encoder
+
+    q = sessions[session_id]
+    await q.put(first_msg)
+
+    async def send_msg(data):
+        data["session_id"] = session_id
+        await relay_ws.send(json.dumps(data, default=pydantic_json_encoder))
+
+    async def recv_msg():
+        try:
+            msg = await asyncio.wait_for(q.get(), timeout=300)
+        except asyncio.TimeoutError:
+            return None
+        if msg is None or msg.get("type") == "close":
+            return None
+        return msg
+
     try:
-        async with websockets.connect(local_url) as local_ws:
-            await local_ws.send(json.dumps(first_msg))
-
-            async def pump_relay_to_local():
-                """Relay → agent: read from queue and forward to local /ws."""
-                while True:
-                    msg = await queue.get()
-                    if msg is None or msg.get("type") == "close":
-                        return
-                    await local_ws.send(json.dumps(msg))
-
-            async def pump_local_to_relay():
-                """Agent → client: read from local /ws and forward to relay."""
-                async for raw in local_ws:
-                    await relay_ws.send(raw)
-
-            t_in = asyncio.create_task(pump_relay_to_local())
-            t_out = asyncio.create_task(pump_local_to_relay())
-            done, pending = await asyncio.wait(
-                {t_in, t_out}, return_when=asyncio.FIRST_COMPLETED
-            )
-            for t in pending:
-                t.cancel()
+        await session_handler(send_msg, recv_msg)
     finally:
         del sessions[session_id]
 
@@ -188,53 +161,47 @@ async def serve_loop(
     *,
     heartbeat_interval: int = 60,
     addr_data: Dict[str, Any] = None,
-    local_port: int,
+    session_handler=None,
 ):
-    """
-    Main serving loop for agent.
+    """Main serving loop for agent.
 
     Receives messages from relay, routes by session_id to per-session
-    loopback WebSocket connections to the local /ws endpoint.
+    protocol handlers (no loopback WebSocket).
 
     Args:
         websocket: WebSocket connection from connect()
         announce_message: ANNOUNCE message dict (initial message)
         heartbeat_interval: Seconds between heartbeat ANNOUNCEs
         addr_data: Agent address data for re-signing heartbeat messages
-        local_port: Local HTTP port where the agent's /ws endpoint listens.
+        session_handler: async (send_msg, recv_msg) -> None, runs protocol for one session
     """
     from . import announce as announce_module
     from rich.console import Console
     console = Console()
     prefix = "[magenta]\\[host][/magenta]"
 
-    # Send initial ANNOUNCE
     await send_announce(websocket, announce_message)
 
-    # Extract announce parameters for heartbeat re-creation
     summary = announce_message.get("summary", "")
     endpoints = announce_message.get("endpoints", [])
     relay_url = announce_message.get("relay")
 
     sessions: Dict[str, asyncio.Queue] = {}
 
-    # Main loop
     while True:
         try:
             task = await wait_for_task(websocket, timeout=heartbeat_interval)
 
-            # Handle relay-level errors (no session_id)
             if task.get("type") == "ERROR":
                 console.print(f"{prefix} [red]Relay error: {task.get('error')}[/red]")
                 continue
 
-            # Route by session_id — every message must carry one
             session_id = task["session_id"]
             if session_id in sessions:
                 await sessions[session_id].put(task)
             else:
                 sessions[session_id] = asyncio.Queue()
-                asyncio.create_task(_run_session(session_id, task, sessions, local_port, websocket))
+                asyncio.create_task(_run_session(session_id, task, sessions, websocket, session_handler))
 
         except asyncio.TimeoutError:
             if addr_data:
@@ -248,5 +215,7 @@ async def serve_loop(
             console.print(f"{prefix} [red]♥[/red]")
 
         except websockets.exceptions.ConnectionClosed:
+            for q in sessions.values():
+                await q.put(None)
             console.print(f"{prefix} [dim]Relay disconnected[/dim]")
             break

@@ -120,8 +120,7 @@ class TestHostRelayConnection:
                             # Relay lifespan is created when relay is enabled
                             mock_relay.assert_called_once()
                             call_args = mock_relay.call_args
-                            # relay_url is the second positional arg
-                            assert call_args[0][1] == "wss://oo.openonion.ai"
+                            assert call_args[0][0] == "wss://oo.openonion.ai"
 
     def test_host_starts_relay_with_custom_url(self, tmp_path, create_mock_agent):
         """Test that host() uses custom relay URL."""
@@ -137,7 +136,7 @@ class TestHostRelayConnection:
 
                             mock_relay.assert_called_once()
                             call_args = mock_relay.call_args
-                            assert call_args[0][1] == custom_url
+                            assert call_args[0][0] == custom_url
 
     def test_host_does_not_start_relay_when_disabled(self, tmp_path, create_mock_agent):
         """Test that host() doesn't start relay when relay_url=None."""

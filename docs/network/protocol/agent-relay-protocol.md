@@ -497,14 +497,12 @@ Client                        Relay                         Agent
   |-- WS connect /ws/input ---->|                              |
   |-- CONNECT {session_id} ---->|                              |
   |                             |-- forward via /ws/announce ->|
-  |                             |                              |-- loopback WS to /ws
-  |                             |                              |-- CONNECT → local /ws
+  |                             |                              |-- run_protocol()
   |                             |<-- CONNECTED {session_id} ---|
   |<-- CONNECTED ---------------|                              |
   |                             |                              |
   |-- INPUT {session_id} ------>|                              |
   |                             |-- forward ------------------>|
-  |                             |                              |-- INPUT → local /ws
   |                             |<-- STREAM_DELTA {session_id}-|
   |<-- STREAM_DELTA ------------|                              |
   |                             |<-- OUTPUT {session_id} ------|
@@ -521,25 +519,28 @@ Every message carries a `session_id` field. This is the sole routing key:
 
 Messages without `session_id` (except ERROR type) are considered protocol violations and will crash the handler.
 
-### Agent-Side: Loopback Architecture
+### Agent-Side: Direct Protocol Handler
 
 When the agent receives a message via the relay's announce WebSocket, `serve_loop` routes it by `session_id`:
 
 1. **New session**: Creates an `asyncio.Queue` and spawns `_run_session` as a background task.
 2. **Existing session**: Puts the message into the session's queue.
 
-`_run_session` opens a **loopback WebSocket** to `ws://127.0.0.1:{port}/ws` (the agent's own local endpoint). This reuses the full WebSocket protocol handler (`websocket.py`) without reimplementing CONNECT/INPUT/streaming/OUTPUT logic.
+`_run_session` creates two transport adapters (`send_msg` / `recv_msg`) and calls the shared protocol handler (`run_protocol()`) directly. No loopback WebSocket — the relay path uses the same protocol logic as the ASGI path.
 
-Two pump coroutines bridge the relay and local WebSocket:
+- **`send_msg`**: Injects `session_id` into the outgoing dict and sends via the relay announce WebSocket.
+- **`recv_msg`**: Reads from the session's `asyncio.Queue` (with a 5-minute idle timeout to prevent zombie sessions).
 
-- **`pump_relay_to_local`**: Reads from the session queue → forwards to local `/ws`
-- **`pump_local_to_relay`**: Reads from local `/ws` → forwards back to relay announce WebSocket
+The protocol handler runs CONNECT authentication, session merge, agent execution, streaming events, and all other protocol logic — identical to the direct ASGI WebSocket path.
 
-All streaming events (STREAM_DELTA, TOOL_CALL, etc.) include `session_id` injected by `_pipe_ws_io` in `websocket.py`, so the relay can route responses to the correct client without any field manipulation.
+### Transport-Agnostic Protocol
 
-### Why Loopback Instead of Direct IO
+The protocol logic in `protocol.py` works with abstract `send_msg(dict)` / `recv_msg() -> dict | None` callables. Both ASGI and relay provide their own adapters:
 
-The agent's WebSocket protocol handler (`websocket.py`) implements CONNECT authentication, session merge, streaming, and all event types. Rather than duplicating this logic in the relay path, `_run_session` creates a local WebSocket connection and forwards messages through it. The protocol handler doesn't know whether the connection came from a direct client or via relay — it's the same code path.
+- **ASGI**: Wraps ASGI `receive`/`send` primitives (JSON encode/decode, websocket.send/websocket.receive)
+- **Relay**: Wraps asyncio.Queue + relay WebSocket (session_id injection, idle timeout)
+
+The protocol handler doesn't know which transport it's running on. See [protocol.md](../protocol.md) for details.
 
 ## Summary
 

@@ -261,7 +261,7 @@ class TestServeLoop:
         mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(None, None)
 
         with patch('rich.console.Console.print'):
-            await relay.serve_loop(mock_ws, announce_msg, local_port=8000)
+            await relay.serve_loop(mock_ws, announce_msg, session_handler=AsyncMock())
 
         # Should have sent initial ANNOUNCE
         assert mock_ws.send.call_count >= 1
@@ -281,7 +281,7 @@ class TestServeLoop:
 
         with patch('rich.console.Console.print'):
             with pytest.raises(KeyError):
-                await relay.serve_loop(mock_ws, announce_msg, local_port=8000)
+                await relay.serve_loop(mock_ws, announce_msg, session_handler=AsyncMock())
 
     @pytest.mark.asyncio
     async def test_serve_loop_handles_error_message(self):
@@ -301,7 +301,7 @@ class TestServeLoop:
 
         # Should print error but not crash
         with patch('rich.console.Console.print') as mock_print:
-            await relay.serve_loop(mock_ws, announce_msg, local_port=8000)
+            await relay.serve_loop(mock_ws, announce_msg, session_handler=AsyncMock())
 
             print_calls = [str(call) for call in mock_print.call_args_list]
             error_printed = any("Relay error" in str(call) for call in print_calls)
@@ -329,7 +329,7 @@ class TestServeLoop:
         with patch('rich.console.Console.print'):
             with patch('asyncio.get_event_loop') as mock_loop:
                 mock_loop.return_value.time.return_value = 99999
-                await relay.serve_loop(mock_ws, announce_msg, heartbeat_interval=1, local_port=8000)
+                await relay.serve_loop(mock_ws, announce_msg, heartbeat_interval=1, session_handler=AsyncMock())
 
         # Should have sent at least 2 ANNOUNCEs (initial + heartbeat)
         announce_count = sum(
@@ -347,7 +347,7 @@ class TestServeLoop:
         mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(None, None)
 
         with patch('rich.console.Console.print') as mock_print:
-            await relay.serve_loop(mock_ws, announce_msg, local_port=8000)
+            await relay.serve_loop(mock_ws, announce_msg, session_handler=AsyncMock())
 
             print_calls = [str(call) for call in mock_print.call_args_list]
             closed_printed = any("disconnected" in str(call).lower() for call in print_calls)
@@ -374,7 +374,7 @@ class TestServeLoop:
         with patch('rich.console.Console.print'):
             with patch('asyncio.get_event_loop') as mock_loop:
                 mock_loop.return_value.time.return_value = 99999
-                await relay.serve_loop(mock_ws, announce_msg, heartbeat_interval=120, local_port=8000)
+                await relay.serve_loop(mock_ws, announce_msg, heartbeat_interval=120, session_handler=AsyncMock())
 
         assert call_count >= 2, "Should have handled timeout and then connection close"
 

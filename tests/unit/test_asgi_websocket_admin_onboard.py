@@ -23,7 +23,7 @@ from unittest.mock import Mock
 import pytest
 
 from connectonion.network.asgi import handle_websocket
-from connectonion.network.asgi.websocket import (
+from connectonion.network.protocol import (
     _get_onboard_requirements,
     _handle_onboard_submit,
     _handle_admin_message,
@@ -163,9 +163,8 @@ class TestHandleOnboardSubmit:
 
         await _handle_onboard_submit({"type": "ONBOARD_SUBMIT"}, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert "unauthorized" in events[0]["message"]
+        assert sent_messages[0]["type"] == "ERROR"
+        assert "unauthorized" in sent_messages[0]["message"]
 
     async def test_blocked_user_rejected(self):
         sent_messages = []
@@ -183,9 +182,8 @@ class TestHandleOnboardSubmit:
 
         await _handle_onboard_submit({"type": "ONBOARD_SUBMIT"}, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert events[0]["message"] == "forbidden: blocked"
+        assert sent_messages[0]["type"] == "ERROR"
+        assert sent_messages[0]["message"] == "forbidden: blocked"
 
     async def test_invite_success(self):
         sent_messages = []
@@ -209,9 +207,8 @@ class TestHandleOnboardSubmit:
         }
         await _handle_onboard_submit(data, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ONBOARD_SUCCESS"
-        assert events[0]["level"] == "contact"
+        assert sent_messages[0]["type"] == "ONBOARD_SUCCESS"
+        assert sent_messages[0]["level"] == "contact"
 
     async def test_invite_invalid(self):
         sent_messages = []
@@ -234,9 +231,8 @@ class TestHandleOnboardSubmit:
         }
         await _handle_onboard_submit(data, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert "Invalid invite code" in events[0]["message"]
+        assert sent_messages[0]["type"] == "ERROR"
+        assert "Invalid invite code" in sent_messages[0]["message"]
 
     async def test_payment_success(self):
         sent_messages = []
@@ -260,9 +256,8 @@ class TestHandleOnboardSubmit:
         }
         await _handle_onboard_submit(data, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ONBOARD_SUCCESS"
-        assert events[0]["level"] == "contact"
+        assert sent_messages[0]["type"] == "ONBOARD_SUCCESS"
+        assert sent_messages[0]["level"] == "contact"
 
     async def test_payment_insufficient(self):
         sent_messages = []
@@ -285,9 +280,8 @@ class TestHandleOnboardSubmit:
         }
         await _handle_onboard_submit(data, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert "Insufficient payment" in events[0]["message"]
+        assert sent_messages[0]["type"] == "ERROR"
+        assert "Insufficient payment" in sent_messages[0]["message"]
 
     async def test_missing_credentials(self):
         sent_messages = []
@@ -306,9 +300,8 @@ class TestHandleOnboardSubmit:
         data = {"type": "ONBOARD_SUBMIT", "payload": {}}
         await _handle_onboard_submit(data, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert "invite_code or payment required" in events[0]["message"]
+        assert sent_messages[0]["type"] == "ERROR"
+        assert "invite_code or payment required" in sent_messages[0]["message"]
 
 
 @pytest.mark.asyncio
@@ -330,9 +323,8 @@ class TestHandleAdminMessage:
 
         await _handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert "unauthorized" in events[0]["message"]
+        assert sent_messages[0]["type"] == "ERROR"
+        assert "unauthorized" in sent_messages[0]["message"]
 
     async def test_requires_admin(self):
         sent_messages = []
@@ -351,9 +343,8 @@ class TestHandleAdminMessage:
 
         await _handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert events[0]["message"] == "forbidden: admin only"
+        assert sent_messages[0]["type"] == "ERROR"
+        assert sent_messages[0]["message"] == "forbidden: admin only"
 
     async def test_missing_client_id_error(self):
         sent_messages = []
@@ -372,9 +363,8 @@ class TestHandleAdminMessage:
 
         await _handle_admin_message({"type": "ADMIN_PROMOTE", "payload": {}}, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert events[0]["message"] == "client_id required"
+        assert sent_messages[0]["type"] == "ERROR"
+        assert sent_messages[0]["message"] == "client_id required"
 
     async def test_promote_success(self):
         sent_messages = []
@@ -394,11 +384,10 @@ class TestHandleAdminMessage:
         data = {"type": "ADMIN_PROMOTE", "payload": {"client_id": "0xclient"}}
         await _handle_admin_message(data, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ADMIN_RESULT"
-        assert events[0]["action"] == "promote"
-        assert events[0]["success"] is True
-        assert events[0]["level"] == "contact"
+        assert sent_messages[0]["type"] == "ADMIN_RESULT"
+        assert sent_messages[0]["action"] == "promote"
+        assert sent_messages[0]["success"] is True
+        assert sent_messages[0]["level"] == "contact"
 
     async def test_add_admin_requires_super_admin(self):
         sent_messages = []
@@ -419,9 +408,8 @@ class TestHandleAdminMessage:
         data = {"type": "ADMIN_ADD", "payload": {"admin_id": "0xnew"}}
         await _handle_admin_message(data, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert events[0]["message"] == "forbidden: super admin only"
+        assert sent_messages[0]["type"] == "ERROR"
+        assert sent_messages[0]["message"] == "forbidden: super admin only"
 
     async def test_add_admin_success(self):
         sent_messages = []
@@ -442,10 +430,9 @@ class TestHandleAdminMessage:
         data = {"type": "ADMIN_ADD", "payload": {"admin_id": "0xnew"}}
         await _handle_admin_message(data, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ADMIN_RESULT"
-        assert events[0]["action"] == "add_admin"
-        assert events[0]["success"] is True
+        assert sent_messages[0]["type"] == "ADMIN_RESULT"
+        assert sent_messages[0]["action"] == "add_admin"
+        assert sent_messages[0]["success"] is True
 
     async def test_unknown_admin_action(self):
         sent_messages = []
@@ -464,7 +451,6 @@ class TestHandleAdminMessage:
         data = {"type": "ADMIN_UNKNOWN", "payload": {}}
         await _handle_admin_message(data, send, handlers)
 
-        events = _extract_ws_messages(sent_messages)
-        assert events[0]["type"] == "ERROR"
-        assert "Unknown admin action" in events[0]["message"]
+        assert sent_messages[0]["type"] == "ERROR"
+        assert "Unknown admin action" in sent_messages[0]["message"]
 
