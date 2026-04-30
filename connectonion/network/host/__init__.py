@@ -26,7 +26,7 @@ from .auth import (
     is_custom_trust,
     SIGNATURE_EXPIRY_SECONDS,
 )
-from .routes import (
+from .http_router import (
     input_handler,
     session_handler,
     sessions_handler,

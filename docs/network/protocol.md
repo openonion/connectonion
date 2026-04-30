@@ -1,6 +1,6 @@
 # Transport-Agnostic Protocol Handler
 
-> `connectonion/network/protocol.py` — shared protocol logic for both ASGI WebSocket and relay paths.
+> `connectonion/network/host/ws_handler.py` — shared protocol logic for both ASGI WebSocket and relay paths.
 
 ---
 
@@ -8,7 +8,7 @@
 
 Before this module, the WebSocket protocol (CONNECT, INPUT, streaming, onboard, admin) lived inside the ASGI handler (`websocket.py`). The relay path had to open a **loopback WebSocket** back to `ws://127.0.0.1:{port}/ws` to reuse that logic — an extra network hop and a layer of complexity.
 
-Now the protocol logic is extracted into `protocol.py` with a transport-agnostic interface. Both paths call `run_protocol()` directly with their own adapters:
+Now the protocol logic is extracted into `ws_handler.py` with a transport-agnostic interface. Both paths call `run_protocol()` directly with their own adapters:
 
 ```
 Client → ASGI websocket.py → send_msg/recv_msg adapter → run_protocol()
@@ -212,7 +212,7 @@ When `serve_loop` exits on `ConnectionClosed`, it sends `None` to all session qu
 
 | File | Role |
 |------|------|
-| `network/protocol.py` | Transport-agnostic protocol handler (this module) |
+| `network/host/ws_handler.py` | Transport-agnostic protocol handler (this module) |
 | `network/asgi/websocket.py` | ASGI adapter — wraps ASGI primitives into send_msg/recv_msg |
 | `network/relay.py` | Relay adapter — wraps asyncio.Queue/relay WS into send_msg/recv_msg |
 | `network/io/websocket.py` | WebSocketIO — thread-safe queue bridge between sync agent and async transport |

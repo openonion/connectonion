@@ -485,7 +485,7 @@ Non-routine types still print:
 
 | File | Role |
 |------|------|
-| `network/protocol.py` | Transport-agnostic protocol handler — CONNECT/INPUT/onboard/admin logic |
+| `network/host/ws_handler.py` | Transport-agnostic protocol handler — CONNECT/INPUT/onboard/admin logic |
 | `network/asgi/websocket.py` | ASGI adapter — wraps ASGI primitives into send_msg/recv_msg for protocol.py |
 | `network/relay.py` | Relay adapter — wraps asyncio.Queue/relay WS into send_msg/recv_msg for protocol.py |
 | `network/host/session/active.py` | ActiveSessionRegistry — in-memory session tracking |

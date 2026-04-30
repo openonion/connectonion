@@ -1,68 +1,40 @@
-"""
-Purpose: HTTP/WebSocket route handlers for agent hosting endpoints
-LLM-Note:
-  Dependencies: imports from [network/host/session.py, connectonion/__init__.py] | imported by [network/host/server.py, network/asgi/http.py, network/asgi/websocket.py] | tested by [tests/network/test_host_routes.py]
-  Data flow: receives HTTP request → input_handler() calls create_agent() for fresh instance → uses client's session_id (or generates fallback if missing) → calls agent.input(prompt, session) → stores result in SessionStorage → returns {session_id, status, result, duration_ms, session}
-  State/Effects: reads/writes SessionStorage via storage.save()/get()/list() | factory creates fresh agent per request (prevents state bleeding) | writes session records with TTL expiry
-  Integration: exposes input_handler, session_handler, sessions_handler, health_handler, info_handler, admin_*_handler | used by server.py and ASGI adapters
-  Performance: factory creates fresh agent per request (thread-safe) | SessionStorage TTL auto-cleanup | session continuation via session dict
-  Errors: session_handler returns None if session_id not found | admin_logs_handler returns {"error": "..."} if log file missing
+"""HTTP routing and handler functions.
 
-Session ID ownership:
-  - Client generates UUID on first request (TypeScript SDK: generateUUID())
-  - Server uses client's session_id for storage and reconnection
-  - Server only generates fallback UUID if client didn't provide one (backwards compatibility)
-  - Security: session_id is correlation ID, not credential. Ed25519 signature provides auth.
-Route handlers for hosted agents.
+Routes HTTP requests by path to handler functions.
+Handler functions implement the business logic for each endpoint.
 """
 
+import json
 import time
 import uuid
+from functools import partial
 from pathlib import Path
 from typing import Callable
 
+from ..asgi.http import read_body, send_json, send_html, send_text, CORS_HEADERS
+from ..trust.http_admin import handle_admin_routes
 from .session import Session, SessionStorage, merge_sessions, session_to_chat_items
 
+
+# ═══════════════════════════════════════════════════════
+# Handlers
+# ═══════════════════════════════════════════════════════
 
 def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, result_ttl: int,
                   session: dict | None = None, connection=None, images: list[str] | None = None,
                   files: list[dict] | None = None) -> dict:
-    """POST /input (and WebSocket /ws) with session merge and UI conversion
-
-    Args:
-        create_agent: Factory function that returns a fresh Agent instance
-        storage: SessionStorage for persisting results
-        prompt: The user's prompt
-        result_ttl: How long to keep the result on server
-        session: Optional conversation session for continuation (from client)
-        connection: WebSocket connection for bidirectional I/O (None for HTTP)
-        images: Optional list of base64 data URLs for multimodal input
-        files: Optional list of file dicts with name and base64 data
-
-    Returns:
-        {
-            'session_id': str,
-            'status': 'done',
-            'result': str,
-            'duration_ms': int,
-            'session': dict,  # Full session context
-            'chat_items': list[dict],  # UI-ready ChatItems
-            'server_newer': bool  # True if server session was newer
-        }
-    """
-    agent = create_agent()  # Fresh instance per request
-    agent.io = connection  # WebSocket connection or None for HTTP
-    agent.storage = storage  # Session storage for checkpointing
+    """POST /input (and WebSocket /ws) with session merge and UI conversion."""
+    agent = create_agent()
+    agent.io = connection
+    agent.storage = storage
     now = time.time()
 
-    # Session ID must be provided by caller (WebSocket: from CONNECT, HTTP: generated before calling)
     session = session or {}
     session_id = session.get('session_id')
     if not session_id:
         raise ValueError("session_id required in session dict")
     server_newer = False
 
-    # Merge with server state if continuing existing session
     stored = storage.get(session_id)
     if stored and stored.session:
         session, server_newer = merge_sessions(
@@ -70,7 +42,6 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
             server_session=stored.session
         )
 
-    # Create storage record
     record = Session(
         session_id=session_id,
         status="running",
@@ -80,33 +51,28 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     )
     storage.save(record)
 
-    # Run agent with merged session
     start = time.time()
     result = agent.input(prompt, session=session, images=images, files=files)
     duration_ms = int((time.time() - start) * 1000)
 
-    # Update session timestamp
     agent.current_session['updated'] = time.time()
 
-    # Save complete session to storage
     record.status = "done"
     record.result = result
     record.duration_ms = duration_ms
-    record.session = agent.current_session  # Save full session context
+    record.session = agent.current_session
     storage.save(record)
 
-    # Convert session to ChatItems for UI
     chat_items = session_to_chat_items(agent.current_session)
 
-    # Return result with session and UI data
     return {
         "session_id": session_id,
         "status": "done",
         "result": result,
         "duration_ms": duration_ms,
         "session": agent.current_session,
-        "chat_items": chat_items,  # UI-ready format
-        "server_newer": server_newer,  # Tell client we merged
+        "chat_items": chat_items,
+        "server_newer": server_newer,
     }
 
 
@@ -128,16 +94,7 @@ def health_handler(agent_name: str, start_time: float) -> dict:
 
 def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
                  host_config: dict | None = None) -> dict:
-    """GET /info
-
-    Returns pre-extracted metadata including onboard requirements and accepted inputs.
-
-    Args:
-        agent_metadata: Agent name, address, tools
-        trust: TrustAgent instance (trust level extracted via .trust attribute)
-        trust_config: Parsed YAML config from trust policy (optional)
-        host_config: Host config dict with file upload limits (optional)
-    """
+    """GET /info"""
     from ... import __version__
     from .config import DEFAULT_FILE_LIMITS
 
@@ -148,7 +105,7 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
         "address": agent_metadata["address"],
         "tools": agent_metadata["tools"],
         "model": agent_metadata.get("model", "unknown"),
-        "trust": trust.trust,  # Extract level string from TrustAgent
+        "trust": trust.trust,
         "version": __version__,
         "skills": agent_metadata.get("skills", []),
         "accepted_inputs": {
@@ -161,7 +118,6 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
         },
     }
 
-    # Add onboard info if available
     if trust_config:
         onboard = trust_config.get("onboard", {})
         if onboard:
@@ -174,7 +130,7 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
 
 
 def admin_logs_handler(agent_name: str) -> dict:
-    """GET /admin/logs - return plain text activity log file."""
+    """GET /admin/logs"""
     log_path = Path(f".co/logs/{agent_name}.log")
     if log_path.exists():
         return {"content": log_path.read_text()}
@@ -182,12 +138,7 @@ def admin_logs_handler(agent_name: str) -> dict:
 
 
 def admin_sessions_handler() -> dict:
-    """GET /admin/sessions - return raw session YAML files as JSON.
-
-    Returns session files as-is (converted from YAML to JSON). Each session
-    contains: name, created, updated, total_cost, total_tokens, turns array.
-    Frontend handles the display logic.
-    """
+    """GET /admin/sessions"""
     import yaml
     sessions_dir = Path(".co/evals")
     if not sessions_dir.exists():
@@ -200,16 +151,12 @@ def admin_sessions_handler() -> dict:
             if session_data:
                 sessions.append(session_data)
 
-    # Sort by updated date descending (newest first)
     sessions.sort(key=lambda s: s.get("updated", s.get("created", "")), reverse=True)
     return {"sessions": sessions}
 
 
-# === Admin Trust Routes ===
-# These receive TrustAgent instance from route_handlers
-
 def admin_trust_promote_handler(trust_agent, client_id: str) -> dict:
-    """POST /admin/trust/promote - Promote client to next level."""
+    """POST /admin/trust/promote"""
     level = trust_agent.get_level(client_id)
     if level == "stranger":
         result = trust_agent.promote_to_contact(client_id)
@@ -221,12 +168,11 @@ def admin_trust_promote_handler(trust_agent, client_id: str) -> dict:
         return {"error": "Client is blocked. Unblock first.", "level": level}
     else:
         return {"error": f"Unknown level: {level}"}
-
     return {"success": True, "message": result, "level": trust_agent.get_level(client_id)}
 
 
 def admin_trust_demote_handler(trust_agent, client_id: str) -> dict:
-    """POST /admin/trust/demote - Demote client to previous level."""
+    """POST /admin/trust/demote"""
     level = trust_agent.get_level(client_id)
     if level == "whitelist":
         result = trust_agent.demote_to_contact(client_id)
@@ -238,36 +184,122 @@ def admin_trust_demote_handler(trust_agent, client_id: str) -> dict:
         return {"error": "Client is blocked. Unblock first.", "level": level}
     else:
         return {"error": f"Unknown level: {level}"}
-
     return {"success": True, "message": result, "level": trust_agent.get_level(client_id)}
 
 
 def admin_trust_block_handler(trust_agent, client_id: str, reason: str = "") -> dict:
-    """POST /admin/trust/block - Block a client."""
+    """POST /admin/trust/block"""
     result = trust_agent.block(client_id, reason)
     return {"success": True, "message": result, "level": trust_agent.get_level(client_id)}
 
 
 def admin_trust_unblock_handler(trust_agent, client_id: str) -> dict:
-    """POST /admin/trust/unblock - Unblock a client."""
+    """POST /admin/trust/unblock"""
     result = trust_agent.unblock(client_id)
     return {"success": True, "message": result, "level": trust_agent.get_level(client_id)}
 
 
 def admin_trust_level_handler(trust_agent, client_id: str) -> dict:
-    """GET /admin/trust/level/{client_id} - Get client's trust level."""
+    """GET /admin/trust/level/{client_id}"""
     return {"client_id": client_id, "level": trust_agent.get_level(client_id)}
 
 
-# === Super Admin Routes (admin management) ===
-
 def admin_admins_add_handler(trust_agent, admin_id: str) -> dict:
-    """POST /superadmin/add - Add an admin. Super admin only."""
+    """POST /superadmin/add"""
     result = trust_agent.add_admin(admin_id)
     return {"success": True, "message": result}
 
 
 def admin_admins_remove_handler(trust_agent, admin_id: str) -> dict:
-    """POST /superadmin/remove - Remove an admin. Super admin only."""
+    """POST /superadmin/remove"""
     result = trust_agent.remove_admin(admin_id)
     return {"success": True, "message": result}
+
+
+# ═══════════════════════════════════════════════════════
+# Router
+# ═══════════════════════════════════════════════════════
+
+async def handle_http(
+    scope,
+    receive,
+    send,
+    *,
+    route_handlers: dict,
+    storage,
+    trust: str,
+    trust_config: dict | None = None,
+    start_time: float,
+    blacklist: list | None = None,
+    whitelist: list | None = None,
+):
+    """Route HTTP requests to handler functions."""
+    method, path = scope["method"], scope["path"]
+
+    if method == "OPTIONS":
+        headers = CORS_HEADERS + [[b"content-length", b"0"]]
+        await send({"type": "http.response.start", "status": 204, "headers": headers})
+        await send({"type": "http.response.body", "body": b""})
+        return
+
+    if path.startswith("/admin") or path.startswith("/superadmin"):
+        await handle_admin_routes(
+            method, path, scope, receive, route_handlers,
+            send_json=partial(send_json, send),
+            send_text=partial(send_text, send),
+            read_body=read_body,
+        )
+        return
+
+    if method == "POST" and path == "/input":
+        body = await read_body(receive)
+        try:
+            data = json.loads(body) if body else {}
+        except json.JSONDecodeError:
+            await send_json(send, {"error": "Invalid JSON"}, 400)
+            return
+
+        prompt, identity, sig_valid, err = route_handlers["auth"](
+            data, trust, blacklist=blacklist, whitelist=whitelist
+        )
+        if err:
+            status = 401 if err.startswith("unauthorized") else 403 if err.startswith("forbidden") else 400
+            await send_json(send, {"error": err}, status)
+            return
+
+        session = data.get("session") or {}
+        if not session.get("session_id"):
+            session["session_id"] = str(uuid.uuid4())
+        images = data.get("images")
+        files = data.get("files")
+        try:
+            result = route_handlers["input"](storage, prompt, session, images=images, files=files)
+        except ValueError as e:
+            await send_json(send, {"error": str(e)}, 400)
+            return
+        await send_json(send, result)
+
+    elif method == "GET" and path.startswith("/sessions/"):
+        result = route_handlers["session"](storage, path[10:])
+        await send_json(send, result or {"error": "not found"}, 404 if not result else 200)
+
+    elif method == "GET" and path == "/sessions":
+        await send_json(send, route_handlers["sessions"](storage))
+
+    elif method == "GET" and path == "/health":
+        await send_json(send, route_handlers["health"](start_time))
+
+    elif method == "GET" and path == "/info":
+        await send_json(send, route_handlers["info"](trust, trust_config))
+
+    elif method == "GET" and path == "/docs":
+        try:
+            base = Path(__file__).resolve().parent.parent
+            html_path = base / "static" / "docs.html"
+            html = html_path.read_bytes()
+        except Exception:
+            html = b"<html><body><h1>ConnectOnion Docs</h1><p>Docs not found.</p></body></html>"
+        await send_html(send, html)
+
+    else:
+        await send_json(send, {"error": "not found"}, 404)

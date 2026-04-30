@@ -1,7 +1,7 @@
 """ASGI WebSocket transport adapter.
 
 Thin wrapper that creates ASGI send/recv adapters and delegates
-to the transport-agnostic protocol handler in protocol.py.
+to the transport-agnostic protocol handler in host/ws_router.py.
 
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
 See docs/network/websocket-protocol.md for full specification.
@@ -11,7 +11,7 @@ import json
 
 from rich.console import Console
 from .http import pydantic_json_encoder
-from ..protocol import run_protocol
+from ..host.ws_router import dispatch_message_loop
 
 console = Console()
 
@@ -52,7 +52,7 @@ async def handle_websocket(
                     await send_msg({"type": "ERROR", "message": "Invalid JSON"})
                     continue
 
-    await run_protocol(
+    await dispatch_message_loop(
         send_msg, recv_msg,
         route_handlers=route_handlers,
         storage=storage,

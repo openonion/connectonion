@@ -26,7 +26,6 @@ class ActiveSession:
     session_id: str
     io: object                   # WebSocketIO with queues
     thread: threading.Thread     # Agent execution thread
-    agent_finished: threading.Event  # Signals when agent thread completes
     created: float
     last_ping: float
     status: str                  # 'executing' | 'connected' | 'suspended'
@@ -39,14 +38,13 @@ class ActiveSessionRegistry:
         self._sessions: Dict[str, ActiveSession] = {}
         self._lock = threading.Lock()
 
-    def register(self, session_id: str, io, thread, agent_finished) -> None:
+    def register(self, session_id: str, io, thread) -> None:
         """Register a new execution."""
         with self._lock:
             self._sessions[session_id] = ActiveSession(
                 session_id=session_id,
                 io=io,
                 thread=thread,
-                agent_finished=agent_finished,
                 created=time.time(),
                 last_ping=time.time(),
                 status='executing',
@@ -64,10 +62,11 @@ class ActiveSessionRegistry:
                 self._sessions[session_id].last_ping = time.time()
 
     def mark_suspended(self, session_id: str) -> None:
-        """Mark as suspended (client disconnected)."""
+        """Mark as suspended (client disconnected). No-op if agent is still executing."""
         with self._lock:
-            if session_id in self._sessions:
-                self._sessions[session_id].status = 'suspended'
+            sess = self._sessions.get(session_id)
+            if sess and sess.status != 'executing':
+                sess.status = 'suspended'
 
     def mark_connected(self, session_id: str) -> None:
         """Mark as connected (execution finished, session alive for next INPUT)."""
@@ -75,14 +74,13 @@ class ActiveSessionRegistry:
             if session_id in self._sessions:
                 self._sessions[session_id].status = 'connected'
 
-    def mark_executing(self, session_id: str, io, thread, agent_finished) -> None:
+    def mark_executing(self, session_id: str, io, thread) -> None:
         """Start a new execution on an existing session."""
         with self._lock:
             if session_id in self._sessions:
                 sess = self._sessions[session_id]
                 sess.io = io
                 sess.thread = thread
-                sess.agent_finished = agent_finished
                 sess.status = 'executing'
                 sess.last_ping = time.time()
 
@@ -95,9 +93,11 @@ class ActiveSessionRegistry:
             for sid, sess in self._sessions.items():
                 idle = now - sess.last_ping
 
-                # Never clean up executing sessions (agent still running)
                 # Clean up connected and suspended after 10min idle
+                # Clean up executing after 1 hour (stuck agent)
                 if sess.status in ('connected', 'suspended') and idle > 600:
+                    to_remove.append(sid)
+                elif sess.status == 'executing' and idle > 3600:
                     to_remove.append(sid)
 
             for sid in to_remove:

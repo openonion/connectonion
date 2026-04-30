@@ -25,7 +25,7 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
-from connectonion.network.host.routes import (
+from connectonion.network.host.http_router import (
     input_handler,
     session_handler,
     sessions_handler,

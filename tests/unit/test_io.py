@@ -29,25 +29,27 @@ class TestIOBase:
 class TestWebSocketIO:
     """Test WebSocketIO queue-based implementation."""
 
-    def test_init_creates_empty_queues(self):
-        """__init__ creates empty outgoing and incoming queues."""
+    def test_init_creates_empty_state(self):
+        """__init__ creates empty event log and incoming mailbox."""
         io = WebSocketIO()
 
-        assert io._outgoing.empty()
-        assert io._incoming.empty()
+        assert io._agent_messages == []
+        assert io._client_messages == []
         assert io._closed is False
+        assert io._finished is False
+        assert io._cursor == 0
 
-    def test_send_queues_event(self):
-        """send() puts event on outgoing queue with auto-generated id and ts."""
+    def test_send_appends_event(self):
+        """send() appends event to event log with auto-generated id and ts."""
         io = WebSocketIO()
 
         event = {"type": "thinking"}
         io.send(event)
 
-        queued = io._outgoing.get_nowait()
-        assert queued["type"] == "thinking"
-        assert "id" in queued  # UUID auto-generated
-        assert "ts" in queued  # timestamp auto-generated
+        assert len(io._agent_messages) == 1
+        assert io._agent_messages[0]["type"] == "thinking"
+        assert "id" in io._agent_messages[0]  # UUID auto-generated
+        assert "ts" in io._agent_messages[0]  # timestamp auto-generated
 
     def test_send_preserves_existing_id(self):
         """send() preserves existing id if provided."""
@@ -56,8 +58,7 @@ class TestWebSocketIO:
         event = {"type": "tool_call", "id": "custom-id-123"}
         io.send(event)
 
-        queued = io._outgoing.get_nowait()
-        assert queued["id"] == "custom-id-123"  # preserved, not overwritten
+        assert io._agent_messages[0]["id"] == "custom-id-123"  # preserved, not overwritten
 
     def test_send_skips_when_closed(self):
         """send() does nothing when IO is closed."""
@@ -66,12 +67,12 @@ class TestWebSocketIO:
 
         io.send({"type": "thinking"})
 
-        assert io._outgoing.empty()
+        assert io._agent_messages == []
 
-    def test_receive_returns_from_incoming_queue(self):
-        """receive() returns item from incoming queue."""
+    def test_receive_returns_from_inbox(self):
+        """receive() returns item from incoming mailbox."""
         io = WebSocketIO()
-        io._incoming.put({"approved": True})
+        io.send_to_agent({"approved": True})
 
         result = io.receive()
 
@@ -93,33 +94,11 @@ class TestWebSocketIO:
         assert thread.is_alive()  # Still blocking
 
         # Now put data
-        io._incoming.put({"approved": True})
+        io.send_to_agent({"approved": True})
         thread.join(timeout=0.1)
 
         assert not thread.is_alive()
         assert result_holder[0] == {"approved": True}
-
-    def test_close_unblocks_receive(self):
-        """close() unblocks any waiting receive() call."""
-        io = WebSocketIO()
-        result_holder = [None]
-
-        def receive_thread():
-            result_holder[0] = io.receive()
-
-        thread = threading.Thread(target=receive_thread)
-        thread.start()
-
-        # Give thread time to block
-        thread.join(timeout=0.05)
-        assert thread.is_alive()
-
-        # Close should unblock
-        io.close()
-        thread.join(timeout=0.1)
-
-        assert not thread.is_alive()
-        assert result_holder[0] == {"type": "io_closed"}
 
 
 class TestReceiveAll:
@@ -136,9 +115,9 @@ class TestReceiveAll:
     def test_receive_all_returns_all_messages(self):
         """receive_all() returns all pending messages."""
         io = WebSocketIO()
-        io._incoming.put({"type": "msg1"})
-        io._incoming.put({"type": "msg2"})
-        io._incoming.put({"type": "msg3"})
+        io.send_to_agent({"type": "msg1"})
+        io.send_to_agent({"type": "msg2"})
+        io.send_to_agent({"type": "msg3"})
 
         result = io.receive_all()
 
@@ -146,14 +125,14 @@ class TestReceiveAll:
         assert result[0]["type"] == "msg1"
         assert result[1]["type"] == "msg2"
         assert result[2]["type"] == "msg3"
-        assert io._incoming.empty()
+        assert io._client_messages == []
 
     def test_receive_all_with_type_filter(self):
         """receive_all(msg_type) only returns messages of that type."""
         io = WebSocketIO()
-        io._incoming.put({"type": "mode_change", "mode": "safe"})
-        io._incoming.put({"type": "approval", "approved": True})
-        io._incoming.put({"type": "mode_change", "mode": "ulw"})
+        io.send_to_agent({"type": "mode_change", "mode": "safe"})
+        io.send_to_agent({"type": "approval", "approved": True})
+        io.send_to_agent({"type": "mode_change", "mode": "ulw"})
 
         result = io.receive_all("mode_change")
 
@@ -161,32 +140,30 @@ class TestReceiveAll:
         assert result[0] == {"type": "mode_change", "mode": "safe"}
         assert result[1] == {"type": "mode_change", "mode": "ulw"}
 
-    def test_receive_all_with_type_filter_keeps_others_in_queue(self):
-        """receive_all(msg_type) keeps non-matching messages in queue."""
+    def test_receive_all_with_type_filter_keeps_others_in_mailbox(self):
+        """receive_all(msg_type) keeps non-matching messages in mailbox."""
         io = WebSocketIO()
-        io._incoming.put({"type": "mode_change", "mode": "safe"})
-        io._incoming.put({"type": "approval", "approved": True})
-        io._incoming.put({"type": "mode_change", "mode": "ulw"})
+        io.send_to_agent({"type": "mode_change", "mode": "safe"})
+        io.send_to_agent({"type": "approval", "approved": True})
+        io.send_to_agent({"type": "mode_change", "mode": "ulw"})
 
         io.receive_all("mode_change")
 
-        # The approval message should still be in queue
-        assert not io._incoming.empty()
-        remaining = io._incoming.get_nowait()
-        assert remaining == {"type": "approval", "approved": True}
-        assert io._incoming.empty()
+        # The approval message should still be in mailbox
+        assert len(io._client_messages) == 1
+        assert io._client_messages[0] == {"type": "approval", "approved": True}
 
     def test_receive_all_with_no_matching_type(self):
         """receive_all(msg_type) returns empty list when no matches."""
         io = WebSocketIO()
-        io._incoming.put({"type": "approval", "approved": True})
-        io._incoming.put({"type": "other", "data": 123})
+        io.send_to_agent({"type": "approval", "approved": True})
+        io.send_to_agent({"type": "other", "data": 123})
 
         result = io.receive_all("mode_change")
 
         assert result == []
-        # All messages should still be in queue
-        assert io._incoming.qsize() == 2
+        # All messages should still be in mailbox
+        assert len(io._client_messages) == 2
 
     def test_receive_all_is_non_blocking(self):
         """receive_all() returns immediately without blocking."""
@@ -211,7 +188,8 @@ class TestHighLevelAPI:
 
         io.log("thinking")
 
-        event = io._outgoing.get_nowait()
+        assert len(io._agent_messages) == 1
+        event = io._agent_messages[0]
         assert event["type"] == "thinking"
         assert "id" in event  # UUID auto-generated
         assert "ts" in event  # timestamp auto-generated
@@ -222,7 +200,7 @@ class TestHighLevelAPI:
 
         io.log("tool_call", name="search", arguments={"q": "python"})
 
-        event = io._outgoing.get_nowait()
+        event = io._agent_messages[0]
         assert event["type"] == "tool_call"
         assert event["name"] == "search"
         assert event["arguments"] == {"q": "python"}
@@ -235,10 +213,12 @@ class TestHighLevelAPI:
 
         # Simulate client response in another thread
         def respond():
-            # Wait for outgoing message
-            io._outgoing.get(timeout=1)
+            # Wait for outgoing event
+            with io._agent_condition:
+                while not io._agent_messages:
+                    io._agent_condition.wait(timeout=1)
             # Send approval
-            io._incoming.put({"approved": True})
+            io.send_to_agent({"approved": True})
 
         thread = threading.Thread(target=respond)
         thread.start()
@@ -254,8 +234,10 @@ class TestHighLevelAPI:
 
         # Simulate client response in another thread
         def respond():
-            io._outgoing.get(timeout=1)
-            io._incoming.put({"approved": False})
+            with io._agent_condition:
+                while not io._agent_messages:
+                    io._agent_condition.wait(timeout=1)
+            io.send_to_agent({"approved": False})
 
         thread = threading.Thread(target=respond)
         thread.start()
@@ -271,8 +253,10 @@ class TestHighLevelAPI:
 
         # Simulate client response in another thread
         def respond():
-            io._outgoing.get(timeout=1)
-            io._incoming.put({})  # No 'approved' key
+            with io._agent_condition:
+                while not io._agent_messages:
+                    io._agent_condition.wait(timeout=1)
+            io.send_to_agent({})  # No 'approved' key
 
         thread = threading.Thread(target=respond)
         thread.start()

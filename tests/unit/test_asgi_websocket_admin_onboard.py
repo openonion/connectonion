@@ -23,10 +23,10 @@ from unittest.mock import Mock
 import pytest
 
 from connectonion.network.asgi import handle_websocket
-from connectonion.network.protocol import (
-    _get_onboard_requirements,
-    _handle_onboard_submit,
-    _handle_admin_message,
+from connectonion.network.trust.ws_admin import (
+    get_onboard_requirements,
+    handle_onboard_submit,
+    handle_admin_message,
 )
 from connectonion.network.host.session import ActiveSessionRegistry
 
@@ -42,14 +42,14 @@ def _extract_ws_messages(sent_messages):
 class TestOnboardRequirements:
     def test_no_onboard_returns_none(self):
         trust_agent = SimpleNamespace(config={})
-        assert _get_onboard_requirements(trust_agent) is None
+        assert get_onboard_requirements(trust_agent) is None
 
     def test_invite_and_payment(self):
         trust_agent = SimpleNamespace(
             config={"onboard": {"invite_code": ["CODE"], "payment": 10}},
             get_self_address=lambda: "0xagent123"
         )
-        result = _get_onboard_requirements(trust_agent)
+        result = get_onboard_requirements(trust_agent)
         assert result == {"methods": ["invite_code", "payment"], "payment_amount": 10, "payment_address": "0xagent123"}
 
 
@@ -161,7 +161,7 @@ class TestHandleOnboardSubmit:
             "trust_agent": trust_agent,
         }
 
-        await _handle_onboard_submit({"type": "ONBOARD_SUBMIT"}, send, handlers)
+        await handle_onboard_submit({"type": "ONBOARD_SUBMIT"}, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert "unauthorized" in sent_messages[0]["message"]
@@ -180,7 +180,7 @@ class TestHandleOnboardSubmit:
             "trust_agent": trust_agent,
         }
 
-        await _handle_onboard_submit({"type": "ONBOARD_SUBMIT"}, send, handlers)
+        await handle_onboard_submit({"type": "ONBOARD_SUBMIT"}, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert sent_messages[0]["message"] == "forbidden: blocked"
@@ -205,7 +205,7 @@ class TestHandleOnboardSubmit:
             "type": "ONBOARD_SUBMIT",
             "payload": {"invite_code": "BETA2024"},
         }
-        await _handle_onboard_submit(data, send, handlers)
+        await handle_onboard_submit(data, send, handlers)
 
         assert sent_messages[0]["type"] == "ONBOARD_SUCCESS"
         assert sent_messages[0]["level"] == "contact"
@@ -229,7 +229,7 @@ class TestHandleOnboardSubmit:
             "type": "ONBOARD_SUBMIT",
             "payload": {"invite_code": "WRONG"},
         }
-        await _handle_onboard_submit(data, send, handlers)
+        await handle_onboard_submit(data, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert "Invalid invite code" in sent_messages[0]["message"]
@@ -254,7 +254,7 @@ class TestHandleOnboardSubmit:
             "type": "ONBOARD_SUBMIT",
             "payload": {"payment": 10},
         }
-        await _handle_onboard_submit(data, send, handlers)
+        await handle_onboard_submit(data, send, handlers)
 
         assert sent_messages[0]["type"] == "ONBOARD_SUCCESS"
         assert sent_messages[0]["level"] == "contact"
@@ -278,7 +278,7 @@ class TestHandleOnboardSubmit:
             "type": "ONBOARD_SUBMIT",
             "payload": {"payment": 5},
         }
-        await _handle_onboard_submit(data, send, handlers)
+        await handle_onboard_submit(data, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert "Insufficient payment" in sent_messages[0]["message"]
@@ -298,7 +298,7 @@ class TestHandleOnboardSubmit:
         }
 
         data = {"type": "ONBOARD_SUBMIT", "payload": {}}
-        await _handle_onboard_submit(data, send, handlers)
+        await handle_onboard_submit(data, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert "invite_code or payment required" in sent_messages[0]["message"]
@@ -321,7 +321,7 @@ class TestHandleAdminMessage:
             "admin_trust_promote": Mock(),
         }
 
-        await _handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers)
+        await handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert "unauthorized" in sent_messages[0]["message"]
@@ -341,7 +341,7 @@ class TestHandleAdminMessage:
             "admin_trust_promote": Mock(),
         }
 
-        await _handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers)
+        await handle_admin_message({"type": "ADMIN_PROMOTE"}, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert sent_messages[0]["message"] == "forbidden: admin only"
@@ -361,7 +361,7 @@ class TestHandleAdminMessage:
             "admin_trust_promote": Mock(),
         }
 
-        await _handle_admin_message({"type": "ADMIN_PROMOTE", "payload": {}}, send, handlers)
+        await handle_admin_message({"type": "ADMIN_PROMOTE", "payload": {}}, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert sent_messages[0]["message"] == "client_id required"
@@ -382,7 +382,7 @@ class TestHandleAdminMessage:
         }
 
         data = {"type": "ADMIN_PROMOTE", "payload": {"client_id": "0xclient"}}
-        await _handle_admin_message(data, send, handlers)
+        await handle_admin_message(data, send, handlers)
 
         assert sent_messages[0]["type"] == "ADMIN_RESULT"
         assert sent_messages[0]["action"] == "promote"
@@ -406,7 +406,7 @@ class TestHandleAdminMessage:
         }
 
         data = {"type": "ADMIN_ADD", "payload": {"admin_id": "0xnew"}}
-        await _handle_admin_message(data, send, handlers)
+        await handle_admin_message(data, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert sent_messages[0]["message"] == "forbidden: super admin only"
@@ -428,7 +428,7 @@ class TestHandleAdminMessage:
         }
 
         data = {"type": "ADMIN_ADD", "payload": {"admin_id": "0xnew"}}
-        await _handle_admin_message(data, send, handlers)
+        await handle_admin_message(data, send, handlers)
 
         assert sent_messages[0]["type"] == "ADMIN_RESULT"
         assert sent_messages[0]["action"] == "add_admin"
@@ -449,7 +449,7 @@ class TestHandleAdminMessage:
         }
 
         data = {"type": "ADMIN_UNKNOWN", "payload": {}}
-        await _handle_admin_message(data, send, handlers)
+        await handle_admin_message(data, send, handlers)
 
         assert sent_messages[0]["type"] == "ERROR"
         assert "Unknown admin action" in sent_messages[0]["message"]

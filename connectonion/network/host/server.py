@@ -37,13 +37,13 @@ from rich.console import Console
 from ... import address
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
-from ..protocol import run_protocol
+from .ws_router import dispatch_message_loop
 from ..trust import TrustAgent, get_default_trust_level, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
 from .auth import extract_and_authenticate
 from .config import load_host_config, load_list_file, validate_files, DEFAULT_FILE_LIMITS
 from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
-from .routes import (
+from .http_router import (
     input_handler,
     session_handler,
     sessions_handler,
@@ -51,13 +51,11 @@ from .routes import (
     info_handler,
     admin_logs_handler,
     admin_sessions_handler,
-    # Admin trust routes
     admin_trust_promote_handler,
     admin_trust_demote_handler,
     admin_trust_block_handler,
     admin_trust_unblock_handler,
     admin_trust_level_handler,
-    # Super admin routes
     admin_admins_add_handler,
     admin_admins_remove_handler,
 )
@@ -422,7 +420,7 @@ def host(
     # Create relay lifespan callbacks (runs in same event loop as HTTP/WebSocket)
     on_startup, on_shutdown = None, None
     if relay_url:
-        session_handler = partial(run_protocol,
+        session_handler = partial(dispatch_message_loop,
             route_handlers=route_handlers,
             storage=storage,
             registry=registry,

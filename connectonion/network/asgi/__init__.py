@@ -17,7 +17,7 @@ import time
 import asyncio
 from typing import Callable, Awaitable
 
-from .http import handle_http, send_json, send_html, send_text, read_body, CORS_HEADERS
+from .http import send_json, send_html, send_text, read_body, CORS_HEADERS
 from .websocket import handle_websocket
 
 
@@ -50,6 +50,8 @@ def create_app(
         ASGI application callable
     """
     start_time = time.time()
+
+    from ..host.http_router import handle_http
 
     async def app(scope, receive, send):
         if scope["type"] == "lifespan":
@@ -105,7 +107,6 @@ def create_app(
 
 __all__ = [
     "create_app",
-    "handle_http",
     "handle_websocket",
     "CORS_HEADERS",
     "read_body",
