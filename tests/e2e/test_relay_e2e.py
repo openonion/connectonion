@@ -313,7 +313,7 @@ class TestRelayE2E:
                 raw = await asyncio.wait_for(ws2.recv(), timeout=15)
                 event = json.loads(raw)
                 if event.get("type") == "CONNECTED":
-                    assert event["status"] == "executing", f"Expected executing, got {event['status']}"
+                    assert event["status"] == "running", f"Expected running, got {event['status']}"
                     break
 
             # Wait for OUTPUT
@@ -400,7 +400,7 @@ class TestRelayE2E:
                 raw = await asyncio.wait_for(ws2.recv(), timeout=15)
                 event = json.loads(raw)
                 if event.get("type") == "CONNECTED":
-                    assert event["status"] == "executing", f"Expected executing, got {event['status']}"
+                    assert event["status"] == "running", f"Expected running, got {event['status']}"
                     break
 
             # Send approval on reconnected session

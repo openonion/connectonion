@@ -524,7 +524,7 @@ class TestActiveSessionRegistry:
         assert session is not None
         assert session.session_id == 'sess-1'
         assert session.io == mock_io
-        assert session.status == 'executing'
+        assert session.status == 'running'
 
     def test_get_returns_none_for_missing(self):
         """get() returns None for non-existent session."""
@@ -545,53 +545,54 @@ class TestActiveSessionRegistry:
 
         assert new_ping > old_ping
 
-    def test_mark_suspended(self):
-        """mark_suspended() changes status to suspended when not executing."""
+    def test_mark_session_disconnected(self):
+        """mark_session_disconnected() changes status to disconnected when not running."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
         registry.register('sess-1', object(), mock_thread)
-        registry.mark_connected('sess-1')
+        registry.mark_session_connected('sess-1')
 
-        registry.mark_suspended('sess-1')
+        registry.mark_session_disconnected('sess-1')
 
-        assert registry.get('sess-1').status == 'suspended'
+        assert registry.get('sess-1').status == 'disconnected'
 
-    def test_mark_suspended_noop_while_executing(self):
-        """mark_suspended() is a no-op when agent is still executing."""
-        registry = ActiveSessionRegistry()
-        mock_thread = threading.Thread(target=lambda: None)
-        registry.register('sess-1', object(), mock_thread)
-
-        registry.mark_suspended('sess-1')
-
-        assert registry.get('sess-1').status == 'executing'
-
-    def test_mark_connected(self):
-        """mark_connected() changes status to connected."""
+    def test_mark_session_disconnected_noop_while_running(self):
+        """mark_session_disconnected() is a no-op when agent is still running."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
         registry.register('sess-1', object(), mock_thread)
 
-        registry.mark_connected('sess-1')
+        registry.mark_session_disconnected('sess-1')
+
+        assert registry.get('sess-1').status == 'running'
+
+    def test_mark_session_connected(self):
+        """mark_session_connected() changes status to connected."""
+        registry = ActiveSessionRegistry()
+        mock_thread = threading.Thread(target=lambda: None)
+        registry.register('sess-1', object(), mock_thread)
+
+        registry.mark_session_connected('sess-1')
 
         assert registry.get('sess-1').status == 'connected'
 
     def test_list_active(self):
-        """list_active() returns running and suspended sessions."""
+        """list_active() returns running and disconnected sessions."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
 
-        registry.register('executing-1', object(), mock_thread)
-        registry.register('suspended-1', object(), mock_thread)
+        registry.register('running-1', object(), mock_thread)
+        registry.register('disconnected-1', object(), mock_thread)
         registry.register('connected-1', object(), mock_thread)
 
-        registry.mark_suspended('suspended-1')
-        registry.mark_connected('connected-1')
+        registry.mark_session_connected('disconnected-1')
+        registry.mark_session_disconnected('disconnected-1')
+        registry.mark_session_connected('connected-1')
 
         active = registry.list_active()
 
-        assert 'executing-1' in active
-        assert 'suspended-1' in active
+        assert 'running-1' in active
+        assert 'disconnected-1' in active
         assert 'connected-1' not in active
 
     def test_count(self):
@@ -808,11 +809,11 @@ class TestReconnectionScenarios:
 
         # 1. New session starts
         registry.register('active-sess', mock_io, mock_thread)
-        assert registry.get('active-sess').status == 'executing'
+        assert registry.get('active-sess').status == 'running'
 
-        # 2. Client disconnects — but agent still executing, stays 'executing'
-        registry.mark_suspended('active-sess')
-        assert registry.get('active-sess').status == 'executing'
+        # 2. Client disconnects — but agent still running, stays 'running'
+        registry.mark_session_disconnected('active-sess')
+        assert registry.get('active-sess').status == 'running'
 
         # 3. Client reconnects - same IO queue
         session = registry.get('active-sess')
@@ -882,7 +883,7 @@ class TestReconnectionScenarios:
 
         # Register and mark connected (agent finished)
         registry.register('to-cleanup', object(), mock_thread)
-        registry.mark_connected('to-cleanup')
+        registry.mark_session_connected('to-cleanup')
 
         # Manually set last_ping to past (idle >10min)
         with registry._lock:

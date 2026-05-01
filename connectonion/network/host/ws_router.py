@@ -68,7 +68,7 @@ def _run_agent_thread(route_handlers, storage, prompt, io, session, images, file
     """Thread target: run agent and store result. Calls io.finish() when done."""
     try:
         result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files)
-        registry.mark_connected(session_id)
+        registry.mark_session_connected(session_id)
     except Exception as e:
         result_holder[0] = e
     finally:
@@ -86,9 +86,9 @@ async def _handle_session_status(data, send_msg, registry):
     await send_msg({"type": "SESSION_STATUS", "session_id": sid, "status": status})
 
 
-def _reattach_executing(send_msg, active, registry, session_id, storage):
-    """Reattach to a running agent session. Returns (io, forward_task)."""
-    console.print(f"  [dim]↻ reattaching to running agent[/dim]")
+def _resume_connection(send_msg, active, registry, session_id, storage):
+    """Resume forwarding from a running agent session. Returns (io, forward_task)."""
+    console.print(f"  [dim]↻ resuming connection to running agent[/dim]")
     io = active.io
     registry.update_ping(session_id)
     task = asyncio.create_task(
@@ -136,9 +136,9 @@ async def _handle_connect(data, send_msg, conn, route_handlers, storage, registr
                 console.print(f"  [dim]↕ merged sessions (server newer)[/dim]")
 
     active = registry.get(session_id)
-    if active and active.status == 'executing':
-        status = "executing"
-    elif active and active.status in ('connected', 'suspended'):
+    if active and active.status == 'running':
+        status = "running"
+    elif active and active.status in ('connected', 'disconnected'):
         status = "connected"
         registry.update_ping(session_id)
     else:
@@ -154,8 +154,8 @@ async def _handle_connect(data, send_msg, conn, route_handlers, storage, registr
         connected_msg["chat_items"] = session_to_chat_items(conn["session"])
     await send_msg(connected_msg)
 
-    if status == "executing":
-        return _reattach_executing(send_msg, active, registry, session_id, storage)
+    if status == "running":
+        return _resume_connection(send_msg, active, registry, session_id, storage)
 
 
 async def _start_agent(data, send_msg, conn, route_handlers, storage, registry):
@@ -253,4 +253,4 @@ async def dispatch_message_loop(send_msg, recv_msg, *, route_handlers, storage, 
             except asyncio.CancelledError:
                 pass
         if active_io and conn.get("session_id"):
-            registry.mark_suspended(conn["session_id"])
+            registry.mark_session_disconnected(conn["session_id"])
