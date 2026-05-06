@@ -1,7 +1,17 @@
-"""HTTP routing and handler functions.
+"""
+Purpose: HTTP route handlers for agent hosting endpoints (POST /input, session/admin/health/info)
+LLM-Note:
+  Dependencies: imports from [network/host/session/ (Session, SessionStorage, merge_sessions, session_to_chat_items), network/asgi/http (read_body, send_json, send_html, send_text, CORS_HEADERS), network/trust/http_admin] | imported by [network/host/server.py, network/asgi/http.py] | tested by [tests/unit/test_host_routes.py]
+  Data flow: input_handler() receives prompt+session → calls create_agent() factory → merges client+server session via merge_sessions() if stored exists → calls agent.input(prompt, session) → records 'running' shell + final 'done' to SessionStorage → returns {session_id, status, result, duration_ms, session, chat_items, server_newer}
+  State/Effects: reads/writes SessionStorage via storage.save()/get() | factory creates fresh agent per request (prevents state bleeding) | session records carry TTL expiry
+  Integration: exposes input_handler, session_handler, sessions_handler, health_handler, info_handler, admin_logs/sessions/trust/admins handlers | used by server.py and ASGI adapters
+  Performance: factory creates fresh agent per request (thread-safe) | SessionStorage TTL auto-cleanup | session continuation via session_id provided by client
+  Errors: input_handler raises ValueError if session_id missing | session_handler returns None if session_id not found | admin_logs_handler returns {"error": "..."} if log file missing
 
-Routes HTTP requests by path to handler functions.
-Handler functions implement the business logic for each endpoint.
+Session ID ownership:
+  - Client generates UUID on first request (TypeScript SDK: generateUUID())
+  - Server uses client's session_id for storage and reconnection
+  - Security: session_id is a correlation ID, not credential. Ed25519 signature provides auth.
 """
 
 import json

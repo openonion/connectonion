@@ -1,12 +1,12 @@
 """
-Agent-side relay client for registering and serving via central relay server.
-
-Lifecycle:
-  1. connect(relay_url) opens WebSocket to /ws/announce
-  2. send_announce() sends ANNOUNCE message to register agent
-  3. serve_loop() receives messages from relay, routes by session_id
-  4. Per-session protocol handling via session_handler callback
-  5. Heartbeat: re-sends ANNOUNCE every 60s to stay registered
+Purpose: Agent-side relay client — registers with central relay over WebSocket and serves multi-session traffic via local /ws loopback
+LLM-Note:
+  Dependencies: imports from [json, asyncio, websockets, typing] | imported by [agent host startup code that opts into relay mode] | tested by [tests/unit/test_relay.py, tests/e2e/test_relay_e2e.py]
+  Data flow: connect(relay_url) opens WS to /ws/announce → send_announce() registers agent → serve_loop() reads frames, routes by session_id → session_handler callback runs the per-session WS protocol (CONNECT/INPUT/OUTPUT...) | response frames carry session_id back through relay to the right client
+  State/Effects: maintains a long-lived WebSocket to relay | per-session async tasks spawned by serve_loop | heartbeat re-sends ANNOUNCE every 60s to stay registered
+  Integration: exposes connect(relay_url), send_announce(ws, agent_address, ...), serve_loop(ws, session_handler) | session_handler signature mirrors direct ASGI WS handler so dispatch_message_loop is reusable
+  Performance: single relay WebSocket fans out to N concurrent client sessions | each session_handler runs in its own task, isolated state via session_id routing
+  Errors: relay disconnect propagates to caller (let it crash; supervisor reconnects) | malformed frames raise to serve_loop for visibility
 
 Message Flow:
   Agent → ANNOUNCE → Relay (registers in active_connections)
