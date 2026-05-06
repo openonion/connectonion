@@ -642,11 +642,13 @@ class TestSessionToChatItems:
         assert items[0]['content'] == 'Hi there'
 
     def test_converts_trace_to_tool_calls(self):
-        """Converts trace entries to tool_call ChatItems."""
+        """Converts trace entries to tool_call ChatItems (matches tool_executor shape)."""
         session = {
             'messages': [],
             'trace': [
-                {'tool_name': 'bash', 'args': {'command': 'ls'}, 'result': 'file.txt', 'timing_ms': 50},
+                {'type': 'tool_result', 'tool_id': 't1', 'name': 'bash',
+                 'args': {'command': 'ls'}, 'result': 'file.txt',
+                 'status': 'success', 'timing_ms': 50},
             ],
         }
 
@@ -656,15 +658,17 @@ class TestSessionToChatItems:
         assert items[0]['type'] == 'tool_call'
         assert items[0]['name'] == 'bash'
         assert items[0]['result'] == 'file.txt'
+        assert items[0]['id'] == 't1'
 
     def test_tool_call_status_mapping(self):
-        """Maps trace status to tool_call status correctly."""
+        """Maps tool_executor status to UI status correctly."""
         session = {
             'messages': [],
             'trace': [
-                {'tool_name': 'read', 'status': 'error'},
-                {'tool_name': 'write', 'status': 'running'},
-                {'tool_name': 'edit', 'status': 'done'},
+                {'type': 'tool_result', 'tool_id': 'a', 'name': 'read', 'status': 'error'},
+                {'type': 'tool_result', 'tool_id': 'b', 'name': 'write', 'status': 'running'},
+                {'type': 'tool_result', 'tool_id': 'c', 'name': 'edit', 'status': 'success'},
+                {'type': 'tool_result', 'tool_id': 'd', 'name': 'cmd', 'status': 'not_found'},
             ],
         }
 
@@ -673,6 +677,62 @@ class TestSessionToChatItems:
         assert items[0]['status'] == 'error'
         assert items[1]['status'] == 'running'
         assert items[2]['status'] == 'done'
+        assert items[3]['status'] == 'error'
+
+    def test_skips_tool_call_placeholders(self):
+        """Initial 'tool_call' trace entries (no result yet) are skipped — only 'tool_result' renders."""
+        session = {
+            'messages': [],
+            'trace': [
+                {'type': 'tool_call', 'tool_id': 't1', 'name': 'bash', 'args': {}},
+                {'type': 'tool_result', 'tool_id': 't1', 'name': 'bash',
+                 'args': {}, 'result': 'ok', 'status': 'success', 'timing_ms': 10},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert len(items) == 1
+        assert items[0]['id'] == 't1'
+
+    def test_converts_intent_eval_thinking(self):
+        """Reconstructs intent/eval/thinking trace entries to ChatItems."""
+        session = {
+            'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}],
+            'trace': [
+                {'type': 'user_input', 'content': 'q', 'turn': 1},
+                {'type': 'intent', 'id': 'i1', 'ack': 'Got it', 'is_build': False},
+                {'type': 'eval', 'id': 'e1', 'passed': True, 'summary': 'ok',
+                 'expected': 'q', 'eval_path': '/tmp/x.yaml'},
+                {'type': 'thinking', 'kind': 'reflect', 'content': 'reflecting'},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+        types = [i['type'] for i in items]
+        assert types == ['user', 'intent', 'eval', 'thinking', 'agent']
+        assert items[1]['ack'] == 'Got it'
+        assert items[2]['summary'] == 'ok'
+        assert items[3]['kind'] == 'reflect'
+
+    def test_interleaves_multi_turn_by_user_input(self):
+        """Multi-turn: each user_input marker bounds a turn; trace items emit in their turn."""
+        session = {
+            'messages': [
+                {'role': 'user', 'content': 'q1'}, {'role': 'assistant', 'content': 'a1'},
+                {'role': 'user', 'content': 'q2'}, {'role': 'assistant', 'content': 'a2'},
+            ],
+            'trace': [
+                {'type': 'user_input', 'turn': 1},
+                {'type': 'intent', 'id': 'i1', 'ack': 'first'},
+                {'type': 'user_input', 'turn': 2},
+                {'type': 'intent', 'id': 'i2', 'ack': 'second'},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+        contents = [i.get('content') or i.get('ack') for i in items]
+        assert contents == ['q1', 'first', 'a1', 'q2', 'second', 'a2']
 
     def test_handles_empty_session(self):
         """Handles empty session gracefully."""
@@ -690,7 +750,8 @@ class TestSessionToChatItems:
                 {'role': 'assistant', 'content': 'B'},
             ],
             'trace': [
-                {'tool_name': 'bash'},
+                {'type': 'user_input', 'turn': 1},
+                {'type': 'tool_result', 'tool_id': 't1', 'name': 'bash', 'status': 'success'},
             ],
         }
 

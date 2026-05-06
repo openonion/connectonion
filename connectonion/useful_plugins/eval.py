@@ -214,6 +214,16 @@ Is this task truly complete? What was achieved or what's missing?"""
             'eval_path': eval_path,
         })
 
+    # Persist to trace so reconnect/replay can rebuild the UI item.
+    agent._record_trace({
+        'type': 'eval',
+        'id': eval_id,
+        'passed': passed,
+        'summary': summary,
+        'expected': expected,
+        'eval_path': eval_path,
+    })
+
     # Terminal output with pass/fail indicator
     if passed is not None:
         icon = "✓" if passed else "✗"
