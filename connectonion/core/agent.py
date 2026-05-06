@@ -428,6 +428,7 @@ class Agent:
             # Note: Don't send 'assistant' trace here - OUTPUT message will carry the result
             if not response.tool_calls:
                 content = response.content if response.content else "Task completed."
+                self.current_session['messages'].append({"role": "assistant", "content": content})
                 return content
 
             # Process tool calls
