@@ -88,7 +88,7 @@ reconnect(sessionId?)
   4. On open: send CONNECT { session_id, session }
   5. Wait for CONNECTED (60s timeout)
   │
-  ├─ status = 'executing' → wait for streaming events + OUTPUT
+  ├─ status = 'running'   → wait for streaming events + OUTPUT
   ├─ status = 'connected' → resolve immediately (session alive, idle)
   └─ status = 'new'       → resolve immediately (session expired)
 ```
@@ -156,7 +156,7 @@ checkSessionStatus(sessionId)
   ├─ _ws exists + authenticated:
   │    Send SESSION_STATUS over existing WS
   │    Wait for response (10s timeout)
-  │    Return: 'executing' | 'suspended' | 'connected' | 'not_found'
+  │    Return: 'running' | 'disconnected' | 'connected' | 'not_found'
   │
   └─ no active WS:
        Open temporary WS just for status check
@@ -464,7 +464,7 @@ T+16   User clicks "Approve"
 T+15   Auto-detect pending approval
        reconnect(sessionId)
        CONNECT { session_id } ──────────► registry.get() → reattach
-       ◄──────────────────────────────── CONNECTED { status: "executing" }
+       ◄──────────────────────────────── CONNECTED { status: "running" }
        ◄── buffered events ─────────────
        APPROVAL_RESPONSE ──────────────► io._incoming.put()
                                           io.receive() unblocks

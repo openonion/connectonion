@@ -155,7 +155,29 @@ async def _handle_connect(data, send_msg, conn, route_handlers, storage, registr
     await send_msg(connected_msg)
 
     if status == "running":
+        active.io.rewind_to(data.get("last_msg_id"))
         return _resume_connection(send_msg, active, registry, session_id, storage)
+
+
+async def _try_interject(data, send_msg, conn, registry):
+    """If session has a running agent, route INPUT as mid-execution interjection. Returns True if handled."""
+    if not conn.get("authenticated"):
+        return False
+    session_id = conn.get("session_id")
+    if not session_id:
+        return False
+    existing = registry.get(session_id)
+    if not existing or existing.status != "running":
+        return False
+    prompt = data.get("prompt")
+    if not prompt:
+        await send_msg({"type": "ERROR", "message": "prompt required"})
+        return True
+    interject_id = str(uuid.uuid4())
+    existing.io.push_interjection({"type": "INTERJECT", "id": interject_id, "prompt": prompt})
+    console.print(f"[yellow]↳ INTERJECT[/yellow] session={session_id[:8]}... prompt={prompt[:50]}...")
+    await send_msg({"type": "INTERJECT_ACK", "session_id": session_id, "id": interject_id})
+    return True
 
 
 async def _start_agent(data, send_msg, conn, route_handlers, storage, registry):
@@ -170,8 +192,10 @@ async def _start_agent(data, send_msg, conn, route_handlers, storage, registry):
         await send_msg({"type": "ERROR", "message": "prompt required"})
         return None
 
-    identity = conn["identity"]
     session_id = conn["session_id"]
+    existing = registry.get(session_id)
+
+    identity = conn["identity"]
     console.print(f"[green]✓ INPUT[/green] identity={identity[:16] if identity else '?'}... session={session_id[:8] if session_id else '?'}... prompt={prompt[:50]}...")
 
     session = conn["session"] or data.get("session") or {}
@@ -195,7 +219,10 @@ async def _start_agent(data, send_msg, conn, route_handlers, storage, registry):
         daemon=True,
     )
     agent_thread.start()
-    registry.register(session_id, io, agent_thread)
+    if existing:
+        registry.mark_session_running(session_id, io, agent_thread)
+    else:
+        registry.register(session_id, io, agent_thread)
 
     task = asyncio.create_task(
         _forward_agent_messages(send_msg, io, session_id, result_holder=result_holder, conn=conn)
@@ -234,9 +261,10 @@ async def dispatch_message_loop(send_msg, recv_msg, *, route_handlers, storage, 
                 if result:
                     active_io, forward_task = result
             elif msg_type == "INPUT":
-                result = await _start_agent(data, send_msg, conn, route_handlers, storage, registry)
-                if result:
-                    active_io, forward_task = result
+                if not await _try_interject(data, send_msg, conn, registry):
+                    result = await _start_agent(data, send_msg, conn, route_handlers, storage, registry)
+                    if result:
+                        active_io, forward_task = result
             elif active_io:
                 active_io.send_to_agent(data)
     finally:

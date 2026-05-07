@@ -1,7 +1,7 @@
 """
 Purpose: Convert session storage format to ChatItems wire format for frontend rendering
 LLM-Note:
-  Dependencies: imports from [] | imported by [host/http_router.py, host/ws_router.py, host/session/__init__.py] | tested by [tests/unit/test_host_session.py]
+  Dependencies: imports from [core/agent.py for INTERJECTION_FRAME_PREFIX] | imported by [host/http_router.py, host/ws_router.py, host/session/__init__.py] | tested by [tests/unit/test_host_session.py]
   Data flow: session dict {messages, trace} → ChatItem[] with types: user, agent, tool_call, files_received, intent, eval, thinking
   State/Effects: pure function, no side effects
   Integration: exposes session_to_chat_items(session) → list[dict] | used by http_router and ws_router when delivering server_newer state and OUTPUT
@@ -19,6 +19,8 @@ ChatItem types reconstructed:
 Streaming-only event types (llm_call, llm_result, compact, etc.) are not
 reconstructed — they're live-only feedback and don't survive reconnect by design.
 """
+
+from ....core.agent import INTERJECTION_FRAME_PREFIX
 
 
 def _trace_entry_to_item(entry: dict, idx: int) -> dict | None:
@@ -119,7 +121,10 @@ def session_to_chat_items(session: dict) -> list[dict]:
     for msg_idx, msg in enumerate(messages):
         role = msg.get('role', '')
         if role == 'user':
-            items.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': msg.get('content', '')})
+            content = msg.get('content', '')
+            if isinstance(content, str) and content.startswith(INTERJECTION_FRAME_PREFIX):
+                content = content[len(INTERJECTION_FRAME_PREFIX):]
+            items.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
             user_count += 1
             # Trace bucket for this turn lives at index user_count (turns[0] holds pre-turn entries).
             if user_count < len(turns):

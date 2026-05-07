@@ -37,6 +37,10 @@ class WebSocketIO(IO):
         self._client_messages: list[Dict[str, Any]] = []
         self._client_condition = threading.Condition()
 
+        # ── Interjections (client→agent, separate from receive()) ──
+        self._interjections: list[Dict[str, Any]] = []
+        self._interjection_lock = threading.Lock()
+
         self._closed = False
 
     # ═══════════════════════════════════════════════════════
@@ -100,6 +104,30 @@ class WebSocketIO(IO):
         with self._client_condition:
             self._client_messages.append(msg)
             self._client_condition.notify_all()
+
+    def push_interjection(self, msg: Dict[str, Any]) -> None:
+        """Queue a mid-execution user message; agent drains at next iteration."""
+        with self._interjection_lock:
+            self._interjections.append(msg)
+
+    def pop_interjections(self) -> list[Dict[str, Any]]:
+        """Drain queued interjections (agent calls at iteration start)."""
+        with self._interjection_lock:
+            result = list(self._interjections)
+            self._interjections.clear()
+            return result
+
+    def rewind_to(self, last_msg_id=None):
+        """Rewind cursor for replay on reconnect. None or unknown id → replay all."""
+        with self._agent_condition:
+            if last_msg_id is None:
+                self._cursor = 0
+                return
+            for i, msg in enumerate(self._agent_messages):
+                if msg.get('id') == last_msg_id:
+                    self._cursor = i + 1
+                    return
+            self._cursor = 0
 
     def _wait_for_agent_messages(self, cursor, stop_event=None):
         """Block until new agent messages available or finished. Returns (messages, done)."""

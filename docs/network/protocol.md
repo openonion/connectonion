@@ -1,6 +1,6 @@
 # Transport-Agnostic Protocol Handler
 
-> `connectonion/network/host/ws_handler.py` — shared protocol logic for both ASGI WebSocket and relay paths.
+> `connectonion/network/host/ws_router.py` — shared protocol logic for both ASGI WebSocket and relay paths.
 
 ---
 
@@ -8,11 +8,11 @@
 
 Before this module, the WebSocket protocol (CONNECT, INPUT, streaming, onboard, admin) lived inside the ASGI handler (`websocket.py`). The relay path had to open a **loopback WebSocket** back to `ws://127.0.0.1:{port}/ws` to reuse that logic — an extra network hop and a layer of complexity.
 
-Now the protocol logic is extracted into `ws_handler.py` with a transport-agnostic interface. Both paths call `run_protocol()` directly with their own adapters:
+Now the protocol logic is extracted into `ws_router.py` with a transport-agnostic interface. Both paths call `dispatch_message_loop()` directly with their own adapters:
 
 ```
-Client → ASGI websocket.py → send_msg/recv_msg adapter → run_protocol()
-Client → Relay relay.py    → send_msg/recv_msg adapter → run_protocol()
+Client → ASGI websocket.py → send_msg/recv_msg adapter → dispatch_message_loop()
+Client → Relay relay.py    → send_msg/recv_msg adapter → dispatch_message_loop()
 ```
 
 No loopback. Same protocol. Two thin adapters.
@@ -22,7 +22,7 @@ No loopback. Same protocol. Two thin adapters.
 ## Interface
 
 ```python
-async def run_protocol(
+async def dispatch_message_loop(
     send_msg,       # async (dict) -> None
     recv_msg,       # async () -> dict | None  (None = disconnected)
     *,
@@ -75,7 +75,7 @@ Relay's `recv_msg` reads from an `asyncio.Queue` populated by `serve_loop`. The 
 
 ## Message Dispatch
 
-`run_protocol` maintains connection state in a mutable dict and dispatches by message type:
+`dispatch_message_loop` maintains connection state in a mutable dict and dispatches by message type:
 
 ```python
 conn = {"authenticated": False, "identity": None, "session_id": None, "session": None}
@@ -87,10 +87,10 @@ while True:
 
     match data["type"]:
         "SESSION_STATUS" → _handle_session_status()
-        "ONBOARD_SUBMIT" → _handle_onboard_submit()
-        "ADMIN_*"        → _handle_admin_message()
+        "ONBOARD_SUBMIT" → handle_onboard_submit()
+        "ADMIN_*"        → handle_admin_message()
         "CONNECT"        → _handle_connect()     # sets conn["authenticated"]
-        "INPUT"          → _handle_input()        # requires conn["authenticated"]
+        "INPUT"          → _start_agent()         # requires conn["authenticated"]
 ```
 
 `CONNECT` must come first — it authenticates and populates `conn`. `INPUT` checks `conn["authenticated"]` before proceeding.
@@ -109,11 +109,11 @@ Client → CONNECT {from, signature, payload: {timestamp}, session_id?}
 2. **Forbidden + onboard**: If auth returns "forbidden" and trust config has onboard methods (invite_code, payment), sends `ONBOARD_REQUIRED` instead of ERROR
 3. **Session merge**: If `session_id` provided, loads stored session and merges with client's (whichever has more messages wins)
 4. **Registry check**: Looks up session in `ActiveSessionRegistry`:
-   - `executing` → agent is running (client reconnected mid-execution)
-   - `connected`/`suspended` → agent finished, session alive
+   - `running` → agent is running (client reconnected mid-execution)
+   - `connected`/`disconnected` → agent finished, session alive (returned to client as `"connected"`)
    - not found → `new`
 5. **Send CONNECTED**: `{session_id, status, server_newer?, session?, chat_items?}`
-6. **Reattach**: If `status == "executing"`, pipes buffered events and resumes IO bridge
+6. **Reattach**: If `status == "running"`, pipes buffered events and resumes IO bridge
 
 ---
 
@@ -127,7 +127,7 @@ Client → INPUT {prompt, images?, files?}
 2. **Create IO bridge**: `WebSocketIO` (thread-safe queue pair for sync agent ↔ async transport)
 3. **Start agent thread**: `route_handlers["ws_input"]()` runs in a daemon thread
 4. **Bridge IO**: Three concurrent async tasks pipe messages until agent completes or client disconnects
-5. **Result**: Agent done → send `OUTPUT`; client disconnected → `mark_suspended` (agent keeps running)
+5. **Result**: Agent done → send `OUTPUT`; client disconnected → `mark_session_disconnected` (agent keeps running)
 
 ---
 
@@ -149,7 +149,7 @@ Agent thread                          Async event loop                    Client
 - **`_pump_client_messages_to_agent`**: Reads from `recv_msg`, puts into `io._incoming` queue. Returns None → sets `disconnected` event.
 - **`_send_ping`**: 30s keepalive. Disabled for relay (`enable_ping=False`) because relay has its own ANNOUNCE heartbeat. If send fails, sets `disconnected` to signal other tasks.
 
-`_pipe_agent_io` returns `True` if client disconnected first (session suspended), `False` if agent completed normally.
+`_pipe_agent_io` returns `True` if client disconnected first (session marked disconnected), `False` if agent completed normally.
 
 ---
 
@@ -196,7 +196,7 @@ Server → ADMIN_RESULT {action: "promote", success: true, level: "contact"}
 
 ### Relay session idle timeout
 
-Relay's `recv_msg` uses `asyncio.wait_for(q.get(), timeout=300)`. If no message arrives for 5 minutes, returns None, causing `run_protocol` to exit and the session to clean up. Prevents zombie sessions when the client disappears without a close signal.
+Relay's `recv_msg` uses `asyncio.wait_for(q.get(), timeout=300)`. If no message arrives for 5 minutes, returns None, causing `dispatch_message_loop` to exit and the session to clean up. Prevents zombie sessions when the client disappears without a close signal.
 
 ### Relay disconnect cleanup
 
@@ -212,10 +212,10 @@ When `serve_loop` exits on `ConnectionClosed`, it sends `None` to all session qu
 
 | File | Role |
 |------|------|
-| `network/host/ws_handler.py` | Transport-agnostic protocol handler (this module) |
+| `network/host/ws_router.py` | Transport-agnostic protocol handler (this module) |
 | `network/asgi/websocket.py` | ASGI adapter — wraps ASGI primitives into send_msg/recv_msg |
 | `network/relay.py` | Relay adapter — wraps asyncio.Queue/relay WS into send_msg/recv_msg |
 | `network/io/websocket.py` | WebSocketIO — thread-safe queue bridge between sync agent and async transport |
 | `network/host/session/active.py` | ActiveSessionRegistry — in-memory session tracking |
 | `network/host/session/storage.py` | SessionStorage — JSONL persistence |
-| `network/host/server.py` | Wires `run_protocol` into both ASGI app and relay via `functools.partial` |
+| `network/host/server.py` | Wires `dispatch_message_loop` into both ASGI app and relay via `functools.partial` |

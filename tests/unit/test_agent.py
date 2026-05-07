@@ -454,6 +454,7 @@ class TestAgentIO:
         )
 
         mock_io = Mock()
+        mock_io.pop_interjections.return_value = []
         agent = Agent(name="test", llm=mock_llm, on_events=[capture_io], quiet=True, log=False)
         agent.io = mock_io
 

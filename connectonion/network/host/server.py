@@ -251,12 +251,14 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         endpoints = announce.get_endpoints(port)
 
         async def relay_loop():
-            announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
-            ws = await relay.connect(relay_url)
-            await relay.serve_loop(
-                ws, announce_msg,
-                addr_data=addr_data, session_handler=session_handler,
-            )
+            while True:
+                ws = await relay.connect(relay_url)
+                announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
+                await relay.serve_loop(
+                    ws, announce_msg,
+                    addr_data=addr_data, session_handler=session_handler,
+                )
+                await asyncio.sleep(5)
 
         relay_task = asyncio.create_task(relay_loop())
 

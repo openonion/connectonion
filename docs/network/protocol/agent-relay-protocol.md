@@ -402,7 +402,7 @@ All ANNOUNCE messages must be signed:
 - Protocol-level PING: disabled (Cloudflare incompatible)
 - Message size limit: 64KB
 - Stale agent cleanup: 120 seconds without ANNOUNCE
-- Automatic reconnection with exponential backoff
+- Automatic reconnection: when the relay WS closes cleanly, the agent reconnects with a 5s linear backoff and re-sends ANNOUNCE with a fresh timestamp. Connection-establishment errors (DNS, TLS, OSError) are not caught — they crash the host process so a supervisor can restart it.
 
 ### Recommended Client Behavior
 
@@ -497,7 +497,7 @@ Client                        Relay                         Agent
   |-- WS connect /ws/input ---->|                              |
   |-- CONNECT {session_id} ---->|                              |
   |                             |-- forward via /ws/announce ->|
-  |                             |                              |-- run_protocol()
+  |                             |                              |-- dispatch_message_loop()
   |                             |<-- CONNECTED {session_id} ---|
   |<-- CONNECTED ---------------|                              |
   |                             |                              |
@@ -526,7 +526,7 @@ When the agent receives a message via the relay's announce WebSocket, `serve_loo
 1. **New session**: Creates an `asyncio.Queue` and spawns `_run_session` as a background task.
 2. **Existing session**: Puts the message into the session's queue.
 
-`_run_session` creates two transport adapters (`send_msg` / `recv_msg`) and calls the shared protocol handler (`run_protocol()`) directly. No loopback WebSocket — the relay path uses the same protocol logic as the ASGI path.
+`_run_session` creates two transport adapters (`send_msg` / `recv_msg`) and calls the shared protocol handler (`dispatch_message_loop()`) directly. No loopback WebSocket — the relay path uses the same protocol logic as the ASGI path.
 
 - **`send_msg`**: Injects `session_id` into the outgoing dict and sends via the relay announce WebSocket.
 - **`recv_msg`**: Reads from the session's `asyncio.Queue` (with a 5-minute idle timeout to prevent zombie sessions).
@@ -535,7 +535,7 @@ The protocol handler runs CONNECT authentication, session merge, agent execution
 
 ### Transport-Agnostic Protocol
 
-The protocol logic in `ws_handler.py` works with abstract `send_msg(dict)` / `recv_msg() -> dict | None` callables. Both ASGI and relay provide their own adapters:
+The protocol logic in `ws_router.py` works with abstract `send_msg(dict)` / `recv_msg() -> dict | None` callables. Both ASGI and relay provide their own adapters:
 
 - **ASGI**: Wraps ASGI `receive`/`send` primitives (JSON encode/decode, websocket.send/websocket.receive)
 - **Relay**: Wraps asyncio.Queue + relay WebSocket (session_id injection, idle timeout)
