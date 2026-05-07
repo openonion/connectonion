@@ -693,6 +693,126 @@ class CustomLLM(LLM):
 agent = Agent(name="test", llm=CustomLLM())
 ```
 
+## ❓ FAQ
+
+### What is ConnectOnion?
+
+ConnectOnion is a simple, elegant open-source Python framework for production-ready AI agents. It gives you everything around LLM calls — just write prompt and tools.
+
+### What is ConnectOnion's philosophy?
+
+"Keep simple things simple, make complicated things possible." This principle drives every design decision — start simple, add complexity only when needed.
+
+### How do I get started?
+
+```bash
+pip install connectonion
+```
+
+Or use the CLI for faster setup:
+
+```bash
+co create my-agent
+cd my-agent
+python agent.py
+```
+
+### What LLM providers does ConnectOnion support?
+
+ConnectOnion supports multiple providers: OpenAI (default), Anthropic, Gemini, Groq, Grok, OpenRouter. Set via environment variable:
+
+```bash
+export OPENAI_API_KEY="your-key"
+```
+
+### How do I add tools to my agent?
+
+Just write regular Python functions! ConnectOnion automatically converts them to tools:
+
+```python
+def search(query: str) -> str:
+    """Search for information."""
+    return f"Results for {query}"
+
+agent = Agent(name="assistant", tools=[search])
+```
+
+No schema writing, no wrapping — your function becomes a tool.
+
+### What are plugins?
+
+Plugins are lists of lifecycle hooks that inject logic at any point in the agent execution cycle. Built-in plugins:
+- `re_act`: Reflect + plan after each tool call
+- `auto_compact`: Auto-compress context at 90% capacity
+- `subagents`: Spawn sub-agents with independent tools
+- `ulw`: Ultra Light Work — fully autonomous mode
+
+```python
+from connectonion.useful_plugins import re_act, subagents
+agent = Agent("researcher", tools=[search], plugins=[re_act, subagents])
+```
+
+### What is `@xray` debugging?
+
+`@xray` is an interactive debugging feature that pauses execution at marked tools:
+
+```python
+from connectonion.decorators import xray
+
+@xray
+def my_tool(query: str) -> str:
+    return "result"
+
+agent = Agent("assistant", tools=[my_tool])
+agent.auto_debug()
+```
+
+At each breakpoint, you can:
+- Inspect local variables
+- Edit values to test "what if" scenarios
+- Continue execution
+- Run Python REPL
+
+### What is the Skills System?
+
+Skills are reusable workflows with automatic permission scoping and three-level auto-discovery:
+- `.co/skills/skill-name/SKILL.md` (project-level, highest priority)
+- `~/.co/skills/skill-name/SKILL.md` (user-level)
+- `builtin/skill-name/SKILL.md` (built-in)
+
+Automatically loads Claude Code skills from `.claude/skills/` — no conversion needed.
+
+### What is the Multi-Agent Trust System?
+
+When agents call each other, trust decisions happen **before LLM involvement** (zero token cost):
+
+```python
+agent = Agent(name="production", trust="careful")
+```
+
+Three presets:
+- `open` (dev): Allow all
+- `careful` (staging): whitelist → allow, unknown → ask LLM, blocked → deny
+- `strict` (production): Enforce strict rules
+
+### What built-in tools are available?
+
+Ready-to-use tools with no schema writing:
+
+```python
+from connectonion import bash, Shell, Gmail, Outlook, GoogleCalendar, Memory, TodoList
+from connectonion.useful_tools import FileTools
+from connectonion.useful_tools.browser_tools import BrowserAutomation
+```
+
+### Where can I find help?
+
+- **[Documentation](http://docs.connectonion.com)**: Comprehensive guides
+- **[Discord](https://discord.gg/4xfD9k8AUF)**: 1000+ builders community
+- **[GitHub Issues](https://github.com/openonion/connectonion/issues)**: Bug reports
+
+---
+
 ## 🗺️ Roadmap
 
 **Current Focus:**
