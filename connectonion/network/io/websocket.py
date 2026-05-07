@@ -37,9 +37,9 @@ class WebSocketIO(IO):
         self._client_messages: list[Dict[str, Any]] = []
         self._client_condition = threading.Condition()
 
-        # ── Interjections (client→agent, separate from receive()) ──
-        self._interjections: list[Dict[str, Any]] = []
-        self._interjection_lock = threading.Lock()
+        # ── Runtime input (client→agent, separate from receive()) ──
+        self._runtime_inputs: list[Dict[str, Any]] = []
+        self._runtime_input_lock = threading.Lock()
 
         self._closed = False
 
@@ -105,16 +105,16 @@ class WebSocketIO(IO):
             self._client_messages.append(msg)
             self._client_condition.notify_all()
 
-    def push_interjection(self, msg: Dict[str, Any]) -> None:
+    def push_runtime_input(self, msg: Dict[str, Any]) -> None:
         """Queue a mid-execution user message; agent drains at next iteration."""
-        with self._interjection_lock:
-            self._interjections.append(msg)
+        with self._runtime_input_lock:
+            self._runtime_inputs.append(msg)
 
-    def pop_interjections(self) -> list[Dict[str, Any]]:
-        """Drain queued interjections (agent calls at iteration start)."""
-        with self._interjection_lock:
-            result = list(self._interjections)
-            self._interjections.clear()
+    def pop_runtime_inputs(self) -> list[Dict[str, Any]]:
+        """Drain queued runtime inputs (agent calls at iteration start)."""
+        with self._runtime_input_lock:
+            result = list(self._runtime_inputs)
+            self._runtime_inputs.clear()
             return result
 
     def rewind_to(self, last_msg_id=None):

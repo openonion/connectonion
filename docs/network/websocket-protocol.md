@@ -11,9 +11,9 @@ Two client message types, two intents:
 | Message | Intent | When |
 |---------|--------|------|
 | `CONNECT` | "Authenticate me, restore my session" | First message on every WebSocket |
-| `INPUT` | "Run this prompt" or interject mid-execution | After CONNECT |
+| `INPUT` | "Run this prompt" or runtime input mid-execution | After CONNECT |
 
-If `INPUT` arrives while the session's agent is already running, the server treats it as a **mid-execution interjection** instead of starting a second agent. The new prompt is appended to the agent's message history at the next iteration, and the server replies with `INTERJECT_ACK` instead of starting a new OUTPUT cycle.
+If `INPUT` arrives while the session's agent is already running, the server treats it as **runtime input** (mid-execution user input) instead of starting a second agent. The new prompt is appended to the agent's message history at the next iteration, and the server replies with `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -219,7 +219,7 @@ Send a prompt. Only valid after CONNECTED. **No session data — just the prompt
 }
 ```
 
-If sent while the session's agent is already running, this message is routed as an interjection: the prompt is appended to the running agent's message history (with framing telling the LLM to treat it as additional context, not a replacement) and the server replies `INTERJECT_ACK` instead of starting a new OUTPUT cycle. No new `thinking` chat item is created — the existing one keeps streaming.
+If sent while the session's agent is already running, this message is routed as runtime input: the prompt is appended to the running agent's message history (with framing telling the LLM to treat it as additional context, not a replacement) and the server replies `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle. No new `thinking` chat item is created — the existing one keeps streaming.
 
 #### PONG
 
@@ -298,15 +298,15 @@ Keep-alive. Sent every 30 seconds.
 | `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
 
-#### INTERJECT_ACK
+#### RUNTIME_INPUT_ACK
 
 Acknowledges an INPUT that arrived while the agent was running. The prompt has been queued and will be picked up at the agent's next iteration.
 
 ```json
 {
-  "type": "INTERJECT_ACK",
+  "type": "RUNTIME_INPUT_ACK",
   "session_id": "550e8400-...",
-  "id": "interject-7c2a..."
+  "id": "runtime-input-7c2a..."
 }
 ```
 

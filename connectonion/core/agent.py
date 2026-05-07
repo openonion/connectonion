@@ -418,16 +418,14 @@ class Agent:
         while self.current_session['iteration'] < max_iterations:
             self.current_session['iteration'] += 1
 
-            # Fire before_iteration (poll IO, check mode changes, drain interjections)
+            # Fire before_iteration (poll IO, check mode changes)
             self._invoke_events('before_iteration')
 
             # Get LLM response
             response = self._get_llm_decision()
 
-            # If no tool calls, we're done - return the response
-            # Note: Don't send 'assistant' trace here - OUTPUT message will carry the result
             if not response.tool_calls:
-                content = response.content if response.content else "Task completed."
+                content = response.content or ""
                 self.current_session['messages'].append({"role": "assistant", "content": content})
                 return content
 

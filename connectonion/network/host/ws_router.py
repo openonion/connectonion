@@ -159,8 +159,8 @@ async def _handle_connect(data, send_msg, conn, route_handlers, storage, registr
         return _resume_connection(send_msg, active, registry, session_id, storage)
 
 
-async def _try_interject(data, send_msg, conn, registry):
-    """If session has a running agent, route INPUT as mid-execution interjection. Returns True if handled."""
+async def _try_runtime_input(data, send_msg, conn, registry):
+    """If session has a running agent, route INPUT as mid-execution runtime input. Returns True if handled."""
     if not conn.get("authenticated"):
         return False
     session_id = conn.get("session_id")
@@ -173,10 +173,10 @@ async def _try_interject(data, send_msg, conn, registry):
     if not prompt:
         await send_msg({"type": "ERROR", "message": "prompt required"})
         return True
-    interject_id = str(uuid.uuid4())
-    existing.io.push_interjection({"type": "INTERJECT", "id": interject_id, "prompt": prompt})
-    console.print(f"[yellow]↳ INTERJECT[/yellow] session={session_id[:8]}... prompt={prompt[:50]}...")
-    await send_msg({"type": "INTERJECT_ACK", "session_id": session_id, "id": interject_id})
+    runtime_input_id = str(uuid.uuid4())
+    existing.io.push_runtime_input({"type": "RUNTIME_INPUT", "id": runtime_input_id, "prompt": prompt})
+    console.print(f"[yellow]↳ RUNTIME_INPUT[/yellow] session={session_id[:8]}... prompt={prompt[:50]}...")
+    await send_msg({"type": "RUNTIME_INPUT_ACK", "session_id": session_id, "id": runtime_input_id})
     return True
 
 
@@ -261,7 +261,7 @@ async def dispatch_message_loop(send_msg, recv_msg, *, route_handlers, storage, 
                 if result:
                     active_io, forward_task = result
             elif msg_type == "INPUT":
-                if not await _try_interject(data, send_msg, conn, registry):
+                if not await _try_runtime_input(data, send_msg, conn, registry):
                     result = await _start_agent(data, send_msg, conn, route_handlers, storage, registry)
                     if result:
                         active_io, forward_task = result
