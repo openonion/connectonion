@@ -79,8 +79,8 @@ T+15                       ◄────────────────�
        ◄── approval_needed─                     io.receive() BLOCKS
                                                  waiting for response...
 
-T+20   ✕ DISCONNECT         mark_session_disconnected()
-                            (queues stay alive)   (still blocked)
+T+20   ✕ DISCONNECT         (status stays 'running', queues stay alive)
+                                                  (still blocked)
 
 T+25   WS open
        CONNECT ───────────► registry.get() → FOUND (running)
@@ -113,7 +113,7 @@ Agent-side events are appended to an in-memory log on the `WebSocketIO` object w
 
 To recover, `CONNECT` accepts an optional `last_msg_id` — the id of the last agent event the client fully rendered. On resume of a `running` session the server calls `io.rewind_to(last_msg_id)`, which sets the cursor to right after the matching event. The new forwarder task replays everything after that point. If `last_msg_id` is omitted or unknown, the cursor rewinds to 0 and the entire current execution is replayed (the client should dedup by `id`).
 
-Cursor rewind only fires when status is `running`. For `connected` / `disconnected` the agent isn't producing events anymore; the client's session reconciliation (chat_items in the CONNECTED reply) carries the final state.
+Cursor rewind only fires when status is `running`. For `connected` the agent isn't producing events anymore; the client's session reconciliation (chat_items in the CONNECTED reply) carries the final state.
 
 ### Auto-Reconnect (Browser)
 
@@ -183,7 +183,7 @@ Client                    Server
 One rule: clean up idle sessions that aren't running:
 
 ```
-             status in ('connected', 'disconnected')
+             status == 'connected'
              AND idle > 10min
                    │
                    ▼

@@ -127,7 +127,7 @@ Client → INPUT {prompt, images?, files?}
 2. **Create IO bridge**: `WebSocketIO` (thread-safe queue pair for sync agent ↔ async transport)
 3. **Start agent thread**: `route_handlers["ws_input"]()` runs in a daemon thread
 4. **Bridge IO**: Three concurrent async tasks pipe messages until agent completes or client disconnects
-5. **Result**: Agent done → send `OUTPUT`; client disconnected → `mark_session_disconnected` (agent keeps running)
+5. **Result**: Agent done → send `OUTPUT` (status flips to `connected`); client WS disconnect doesn't change session.status — IO queues survive the WS, reconnecting client just re-subscribes
 
 ---
 

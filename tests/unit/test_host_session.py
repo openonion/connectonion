@@ -545,27 +545,6 @@ class TestActiveSessionRegistry:
 
         assert new_ping > old_ping
 
-    def test_mark_session_disconnected(self):
-        """mark_session_disconnected() changes status to disconnected when not running."""
-        registry = ActiveSessionRegistry()
-        mock_thread = threading.Thread(target=lambda: None)
-        registry.register('sess-1', object(), mock_thread)
-        registry.mark_session_connected('sess-1')
-
-        registry.mark_session_disconnected('sess-1')
-
-        assert registry.get('sess-1').status == 'disconnected'
-
-    def test_mark_session_disconnected_noop_while_running(self):
-        """mark_session_disconnected() is a no-op when agent is still running."""
-        registry = ActiveSessionRegistry()
-        mock_thread = threading.Thread(target=lambda: None)
-        registry.register('sess-1', object(), mock_thread)
-
-        registry.mark_session_disconnected('sess-1')
-
-        assert registry.get('sess-1').status == 'running'
-
     def test_mark_session_connected(self):
         """mark_session_connected() changes status to connected."""
         registry = ActiveSessionRegistry()
@@ -577,22 +556,18 @@ class TestActiveSessionRegistry:
         assert registry.get('sess-1').status == 'connected'
 
     def test_list_active(self):
-        """list_active() returns running and disconnected sessions."""
+        """list_active() returns only running sessions."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
 
         registry.register('running-1', object(), mock_thread)
-        registry.register('disconnected-1', object(), mock_thread)
         registry.register('connected-1', object(), mock_thread)
 
-        registry.mark_session_connected('disconnected-1')
-        registry.mark_session_disconnected('disconnected-1')
         registry.mark_session_connected('connected-1')
 
         active = registry.list_active()
 
         assert 'running-1' in active
-        assert 'disconnected-1' in active
         assert 'connected-1' not in active
 
     def test_count(self):
@@ -872,15 +847,12 @@ class TestReconnectionScenarios:
         registry.register('active-sess', mock_io, mock_thread)
         assert registry.get('active-sess').status == 'running'
 
-        # 2. Client disconnects — but agent still running, stays 'running'
-        registry.mark_session_disconnected('active-sess')
-        assert registry.get('active-sess').status == 'running'
-
-        # 3. Client reconnects - same IO queue
+        # 2. Client reconnects — same IO queue, agent stays 'running'
         session = registry.get('active-sess')
-        assert session.io == mock_io  # Same queue, agent can continue
+        assert session.io == mock_io
+        assert session.status == 'running'
 
-        # 4. Update ping on reconnect
+        # 3. Update ping on reconnect
         old_ping = session.last_ping
         time.sleep(0.01)
         registry.update_ping('active-sess')

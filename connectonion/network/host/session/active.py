@@ -2,16 +2,20 @@
 Purpose: In-memory registry preserving running agents across WebSocket reconnections
 LLM-Note:
   Dependencies: imports from [time, threading, dataclasses] | imported by [server.py, websocket.py, __init__.py]
-  Data flow: websocket.py calls register(session_id, io, thread) → stores ActiveSession(status='running') → agent finishes → mark_session_connected() → client disconnects → mark_session_disconnected() → cleanup_expired() removes after 10min idle
+  Data flow: websocket.py calls register(session_id, io, thread) → stores ActiveSession(status='running') → agent finishes → mark_session_connected() → cleanup_expired() removes after 10min idle
   State/Effects: in-memory dict with threading.Lock | no persistence | background cleanup thread runs every 60s
 
 Lifecycle:
     NEW: register() → status='running'
     AGENT DONE: mark_session_connected() → status='connected' (session alive, ready for next INPUT)
-    DISCONNECT: mark_session_disconnected() → status='disconnected' (grace period, agent may or may not be running)
     RECONNECT: get() → returns same session, update_ping() resets idle timer
-    EXPIRED: cleanup_expired() removes 'connected' and 'disconnected' after 10min idle
-    NOTE: 'running' sessions are NEVER cleaned up (agent still running)
+    EXPIRED: cleanup_expired() removes 'connected' after 10min idle
+    NOTE: 'running' sessions are NEVER cleaned up at the 10min mark (agent still working);
+          a 1h cap exists only as a stuck-agent safety net.
+
+WebSocket disconnect does NOT change session.status. The IO queues survive
+the WS, so a reconnecting client just re-subscribes — no separate
+'disconnected' state to track.
 """
 
 import time
@@ -28,7 +32,7 @@ class ActiveSession:
     thread: threading.Thread     # Agent execution thread
     created: float
     last_ping: float
-    status: str                  # 'running' | 'connected' | 'disconnected'
+    status: str                  # 'running' | 'connected'
 
 
 class ActiveSessionRegistry:
@@ -61,13 +65,6 @@ class ActiveSessionRegistry:
             if session_id in self._sessions:
                 self._sessions[session_id].last_ping = time.time()
 
-    def mark_session_disconnected(self, session_id: str) -> None:
-        """Mark as disconnected (client disconnected). No-op if agent is still running."""
-        with self._lock:
-            sess = self._sessions.get(session_id)
-            if sess and sess.status != 'running':
-                sess.status = 'disconnected'
-
     def mark_session_connected(self, session_id: str) -> None:
         """Mark as connected (execution finished, session alive for next INPUT)."""
         with self._lock:
@@ -92,10 +89,7 @@ class ActiveSessionRegistry:
         with self._lock:
             for sid, sess in self._sessions.items():
                 idle = now - sess.last_ping
-
-                # Clean up connected and disconnected after 10min idle
-                # Clean up running after 1 hour (stuck agent)
-                if sess.status in ('connected', 'disconnected') and idle > 600:
+                if sess.status == 'connected' and idle > 600:
                     to_remove.append(sid)
                 elif sess.status == 'running' and idle > 3600:
                     to_remove.append(sid)
@@ -106,10 +100,10 @@ class ActiveSessionRegistry:
         return len(to_remove)
 
     def list_active(self) -> list[str]:
-        """List session IDs with active sessions."""
+        """List session IDs of running sessions."""
         with self._lock:
             return [sid for sid, sess in self._sessions.items()
-                    if sess.status in ('running', 'disconnected')]
+                    if sess.status == 'running']
 
     def count(self) -> int:
         """Total sessions in registry."""

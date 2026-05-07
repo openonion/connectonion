@@ -138,7 +138,7 @@ async def _handle_connect(data, send_msg, conn, route_handlers, storage, registr
     active = registry.get(session_id)
     if active and active.status == 'running':
         status = "running"
-    elif active and active.status in ('connected', 'disconnected'):
+    elif active and active.status == 'connected':
         status = "connected"
         registry.update_ping(session_id)
     else:
@@ -280,5 +280,3 @@ async def dispatch_message_loop(send_msg, recv_msg, *, route_handlers, storage, 
                 await ping_task
             except asyncio.CancelledError:
                 pass
-        if active_io and conn.get("session_id"):
-            registry.mark_session_disconnected(conn["session_id"])
