@@ -1,7 +1,7 @@
 """
 Purpose: Ed25519 signature verification and trust-based authentication for hosted agents
 LLM-Note:
-  Dependencies: imports from [network/trust/TrustAgent, nacl.signing] | imported by [network/host/routes.py, network/host/server.py] | tested by [tests/unit/test_host_auth.py]
+  Dependencies: imports from [network/trust/TrustAgent, nacl.signing] | imported by [network/host/http_router.py, network/host/server.py, network/host/ws_router/connect.py] | tested by [tests/unit/test_host_auth.py]
   Data flow: receives request dict with {payload, from, signature} → extract_and_authenticate() verifies Ed25519 signature → uses TrustAgent.should_allow() for trust decisions (fast rules + LLM fallback) → returns (prompt, identity, sig_valid, error)
   State/Effects: TrustAgent handles all trust state (whitelist, contacts, blocklist in ~/.co/)
   Integration: exposes verify_signature(), extract_and_authenticate(), get_agent_address(), is_custom_trust() | used by host() to enforce authentication

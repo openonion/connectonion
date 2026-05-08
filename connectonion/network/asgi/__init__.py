@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [asgi/http.py, asgi/websocket.py, time, asyncio] | imported by [network/host/server.py, network/__init__.py] | tested by [tests/network/test_asgi.py]
   Data flow: create_app(route_handlers, storage, trust, blacklist, whitelist, on_startup, on_shutdown) → returns ASGI app callable → uvicorn calls app(scope, receive, send) → handles lifespan for startup/shutdown → routes to handle_http() or handle_websocket() based on scope type
   State/Effects: captures start_time for uptime | runs on_startup/on_shutdown callbacks during lifespan | relay connection runs as async task in same event loop
-  Integration: exposes create_app() factory, handle_http(), handle_websocket(), CORS_HEADERS, read_body(), send_json(), send_html(), send_text() | raw ASGI (no FastAPI/Starlette) for protocol control | lifespan support for relay connection
+  Integration: exposes create_app() factory, handle_websocket(), CORS_HEADERS, read_body(), send_json(), send_html(), send_text() | handle_http() lives in host/http_router.py and is wired in via lazy import | raw ASGI (no FastAPI/Starlette) for protocol control | lifespan support for relay connection
   Performance: minimal overhead (direct ASGI protocol) | async I/O for concurrency | single event loop for HTTP, WebSocket, and relay
   Errors: none (errors handled in http.py/websocket.py)
 ASGI application for HTTP and WebSocket handling.
