@@ -493,7 +493,7 @@ Agent Thread (sync)              Async forwarder / router
 
 On reconnect, `ws_router.connect:handle_connect` calls `io.rewind_to(last_msg_id)` (also under the same lock) to reset the cursor — the new forward task replays everything after that id. If `last_msg_id` is omitted or unknown, cursor rewinds to 0 (full replay; client should dedup by id).
 
-### finish() and close()
+### mark_agent_done() and close()
 
 - **`io.mark_agent_done()`** — agent done emitting messages. Sets `_finished` flag and notifies all waiters. `read_msgs_from_agent` returns once it drains remaining buffered events.
 - **`io.close()`** — sets `_closed = True`; subsequent `io.send()` calls become no-ops. Used when the io should accept no more agent output (rare, mostly for shutdown).
