@@ -23,7 +23,7 @@ reconstructed — they're live-only feedback and don't survive reconnect by desi
 from ....useful_plugins.runtime_input import RUNTIME_INPUT_FRAME_PREFIX
 
 
-def _trace_entry_to_item(entry: dict, idx: int) -> dict | None:
+def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
     """Map a single trace entry to a ChatItem. Returns None if the entry has no UI."""
     entry_type = entry.get('type')
 
@@ -102,21 +102,21 @@ def session_to_chat_items(session: dict) -> list[dict]:
     trace = session.get('trace', [])
 
     # Group trace entries by turn boundary (user_input markers).
-    # turns[k] = list of (idx, entry) tuples for trace entries belonging to turn k.
-    turns: list[list[tuple[int, dict]]] = []
-    current: list[tuple[int, dict]] = []
+    # turn_entries[k] = list of (idx, entry) tuples for trace entries belonging to turn k.
+    turn_entries: list[list[tuple[int, dict]]] = []
+    current_msgs: list[tuple[int, dict]] = []
     for idx, entry in enumerate(trace):
         if entry.get('type') == 'user_input':
-            turns.append(current)
-            current = []
+            turn_entries.append(current_msgs)
+            current_msgs = []
         else:
-            current.append((idx, entry))
-    turns.append(current)
-    # turns[0] = entries before first user_input (usually empty);
-    # turns[1..] = entries within each turn.
+            current_msgs.append((idx, entry))
+    turn_entries.append(current_msgs)
+    # turn_entries[0] = entries before first user_input (usually empty);
+    # turn_entries[1..] = entries within each turn.
 
     # Walk messages: emit user, then that turn's trace items, then assistant.
-    items: list[dict] = []
+    items_ui: list[dict] = []
     user_count = 0
     for msg_idx, msg in enumerate(messages):
         role = msg.get('role', '')
@@ -124,23 +124,22 @@ def session_to_chat_items(session: dict) -> list[dict]:
             content = msg.get('content', '')
             if isinstance(content, str) and content.startswith(RUNTIME_INPUT_FRAME_PREFIX):
                 content = content[len(RUNTIME_INPUT_FRAME_PREFIX):]
-            items.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
+            items_ui.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
             user_count += 1
-            # Trace bucket for this turn lives at index user_count (turns[0] holds pre-turn entries).
-            if user_count < len(turns):
-                for trace_idx, entry in turns[user_count]:
-                    item = _trace_entry_to_item(entry, trace_idx)
-                    if item:
-                        items.append(item)
+            if user_count < len(turn_entries):
+                for trace_idx, entry in turn_entries[user_count]:
+                    item_ui = _trace_entry_to_item_ui(entry, trace_idx)
+                    if item_ui:
+                        items_ui.append(item_ui)
         elif role == 'assistant' and msg.get('content'):
-            items.append({'id': f"msg-{msg_idx}", 'type': 'agent', 'content': msg.get('content', '')})
+            items_ui.append({'id': f"msg-{msg_idx}", 'type': 'agent', 'content': msg.get('content', '')})
 
     # Fallback: if no user_input markers found in trace, append all remaining trace
     # entries at the end so the data isn't silently dropped (older sessions).
-    if len(turns) == 1 and turns[0]:
-        for trace_idx, entry in turns[0]:
-            item = _trace_entry_to_item(entry, trace_idx)
-            if item:
-                items.append(item)
+    if len(turn_entries) == 1 and turn_entries[0]:
+        for trace_idx, entry in turn_entries[0]:
+            item_ui = _trace_entry_to_item_ui(entry, trace_idx)
+            if item_ui:
+                items_ui.append(item_ui)
 
-    return items
+    return items_ui

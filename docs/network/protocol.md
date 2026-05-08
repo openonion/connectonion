@@ -1,48 +1,82 @@
-# Transport-Agnostic Protocol Handler
+# WebSocket Message Router
 
-> `connectonion/network/host/ws_router.py` — shared protocol logic for both ASGI WebSocket and relay paths.
-
----
-
-## Why
-
-Before this module, the WebSocket protocol (CONNECT, INPUT, streaming, onboard, admin) lived inside the ASGI handler (`websocket.py`). The relay path had to open a **loopback WebSocket** back to `ws://127.0.0.1:{port}/ws` to reuse that logic — an extra network hop and a layer of complexity.
-
-Now the protocol logic is extracted into `ws_router.py` with a transport-agnostic interface. Both paths call `dispatch_message_loop()` directly with their own adapters:
-
-```
-Client → ASGI websocket.py → send_msg/recv_msg adapter → dispatch_message_loop()
-Client → Relay relay.py    → send_msg/recv_msg adapter → dispatch_message_loop()
-```
-
-No loopback. Same protocol. Two thin adapters.
+> `connectonion/network/host/ws_router.py` — single message-routing implementation, used by both the direct ASGI WebSocket path and the relay-routed path.
 
 ---
 
-## Interface
+## Why one router
+
+Earlier the WebSocket message handling (CONNECT auth, INPUT → spawn agent, streaming back, onboard, admin, ...) lived inside the ASGI handler. The relay path opened a **loopback WebSocket** back to `ws://127.0.0.1:{port}/ws` to reuse it — extra hop, extra moving parts, double maintenance.
+
+Now the message-routing logic is extracted into `ws_router.py` with a transport-agnostic interface. Both paths call `run_session()` directly with their own adapters:
+
+```
+Client → ASGI websocket.py → send_msg/recv_msg adapter ─┐
+                                                         ├─→ run_session()
+Client → Relay relay.py    → send_msg/recv_msg adapter ─┘
+```
+
+No loopback. Same router. Two thin adapters.
+
+---
+
+## Public entry: `run_session`
 
 ```python
-async def dispatch_message_loop(
+async def run_session(
     send_msg,       # async (dict) -> None
-    recv_msg,       # async () -> dict | None  (None = disconnected)
+    recv_msg,       # async () -> dict | None  (None = client closed)
     *,
-    route_handlers, # dict of handler functions (auth, ws_input, trust_agent, admin_*)
-    storage,        # SessionStorage instance
+    route_handlers, # dict: auth, ws_input, trust_agent, admin_*
+    storage,        # SessionStorage
     registry,       # ActiveSessionRegistry
     trust,          # TrustAgent or trust level string
     blacklist=None,
     whitelist=None,
-    enable_ping=True,  # False for relay (relay has ANNOUNCE heartbeat)
+    enable_ping=True,  # False for relay path (it has ANNOUNCE heartbeat instead)
 )
 ```
 
 `send_msg` and `recv_msg` are the only transport-specific pieces. Everything else is shared.
 
+Each call to `run_session` drives **one client session** from connect to disconnect:
+
+```python
+state = _init_session(send_msg, enable_ping)
+try:
+    while True:
+        data = await recv_msg()
+        if data is None:           # client closed
+            break
+        await route_message(data, state, ...)
+finally:
+    await _cleanup_session(state)
+```
+
 ---
 
-## Transport Adapters
+## Per-session state
 
-### ASGI (`websocket.py`, ~60 lines)
+`_init_session` returns a mutable dict:
+
+```python
+{
+    "conn":         {"authenticated": False, "identity": None, "session_id": None, "session": None},
+    "active_io":    None,           # WebSocketIO once an agent is running
+    "forward_task": None,           # asyncio.Task forwarding agent → client
+    "ping_task":    asyncio.Task,   # 30s keepalive, None when enable_ping=False
+}
+```
+
+`route_message` mutates the dict in place — `conn` flips to authenticated on CONNECT; `active_io` and `forward_task` get assigned when an agent starts.
+
+`_cleanup_session` cancels `forward_task` and `ping_task` and awaits their CancelledError unwind. Standard asyncio cancel idiom.
+
+---
+
+## Transport adapters
+
+### ASGI (`asgi/websocket.py`)
 
 ```python
 async def send_msg(data):
@@ -55,167 +89,184 @@ async def recv_msg():
     return json.loads(msg["text"])
 ```
 
-### Relay (`relay.py`)
+### Relay (`relay.py:_run_session`)
 
 ```python
 async def send_msg(data):
-    data["session_id"] = session_id
+    data["session_id"] = session_id        # tag back to relay
     await relay_ws.send(json.dumps(data, default=pydantic_json_encoder))
 
 async def recv_msg():
-    msg = await asyncio.wait_for(q.get(), timeout=300)  # 5min idle timeout
+    msg = await asyncio.wait_for(q.get(), timeout=300)   # 5min idle timeout
     if msg is None or msg.get("type") == "close":
         return None
     return msg
 ```
 
-Relay's `recv_msg` reads from an `asyncio.Queue` populated by `serve_loop`. The 300s timeout prevents zombie sessions when the client disappears without sending a close signal.
+Relay's `recv_msg` reads from a per-session `asyncio.Queue` populated by `serve_loop`. The 300s idle timeout prevents zombie sessions if the client vanishes without a close signal.
 
 ---
 
-## Message Dispatch
-
-`dispatch_message_loop` maintains connection state in a mutable dict and dispatches by message type:
+## Message dispatch (`route_message`)
 
 ```python
-conn = {"authenticated": False, "identity": None, "session_id": None, "session": None}
-
-while True:
-    data = await recv_msg()
-    if data is None:
-        break
-
-    match data["type"]:
-        "SESSION_STATUS" → _handle_session_status()
-        "ONBOARD_SUBMIT" → handle_onboard_submit()
-        "ADMIN_*"        → handle_admin_message()
-        "CONNECT"        → _handle_connect()     # sets conn["authenticated"]
-        "INPUT"          → _start_agent()         # requires conn["authenticated"]
+async def route_message(data, state, send_msg, route_handlers, storage, registry, trust, ...):
+    msg_type = data.get("type")
+    match msg_type:
+        "PONG"           → registry.update_ping(...)
+        "SESSION_STATUS" → _handle_session_status(...)
+        "ONBOARD_SUBMIT" → handle_onboard_submit(...)
+        "ADMIN_*"        → handle_admin_message(...)
+        "CONNECT"        → _handle_connect(...)        # auth + maybe reattach to running agent
+        "INPUT"          → _try_runtime_input(...) OR _start_agent(...)
+        else (with active_io) → active_io.send_to_agent(data)   # ASK_USER_RESPONSE, APPROVAL_RESPONSE, etc.
 ```
 
-`CONNECT` must come first — it authenticates and populates `conn`. `INPUT` checks `conn["authenticated"]` before proceeding.
+`CONNECT` must come first — it authenticates and populates `state["conn"]`. `INPUT` and most others require `conn["authenticated"] == True`.
 
-`SESSION_STATUS`, `ONBOARD_SUBMIT`, and `ADMIN_*` don't require prior CONNECT — they carry their own auth.
+`SESSION_STATUS`, `ONBOARD_SUBMIT`, and `ADMIN_*` carry their own auth and don't require prior CONNECT.
 
 ---
 
-## CONNECT Flow
+## CONNECT flow
 
 ```
-Client → CONNECT {from, signature, payload: {timestamp}, session_id?}
+Client → CONNECT {from, signature, payload, session_id?, last_msg_id?, session?}
 ```
 
-1. **Auth**: `route_handlers["auth"](data, trust)` verifies Ed25519 signature
-2. **Forbidden + onboard**: If auth returns "forbidden" and trust config has onboard methods (invite_code, payment), sends `ONBOARD_REQUIRED` instead of ERROR
-3. **Session merge**: If `session_id` provided, loads stored session and merges with client's (whichever has more messages wins)
-4. **Registry check**: Looks up session in `ActiveSessionRegistry`:
-   - `running` → agent is running (client reconnected mid-execution)
-   - `connected`/`disconnected` → agent finished, session alive (returned to client as `"connected"`)
-   - not found → `new`
-5. **Send CONNECTED**: `{session_id, status, server_newer?, session?, chat_items?}`
-6. **Reattach**: If `status == "running"`, pipes buffered events and resumes IO bridge
+1. **Auth** — `route_handlers["auth"](data, trust)` verifies Ed25519 signature.
+2. **Forbidden + onboard** — if auth returns "forbidden" and trust config defines onboard methods (invite_code / payment), server sends `ONBOARD_REQUIRED` instead of ERROR.
+3. **Session merge** — if `session_id` provided, loads stored session and merges with client's via `merge_sessions` (whichever is newer wins).
+4. **Registry check** — looks up session in `ActiveSessionRegistry`:
+   - `running` → agent is mid-execution; client is reconnecting, reattach.
+   - `connected` → agent finished; session alive, ready for next INPUT.
+   - not found → `new`.
+5. **Send CONNECTED** — `{session_id, status, server_newer?, session?, chat_items?}`. The optional fields appear only when the server has newer data than the client.
+6. **Reattach (running only)** — call `active.io.rewind_to(last_msg_id)` to reset the message cursor, then start a new forward task that replays everything after `last_msg_id`. See [session-reconnect.md](session-reconnect.md) for the cursor semantics.
+
+Server session statuses: only `'running'` and `'connected'`. WS disconnect doesn't change `session.status` — IO queues survive the WS, a reconnecting client just re-subscribes.
 
 ---
 
-## INPUT Flow
+## INPUT flow
 
 ```
 Client → INPUT {prompt, images?, files?}
 ```
 
-1. **Validate**: Must be authenticated, prompt required
-2. **Create IO bridge**: `WebSocketIO` (thread-safe queue pair for sync agent ↔ async transport)
-3. **Start agent thread**: `route_handlers["ws_input"]()` runs in a daemon thread
-4. **Bridge IO**: Three concurrent async tasks pipe messages until agent completes or client disconnects
-5. **Result**: Agent done → send `OUTPUT` (status flips to `connected`); client WS disconnect doesn't change session.status — IO queues survive the WS, reconnecting client just re-subscribes
+Two paths depending on whether an agent is already running:
+
+**Fresh agent (`_start_agent`)** when `registry.get(session_id)` is None or `connected`:
+1. Validate (`conn["authenticated"]`, `prompt` non-empty).
+2. Create `WebSocketIO` (thread-safe queue pair: agent ↔ async transport).
+3. Register in `ActiveSessionRegistry` BEFORE `agent_thread.start()` — registering after creates a race where a fast-completing agent calls `mark_session_connected` on an absent entry.
+4. Spawn daemon thread running `route_handlers["ws_input"]` (which calls user's `create_agent` factory and runs `agent.input(prompt)`).
+5. Spawn `forward_task` to pipe `io.read_msgs_from_agent()` events out via `send_msg`. On agent completion, sends `OUTPUT`.
+
+**Runtime input (`_try_runtime_input`)** when `existing.status == 'running'`:
+1. Push `{type: RUNTIME_INPUT, id, prompt}` onto `existing.io._runtime_inputs` (separate queue from `receive()`'s mailbox to avoid being eaten by ask_user/approval pops).
+2. Reply `RUNTIME_INPUT_ACK`. No new agent thread, no new OUTPUT cycle.
+3. The agent's `apply_runtime_input` plugin (in `useful_plugins/runtime_input.py`) drains the queue at the next iteration boundary and appends each prompt to message history with an additive framing prefix.
+
+See [websocket-protocol.md](websocket-protocol.md) for full message reference.
 
 ---
 
-## Agent IO Bridge
+## Agent IO bridge
 
-The agent runs in a synchronous thread (LLM calls are blocking). The client is on the async event loop. `_pipe_agent_io` bridges them with three tasks:
+The agent runs in a **synchronous thread** (LLM calls are blocking, tool calls are blocking). The client is on the **async event loop**. `WebSocketIO` (`network/io/websocket.py`) is the bridge:
 
 ```
-Agent thread                          Async event loop                    Client
-     │                                      │                               │
-     │─ io.send(event) ─► _outgoing queue ─►│─ _pump_agent_events ────────►│
-     │                                      │                               │
-     │◄─ io._incoming queue ◄───────────────│◄─ _pump_client_messages ─────│
-     │                                      │                               │
-     │                                      │─ _send_ping (30s) ──────────►│
+Agent thread                          Async event loop                 Client
+     │                                       │                            │
+     │─ io.send(event) ─► _msgs_from_agent ──│─ forward_task ────────────►│
+     │  (append to in-memory log,            │  (read_msgs_from_agent     │
+     │   indexed by cursor)                  │   yields events one by one)│
+     │                                       │                            │
+     │◄─ io.receive() ◄─ _msgs_from_client ◄─│◄─ active_io.send_to_agent  │
+     │  (block until client sends, e.g.      │  (per-message dispatch     │
+     │   ASK_USER_RESPONSE)                  │   in route_message)        │
+     │                                       │                            │
+     │  io.pop_runtime_inputs() (separate    │   push_runtime_input from  │
+     │  queue, drained at iteration start    │   _try_runtime_input on    │
+     │  by apply_runtime_input plugin)       │   INPUT-during-running     │
 ```
 
-- **`_pump_agent_events_to_client`**: Drains `io._outgoing` queue, sends each event to client. After `agent_finished`, flushes remaining events.
-- **`_pump_client_messages_to_agent`**: Reads from `recv_msg`, puts into `io._incoming` queue. Returns None → sets `disconnected` event.
-- **`_send_ping`**: 30s keepalive. Disabled for relay (`enable_ping=False`) because relay has its own ANNOUNCE heartbeat. If send fails, sets `disconnected` to signal other tasks.
+Three independent channels on one `WebSocketIO`:
 
-`_pipe_agent_io` returns `True` if client disconnected first (session marked disconnected), `False` if agent completed normally.
+| Channel | Direction | Storage | Reader / Writer |
+|---|---|---|---|
+| `_msgs_from_agent` | agent → client | append-only list, cursor-indexed for replay | written by `io.send`, read by `forward_task` via `read_msgs_from_agent` |
+| `_msgs_from_client` | client → agent | mailbox (consumed on read) | written by `send_to_agent`, read by `io.receive` (blocking) |
+| `_runtime_inputs` | client → agent | drain-all queue | written by `push_runtime_input`, drained by `apply_runtime_input` plugin |
 
 ---
 
-## Onboard Flow
+## Safety / lifecycle
+
+### Agent thread crash → still surfaces
+
+`_run_agent_thread` wraps execution in `try/except Exception`, captures the exception in `result_holder[0]`, and always calls `io.finish()` in `finally`. The forwarder reads `result_holder` after `read_msgs_from_agent` returns and emits `{type: ERROR, message: <exception>}` to the client. Threads don't propagate exceptions on their own — this is the manual surfacing.
+
+### Relay session idle timeout (5 minutes)
+
+Relay's `recv_msg` uses `asyncio.wait_for(q.get(), timeout=300)`. No message for 5 minutes → returns None → `run_session` exits → cleanup. Prevents zombie sessions when a client vanishes without close.
+
+### Relay disconnect cascade
+
+When `serve_loop` catches `ConnectionClosed`, it puts `None` into every per-session queue before breaking. This unblocks every `recv_msg` waiting on `q.get()`, letting all in-flight `_run_session` coroutines exit cleanly.
+
+### Cursor write under lock
+
+`read_msgs_from_agent` writes `self._cursor` under `_agent_condition` after each yield batch, so a concurrent `rewind_to(last_msg_id)` (which holds the same lock) can't be silently overwritten by an in-flight reader still finishing its yield loop.
+
+---
+
+## Onboard flow
 
 When CONNECT is forbidden but trust config defines onboard methods:
 
 ```
-Server → ONBOARD_REQUIRED {methods: ["invite_code", "payment"], payment_amount?, payment_address?}
-Client → ONBOARD_SUBMIT {payload: {invite_code: "BETA2024"}}
-Server → ONBOARD_SUCCESS {level: "contact"} or ERROR
+Server → ONBOARD_REQUIRED {methods: [invite_code, payment], payment_amount?, payment_address?}
+Client → ONBOARD_SUBMIT   {payload: {invite_code: "BETA2024"}}
+Server → ONBOARD_SUCCESS  {level: "contact"}    or    ERROR
 ```
 
-`_handle_onboard_submit` verifies signature (with "open" trust — strangers can't be verified strictly), checks blocked status, then validates invite code or payment via `trust_agent`. On success, the client is promoted and can re-CONNECT.
+`handle_onboard_submit` verifies signature with "open" trust (strangers can't pass strict verification yet), checks blocked status, then validates the invite code or payment via `trust_agent`. On success the client is promoted and can re-CONNECT.
 
 ---
 
-## Admin Flow
+## Admin flow
 
-`ADMIN_*` messages let admins manage trust levels remotely. Every admin message carries its own auth (signature verified independently).
+`ADMIN_*` messages let admins manage trust levels remotely. Each admin message carries its own auth (signature verified independently per message).
 
 ```
 Client → ADMIN_PROMOTE {payload: {client_id: "0x..."}}
-Server → ADMIN_RESULT {action: "promote", success: true, level: "contact"}
+Server → ADMIN_RESULT  {action: promote, success: true, level: contact}
 ```
 
 | Action | Requires | Handler key |
-|--------|----------|-------------|
+|---|---|---|
 | `ADMIN_PROMOTE` | admin | `admin_trust_promote` |
-| `ADMIN_DEMOTE` | admin | `admin_trust_demote` |
-| `ADMIN_BLOCK` | admin | `admin_trust_block` |
+| `ADMIN_DEMOTE`  | admin | `admin_trust_demote`  |
+| `ADMIN_BLOCK`   | admin | `admin_trust_block`   |
 | `ADMIN_UNBLOCK` | admin | `admin_trust_unblock` |
 | `ADMIN_GET_LEVEL` | admin | `admin_trust_level` |
-| `ADMIN_ADD` | super_admin | `admin_admins_add` |
-| `ADMIN_REMOVE` | super_admin | `admin_admins_remove` |
+| `ADMIN_ADD`     | super_admin | `admin_admins_add`    |
+| `ADMIN_REMOVE`  | super_admin | `admin_admins_remove` |
 
 ---
 
-## Safety Mechanisms
-
-### Agent thread crash recovery
-
-`_run_agent_thread` wraps execution in `try/finally` to guarantee `agent_finished.set()`. Without this, an agent exception would leave the async IO bridge spinning forever — the thread dies silently (threads don't propagate exceptions), but the async side never gets the signal.
-
-### Relay session idle timeout
-
-Relay's `recv_msg` uses `asyncio.wait_for(q.get(), timeout=300)`. If no message arrives for 5 minutes, returns None, causing `dispatch_message_loop` to exit and the session to clean up. Prevents zombie sessions when the client disappears without a close signal.
-
-### Relay disconnect cleanup
-
-When `serve_loop` exits on `ConnectionClosed`, it sends `None` to all session queues before breaking. This unblocks every `recv_msg` waiting on `q.get()`, allowing all `_run_session` coroutines to exit cleanly.
-
-### Ping failure detection
-
-`_send_ping` catches send failures and sets `disconnected`, signaling the other IO bridge tasks to stop. Without this, a dead connection would only be detected when the next send/recv attempt fails.
-
----
-
-## Key Files
+## Key files
 
 | File | Role |
-|------|------|
-| `network/host/ws_router.py` | Transport-agnostic protocol handler (this module) |
-| `network/asgi/websocket.py` | ASGI adapter — wraps ASGI primitives into send_msg/recv_msg |
-| `network/relay.py` | Relay adapter — wraps asyncio.Queue/relay WS into send_msg/recv_msg |
-| `network/io/websocket.py` | WebSocketIO — thread-safe queue bridge between sync agent and async transport |
-| `network/host/session/active.py` | ActiveSessionRegistry — in-memory session tracking |
-| `network/host/session/storage.py` | SessionStorage — JSONL persistence |
-| `network/host/server.py` | Wires `dispatch_message_loop` into both ASGI app and relay via `functools.partial` |
+|---|---|
+| `network/host/ws_router.py` | Public `run_session` + `route_message` + helpers (this module) |
+| `network/asgi/websocket.py` | ASGI adapter — wraps ASGI WS into send_msg/recv_msg |
+| `network/relay.py` | Relay adapter — wraps relay WS + per-session queue into send_msg/recv_msg |
+| `network/io/websocket.py` | `WebSocketIO` — three channels, thread-safe |
+| `network/host/session/active.py` | `ActiveSessionRegistry` — running/connected sessions |
+| `network/host/session/storage.py` | `SessionStorage` — JSONL persistence |
+| `network/host/session/ui.py` | `session_to_chat_items` — convert session → ChatItem[] for UI |
+| `network/host/server.py` | `host()` entry point. Wires `run_session` into ASGI app and as `relay_session_runner` partial for the relay path |
+| `useful_plugins/runtime_input.py` | `apply_runtime_input` `@before_iteration` plugin + `RUNTIME_INPUT_FRAME_PREFIX` |

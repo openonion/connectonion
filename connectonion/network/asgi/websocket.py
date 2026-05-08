@@ -11,7 +11,7 @@ import json
 
 from rich.console import Console
 from .http import pydantic_json_encoder
-from ..host.ws_router import dispatch_message_loop
+from ..host.ws_router import run_session
 
 console = Console()
 
@@ -52,7 +52,7 @@ async def handle_websocket(
                     await send_msg({"type": "ERROR", "message": "Invalid JSON"})
                     continue
 
-    await dispatch_message_loop(
+    await run_session(
         send_msg, recv_msg,
         route_handlers=route_handlers,
         storage=storage,

@@ -45,31 +45,26 @@ If `INPUT` arrives while the session's agent is already running, the server trea
          │ CONNECT
          ↓
     ╭──────────────╮
-    │  connected   │◄── agent done (OUTPUT) ◄── user reconnects
-    ╰──────┬───────╯                            (within 10min)
+    │  connected   │◄── agent done (OUTPUT)
+    ╰──────┬───────╯
            │ INPUT
            ↓
     ╭──────────────╮
     │   running    │── agent working (LLM → tools → LLM)
     ╰──────┬───────╯
-           │
-    ┌──────┴──────────────────┐
-    │                         │
-    ↓ agent done              ↓ WS disconnects
-    ╭──────────────╮     ╭──────────────╮
-    │  connected   │     │ disconnected │
-    │   (idle)     │     │   (grace)    │
-    ╰──────────────╯     ╰──────┬───────╯
-           │                    │
-           │ next INPUT         ├── reconnect within 10min → connected
-           ↓                    │
-    ╭──────────────╮            └── 10min idle → removed
-    │   running    │
+           │ agent done
+           ↓
+    ╭──────────────╮
+    │  connected   │── 10min idle → removed
+    │   (idle)     │
     ╰──────────────╯
 
 
-    Key insight: "done" is NOT a session state.
-    It's an execution state. The session stays alive.
+    Two states only: 'running' (agent working) and 'connected' (idle, alive).
+    WS disconnect does NOT change session.status — IO queues survive the WS,
+    a reconnecting client just re-subscribes via CONNECT { last_msg_id }.
+
+    Cleanup: 'connected' after 10min idle, 'running' after 1h (stuck-agent cap).
 ```
 
 ---
@@ -203,7 +198,7 @@ Server response based on state:
 |------------|-------------|-----------------|---------------|
 | Not provided | — | `"new"` | Allocate new session |
 | Provided | In registry, running | `"running"` | Reattach IO, pipe buffered events |
-| Provided | In registry, connected/disconnected | `"connected"` | Merge sessions, reset idle timer |
+| Provided | In registry, connected | `"connected"` | Merge sessions, reset idle timer |
 | Provided | Not found | `"new"` | Allocate new session (same id) |
 
 #### INPUT

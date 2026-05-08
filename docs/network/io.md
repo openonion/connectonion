@@ -472,28 +472,39 @@ host(agent)
 
 ## WebSocketIO Internals
 
-The hosted IO implementation (`WebSocketIO`) bridges async WebSocket to sync agent code via two thread-safe queues:
+The hosted IO implementation (`WebSocketIO`) bridges sync agent code to async WebSocket transport via three independent channels:
 
 ```
-Agent Thread (sync)          WebSocket Handler (async)
-  io.send(event) ──►  _outgoing queue  ──► ws.send()
-  io.receive()   ◄──  _incoming queue  ◄── ws.receive()
+Agent Thread (sync)              Async forwarder / router
+  io.send(event)   ──►  _msgs_from_agent (append-only log) ──► forward_task ──► ws.send()
+  io.receive()     ◄──  _msgs_from_client (mailbox)        ◄── send_to_agent (router)
+  io.pop_runtime_inputs() ◄── _runtime_inputs (drain queue) ◄── push_runtime_input (router)
 ```
 
-### close() behavior
+| Channel | Direction | Storage | Reader / Writer |
+|---|---|---|---|
+| `_msgs_from_agent` | agent → client | append-only list, cursor-indexed for replay on reconnect | written by `io.send`, read by `forward_task` via `read_msgs_from_agent` |
+| `_msgs_from_client` | client → agent | mailbox, consumed on read (e.g. `ASK_USER_RESPONSE`) | written by `send_to_agent`, read by blocking `io.receive` |
+| `_runtime_inputs` | client → agent | drain-all queue, separate from receive() so ask_user pops don't eat them | written by `push_runtime_input`, drained by `apply_runtime_input` plugin at iteration boundary |
 
-When a client disconnects, `io.close()` is called:
+### Cursor-based replay
 
-1. Sets `_closed = True` — subsequent `io.send()` calls silently drop events
-2. Puts `{"type": "io_closed"}` sentinel in `_incoming` — unblocks any waiting `io.receive()`
+`_msgs_from_agent` is append-only. `read_msgs_from_agent` is an async generator that yields events from `self._cursor` onward, advancing the cursor under `_agent_condition` after each batch.
 
-The agent receives the sentinel instead of the expected response (e.g., `APPROVAL_RESPONSE`). Agent code should handle this gracefully.
+On reconnect, `_handle_connect` calls `io.rewind_to(last_msg_id)` (also under the same lock) to reset the cursor — the new forward task replays everything after that id. If `last_msg_id` is omitted or unknown, cursor rewinds to 0 (full replay; client should dedup by id).
 
-### Reconnection caveat
+### finish() and close()
 
-On reconnect, the same io object is reused with a new WebSocket handler pumping the same queues. **However**, `_closed` remains `True` from the disconnect, so `io.send()` drops all events. The reattach path must reset `_closed = False` for the agent to communicate with the new client.
+- **`io.finish()`** — agent done emitting messages. Sets `_finished` flag and notifies all waiters. `read_msgs_from_agent` returns once it drains remaining buffered events.
+- **`io.close()`** — sets `_closed = True`; subsequent `io.send()` calls become no-ops. Used when the io should accept no more agent output (rare, mostly for shutdown).
 
-See [session-reconnect.md](session-reconnect.md) for the full reconnection flow and known issues.
+There is no sentinel injected into `_msgs_from_client`. A blocked `io.receive()` is unblocked only by an actual client message arriving via `send_to_agent`, or by the encompassing thread being killed at shutdown.
+
+### Reconnection: same io, new transport
+
+Across a client WS drop + reconnect, the same `WebSocketIO` instance stays alive (held by `ActiveSession.io` in the registry). `_msgs_from_agent` keeps growing with anything the agent emits while the client is gone. On the new WS, `forward_task` is restarted on the same io with the cursor rewound to `last_msg_id` — the missed events are replayed.
+
+See [session-reconnect.md](session-reconnect.md) for the full reconnection flow.
 
 ---
 

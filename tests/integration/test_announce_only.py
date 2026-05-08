@@ -80,7 +80,7 @@ async def test_announce():
     # Wait briefly to see if we get an error response
     print("Waiting for potential error response (2s timeout)...")
     try:
-        response = await relay.wait_for_task(ws, timeout=2.0)
+        response = await relay.recv_relay_msg(ws, timeout=2.0)
         print(f"✗ Received response: {response}")
     except asyncio.TimeoutError:
         print("✓ No error response (success!)\n")

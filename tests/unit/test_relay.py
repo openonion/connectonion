@@ -124,7 +124,7 @@ class TestWaitForTask:
     """Test INPUT message receiving with timeout handling."""
 
     @pytest.mark.asyncio
-    async def test_wait_for_task_receives_input(self):
+    async def test_recv_relay_msg_receives_input(self):
         """Test receiving INPUT message successfully."""
         mock_ws = AsyncMock()
         input_msg = {
@@ -135,26 +135,26 @@ class TestWaitForTask:
         }
         mock_ws.recv.return_value = json.dumps(input_msg)
 
-        result = await relay.wait_for_task(mock_ws)
+        result = await relay.recv_relay_msg(mock_ws)
 
         assert result == input_msg
         assert result["type"] == "INPUT"
         assert result["prompt"] == "Calculate 2+2"
 
     @pytest.mark.asyncio
-    async def test_wait_for_task_with_timeout_success(self):
+    async def test_recv_relay_msg_with_timeout_success(self):
         """Test receiving INPUT message within timeout."""
         mock_ws = AsyncMock()
         input_msg = {"type": "INPUT", "input_id": "123", "prompt": "test"}
         mock_ws.recv.return_value = json.dumps(input_msg)
 
-        result = await relay.wait_for_task(mock_ws, timeout=5.0)
+        result = await relay.recv_relay_msg(mock_ws, timeout=5.0)
 
         assert result == input_msg
         mock_ws.recv.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_wait_for_task_timeout_expires(self):
+    async def test_recv_relay_msg_timeout_expires(self):
         """Test timeout raises asyncio.TimeoutError."""
         mock_ws = AsyncMock()
         # Simulate slow response
@@ -165,38 +165,38 @@ class TestWaitForTask:
         mock_ws.recv = slow_recv
 
         with pytest.raises(asyncio.TimeoutError):
-            await relay.wait_for_task(mock_ws, timeout=0.1)
+            await relay.recv_relay_msg(mock_ws, timeout=0.1)
 
     @pytest.mark.asyncio
-    async def test_wait_for_task_no_timeout(self):
+    async def test_recv_relay_msg_no_timeout(self):
         """Test waiting indefinitely when no timeout specified."""
         mock_ws = AsyncMock()
         input_msg = {"type": "INPUT", "input_id": "xyz", "prompt": "wait forever"}
         mock_ws.recv.return_value = json.dumps(input_msg)
 
-        result = await relay.wait_for_task(mock_ws, timeout=None)
+        result = await relay.recv_relay_msg(mock_ws, timeout=None)
 
         assert result == input_msg
         # recv should be called without timeout wrapper
         mock_ws.recv.assert_called_once()
 
     @pytest.mark.asyncio
-    async def test_wait_for_task_handles_malformed_json(self):
+    async def test_recv_relay_msg_handles_malformed_json(self):
         """Test error handling for malformed JSON."""
         mock_ws = AsyncMock()
         mock_ws.recv.return_value = "not valid json{"
 
         with pytest.raises(json.JSONDecodeError):
-            await relay.wait_for_task(mock_ws)
+            await relay.recv_relay_msg(mock_ws)
 
     @pytest.mark.asyncio
-    async def test_wait_for_task_handles_connection_closed(self):
+    async def test_recv_relay_msg_handles_connection_closed(self):
         """Test error handling when connection closes."""
         mock_ws = AsyncMock()
         mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(None, None)
 
         with pytest.raises(websockets.exceptions.ConnectionClosed):
-            await relay.wait_for_task(mock_ws)
+            await relay.recv_relay_msg(mock_ws)
 
 
 class TestSendResponse:
@@ -257,7 +257,7 @@ class TestServeLoop:
             "timestamp": 12345
         }
 
-        # Make wait_for_task raise ConnectionClosed immediately to exit loop
+        # Make recv_relay_msg raise ConnectionClosed immediately to exit loop
         mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(None, None)
 
         with patch('rich.console.Console.print'):
@@ -399,8 +399,8 @@ class TestRelayIntegration:
             # Receive INPUT
             input_msg = {"type": "INPUT", "input_id": "123", "prompt": "test"}
             mock_ws.recv.return_value = json.dumps(input_msg)
-            task = await relay.wait_for_task(ws)
-            assert task["input_id"] == "123"
+            msg = await relay.recv_relay_msg(ws)
+            assert msg["input_id"] == "123"
 
             # Send OUTPUT
             await relay.send_response(ws, "123", "result")

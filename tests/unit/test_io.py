@@ -33,8 +33,8 @@ class TestWebSocketIO:
         """__init__ creates empty event log and incoming mailbox."""
         io = WebSocketIO()
 
-        assert io._agent_messages == []
-        assert io._client_messages == []
+        assert io._msgs_from_agent == []
+        assert io._msgs_from_client == []
         assert io._closed is False
         assert io._finished is False
         assert io._cursor == 0
@@ -46,10 +46,10 @@ class TestWebSocketIO:
         event = {"type": "thinking"}
         io.send(event)
 
-        assert len(io._agent_messages) == 1
-        assert io._agent_messages[0]["type"] == "thinking"
-        assert "id" in io._agent_messages[0]  # UUID auto-generated
-        assert "ts" in io._agent_messages[0]  # timestamp auto-generated
+        assert len(io._msgs_from_agent) == 1
+        assert io._msgs_from_agent[0]["type"] == "thinking"
+        assert "id" in io._msgs_from_agent[0]  # UUID auto-generated
+        assert "ts" in io._msgs_from_agent[0]  # timestamp auto-generated
 
     def test_send_preserves_existing_id(self):
         """send() preserves existing id if provided."""
@@ -58,7 +58,7 @@ class TestWebSocketIO:
         event = {"type": "tool_call", "id": "custom-id-123"}
         io.send(event)
 
-        assert io._agent_messages[0]["id"] == "custom-id-123"  # preserved, not overwritten
+        assert io._msgs_from_agent[0]["id"] == "custom-id-123"  # preserved, not overwritten
 
     def test_send_skips_when_closed(self):
         """send() does nothing when IO is closed."""
@@ -67,7 +67,7 @@ class TestWebSocketIO:
 
         io.send({"type": "thinking"})
 
-        assert io._agent_messages == []
+        assert io._msgs_from_agent == []
 
     def test_receive_returns_from_inbox(self):
         """receive() returns item from incoming mailbox."""
@@ -125,7 +125,7 @@ class TestReceiveAll:
         assert result[0]["type"] == "msg1"
         assert result[1]["type"] == "msg2"
         assert result[2]["type"] == "msg3"
-        assert io._client_messages == []
+        assert io._msgs_from_client == []
 
     def test_receive_all_with_type_filter(self):
         """receive_all(msg_type) only returns messages of that type."""
@@ -150,8 +150,8 @@ class TestReceiveAll:
         io.receive_all("mode_change")
 
         # The approval message should still be in mailbox
-        assert len(io._client_messages) == 1
-        assert io._client_messages[0] == {"type": "approval", "approved": True}
+        assert len(io._msgs_from_client) == 1
+        assert io._msgs_from_client[0] == {"type": "approval", "approved": True}
 
     def test_receive_all_with_no_matching_type(self):
         """receive_all(msg_type) returns empty list when no matches."""
@@ -163,7 +163,7 @@ class TestReceiveAll:
 
         assert result == []
         # All messages should still be in mailbox
-        assert len(io._client_messages) == 2
+        assert len(io._msgs_from_client) == 2
 
     def test_receive_all_is_non_blocking(self):
         """receive_all() returns immediately without blocking."""
@@ -188,8 +188,8 @@ class TestHighLevelAPI:
 
         io.log("thinking")
 
-        assert len(io._agent_messages) == 1
-        event = io._agent_messages[0]
+        assert len(io._msgs_from_agent) == 1
+        event = io._msgs_from_agent[0]
         assert event["type"] == "thinking"
         assert "id" in event  # UUID auto-generated
         assert "ts" in event  # timestamp auto-generated
@@ -200,7 +200,7 @@ class TestHighLevelAPI:
 
         io.log("tool_call", name="search", arguments={"q": "python"})
 
-        event = io._agent_messages[0]
+        event = io._msgs_from_agent[0]
         assert event["type"] == "tool_call"
         assert event["name"] == "search"
         assert event["arguments"] == {"q": "python"}
@@ -215,7 +215,7 @@ class TestHighLevelAPI:
         def respond():
             # Wait for outgoing event
             with io._agent_condition:
-                while not io._agent_messages:
+                while not io._msgs_from_agent:
                     io._agent_condition.wait(timeout=1)
             # Send approval
             io.send_to_agent({"approved": True})
@@ -235,7 +235,7 @@ class TestHighLevelAPI:
         # Simulate client response in another thread
         def respond():
             with io._agent_condition:
-                while not io._agent_messages:
+                while not io._msgs_from_agent:
                     io._agent_condition.wait(timeout=1)
             io.send_to_agent({"approved": False})
 
@@ -254,7 +254,7 @@ class TestHighLevelAPI:
         # Simulate client response in another thread
         def respond():
             with io._agent_condition:
-                while not io._agent_messages:
+                while not io._msgs_from_agent:
                     io._agent_condition.wait(timeout=1)
             io.send_to_agent({})  # No 'approved' key
 

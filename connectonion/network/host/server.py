@@ -37,7 +37,7 @@ from rich.console import Console
 from ... import address
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
-from .ws_router import dispatch_message_loop
+from .ws_router import run_session
 from ..trust import TrustAgent, get_default_trust_level, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
 from .auth import extract_and_authenticate
@@ -231,7 +231,7 @@ def _print_host_banner(
     console.print()
 
 
-def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, session_handler):
+def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner):
     """Create relay startup/shutdown callbacks for ASGI lifespan.
 
     Args:
@@ -239,7 +239,7 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         addr_data: Agent address data (public key, address)
         summary: Summary text for relay announcement
         port: HTTP port for endpoint discovery
-        session_handler: async (send_msg, recv_msg) -> None, runs protocol for one relay session
+        relay_session_runner: async (send_msg, recv_msg) -> None, runs protocol for one relay session
 
     Returns:
         Tuple of (on_startup, on_shutdown) async callbacks
@@ -256,9 +256,9 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
                 announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
                 await relay.serve_loop(
                     ws, announce_msg,
-                    addr_data=addr_data, session_handler=session_handler,
+                    addr_data=addr_data, session_handler=relay_session_runner,
                 )
-                await asyncio.sleep(5)
+                await asyncio.sleep(1)
 
         relay_task = asyncio.create_task(relay_loop())
 
@@ -422,7 +422,11 @@ def host(
     # Create relay lifespan callbacks (runs in same event loop as HTTP/WebSocket)
     on_startup, on_shutdown = None, None
     if relay_url:
-        session_handler = partial(dispatch_message_loop,
+        # Pre-bind run_session's host-wide deps so relay only needs to pass
+        # (send_msg, recv_msg). Each call = one client session full lifecycle
+        # (auth → INPUT/OUTPUT cycles → disconnect). enable_ping=False because
+        # relay handles keep-alive via its own ANNOUNCE heartbeat.
+        relay_session_runner = partial(run_session,
             route_handlers=route_handlers,
             storage=storage,
             registry=registry,
@@ -432,7 +436,7 @@ def host(
             enable_ping=False,
         )
         on_startup, on_shutdown = _create_relay_lifespan(
-            relay_url, addr_data, summary, port, session_handler
+            relay_url, addr_data, summary, port, relay_session_runner
         )
 
     app = asgi_create_app(

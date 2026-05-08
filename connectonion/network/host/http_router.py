@@ -303,12 +303,9 @@ async def handle_http(
         await send_json(send, route_handlers["info"](trust, trust_config))
 
     elif method == "GET" and path == "/docs":
-        try:
-            base = Path(__file__).resolve().parent.parent
-            html_path = base / "static" / "docs.html"
-            html = html_path.read_bytes()
-        except Exception:
-            html = b"<html><body><h1>ConnectOnion Docs</h1><p>Docs not found.</p></body></html>"
+        base = Path(__file__).resolve().parent.parent
+        html_path = base / "static" / "docs.html"
+        html = html_path.read_bytes()
         await send_html(send, html)
 
     else:

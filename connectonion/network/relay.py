@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [json, asyncio, websockets, typing] | imported by [agent host startup code that opts into relay mode] | tested by [tests/unit/test_relay.py, tests/e2e/test_relay_e2e.py]
   Data flow: connect(relay_url) opens WS to /ws/announce → send_announce() registers agent → serve_loop() reads frames, routes by session_id → session_handler callback runs the per-session WS protocol (CONNECT/INPUT/OUTPUT...) | response frames carry session_id back through relay to the right client
   State/Effects: maintains a long-lived WebSocket to relay | per-session async tasks spawned by serve_loop | heartbeat re-sends ANNOUNCE every 60s to stay registered
-  Integration: exposes connect(relay_url), send_announce(ws, agent_address, ...), serve_loop(ws, session_handler) | session_handler signature mirrors direct ASGI WS handler so dispatch_message_loop is reusable
+  Integration: exposes connect(relay_url), send_announce(ws, agent_address, ...), serve_loop(ws, session_handler) | session_handler signature mirrors direct ASGI WS handler so run_session is reusable
   Performance: single relay WebSocket fans out to N concurrent client sessions | each session_handler runs in its own task, isolated state via session_id routing
   Errors: relay disconnect propagates to caller (let it crash; supervisor reconnects) | malformed frames raise to serve_loop for visibility
 
@@ -63,7 +63,7 @@ async def send_announce(websocket, announce_message: Dict[str, Any]):
     await websocket.send(message_json)
 
 
-async def wait_for_task(websocket, timeout: float = None) -> Dict[str, Any]:
+async def recv_relay_msg(websocket, timeout: float = None) -> Dict[str, Any]:
     """
     Wait for next INPUT message from relay.
 
@@ -85,8 +85,8 @@ async def wait_for_task(websocket, timeout: float = None) -> Dict[str, Any]:
         websockets.exceptions.ConnectionClosed: If connection lost
 
     Example:
-        >>> task = await wait_for_task(ws)
-        >>> print(task["prompt"])
+        >>> msg = await recv_relay_msg(ws)
+        >>> print(msg["prompt"])
         Translate hello to Spanish
     """
     if timeout:
@@ -114,9 +114,9 @@ async def send_response(
         success: Whether task succeeded (default True)
 
     Example:
-        >>> task = await wait_for_task(ws)
-        >>> result = agent.input(task["prompt"])
-        >>> await send_response(ws, task["input_id"], result)
+        >>> msg = await recv_relay_msg(ws)
+        >>> result = agent.input(msg["prompt"])
+        >>> await send_response(ws, msg["input_id"], result)
     """
     response_message = {
         "type": "OUTPUT",
@@ -190,18 +190,18 @@ async def serve_loop(
 
     while True:
         try:
-            task = await wait_for_task(websocket, timeout=heartbeat_interval)
+            msg = await recv_relay_msg(websocket, timeout=heartbeat_interval)
 
-            if task.get("type") == "ERROR":
-                console.print(f"{prefix} [red]Relay error: {task.get('error')}[/red]")
+            if msg.get("type") == "ERROR":
+                console.print(f"{prefix} [red]Relay error: {msg.get('error')}[/red]")
                 continue
 
-            session_id = task["session_id"]
+            session_id = msg["session_id"]
             if session_id in sessions:
-                await sessions[session_id].put(task)
+                await sessions[session_id].put(msg)
             else:
                 sessions[session_id] = asyncio.Queue()
-                asyncio.create_task(_run_session(session_id, task, sessions, websocket, session_handler))
+                asyncio.create_task(_run_session(session_id, msg, sessions, websocket, session_handler))
 
         except asyncio.TimeoutError:
             if addr_data:

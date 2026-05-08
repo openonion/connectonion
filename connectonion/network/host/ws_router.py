@@ -1,8 +1,11 @@
 """WebSocket message router.
 
-Both direct ASGI WebSocket and relay sessions use dispatch_message_loop()
-with their own send_msg/recv_msg adapters. dispatch_message_loop is the
-single reader of recv_msg — no other function touches it.
+run_session() drives one client session from connect to disconnect:
+init state → loop reading messages → route each via route_message → cleanup.
+
+Both direct ASGI WebSocket and relay paths invoke run_session with their
+own send_msg/recv_msg adapters. run_session is the single reader of
+recv_msg — no other function touches it.
 """
 
 import asyncio
@@ -24,11 +27,11 @@ async def _ping_loop(send_msg):
         await send_msg({"type": "PING"})
 
 
-async def _forward_agent_messages(send_msg, io, session_id, *, result_holder=None, conn=None, storage=None):
+async def _forward_msgs_from_agent(send_msg, io, session_id, *, result_holder=None, conn=None, storage=None):
     """Forward agent events to client. Send OUTPUT when agent finishes."""
     from .session import session_to_chat_items
 
-    async for event in io.read_agent_messages():
+    async for event in io.read_msgs_from_agent():
         if session_id:
             event["session_id"] = session_id
         await send_msg(event)
@@ -92,7 +95,7 @@ def _resume_connection(send_msg, active, registry, session_id, storage):
     io = active.io
     registry.update_ping(session_id)
     task = asyncio.create_task(
-        _forward_agent_messages(send_msg, io, session_id, storage=storage)
+        _forward_msgs_from_agent(send_msg, io, session_id, storage=storage)
     )
     return io, task
 
@@ -194,6 +197,12 @@ async def _start_agent(data, send_msg, conn, route_handlers, storage, registry):
 
     session_id = conn["session_id"]
     existing = registry.get(session_id)
+    # Defense in depth: route_message routes INPUT-during-running to
+    # _try_runtime_input first; if any future caller bypasses that, refuse to
+    # spawn a second agent thread on the same session.
+    if existing and existing.status == "running":
+        await send_msg({"type": "ERROR", "message": "session already has a running agent", "session_id": session_id})
+        return None
 
     identity = conn["identity"]
     console.print(f"[green]✓ INPUT[/green] identity={identity[:16] if identity else '?'}... session={session_id[:8] if session_id else '?'}... prompt={prompt[:50]}...")
@@ -218,65 +227,107 @@ async def _start_agent(data, send_msg, conn, route_handlers, storage, registry):
         args=(route_handlers, storage, prompt, io, session, images, files, registry, session_id, result_holder),
         daemon=True,
     )
-    agent_thread.start()
+    # Register BEFORE start: thread may complete before .start() returns control,
+    # and _run_agent_thread calls registry.mark_session_connected() on completion.
+    # If register runs after, mark_session_connected is a no-op and we end up
+    # with a 'running' entry for an already-finished agent.
     if existing:
         registry.mark_session_running(session_id, io, agent_thread)
     else:
         registry.register(session_id, io, agent_thread)
+    agent_thread.start()
 
     task = asyncio.create_task(
-        _forward_agent_messages(send_msg, io, session_id, result_holder=result_holder, conn=conn)
+        _forward_msgs_from_agent(send_msg, io, session_id, result_holder=result_holder, conn=conn)
     )
     return io, task
 
 
-async def dispatch_message_loop(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True):
-    """Main WebSocket session loop. Single reader of recv_msg."""
-    conn = {"authenticated": False, "identity": None, "session_id": None, "session": None}
-    active_io = None
-    forward_task = None
-    ping_task = asyncio.create_task(_ping_loop(send_msg)) if enable_ping else None
+def _init_session(send_msg, enable_ping):
+    """Per-session mutable state: auth/identity, current agent IO, async tasks."""
+    return {
+        "conn": {"authenticated": False, "identity": None, "session_id": None, "session": None},
+        "active_io": None,
+        "forward_task": None,
+        "ping_task": asyncio.create_task(_ping_loop(send_msg)) if enable_ping else None,
+    }
 
+
+async def _cleanup_session(state):
+    """Cancel forward + ping tasks at session end and let their CancelledError unwind."""
+    # asyncio cancel idiom: cancel() only signals; await ensures the task
+    # actually unwinds before we return. The CancelledError surfaced by
+    # that await is the expected exit signal — not a bug, swallow it.
+    forward_task = state.get("forward_task")
+    if forward_task and not forward_task.done():
+        forward_task.cancel()
+        try:
+            await forward_task
+        except asyncio.CancelledError:
+            pass
+    ping_task = state.get("ping_task")
+    if ping_task:
+        ping_task.cancel()
+        try:
+            await ping_task
+        except asyncio.CancelledError:
+            pass
+
+
+async def route_message(data, state, send_msg, route_handlers, storage, registry, trust, blacklist, whitelist):
+    """Route one client message to the right handler. Mutates state in place."""
+    conn = state["conn"]
+    msg_type = data.get("type")
+
+    # Anything outside the hot path (CONNECT/INPUT/SESSION_STATUS/PONG) is
+    # logged for visibility — these are rare and useful to see.
+    if msg_type not in ("CONNECT", "INPUT", "SESSION_STATUS", "PONG"):
+        console.print(f"[dim]← recv: {msg_type}[/dim]")
+
+    if msg_type == "PONG":
+        # Heartbeat from client — refresh registry ping so cleanup_expired won't reap us.
+        if conn.get("session_id"):
+            registry.update_ping(conn["session_id"])
+    elif msg_type == "SESSION_STATUS":
+        await _handle_session_status(data, send_msg, registry)
+    elif msg_type == "ONBOARD_SUBMIT":
+        await handle_onboard_submit(data, send_msg, route_handlers)
+    elif msg_type and msg_type.startswith("ADMIN_"):
+        await handle_admin_message(data, send_msg, route_handlers)
+    elif msg_type == "CONNECT":
+        # First message: auth + session merge + maybe reattach to a running agent.
+        result = await _handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist)
+        if result:
+            state["active_io"], state["forward_task"] = result
+    elif msg_type == "INPUT":
+        # If a running agent already owns this session, treat as runtime input
+        # (mid-execution interjection). Otherwise spawn a fresh agent thread.
+        if not await _try_runtime_input(data, send_msg, conn, registry):
+            result = await _start_agent(data, send_msg, conn, route_handlers, storage, registry)
+            if result:
+                state["active_io"], state["forward_task"] = result
+    elif state["active_io"]:
+        # Anything else (ASK_USER_RESPONSE, APPROVAL_RESPONSE, mode_change, ...)
+        # → forward to the running agent's input mailbox.
+        state["active_io"].send_to_agent(data)
+
+
+async def run_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True):
+    """Run one client session from connect to disconnect.
+
+    Owns the read loop and per-session lifecycle: init state → loop on recv_msg
+    → dispatch each message via route_message → cleanup on close.
+
+    Used by both the direct ASGI WebSocket path and the relay-routed path,
+    each providing its own send_msg/recv_msg adapters.
+    """
+    state = _init_session(send_msg, enable_ping)
     try:
         while True:
             data = await recv_msg()
             if data is None:
+                # recv_msg returns None on client close or relay-side timeout.
                 break
-
-            msg_type = data.get("type")
-            if msg_type not in ("CONNECT", "INPUT", "SESSION_STATUS", "PONG"):
-                console.print(f"[dim]← recv: {msg_type}[/dim]")
-
-            if msg_type == "PONG":
-                if conn.get("session_id"):
-                    registry.update_ping(conn["session_id"])
-            elif msg_type == "SESSION_STATUS":
-                await _handle_session_status(data, send_msg, registry)
-            elif msg_type == "ONBOARD_SUBMIT":
-                await handle_onboard_submit(data, send_msg, route_handlers)
-            elif msg_type and msg_type.startswith("ADMIN_"):
-                await handle_admin_message(data, send_msg, route_handlers)
-            elif msg_type == "CONNECT":
-                result = await _handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist)
-                if result:
-                    active_io, forward_task = result
-            elif msg_type == "INPUT":
-                if not await _try_runtime_input(data, send_msg, conn, registry):
-                    result = await _start_agent(data, send_msg, conn, route_handlers, storage, registry)
-                    if result:
-                        active_io, forward_task = result
-            elif active_io:
-                active_io.send_to_agent(data)
+            await route_message(data, state, send_msg, route_handlers, storage, registry, trust, blacklist, whitelist)
     finally:
-        if forward_task and not forward_task.done():
-            forward_task.cancel()
-            try:
-                await forward_task
-            except asyncio.CancelledError:
-                pass
-        if ping_task:
-            ping_task.cancel()
-            try:
-                await ping_task
-            except asyncio.CancelledError:
-                pass
+        await _cleanup_session(state)

@@ -23,7 +23,7 @@ from connectonion.network.asgi import (
     send_json,
     read_body,
 )
-from connectonion.network.host.ws_router import _forward_agent_messages
+from connectonion.network.host.ws_router import _forward_msgs_from_agent
 from connectonion.network.io import WebSocketIO
 from connectonion.network.host.session import ActiveSessionRegistry
 
@@ -40,9 +40,9 @@ class TestWebSocketIOInASGI:
         conn.send({"type": "tool_call", "name": "search"})
 
         # Should be able to read message log
-        assert len(conn._agent_messages) == 2
-        assert conn._agent_messages[0]["type"] == "thinking"
-        assert conn._agent_messages[1]["type"] == "tool_call"
+        assert len(conn._msgs_from_agent) == 2
+        assert conn._msgs_from_agent[0]["type"] == "thinking"
+        assert conn._msgs_from_agent[1]["type"] == "tool_call"
 
     def test_bidirectional_communication(self):
         """Test send and receive for approval flow."""
@@ -58,9 +58,9 @@ class TestWebSocketIOInASGI:
 
         # Wait for outgoing request
         with conn._agent_condition:
-            while not conn._agent_messages:
+            while not conn._msgs_from_agent:
                 conn._agent_condition.wait(timeout=1)
-        request = conn._agent_messages[0]
+        request = conn._msgs_from_agent[0]
         assert request["type"] == "approval_needed"
         assert request["tool"] == "delete"
 
@@ -73,7 +73,7 @@ class TestWebSocketIOInASGI:
 
 @pytest.mark.asyncio
 class TestForwardAgentEvents:
-    """Test _forward_agent_messages async function."""
+    """Test _forward_msgs_from_agent async function."""
 
     async def test_sends_outgoing_messages_to_client(self):
         """Test that outgoing events are forwarded via send_msg."""
@@ -94,7 +94,7 @@ class TestForwardAgentEvents:
         threading.Thread(target=agent_done).start()
 
         await asyncio.wait_for(
-            _forward_agent_messages(mock_send_msg, io, "test-session"),
+            _forward_msgs_from_agent(mock_send_msg, io, "test-session"),
             timeout=2.0
         )
 
@@ -114,7 +114,7 @@ class TestForwardAgentEvents:
         io.finish()
 
         await asyncio.wait_for(
-            _forward_agent_messages(mock_send_msg, io, "s1", result_holder=result_holder),
+            _forward_msgs_from_agent(mock_send_msg, io, "s1", result_holder=result_holder),
             timeout=2.0
         )
 
@@ -134,7 +134,7 @@ class TestForwardAgentEvents:
         io.finish()
 
         await asyncio.wait_for(
-            _forward_agent_messages(mock_send_msg, io, "s1", result_holder=result_holder),
+            _forward_msgs_from_agent(mock_send_msg, io, "s1", result_holder=result_holder),
             timeout=2.0
         )
 
