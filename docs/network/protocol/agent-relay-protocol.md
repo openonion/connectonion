@@ -497,7 +497,7 @@ Client                        Relay                         Agent
   |-- WS connect /ws/input ---->|                              |
   |-- CONNECT {session_id} ---->|                              |
   |                             |-- forward via /ws/announce ->|
-  |                             |                              |-- run_session()
+  |                             |                              |-- run_ws_session()
   |                             |<-- CONNECTED {session_id} ---|
   |<-- CONNECTED ---------------|                              |
   |                             |                              |
@@ -526,7 +526,7 @@ When the agent receives a message via the relay's announce WebSocket, `serve_loo
 1. **New session**: Creates an `asyncio.Queue` and spawns `_run_session` as a background task.
 2. **Existing session**: Puts the message into the session's queue.
 
-`_run_session` creates two transport adapters (`send_msg` / `recv_msg`) and calls the shared protocol handler (`run_session()`) directly. No loopback WebSocket — the relay path uses the same protocol logic as the ASGI path.
+`_run_session` creates two transport adapters (`send_msg` / `recv_msg`) and calls the shared protocol handler (`run_ws_session()`) directly. No loopback WebSocket — the relay path uses the same protocol logic as the ASGI path.
 
 - **`send_msg`**: Injects `session_id` into the outgoing dict and sends via the relay announce WebSocket.
 - **`recv_msg`**: Reads from the session's `asyncio.Queue` (with a 5-minute idle timeout to prevent zombie sessions).

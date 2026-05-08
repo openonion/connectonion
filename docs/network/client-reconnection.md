@@ -420,7 +420,7 @@ In approval/ask_user components, check `connectionState !== 'connected'` and dis
 Server-side reconnection works through three pieces (see [session-reconnect.md](session-reconnect.md) for details):
 
 1. **`_agent_thread_body` has try/except/finally** — captures exceptions, always calls `io.mark_agent_done()` so the forwarder unwinds cleanly.
-2. **IO survives the WS** — `WebSocketIO` lives in `ActiveSessionRegistry`, not on the WS; `run_session`'s finally block only cancels forward/ping tasks.
+2. **IO survives the WS** — `WebSocketIO` lives in `ActiveSessionRegistry`, not on the WS; `run_ws_session`'s finally block only cancels forward/ping tasks.
 3. **Single forward task per session** — old task is fully cancelled and awaited before `resume_forwarding` spawns a new one on the same io. `io.rewind_to(last_msg_id)` resets the cursor so missed events replay.
 
 ---
@@ -444,8 +444,8 @@ T+5    ◄── approval_needed ──────────── io.send(ap
 
 T+10   ✕ PAGE REFRESH
        _handleConnectionLoss()
-       _ws = null                         run_session finally →
-       _inputReject(error)                  run_session finally block:
+       _ws = null                         run_ws_session finally →
+       _inputReject(error)                  run_ws_session finally block:
                                               forward_task.cancel + await
                                               ping_task.cancel + await
                                           IO + agent thread STAY alive

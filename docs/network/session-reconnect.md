@@ -264,10 +264,10 @@ Time   What happens
 T+0    Agent sends approval_needed, blocks on io.receive()
        (waiting on _msgs_from_client mailbox)
 T+5    Client refreshes → WebSocket disconnects
-       → run_session's finally block:
+       → run_ws_session's finally block:
        → forward_task.cancel() + await unwind
        → ping_task.cancel() + await unwind
-       → run_session returns
+       → run_ws_session returns
        → The WebSocketIO instance and its queues stay alive
          in ActiveSessionRegistry (status still 'running')
        → Agent thread is STILL BLOCKED in io.receive() —
@@ -287,7 +287,7 @@ Three properties make this work:
 
 1. **`_agent_thread_body` has `try/except/finally`** — captures exceptions in `result_holder[0]`, always calls `io.mark_agent_done()` in finally so the forwarder can exit cleanly. The thread never silently disappears.
 
-2. **The io is not closed on WS disconnect** — `run_session`'s finally block only cancels the forward/ping tasks. The `WebSocketIO` instance, its three channels, and the agent thread all stay live under `ActiveSession`.
+2. **The io is not closed on WS disconnect** — `run_ws_session`'s finally block only cancels the forward/ping tasks. The `WebSocketIO` instance, its three channels, and the agent thread all stay live under `ActiveSession`.
 
 3. **Single forward task per session** — the old forward_task is fully cancelled and awaited before a new one is created on reconnect (in `resume_forwarding`). No competing loops on the same io.
 

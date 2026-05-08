@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [json, asyncio, websockets, typing] | imported by [agent host startup code that opts into relay mode] | tested by [tests/unit/test_relay.py, tests/e2e/test_relay_e2e.py]
   Data flow: connect(relay_url) opens WS to /ws/announce → send_announce() registers agent → serve_loop() reads frames, routes by session_id → session_handler callback runs the per-session WS protocol (CONNECT/INPUT/OUTPUT...) | response frames carry session_id back through relay to the right client
   State/Effects: maintains a long-lived WebSocket to relay | per-session async tasks spawned by serve_loop | heartbeat re-sends ANNOUNCE every 60s to stay registered
-  Integration: exposes connect(relay_url), send_announce(ws, agent_address, ...), serve_loop(ws, session_handler) | session_handler signature mirrors direct ASGI WS handler so run_session is reusable
+  Integration: exposes connect(relay_url), send_announce(ws, agent_address, ...), serve_loop(ws, session_handler) | session_handler signature mirrors direct ASGI WS handler so run_ws_session is reusable
   Performance: single relay WebSocket fans out to N concurrent client sessions | each session_handler runs in its own task, isolated state via session_id routing
   Errors: relay disconnect propagates to caller (let it crash; supervisor reconnects) | malformed frames raise to serve_loop for visibility
 
@@ -145,7 +145,7 @@ async def _run_session(session_id, first_msg, sessions, relay_ws, session_handle
             msg = await asyncio.wait_for(q.get(), timeout=300)
         except asyncio.TimeoutError:
             # 5min idle = client vanished without close. Translate the asyncio
-            # timer signal into the run_session contract (None = end of stream)
+            # timer signal into the run_ws_session contract (None = end of stream)
             # so the session loop exits cleanly. Not a swallowed error — this
             # IS the protocol-level idle-timeout mechanism.
             return None

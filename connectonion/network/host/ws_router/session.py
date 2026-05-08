@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [.connect (handle_connect), .agent_io (start_agent), .ping (ping_loop), ...trust.ws_admin (handle_admin_message, handle_onboard_submit), asyncio, uuid, rich.console] | imported by [.__init__ as the only public symbol]
   Data flow: recv_msg() → match data["type"] → dispatch | PONG → registry.update_ping | SESSION_STATUS → registry lookup + reply (inline) | CONNECT → handle_connect (auth + reattach) | INPUT → if running session: push_runtime_input + RUNTIME_INPUT_ACK (inline); else: start_agent | other types with active_io → active_io.send_to_agent | finally: cancel forward + ping tasks
   State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally
-  Integration: run_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True) | enable_ping=False for relay path (ANNOUNCE heartbeat handles keepalive there)
+  Integration: run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True) | enable_ping=False for relay path (ANNOUNCE heartbeat handles keepalive there)
   Performance: single-reader of recv_msg | O(1) per-message dispatch | bounded local state
   Errors: recv_msg returning None → exit loop normally | other exceptions propagate out (transport-level errors, programmer bugs)
 """
@@ -20,7 +20,7 @@ from .ping import ping_loop
 console = Console()
 
 
-async def run_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True):
+async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True):
     """Run one client session from connect to disconnect.
 
     Reads frames, dispatches by type, cleans up on close. Used by both the

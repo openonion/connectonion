@@ -8,11 +8,11 @@
 
 Earlier the WebSocket message handling (CONNECT auth, INPUT → spawn agent, streaming back, onboard, admin, ...) lived inside the ASGI handler. The relay path opened a **loopback WebSocket** back to `ws://127.0.0.1:{port}/ws` to reuse it — extra hop, extra moving parts, double maintenance.
 
-Now the message-routing logic lives in the `ws_router/` package. Both paths call `run_session()` directly with their own send_msg/recv_msg adapters:
+Now the message-routing logic lives in the `ws_router/` package. Both paths call `run_ws_session()` directly with their own send_msg/recv_msg adapters:
 
 ```
 Client → ASGI websocket.py → send_msg/recv_msg adapter ─┐
-                                                         ├─→ run_session()
+                                                         ├─→ run_ws_session()
 Client → Relay relay.py    → send_msg/recv_msg adapter ─┘
 ```
 
@@ -24,8 +24,8 @@ No loopback. Same router. Two thin adapters.
 
 ```
 network/host/ws_router/
-├── __init__.py    # exports run_session
-├── session.py     # run_session — main read loop + dispatch + cleanup
+├── __init__.py    # exports run_ws_session
+├── session.py     # run_ws_session — main read loop + dispatch + cleanup
 ├── connect.py     # handle_connect — CONNECT auth + session merge + reattach trigger
 ├── agent_io.py    # start_agent / resume_forwarding / forward_agent_msgs_to_client / _agent_thread_body
 └── ping.py        # ping_loop — 30s WS keepalive
@@ -33,7 +33,7 @@ network/host/ws_router/
 
 | File | Layer | What's in it |
 |---|---|---|
-| `session.py` | WS protocol orchestration | `run_session` is the only public API. Owns the read loop, dispatches by message type, handles small inline cases (PONG / SESSION_STATUS / runtime input detection), and runs cleanup |
+| `session.py` | WS protocol orchestration | `run_ws_session` is the only public API. Owns the read loop, dispatches by message type, handles small inline cases (PONG / SESSION_STATUS / runtime input detection), and runs cleanup |
 | `connect.py` | WS protocol | `handle_connect` — verifies auth, merges client/server session, decides new/connected/running, triggers reattach |
 | `agent_io.py` | Agent execution | Spawning agent threads, restarting forward tasks on reconnect, streaming agent output back to the client |
 | `ping.py` | WS keepalive | `ping_loop` coroutine that sends a PING frame every 30s |
@@ -42,10 +42,10 @@ Dependencies: `session.py` imports from `connect.py`, `agent_io.py`, `ping.py`. 
 
 ---
 
-## Public entry: `run_session`
+## Public entry: `run_ws_session`
 
 ```python
-async def run_session(
+async def run_ws_session(
     send_msg,       # async (dict) -> None
     recv_msg,       # async () -> dict | None  (None = client closed)
     *,
@@ -61,10 +61,10 @@ async def run_session(
 
 `send_msg` and `recv_msg` are the only transport-specific pieces. Everything else is shared.
 
-Each call to `run_session` drives **one client session** from connect to disconnect. The body is the read loop + per-type dispatch + cleanup, all in one function — no nested helpers for state init/teardown.
+Each call to `run_ws_session` drives **one client session** from connect to disconnect. The body is the read loop + per-type dispatch + cleanup, all in one function — no nested helpers for state init/teardown.
 
 ```python
-async def run_session(send_msg, recv_msg, *, ...):
+async def run_ws_session(send_msg, recv_msg, *, ...):
     conn = {"authenticated": False, "identity": None, "session_id": None, "session": None}
     active_io = None
     forward_task = None
@@ -124,7 +124,7 @@ Relay's `recv_msg` reads from a per-session `asyncio.Queue` populated by `serve_
 
 ---
 
-## Message dispatch (inlined inside `run_session`)
+## Message dispatch (inlined inside `run_ws_session`)
 
 ```python
 match data["type"]:
@@ -198,7 +198,7 @@ Agent thread                          Async event loop                 Client
      │                                       │                            │
      │◄─ io.receive() ◄─ _msgs_from_client ◄─│◄─ active_io.send_to_agent  │
      │  (block until client sends, e.g.      │  (per-message dispatch     │
-     │   ASK_USER_RESPONSE)                  │   in run_session)          │
+     │   ASK_USER_RESPONSE)                  │   in run_ws_session)          │
      │                                       │                            │
      │  io.pop_runtime_inputs() (separate    │   push_runtime_input from  │
      │  queue, drained at iteration start    │   INPUT-during-running     │
@@ -223,7 +223,7 @@ Three independent channels on one `WebSocketIO`:
 
 ### Relay session idle timeout (5 minutes)
 
-Relay's `recv_msg` uses `asyncio.wait_for(q.get(), timeout=300)`. No message for 5 minutes → returns None → `run_session` exits → cleanup. Prevents zombie sessions when a client vanishes without close.
+Relay's `recv_msg` uses `asyncio.wait_for(q.get(), timeout=300)`. No message for 5 minutes → returns None → `run_ws_session` exits → cleanup. Prevents zombie sessions when a client vanishes without close.
 
 ### Relay disconnect cascade
 
@@ -274,7 +274,7 @@ Server → ADMIN_RESULT  {action: promote, success: true, level: contact}
 
 | File | Role |
 |---|---|
-| `network/host/ws_router/__init__.py` | Public re-export: `run_session` |
+| `network/host/ws_router/__init__.py` | Public re-export: `run_ws_session` |
 | `network/host/ws_router/session.py` | Main loop, dispatch chain, inline helpers (PONG, SESSION_STATUS, runtime input) |
 | `network/host/ws_router/connect.py` | `handle_connect` — CONNECT auth, session merge, reattach trigger |
 | `network/host/ws_router/agent_io.py` | `start_agent`, `resume_forwarding`, `forward_agent_msgs_to_client`, `_agent_thread_body` |
@@ -285,5 +285,5 @@ Server → ADMIN_RESULT  {action: promote, success: true, level: contact}
 | `network/host/session/active.py` | `ActiveSessionRegistry` — running/connected sessions |
 | `network/host/session/storage.py` | `SessionStorage` — JSONL persistence |
 | `network/host/session/ui.py` | `session_to_chat_items` — convert session → ChatItem[] for UI |
-| `network/host/server.py` | `host()` entry point. Wires `run_session` into ASGI app and as `relay_session_runner` partial for the relay path |
+| `network/host/server.py` | `host()` entry point. Wires `run_ws_session` into ASGI app and as `relay_session_runner` partial for the relay path |
 | `useful_plugins/runtime_input.py` | `apply_runtime_input` `@before_iteration` plugin + `RUNTIME_INPUT_FRAME_PREFIX` |

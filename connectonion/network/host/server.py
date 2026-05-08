@@ -1,7 +1,7 @@
 """
 Purpose: Host agent as HTTP/WebSocket server with trust-based access control
 LLM-Note:
-  Dependencies: imports from [network/asgi/, network/host/ws_router/ (run_session), network/trust/, network/host/session/, network/host/auth.py, network/host/http_router.py, network/announce.py, network/relay.py] | imported by [network/__init__.py as host()] | tested by [tests/network/test_host.py]
+  Dependencies: imports from [network/asgi/, network/host/ws_router/ (run_ws_session), network/trust/, network/host/session/, network/host/auth.py, network/host/http_router.py, network/announce.py, network/relay.py] | imported by [network/__init__.py as host()] | tested by [tests/network/test_host.py]
   Data flow: host(create_agent, port, trust) → _create_route_handlers() wraps all routes → asgi_create_app() creates FastAPI/Starlette app → uvicorn.run() starts server → each request calls create_agent() for fresh instance → executes via input_handler()/ws_input() → returns result + session | trust enforcement via extract_and_authenticate() at request boundary
   State/Effects: starts HTTP server on specified port | creates .co/logs/ directory | stores sessions in SessionStorage (in-memory with TTL) | optionally announces to relay server | each request gets fresh agent instance (no state bleeding)
   Integration: exposes host(create_agent, port=8000, trust=None, result_ttl=3600, relay_url="wss://oo.openonion.ai") | creates ASGI app with routes: POST /input, GET /sessions, GET /sessions/{id}, GET /health, GET /info, WebSocket /ws, admin endpoints | trust accepts: "open"/"careful"/"strict" (level), markdown string (policy), or Agent (custom verifier)
@@ -37,7 +37,7 @@ from rich.console import Console
 from ... import address
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
-from .ws_router import run_session
+from .ws_router import run_ws_session
 from ..trust import TrustAgent, get_default_trust_level, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
 from .auth import extract_and_authenticate
@@ -422,11 +422,11 @@ def host(
     # Create relay lifespan callbacks (runs in same event loop as HTTP/WebSocket)
     on_startup, on_shutdown = None, None
     if relay_url:
-        # Pre-bind run_session's host-wide deps so relay only needs to pass
+        # Pre-bind run_ws_session's host-wide deps so relay only needs to pass
         # (send_msg, recv_msg). Each call = one client session full lifecycle
         # (auth → INPUT/OUTPUT cycles → disconnect). enable_ping=False because
         # relay handles keep-alive via its own ANNOUNCE heartbeat.
-        relay_session_runner = partial(run_session,
+        relay_session_runner = partial(run_ws_session,
             route_handlers=route_handlers,
             storage=storage,
             registry=registry,

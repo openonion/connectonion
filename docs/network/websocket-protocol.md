@@ -498,7 +498,7 @@ Non-routine types still print:
 
 | File | Role |
 |------|------|
-| `network/host/ws_router/` | 4-file message router package — `session.py` (run_session main loop), `connect.py` (handle_connect), `agent_io.py` (start_agent / resume_forwarding / forwarding), `ping.py` (keepalive) |
+| `network/host/ws_router/` | 4-file message router package — `session.py` (run_ws_session main loop), `connect.py` (handle_connect), `agent_io.py` (start_agent / resume_forwarding / forwarding), `ping.py` (keepalive) |
 | `network/asgi/websocket.py` | ASGI adapter — wraps ASGI primitives into send_msg/recv_msg for ws_router |
 | `network/relay.py` | Relay adapter — wraps asyncio.Queue/relay WS into send_msg/recv_msg for ws_router |
 | `network/host/session/active.py` | ActiveSessionRegistry — in-memory session tracking |
