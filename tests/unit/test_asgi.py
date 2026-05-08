@@ -23,7 +23,7 @@ from connectonion.network.asgi import (
     send_json,
     read_body,
 )
-from connectonion.network.host.ws_router import _forward_msgs_from_agent
+from connectonion.network.host.ws_router.agent_io import forward_agent_msgs_to_client
 from connectonion.network.io import WebSocketIO
 from connectonion.network.host.session import ActiveSessionRegistry
 
@@ -73,7 +73,7 @@ class TestWebSocketIOInASGI:
 
 @pytest.mark.asyncio
 class TestForwardAgentEvents:
-    """Test _forward_msgs_from_agent async function."""
+    """Test forward_agent_msgs_to_client async function."""
 
     async def test_sends_outgoing_messages_to_client(self):
         """Test that outgoing events are forwarded via send_msg."""
@@ -89,12 +89,12 @@ class TestForwardAgentEvents:
         def agent_done():
             import time
             time.sleep(0.05)
-            io.finish()
+            io.mark_agent_done()
 
         threading.Thread(target=agent_done).start()
 
         await asyncio.wait_for(
-            _forward_msgs_from_agent(mock_send_msg, io, "test-session"),
+            forward_agent_msgs_to_client(mock_send_msg, io, "test-session"),
             timeout=2.0
         )
 
@@ -111,10 +111,10 @@ class TestForwardAgentEvents:
         async def mock_send_msg(msg):
             sent_messages.append(msg)
 
-        io.finish()
+        io.mark_agent_done()
 
         await asyncio.wait_for(
-            _forward_msgs_from_agent(mock_send_msg, io, "s1", result_holder=result_holder),
+            forward_agent_msgs_to_client(mock_send_msg, io, "s1", result_holder=result_holder),
             timeout=2.0
         )
 
@@ -131,10 +131,10 @@ class TestForwardAgentEvents:
         async def mock_send_msg(msg):
             sent_messages.append(msg)
 
-        io.finish()
+        io.mark_agent_done()
 
         await asyncio.wait_for(
-            _forward_msgs_from_agent(mock_send_msg, io, "s1", result_holder=result_holder),
+            forward_agent_msgs_to_client(mock_send_msg, io, "s1", result_holder=result_holder),
             timeout=2.0
         )
 

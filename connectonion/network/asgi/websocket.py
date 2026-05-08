@@ -1,7 +1,7 @@
 """ASGI WebSocket transport adapter.
 
 Thin wrapper that creates ASGI send/recv adapters and delegates
-to the transport-agnostic protocol handler in host/ws_router.py.
+to the message router in host/ws_router/ (a 4-file package).
 
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
 See docs/network/websocket-protocol.md for full specification.

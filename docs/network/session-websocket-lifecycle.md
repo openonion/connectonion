@@ -353,7 +353,7 @@ This solves the critical timing issue where connection drops during `ask_user` o
 Reconnect-during-execution works through three mechanisms now (all in [protocol.md](protocol.md)):
 
 1. **IO survives the WS** — `WebSocketIO` lives in `ActiveSessionRegistry`, not on the WS connection.
-2. **Cursor rewind** — `_handle_connect` calls `io.rewind_to(last_msg_id)` so the new forward task replays missed events.
+2. **Cursor rewind** — `ws_router.connect:handle_connect` calls `io.rewind_to(last_msg_id)` so the new forward task replays missed events.
 3. **No `_closed` toggling needed** — the io stays usable across reconnects; only the forward task is restarted.
 
 See [session-reconnect.md](session-reconnect.md) for the complete flow.

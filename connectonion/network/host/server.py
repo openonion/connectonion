@@ -1,7 +1,7 @@
 """
 Purpose: Host agent as HTTP/WebSocket server with trust-based access control
 LLM-Note:
-  Dependencies: imports from [network/asgi/, network/trust/, network/host/session.py, network/host/auth.py, network/host/routes.py] | imported by [network/__init__.py as host()] | tested by [tests/network/test_host.py]
+  Dependencies: imports from [network/asgi/, network/host/ws_router/ (run_session), network/trust/, network/host/session/, network/host/auth.py, network/host/http_router.py, network/announce.py, network/relay.py] | imported by [network/__init__.py as host()] | tested by [tests/network/test_host.py]
   Data flow: host(create_agent, port, trust) → _create_route_handlers() wraps all routes → asgi_create_app() creates FastAPI/Starlette app → uvicorn.run() starts server → each request calls create_agent() for fresh instance → executes via input_handler()/ws_input() → returns result + session | trust enforcement via extract_and_authenticate() at request boundary
   State/Effects: starts HTTP server on specified port | creates .co/logs/ directory | stores sessions in SessionStorage (in-memory with TTL) | optionally announces to relay server | each request gets fresh agent instance (no state bleeding)
   Integration: exposes host(create_agent, port=8000, trust=None, result_ttl=3600, relay_url="wss://oo.openonion.ai") | creates ASGI app with routes: POST /input, GET /sessions, GET /sessions/{id}, GET /health, GET /info, WebSocket /ws, admin endpoints | trust accepts: "open"/"careful"/"strict" (level), markdown string (policy), or Agent (custom verifier)

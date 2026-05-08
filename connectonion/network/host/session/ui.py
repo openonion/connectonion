@@ -1,7 +1,7 @@
 """
 Purpose: Convert session storage format to ChatItems wire format for frontend rendering
 LLM-Note:
-  Dependencies: imports from [useful_plugins/runtime_input.py for RUNTIME_INPUT_FRAME_PREFIX] | imported by [host/http_router.py, host/ws_router.py, host/session/__init__.py] | tested by [tests/unit/test_host_session.py]
+  Dependencies: imports from [useful_plugins/runtime_input.py for RUNTIME_INPUT_FRAME_PREFIX] | imported by [host/http_router.py, host/ws_router/agent_io.py, host/ws_router/connect.py, host/session/__init__.py] | tested by [tests/unit/test_host_session.py]
   Data flow: session dict {messages, trace} → ChatItem[] with types: user, agent, tool_call, files_received, intent, eval, thinking
   State/Effects: pure function, no side effects
   Integration: exposes session_to_chat_items(session) → list[dict] | used by http_router and ws_router when delivering server_newer state and OUTPUT

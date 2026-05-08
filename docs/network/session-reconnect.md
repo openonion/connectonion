@@ -264,7 +264,7 @@ Time   What happens
 T+0    Agent sends approval_needed, blocks on io.receive()
        (waiting on _msgs_from_client mailbox)
 T+5    Client refreshes → WebSocket disconnects
-       → run_session's finally → _cleanup_session()
+       → run_session's finally block:
        → forward_task.cancel() + await unwind
        → ping_task.cancel() + await unwind
        → run_session returns
@@ -276,7 +276,7 @@ T+10   New WebSocket connects → CONNECT { session_id, last_msg_id }
        → registry.get() returns the same ActiveSession
        → status == 'running' branch:
             io.rewind_to(last_msg_id)        # reset cursor under lock
-            _resume_connection() spawns new forward_task on same io
+            resume_forwarding() spawns new forward_task on same io
        → Server replays any agent events the old client missed
        → Client sees the approval_needed UI again, user clicks Approve
        → APPROVAL_RESPONSE arrives → send_to_agent puts it in _msgs_from_client
@@ -285,11 +285,11 @@ T+10   New WebSocket connects → CONNECT { session_id, last_msg_id }
 
 Three properties make this work:
 
-1. **`_run_agent_thread` has `try/except/finally`** — captures exceptions in `result_holder[0]`, always calls `io.finish()` in finally so the forwarder can exit cleanly. The thread never silently disappears.
+1. **`_agent_thread_body` has `try/except/finally`** — captures exceptions in `result_holder[0]`, always calls `io.mark_agent_done()` in finally so the forwarder can exit cleanly. The thread never silently disappears.
 
-2. **The io is not closed on WS disconnect** — `_cleanup_session` only cancels the forward/ping tasks. The `WebSocketIO` instance, its three channels, and the agent thread all stay live under `ActiveSession`.
+2. **The io is not closed on WS disconnect** — `run_session`'s finally block only cancels the forward/ping tasks. The `WebSocketIO` instance, its three channels, and the agent thread all stay live under `ActiveSession`.
 
-3. **Single forward task per session** — the old forward_task is fully cancelled and awaited before a new one is created on reconnect (in `_resume_connection`). No competing loops on the same io.
+3. **Single forward task per session** — the old forward_task is fully cancelled and awaited before a new one is created on reconnect (in `resume_forwarding`). No competing loops on the same io.
 
 ## Key Files
 

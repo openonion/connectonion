@@ -535,7 +535,7 @@ The protocol handler runs CONNECT authentication, session merge, agent execution
 
 ### Transport-Agnostic Protocol
 
-The protocol logic in `ws_router.py` works with abstract `send_msg(dict)` / `recv_msg() -> dict | None` callables. Both ASGI and relay provide their own adapters:
+The message router in `ws_router/` works with abstract `send_msg(dict)` / `recv_msg() -> dict | None` callables. Both ASGI and relay provide their own adapters:
 
 - **ASGI**: Wraps ASGI `receive`/`send` primitives (JSON encode/decode, websocket.send/websocket.receive)
 - **Relay**: Wraps asyncio.Queue + relay WebSocket (session_id injection, idle timeout)

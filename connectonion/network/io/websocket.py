@@ -1,7 +1,7 @@
 """
 Purpose: WebSocket IO bridging async WebSocket transport to sync agent code via thread-safe message channels
 LLM-Note:
-  Dependencies: imports from [network/io/base.IO, asyncio, threading, time, uuid] | imported by [network/host/ws_router.py] | tested by [tests/unit/test_io.py, tests/unit/test_io_image_support.py]
+  Dependencies: imports from [network/io/base.IO, asyncio, threading, time, uuid] | imported by [network/host/ws_router/agent_io.py] | tested by [tests/unit/test_io.py, tests/unit/test_io_image_support.py]
   Data flow: agent calls io.send(event) → auto-stamps id (UUID) and ts if missing → enqueues for async forwarder | client message → enqueued for agent | read_msgs_from_agent() async-iterates outgoing for forwarding to client | send_to_agent() pushes incoming messages to agent
   State/Effects: maintains incoming + outgoing channels (async-safe) | finished flag prevents sends after close | unblocks agent's blocking receive on close
   Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, read_msgs_from_agent/send_to_agent for transport-side, finish() to terminate
@@ -85,7 +85,7 @@ class WebSocketIO(IO):
             self._msgs_from_client[:] = remaining
             return matched
 
-    def finish(self):
+    def mark_agent_done(self):
         """Signal that agent is done producing messages."""
         with self._agent_condition:
             self._finished = True

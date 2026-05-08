@@ -1,6 +1,6 @@
 # WebSocket Message Router
 
-> `connectonion/network/host/ws_router.py` — single message-routing implementation, used by both the direct ASGI WebSocket path and the relay-routed path.
+> `connectonion/network/host/ws_router/` — 4-file package, single message-routing implementation used by both the direct ASGI WebSocket path and the relay-routed path.
 
 ---
 
@@ -8,7 +8,7 @@
 
 Earlier the WebSocket message handling (CONNECT auth, INPUT → spawn agent, streaming back, onboard, admin, ...) lived inside the ASGI handler. The relay path opened a **loopback WebSocket** back to `ws://127.0.0.1:{port}/ws` to reuse it — extra hop, extra moving parts, double maintenance.
 
-Now the message-routing logic is extracted into `ws_router.py` with a transport-agnostic interface. Both paths call `run_session()` directly with their own adapters:
+Now the message-routing logic lives in the `ws_router/` package. Both paths call `run_session()` directly with their own send_msg/recv_msg adapters:
 
 ```
 Client → ASGI websocket.py → send_msg/recv_msg adapter ─┐
@@ -17,6 +17,28 @@ Client → Relay relay.py    → send_msg/recv_msg adapter ─┘
 ```
 
 No loopback. Same router. Two thin adapters.
+
+---
+
+## Package layout
+
+```
+network/host/ws_router/
+├── __init__.py    # exports run_session
+├── session.py     # run_session — main read loop + dispatch + cleanup
+├── connect.py     # handle_connect — CONNECT auth + session merge + reattach trigger
+├── agent_io.py    # start_agent / resume_forwarding / forward_agent_msgs_to_client / _agent_thread_body
+└── ping.py        # ping_loop — 30s WS keepalive
+```
+
+| File | Layer | What's in it |
+|---|---|---|
+| `session.py` | WS protocol orchestration | `run_session` is the only public API. Owns the read loop, dispatches by message type, handles small inline cases (PONG / SESSION_STATUS / runtime input detection), and runs cleanup |
+| `connect.py` | WS protocol | `handle_connect` — verifies auth, merges client/server session, decides new/connected/running, triggers reattach |
+| `agent_io.py` | Agent execution | Spawning agent threads, restarting forward tasks on reconnect, streaming agent output back to the client |
+| `ping.py` | WS keepalive | `ping_loop` coroutine that sends a PING frame every 30s |
+
+Dependencies: `session.py` imports from `connect.py`, `agent_io.py`, `ping.py`. `connect.py` imports `resume_forwarding` from `agent_io.py`. `agent_io.py` and `ping.py` are leaves.
 
 ---
 
@@ -39,38 +61,30 @@ async def run_session(
 
 `send_msg` and `recv_msg` are the only transport-specific pieces. Everything else is shared.
 
-Each call to `run_session` drives **one client session** from connect to disconnect:
+Each call to `run_session` drives **one client session** from connect to disconnect. The body is the read loop + per-type dispatch + cleanup, all in one function — no nested helpers for state init/teardown.
 
 ```python
-state = _init_session(send_msg, enable_ping)
-try:
-    while True:
-        data = await recv_msg()
-        if data is None:           # client closed
-            break
-        await route_message(data, state, ...)
-finally:
-    await _cleanup_session(state)
+async def run_session(send_msg, recv_msg, *, ...):
+    conn = {"authenticated": False, "identity": None, "session_id": None, "session": None}
+    active_io = None
+    forward_task = None
+    ping_task = asyncio.create_task(ping_loop(send_msg)) if enable_ping else None
+
+    try:
+        while True:
+            data = await recv_msg()
+            if data is None:
+                break
+            # ... dispatch by data["type"] ...
+    finally:
+        for task in (forward_task, ping_task):
+            if task and not task.done():
+                task.cancel()
+                try: await task
+                except asyncio.CancelledError: pass
 ```
 
----
-
-## Per-session state
-
-`_init_session` returns a mutable dict:
-
-```python
-{
-    "conn":         {"authenticated": False, "identity": None, "session_id": None, "session": None},
-    "active_io":    None,           # WebSocketIO once an agent is running
-    "forward_task": None,           # asyncio.Task forwarding agent → client
-    "ping_task":    asyncio.Task,   # 30s keepalive, None when enable_ping=False
-}
-```
-
-`route_message` mutates the dict in place — `conn` flips to authenticated on CONNECT; `active_io` and `forward_task` get assigned when an agent starts.
-
-`_cleanup_session` cancels `forward_task` and `ping_task` and awaits their CancelledError unwind. Standard asyncio cancel idiom.
+`conn` is the per-session auth/identity dict, mutated in place by `handle_connect` when CONNECT succeeds. `active_io` and `forward_task` get assigned when CONNECT-resume or INPUT-new spawns them.
 
 ---
 
@@ -97,7 +111,10 @@ async def send_msg(data):
     await relay_ws.send(json.dumps(data, default=pydantic_json_encoder))
 
 async def recv_msg():
-    msg = await asyncio.wait_for(q.get(), timeout=300)   # 5min idle timeout
+    try:
+        msg = await asyncio.wait_for(q.get(), timeout=300)   # 5min idle timeout
+    except asyncio.TimeoutError:
+        return None
     if msg is None or msg.get("type") == "close":
         return None
     return msg
@@ -107,28 +124,27 @@ Relay's `recv_msg` reads from a per-session `asyncio.Queue` populated by `serve_
 
 ---
 
-## Message dispatch (`route_message`)
+## Message dispatch (inlined inside `run_session`)
 
 ```python
-async def route_message(data, state, send_msg, route_handlers, storage, registry, trust, ...):
-    msg_type = data.get("type")
-    match msg_type:
-        "PONG"           → registry.update_ping(...)
-        "SESSION_STATUS" → _handle_session_status(...)
-        "ONBOARD_SUBMIT" → handle_onboard_submit(...)
-        "ADMIN_*"        → handle_admin_message(...)
-        "CONNECT"        → _handle_connect(...)        # auth + maybe reattach to running agent
-        "INPUT"          → _try_runtime_input(...) OR _start_agent(...)
-        else (with active_io) → active_io.send_to_agent(data)   # ASK_USER_RESPONSE, APPROVAL_RESPONSE, etc.
+match data["type"]:
+    "PONG"           → registry.update_ping(...)
+    "SESSION_STATUS" → reply with registry-side status (inline 4 lines)
+    "ONBOARD_SUBMIT" → handle_onboard_submit(...)
+    "ADMIN_*"        → handle_admin_message(...)
+    "CONNECT"        → handle_connect(...)        # in connect.py
+    "INPUT"          → if existing running agent: push runtime_input + ACK (inline)
+                       else: start_agent(...)     # in agent_io.py
+    else (with active_io) → active_io.send_to_agent(data)   # ASK_USER_RESPONSE, APPROVAL_RESPONSE, etc.
 ```
 
-`CONNECT` must come first — it authenticates and populates `state["conn"]`. `INPUT` and most others require `conn["authenticated"] == True`.
+`CONNECT` must come first — it authenticates and populates `conn`. `INPUT` and most others require `conn["authenticated"] == True`.
 
-`SESSION_STATUS`, `ONBOARD_SUBMIT`, and `ADMIN_*` carry their own auth and don't require prior CONNECT.
+`SESSION_STATUS`, `ONBOARD_SUBMIT`, `ADMIN_*` carry their own auth and don't require prior CONNECT.
 
 ---
 
-## CONNECT flow
+## CONNECT flow (`connect.py:handle_connect`)
 
 ```
 Client → CONNECT {from, signature, payload, session_id?, last_msg_id?, session?}
@@ -138,11 +154,11 @@ Client → CONNECT {from, signature, payload, session_id?, last_msg_id?, session
 2. **Forbidden + onboard** — if auth returns "forbidden" and trust config defines onboard methods (invite_code / payment), server sends `ONBOARD_REQUIRED` instead of ERROR.
 3. **Session merge** — if `session_id` provided, loads stored session and merges with client's via `merge_sessions` (whichever is newer wins).
 4. **Registry check** — looks up session in `ActiveSessionRegistry`:
-   - `running` → agent is mid-execution; client is reconnecting, reattach.
+   - `running` → agent is mid-execution; client is reconnecting, reattach via `resume_forwarding`.
    - `connected` → agent finished; session alive, ready for next INPUT.
    - not found → `new`.
-5. **Send CONNECTED** — `{session_id, status, server_newer?, session?, chat_items?}`. The optional fields appear only when the server has newer data than the client.
-6. **Reattach (running only)** — call `active.io.rewind_to(last_msg_id)` to reset the message cursor, then start a new forward task that replays everything after `last_msg_id`. See [session-reconnect.md](session-reconnect.md) for the cursor semantics.
+5. **Send CONNECTED** — `{session_id, status, server_newer?, session?, chat_items?}`.
+6. **Reattach (running only)** — call `active.io.rewind_to(last_msg_id)` to reset the message cursor, then call `resume_forwarding` (in `agent_io.py`) which spawns a new forward task that replays everything after `last_msg_id`.
 
 Server session statuses: only `'running'` and `'connected'`. WS disconnect doesn't change `session.status` — IO queues survive the WS, a reconnecting client just re-subscribes.
 
@@ -150,20 +166,17 @@ Server session statuses: only `'running'` and `'connected'`. WS disconnect doesn
 
 ## INPUT flow
 
-```
-Client → INPUT {prompt, images?, files?}
-```
-
 Two paths depending on whether an agent is already running:
 
-**Fresh agent (`_start_agent`)** when `registry.get(session_id)` is None or `connected`:
+**Fresh agent (`agent_io.py:start_agent`)** when `registry.get(session_id)` is None or `connected`:
 1. Validate (`conn["authenticated"]`, `prompt` non-empty).
-2. Create `WebSocketIO` (thread-safe queue pair: agent ↔ async transport).
-3. Register in `ActiveSessionRegistry` BEFORE `agent_thread.start()` — registering after creates a race where a fast-completing agent calls `mark_session_connected` on an absent entry.
-4. Spawn daemon thread running `route_handlers["ws_input"]` (which calls user's `create_agent` factory and runs `agent.input(prompt)`).
-5. Spawn `forward_task` to pipe `io.read_msgs_from_agent()` events out via `send_msg`. On agent completion, sends `OUTPUT`.
+2. Defense check: if status is unexpectedly `'running'`, refuse.
+3. Create `WebSocketIO` (thread-safe queue pair: agent ↔ async transport).
+4. Register in `ActiveSessionRegistry` BEFORE `agent_thread.start()` — registering after creates a race where a fast-completing agent calls `mark_session_connected` on an absent entry.
+5. Spawn daemon thread running `route_handlers["ws_input"]` (which calls user's `create_agent` factory and runs `agent.input(prompt)`).
+6. Spawn `forward_task = asyncio.create_task(forward_agent_msgs_to_client(...))` to pipe `io.read_msgs_from_agent()` events out via `send_msg`. On agent completion, sends `OUTPUT` (or `ERROR` on exception).
 
-**Runtime input (`_try_runtime_input`)** when `existing.status == 'running'`:
+**Runtime input (inline in `session.py`)** when `existing.status == 'running'`:
 1. Push `{type: RUNTIME_INPUT, id, prompt}` onto `existing.io._runtime_inputs` (separate queue from `receive()`'s mailbox to avoid being eaten by ask_user/approval pops).
 2. Reply `RUNTIME_INPUT_ACK`. No new agent thread, no new OUTPUT cycle.
 3. The agent's `apply_runtime_input` plugin (in `useful_plugins/runtime_input.py`) drains the queue at the next iteration boundary and appends each prompt to message history with an additive framing prefix.
@@ -185,11 +198,11 @@ Agent thread                          Async event loop                 Client
      │                                       │                            │
      │◄─ io.receive() ◄─ _msgs_from_client ◄─│◄─ active_io.send_to_agent  │
      │  (block until client sends, e.g.      │  (per-message dispatch     │
-     │   ASK_USER_RESPONSE)                  │   in route_message)        │
+     │   ASK_USER_RESPONSE)                  │   in run_session)          │
      │                                       │                            │
      │  io.pop_runtime_inputs() (separate    │   push_runtime_input from  │
-     │  queue, drained at iteration start    │   _try_runtime_input on    │
-     │  by apply_runtime_input plugin)       │   INPUT-during-running     │
+     │  queue, drained at iteration start    │   INPUT-during-running     │
+     │  by apply_runtime_input plugin)       │   inline branch            │
 ```
 
 Three independent channels on one `WebSocketIO`:
@@ -206,7 +219,7 @@ Three independent channels on one `WebSocketIO`:
 
 ### Agent thread crash → still surfaces
 
-`_run_agent_thread` wraps execution in `try/except Exception`, captures the exception in `result_holder[0]`, and always calls `io.finish()` in `finally`. The forwarder reads `result_holder` after `read_msgs_from_agent` returns and emits `{type: ERROR, message: <exception>}` to the client. Threads don't propagate exceptions on their own — this is the manual surfacing.
+`agent_io._agent_thread_body` wraps execution in `try/except Exception`, captures the exception in `result_holder[0]`, and always calls `io.mark_agent_done()` in `finally`. The forwarder reads `result_holder` after `read_msgs_from_agent` returns and emits `{type: ERROR, message: <exception>}` to the client. Threads don't propagate exceptions on their own — this is the manual surfacing.
 
 ### Relay session idle timeout (5 minutes)
 
@@ -261,10 +274,14 @@ Server → ADMIN_RESULT  {action: promote, success: true, level: contact}
 
 | File | Role |
 |---|---|
-| `network/host/ws_router.py` | Public `run_session` + `route_message` + helpers (this module) |
+| `network/host/ws_router/__init__.py` | Public re-export: `run_session` |
+| `network/host/ws_router/session.py` | Main loop, dispatch chain, inline helpers (PONG, SESSION_STATUS, runtime input) |
+| `network/host/ws_router/connect.py` | `handle_connect` — CONNECT auth, session merge, reattach trigger |
+| `network/host/ws_router/agent_io.py` | `start_agent`, `resume_forwarding`, `forward_agent_msgs_to_client`, `_agent_thread_body` |
+| `network/host/ws_router/ping.py` | `ping_loop` keepalive |
 | `network/asgi/websocket.py` | ASGI adapter — wraps ASGI WS into send_msg/recv_msg |
 | `network/relay.py` | Relay adapter — wraps relay WS + per-session queue into send_msg/recv_msg |
-| `network/io/websocket.py` | `WebSocketIO` — three channels, thread-safe |
+| `network/io/websocket.py` | `WebSocketIO` — three channels, thread-safe, cursor-indexed replay |
 | `network/host/session/active.py` | `ActiveSessionRegistry` — running/connected sessions |
 | `network/host/session/storage.py` | `SessionStorage` — JSONL persistence |
 | `network/host/session/ui.py` | `session_to_chat_items` — convert session → ChatItem[] for UI |
