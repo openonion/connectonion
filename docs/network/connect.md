@@ -86,15 +86,20 @@ The client:
 ### 3. Agent Processes
 
 ```
-Relay → INPUT → Agent
-        │
-        ├─ agent.input(prompt)
-        │
-        ├─ Streaming events (direct /ws only):
-        │  ← tool_call, tool_result, thinking, assistant, ask_user
-        │
-        └─ OUTPUT → Relay → Client
+Relay → tagged messages → Agent serve_loop
+                            │
+                            └─ routes by session_id → run_ws_session()
+                               (same protocol handler as direct connections)
+                               │
+                               ├─ agent.input(prompt)
+                               │
+                               ├─ Streaming events:
+                               │  ← tool_call, tool_result, thinking, ask_user
+                               │
+                               └─ OUTPUT → relay WS → Relay → Client
 ```
+
+The agent calls `run_ws_session()` directly with relay transport adapters — no loopback WebSocket. Relay connections get the same features as direct connections (streaming, tool calls, ask_user, session recovery) because both paths use the same protocol handler.
 
 ### 4. Client Receives Response
 

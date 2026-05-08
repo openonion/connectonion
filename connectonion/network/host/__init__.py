@@ -1,7 +1,7 @@
 """
 Purpose: Host module re-exporting session, auth, routes, and server components for agent hosting
 LLM-Note:
-  Dependencies: imports from [session.py, auth.py, routes.py, server.py] | imported by [network/__init__.py, user code] | tested via integration tests
+  Dependencies: imports from [session/, auth.py, http_router.py, server.py, ws_router/] | imported by [network/__init__.py, user code] | tested via integration tests
   Data flow: pure re-export module aggregating host functionality
   State/Effects: no state
   Integration: exposes host(agent, port, trust) main entry point, Session/SessionStorage for persistence, auth utilities (verify_signature, extract_and_authenticate, get_agent_address, is_custom_trust), route handlers (input_handler, session_handler, health_handler, info_handler, admin_*), create_app() ASGI factory, get_default_trust() helper
@@ -26,7 +26,7 @@ from .auth import (
     is_custom_trust,
     SIGNATURE_EXPIRY_SECONDS,
 )
-from .routes import (
+from .http_router import (
     input_handler,
     session_handler,
     sessions_handler,

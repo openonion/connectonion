@@ -518,13 +518,13 @@ class TestActiveSessionRegistry:
         mock_io = object()
         mock_thread = threading.Thread(target=lambda: None)
 
-        registry.register('sess-1', mock_io, mock_thread, threading.Event())
+        registry.register('sess-1', mock_io, mock_thread)
         session = registry.get('sess-1')
 
         assert session is not None
         assert session.session_id == 'sess-1'
         assert session.io == mock_io
-        assert session.status == 'executing'
+        assert session.status == 'running'
 
     def test_get_returns_none_for_missing(self):
         """get() returns None for non-existent session."""
@@ -536,7 +536,7 @@ class TestActiveSessionRegistry:
         """update_ping() updates last_ping timestamp."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
-        registry.register('sess-1', object(), mock_thread, threading.Event())
+        registry.register('sess-1', object(), mock_thread)
 
         old_ping = registry.get('sess-1').last_ping
         time.sleep(0.01)
@@ -545,42 +545,29 @@ class TestActiveSessionRegistry:
 
         assert new_ping > old_ping
 
-    def test_mark_suspended(self):
-        """mark_suspended() changes status to suspended."""
+    def test_mark_session_connected(self):
+        """mark_session_connected() changes status to connected."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
-        registry.register('sess-1', object(), mock_thread, threading.Event())
+        registry.register('sess-1', object(), mock_thread)
 
-        registry.mark_suspended('sess-1')
-
-        assert registry.get('sess-1').status == 'suspended'
-
-    def test_mark_connected(self):
-        """mark_connected() changes status to connected."""
-        registry = ActiveSessionRegistry()
-        mock_thread = threading.Thread(target=lambda: None)
-        registry.register('sess-1', object(), mock_thread, threading.Event())
-
-        registry.mark_connected('sess-1')
+        registry.mark_session_connected('sess-1')
 
         assert registry.get('sess-1').status == 'connected'
 
     def test_list_active(self):
-        """list_active() returns running and suspended sessions."""
+        """list_active() returns only running sessions."""
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
 
-        registry.register('executing-1', object(), mock_thread, threading.Event())
-        registry.register('suspended-1', object(), mock_thread, threading.Event())
-        registry.register('connected-1', object(), mock_thread, threading.Event())
+        registry.register('running-1', object(), mock_thread)
+        registry.register('connected-1', object(), mock_thread)
 
-        registry.mark_suspended('suspended-1')
-        registry.mark_connected('connected-1')
+        registry.mark_session_connected('connected-1')
 
         active = registry.list_active()
 
-        assert 'executing-1' in active
-        assert 'suspended-1' in active
+        assert 'running-1' in active
         assert 'connected-1' not in active
 
     def test_count(self):
@@ -590,8 +577,8 @@ class TestActiveSessionRegistry:
 
         assert registry.count() == 0
 
-        registry.register('sess-1', object(), mock_thread, threading.Event())
-        registry.register('sess-2', object(), mock_thread, threading.Event())
+        registry.register('sess-1', object(), mock_thread)
+        registry.register('sess-2', object(), mock_thread)
 
         assert registry.count() == 2
 
@@ -630,11 +617,13 @@ class TestSessionToChatItems:
         assert items[0]['content'] == 'Hi there'
 
     def test_converts_trace_to_tool_calls(self):
-        """Converts trace entries to tool_call ChatItems."""
+        """Converts trace entries to tool_call ChatItems (matches tool_executor shape)."""
         session = {
             'messages': [],
             'trace': [
-                {'tool_name': 'bash', 'args': {'command': 'ls'}, 'result': 'file.txt', 'timing_ms': 50},
+                {'type': 'tool_result', 'tool_id': 't1', 'name': 'bash',
+                 'args': {'command': 'ls'}, 'result': 'file.txt',
+                 'status': 'success', 'timing_ms': 50},
             ],
         }
 
@@ -644,15 +633,17 @@ class TestSessionToChatItems:
         assert items[0]['type'] == 'tool_call'
         assert items[0]['name'] == 'bash'
         assert items[0]['result'] == 'file.txt'
+        assert items[0]['id'] == 't1'
 
     def test_tool_call_status_mapping(self):
-        """Maps trace status to tool_call status correctly."""
+        """Maps tool_executor status to UI status correctly."""
         session = {
             'messages': [],
             'trace': [
-                {'tool_name': 'read', 'status': 'error'},
-                {'tool_name': 'write', 'status': 'running'},
-                {'tool_name': 'edit', 'status': 'done'},
+                {'type': 'tool_result', 'tool_id': 'a', 'name': 'read', 'status': 'error'},
+                {'type': 'tool_result', 'tool_id': 'b', 'name': 'write', 'status': 'running'},
+                {'type': 'tool_result', 'tool_id': 'c', 'name': 'edit', 'status': 'success'},
+                {'type': 'tool_result', 'tool_id': 'd', 'name': 'cmd', 'status': 'not_found'},
             ],
         }
 
@@ -661,6 +652,62 @@ class TestSessionToChatItems:
         assert items[0]['status'] == 'error'
         assert items[1]['status'] == 'running'
         assert items[2]['status'] == 'done'
+        assert items[3]['status'] == 'error'
+
+    def test_skips_tool_call_placeholders(self):
+        """Initial 'tool_call' trace entries (no result yet) are skipped — only 'tool_result' renders."""
+        session = {
+            'messages': [],
+            'trace': [
+                {'type': 'tool_call', 'tool_id': 't1', 'name': 'bash', 'args': {}},
+                {'type': 'tool_result', 'tool_id': 't1', 'name': 'bash',
+                 'args': {}, 'result': 'ok', 'status': 'success', 'timing_ms': 10},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert len(items) == 1
+        assert items[0]['id'] == 't1'
+
+    def test_converts_intent_eval_thinking(self):
+        """Reconstructs intent/eval/thinking trace entries to ChatItems."""
+        session = {
+            'messages': [{'role': 'user', 'content': 'q'}, {'role': 'assistant', 'content': 'a'}],
+            'trace': [
+                {'type': 'user_input', 'content': 'q', 'turn': 1},
+                {'type': 'intent', 'id': 'i1', 'ack': 'Got it', 'is_build': False},
+                {'type': 'eval', 'id': 'e1', 'passed': True, 'summary': 'ok',
+                 'expected': 'q', 'eval_path': '/tmp/x.yaml'},
+                {'type': 'thinking', 'kind': 'reflect', 'content': 'reflecting'},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+        types = [i['type'] for i in items]
+        assert types == ['user', 'intent', 'eval', 'thinking', 'agent']
+        assert items[1]['ack'] == 'Got it'
+        assert items[2]['summary'] == 'ok'
+        assert items[3]['kind'] == 'reflect'
+
+    def test_interleaves_multi_turn_by_user_input(self):
+        """Multi-turn: each user_input marker bounds a turn; trace items emit in their turn."""
+        session = {
+            'messages': [
+                {'role': 'user', 'content': 'q1'}, {'role': 'assistant', 'content': 'a1'},
+                {'role': 'user', 'content': 'q2'}, {'role': 'assistant', 'content': 'a2'},
+            ],
+            'trace': [
+                {'type': 'user_input', 'turn': 1},
+                {'type': 'intent', 'id': 'i1', 'ack': 'first'},
+                {'type': 'user_input', 'turn': 2},
+                {'type': 'intent', 'id': 'i2', 'ack': 'second'},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+        contents = [i.get('content') or i.get('ack') for i in items]
+        assert contents == ['q1', 'first', 'a1', 'q2', 'second', 'a2']
 
     def test_handles_empty_session(self):
         """Handles empty session gracefully."""
@@ -678,7 +725,8 @@ class TestSessionToChatItems:
                 {'role': 'assistant', 'content': 'B'},
             ],
             'trace': [
-                {'tool_name': 'bash'},
+                {'type': 'user_input', 'turn': 1},
+                {'type': 'tool_result', 'tool_id': 't1', 'name': 'bash', 'status': 'success'},
             ],
         }
 
@@ -793,22 +841,18 @@ class TestReconnectionScenarios:
         """Test reconnection via ActiveSessionRegistry for running agents."""
         registry = ActiveSessionRegistry()
         mock_io = Mock()
-        mock_io._outgoing = Mock()
         mock_thread = threading.Thread(target=lambda: None)
 
         # 1. New session starts
-        registry.register('active-sess', mock_io, mock_thread, threading.Event())
-        assert registry.get('active-sess').status == 'executing'
+        registry.register('active-sess', mock_io, mock_thread)
+        assert registry.get('active-sess').status == 'running'
 
-        # 2. Client disconnects
-        registry.mark_suspended('active-sess')
-        assert registry.get('active-sess').status == 'suspended'
-
-        # 3. Client reconnects - same IO queue
+        # 2. Client reconnects — same IO queue, agent stays 'running'
         session = registry.get('active-sess')
-        assert session.io == mock_io  # Same queue, agent can continue
+        assert session.io == mock_io
+        assert session.status == 'running'
 
-        # 4. Update ping on reconnect
+        # 3. Update ping on reconnect
         old_ping = session.last_ping
         time.sleep(0.01)
         registry.update_ping('active-sess')
@@ -871,8 +915,8 @@ class TestReconnectionScenarios:
         mock_thread = threading.Thread(target=lambda: None)
 
         # Register and mark connected (agent finished)
-        registry.register('to-cleanup', object(), mock_thread, threading.Event())
-        registry.mark_connected('to-cleanup')
+        registry.register('to-cleanup', object(), mock_thread)
+        registry.mark_session_connected('to-cleanup')
 
         # Manually set last_ping to past (idle >10min)
         with registry._lock:
@@ -888,7 +932,7 @@ class TestReconnectionScenarios:
         registry = ActiveSessionRegistry()
         mock_thread = threading.Thread(target=lambda: None)
 
-        registry.register('still-running', object(), mock_thread, threading.Event())
+        registry.register('still-running', object(), mock_thread)
 
         # Manually set old timestamps
         with registry._lock:
@@ -899,6 +943,21 @@ class TestReconnectionScenarios:
         removed = registry.cleanup_expired()
         assert removed == 0
         assert registry.get('still-running') is not None
+
+    def test_stuck_executing_session_cleaned_up_after_1_hour(self):
+        """Executing sessions idle over 1 hour are cleaned up (stuck agent)."""
+        registry = ActiveSessionRegistry()
+        mock_thread = threading.Thread(target=lambda: None)
+
+        registry.register('stuck-agent', object(), mock_thread)
+
+        # Manually set last_ping to >1 hour ago
+        with registry._lock:
+            registry._sessions['stuck-agent'].last_ping = time.time() - 3700
+
+        removed = registry.cleanup_expired()
+        assert removed == 1
+        assert registry.get('stuck-agent') is None
 
 
 class TestCheckpointApprovalFlow:

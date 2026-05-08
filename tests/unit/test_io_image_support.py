@@ -21,8 +21,9 @@ def test_send_image_helper():
     image_data = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
     io.send_image(image_data)
 
-    # Verify event was queued
-    event = io._outgoing.get_nowait()
+    # Verify event was appended
+    assert len(io._msgs_from_agent) == 1
+    event = io._msgs_from_agent[0]
     assert event["type"] == "agent_image"
     assert event["image"] == image_data
     assert "id" in event  # Auto-generated ID
@@ -40,12 +41,9 @@ def test_send_image_multiple():
     io.send_image(image1)
     io.send_image(image2)
 
-    # Verify both events were queued
-    event1 = io._outgoing.get_nowait()
-    event2 = io._outgoing.get_nowait()
-
-    assert event1["type"] == "agent_image"
-    assert event1["image"] == image1
-
-    assert event2["type"] == "agent_image"
-    assert event2["image"] == image2
+    # Verify both events were appended
+    assert len(io._msgs_from_agent) == 2
+    assert io._msgs_from_agent[0]["type"] == "agent_image"
+    assert io._msgs_from_agent[0]["image"] == image1
+    assert io._msgs_from_agent[1]["type"] == "agent_image"
+    assert io._msgs_from_agent[1]["image"] == image2

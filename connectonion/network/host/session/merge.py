@@ -1,10 +1,10 @@
 """
 Purpose: Session merge logic for resolving client/server state conflicts on reconnection
 LLM-Note:
-  Dependencies: imports from [] | imported by [routes.py, websocket.py, __init__.py] | tested by [tests/network/test_session_merge.py]
+  Dependencies: imports from [] | imported by [host/http_router.py, host/ws_router/connect.py, host/session/__init__.py] | tested by [tests/network/test_session_merge.py]
   Data flow: client_session dict + server_session dict → compare iteration counts → return (winner, server_won: bool)
   State/Effects: pure function, no side effects
-  Integration: exposes merge_sessions(client, server) → (merged, server_won) | used by routes.py input_handler, websocket.py reconnection
+  Integration: exposes merge_sessions(client, server) → (merged, server_won) | used by http_router.input_handler and ws_router.connect.handle_connect on reconnection
   Performance: O(1) dict access
   Errors: none, handles missing keys with defaults
 

@@ -348,12 +348,12 @@ This solves the critical timing issue where connection drops during `ask_user` o
 
 ---
 
-## Related: Reconnection Bug
+## Related: Reconnection
 
-Even when the client successfully reconnects via CONNECT, there are server-side bugs that prevent the reattach from working correctly:
+Reconnect-during-execution works through three mechanisms now (all in [protocol.md](protocol.md)):
 
-1. **`run_agent()` lacks error handling** — if agent crashes on `io_closed` sentinel, `agent_finished` never fires
-2. **Reattach uses closed IO** — `io._closed = True` causes `io.send()` to drop events silently
-3. **Competing `_pipe_ws_io` loops** — old and new loops race on the same `agent_finished` event
+1. **IO survives the WS** — `WebSocketIO` lives in `ActiveSessionRegistry`, not on the WS connection.
+2. **Cursor rewind** — `ws_router.connect:handle_connect` calls `io.rewind_to(last_msg_id)` so the new forward task replays missed events.
+3. **No `_closed` toggling needed** — the io stays usable across reconnects; only the forward task is restarted.
 
-See [session-reconnect.md](session-reconnect.md#known-issue-reconnect-during-approval-blocks) for the full bug analysis and fix plan.
+See [session-reconnect.md](session-reconnect.md) for the complete flow.

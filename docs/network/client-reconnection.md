@@ -88,7 +88,7 @@ reconnect(sessionId?)
   4. On open: send CONNECT { session_id, session }
   5. Wait for CONNECTED (60s timeout)
   │
-  ├─ status = 'executing' → wait for streaming events + OUTPUT
+  ├─ status = 'running'   → wait for streaming events + OUTPUT
   ├─ status = 'connected' → resolve immediately (session alive, idle)
   └─ status = 'new'       → resolve immediately (session expired)
 ```
@@ -156,7 +156,7 @@ checkSessionStatus(sessionId)
   ├─ _ws exists + authenticated:
   │    Send SESSION_STATUS over existing WS
   │    Wait for response (10s timeout)
-  │    Return: 'executing' | 'suspended' | 'connected' | 'not_found'
+  │    Return: 'running' | 'connected' | 'not_found'
   │
   └─ no active WS:
        Open temporary WS just for status check
@@ -415,14 +415,13 @@ send(message) {
 
 In approval/ask_user components, check `connectionState !== 'connected'` and disable buttons. Show "Reconnecting..." state.
 
-### Server-side issues (separate)
+### Server-side reconnect (current behavior)
 
-Even after client reconnects, server has its own bugs:
-1. `run_agent()` no try/finally → `agent_finished` never fires
-2. Reattach uses closed IO → `io.send()` drops events
-3. Two `_pipe_ws_io` loops compete
+Server-side reconnection works through three pieces (see [session-reconnect.md](session-reconnect.md) for details):
 
-See [session-reconnect.md](session-reconnect.md#known-issue-reconnect-during-approval-blocks) for server-side details.
+1. **`_agent_thread_body` has try/except/finally** — captures exceptions, always calls `io.mark_agent_done()` so the forwarder unwinds cleanly.
+2. **IO survives the WS** — `WebSocketIO` lives in `ActiveSessionRegistry`, not on the WS; `run_ws_session`'s finally block only cancels forward/ping tasks.
+3. **Single forward task per session** — old task is fully cancelled and awaited before `resume_forwarding` spawns a new one on the same io. `io.rewind_to(last_msg_id)` resets the cursor so missed events replay.
 
 ---
 
@@ -439,34 +438,32 @@ T+0    input("do something")
                                           agent starts...
 
 T+5    ◄── approval_needed ──────────── io.send(approval_needed)
-       chatItems += approval card         io.receive() BLOCKS
-       status = 'waiting'                 agent waiting...
+       chatItems += approval card         io.receive() BLOCKS on
+       status = 'waiting'                 _msgs_from_client mailbox
        Zustand → localStorage
 
 T+10   ✕ PAGE REFRESH
        _handleConnectionLoss()
-       _ws = null                         _pipe_ws_io detects disconnect
-       _inputReject(error)                io.close() → sentinel
-                                          agent gets io_closed
+       _ws = null                         run_ws_session finally →
+       _inputReject(error)                  run_ws_session finally block:
+                                              forward_task.cancel + await
+                                              ping_task.cancel + await
+                                          IO + agent thread STAY alive
+                                          (status remains 'running')
 
 T+15   Zustand hydrates
        UI renders cached approval card
-       _ws still null
-       NO auto-reconnect
+       Auto-reconnect kicks in:
+       reconnect(sessionId, last_msg_id)
+       CONNECT { session_id, last_msg_id } ──► registry.get() → 'running'
+       ◄────────────────────────────── CONNECTED { status: "running" }
+                                          io.rewind_to(last_msg_id)
+                                          new forward_task started
+       ◄── replayed buffered events ──── (everything since last_msg_id)
 
 T+16   User clicks "Approve"
        respondToApproval(true)
-       agent.send() → _ws === null
-       ✕ throw 'No active connection'
-
-       ─── What SHOULD happen: ───
-
-T+15   Auto-detect pending approval
-       reconnect(sessionId)
-       CONNECT { session_id } ──────────► registry.get() → reattach
-       ◄──────────────────────────────── CONNECTED { status: "executing" }
-       ◄── buffered events ─────────────
-       APPROVAL_RESPONSE ──────────────► io._incoming.put()
+       agent.send(APPROVAL_RESPONSE) ──► send_to_agent → _msgs_from_client
                                           io.receive() unblocks
                                           agent continues...
 ```

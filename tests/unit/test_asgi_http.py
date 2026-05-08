@@ -30,9 +30,9 @@ from connectonion.network.asgi.http import (
     send_json,
     send_html,
     send_text,
-    handle_http,
     CORS_HEADERS,
 )
+from connectonion.network.host.http_router import handle_http
 
 
 @pytest.mark.asyncio

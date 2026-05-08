@@ -11,7 +11,9 @@ Two client message types, two intents:
 | Message | Intent | When |
 |---------|--------|------|
 | `CONNECT` | "Authenticate me, restore my session" | First message on every WebSocket |
-| `INPUT` | "Run this prompt" | After CONNECT |
+| `INPUT` | "Run this prompt" or runtime input mid-execution | After CONNECT |
+
+If `INPUT` arrives while the session's agent is already running, the server treats it as **runtime input** (mid-execution user input) instead of starting a second agent. The new prompt is appended to the agent's message history at the next iteration, and the server replies with `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -22,7 +24,7 @@ Two client message types, two intents:
 │   CONNECT carries:   auth + session (conversation history)     │
 │   INPUT carries:     just the prompt (session already set)     │
 │                                                                │
-│   Server decides:    new / connected / executing               │
+│   Server decides:    new / connected / running                 │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -42,32 +44,27 @@ Two client message types, two intents:
     ╰────┬─────╯
          │ CONNECT
          ↓
-    ╭──────────╮
-    │connected │◄──── agent done (OUTPUT) ◄──── user reconnects
-    ╰────┬─────╯                                (within 10min)
-         │ INPUT
-         ↓
-    ╭──────────╮
-    │executing │──── agent working (LLM → tools → LLM)
-    ╰────┬─────╯
-         │
-    ┌────┴────────────────────┐
-    │                         │
-    ↓ agent done              ↓ WS disconnects
-    ╭──────────╮         ╭───────────╮
-    │connected │         │ suspended │
-    │ (idle)   │         │ (grace)   │
-    ╰──────────╯         ╰─────┬─────╯
-         │                     │
-         │ next INPUT          ├── reconnect within 10min → connected
-         ↓                     │
-    ╭──────────╮               └── 10min idle → removed
-    │executing │
-    ╰──────────╯
+    ╭──────────────╮
+    │  connected   │◄── agent done (OUTPUT)
+    ╰──────┬───────╯
+           │ INPUT
+           ↓
+    ╭──────────────╮
+    │   running    │── agent working (LLM → tools → LLM)
+    ╰──────┬───────╯
+           │ agent done
+           ↓
+    ╭──────────────╮
+    │  connected   │── 10min idle → removed
+    │   (idle)     │
+    ╰──────────────╯
 
 
-    Key insight: "completed" is NOT a session state.
-    It's an execution state. The session stays alive.
+    Two states only: 'running' (agent working) and 'connected' (idle, alive).
+    WS disconnect does NOT change session.status — IO queues survive the WS,
+    a reconnecting client just re-subscribes via CONNECT { last_msg_id }.
+
+    Cleanup: 'connected' after 10min idle, 'running' after 1h (stuck-agent cap).
 ```
 
 ---
@@ -109,15 +106,15 @@ Client                                    Server
 ```
 Client                                    Server
   │                                         │
-  │    (agent still executing on server)    │
+  │    (agent still running on server)      │
   │                                         │
   │── WS open ────────────────────────────►│
   │                                         │
   │── CONNECT ─────────────────────────────►│  verify signature
-  │   { session_id: "abc", session: {...} } │  registry.get("abc") → executing
+  │   { session_id: "abc", session: {...} } │  registry.get("abc") → running
   │                                         │  merge sessions if server newer
   │                                         │
-  │◄── CONNECTED ──────────────────────────│  { session_id: "abc", status: "executing" }
+  │◄── CONNECTED ──────────────────────────│  { session_id: "abc", status: "running" }
   │◄── buffered events ───────────────────│  drain queued events
   │◄── PING ───────────────────────────────│  keep-alive resumes
   │                                         │
@@ -179,6 +176,7 @@ Authenticate, restore session, and sync conversation. **Always the first message
   "type": "CONNECT",
   "session_id": "550e8400-...",
   "session": { "messages": [...], "mode": "safe" },
+  "last_msg_id": "ev-9f12...",
   "payload": { "to": "0x3d4017c3e843...", "timestamp": 1702234567 },
   "from": "0xClientPublicKey",
   "signature": "0x..."
@@ -189,6 +187,7 @@ Authenticate, restore session, and sync conversation. **Always the first message
 |-------|----------|-------------|
 | `session_id` | No | Session to resume. Omit for new session. |
 | `session` | No | Conversation history (messages, mode, etc.) |
+| `last_msg_id` | No | ID of the last agent event the client fully rendered. On resume of a `running` session, server rewinds its event cursor to right after this id and replays anything the client missed. Omit (or pass `null`) to replay all in-flight events of the current execution. |
 | `payload` | Yes | Signed payload for authentication |
 | `from` | Yes | Client's public address |
 | `signature` | Yes | Ed25519 signature of payload |
@@ -198,8 +197,8 @@ Server response based on state:
 | session_id | Server state | Response status | Server action |
 |------------|-------------|-----------------|---------------|
 | Not provided | — | `"new"` | Allocate new session |
-| Provided | In registry, executing | `"executing"` | Reattach IO, pipe buffered events |
-| Provided | In registry, connected/suspended | `"connected"` | Merge sessions, reset idle timer |
+| Provided | In registry, running | `"running"` | Reattach IO, pipe buffered events |
+| Provided | In registry, connected | `"connected"` | Merge sessions, reset idle timer |
 | Provided | Not found | `"new"` | Allocate new session (same id) |
 
 #### INPUT
@@ -214,6 +213,8 @@ Send a prompt. Only valid after CONNECTED. **No session data — just the prompt
   "files": [{ "name": "doc.pdf", "data": "data:application/pdf;base64,..." }]
 }
 ```
+
+If sent while the session's agent is already running, this message is routed as runtime input: the prompt is appended to the running agent's message history (with framing telling the LLM to treat it as additional context, not a replacement) and the server replies `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle. No new `thinking` chat item is created — the existing one keeps streaming.
 
 #### PONG
 
@@ -254,7 +255,7 @@ Response to CONNECT.
 |----------|---------|---------------|
 | `"new"` | Fresh session | Send INPUT when ready |
 | `"connected"` | Session alive, idle | Send INPUT when ready |
-| `"executing"` | Agent still running | Wait for events/OUTPUT |
+| `"running"` | Agent still running | Wait for events/OUTPUT |
 
 `server_newer`, `session`, and `chat_items` are only included when the server's session data is newer than the client's (e.g., agent completed while client was away).
 
@@ -291,6 +292,18 @@ Keep-alive. Sent every 30 seconds.
 | `approval_needed` | Tool requires approval |
 | `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
+
+#### RUNTIME_INPUT_ACK
+
+Acknowledges an INPUT that arrived while the agent was running. The prompt has been queued and will be picked up at the agent's next iteration.
+
+```json
+{
+  "type": "RUNTIME_INPUT_ACK",
+  "session_id": "550e8400-...",
+  "id": "runtime-input-7c2a..."
+}
+```
 
 #### ERROR
 
@@ -388,7 +401,7 @@ Page loads → Zustand hydrates → session_id exists?
   │           │
   │           ├── "new"       → session expired, start fresh (client has history)
   │           ├── "connected" → session alive, ready for INPUT
-  │           └── "executing" → agent running, events will stream
+  │           └── "running"   → agent running, events will stream
   │
   └── No  → show empty state, wait for user input
               → CONNECT (no session_id) on first message
@@ -416,7 +429,7 @@ WS open → CONNECT { auth, session_id? } → CONNECTED { status }
 
 ```
 WS open → CONNECT { auth, session_id?, session }
-           → CONNECTED { status: new/connected/executing }
+           → CONNECTED { status: new/connected/running }
 
            INPUT { prompt }   → events → OUTPUT  (session stays alive)
            INPUT { prompt }   → events → OUTPUT  (again, same session)
@@ -451,7 +464,7 @@ When client data is accepted, merged, or reattached, indented sub-lines show wha
 ```
 
 ```
-✓ CONNECT identity=0x2f3d... session=aad5... status=executing
+✓ CONNECT identity=0x2f3d... session=aad5... status=running
   ↻ reattaching to running agent     # reconnecting to in-progress execution
 ```
 
@@ -485,7 +498,9 @@ Non-routine types still print:
 
 | File | Role |
 |------|------|
-| `network/asgi/websocket.py` | WebSocket handler — CONNECT/INPUT routing |
+| `network/host/ws_router/` | 4-file message router package — `session.py` (run_ws_session main loop), `connect.py` (handle_connect), `agent_io.py` (start_agent / resume_forwarding / forwarding), `ping.py` (keepalive) |
+| `network/asgi/websocket.py` | ASGI adapter — wraps ASGI primitives into send_msg/recv_msg for ws_router |
+| `network/relay.py` | Relay adapter — wraps asyncio.Queue/relay WS into send_msg/recv_msg for ws_router |
 | `network/host/session/active.py` | ActiveSessionRegistry — in-memory session tracking |
 | `network/io/websocket.py` | WebSocketIO — queue bridge between async/sync |
 | `network/host/session/storage.py` | SessionStorage — JSONL persistence |

@@ -66,15 +66,13 @@ Agents connect to the announce endpoint and stay connected:
 
 ### 3. Heartbeat & Keep-Alive
 
-**WebSocket PING/PONG:**
-- Server sends PING every 30 seconds
-- Agent must respond with PONG
-- Missing 2 PONGs = connection assumed dead
-
-**ANNOUNCE Refresh:**
-- Agent sends ANNOUNCE every 60 seconds
+**Application-level heartbeat (ANNOUNCE):**
+- Agent re-sends ANNOUNCE every 60 seconds
 - Updates capability/endpoint information
 - Confirms agent is still active
+- Agents not announcing for 120s are removed from registry
+
+**Note:** WebSocket protocol-level PING/PONG frames are **disabled** (`ping_interval=None`) because Cloudflare terminates the WebSocket connection at the edge and opens a new one to the origin. Protocol-level PING frames sent by the agent reach Cloudflare but are not forwarded to the relay origin, causing the library to falsely detect the connection as dead after ~40s. The ANNOUNCE heartbeat serves the same keep-alive purpose at the application layer.
 
 ### 4. Disconnection
 
@@ -366,8 +364,7 @@ agents = {
 
 Agents are removed when:
 1. WebSocket disconnects
-2. No PONG received for 60 seconds
-3. No ANNOUNCE received for 120 seconds
+2. No ANNOUNCE received for 120 seconds
 
 ### Discovery Matching
 
@@ -401,19 +398,19 @@ All ANNOUNCE messages must be signed:
 
 ### WebSocket Configuration
 
-- Heartbeat interval: 30 seconds
+- ANNOUNCE heartbeat: 60 seconds
+- Protocol-level PING: disabled (Cloudflare incompatible)
 - Message size limit: 64KB
-- Connection timeout: 120 seconds
-- Automatic reconnection with exponential backoff
+- Stale agent cleanup: 120 seconds without ANNOUNCE
+- Automatic reconnection: when the relay WS closes cleanly, the agent reconnects with a 1s linear backoff and re-sends ANNOUNCE with a fresh timestamp. Connection-establishment errors (DNS, TLS, OSError) are not caught — they crash the host process so a supervisor can restart it.
 
 ### Recommended Client Behavior
 
 1. Connect to relay on startup
 2. Send ANNOUNCE immediately
-3. Send ANNOUNCE every 60 seconds
-4. Respond to PINGs promptly
-5. Implement reconnection logic
-6. Cache discovered agents locally
+3. Send ANNOUNCE every 60 seconds (application-level heartbeat)
+4. Implement reconnection logic
+5. Cache discovered agents locally
 
 ### Direct Connection Strategy
 
@@ -483,13 +480,75 @@ async def find_agent(capability):
     return response["agents"]
 ```
 
+## Session Proxy Forwarding
+
+When a client cannot connect directly to an agent, the relay acts as a **transparent message proxy**. The relay forwards messages as-is — it does not parse, modify, or strip any fields.
+
+### How It Works
+
+The relay provides two client-facing WebSocket endpoints:
+
+- **`/ws/announce`** — Agents register here (long-lived connection)
+- **`/ws/input`** — Clients connect here to reach agents
+
+```
+Client                        Relay                         Agent
+  |                             |                              |
+  |-- WS connect /ws/input ---->|                              |
+  |-- CONNECT {session_id} ---->|                              |
+  |                             |-- forward via /ws/announce ->|
+  |                             |                              |-- run_ws_session()
+  |                             |<-- CONNECTED {session_id} ---|
+  |<-- CONNECTED ---------------|                              |
+  |                             |                              |
+  |-- INPUT {session_id} ------>|                              |
+  |                             |-- forward ------------------>|
+  |                             |<-- STREAM_DELTA {session_id}-|
+  |<-- STREAM_DELTA ------------|                              |
+  |                             |<-- OUTPUT {session_id} ------|
+  |<-- OUTPUT ------------------|                              |
+```
+
+### session_id Routing
+
+Every message carries a `session_id` field. This is the sole routing key:
+
+- **Relay (`/ws/input`)**: Maps `session_id → client WebSocket`. Forwards agent responses to the correct client.
+- **Relay (`/ws/announce`)**: Maps `session_id → agent WebSocket`. Forwards client messages to the correct agent.
+- **Agent (`serve_loop`)**: Maps `session_id → asyncio.Queue`. Dispatches to per-session `_run_session` coroutines.
+
+Messages without `session_id` (except ERROR type) are considered protocol violations and will crash the handler.
+
+### Agent-Side: Direct Protocol Handler
+
+When the agent receives a message via the relay's announce WebSocket, `serve_loop` routes it by `session_id`:
+
+1. **New session**: Creates an `asyncio.Queue` and spawns `_run_session` as a background task.
+2. **Existing session**: Puts the message into the session's queue.
+
+`_run_session` creates two transport adapters (`send_msg` / `recv_msg`) and calls the shared protocol handler (`run_ws_session()`) directly. No loopback WebSocket — the relay path uses the same protocol logic as the ASGI path.
+
+- **`send_msg`**: Injects `session_id` into the outgoing dict and sends via the relay announce WebSocket.
+- **`recv_msg`**: Reads from the session's `asyncio.Queue` (with a 5-minute idle timeout to prevent zombie sessions).
+
+The protocol handler runs CONNECT authentication, session merge, agent execution, streaming events, and all other protocol logic — identical to the direct ASGI WebSocket path.
+
+### Transport-Agnostic Protocol
+
+The message router in `ws_router/` works with abstract `send_msg(dict)` / `recv_msg() -> dict | None` callables. Both ASGI and relay provide their own adapters:
+
+- **ASGI**: Wraps ASGI `receive`/`send` primitives (JSON encode/decode, websocket.send/websocket.receive)
+- **Relay**: Wraps asyncio.Queue + relay WebSocket (session_id injection, idle timeout)
+
+The protocol handler doesn't know which transport it's running on. See [protocol.md](../protocol.md) for details.
+
 ## Summary
 
 This protocol provides:
 - Simple agent registration via WebSocket
 - Efficient in-memory discovery
 - Direct agent-to-agent connections
-- Minimal relay involvement in actual communication
+- Transparent relay proxy with session_id routing
 - Automatic cleanup of inactive agents
 
-The relay acts purely as a directory service, enabling agents to find and connect to each other directly whenever possible.
+The relay acts as both a directory service (discovery) and a transparent message proxy (when direct connection isn't possible). It never modifies message content — routing is based solely on `session_id`.

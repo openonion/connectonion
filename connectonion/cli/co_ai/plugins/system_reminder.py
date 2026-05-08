@@ -207,6 +207,14 @@ def detect_intent(agent: 'Agent') -> None:
             'is_build': analysis.is_build,
         })
 
+    # Persist to trace so reconnect/replay can rebuild the UI item.
+    agent._record_trace({
+        'type': 'intent',
+        'id': intent_id,
+        'ack': analysis.ack,
+        'is_build': analysis.is_build,
+    })
+
     # Store in session
     agent.current_session['intent'] = {
         'ack': analysis.ack,
