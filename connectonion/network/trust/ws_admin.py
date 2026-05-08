@@ -1,4 +1,17 @@
-"""WebSocket admin and onboard message handlers."""
+"""WebSocket admin and onboard message handlers.
+
+Purpose: Verify signed websocket frames for ONBOARD_SUBMIT and ADMIN_* actions, then mutate trust state (verify invite/payment, promote/demote/block/unblock, super-admin add/remove) and stream back ONBOARD_SUCCESS / ADMIN_RESULT / ERROR responses.
+LLM-Note:
+  Dependencies: imports from [rich.console] | imported by [network/host/ws_router/session.py (handle_admin_message, handle_onboard_submit), network/host/ws_router/connect.py (get_onboard_requirements during CONNECT)] | tested by [tests/network/test_ws_admin.py, tests/integration/test_onboard_flow.py]
+  Data flow:
+    • get_onboard_requirements(trust_agent) — read trust_agent.config.onboard → {methods: ["invite_code"|"payment"], payment_amount, payment_address (from trust_agent.get_self_address())} or None
+    • handle_onboard_submit(data, send_msg, route_handlers) — auth via route_handlers["auth"](data, "open") → check trust_agent.is_blocked → verify_invite or verify_payment → reply ONBOARD_SUCCESS with new level or ERROR
+    • handle_admin_message(data, send_msg, route_handlers) — auth + is_admin gate → ADMIN_PROMOTE/DEMOTE/BLOCK/UNBLOCK/GET_LEVEL routed to route_handlers admin_trust_* callbacks → ADMIN_ADD/REMOVE additionally gated on is_super_admin → reply ADMIN_RESULT
+  State/Effects: mutates trust agent state via trust_agent.verify_invite/verify_payment and admin_trust_* / admin_admins_* callbacks | prints colored audit lines to stdout via rich.Console (✓/✗ with truncated identity) | sends frames to client via injected send_msg
+  Integration: exposes get_onboard_requirements(trust_agent), async handle_onboard_submit(data, send_msg, route_handlers), async handle_admin_message(data, send_msg, route_handlers) | route_handlers dict must contain auth, trust_agent, admin_trust_promote/demote/block/unblock/level, admin_admins_add/remove
+  Errors: returns ERROR frames (never raises) for: invalid signature, blocked identity, missing client_id/admin_id, bad invite code, insufficient payment, non-admin, non-super-admin, unknown admin action
+  Security: ⚠️ all state-changing operations require valid signature + admin/super-admin level | invite/payment verification delegated to TrustAgent
+"""
 
 from rich.console import Console
 

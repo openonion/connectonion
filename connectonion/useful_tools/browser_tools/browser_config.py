@@ -1,9 +1,13 @@
 """
-Browser configuration constants from browser-use.
+Purpose: Centralize the Chrome flag set used to launch Playwright in an anti-detection configuration mirroring the browser-use project, so BrowserAutomation looks like a normal browser to bot-detection.
+LLM-Note:
+  Dependencies: pure data, no imports | imported by [useful_tools/browser_tools/browser.py (passes CHROME_DEFAULT_ARGS / IGNORE_DEFAULT_ARGS to playwright.chromium.launch)] | no direct tests (behavior covered by tests/cli/test_browser_agent.py)
+  Data flow: module-level constants only — read once when BrowserAutomation builds launch options
+  Integration: exposes CHROME_DISABLED_COMPONENTS (list[str], joined into --disable-features=…), CHROME_DEFAULT_ARGS (list[str], passed as launch args; ends with the disabled-features flag), IGNORE_DEFAULT_ARGS (list[str], removed from Playwright's defaults)
+  State/Effects: none
+  Errors: none
+NOTE: Keep in sync with https://github.com/browser-use/browser-use/blob/main/browser_use/browser/profile.py — drift here is what causes anti-detection regressions.
 Source: https://github.com/browser-use/browser-use/blob/main/browser_use/browser/profile.py
-
-This file contains only the Chrome arguments and disabled features needed for anti-detection.
-Keep this in sync with browser-use for best compatibility.
 """
 
 # Chrome disabled components/features

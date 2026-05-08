@@ -1,6 +1,12 @@
 """
-Client interface for connecting to remote agents with real-time UI updates.
-
+Purpose: Client SDK for talking to remote ConnectOnion agents over websockets — handles relay/direct endpoint resolution, signed CONNECT/INPUT frames, streaming UI events, and onboard (invite/payment) flows.
+LLM-Note:
+  Dependencies: imports from [asyncio, json, time, uuid, dataclasses, typing, httpx, websockets (lazy), .. address (sign)] | imported by [network/__init__.py (re-exports connect, RemoteAgent, Response), connectonion/__init__.py (top-level re-export)] | tested by [tests/network/test_connect.py, tests/integration/test_remote_agent.py]
+  Data flow: connect(address, keys, relay_url) → RemoteAgent → .input(prompt) opens ws → CONNECT (signed payload {to, timestamp, optional session}) → CONNECTED {session_id} → INPUT {input_id, prompt, optional images/files} → streams (tool_call, tool_result, thinking, assistant, ask_user, ONBOARD_REQUIRED/SUCCESS) → OUTPUT {result, session} → returns Response(text, done)
+  State/Effects: mutates self._current_session, self._ui_events, self._status; opens outbound websocket connection; performs signed payloads via address.sign(keys, canonical_json) when keys provided; resolve_endpoint() makes httpx GETs to relay /api/relay/agents/{addr} and /info on each candidate to pick localhost/LAN/public WS endpoint (cached after first attempt)
+  Integration: exposes connect(address, keys=None, relay_url="wss://oo.openonion.ai") -> RemoteAgent | RemoteAgent.input/input_async/reset, .status, .current_session, .ui properties | Response dataclass(text, done) | resolve_endpoint(agent_address, relay_url, timeout=3.0) helper
+  Performance: endpoint resolution attempted once per RemoteAgent (cached in _endpoint_resolved/_resolved_endpoint) | per-recv asyncio.wait_for to avoid hangs (default timeout=60s, 30s for CONNECTED) | sync .input() rejected inside running event loop (use input_async)
+  Errors: raises ConnectionError on auth/agent ERROR frames | TimeoutError on ws recv timeout | RuntimeError if .input() called from async context | ValueError when interactive onboard prompt yields no credentials
 Protocol: CONNECT → CONNECTED → INPUT → streaming events → OUTPUT
 See docs/network/websocket-protocol.md for full specification.
 

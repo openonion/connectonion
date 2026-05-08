@@ -1,4 +1,14 @@
-"""HTTP admin and superadmin route handling."""
+"""HTTP admin and superadmin route handling.
+
+Purpose: Authenticate and dispatch /admin/* and /superadmin/* HTTP requests for the hosted agent's trust controls (promote/demote/block/unblock, level lookup, super-admin add/remove, and legacy admin logs/sessions).
+LLM-Note:
+  Dependencies: imports from [hmac, json, os] | imported by [network/host/http_router.py (handle_admin_routes called for paths starting with /admin or /superadmin)] | tested by [tests/network/test_host_admin.py, tests/integration/test_admin_routes.py]
+  Data flow: receives ASGI scope/receive + parsed method/path from http_router → dual auth model: legacy /admin/logs and /admin/sessions use Bearer OPENONION_API_KEY (hmac.compare_digest); /admin/trust/* and /superadmin/* use signed payloads via route_handlers["auth"](data, "open"), with GETs allowed via X-From/X-Signature/X-Timestamp headers (because proxies often strip GET bodies) → calls into route_handlers callbacks (admin_logs, admin_sessions, admin_trust_promote/demote/block/unblock/level, admin_admins_add/remove) → responds via send_json/send_text
+  State/Effects: invokes route_handlers (which mutate trust agent state, file logs, sessions) | reads OPENONION_API_KEY from env for legacy auth | logs nothing directly
+  Integration: exposes async handle_admin_routes(method, path, scope, receive, route_handlers, *, send_json, send_text, read_body) -> bool (always True after this function — it owns the response for /admin/* and /superadmin/*) | route_handlers dict must include "trust_agent", "auth", and the admin_* callbacks
+  Errors: returns 401 unauthorized on bad bearer/signature, 403 forbidden when not admin/superadmin, 400 on missing client_id/admin_id or invalid X-Timestamp/JSON, 404 catch-all for unknown admin paths — never raises
+  Security: ⚠️ legacy bearer comparison uses hmac.compare_digest to avoid timing leaks | signature verification delegated to route_handlers["auth"]
+"""
 
 import hmac
 import json
