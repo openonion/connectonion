@@ -68,10 +68,11 @@ def test_detect_intent_and_inject_tool(monkeypatch):
     monkeypatch.setattr(plugin, "_load_build_context", lambda: "BUILD_CONTEXT")
 
     agent = SimpleNamespace(
-        current_session={"user_prompt": "build", "messages": []},
+        current_session={"user_prompt": "build", "messages": [], "trace": []},
         io=FakeIO(),
         logger=FakeLogger(),
     )
+    agent._record_trace = lambda entry: agent.current_session.setdefault("trace", []).append(entry)
 
     plugin.detect_intent(agent)
 

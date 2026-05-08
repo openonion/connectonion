@@ -43,6 +43,9 @@ class FakeAgent:
         self.tools.names.return_value = ['tool1', 'tool2']
         self.logger = Mock()
 
+    def _record_trace(self, entry: dict) -> None:
+        self.current_session['trace'].append(entry)
+
 
 class TestGenerateExpected:
     """Tests for generate_expected event handler."""
