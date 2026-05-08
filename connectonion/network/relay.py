@@ -144,11 +144,19 @@ async def _run_session(session_id, first_msg, sessions, relay_ws, session_handle
         try:
             msg = await asyncio.wait_for(q.get(), timeout=300)
         except asyncio.TimeoutError:
+            # 5min idle = client vanished without close. Translate the asyncio
+            # timer signal into the run_session contract (None = end of stream)
+            # so the session loop exits cleanly. Not a swallowed error — this
+            # IS the protocol-level idle-timeout mechanism.
             return None
         if msg is None or msg.get("type") == "close":
             return None
         return msg
 
+    # finally (no except): always remove this session_id's queue from the
+    # shared dict, no matter how session_handler ended (normal return /
+    # exception / asyncio cancel). Without finally the dict leaks per-session
+    # queue entries on any non-normal exit.
     try:
         await session_handler(send_msg, recv_msg)
     finally:
@@ -188,6 +196,11 @@ async def serve_loop(
 
     sessions: Dict[str, asyncio.Queue] = {}
 
+    # Two except branches below are control-flow signals, not error swallowing.
+    # Anything else (malformed JSON, OSError, real bugs) propagates out → kills
+    # serve_loop → kills relay_loop in server.py → host process exposes the bug.
+    # That's intentional "let it crash" — we only catch the two events that ARE
+    # part of normal operation.
     while True:
         try:
             msg = await recv_relay_msg(websocket, timeout=heartbeat_interval)
@@ -204,6 +217,11 @@ async def serve_loop(
                 asyncio.create_task(_run_session(session_id, msg, sessions, websocket, session_handler))
 
         except asyncio.TimeoutError:
+            # heartbeat_interval (60s) elapsed with no incoming frame.
+            # Heart-beat path: refresh ANNOUNCE so relay's stale-agent cleanup
+            # (≈120s without ANNOUNCE) doesn't drop our registration. NOT an
+            # error — this is how we keep the registration alive on idle hosts.
+            # Stay in the loop.
             if addr_data:
                 fresh_announce = announce_module.create_announce_message(
                     addr_data, summary, endpoints=endpoints, relay=relay_url
@@ -215,6 +233,10 @@ async def serve_loop(
             console.print(f"{prefix} [red]♥[/red]")
 
         except websockets.exceptions.ConnectionClosed:
+            # Relay WS closed cleanly (relay redeployed, network blip, NAT idle
+            # cut). Wake every per-session recv_msg by putting None into its
+            # queue so children exit cleanly, then break out — server.py's
+            # relay_loop sleeps 1s and reconnects.
             for q in sessions.values():
                 await q.put(None)
             console.print(f"{prefix} [dim]Relay disconnected[/dim]")
