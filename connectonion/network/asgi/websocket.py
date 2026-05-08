@@ -46,10 +46,18 @@ async def handle_websocket(
             if msg["type"] == "websocket.disconnect":
                 return None
             if msg["type"] == "websocket.receive":
+                raw = msg.get("text", "")
                 try:
-                    return json.loads(msg.get("text", "{}"))
-                except json.JSONDecodeError:
-                    await send_msg({"type": "ERROR", "message": "Invalid JSON"})
+                    return json.loads(raw or "{}")
+                except json.JSONDecodeError as e:
+                    # Surface the actual parse error + the offending input so
+                    # the client can locate the bug rather than guessing.
+                    snippet = raw if len(raw) <= 200 else raw[:200] + "...(truncated)"
+                    await send_msg({
+                        "type": "ERROR",
+                        "message": f"Invalid JSON: {e.msg} at line {e.lineno} col {e.colno} (pos {e.pos})",
+                        "received": snippet,
+                    })
                     continue
 
     await run_ws_session(
