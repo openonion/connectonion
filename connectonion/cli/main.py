@@ -348,6 +348,43 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
     handle_admin_remove(address)
 
 
+# Subscription command group
+sub_app = typer.Typer(help="Subscribe to published agents (mirror their skills to ~/.co/subs/ and fan out)")
+app.add_typer(sub_app, name="sub")
+
+
+@sub_app.callback(invoke_without_command=True)
+def sub_callback(ctx: typer.Context):
+    """Subscription management. With no subcommand, list current subscriptions."""
+    if ctx.invoked_subcommand is None:
+        from .commands.sub_commands import handle_sub_list
+        handle_sub_list()
+
+
+@sub_app.command("add")
+def sub_add(
+    target: str = typer.Argument(..., help="0x address to subscribe to"),
+    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: https://oo.openonion.ai)"),
+):
+    """Subscribe: fetch the profile, mirror skills, fan out to coding agents."""
+    from .commands.sub_commands import handle_sub_add
+    handle_sub_add(target, relay=relay)
+
+
+@sub_app.command("list")
+def sub_list():
+    """List all subscriptions with local version info."""
+    from .commands.sub_commands import handle_sub_list
+    handle_sub_list()
+
+
+@sub_app.command("remove")
+def sub_remove(target: str = typer.Argument(..., help="Alias or 0x address to unsubscribe from")):
+    """Unsubscribe: drop record, uninstall fanout, remove mirrored bundle."""
+    from .commands.sub_commands import handle_sub_remove
+    handle_sub_remove(target)
+
+
 def cli():
     """Entry point."""
     app()
