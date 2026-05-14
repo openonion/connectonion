@@ -83,12 +83,12 @@ python -m pytest
 
 # Run specific test categories
 python -m pytest tests/unit           # Unit tests (fast, mocked)
-python -m pytest tests/integration    # Integration tests (no external APIs)
-python -m pytest tests/cli            # CLI tests
-python -m pytest tests/e2e            # End-to-end example agent
+python -m pytest tests/e2e            # All e2e (cli + real_api + offline)
+python -m pytest tests/e2e/cli        # CLI tests
+python -m pytest tests/e2e/real_api   # Real API tests
 
 # Run real API tests (requires keys)
-python -m pytest tests/real_api -m real_api
+python -m pytest -m real_api
 
 # Run with coverage
 python -m pytest --cov=connectonion --cov-report=term-missing
@@ -272,35 +272,40 @@ Tools that need access to `agent.io` (for frontend communication) declare `agent
 ## Test Organization
 
 ### Folder Structure (see `tests/TEST_ORGANIZATION.md`)
+
+Two layers — **unit** and **e2e**. CLI and real-API tests are subtypes of e2e.
+
 - `tests/unit/` - One test file per source file, mocked dependencies, fast (<1s)
-- `tests/integration/` - Multi-component tests, no external APIs, medium speed
-- `tests/real_api/` - Actual API calls, requires keys, slow (5-30s), costs money
-- `tests/cli/` - CLI command tests, file system operations
-- `tests/e2e/` - Complete example agent (living documentation)
+- `tests/e2e/` - End-to-end workflows
+  - `tests/e2e/cli/` - Real `co` CLI invocations
+  - `tests/e2e/real_api/` - Actual API calls, requires keys, slow (5-30s), costs money
+  - `tests/e2e/manual/` - Demo scripts (not collected by pytest)
 
 ### Running Tests
 ```bash
-# Fast feedback loop (unit + integration only)
-pytest -m "not real_api"
+# Default: unit + offline e2e (excludes real_api, network)
+pytest
 
-# Test specific module
+# Single file
 pytest tests/unit/test_agent.py
 
 # Real API tests (set API keys first)
 export OPENAI_API_KEY=sk-...
-pytest tests/real_api/test_real_openai.py -m real_api
-
-# All tests except real API (default, for CI)
-pytest
+pytest -m real_api
 ```
 
 ### Test Markers
-- `@pytest.mark.unit` - Unit tests
-- `@pytest.mark.integration` - Integration tests
-- `@pytest.mark.real_api` - Requires API keys
-- `@pytest.mark.cli` - CLI tests
+- `@pytest.mark.unit` - Unit tests (auto-applied for `tests/unit/`)
+- `@pytest.mark.e2e` - E2E tests (auto-applied for `tests/e2e/`)
+- `@pytest.mark.cli` - CLI tests (auto-applied for `tests/e2e/cli/`)
+- `@pytest.mark.real_api` - Requires API keys (auto-applied for `tests/e2e/real_api/`)
 - `@pytest.mark.slow` - Takes >10 seconds
 - `@pytest.mark.network` - Requires network/relay
+- `@pytest.mark.e2e_online` - Real-API end-to-end workflow
+
+### Test Quality Rules
+- Test functional behavior, not implementation. Avoid `_event_type ==` / `len(plugin) == N` / `isinstance(plugin, list)` style metadata assertions — those break only on cosmetic refactors, not real bugs.
+- One source file → one unit test file when possible.
 
 ## Documentation Architecture
 
@@ -374,7 +379,7 @@ git push
 1. Implement class inheriting from `LLM` in `connectonion/llm.py`
 2. Implement `complete()` and `structured_complete()` methods
 3. Add routing logic to `create_llm()` factory function
-4. Add tests in `tests/real_api/test_real_{provider}.py`
+4. Add tests in `tests/e2e/real_api/test_real_{provider}.py`
 
 ## Version Numbering Strategy
 

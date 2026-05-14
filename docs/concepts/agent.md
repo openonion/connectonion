@@ -900,8 +900,8 @@ def test_real_agent():
     assert "Python" in result
 
 # Run tests:
-# pytest -m "not real_api"  # Skip real API tests
-# pytest -m real_api         # Only integration tests
+# pytest                     # Default: unit + offline e2e (real_api excluded)
+# pytest -m real_api         # Only real-API tests (needs keys, costs money)
 ```
 
 ---
