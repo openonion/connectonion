@@ -1,12 +1,21 @@
 """Unit tests for connectonion.cli.commands.sub_commands."""
 
 import json
+import re
 from pathlib import Path
 
 import httpx
 import pytest
 
 from connectonion.cli.commands import fanout, sub_commands as sub
+
+
+_ANSI_RE = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def _plain(text: str) -> str:
+    """Strip ANSI color escapes — Rich console output is colored by default."""
+    return _ANSI_RE.sub("", text)
 
 
 ADDR = "0x" + "a" * 64
@@ -116,7 +125,7 @@ def test_add_is_idempotent_no_duplicate_lines(isolated_home, fake_relay):
 
 def test_list_with_no_subscriptions_does_not_crash(isolated_home, capsys):
     sub.handle_sub_list()
-    out = capsys.readouterr().out
+    out = _plain(capsys.readouterr().out)
     assert "No subscriptions" in out
 
 
@@ -125,7 +134,7 @@ def test_list_after_add_shows_alias_version_and_skill_count(isolated_home, fake_
     capsys.readouterr()  # drain
 
     sub.handle_sub_list()
-    out = capsys.readouterr().out
+    out = _plain(capsys.readouterr().out)
     assert ALIAS in out
     assert "v0.2.0" in out
     assert "2" in out  # skill count
@@ -155,7 +164,7 @@ def test_remove_by_alias_works_too(isolated_home, fake_relay):
 
 def test_remove_unknown_target_is_a_no_op(isolated_home, capsys):
     sub.handle_sub_remove("0x" + "1" * 64)
-    out = capsys.readouterr().out
+    out = _plain(capsys.readouterr().out)
     assert "Not subscribed" in out
 
 
@@ -164,7 +173,7 @@ def test_bare_alias_without_prior_subscription_errors_out(isolated_home, capsys)
     aliases (already in subscriptions.txt) are accepted as a refresh shortcut."""
     with pytest.raises(SystemExit):
         sub.handle_sub_sync_one("alice")  # not in subscriptions.txt
-    out = capsys.readouterr().out
+    out = _plain(capsys.readouterr().out)
     assert "not a 0x address" in out
 
 
@@ -180,7 +189,7 @@ def test_alias_refresh_works_when_address_already_pinned(isolated_home, fake_rel
 
 def test_sync_all_with_no_subscriptions_prints_hint(isolated_home, capsys):
     sub.handle_sub_sync_all()
-    out = capsys.readouterr().out
+    out = _plain(capsys.readouterr().out)
     assert "No subscriptions" in out
 
 
