@@ -4,12 +4,22 @@ from unittest.mock import Mock, patch
 
 import pytest
 
-from connectonion.useful_plugins.auto_compact import (
-    COMPACT_THRESHOLD,
-    _do_compact,
-    _format_messages_for_summary,
-    check_and_compact,
-)
+# useful_plugins/__init__.py does `from .auto_compact import auto_compact`
+# which rebinds the package attribute `connectonion.useful_plugins.auto_compact`
+# from the *module* to the plugin-export *list* of the same name. That breaks
+# both `mock.patch('connectonion.useful_plugins.auto_compact.X')` and
+# `import connectonion.useful_plugins.auto_compact as foo`. Grab the actual
+# module from sys.modules to get past the shadow.
+import sys
+import connectonion.useful_plugins.auto_compact  # noqa: F401 — ensures module load
+import connectonion.llm_do  # noqa: F401 — same reason
+ac_module = sys.modules['connectonion.useful_plugins.auto_compact']
+llm_do_module = sys.modules['connectonion.llm_do']
+
+COMPACT_THRESHOLD = ac_module.COMPACT_THRESHOLD
+_do_compact = ac_module._do_compact
+_format_messages_for_summary = ac_module._format_messages_for_summary
+check_and_compact = ac_module.check_and_compact
 
 
 class FakeAgent:
@@ -29,28 +39,21 @@ def _msgs(n, role='user'):
 
 def test_check_noop_when_context_below_threshold():
     agent = FakeAgent(context_percent=COMPACT_THRESHOLD - 1, messages=_msgs(20))
-    with patch(
-        'connectonion.useful_plugins.auto_compact._do_compact'
-    ) as mock_compact:
+    with patch.object(ac_module, '_do_compact') as mock_compact:
         check_and_compact(agent)
         mock_compact.assert_not_called()
 
 
 def test_check_noop_when_messages_too_few():
     agent = FakeAgent(context_percent=99, messages=_msgs(7))  # 7 < 8 threshold
-    with patch(
-        'connectonion.useful_plugins.auto_compact._do_compact'
-    ) as mock_compact:
+    with patch.object(ac_module, '_do_compact') as mock_compact:
         check_and_compact(agent)
         mock_compact.assert_not_called()
 
 
 def test_check_triggers_when_both_thresholds_met():
     agent = FakeAgent(context_percent=95, messages=_msgs(10))
-    with patch(
-        'connectonion.useful_plugins.auto_compact._do_compact',
-        return_value="10 → 7 messages",
-    ) as mock_compact:
+    with patch.object(ac_module, '_do_compact', return_value="10 → 7 messages") as mock_compact:
         check_and_compact(agent)
         mock_compact.assert_called_once_with(agent)
 
@@ -58,10 +61,7 @@ def test_check_triggers_when_both_thresholds_met():
 def test_check_at_exact_threshold_triggers():
     """`context_percent < COMPACT_THRESHOLD` → at exactly 90% it should fire."""
     agent = FakeAgent(context_percent=COMPACT_THRESHOLD, messages=_msgs(10))
-    with patch(
-        'connectonion.useful_plugins.auto_compact._do_compact',
-        return_value="ok",
-    ) as mock_compact:
+    with patch.object(ac_module, '_do_compact', return_value="ok") as mock_compact:
         check_and_compact(agent)
         mock_compact.assert_called_once()
 
@@ -69,10 +69,7 @@ def test_check_at_exact_threshold_triggers():
 def test_check_sends_compact_event_when_io_present():
     io = Mock()
     agent = FakeAgent(context_percent=95, messages=_msgs(10), io=io)
-    with patch(
-        'connectonion.useful_plugins.auto_compact._do_compact',
-        return_value="10 → 7 messages",
-    ):
+    with patch.object(ac_module, '_do_compact', return_value="10 → 7 messages"):
         check_and_compact(agent)
     # Two events: 'compacting' + 'done'
     sent_types = [c.args[0]['status'] for c in io.send.call_args_list]
@@ -82,10 +79,7 @@ def test_check_sends_compact_event_when_io_present():
 def test_check_sends_error_event_when_compact_fails():
     io = Mock()
     agent = FakeAgent(context_percent=95, messages=_msgs(10), io=io)
-    with patch(
-        'connectonion.useful_plugins.auto_compact._do_compact',
-        side_effect=RuntimeError("llm down"),
-    ):
+    with patch.object(ac_module, '_do_compact', side_effect=RuntimeError("llm down")):
         check_and_compact(agent)  # must NOT raise
     statuses = [c.args[0]['status'] for c in io.send.call_args_list]
     assert 'error' in statuses
@@ -104,7 +98,7 @@ def test_do_compact_returns_nothing_to_compact_when_old_msgs_below_three():
         + _msgs(5, role='assistant')
     )
     agent = FakeAgent(messages=messages)
-    with patch('connectonion.llm_do.llm_do') as mock_llm:
+    with patch.object(llm_do_module, 'llm_do') as mock_llm:
         result = _do_compact(agent)
     assert result == "Nothing to compact"
     mock_llm.assert_not_called()
@@ -116,10 +110,7 @@ def test_do_compact_replaces_old_messages_with_summary_keeping_system_and_recent
         + _msgs(10, role='user')
     )
     agent = FakeAgent(messages=messages)
-    with patch(
-        'connectonion.llm_do.llm_do',
-        return_value="SUMMARY_TEXT",
-    ):
+    with patch.object(llm_do_module, 'llm_do', return_value="SUMMARY_TEXT"):
         result = _do_compact(agent)
 
     new = agent.current_session['messages']
@@ -135,8 +126,8 @@ def test_do_compact_works_without_system_message():
     """If no system message, the first old message gets compacted too."""
     messages = _msgs(10, role='user')
     agent = FakeAgent(messages=messages)
-    with patch(
-        'connectonion.llm_do.llm_do',
+    with patch.object(
+        llm_do_module, 'llm_do',
         return_value="S",
     ):
         result = _do_compact(agent)
