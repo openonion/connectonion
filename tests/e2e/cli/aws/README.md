@@ -83,26 +83,26 @@ aws lightsail get-instance --instance-name connectonion-test \
 1. Go to Lightsail Console → Account page
 2. Click "SSH Keys" tab
 3. Download the default key for your region
-4. Save as `tests/cli/aws/connectonion-test-key.pem`
+4. Save as `tests/e2e/cli/aws/connectonion-test-key.pem`
 
 **Option B: Using AWS CLI**
 ```bash
 aws lightsail download-default-key-pair \
   --output text \
-  > tests/cli/aws/connectonion-test-key.pem
+  > tests/e2e/cli/aws/connectonion-test-key.pem
 
-chmod 600 tests/cli/aws/connectonion-test-key.pem
+chmod 600 tests/e2e/cli/aws/connectonion-test-key.pem
 ```
 
 ### Step 3: Create Configuration File
 
 ```bash
 # Copy template
-cp tests/cli/aws/config.sh.example tests/cli/aws/config.sh
+cp tests/e2e/cli/aws/config.sh.example tests/e2e/cli/aws/config.sh
 
 # Edit with your server IP
 # Change TEST_SERVER_IP="your.lightsail.ip.here" to your actual IP
-nano tests/cli/aws/config.sh
+nano tests/e2e/cli/aws/config.sh
 ```
 
 ### Step 4: Install Python on Server (One-time)
@@ -112,7 +112,7 @@ nano tests/cli/aws/config.sh
 SERVER_IP="your.lightsail.ip.here"
 
 # SSH to server and install Python
-ssh -i tests/cli/aws/connectonion-test-key.pem ubuntu@$SERVER_IP << 'EOF'
+ssh -i tests/e2e/cli/aws/connectonion-test-key.pem ubuntu@$SERVER_IP << 'EOF'
   sudo apt update
   sudo apt install -y python3 python3-pip python3-venv
   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
@@ -124,7 +124,7 @@ EOF
 
 ```bash
 # Test SSH connection
-ssh -i tests/cli/aws/connectonion-test-key.pem ubuntu@$SERVER_IP \
+ssh -i tests/e2e/cli/aws/connectonion-test-key.pem ubuntu@$SERVER_IP \
   "python3 --version && pip3 --version"
 
 # Should output Python and pip versions
@@ -138,7 +138,7 @@ ssh -i tests/cli/aws/connectonion-test-key.pem ubuntu@$SERVER_IP \
 cd /Users/changxing/project/OnCourse/platform/connectonion
 
 # Deploy to test server
-./tests/cli/aws/deploy-test.sh
+./tests/e2e/cli/aws/deploy-test.sh
 ```
 
 **What it does:**
@@ -152,7 +152,7 @@ cd /Users/changxing/project/OnCourse/platform/connectonion
 
 ```bash
 # Run automated tests on remote server
-./tests/cli/aws/run-remote-tests.sh
+./tests/e2e/cli/aws/run-remote-tests.sh
 ```
 
 **What it does:**
@@ -165,7 +165,7 @@ cd /Users/changxing/project/OnCourse/platform/connectonion
 
 ```bash
 # Full test cycle
-./tests/cli/aws/deploy-test.sh && ./tests/cli/aws/run-remote-tests.sh
+./tests/e2e/cli/aws/deploy-test.sh && ./tests/e2e/cli/aws/run-remote-tests.sh
 ```
 
 ## Expected Output
@@ -193,7 +193,7 @@ cd /Users/changxing/project/OnCourse/platform/connectonion
 ✅ Deployment complete!
 
 Next step:
-  ./tests/cli/aws/run-remote-tests.sh
+  ./tests/e2e/cli/aws/run-remote-tests.sh
 ```
 
 ### Successful Test Run
@@ -232,10 +232,10 @@ Running: test_auth.sh
 aws lightsail get-instance --instance-name connectonion-test
 
 # Check SSH key permissions
-chmod 600 tests/cli/aws/connectonion-test-key.pem
+chmod 600 tests/e2e/cli/aws/connectonion-test-key.pem
 
 # Test direct SSH
-ssh -i tests/cli/aws/connectonion-test-key.pem ubuntu@<IP>
+ssh -i tests/e2e/cli/aws/connectonion-test-key.pem ubuntu@<IP>
 ```
 
 ### Package Build Failed
@@ -252,7 +252,7 @@ ls -la dist/
 ### 'co' Command Not Found
 ```bash
 # Add ~/.local/bin to PATH on server
-ssh -i tests/cli/aws/connectonion-test-key.pem ubuntu@<IP> << 'EOF'
+ssh -i tests/e2e/cli/aws/connectonion-test-key.pem ubuntu@<IP> << 'EOF'
   echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.bashrc
   source ~/.bashrc
   co --version
@@ -262,7 +262,7 @@ EOF
 ### Tests Failing
 ```bash
 # SSH to server to debug
-ssh -i tests/cli/aws/connectonion-test-key.pem ubuntu@<IP>
+ssh -i tests/e2e/cli/aws/connectonion-test-key.pem ubuntu@<IP>
 
 # Check installation
 which co

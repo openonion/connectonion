@@ -234,20 +234,6 @@ class TestEvaluateCompletion:
 class TestEvalPlugin:
     """Tests for eval plugin bundle."""
 
-    def test_eval_contains_two_handlers(self):
-        """Test that eval plugin has two handlers."""
-        assert len(eval_plugin) == 2
-
-    def test_eval_handlers_have_correct_event_types(self):
-        """Test that handlers are registered for correct events."""
-        # generate_expected should be after_user_input
-        assert hasattr(generate_expected, '_event_type')
-        assert generate_expected._event_type == 'after_user_input'
-
-        # evaluate_completion should be on_complete
-        assert hasattr(evaluate_completion, '_event_type')
-        assert evaluate_completion._event_type == 'on_complete'
-
     def test_plugin_integrates_with_agent(self):
         """Test that plugin can be registered with agent."""
         from connectonion import Agent

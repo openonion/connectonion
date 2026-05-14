@@ -259,20 +259,3 @@ class TestAuthMicrosoftFlow:
             assert 'timed out' in result.output.lower() or result.exit_code != 0
 
 
-@pytest.mark.cli
-@pytest.mark.skip(reason="Integration test requires manual OAuth flow")
-class TestAuthMicrosoftIntegration:
-    """Integration tests for co auth microsoft (requires installation)."""
-
-    def test_auth_microsoft_command_exists(self):
-        """Test that 'co auth microsoft' command is recognized."""
-        import subprocess
-
-        result = subprocess.run(
-            ['co', 'auth', '--help'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-
-        assert 'microsoft' in result.stdout.lower() or 'microsoft' in result.stderr.lower()

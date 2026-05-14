@@ -48,14 +48,3 @@ def test_llm_do_gemini_direct():
     result = llm_do("Say hi", model="gemini-2.5-flash")
     assert result, "No result from llm_do with Gemini"
     print(f"llm_do Gemini result: {result}")
-
-
-@pytest.mark.skip(reason="Requires co/ account with credits")
-def test_gemini_flash_via_co():
-    """Test Gemini 2.5 Flash via co/ managed keys"""
-    agent = Agent(
-        name="test-gemini-co",
-        model="co/gemini-2.5-flash"
-    )
-    response = agent.input("Say hello in one word")
-    assert response, "No response from Gemini Flash"

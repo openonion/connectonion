@@ -270,9 +270,7 @@ def relay_url_from_cli(request):
 def pytest_configure(config):
     """Configure custom pytest markers."""
     config.addinivalue_line("markers", "slow: marks tests as slow (deselect with '-m \"not slow\"')")
-    config.addinivalue_line("markers", "integration: marks tests as integration tests")
     config.addinivalue_line("markers", "unit: marks tests as unit tests")
-    config.addinivalue_line("markers", "benchmark: marks tests as performance benchmarks")
     config.addinivalue_line("markers", "e2e_online: marks real API end-to-end tests")
 
 
@@ -300,8 +298,6 @@ def pytest_collection_modifyitems(config, items):
         parts = set(path.parts)
         if "unit" in parts:
             item.add_marker(pytest.mark.unit)
-        if "integration" in parts:
-            item.add_marker(pytest.mark.integration)
         if "cli" in parts:
             item.add_marker(pytest.mark.cli)
         if "e2e" in parts:

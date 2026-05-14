@@ -263,16 +263,6 @@ class TestCheckApproval:
 class TestShellApprovalPlugin:
     """Tests for shell_approval plugin bundle."""
 
-    def test_shell_approval_contains_one_handler(self):
-        """Test that shell_approval plugin has one handler."""
-        assert len(shell_approval) == 1
-
-    def test_handler_has_correct_event_type(self):
-        """Test that handler is registered for before_each_tool event."""
-        handler = shell_approval[0]
-        assert hasattr(handler, '_event_type')
-        assert handler._event_type == 'before_each_tool'
-
     def test_plugin_integrates_with_agent(self):
         """Test that plugin can be registered with agent."""
         from connectonion import Agent

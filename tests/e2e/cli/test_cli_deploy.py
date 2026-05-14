@@ -62,26 +62,6 @@ class TestCliDeploy:
             assert "Not a ConnectOnion project" in result.output
 
     @SKIP_NO_GIT
-    @pytest.mark.skip(reason="API key check depends on dotenv loading from system files")
-    def test_deploy_requires_api_key(self):
-        """Test that deploy fails if no API key."""
-        with self.runner.isolated_filesystem():
-            from connectonion.cli.main import cli
-
-            # Create real git repo and .co folder
-            subprocess.run(['git', 'init'], capture_output=True)
-            subprocess.run(['git', 'config', 'user.email', 'test@test.com'], capture_output=True)
-            subprocess.run(['git', 'config', 'user.name', 'Test'], capture_output=True)
-
-            os.makedirs(".co")
-            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
-
-            # Clear any existing API key
-            with patch.dict(os.environ, {}, clear=True):
-                result = self.runner.invoke(cli, ['deploy'])
-                assert "No API key" in result.output
-
-    @SKIP_NO_GIT
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
     @patch('connectonion.cli.commands.deploy_commands.requests.get')
     @patch('connectonion.cli.commands.deploy_commands.subprocess.run')
@@ -246,52 +226,4 @@ class TestCliDeploy:
 
             assert "Deploy failed" in result.output
 
-    def test_deploy_loads_api_key_from_env_file(self):
-        """Test that deploy loads API key from .env file."""
-        with self.runner.isolated_filesystem():
-            # Create .env with API key
-            Path(".env").write_text("OPENONION_API_KEY=test-key-from-env")
 
-            # Create project structure
-            os.makedirs(".git")
-            os.makedirs(".co")
-            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
-
-            from connectonion.cli.commands.project_cmd_lib import load_api_key
-
-            # Clear environment and test loading from file
-            with patch.dict(os.environ, {}, clear=True):
-                api_key = load_api_key()
-                # Note: dotenv may or may not load depending on environment
-                # This test verifies the function doesn't crash
-
-
-class TestDeployCleanup:
-    """Test notes about Docker cleanup."""
-
-    def test_unit_tests_dont_create_real_containers(self):
-        """
-        Document: Unit tests use mocks, no real Docker containers are created.
-
-        For integration tests that actually deploy:
-        - After test: call DELETE /api/v1/deploy/{deployment_id}
-        - This stops and removes the Docker container
-        - Also cleans up deployment files on the VM
-
-        Example cleanup in integration test:
-        ```python
-        @pytest.fixture
-        def deployed_agent(api_key):
-            # Deploy
-            resp = requests.post(f"{API_BASE}/api/v1/deploy", ...)
-            deployment_id = resp.json()["id"]
-            yield deployment_id
-            # Cleanup
-            requests.delete(
-                f"{API_BASE}/api/v1/deploy/{deployment_id}",
-                headers={"Authorization": f"Bearer {api_key}"}
-            )
-        ```
-        """
-        # This is a documentation test - unit tests don't need cleanup
-        assert True

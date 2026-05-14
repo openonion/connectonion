@@ -16,7 +16,7 @@ from pathlib import Path
 import pytest
 
 from connectonion import Agent, xray
-from tests.real_api.conftest import requires_openai
+from tests.e2e.real_api.conftest import requires_openai
 
 
 pytestmark = [pytest.mark.real_api, pytest.mark.e2e_online]

@@ -351,22 +351,3 @@ class TestAuthGoogleFlow:
             assert 'timed out' in result.output.lower() or result.exit_code != 0
 
 
-@pytest.mark.cli
-@pytest.mark.skip(reason="Integration test requires manual OAuth flow")
-class TestAuthGoogleIntegration:
-    """Integration tests for co auth google (requires installation)."""
-
-    def test_auth_google_command_exists(self):
-        """Test that 'co auth google' command is recognized."""
-        import subprocess
-
-        # Just check that the command is recognized (won't work without API key)
-        result = subprocess.run(
-            ['co', 'auth', '--help'],
-            capture_output=True,
-            text=True,
-            timeout=5
-        )
-
-        # Command should show google as an option
-        assert 'google' in result.stdout.lower() or 'google' in result.stderr.lower()

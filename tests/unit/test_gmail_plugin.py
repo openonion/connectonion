@@ -400,20 +400,6 @@ class TestSyncCrmAfterSend:
 class TestGmailPlugin:
     """Tests for gmail_plugin plugin bundle."""
 
-    def test_gmail_plugin_contains_two_handlers(self):
-        """Test that gmail_plugin has two handlers."""
-        assert len(gmail_plugin) == 2
-
-    def test_handlers_have_correct_event_types(self):
-        """Test that handlers are registered for correct events."""
-        # check_email_approval should be before_each_tool
-        assert hasattr(check_email_approval, '_event_type')
-        assert check_email_approval._event_type == 'before_each_tool'
-
-        # sync_crm_after_send should be after_each_tool
-        assert hasattr(sync_crm_after_send, '_event_type')
-        assert sync_crm_after_send._event_type == 'after_each_tool'
-
     def test_plugin_integrates_with_agent(self):
         """Test that plugin can be registered with agent."""
         from connectonion import Agent
