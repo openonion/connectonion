@@ -125,14 +125,3 @@ def test_uninstall_all_removes_every_per_tool_install(fake_home, bundle):
     assert list((fake_home / ".kiro" / "steering").iterdir()) == []
 
 
-def test_uninstall_all_with_skill_names_only_removes_listed(fake_home, bundle):
-    (fake_home / ".codex").mkdir()
-    fanout.install_skill_dirs(bundle, "alice", "codex")
-    skills = fake_home / ".codex" / "skills"
-    assert (skills / "alice-alpha").exists()
-    assert (skills / "alice-beta").exists()
-
-    fanout.uninstall_all("alice", skill_names=["alpha"])
-
-    assert not (skills / "alice-alpha").exists()
-    assert (skills / "alice-beta").exists()

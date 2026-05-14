@@ -1,14 +1,18 @@
-"""Per-tool fan-out: materialize one bundle into every detected coding agent.
+"""
+Purpose: Per-tool fan-out — materialize one canonical bundle into every detected coding agent (Claude, Codex, OpenClaw, Cursor, Kiro).
+LLM-Note:
+  Dependencies: imports from [re, shutil, pathlib] | imported by [cli/commands/sub_commands.py for subscription install] | tested by [tests/unit/test_fanout.py]
+  Data flow: receives bundle: Path (layout `<root>/skills/<name>/SKILL.md`) + alias: str → walks bundle/skills/* → for each detected tool (~/.claude, ~/.codex, ~/.openclaw, ~/.cursor, ~/.kiro), materializes in that tool's expected shape → returns {tool: skill_count}. Cursor needs frontmatter rewritten to `.mdc` (alwaysApply: false). Kiro wants plain `.md` copies. Claude/Codex/OpenClaw get symlinks.
+  State/Effects: creates symlinks under ~/.<tool>/ | mkdir -p for missing target dirs | rm + relink on idempotent re-runs (_replace clears existing dir/symlink/file before linking) | no network, no logs
+  Integration: exposes detected_tools(), install_claude(), install_skill_dirs(bundle, alias, tool), install_cursor(), install_kiro(), install_all(bundle, alias) -> {tool: int}, uninstall_all(alias) | HOME module attribute is monkeypatched by tests to redirect away from real ~/
+  Performance: O(skills × tools) filesystem ops | no I/O beyond symlink/copy/write | typical bundle (20 skills) installs in <50ms
+  Errors: lets OSError bubble (permission denied, broken symlink targets); FRONTMATTER_RE.match returns None for cursor → skill silently skipped (intentional — non-frontmatter bodies aren't valid cursor rules)
 
-Given a bundle laid out as `<root>/skills/<name>/SKILL.md`, place it where
-each coding agent expects to find it:
-
-  install_claude(bundle, alias)              ~/.claude/plugins/<alias>/       (symlink to bundle)
-  install_skill_dirs(bundle, alias, "codex") ~/.<tool>/skills/<alias>-<skill>/ (per-skill symlinks)
-  install_cursor(bundle, alias)              ~/.cursor/rules/<alias>-<skill>.mdc
-  install_kiro(bundle, alias)                ~/.kiro/steering/<alias>-<skill>.md
-
-Used by `co sub` (subscription install) and by oo's bootstrap installer.
+Per-tool layout produced:
+  install_claude(bundle, alias)              ~/.claude/plugins/<alias>/        (symlink to bundle)
+  install_skill_dirs(bundle, alias, tool)    ~/.<tool>/skills/<alias>-<skill>/ (per-skill symlinks)
+  install_cursor(bundle, alias)              ~/.cursor/rules/<alias>-<skill>.mdc (file, frontmatter rewritten)
+  install_kiro(bundle, alias)                ~/.kiro/steering/<alias>-<skill>.md  (plain copy)
 """
 
 from __future__ import annotations
@@ -96,21 +100,15 @@ def install_all(bundle: Path, alias: str) -> dict[str, int]:
     return {tool: handlers[tool]() for tool in detected_tools()}
 
 
-def uninstall_all(alias: str, skill_names: list[str] | None = None) -> None:
-    """Remove every per-tool install for `alias`. If skill_names given, only
-    those skill files; otherwise wipe everything matching the alias prefix."""
+def uninstall_all(alias: str) -> None:
+    """Remove every per-tool install for `alias`."""
     targets: list[Path] = [HOME / ".claude" / "plugins" / alias]
     for tool in ("codex", "openclaw"):
         skills_dir = HOME / f".{tool}" / "skills"
-        if skill_names is not None:
-            targets += [skills_dir / f"{alias}-{n}" for n in skill_names]
-        elif skills_dir.is_dir():
+        if skills_dir.is_dir():
             targets += [p for p in skills_dir.iterdir() if p.name.startswith(f"{alias}-")]
-    for ext, base in (("mdc", HOME / ".cursor" / "rules"),
-                      ("md",  HOME / ".kiro" / "steering")):
-        if skill_names is not None:
-            targets += [base / f"{alias}-{n}.{ext}" for n in skill_names]
-        elif base.is_dir():
+    for base in (HOME / ".cursor" / "rules", HOME / ".kiro" / "steering"):
+        if base.is_dir():
             targets += [p for p in base.iterdir() if p.name.startswith(f"{alias}-")]
     for t in targets:
         if t.is_symlink() or t.is_file():

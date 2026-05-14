@@ -455,6 +455,34 @@ See [skills documentation](skills.md) for full details.
 
 ---
 
+#### `co sub` - Subscribe to & Sync Published Agents
+
+Follow another agent's `0x` address, mirror their published skills into `~/.co/subs/<alias>/`, and fan them out into every coding agent you use (Claude Code, Codex, OpenClaw, Cursor, Kiro). `co sub` is the **sync verb** — record-and-pull are the same operation.
+
+**Basic usage:**
+```bash
+co sub sync 0xcd92510bb6cc090374ecc345ef8c19b9d3797624fd1fbf7e078a9372fc31bdc1   # sync one (first subscribe or refresh)
+co sub                       # sync ALL subscribed publishers
+co sub list                  # local view, no relay
+co sub remove changxing      # unsubscribe (by alias or address)
+```
+
+**What `co sub sync <addr>` does:**
+1. `GET /api/relay/agents/<addr>/profile` → write `~/.co/subs/<alias>/agent.json`
+2. Pull each `SKILL.md` body → `~/.co/subs/<alias>/skills/<name>/`
+3. Append `<address> <alias>` to `~/.co/subscriptions.txt` (deduped)
+4. Symlink/copy into every detected `~/.<tool>/` directory
+
+**`co sub` (no subcommand)** walks every entry in `subscriptions.txt` and re-syncs each in order. Stops at the first failure (fail-fast — re-run after fixing).
+
+**Address-only by design** — aliases are mutable and hijackable, so first-time subscriptions require a `0x` address. Once pinned in `subscriptions.txt`, the alias works as a shorthand for refresh and remove.
+
+**Subscriptions file:** `~/.co/subscriptions.txt` (plain text, same shape as `contacts.txt` / `whitelist.txt`).
+
+See [sub documentation](sub.md) for the full fan-out behavior and v1 limitations.
+
+---
+
 #### `co browser <command>` - Browser Automation
 
 Execute browser commands quickly.
@@ -852,6 +880,7 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 | `co copy` | Copy built-in tools/plugins/skills/prompts | No | ✅ Yes |
 | `co skills` | Discover/import skills | No | ✅ Yes |
 | `co setup` | Global identity + skill library | No | ✅ Yes (idempotent) |
+| `co sub` | Subscribe to a publisher's skills | No | ✅ Yes (idempotent) |
 | `co auth` | Get managed keys | No | ✅ Yes |
 | `co status` | Check balance | No | ✅ Yes |
 | `co deploy` | Deploy to cloud | No | ✅ Yes |

@@ -348,32 +348,36 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
     handle_admin_remove(address)
 
 
-# Subscription command group
-sub_app = typer.Typer(help="Subscribe to published agents (mirror their skills to ~/.co/subs/ and fan out)")
+# Subscription command group. `co sub` (no args) syncs every subscription.
+# `co sub sync <addr>` syncs one. `list` and `remove` are the secondary verbs.
+sub_app = typer.Typer(help="Subscribe to published agents — sync skills from the relay into your coding agents")
 app.add_typer(sub_app, name="sub")
 
 
 @sub_app.callback(invoke_without_command=True)
-def sub_callback(ctx: typer.Context):
-    """Subscription management. With no subcommand, list current subscriptions."""
-    if ctx.invoked_subcommand is None:
-        from .commands.sub_commands import handle_sub_list
-        handle_sub_list()
-
-
-@sub_app.command("add")
-def sub_add(
-    target: str = typer.Argument(..., help="0x address to subscribe to"),
+def sub_callback(
+    ctx: typer.Context,
     relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: https://oo.openonion.ai)"),
 ):
-    """Subscribe: fetch the profile, mirror skills, fan out to coding agents."""
-    from .commands.sub_commands import handle_sub_add
-    handle_sub_add(target, relay=relay)
+    """With no subcommand, sync every subscription in ~/.co/subscriptions.txt."""
+    if ctx.invoked_subcommand is None:
+        from .commands.sub_commands import handle_sub_sync_all
+        handle_sub_sync_all(relay=relay)
+
+
+@sub_app.command("sync")
+def sub_sync(
+    target: str = typer.Argument(..., help="0x address (or locally-pinned alias) to sync"),
+    relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: https://oo.openonion.ai)"),
+):
+    """Sync one publisher: fetch profile, mirror skills, fan out to coding agents."""
+    from .commands.sub_commands import handle_sub_sync_one
+    handle_sub_sync_one(target, relay=relay)
 
 
 @sub_app.command("list")
 def sub_list():
-    """List all subscriptions with local version info."""
+    """List subscriptions (local only — no relay calls)."""
     from .commands.sub_commands import handle_sub_list
     handle_sub_list()
 

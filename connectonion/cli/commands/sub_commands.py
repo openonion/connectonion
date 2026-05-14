@@ -1,18 +1,27 @@
-"""`co sub` — subscribe to a published agent: record the address, mirror their
-public skills locally, and fan out to every coding agent on this machine.
+"""
+Purpose: `co sub` — record a subscription relationship to a published agent, mirror their public skills locally, and fan out to every coding agent on this machine.
+LLM-Note:
+  Dependencies: imports from [json, re, shutil, pathlib, httpx, rich.console, rich.table, .fanout] | imported by [cli/main.py via handle_sub_sync_one/sync_all/list/remove] | tested by [tests/unit/test_sub_commands.py, tests/cli/test_cli_sub.py]
+  Data flow:
+    sync_one(target, relay?) → _resolve_target() validates 0x address or matches an alias already in subscriptions.txt → _fetch_profile() GET /api/relay/agents/<addr>/profile → _mirror_bundle() writes ~/.co/subs/<alias>/agent.json + for each skill GET /api/relay/agents/<addr>/skills/<name> → unwrap body (handles both JSON {body:...} and raw text/markdown content-types) → write SKILL.md → append `<address> <alias>` to ~/.co/subscriptions.txt (deduped) → fanout.install_all() symlinks/copies into ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor, ~/.kiro
+    sync_all(relay?) → walks ~/.co/subscriptions.txt, calls sync_one per entry, tolerates per-publisher failures, prints summary (ok/failed counts)
+    list() → reads ~/.co/subscriptions.txt + ~/.co/subs/<alias>/agent.json → Rich table with alias, full address, version, skill count
+    remove(target) → match by address or alias → fanout.uninstall_all() drops every per-tool install → rmtree ~/.co/subs/<alias>/ → rewrite subscriptions.txt without the line
+  State/Effects: writes ~/.co/subscriptions.txt | writes ~/.co/subs/<alias>/agent.json + skills/<name>/SKILL.md | symlinks/files under ~/.<tool>/ via fanout | one synchronous httpx.get per profile + per skill body (no auth, no cache)
+  Integration: exposes handle_sub_sync_one(target, relay=None), handle_sub_sync_all(relay=None), handle_sub_list(), handle_sub_remove(target) called from cli/main.py's `sub` typer group | module-level CO_HOME, SUBS_DIR, SUBS_LIST, DEFAULT_RELAY are monkeypatched by tests | httpx.get is the seam tests stub
+  Performance: 1 + N HTTP GETs per subscribe (1 profile + 1 per skill body) | linear file I/O for mirror | idempotent (re-subscribe overwrites bundle, dedupes the line)
+  Errors: SystemExit(1) when target isn't a 0x address and isn't a locally-pinned alias (aliases are mutable; first-time subscriptions require an address) | raise_for_status() bubbles network errors | missing skill body raises (relay should never return 404 for a name listed in profile)
 
-Subscriptions are a flat list at ~/.co/subscriptions.txt — one `<address> <alias>`
-per line, same shape as ~/.co/contacts.txt. The mirrored bodies live at
-~/.co/subs/<alias>/skills/<name>/SKILL.md and the fan-out helpers in
-fanout.py drop them into ~/.claude, ~/.codex, ~/.cursor, ~/.kiro, ~/.openclaw.
+Subscription persistence:
+  ~/.co/subscriptions.txt — flat list, one `<address> <alias>` per line, `#` comments allowed.
+  Matches ~/.co/contacts.txt / whitelist.txt / blocklist.txt shape.
 
-The relay currently exposes:
-  GET /api/relay/agents/{address}/profile           - profile JSON
-  GET /api/relay/agents/{address}/skills/{name}     - skill body
+Relay endpoints consumed (v1):
+  GET /api/relay/agents/{address}/profile       - {profile: {alias, bio, version, skills:[{name, description}, ...]}}
+  GET /api/relay/agents/{address}/skills/{name} - JSON {body: "..."} or raw markdown depending on Content-Type
 
-Alias→address resolution and signed profiles are NOT yet exposed, so v1 is
-address-only and trusts the relay. When those land, swap the resolver and
-verify here without changing the CLI surface.
+⚠️ v1 trusts the relay — no Ed25519 signature verification (relay strips signer/signature from profile responses).
+⚠️ No alias→address resolver on relay — aliases are dangerous (mutable), so first-time subs require 0x address.
 """
 
 from __future__ import annotations
@@ -62,7 +71,7 @@ def _write_subs(subs: list[tuple[str, str]]) -> None:
     header = (
         "# ~/.co/subscriptions.txt — agents you follow\n"
         "# Format: <address> <alias>\n"
-        "# Managed by `co sub`. Re-run `co sub <address>` to refresh.\n"
+        "# Managed by `co sub`. Re-run `co sub sync <address>` to refresh one.\n"
     )
     body = "\n".join(f"{addr} {alias}" for addr, alias in subs)
     SUBS_LIST.write_text(header + body + ("\n" if body else ""), encoding="utf-8")
@@ -79,10 +88,7 @@ def _fetch_profile(address: str, relay: str) -> dict:
 def _fetch_skill(address: str, name: str, relay: str) -> str:
     r = httpx.get(f"{relay}/api/relay/agents/{address}/skills/{name}", timeout=30)
     r.raise_for_status()
-    ct = r.headers.get("content-type", "")
-    if "json" in ct:
-        return r.json().get("body", "")
-    return r.text
+    return r.json()["body"]
 
 
 def _mirror_bundle(address: str, alias: str, profile: dict, relay: str) -> int:
@@ -118,8 +124,18 @@ def _resolve_target(target: str) -> tuple[str, Optional[str]]:
     raise SystemExit(1)
 
 
-def handle_sub_add(target: str, relay: Optional[str] = None) -> None:
-    """Subscribe: fetch profile, record, mirror bodies, fan out to coding agents."""
+def handle_sub_sync_all(relay: Optional[str] = None) -> None:
+    """Walk ~/.co/subscriptions.txt and sync each entry. Fails fast on first error."""
+    subs = _read_subs()
+    if not subs:
+        console.print("\n[dim]No subscriptions yet. Try `co sub sync 0x...`[/dim]\n")
+        return
+    for address, _alias in subs:
+        handle_sub_sync_one(address, relay=relay)
+
+
+def handle_sub_sync_one(target: str, relay: Optional[str] = None) -> None:
+    """Sync one publisher: resolve, fetch profile, record, mirror bodies, fan out."""
     address, alias_hint = _resolve_target(target)
     base = _relay_base(relay)
 
