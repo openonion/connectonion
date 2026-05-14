@@ -102,6 +102,29 @@ class TestCreateAnnounceMessage:
             expected_keys = ["address", "endpoints", "relay", "summary", "timestamp", "type"]
             assert list(parsed.keys()) == expected_keys
 
+    def test_profile_is_included_in_signed_payload(self):
+        """Optional publish profile is covered by the ANNOUNCE signature."""
+        address_data = {
+            "address": "0x1234",
+            "signing_key": b"key"
+        }
+        profile = {
+            "alias": "tester",
+            "bio": "Test agent",
+            "version": "v0.1.0",
+            "skills": [{"name": "alpha", "description": "Alpha", "body": "Body"}],
+        }
+
+        with patch("connectonion.address.sign") as mock_sign:
+            mock_sign.return_value = b"sig"
+            result = create_announce_message(address_data, "Agent", profile=profile)
+
+            signed_data = mock_sign.call_args[0][1]
+            parsed = json.loads(signed_data.decode("utf-8"))
+
+        assert result["profile"] == profile
+        assert parsed["profile"] == profile
+
     def test_default_endpoints_is_empty_list(self):
         """Default endpoints is empty list when not provided."""
         address_data = {

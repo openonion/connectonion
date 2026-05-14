@@ -194,7 +194,7 @@ class Gmail:
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--list` | `-l` | List available tools and plugins |
+| `--list` | `-l` | List available tools, plugins, skills, prompts, trust policies, and TUI components |
 | `--path` | `-p` | Custom destination path |
 | `--force` | `-f` | Overwrite existing files |
 

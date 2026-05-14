@@ -209,6 +209,9 @@ async def serve_loop(
                 console.print(f"{prefix} [red]Relay error: {msg.get('error')}[/red]")
                 continue
 
+            if msg.get("type") == "ANNOUNCE_OK":
+                continue
+
             session_id = msg["session_id"]
             if session_id in sessions:
                 await sessions[session_id].put(msg)

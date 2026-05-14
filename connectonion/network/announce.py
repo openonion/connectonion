@@ -50,55 +50,37 @@ def create_announce_message(
     address_data: Dict[str, Any],
     summary: str,
     endpoints: List[str] = None,
-    relay: str = None
+    relay: str = None,
+    profile: Dict[str, Any] = None,
 ) -> Dict[str, Any]:
     """
     Build and sign an ANNOUNCE message for relay registration.
 
     Args:
-        address_data: Dictionary from address.load() or address.generate()
-                     containing 'address' and 'signing_key'
-        summary: Description of agent's capabilities (max 1000 chars)
-        endpoints: List of direct connection URLs
-                  Format: ["http://host:port", "ws://host:port/ws"]
-        relay: Relay server URL for fallback connection
-               Format: "wss://oo.openonion.ai"
+        address_data: dict from address.load()/generate() with 'address' + 'signing_key'
+        summary: agent capability description (max 1000 chars)
+        endpoints: direct connection URLs (http://host:port, ws://host:port/ws)
+        relay: relay fallback URL (e.g. "wss://oo.openonion.ai")
+        profile: optional publishable profile {alias, bio, version, skills: [{name, description, body}]}.
+                 When present, the signature covers it atomically so the relay
+                 can trust the metadata + inlined SKILL.md bodies.
 
     Returns:
-        Dictionary ready to send to relay's /ws/announce endpoint:
-        {
-            "type": "ANNOUNCE",
-            "address": "0x...",
-            "timestamp": 1234567890,
-            "summary": "...",
-            "endpoints": ["http://localhost:8000", "ws://localhost:8000/ws"],
-            "relay": "wss://oo.openonion.ai",
-            "signature": "abc123..."
-        }
-
-    Example:
-        >>> import address
-        >>> addr = address.load()
-        >>> msg = create_announce_message(
-        ...     addr,
-        ...     "Translator agent with 50+ languages",
-        ...     ["http://127.0.0.1:8080", "ws://127.0.0.1:8080/ws"],
-        ...     relay="wss://oo.openonion.ai"
-        ... )
-        >>> # Now send msg through WebSocket to relay
+        Signed ANNOUNCE message ready to send to /ws/announce.
     """
     if endpoints is None:
         endpoints = []
 
-    # Build message WITHOUT signature first
     message = {
         "type": "ANNOUNCE",
         "address": address_data["address"],
         "timestamp": int(time.time()),
         "summary": summary,
         "endpoints": endpoints,
-        "relay": relay
+        "relay": relay,
     }
+    if profile is not None:
+        message["profile"] = profile
 
     # Create deterministic JSON for signing
     # MUST match server's verification: json.dumps(message, sort_keys=True)

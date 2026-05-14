@@ -191,6 +191,82 @@ def eval(
     handle_eval(name=name, agent_file=agent)
 
 
+@app.command()
+def setup(
+    bio: Optional[str] = typer.Option(None, "--bio", "-b", help="One-line bio for ~/.co/agent.json"),
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="Alias/name for ~/.co/agent.json (default: $USER)"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing ~/.co/agent.json (backs up to .bak)"),
+    skip_skills: bool = typer.Option(False, "--no-skills", help="Skip ~/.co/skills/ library refresh"),
+):
+    """Set up your global ~/.co/ — identity, agent.json, and skill library."""
+    from .commands.setup_commands import handle_setup
+    handle_setup(name=name, bio=bio, force=force, skip_skills=skip_skills)
+
+
+@app.command()
+def announce(
+    relay: Optional[str] = typer.Option(None, "--relay", "-r", help="Relay URL (default: wss://oo.openonion.ai)"),
+    dry_run: bool = typer.Option(False, "--dry-run", help="Print the signed message, don't send"),
+):
+    """Publish ~/.co/agent.json + SKILL.md bodies (publish:true) to the relay."""
+    from .commands.announce_commands import handle_announce
+    handle_announce(relay=relay, dry_run=dry_run)
+
+
+# Skills command group
+skills_app = typer.Typer(help="Discover, copy, and list SKILL.md files from agent tool directories")
+app.add_typer(skills_app, name="skills")
+
+
+@skills_app.callback(invoke_without_command=True)
+def skills_callback(ctx: typer.Context):
+    """Skill discovery and management."""
+    if ctx.invoked_subcommand is None:
+        from .commands.skills_commands import handle_skills_list
+        handle_skills_list()
+
+
+@skills_app.command("discover")
+def skills_discover(
+    no_save: bool = typer.Option(False, "--no-save", help="Don't write ~/.co/skills/index.json"),
+    json_out: bool = typer.Option(False, "--json", help="Print index as JSON"),
+    include_namespaced: bool = typer.Option(False, "--include-namespaced", help="Include plugin-namespaced skills (names with ':')"),
+):
+    """Scan ~/.claude, ~/.codex, ~/.cursor, ~/.kiro, .co/skills for SKILL.md files."""
+    from .commands.skills_commands import handle_skills_discover
+    handle_skills_discover(save=not no_save, json_out=json_out, include_namespaced=include_namespaced)
+
+
+@skills_app.command("copy")
+def skills_copy(
+    names: List[str] = typer.Argument(None, help="Skill names to copy into ~/.co/skills/"),
+    source: Optional[str] = typer.Option(None, "--source", "-s", help="Restrict to a specific source (claude, codex, cursor, kiro, co-user, co-project)"),
+    force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing skill"),
+    all_: bool = typer.Option(False, "--all", "-a", help="Copy every discovered skill (dedupe by SOURCES priority)"),
+):
+    """Copy a discovered skill into ~/.co/skills/<name>/."""
+    from .commands.skills_commands import handle_skills_copy
+    handle_skills_copy(names=names or [], source=source, force=force, all_=all_)
+
+
+@skills_app.command("manifest")
+def skills_manifest(
+    path: Optional[str] = typer.Option(None, "--path", "-p", help="Skills directory to scan (default: ~/.co/skills/)"),
+    out: Optional[str] = typer.Option(None, "--out", "-o", help="Write to file (default: merge into ~/.co/agent.json); if path ends in agent.json, merge into its skills[] key"),
+    stdout: bool = typer.Option(False, "--stdout", help="Print JSON to stdout instead of writing"),
+):
+    """Build skill metadata for oo-publish."""
+    from .commands.skills_commands import handle_skills_manifest
+    handle_skills_manifest(path=path, out=out, stdout=stdout)
+
+
+@skills_app.command("list")
+def skills_list():
+    """List skills currently installed in ~/.co/skills/."""
+    from .commands.skills_commands import handle_skills_list
+    handle_skills_list()
+
+
 # Trust command group
 trust_app = typer.Typer(help="Manage trust lists (contacts, whitelist, blocklist, admins)")
 app.add_typer(trust_app, name="trust")

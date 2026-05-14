@@ -346,19 +346,20 @@ Run 'co auth' if you need to authenticate
 
 ---
 
-#### `co copy <name>` - Copy Tools & Plugins
+#### `co copy <name>` - Copy Built-In Tools, Plugins, Skills & Prompts
 
-Copy built-in tools and plugins to your project for customization.
+Copy built-in tools, plugins, prompt templates, trust policies, TUI components, and bundled skills to your project for customization.
 
 **Basic usage:**
 ```bash
 co copy --list              # See available items
 co copy Gmail               # Copy to ./tools/
 co copy re_act              # Copy to ./plugins/
+co copy ship-feature        # Copy to ./.co/skills/
 ```
 
 **Options:**
-- `--list, -l` - List available tools and plugins
+- `--list, -l` - List available tools, plugins, skills, prompts, trust policies, and TUI components
 - `--path, -p` - Custom destination path
 - `--force, -f` - Overwrite existing files
 
@@ -371,6 +372,10 @@ co copy Gmail
 # Copy a plugin
 co copy re_act
 # Creates: ./plugins/re_act.py
+
+# Copy a bundled skill
+co copy ship-feature
+# Creates: ./.co/skills/ship-feature/SKILL.md
 
 # Copy multiple items
 co copy Gmail Shell memory
@@ -389,6 +394,64 @@ from tools.gmail import Gmail  # Now customize it!
 ```
 
 See [copy documentation](copy.md) for full details.
+
+---
+
+#### `co setup` - Global Identity & Skill Library
+
+One command to set up everything in `~/.co/` needed to publish an agent: keypair, `agent.json` profile, and a populated skill library.
+
+**Basic usage:**
+```bash
+co setup --name my-alias --bio "Concise one-liner"
+```
+
+**What it does:**
+1. Bootstraps identity (`~/.co/keys/agent.key`) if missing
+2. Writes `~/.co/agent.json` with signing address, alias, bio, and skill metadata
+3. Runs `co skills discover && co skills copy --all && co skills manifest` → populates `~/.co/skills/` and updates `agent.json.skills`
+4. Reports auth status
+
+**No separate bundle directory** — `~/.co/` itself is what `oo-publish` reads at publish time.
+
+**Options:**
+- `--name, -n` - Alias for `agent.json` (default `$USER`)
+- `--bio, -b` - One-line bio
+- `--force, -f` - Overwrite existing `agent.json` (backs up to `.bak`)
+- `--no-skills` - Skip the library refresh
+
+See [setup documentation](setup.md) for full details.
+
+---
+
+#### `co skills` - Discover & Import Skills
+
+Scan skill files across Claude Code, Codex, Cursor, Kiro, project `.co/skills/`, and user `~/.co/skills/`, then import selected skills into `~/.co/skills/`.
+
+**Basic usage:**
+```bash
+co skills discover           # Scan all known agent skill directories
+co skills copy ship-feature  # Import into ~/.co/skills/
+co skills copy --all         # Import every discovered skill
+co skills manifest          # Merge {name, description, publish: false}[] into ~/.co/agent.json
+co skills list               # Show what's installed
+```
+
+**Options for discover:**
+- `--no-save` - Don't write `~/.co/skills/index.json`
+- `--json` - Print index as JSON
+- `--include-namespaced` - Include plugin-namespaced skills (default filtered)
+
+**Options for copy:**
+- `--all, -a` - Copy every discovered skill (dedupe by source priority)
+- `--source, -s` - Pick a source: `claude`, `codex`, `cursor`, `kiro`, `co-user`, `co-project`
+- `--force, -f` - Overwrite existing skill(s)
+
+**Sources scanned:** `./.co/skills/`, `~/.co/skills/`, `~/.claude/skills/`, `~/.codex/skills/`, `~/.cursor/rules/`, `~/.kiro/steering/`
+
+`co ai` loads `.co/skills/` and `~/.co/skills/` automatically. The runtime `skills` plugin also checks Claude skill directories directly, but `co skills copy` gives publishing one normalized library under `~/.co/skills/`.
+
+See [skills documentation](skills.md) for full details.
 
 ---
 
@@ -786,7 +849,9 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 |---------|---------|-------------|-------------------|
 | `co create` | New project | Yes | N/A (creates new dir) |
 | `co init` | Add to existing | Yes | ✅ Yes |
-| `co copy` | Copy tools/plugins | No | ✅ Yes |
+| `co copy` | Copy built-in tools/plugins/skills/prompts | No | ✅ Yes |
+| `co skills` | Discover/import skills | No | ✅ Yes |
+| `co setup` | Global identity + skill library | No | ✅ Yes (idempotent) |
 | `co auth` | Get managed keys | No | ✅ Yes |
 | `co status` | Check balance | No | ✅ Yes |
 | `co deploy` | Deploy to cloud | No | ✅ Yes |
