@@ -164,6 +164,8 @@ def _authenticate_signed(data: dict, *, blacklist=None, agent_address=None):
         return None, identity, "unauthorized: signature required"
     if not timestamp:
         return None, identity, "unauthorized: timestamp required in payload"
+    if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+        return None, identity, "unauthorized: timestamp must be numeric"
 
     # Check timestamp expiry (5 minute window)
     now = time.time()

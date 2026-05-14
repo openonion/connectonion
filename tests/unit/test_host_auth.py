@@ -452,5 +452,118 @@ class TestSignatureExpiryConstant:
         assert SIGNATURE_EXPIRY_SECONDS == 300
 
 
+def _signed_request(prompt="hi", timestamp=None, to=None, extras=None):
+    """Build a freshly-signed request and return (data, signing_key)."""
+    from nacl.signing import SigningKey
+
+    sk = SigningKey.generate()
+    pubkey_hex = sk.verify_key.encode().hex()
+    payload = {"prompt": prompt, "timestamp": timestamp if timestamp is not None else time.time()}
+    if to is not None:
+        payload["to"] = to
+    if extras:
+        payload.update(extras)
+    canonical = json.dumps(payload, sort_keys=True, separators=(",", ":"))
+    signature = sk.sign(canonical.encode()).signature.hex()
+    return {"payload": payload, "from": pubkey_hex, "signature": signature}, sk
+
+
+class TestSecurityAttackSurface:
+    """Targeted attack-surface tests for signature auth.
+
+    Each test exercises a specific tampering scenario an attacker would attempt.
+    """
+
+    def test_tampered_prompt_after_signing_rejected(self):
+        """Modifying payload.prompt after signing must invalidate the signature."""
+        data, _ = _signed_request(prompt="Original")
+        data["payload"]["prompt"] = "Tampered!"
+        _, _, sig_valid, error = extract_and_authenticate(data, "open")
+        assert sig_valid is False
+        assert "invalid signature" in error
+
+    def test_tampered_to_field_after_signing_rejected(self):
+        """Modifying payload.to after signing must invalidate the signature."""
+        data, _ = _signed_request(prompt="hi", to="0xagent")
+        data["payload"]["to"] = "0xdifferent_recipient"
+        _, _, sig_valid, error = extract_and_authenticate(data, "open")
+        assert sig_valid is False
+        assert "invalid" in error
+
+    def test_extra_field_injected_after_signing_rejected(self):
+        """Adding a field to payload after signing must invalidate the signature."""
+        data, _ = _signed_request(prompt="hi")
+        data["payload"]["extra_admin_flag"] = True
+        _, _, sig_valid, error = extract_and_authenticate(data, "open")
+        assert sig_valid is False
+
+    def test_identity_swap_attack_rejected(self):
+        """Signature made with key A, but `from` field claims key B → must reject."""
+        data, _ = _signed_request(prompt="hi")
+        from nacl.signing import SigningKey
+        other_key = SigningKey.generate().verify_key.encode().hex()
+        data["from"] = other_key
+        _, _, sig_valid, error = extract_and_authenticate(data, "open")
+        assert sig_valid is False
+
+    def test_timestamp_exactly_at_boundary_passes(self):
+        """Timestamp at exactly +/- SIGNATURE_EXPIRY_SECONDS should still pass."""
+        # `abs(now - ts) > 300` → at exactly 300 it's still allowed
+        # Use a small slack to avoid clock-skew flakes
+        boundary_ts = time.time() - (SIGNATURE_EXPIRY_SECONDS - 1)
+        data, _ = _signed_request(prompt="hi", timestamp=boundary_ts)
+        _, _, sig_valid, error = extract_and_authenticate(data, "open")
+        assert sig_valid is True
+        assert error is None
+
+    def test_timestamp_just_past_boundary_rejected(self):
+        """Timestamp one second past expiry should be rejected."""
+        expired_ts = time.time() - (SIGNATURE_EXPIRY_SECONDS + 1)
+        data, _ = _signed_request(prompt="hi", timestamp=expired_ts)
+        _, _, _, error = extract_and_authenticate(data, "open")
+        assert error is not None
+        assert "expired" in error
+
+    def test_timestamp_zero_treated_as_missing(self):
+        """timestamp=0 is falsy → triggers 'timestamp required'."""
+        data, _ = _signed_request(prompt="hi", timestamp=0)
+        _, _, _, error = extract_and_authenticate(data, "open")
+        assert error is not None
+        assert "timestamp" in error
+
+    def test_string_timestamp_does_not_crash_and_is_rejected(self):
+        """Non-numeric timestamp must not raise TypeError — must return error."""
+        # If implementation passes — great. If it raises TypeError, that's the bug.
+        data, _ = _signed_request(prompt="hi", timestamp="not-a-number")
+        try:
+            _, _, _, error = extract_and_authenticate(data, "open")
+        except TypeError as e:
+            pytest.fail(
+                f"String timestamp caused TypeError instead of clean rejection: {e}"
+            )
+        assert error is not None
+
+    def test_replay_within_window_currently_allowed(self):
+        """Documents known limitation: same signed request can be replayed within 5min.
+
+        If nonce-based replay protection is added later, this test will fail and
+        force the new contract to be reflected in the test suite.
+        """
+        data, _ = _signed_request(prompt="hi")
+        _, _, first_valid, first_error = extract_and_authenticate(data, "open")
+        _, _, second_valid, second_error = extract_and_authenticate(data, "open")
+        assert first_valid is True and first_error is None
+        # Second time: same signed payload, still within window → currently passes
+        assert second_valid is True and second_error is None
+
+    def test_signature_hex_lowercase_vs_uppercase_both_accepted(self):
+        """Signature hex should be case-insensitive (standard hex behavior)."""
+        data, _ = _signed_request(prompt="hi")
+        data["signature"] = data["signature"].upper()
+        _, _, sig_valid, error = extract_and_authenticate(data, "open")
+        assert sig_valid is True
+        assert error is None
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
