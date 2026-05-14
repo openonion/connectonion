@@ -1,7 +1,7 @@
 """
 Purpose: Parse bash command chains and validate ALL commands are permitted
 LLM-Note:
-  Dependencies: imports bashlex (external) | imports from [../skills.py (matches_permission_pattern)] | imported by [tool_approval/approval.py] | tested by [tests/integration/test_bash_chain_permissions.py]
+  Dependencies: imports bashlex (external) | imports from [../skills.py (matches_permission_pattern)] | imported by [tool_approval/approval.py] | tested by [tests/unit/test_bash_parser.py]
   Data flow: receives bash command string → bashlex.parse() builds AST → extract_from_node() recursively finds subcommands → check_bash_chain_permitted() validates each full subcommand against permissions dict → returns (bool, reason, source) tuple
   State/Effects: no persistent state | no side effects | pure validation functions
   Integration: exposes extract_commands_from_bash(command) → List[str], check_bash_chain_permitted(command, permissions) → (bool, reason, source) | called by approval.py check_approval() for bash tool validation
@@ -76,17 +76,24 @@ def extract_commands_from_bash(command: str) -> list[str]:
     commands = []
 
     def extract_from_node(node):
-        """Recursively extract commands from AST node."""
+        """Recursively extract commands from AST node, including substitutions."""
         if node.kind == 'command':
-            # Get first word (command name)
+            first_word_added = False
             for part in node.parts:
-                if part.kind == 'word':
+                if part.kind == 'word' and not first_word_added:
                     commands.append(part.word)
-                    break
-        elif hasattr(node, 'parts'):
-            # Recurse into child nodes
-            for part in node.parts:
-                extract_from_node(part)
+                    first_word_added = True
+                _recurse(part)
+        else:
+            _recurse(node)
+
+    def _recurse(node):
+        for attr in ('parts', 'list'):
+            for child in getattr(node, attr, []) or []:
+                extract_from_node(child)
+        sub = getattr(node, 'command', None)
+        if sub is not None:
+            extract_from_node(sub)
 
     for tree in parts:
         extract_from_node(tree)
@@ -120,9 +127,19 @@ def _extract_subcommands(command: str) -> list[tuple[str, str]]:
             words = [p.word for p in node.parts if p.kind == 'word']
             if words:
                 result.append((words[0], ' '.join(words)))
-        elif hasattr(node, 'parts'):
+            # Also descend into each part to capture $(...) / `...` subcommands.
             for part in node.parts:
-                extract_from_node(part)
+                _recurse(part)
+        else:
+            _recurse(node)
+
+    def _recurse(node):
+        for attr in ('parts', 'list'):
+            for child in getattr(node, attr, []) or []:
+                extract_from_node(child)
+        sub = getattr(node, 'command', None)
+        if sub is not None:
+            extract_from_node(sub)
 
     for tree in bashlex.parse(command):
         extract_from_node(tree)
