@@ -5,12 +5,12 @@ LLM-Note:
   Dependencies: imports from [asyncio, json, pathlib, websockets, rich, connectonion.address, connectonion.network.announce] | imported by [cli/main.py via handle_announce()]
   Data flow:
     1. Read ~/.co/agent.json → load alias, bio, version, skills[]
-    2. Filter skills where publish: true → inline body from ~/.co/skills/<name>/SKILL.md
-    3. Build profile {alias, bio, version, skills:[{name, description, body}]}
+    2. List all skills as metadata; inline body only when publish: true
+    3. Build profile {alias, bio, version, skills:[{name, description, body?}]}
     4. create_announce_message(..., profile=profile) — signs everything
     5. WS connect wss://oo.openonion.ai/ws/announce → send → close
   State/Effects: reads ~/.co/agent.json + ~/.co/skills/<name>/SKILL.md | opens one outbound WS | no local writes
-  Integration: publish: true is the only privacy knob — false/missing skills never leave the machine.
+  Integration: skills are listed by default; publish: true controls whether the body is public.
 """
 
 import asyncio
@@ -38,21 +38,21 @@ def _load_profile() -> dict:
     return json.loads(AGENT_JSON.read_text())
 
 
-def _build_published_skills(profile: dict) -> list:
+def _build_listed_skills(profile: dict) -> list:
     skills_out = []
     for skill in profile.get("skills", []):
-        if not skill.get("publish"):
-            continue
         name = skill["name"]
-        body_path = SKILLS_DIR / name / "SKILL.md"
-        if not body_path.exists():
-            console.print(f"[yellow]Skipping {name}: {body_path} not found[/yellow]")
-            continue
-        skills_out.append({
+        listed = {
             "name": name,
             "description": skill.get("description", ""),
-            "body": body_path.read_text(encoding="utf-8"),
-        })
+        }
+        if skill.get("publish"):
+            body_path = SKILLS_DIR / name / "SKILL.md"
+            if body_path.exists():
+                listed["body"] = body_path.read_text(encoding="utf-8")
+            else:
+                console.print(f"[yellow]Listing {name} without body: {body_path} not found[/yellow]")
+        skills_out.append(listed)
     return skills_out
 
 
@@ -89,7 +89,7 @@ def handle_announce(relay: Optional[str] = None, dry_run: bool = False):
     profile_file = _load_profile()
     addr_data = address.load(CO_HOME)
 
-    skills = _build_published_skills(profile_file)
+    skills = _build_listed_skills(profile_file)
     profile = {
         "alias":   profile_file.get("alias"),
         "bio":     profile_file.get("bio", ""),
@@ -109,7 +109,8 @@ def handle_announce(relay: Optional[str] = None, dry_run: bool = False):
 
     console.print(f"[cyan]Announcing[/cyan] {addr_data['address']} → {relay_url}")
     console.print(f"  alias:  {profile['alias']}")
-    console.print(f"  skills: {len(skills)} published" + (
+    body_count = sum(1 for s in skills if "body" in s)
+    console.print(f"  skills: {len(skills)} listed, {body_count} with public body" + (
         f" ({', '.join(s['name'] for s in skills)})" if skills else ""
     ))
 
