@@ -6,7 +6,7 @@ Integration tests for ConnectOnion CLI commands to verify bug fixes for issues #
 
 Make all test scripts executable (already done):
 ```bash
-chmod +x tests/cli/*.sh
+chmod +x tests/e2e/cli/*.sh
 ```
 
 ## Available Tests
@@ -17,12 +17,12 @@ Tests the "Bring Your Own API Key" initialization flow using CLI parameters.
 
 **Usage:**
 ```bash
-./tests/cli/test_byo_api_key.sh <YOUR_OPENAI_API_KEY>
+./tests/e2e/cli/test_byo_api_key.sh <YOUR_OPENAI_API_KEY>
 ```
 
 **Example:**
 ```bash
-./tests/cli/test_byo_api_key.sh sk-proj-xxxxx
+./tests/e2e/cli/test_byo_api_key.sh sk-proj-xxxxx
 ```
 
 **What it tests:**
@@ -36,7 +36,7 @@ Tests the `co auth` command after initialization.
 
 **Usage:**
 ```bash
-./tests/cli/test_auth.sh
+./tests/e2e/cli/test_auth.sh
 ```
 
 **What it tests:**
@@ -51,7 +51,7 @@ Tests the "Star for $1 credit" initialization flow (requires user interaction).
 
 **Usage:**
 ```bash
-./tests/cli/test_star_credits.sh
+./tests/e2e/cli/test_star_credits.sh
 ```
 
 **What it tests:**
@@ -65,7 +65,7 @@ Tests the "Star for $1 credit" initialization flow (requires user interaction).
 Clean up test environment (removes ~/.co and /tmp/connectonion-test):
 
 ```bash
-./tests/cli/cleanup.sh
+./tests/e2e/cli/cleanup.sh
 ```
 
 **Note:** Each test automatically runs cleanup before starting.
@@ -85,7 +85,7 @@ To quickly test the bug fix, use the BYO API key test:
 export TEST_API_KEY="sk-proj-xxxxx"
 
 # Run the automated test
-./tests/cli/test_byo_api_key.sh "$TEST_API_KEY"
+./tests/e2e/cli/test_byo_api_key.sh "$TEST_API_KEY"
 ```
 
 ## Expected Behavior

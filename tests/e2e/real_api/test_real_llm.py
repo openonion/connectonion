@@ -18,7 +18,7 @@ import pytest
 from pydantic import BaseModel
 
 from connectonion import Agent, llm_do
-from tests.real_api.conftest import (
+from tests.e2e.real_api.conftest import (
     requires_openai,
     requires_anthropic,
     requires_gemini,

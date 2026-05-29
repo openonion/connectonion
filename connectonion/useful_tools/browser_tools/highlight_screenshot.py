@@ -1,7 +1,7 @@
 """
 Purpose: Draw bounding boxes and element indices on screenshots for visual element identification
 LLM-Note:
-  Dependencies: imports from [PIL Image/ImageDraw/ImageFont, pathlib, cli/browser_agent/element_finder] | imported by [cli/browser_agent/browser.py] | tested by [tests/cli/test_highlight.py]
+  Dependencies: imports from [PIL Image/ImageDraw/ImageFont, pathlib, cli/browser_agent/element_finder] | imported by [cli/browser_agent/browser.py] | tested by [tests/e2e/cli/test_highlight.py]
   Data flow: highlight_screenshot(screenshot_path, elements) → loads PNG image → iterates InteractiveElement list → draws dashed rectangle around each element → draws index label with colored background → saves highlighted image | highlight_current_page(page) → takes screenshot → extracts elements → calls highlight_screenshot() → returns path
   State/Effects: reads screenshot PNG from disk | writes highlighted PNG to disk | deletes raw screenshot after highlighting | creates screenshots/ directory if missing
   Integration: exposes highlight_screenshot(screenshot_path, elements, output_path) → str, highlight_current_page(page, output_path) → str | ELEMENT_COLORS dict maps tag names to hex colors | get_font(size) → ImageFont for cross-platform text rendering | draw_dashed_rect() utility for styled boxes

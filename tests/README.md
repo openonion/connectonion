@@ -6,7 +6,7 @@
 
 ## 📁 Test Organization
 
-Tests are organized into folders with pytest markers (see [TEST_ORGANIZATION.md](./TEST_ORGANIZATION.md)):
+Two layers — **unit** and **e2e**. See [TEST_ORGANIZATION.md](./TEST_ORGANIZATION.md) for full guidance.
 
 ```
 tests/
@@ -16,15 +16,17 @@ tests/
 ├── .env.example              # Template for local test env
 ├── .env                      # Local test env (gitignored)
 │
-├── unit/                     # Unit tests (auto-marked: unit)
-├── integration/              # Integration tests (auto-marked: integration)
-├── cli/                      # CLI tests (auto-marked: cli)
-├── e2e/                      # End-to-end tests (auto-marked: e2e)
-└── real_api/                 # Real API tests (auto-marked: real_api)
+├── unit/                     # Auto-marked: unit
+├── e2e/                      # Auto-marked: e2e
+│   ├── real_api/             # Auto-marked: e2e, real_api (needs API keys)
+│   ├── cli/                  # Auto-marked: e2e, cli (real `co` invocations)
+│   └── manual/               # Demo scripts (not collected)
+├── fixtures/                 # Shared test data
+└── utils/                    # MockLLM, ProjectHelper, etc.
 ```
 
-Markers are applied automatically based on folder names in `tests/conftest.py`,
-so individual test files do not need `@pytest.mark.unit/integration/cli/e2e/real_api`.
+Markers are auto-applied by folder in `tests/conftest.py` — individual test files
+don't need `@pytest.mark.unit / e2e / cli / real_api`.
 
 ---
 
@@ -48,63 +50,43 @@ cp tests/.env.example tests/.env
 ### 2. Run Tests by Category
 
 ```bash
-# Unit tests (fast)
+# Default: unit + offline e2e (excludes real_api, network)
+pytest
+
+# Only unit (fast)
 pytest -m unit
 
-# Integration tests (no external APIs)
-pytest -m integration
-
-# CLI tests
-pytest -m cli
-
-# End-to-end example (offline)
+# All e2e (cli + real_api + offline workflows)
 pytest -m e2e
 
-# Real API tests (requires API keys)
+# Only CLI e2e
+pytest -m cli
+
+# Real API tests (requires API keys, costs money)
 pytest -m real_api
-
-# Real API end-to-end tests only
-pytest -m "real_api and e2e_online"
-
-# Everything except real API (default in CI)
-pytest -m "not real_api"
 ```
 
 ---
 
 ## 📊 Test Categories
 
-### 1. Unit Tests (`test_*.py`)
-One test file for each source file, all dependencies mocked:
-- `test_agent.py` - Agent class logic
-- `test_llm.py` - LLM interface
-- `test_tool_factory.py` - Tool creation
-- `test_console.py` - Debug/logging output
-- `test_decorators.py` - xray/replay decorators
+### Unit (`tests/unit/test_*.py`)
+One test file per source file, all dependencies mocked. Fast (<1s each), no API keys.
+- `test_agent.py`, `test_llm.py`, `test_tool_factory.py`, `test_console.py`, `test_decorators.py`, etc.
 
-**Characteristics**: Fast (<1s), no external dependencies, can run without API keys
+### E2E offline (`tests/e2e/test_*.py`)
+End-to-end workflows that don't need real APIs.
+- `test_example_agent.py` — full agent run with MockLLM
+- `test_relay_e2e.py` — relay protocol against local server
+- `test_deploy.py` — deploy flow
 
-### 2. Real API Tests (`test_real_*.py`)
-Tests that make actual API calls:
-- `test_real_openai.py` - Real OpenAI API
-- `test_real_anthropic.py` - Real Anthropic API
-- `test_real_gemini.py` - Real Google Gemini API
-- `test_real_email.py` - Actually send/receive emails
+### E2E + CLI (`tests/e2e/cli/test_cli_*.py`)
+Real `co` CLI invocations. File-system + subprocess.
+- `test_cli_init.py`, `test_cli_auth.py`, `test_browser_cli.py`, etc.
 
-**Characteristics**: Slow (5-30s), requires API keys, costs real money
-
-### 3. CLI Tests (`test_cli_*.py`)
-Test command-line interface:
-- `test_cli_init.py` - Project initialization
-- `test_cli_auth.py` - Authentication commands
-- `test_cli_browser.py` - Browser automation
-
-**Characteristics**: Medium speed (1-5s), file system operations
-
-### 4. Example Agent (`test_example_agent.py`)
-`tests/e2e/test_example_agent.py` runs offline with MockLLM for deterministic behavior.
-For a real API end-to-end workflow, use `tests/real_api/test_real_example_agent.py` and
-run with `-m "real_api and e2e_online"`.
+### E2E + real_api (`tests/e2e/real_api/test_real_*.py`)
+Actual API calls. Slow (5-30s), needs keys, costs money.
+- `test_real_openai.py`, `test_real_anthropic.py`, `test_real_gemini.py`, `test_real_email.py`
 
 ---
 
@@ -307,9 +289,9 @@ See `.github/workflows/tests.yml` for CI configuration.
 ## 🤝 Contributing
 
 When adding new email features:
-1. Write unit tests first (TDD)
-2. Add integration tests
-3. Update this README
+1. Write unit tests first (TDD) — mock external services
+2. Add e2e tests if there's a real workflow to verify (real_api gated for cost)
+3. Update this README if the test categories change
 4. Ensure all tests pass
 5. Check coverage remains above 85%
 

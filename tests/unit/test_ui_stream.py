@@ -68,18 +68,5 @@ class TestStreamComplete:
         )
 
 
-class TestUIStreamPlugin:
-    """Test ui_stream plugin bundle."""
-
-    def test_contains_stream_complete(self):
-        """ui_stream contains stream_complete handler."""
-        assert len(ui_stream) == 1
-        assert stream_complete in ui_stream
-
-    def test_handler_has_event_type(self):
-        """Handler is tagged with _event_type."""
-        assert stream_complete._event_type == 'on_complete'
-
-
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

@@ -18,6 +18,7 @@ from unittest.mock import Mock
 from connectonion import Agent
 from connectonion.useful_plugins import tool_approval
 from connectonion.useful_plugins.tool_approval import load_config_permissions
+from tests.utils.mock_helpers import MockLLM
 
 
 def test_load_permissions_from_project_host_yaml(tmp_path, monkeypatch):
@@ -53,7 +54,7 @@ def test_load_permissions_from_project_host_yaml(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     # Create agent with tool_approval plugin
-    agent = Agent("test", plugins=[tool_approval], model="gpt-4o-mini")
+    agent = Agent("test", plugins=[tool_approval], llm=MockLLM())
 
     # Initialize session by simulating a user input (but don't actually run it)
     agent.current_session = {
@@ -80,7 +81,7 @@ def test_no_permissions_when_host_yaml_missing(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     # Create agent - should not crash
-    agent = Agent("test", plugins=[tool_approval], model="gpt-4o-mini")
+    agent = Agent("test", plugins=[tool_approval], llm=MockLLM())
 
     # Initialize session
     agent.current_session = {

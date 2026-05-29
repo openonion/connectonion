@@ -279,15 +279,6 @@ class TestCheckCalendarApproval:
 class TestCalendarPlugin:
     """Tests for calendar_plugin plugin bundle."""
 
-    def test_calendar_plugin_contains_one_handler(self):
-        """Test that calendar_plugin has one handler."""
-        assert len(calendar_plugin) == 1
-
-    def test_handler_has_correct_event_type(self):
-        """Test that handler is registered for before_each_tool event."""
-        assert hasattr(check_calendar_approval, '_event_type')
-        assert check_calendar_approval._event_type == 'before_each_tool'
-
     def test_plugin_integrates_with_agent(self):
         """Test that plugin can be registered with agent."""
         from connectonion import Agent

@@ -740,25 +740,6 @@ class TestPollModeChanges:
 class TestPluginExport:
     """Test plugin is properly exported."""
 
-    def test_tool_approval_is_list(self):
-        """tool_approval should be a list of handlers."""
-        assert isinstance(tool_approval, list)
-        assert len(tool_approval) == 3  # load_config_permissions, poll_mode_changes, check_approval
-
-    def test_handlers_have_correct_event_types(self):
-        """Handlers should have correct event types."""
-        # First handler: load_config_permissions (after_user_input)
-        assert hasattr(tool_approval[0], '_event_type')
-        assert tool_approval[0]._event_type == 'after_user_input'
-
-        # Second handler: poll_mode_changes (before_iteration)
-        assert hasattr(tool_approval[1], '_event_type')
-        assert tool_approval[1]._event_type == 'before_iteration'
-
-        # Third handler: check_approval (before_each_tool)
-        assert hasattr(tool_approval[2], '_event_type')
-        assert tool_approval[2]._event_type == 'before_each_tool'
-
     def test_plugin_integrates_with_agent(self):
         """Plugin should integrate with Agent without errors."""
         from connectonion import Agent

@@ -21,7 +21,7 @@ from unittest.mock import Mock, patch
 import pytest
 from connectonion import Agent
 
-from tests.real_api.conftest import (
+from tests.e2e.real_api.conftest import (
     requires_openai,
     requires_anthropic,
     requires_gemini,

@@ -14,7 +14,7 @@ Components under test:
 import pytest
 
 from connectonion import Agent
-from tests.real_api.conftest import requires_openai
+from tests.e2e.real_api.conftest import requires_openai
 
 
 pytestmark = pytest.mark.real_api

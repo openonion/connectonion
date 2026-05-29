@@ -6,7 +6,7 @@ Design:
 - NO 'if' statements inside test bodies for skipping
 
 Usage:
-    from tests.real_api.conftest import requires_openai
+    from tests.e2e.real_api.conftest import requires_openai
 
     @requires_openai
     def test_openai_completion():

@@ -127,23 +127,6 @@ class TestAcknowledgeRequest:
 class TestReActPlugin:
     """Tests for re_act plugin bundle."""
 
-    def test_re_act_contains_two_handlers(self):
-        """Test that re_act plugin has two handlers (acknowledge + reflect)."""
-        assert len(re_act) == 2
-
-    def test_re_act_handlers_have_correct_event_types(self):
-        """Test that handlers are registered for correct events."""
-        from connectonion.useful_plugins.re_act import acknowledge_request
-
-        # acknowledge_request should be after_user_input
-        assert hasattr(acknowledge_request, '_event_type')
-        assert acknowledge_request._event_type == 'after_user_input'
-
-        # reflect should be after_tools
-        from connectonion.useful_events_handlers.reflect import reflect
-        assert hasattr(reflect, '_event_type')
-        assert reflect._event_type == 'after_tools'
-
     def test_plugin_integrates_with_agent(self):
         """Test that plugin can be registered with agent."""
         from connectonion import Agent

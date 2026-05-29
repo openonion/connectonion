@@ -27,7 +27,6 @@ from tests.utils.mock_helpers import (
 )
 
 
-@pytest.mark.integration
 class TestAgentWorkflows:
     """Test complete agent workflows end-to-end."""
     
@@ -164,7 +163,6 @@ class TestAgentWorkflows:
         # Should have stopped at max iterations (10), not continue to 15
 
 
-@pytest.mark.integration
 class TestErrorRecoveryWorkflows:
     """Test agent behavior during error scenarios."""
 
@@ -232,7 +230,6 @@ class TestErrorRecoveryWorkflows:
         # History removed - checking trace instead
 
 
-@pytest.mark.integration
 class TestConcurrentAgentOperations:
     """Test concurrent agent operations."""
 
@@ -271,7 +268,6 @@ class TestConcurrentAgentOperations:
 
 
 @pytest.mark.slow
-@pytest.mark.integration
 class TestLongRunningWorkflows:
     """Test long-running and resource-intensive workflows."""
 

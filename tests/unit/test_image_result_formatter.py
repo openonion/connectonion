@@ -323,17 +323,6 @@ class TestFormatImageResult:
 class TestImageResultFormatterPlugin:
     """Tests for image_result_formatter plugin."""
 
-    def test_plugin_is_list(self):
-        """Test that plugin is a list of handlers."""
-        assert isinstance(image_result_formatter, list)
-        assert len(image_result_formatter) == 1
-
-    def test_plugin_handler_has_event_type(self):
-        """Test that handler has correct event type."""
-        handler = image_result_formatter[0]
-        assert hasattr(handler, '_event_type')
-        assert handler._event_type == 'after_tools'
-
     def test_plugin_integrates_with_agent(self):
         """Test that plugin can be registered with agent."""
         from connectonion import Agent

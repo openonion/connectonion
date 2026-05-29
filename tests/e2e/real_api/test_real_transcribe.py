@@ -20,7 +20,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.real_api.conftest import requires_gemini
+from tests.e2e.real_api.conftest import requires_gemini
 
 
 pytestmark = pytest.mark.real_api
