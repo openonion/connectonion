@@ -882,3 +882,84 @@ MIT License - Use it anywhere, even commercially. See [LICENSE](LICENSE) file fo
 [⭐ Star this repo](https://github.com/openonion/connectonion) • [💬 Join Discord](https://discord.gg/4xfD9k8AUF) • [📖 Read Docs](https://docs.connectonion.com) • [⬆ Back to top](#-connectonion)
 
 </div>
+
+## ❓ Frequently Asked Questions (FAQ)
+
+### What is ConnectOnion?
+
+ConnectOnion is a simple, elegant framework for production-ready AI agents. Philosophy: "Keep simple things simple, make complicated things possible" - you write prompts and tools, framework handles everything else.
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| Built-in AI Programmer | `co ai` - AI coding assistant |
+| Built-in Frontend & Backend | chat.openonion.ai ready-to-use |
+| Ready-to-Use Tools | Import without schema writing |
+| Approval System | Dangerous ops auto-trigger approval |
+| Skills System | Claude Code compatible, auto-discovery |
+| 12 Lifecycle Hooks | Inject logic at any point |
+| Plugin System | re_act, auto_compact, subagents, ulw |
+| Multi-Agent Trust | Fast rules, zero token cost |
+
+### Quick Start
+
+```bash
+pip install connectonion
+```
+
+### Available Tools
+
+bash, Shell, FileTools, BrowserAutomation, Gmail, Outlook, GoogleCalendar, Memory, TodoList
+
+### Customize Tools
+
+```bash
+co copy Gmail  # Copy tool source for modification
+```
+
+### Built-in Plugins
+
+| Plugin | Description | Claude Code Equivalent |
+|--------|-------------|------------------------|
+| re_act | Reflect + plan after each tool | - |
+| auto_compact | Auto-compress context at 90% | Context compression |
+| subagents | Spawn sub-agents | Sub-agent spawning |
+| ulw | Ultra Light Work autonomous | Autonomous mode |
+
+### Skills Auto-Discovery
+
+Project → User → Built-in levels. Automatically loads Claude Code skills from `.claude/skills/`.
+
+### Lifecycle Hooks
+
+after_user_input, before_iteration, before_llm, after_llm, before_tools, after_tools, on_error, after_iteration, on_stop_signal, on_complete
+
+### Trust System Presets
+
+open (dev), careful (staging), strict (production)
+
+### Debug Agent
+
+```python
+agent.auto_debug()  # Interactive debugging
+```
+
+### Deploy Agent
+
+```python
+from connectonion import host
+host(agent)  # HTTP + P2P relay
+```
+
+### Requirements
+
+Python 3.10+
+
+### License
+
+MIT
+
+### Help Resources
+
+[Docs](http://docs.connectonion.com) | [Discord](https://discord.gg/4xfD9k8AUF) | [Issues](https://github.com/openonion/connectonion/issues)
