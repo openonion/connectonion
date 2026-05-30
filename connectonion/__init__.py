@@ -45,6 +45,7 @@ from .core import (
     on_error,
     on_complete,
     on_stop_signal,
+    on_tool_not_found,
 )
 from .logger import Logger
 from .llm_do import llm_do
@@ -132,4 +133,5 @@ __all__ = [
     "on_error",
     "on_complete",
     "on_stop_signal",
+    "on_tool_not_found",
 ]

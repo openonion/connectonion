@@ -41,6 +41,10 @@ class FakeAgent:
         """Stub for event invocation - no-op in test."""
         pass
 
+    def _invoke_events_with_return(self, event_type: str):
+        """Stub for event invocation with return - returns None in test."""
+        return None
+
 
 class TestToolExecutor:
     """Test minimal path of tool execution utility."""

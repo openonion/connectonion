@@ -16,7 +16,7 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
 - **Tool Factory** (`connectonion/tool_factory.py`): Converts Python functions to OpenAI-compatible tool schemas automatically
 - **Logger** (`connectonion/logger.py`): Unified logging facade (terminal + plain text + YAML sessions) with `quiet` and `log` parameters
 - **Console** (`connectonion/console.py`): Low-level terminal output with Rich formatting (used internally by Logger)
-- **Events** (`connectonion/events.py:11`): Lifecycle hooks (after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete, on_stop_signal)
+- **Events** (`connectonion/events.py:11`): Lifecycle hooks (after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete, on_stop_signal, on_tool_not_found)
 - **Trust System** (`connectonion/network/trust/`): Three-level verification (open/careful/strict) with custom policy support
 - **XRay Debug** (`connectonion/xray.py:32`): Runtime context injection for interactive debugging with `@xray` decorator
 

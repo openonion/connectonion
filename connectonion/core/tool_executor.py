@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_execution entries | calls logger.log_tool_call() and logger.log_tool_result() for user feedback | injects/clears xray context via thread-local storage
   Integration: exposes execute_and_record_tools(tool_calls, tools, agent, logger), execute_single_tool(...) | uses logger.log_tool_call(name, args) for natural function-call style output: greet(name='Alice') | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp
   Performance: times each tool execution in milliseconds | executes tools sequentially (not parallel) | trace entry added BEFORE auto-trace so xray.trace() sees it | agent injection uses cached _needs_agent flag (set by tool_factory) instead of inspect.signature() for zero overhead
-  Errors: catches all tool execution exceptions | wraps errors in trace_entry with error, error_type fields | returns error message to LLM for retry | prints error to logger with red ✗
+  Errors: catches all tool execution exceptions | wraps errors in trace_entry with error, error_type fields | returns error message to LLM for retry | prints error to logger with red ✗ | fires on_tool_not_found event (handler can return custom error message) when tool not in registry
 """
 
 import time
@@ -129,7 +129,18 @@ def execute_single_tool(
     # Check if tool exists
     tool_func = tools.get(tool_name)
     if tool_func is None:
-        error_msg = f"Tool '{tool_name}' not found"
+        # Store pending tool so on_tool_not_found handlers can access it
+        agent.current_session['pending_tool'] = {
+            'name': tool_name,
+            'arguments': tool_args,
+            'id': tool_id,
+        }
+
+        # Fire on_tool_not_found - handler can return a custom error message
+        custom_msg = agent._invoke_events_with_return('on_tool_not_found')
+        error_msg = custom_msg or f"Tool '{tool_name}' not found"
+
+        agent.current_session.pop('pending_tool', None)
 
         trace_entry["result"] = error_msg
         trace_entry["status"] = "not_found"

@@ -13,7 +13,7 @@ Components under test:
 
 import pytest
 from unittest.mock import Mock
-from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete, on_stop_signal
+from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete, on_stop_signal, on_tool_not_found
 from connectonion.core.llm import LLMResponse, ToolCall
 from connectonion.core.usage import TokenUsage
 
@@ -377,6 +377,7 @@ class TestEventSystem:
         assert on_error(handler)._event_type == 'on_error'
         assert on_complete(handler)._event_type == 'on_complete'
         assert on_stop_signal(handler)._event_type == 'on_stop_signal'
+        assert on_tool_not_found(handler)._event_type == 'on_tool_not_found'
 
     def test_event_validation_rejects_non_callable(self):
         """Test that non-callable events are rejected with clear error"""

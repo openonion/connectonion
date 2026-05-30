@@ -48,6 +48,7 @@ def create_mock_agent():
         'iteration': 1
     }
     mock_agent._invoke_events = Mock()
+    mock_agent._invoke_events_with_return = Mock(return_value=None)
 
     # Add _record_trace method that actually adds to trace
     def record_trace(entry):
@@ -71,6 +72,7 @@ class TestToolNotFound:
             'trace': [],
             'iteration': 1
         }
+        mock_agent._invoke_events_with_return = Mock(return_value=None)
         logger = Logger("test", log=False)
         tools = {"existing_tool": lambda x: "result"}
 
@@ -129,6 +131,7 @@ class TestToolNotFound:
             'iteration': 1
         }
         mock_agent._invoke_events = Mock()
+        mock_agent._invoke_events_with_return = Mock(return_value=None)
 
         logger = Logger("test", log=False)
         tools = {"calc": lambda x: x * 2}
@@ -627,6 +630,7 @@ class TestTraceEntryStructure:
             'trace': [],
             'iteration': 1
         }
+        mock_agent._invoke_events_with_return = Mock(return_value=None)
 
         logger = Logger("test", log=False)
         tools = {}
