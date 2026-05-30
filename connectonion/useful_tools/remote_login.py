@@ -307,7 +307,7 @@ def _is_logged_in(browser) -> bool:
         "判断用户是否已登录成功：不在登录页/扫码页/账号密码输入页、已进入正常使用界面即为已登录。"
         "注意：公开可浏览页面不等于已登录；如果页面仍有登录/注册入口、登录墙、扫码或账号密码输入，即为未登录。"
         "只回答一个词：yes 或 no。",
-        model="co/gemini-2.5-flash",
+        model="co/gemini-3-flash-preview",
     )
     return "yes" in verdict.strip().lower()
 

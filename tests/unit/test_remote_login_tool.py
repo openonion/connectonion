@@ -2,11 +2,13 @@
 
 import importlib
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
 remote_login_mod = importlib.import_module("connectonion.useful_tools.remote_login")
+REMOTE_LOGIN_SOURCE = Path(remote_login_mod.__file__)
 
 
 class FakePage:
@@ -148,3 +150,10 @@ def test_ask_credentials_raises_without_retrying_empty_answer():
         remote_login_mod._ask_credentials(agent)
 
     assert len(agent.io.sent) == 1
+
+
+def test_remote_login_uses_gemini_3_for_login_state_judgment():
+    source = REMOTE_LOGIN_SOURCE.read_text()
+
+    assert 'model="co/gemini-3-flash-preview"' in source
+    assert "co/gemini-2.5-flash" not in source
