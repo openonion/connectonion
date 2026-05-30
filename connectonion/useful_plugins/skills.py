@@ -315,8 +315,10 @@ def handle_skill_invocation(agent: 'Agent') -> None:
     if not content.startswith('/'):
         return
 
-    # Extract skill name: "/commit arg1 arg2" → "commit"
-    skill_name = content[1:].split()[0] if len(content) > 1 else ''
+    # Extract skill name and arguments: "/commit arg1 arg2" → ("commit", "arg1 arg2")
+    parts = content[1:].split(maxsplit=1) if len(content) > 1 else []
+    skill_name = parts[0] if parts else ''
+    skill_args = parts[1].strip() if len(parts) > 1 else ''
     if not skill_name:
         return
 
@@ -333,7 +335,9 @@ def handle_skill_invocation(agent: 'Agent') -> None:
     patterns = frontmatter.get('tools', [])
     _grant_skill_permissions(agent, skill_name, patterns)
 
-    # Replace user message with skill instructions
+    # Replace user message with skill instructions, preserving slash-command args.
+    if skill_args:
+        instructions = f"{instructions}\n\n---\n## Arguments\n{skill_args}"
     messages[-1]['content'] = instructions
 
     if agent.logger.console:

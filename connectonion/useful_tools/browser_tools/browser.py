@@ -23,6 +23,7 @@ Features:
 
 import os
 import base64
+import json
 import platform
 from pathlib import Path
 from datetime import datetime
@@ -180,6 +181,390 @@ class BrowserAutomation:
         if element:
             return element.locator
         return f"Could not find element matching: {description}"
+
+    def click_element_by_selector(self, selector: str, index: int = 0, text: str = "") -> str:
+        """Click an element using a CSS selector via Playwright locator().
+
+        Use when a workflow has a stable selector such as an aria-label,
+        role-compatible attribute, or data-testid. `index` is zero-based.
+        If `text` is provided, only visible elements with exactly that text are
+        considered.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        if text:
+            matches = self.page.evaluate(
+                """
+                (options) => {
+                    const normalize = (el) => (el?.innerText || el?.textContent || '')
+                        .replace(/\\u00a0/g, ' ')
+                        .replace(/[ \\t\\n]+/g, ' ')
+                        .trim();
+                    const isVisible = (el) => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style.display !== 'none' &&
+                            style.visibility !== 'hidden' &&
+                            rect.width > 0 &&
+                            rect.height > 0 &&
+                            rect.bottom > 0 &&
+                            rect.top < window.innerHeight;
+                    };
+                    return Array.from(document.querySelectorAll(options.selector))
+                        .filter((el) => isVisible(el) && normalize(el) === options.text)
+                        .map((el) => {
+                            const rect = el.getBoundingClientRect();
+                            return {
+                                x: rect.x + rect.width / 2,
+                                y: rect.y + rect.height / 2
+                            };
+                        });
+                }
+                """,
+                {"selector": selector, "text": text},
+            )
+            count = len(matches)
+            if count == 0:
+                return f"No visible element found for selector: {selector} with text: {text}"
+            if index < 0 or index >= count:
+                return f"Selector matched {count} elements with text {text!r}; index {index} is out of range"
+
+            self.page.mouse.click(matches[index]["x"], matches[index]["y"])
+            self._save_context()
+            self.page.wait_for_timeout(1000)
+            return f"Clicked element {index + 1}/{count} matching selector: {selector} with text: {text}"
+
+        locator = self.page.locator(selector)
+        count = locator.count()
+        if count == 0:
+            return f"No element found for selector: {selector}"
+        if index < 0 or index >= count:
+            return f"Selector matched {count} elements; index {index} is out of range"
+
+        target = locator.nth(index)
+        box = target.bounding_box()
+        if box:
+            self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+        else:
+            target.click(force=True)
+
+        self._save_context()
+        self.page.wait_for_timeout(1000)
+        return f"Clicked element {index + 1}/{count} matching selector: {selector}"
+
+    def count_elements_by_selector(self, selector: str) -> str:
+        """Count elements matching a CSS selector via Playwright locator()."""
+        if not self.page:
+            return "Browser not open"
+
+        count = self.page.locator(selector).count()
+        return f"{count} element{'s' if count != 1 else ''} match selector: {selector}"
+
+    def get_element_text_by_selector(self, selector: str, index: int = 0) -> str:
+        """Get inner text from an element using a CSS selector via Playwright locator()."""
+        if not self.page:
+            return "Browser not open"
+
+        locator = self.page.locator(selector)
+        count = locator.count()
+        if count == 0:
+            return f"No element found for selector: {selector}"
+        if index < 0 or index >= count:
+            return f"Selector matched {count} elements; index {index} is out of range"
+
+        return locator.nth(index).inner_text()
+
+    def type_text_by_selector(self, selector: str, text: str, index: int = 0) -> str:
+        """Focus an element by CSS selector and type text via Playwright keyboard."""
+        if not self.page:
+            return "Browser not open"
+
+        locator = self.page.locator(selector)
+        count = locator.count()
+        if count == 0:
+            return f"No element found for selector: {selector}"
+        if index < 0 or index >= count:
+            return f"Selector matched {count} elements; index {index} is out of range"
+
+        target = locator.nth(index)
+        target.click(force=True)
+        self.page.keyboard.type(text)
+        self.page.wait_for_timeout(1000)
+        return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
+
+    def _load_script_args(self, script_path: str, args_json: str) -> tuple[Optional[str], Optional[dict], Optional[str]]:
+        path = Path(script_path).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        if not path.exists():
+            return None, None, f"Script not found: {path}"
+        if not path.is_file():
+            return None, None, f"Script path is not a file: {path}"
+
+        try:
+            args = json.loads(args_json or "{}")
+        except json.JSONDecodeError as exc:
+            return None, None, f"Invalid args_json: {exc}"
+
+        script = path.read_text(encoding="utf-8")
+        return script, args, None
+
+    def run_page_script(self, script_path: str, args_json: str = "{}") -> str:
+        """Run a local JavaScript file in the main page and return JSON.
+
+        The script should evaluate to a function, for example `(args) => ({ ok: true })`.
+        Use this for skill-owned DOM extraction or verification while sharing the
+        current browser page, cookies, and login context.
+
+        For pages that render important UI in iframes, use `run_frame_script(...)`.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        script, args, error = self._load_script_args(script_path, args_json)
+        if error:
+            return error
+
+        result = self.page.evaluate(script, args)
+        return json.dumps(result, indent=2, ensure_ascii=False)
+
+    def run_frame_script(
+        self,
+        script_path: str,
+        args_json: str = "{}",
+        frame_url_contains: str = "",
+        frame_name: str = "",
+        first_ok: bool = True,
+    ) -> str:
+        """Run a local JavaScript file in page frames and return JSON.
+
+        The script should evaluate to a function, for example `(args) => ({ ok: true })`.
+        This is useful for sites that render modals or controls in iframes. The
+        script is run in each matching frame with the same `args_json`.
+
+        Args:
+            script_path: Local JavaScript file path.
+            args_json: JSON object passed to the script.
+            frame_url_contains: Optional substring that the frame URL must contain.
+            frame_name: Optional exact frame name to target.
+            first_ok: If true, return as soon as a frame returns an object with `ok: true`.
+
+        Returns:
+            JSON with `ok`, `matched_frame`, and scanned `frames`.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        script, args, error = self._load_script_args(script_path, args_json)
+        if error:
+            return error
+
+        frames = []
+        matched = None
+
+        for index, frame in enumerate(self.page.frames):
+            url = getattr(frame, "url", "") or ""
+            raw_name = getattr(frame, "name", "") or ""
+            name = raw_name() if callable(raw_name) else raw_name
+            if frame_url_contains and frame_url_contains not in url:
+                continue
+            if frame_name and frame_name != name:
+                continue
+
+            frame_info = {
+                "index": index,
+                "name": name,
+                "url": url,
+                "ok": False,
+                "result": None,
+                "error": None,
+            }
+
+            try:
+                result = frame.evaluate(script, args)
+                frame_info["result"] = result
+                frame_info["ok"] = bool(isinstance(result, dict) and result.get("ok") is True)
+            except Exception as exc:
+                frame_info["error"] = str(exc)
+
+            frames.append(frame_info)
+
+            if frame_info["ok"] and matched is None:
+                matched = frame_info
+                if first_ok:
+                    break
+
+        response = {
+            "ok": matched is not None,
+            "matched_frame": matched,
+            "frames": frames,
+        }
+        if not frames:
+            response["reason"] = "no frames matched filters"
+        elif matched is None:
+            response["reason"] = "no frame returned ok: true"
+
+        return json.dumps(response, indent=2, ensure_ascii=False)
+
+    def click_element_near_selector(
+        self,
+        anchor_selector: str,
+        target_selector: str,
+        target_text: str = "",
+        anchor_index: int = -1,
+        container_selector: str = "",
+        require_anchor_text: bool = False,
+        wait_ms: int = 1000,
+        verify_anchor_text_cleared: bool = False,
+    ) -> str:
+        """Click a visible target element near a visible anchor element.
+
+        This is useful for workflows where a skill knows the stable selectors but
+        a page has many repeated buttons with the same label. Selectors and text
+        come from the skill; this helper only applies generic DOM proximity rules.
+        Negative `anchor_index` values count from the end of the visible matches.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        target = self.page.evaluate(
+            """
+            (options) => {
+                const normalize = (el) => (el?.innerText || el?.textContent || '')
+                    .replace(/\\u00a0/g, ' ')
+                    .replace(/[ \\t\\n]+/g, ' ')
+                    .trim();
+                const isVisible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style.display !== 'none' &&
+                        style.visibility !== 'hidden' &&
+                        rect.width > 0 &&
+                        rect.height > 0 &&
+                        rect.bottom > 0 &&
+                        rect.top < window.innerHeight;
+                };
+                const isEnabled = (button) =>
+                    !button.disabled && button.getAttribute('aria-disabled') !== 'true';
+                const textMatches = (el) => !options.target_text || normalize(el) === options.target_text;
+                const anchors = Array.from(document.querySelectorAll(options.anchor_selector))
+                    .filter((anchor) => isVisible(anchor))
+                    .filter((anchor) => !options.require_anchor_text || normalize(anchor).length > 0);
+
+                if (!anchors.length) {
+                    return { ok: false, error: `No visible anchor found for selector: ${options.anchor_selector}` };
+                }
+
+                let anchorIndex = options.anchor_index;
+                if (anchorIndex < 0) anchorIndex = anchors.length + anchorIndex;
+                if (anchorIndex < 0 || anchorIndex >= anchors.length) {
+                    return {
+                        ok: false,
+                        error: `Anchor selector matched ${anchors.length} elements; index ${options.anchor_index} is out of range`
+                    };
+                }
+
+                const anchor = anchors[anchorIndex];
+                const anchorRect = anchor.getBoundingClientRect();
+                let container = null;
+                if (options.container_selector) {
+                    container = anchor.closest(options.container_selector);
+                }
+                container = container || anchor.closest('form') || anchor.parentElement || document.body;
+
+                const targetsInContainer = Array.from(container.querySelectorAll(options.target_selector))
+                    .filter((candidate) => isVisible(candidate) && isEnabled(candidate) && textMatches(candidate));
+
+                let target = targetsInContainer
+                    .map((candidate) => ({ candidate, rect: candidate.getBoundingClientRect() }))
+                    .filter(({ rect }) => rect.top >= anchorRect.top - 8)
+                    .sort((a, b) => a.rect.top - b.rect.top || a.rect.left - b.rect.left)[0]?.candidate;
+
+                if (!target) {
+                    target = Array.from(document.querySelectorAll(options.target_selector))
+                        .filter((candidate) =>
+                            isVisible(candidate) &&
+                            isEnabled(candidate) &&
+                            textMatches(candidate)
+                        )
+                        .map((candidate) => ({ candidate, rect: candidate.getBoundingClientRect() }))
+                        .filter(({ rect }) => rect.top >= anchorRect.top - 8)
+                        .sort((a, b) =>
+                            Math.abs(a.rect.top - anchorRect.top) - Math.abs(b.rect.top - anchorRect.top) ||
+                            a.rect.left - b.rect.left
+                        )[0]?.candidate;
+                }
+
+                if (!target) {
+                    return {
+                        ok: false,
+                        error: `No visible enabled target found near anchor for selector: ${options.target_selector}`,
+                        anchor_text: normalize(anchor)
+                    };
+                }
+
+                const rect = target.getBoundingClientRect();
+                return {
+                    ok: true,
+                    x: rect.x + rect.width / 2,
+                    y: rect.y + rect.height / 2,
+                    anchor_text: normalize(anchor),
+                    target_text: normalize(target)
+                };
+            }
+            """,
+            {
+                "anchor_selector": anchor_selector,
+                "target_selector": target_selector,
+                "target_text": target_text,
+                "anchor_index": anchor_index,
+                "container_selector": container_selector,
+                "require_anchor_text": require_anchor_text,
+            },
+        )
+
+        if not target or not target.get("ok"):
+            return target.get("error", "Could not find target near anchor") if target else "Could not find target near anchor"
+
+        self.page.mouse.click(target["x"], target["y"])
+        self.page.wait_for_timeout(wait_ms)
+        self._save_context()
+
+        state = "clicked"
+        if verify_anchor_text_cleared:
+            state = self.page.evaluate(
+                """
+                (options) => {
+                    const normalize = (el) => (el?.innerText || el?.textContent || '')
+                        .replace(/\\u00a0/g, ' ')
+                        .replace(/[ \\t\\n]+/g, ' ')
+                        .trim();
+                    const isVisible = (el) => {
+                        if (!el) return false;
+                        const style = window.getComputedStyle(el);
+                        const rect = el.getBoundingClientRect();
+                        return style.display !== 'none' &&
+                            style.visibility !== 'hidden' &&
+                            rect.width > 0 &&
+                            rect.height > 0 &&
+                            rect.bottom > 0 &&
+                            rect.top < window.innerHeight;
+                    };
+                    const matchingAnchor = Array.from(document.querySelectorAll(options.anchor_selector))
+                        .find((anchor) => isVisible(anchor) && normalize(anchor) === options.anchor_text);
+                    return matchingAnchor ? 'uncertain_anchor_still_contains_text' : 'anchor_text_cleared';
+                }
+                """,
+                {"anchor_selector": anchor_selector, "anchor_text": target["anchor_text"]},
+            )
+
+        return (
+            "Clicked target near anchor; "
+            f"state={state}; anchor_text={target['anchor_text']!r}; target_text={target['target_text']!r}"
+        )
 
     def click(self, description: str) -> str:
         """Click on an element using natural language description.
@@ -446,11 +831,161 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             return "Browser not open"
         return self.page.inner_text("body")
 
+    def extract_items_by_selector(
+        self,
+        container_selector: str,
+        text_selector: str,
+        max_items: int = 3,
+        author_selector: str = "",
+        author_attribute: str = "",
+        action_selector: str = "",
+        action_text: str = "",
+        exclude_text_pattern: str = "",
+    ) -> str:
+        """Extract repeated visible items from a page using skill-provided selectors.
+
+        Returns JSON with item text, optional author metadata, optional action
+        index among all matching visible actions, and visible bounds.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        items = self.page.evaluate(
+            """
+            (options) => {
+                const isVisible = (el) => {
+                    if (!el) return false;
+                    const style = window.getComputedStyle(el);
+                    const rect = el.getBoundingClientRect();
+                    return style.display !== 'none' &&
+                        style.visibility !== 'hidden' &&
+                        rect.width > 0 &&
+                        rect.height > 0 &&
+                        rect.bottom > 0 &&
+                        rect.top < window.innerHeight;
+                };
+
+                const textOf = (el) => (el?.innerText || el?.textContent || '')
+                    .replace(/\\u00a0/g, ' ')
+                    .replace(/[ \\t]+/g, ' ')
+                    .replace(/\\n{3,}/g, '\\n\\n')
+                    .trim();
+
+                const textMatches = (el, expectedText) => !expectedText || textOf(el) === expectedText;
+                const excludePattern = options.exclude_text_pattern
+                    ? new RegExp(options.exclude_text_pattern, 'i')
+                    : null;
+                const actions = options.action_selector
+                    ? Array.from(document.querySelectorAll(options.action_selector))
+                        .filter((action) => isVisible(action) && textMatches(action, options.action_text))
+                    : [];
+
+                const result = [];
+                const containers = Array.from(document.querySelectorAll(options.container_selector));
+
+                for (const container of containers) {
+                    const rect = container.getBoundingClientRect();
+                    if (rect.bottom <= 0 || rect.top >= window.innerHeight) continue;
+                    const containerText = textOf(container);
+                    if (excludePattern && excludePattern.test(containerText)) continue;
+
+                    const textNode = container.querySelector(options.text_selector);
+                    const text = textOf(textNode);
+                    if (!text) continue;
+
+                    let author = '';
+                    if (options.author_selector) {
+                        const authorNode = container.querySelector(options.author_selector);
+                        author = options.author_attribute
+                            ? (authorNode?.getAttribute(options.author_attribute) || '').trim()
+                            : textOf(authorNode);
+                    }
+
+                    const action = actions.find((candidate) => container.contains(candidate));
+
+                    result.push({
+                        item_index: result.length,
+                        author,
+                        text,
+                        action_index: action ? actions.indexOf(action) : null,
+                        has_action: Boolean(action),
+                        visible_bounds: {
+                            x: Math.round(rect.x),
+                            y: Math.round(rect.y),
+                            width: Math.round(rect.width),
+                            height: Math.round(rect.height)
+                        }
+                    });
+
+                    if (result.length >= options.max_items) break;
+                }
+
+                return result;
+            }
+            """,
+            {
+                "container_selector": container_selector,
+                "text_selector": text_selector,
+                "max_items": max_items,
+                "author_selector": author_selector,
+                "author_attribute": author_attribute,
+                "action_selector": action_selector,
+                "action_text": action_text,
+                "exclude_text_pattern": exclude_text_pattern,
+            },
+        )
+
+        return json.dumps(items or [], indent=2, ensure_ascii=False)
+
     def get_current_url(self) -> str:
         """Get the current page URL."""
         if not self.page:
             return "Browser not open"
         return self.page.url
+
+    def save_page_context(self, name: str = "page") -> str:
+        """Save current HTML, CSS, and clickable element data under ~/.co."""
+        if not self.page:
+            return "Browser not open"
+
+        safe_name = "".join(c if c.isalnum() or c in "._-" else "_" for c in name).strip("._-") or "page"
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        out_dir = Path.home() / ".co" / "browser_context" / f"{timestamp}_{safe_name}"
+        out_dir.mkdir(parents=True, exist_ok=True)
+
+        html_path = out_dir / "page.html"
+        css_path = out_dir / "styles.css"
+        elements_path = out_dir / "elements.json"
+
+        html_path.write_text(self.page.content(), encoding="utf-8")
+
+        css = self.page.evaluate("""
+            () => Array.from(document.styleSheets).map((sheet, i) => {
+                try {
+                    return `/* ${sheet.href || `inline-${i}`} */\\n` +
+                        Array.from(sheet.cssRules || []).map(rule => rule.cssText).join("\\n");
+                } catch (error) {
+                    return `/* ${sheet.href || `stylesheet-${i}`} unavailable: ${error.name} */`;
+                }
+            }).join("\\n\\n")
+        """)
+        css_path.write_text(css, encoding="utf-8")
+
+        elements = element_finder.extract_elements(self.page)
+        element_dicts = [
+            element.model_dump() if hasattr(element, "model_dump") else element.dict()
+            for element in elements
+        ]
+        elements_path.write_text(json.dumps(element_dicts, indent=2), encoding="utf-8")
+
+        return (
+            f"Saved page context to {out_dir}\n"
+            f"- HTML: {html_path}\n"
+            f"- CSS: {css_path}\n"
+            f"- Elements: {elements_path}\n"
+            f"- URL: {self.page.url}\n"
+            f"- Elements: {len(element_dicts)}"
+        )
 
     def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
         """Take a screenshot of the current page and return base64 encoded image.
@@ -682,5 +1217,3 @@ SYSTEM REMINDER: Full-page screenshots provide an overview of the entire page bu
         """Context manager exit - ensures browser closes and saves context."""
         self.close()
         return False
-
-
