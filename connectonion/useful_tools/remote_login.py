@@ -241,11 +241,10 @@ def _open_login_entry_if_needed(browser) -> bool:
 def _parse_credentials(answer):
     if isinstance(answer, dict):
         data = answer
+    elif isinstance(answer, str) and answer.strip().startswith("{"):
+        data = json.loads(answer)
     else:
-        try:
-            data = json.loads(answer)
-        except (TypeError, json.JSONDecodeError):
-            data = {}
+        data = {}
 
     username = str(data.get("username") or data.get("account") or data.get("email") or "").strip()
     password = str(data.get("password") or "").strip()
@@ -271,36 +270,30 @@ def _parse_credentials(answer):
 
 
 def _ask_credentials(agent, question="请输入账号和密码"):
-    for _ in range(2):
-        agent.io.send({
-            "type": "ask_user",
-            "question": question,
-            "options": [],
-            "multi_select": False,
-            "input_type": "credentials",
-            "fields": [
-                {
-                    "name": "username",
-                    "label": "账号",
-                    "type": "text",
-                    "required": True,
-                    "autocomplete": "username",
-                },
-                {
-                    "name": "password",
-                    "label": "密码",
-                    "type": "password",
-                    "required": True,
-                    "autocomplete": "current-password",
-                },
-            ],
-        })
-        try:
-            return _parse_credentials(agent.io.receive().get("answer", ""))
-        except ValueError:
-            question = "账号或密码为空，请重新输入"
-
-    raise RuntimeError("未收到完整账号密码")
+    agent.io.send({
+        "type": "ask_user",
+        "question": question,
+        "options": [],
+        "multi_select": False,
+        "input_type": "credentials",
+        "fields": [
+            {
+                "name": "username",
+                "label": "账号",
+                "type": "text",
+                "required": True,
+                "autocomplete": "username",
+            },
+            {
+                "name": "password",
+                "label": "密码",
+                "type": "password",
+                "required": True,
+                "autocomplete": "current-password",
+            },
+        ],
+    })
+    return _parse_credentials(agent.io.receive().get("answer", ""))
 
 
 def _is_logged_in(browser) -> bool:

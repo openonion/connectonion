@@ -1,7 +1,10 @@
 """Tests for the packaged remote_login tool lifecycle."""
 
 import importlib
+import json
 from types import SimpleNamespace
+
+import pytest
 
 remote_login_mod = importlib.import_module("connectonion.useful_tools.remote_login")
 
@@ -39,6 +42,18 @@ class FakeBrowser:
 class RaisingLLM:
     def complete(self, *args, **kwargs):
         raise RuntimeError("model unavailable")
+
+
+class FakeIO:
+    def __init__(self, answer):
+        self.answer = answer
+        self.sent = []
+
+    def send(self, payload):
+        self.sent.append(payload)
+
+    def receive(self):
+        return {"answer": self.answer}
 
 
 def test_remote_login_uses_per_call_browser_and_closes(monkeypatch):
@@ -113,11 +128,23 @@ def test_login_step_raises_when_agent_classifier_fails(monkeypatch):
     monkeypatch.setattr(remote_login_mod, "ask_user", lambda _agent, question, options: scan_prompts.append((question, options)))
     monkeypatch.setattr(remote_login_mod, "_fill_password", lambda _agent, _browser, question: filled.append(question))
 
-    import pytest
-
     with pytest.raises(RuntimeError, match="model unavailable"):
         remote_login_mod._handle_login_step(SimpleNamespace(llm=RaisingLLM()), browser)
 
     assert filled == []
     assert sent_shots == []
     assert scan_prompts == []
+
+
+def test_parse_credentials_raises_for_malformed_json_object():
+    with pytest.raises(json.JSONDecodeError):
+        remote_login_mod._parse_credentials('{"username": "alice",')
+
+
+def test_ask_credentials_raises_without_retrying_empty_answer():
+    agent = SimpleNamespace(io=FakeIO(""))
+
+    with pytest.raises(ValueError, match="missing username or password"):
+        remote_login_mod._ask_credentials(agent)
+
+    assert len(agent.io.sent) == 1
