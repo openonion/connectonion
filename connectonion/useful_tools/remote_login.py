@@ -52,21 +52,6 @@ _LOGGED_OUT_TEXT_MARKERS = (
     "log in",
 )
 
-
-def _safe_get_text(browser, limit=5000) -> str:
-    try:
-        return (browser.get_text() or "")[:limit]
-    except Exception:
-        return ""
-
-
-def _safe_eval_bool(browser, script: str) -> bool:
-    try:
-        return bool(browser.page.evaluate(script))
-    except Exception:
-        return False
-
-
 def _open_browser(headless: bool):
     _PROFILE.mkdir(parents=True, exist_ok=True)
     # Clear lock files left by an interrupted previous browser. Each tool call gets
@@ -98,11 +83,11 @@ def _screenshot_data_url(browser) -> str:
 
 
 def _page_has_qr_login(browser) -> bool:
-    text = _safe_get_text(browser).lower()
+    text = (browser.get_text() or "")[:5000].lower()
     if any(marker in text for marker in _QR_TEXT_MARKERS):
         return True
 
-    return _safe_eval_bool(browser, """
+    return bool(browser.page.evaluate("""
         () => {
             const qrText = /(qr\\s*code|qrcode|二维码|扫码|扫一扫|scan\\s*(qr|code)|use\\s+.*phone\\s+.*scan)/i;
             const visible = (el) => {
@@ -138,15 +123,15 @@ def _page_has_qr_login(browser) -> bool:
                 return qrText.test(attrsOf(el)) || (squareish && qrText.test(nearestText));
             });
         }
-    """)
+    """))
 
 
 def _page_has_credential_login(browser) -> bool:
-    text = _safe_get_text(browser).lower()
+    text = (browser.get_text() or "")[:5000].lower()
     if "密码" in text or "password" in text:
         return True
 
-    return _safe_eval_bool(browser, """
+    return bool(browser.page.evaluate("""
         () => {
             const visible = (el) => {
                 const rect = el.getBoundingClientRect();
@@ -171,15 +156,15 @@ def _page_has_credential_login(browser) -> bool:
                 );
             });
         }
-    """)
+    """))
 
 
 def _page_has_login_entry(browser) -> bool:
-    text = _safe_get_text(browser).lower()
+    text = (browser.get_text() or "")[:5000].lower()
     if any(marker in text for marker in _LOGGED_OUT_TEXT_MARKERS):
         return True
 
-    return _safe_eval_bool(browser, """
+    return bool(browser.page.evaluate("""
         () => {
             const visible = (el) => {
                 const rect = el.getBoundingClientRect();
@@ -207,58 +192,48 @@ def _page_has_login_entry(browser) -> bool:
                         && loginText.test(text);
                 });
         }
-    """)
+    """))
 
 
 def _open_login_entry_if_needed(browser) -> bool:
     if not _page_has_login_entry(browser):
         return False
 
-    try:
-        browser.click("登录/注册入口或登录按钮")
+    clicked = browser.page.evaluate("""
+        () => {
+            const visible = (el) => {
+                const rect = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                return rect.width > 0
+                    && rect.height > 0
+                    && style.display !== 'none'
+                    && style.visibility !== 'hidden'
+                    && Number(style.opacity || 1) > 0;
+            };
+            const textOf = (el) => (
+                el.innerText
+                || el.value
+                || el.getAttribute('aria-label')
+                || el.getAttribute('title')
+                || ''
+            ).replace(/\\s+/g, '').trim();
+            const loginText = /^(登录|登入|登录\\/注册|注册\\/登录|login|log in|signin|sign in)$/i;
+            const el = Array.from(document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"], div, span'))
+                .find((node) => {
+                    const text = textOf(node);
+                    return visible(node)
+                        && text
+                        && !/退出登录|logout|log out|sign out/i.test(text)
+                        && loginText.test(text);
+                });
+            if (!el) return false;
+            el.click();
+            return true;
+        }
+    """)
+    if clicked:
         browser.page.wait_for_timeout(_PAGE_SETTLE_WAIT_MS)
         return True
-    except Exception:
-        pass
-
-    try:
-        clicked = browser.page.evaluate("""
-            () => {
-                const visible = (el) => {
-                    const rect = el.getBoundingClientRect();
-                    const style = getComputedStyle(el);
-                    return rect.width > 0
-                        && rect.height > 0
-                        && style.display !== 'none'
-                        && style.visibility !== 'hidden'
-                        && Number(style.opacity || 1) > 0;
-                };
-                const textOf = (el) => (
-                    el.innerText
-                    || el.value
-                    || el.getAttribute('aria-label')
-                    || el.getAttribute('title')
-                    || ''
-                ).replace(/\\s+/g, '').trim();
-                const loginText = /^(登录|登入|登录\\/注册|注册\\/登录|login|log in|signin|sign in)$/i;
-                const el = Array.from(document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"], div, span'))
-                    .find((node) => {
-                        const text = textOf(node);
-                        return visible(node)
-                            && text
-                            && !/退出登录|logout|log out|sign out/i.test(text)
-                            && loginText.test(text);
-                    });
-                if (!el) return false;
-                el.click();
-                return true;
-            }
-        """)
-        if clicked:
-            browser.page.wait_for_timeout(_PAGE_SETTLE_WAIT_MS)
-            return True
-    except Exception:
-        return False
 
     return False
 
@@ -330,7 +305,7 @@ def _ask_credentials(agent, question="请输入账号和密码"):
 
 def _is_logged_in(browser) -> bool:
     # Login success is the server page's objective state — the agent reads it, not the user.
-    text = _safe_get_text(browser, limit=3000)
+    text = (browser.get_text() or "")[:3000]
     if _page_has_qr_login(browser) or _page_has_credential_login(browser) or _page_has_login_entry(browser):
         return False
 
@@ -349,13 +324,13 @@ def _classify_login_method(agent, browser) -> str:
 
     DOM and text checks are allowed to open a likely login entry, but they do
     not decide that a page is QR login. If the model is unavailable or unclear,
-    default to the credential path instead of silently trusting a script hint.
+    fail the tool call instead of silently choosing a different login path.
     """
     llm = getattr(agent, "llm", None)
     if llm is None:
-        return _LOGIN_METHOD_CREDENTIALS
+        raise RuntimeError("remote_login requires agent.llm for login method classification")
 
-    text = _safe_get_text(browser, limit=3000)
+    text = (browser.get_text() or "")[:3000]
 
     prompt = (
         f"当前 URL：{browser.page.url}\n"
@@ -367,29 +342,28 @@ def _classify_login_method(agent, browser) -> str:
         "只回答一个词：yes 或 no。"
     )
 
-    try:
-        response = llm.complete(
-            [
-                {"role": "system", "content": "You are a careful visual classifier for browser login states."},
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {"type": "image_url", "image_url": {"url": _screenshot_data_url(browser)}},
-                    ],
-                },
-            ],
-            tools=None,
-            temperature=0,
-            max_tokens=5,
-        )
-    except Exception:
-        return _LOGIN_METHOD_CREDENTIALS
+    response = llm.complete(
+        [
+            {"role": "system", "content": "You are a careful visual classifier for browser login states."},
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": _screenshot_data_url(browser)}},
+                ],
+            },
+        ],
+        tools=None,
+        temperature=0,
+        max_tokens=5,
+    )
 
     verdict = (response.content or "").strip().lower()
     if verdict.startswith("yes"):
         return _LOGIN_METHOD_QR
-    return _LOGIN_METHOD_CREDENTIALS
+    if verdict.startswith("no"):
+        return _LOGIN_METHOD_CREDENTIALS
+    raise RuntimeError(f"unexpected remote_login classifier response: {response.content!r}")
 
 
 def _fill_password(agent, browser, question="请输入账号和密码"):

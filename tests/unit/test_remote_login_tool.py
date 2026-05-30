@@ -20,6 +20,9 @@ class FakePage:
     def wait_for_timeout(self, timeout):
         self.waits.append(timeout)
 
+    def screenshot(self):
+        return b"fake-png"
+
 
 class FakeBrowser:
     def __init__(self):
@@ -28,6 +31,9 @@ class FakeBrowser:
 
     def close(self):
         self.closed = True
+
+    def get_text(self):
+        return "Sign in with account or password"
 
 
 class RaisingLLM:
@@ -95,7 +101,7 @@ def test_login_step_sends_qr_when_agent_sees_qr_even_without_script_hint(monkeyp
     assert filled == []
 
 
-def test_login_step_does_not_fallback_to_qr_script_hint_when_agent_fails(monkeypatch):
+def test_login_step_raises_when_agent_classifier_fails(monkeypatch):
     browser = FakeBrowser()
     filled = []
     sent_shots = []
@@ -107,8 +113,11 @@ def test_login_step_does_not_fallback_to_qr_script_hint_when_agent_fails(monkeyp
     monkeypatch.setattr(remote_login_mod, "ask_user", lambda _agent, question, options: scan_prompts.append((question, options)))
     monkeypatch.setattr(remote_login_mod, "_fill_password", lambda _agent, _browser, question: filled.append(question))
 
-    remote_login_mod._handle_login_step(SimpleNamespace(llm=RaisingLLM()), browser)
+    import pytest
 
-    assert filled == ["请输入账号和密码"]
+    with pytest.raises(RuntimeError, match="model unavailable"):
+        remote_login_mod._handle_login_step(SimpleNamespace(llm=RaisingLLM()), browser)
+
+    assert filled == []
     assert sent_shots == []
     assert scan_prompts == []
