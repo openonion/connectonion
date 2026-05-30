@@ -48,3 +48,43 @@ def test_remote_login_uses_per_call_browser_and_closes(monkeypatch):
     assert opened[0][0] is False
     assert opened[0][1].page.goto_calls == [("https://example.com/login", "domcontentloaded", 30000)]
     assert opened[0][1].closed is True
+
+
+def test_login_step_uses_agent_qr_verdict_over_script_hint(monkeypatch):
+    browser = FakeBrowser()
+    filled = []
+    sent_shots = []
+    scan_prompts = []
+
+    monkeypatch.setattr(remote_login_mod, "_page_has_qr_login", lambda _browser: True)
+    monkeypatch.setattr(remote_login_mod, "_page_has_credential_login", lambda _browser: False)
+    monkeypatch.setattr(remote_login_mod, "_agent_sees_qr_login", lambda _agent, _browser: False, raising=False)
+    monkeypatch.setattr(remote_login_mod, "_send_shot", lambda _agent, _browser: sent_shots.append(True))
+    monkeypatch.setattr(remote_login_mod, "ask_user", lambda _agent, question, options: scan_prompts.append((question, options)))
+    monkeypatch.setattr(remote_login_mod, "_fill_password", lambda _agent, _browser, question: filled.append(question))
+
+    remote_login_mod._handle_login_step(SimpleNamespace(), browser)
+
+    assert filled == ["请输入账号和密码"]
+    assert sent_shots == []
+    assert scan_prompts == []
+
+
+def test_login_step_sends_qr_when_agent_sees_qr_even_without_script_hint(monkeypatch):
+    browser = FakeBrowser()
+    filled = []
+    sent_shots = []
+    scan_prompts = []
+
+    monkeypatch.setattr(remote_login_mod, "_page_has_qr_login", lambda _browser: False)
+    monkeypatch.setattr(remote_login_mod, "_page_has_credential_login", lambda _browser: True)
+    monkeypatch.setattr(remote_login_mod, "_agent_sees_qr_login", lambda _agent, _browser: True, raising=False)
+    monkeypatch.setattr(remote_login_mod, "_send_shot", lambda _agent, _browser: sent_shots.append(True))
+    monkeypatch.setattr(remote_login_mod, "ask_user", lambda _agent, question, options: scan_prompts.append((question, options)))
+    monkeypatch.setattr(remote_login_mod, "_fill_password", lambda _agent, _browser, question: filled.append(question))
+
+    remote_login_mod._handle_login_step(SimpleNamespace(), browser)
+
+    assert sent_shots == [True]
+    assert scan_prompts == [("请用手机扫描上面的二维码，完成后点这里", ["扫好了"])]
+    assert filled == []

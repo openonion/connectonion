@@ -73,8 +73,12 @@ def _open_browser(headless: bool):
 
 
 def _send_shot(agent, browser):
+    agent.io.send_image(_screenshot_data_url(browser))
+
+
+def _screenshot_data_url(browser) -> str:
     png = browser.page.screenshot()
-    agent.io.send_image("data:image/png;base64," + base64.b64encode(png).decode())
+    return "data:image/png;base64," + base64.b64encode(png).decode()
 
 
 def _page_has_qr_login(browser) -> bool:
@@ -342,6 +346,49 @@ def _is_logged_in(browser) -> bool:
     return "yes" in verdict.strip().lower()
 
 
+def _agent_sees_qr_login(agent, browser) -> bool:
+    """Use the agent LLM's visual perception for the final QR/password branch."""
+    llm = getattr(agent, "llm", None)
+    if llm is None:
+        return _page_has_qr_login(browser)
+
+    try:
+        text = (browser.get_text() or "")[:3000]
+    except Exception:
+        text = ""
+
+    prompt = (
+        f"当前 URL：{browser.page.url}\n"
+        f"页面可见文本（截断）：\n{text}\n\n"
+        "你在判断远程登录页面当前应该走哪种用户协助方式。"
+        "请看截图：只有当截图里清楚显示用于登录/验证的可扫描二维码、扫码登录面板、"
+        "或明确要求用户用手机扫码的二维码时，回答 yes。"
+        "如果是账号密码、手机号、验证码输入、普通登录按钮、公开页面、或只有二维码文字但没有可扫二维码，回答 no。"
+        "只回答一个词：yes 或 no。"
+    )
+
+    try:
+        response = llm.complete(
+            [
+                {"role": "system", "content": "You are a careful visual classifier for browser login states."},
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "text", "text": prompt},
+                        {"type": "image_url", "image_url": {"url": _screenshot_data_url(browser)}},
+                    ],
+                },
+            ],
+            tools=None,
+            temperature=0,
+            max_tokens=5,
+        )
+    except Exception:
+        return _page_has_qr_login(browser)
+
+    return (response.content or "").strip().lower().startswith("yes")
+
+
 def _fill_password(agent, browser, question="请输入账号和密码"):
     username, password = _ask_credentials(agent, question)
     browser.click("用户名/账号输入框")
@@ -355,7 +402,7 @@ def _handle_login_step(agent, browser, failed_attempt=False):
     if not _page_has_qr_login(browser) and not _page_has_credential_login(browser):
         _open_login_entry_if_needed(browser)
 
-    if _page_has_qr_login(browser):
+    if _agent_sees_qr_login(agent, browser):
         _send_shot(agent, browser)
         question = "登录失败，请重新扫描上面的二维码，完成后点这里" if failed_attempt else "请用手机扫描上面的二维码，完成后点这里"
         ask_user(agent, question, ["扫好了"])
