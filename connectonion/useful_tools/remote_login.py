@@ -25,6 +25,8 @@ from .browser_tools.browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_AR
 
 _PROFILE = Path.home() / ".co" / "login_agent_profile"
 _PAGE_SETTLE_WAIT_MS = 10000
+_LOGIN_METHOD_QR = "qr"
+_LOGIN_METHOD_CREDENTIALS = "credentials"
 _QR_TEXT_MARKERS = (
     "二维码",
     "扫码",
@@ -49,6 +51,20 @@ _LOGGED_OUT_TEXT_MARKERS = (
     "sign in",
     "log in",
 )
+
+
+def _safe_get_text(browser, limit=5000) -> str:
+    try:
+        return (browser.get_text() or "")[:limit]
+    except Exception:
+        return ""
+
+
+def _safe_eval_bool(browser, script: str) -> bool:
+    try:
+        return bool(browser.page.evaluate(script))
+    except Exception:
+        return False
 
 
 def _open_browser(headless: bool):
@@ -82,134 +98,116 @@ def _screenshot_data_url(browser) -> str:
 
 
 def _page_has_qr_login(browser) -> bool:
-    try:
-        text = (browser.get_text() or "")[:5000].lower()
-    except Exception:
-        text = ""
+    text = _safe_get_text(browser).lower()
     if any(marker in text for marker in _QR_TEXT_MARKERS):
         return True
 
-    try:
-        return bool(browser.page.evaluate("""
-            () => {
-                const qrText = /(qr\\s*code|qrcode|二维码|扫码|扫一扫|scan\\s*(qr|code)|use\\s+.*phone\\s+.*scan)/i;
-                const visible = (el) => {
-                    const rect = el.getBoundingClientRect();
-                    const style = getComputedStyle(el);
-                    return rect.width >= 80
-                        && rect.height >= 80
-                        && style.display !== 'none'
-                        && style.visibility !== 'hidden'
-                        && Number(style.opacity || 1) > 0;
-                };
-                const attrsOf = (el) => [
-                    el.id,
-                    el.getAttribute('class'),
-                    el.getAttribute('alt'),
-                    el.getAttribute('aria-label'),
-                    el.getAttribute('title'),
-                    el.getAttribute('src'),
-                    el.getAttribute('data-testid'),
-                ].filter(Boolean).join(' ');
-                const nodes = Array.from(document.querySelectorAll(
-                    'img, canvas, svg, [class*="qr" i], [id*="qr" i], [aria-label*="qr" i], [alt*="qr" i], [title*="qr" i], [src*="qr" i], [data-testid*="qr" i]'
-                ));
-                return nodes.some((el) => {
-                    if (!visible(el)) return false;
-                    const rect = el.getBoundingClientRect();
-                    const squareish = Math.abs(rect.width - rect.height) <= Math.max(rect.width, rect.height) * 0.25
-                        && rect.width >= 120
-                        && rect.height >= 120
-                        && rect.width <= 700
-                        && rect.height <= 700;
-                    const nearestText = (el.closest('form, section, main, article, div') || document.body).innerText || '';
-                    return qrText.test(attrsOf(el)) || (squareish && qrText.test(nearestText));
-                });
-            }
-        """))
-    except Exception:
-        return False
+    return _safe_eval_bool(browser, """
+        () => {
+            const qrText = /(qr\\s*code|qrcode|二维码|扫码|扫一扫|scan\\s*(qr|code)|use\\s+.*phone\\s+.*scan)/i;
+            const visible = (el) => {
+                const rect = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                return rect.width >= 80
+                    && rect.height >= 80
+                    && style.display !== 'none'
+                    && style.visibility !== 'hidden'
+                    && Number(style.opacity || 1) > 0;
+            };
+            const attrsOf = (el) => [
+                el.id,
+                el.getAttribute('class'),
+                el.getAttribute('alt'),
+                el.getAttribute('aria-label'),
+                el.getAttribute('title'),
+                el.getAttribute('src'),
+                el.getAttribute('data-testid'),
+            ].filter(Boolean).join(' ');
+            const nodes = Array.from(document.querySelectorAll(
+                'img, canvas, svg, [class*="qr" i], [id*="qr" i], [aria-label*="qr" i], [alt*="qr" i], [title*="qr" i], [src*="qr" i], [data-testid*="qr" i]'
+            ));
+            return nodes.some((el) => {
+                if (!visible(el)) return false;
+                const rect = el.getBoundingClientRect();
+                const squareish = Math.abs(rect.width - rect.height) <= Math.max(rect.width, rect.height) * 0.25
+                    && rect.width >= 120
+                    && rect.height >= 120
+                    && rect.width <= 700
+                    && rect.height <= 700;
+                const nearestText = (el.closest('form, section, main, article, div') || document.body).innerText || '';
+                return qrText.test(attrsOf(el)) || (squareish && qrText.test(nearestText));
+            });
+        }
+    """)
 
 
 def _page_has_credential_login(browser) -> bool:
-    try:
-        text = (browser.get_text() or "")[:5000].lower()
-    except Exception:
-        text = ""
+    text = _safe_get_text(browser).lower()
     if "密码" in text or "password" in text:
         return True
 
-    try:
-        return bool(browser.page.evaluate("""
-            () => {
-                const visible = (el) => {
-                    const rect = el.getBoundingClientRect();
-                    const style = getComputedStyle(el);
-                    return rect.width > 0
-                        && rect.height > 0
-                        && style.display !== 'none'
-                        && style.visibility !== 'hidden'
-                        && Number(style.opacity || 1) > 0;
-                };
-                return Array.from(document.querySelectorAll('input')).some((el) => {
-                    const type = (el.getAttribute('type') || '').toLowerCase();
-                    const label = [
-                        el.getAttribute('placeholder'),
-                        el.getAttribute('aria-label'),
-                        el.name,
-                        el.id,
-                    ].filter(Boolean).join(' ');
-                    return visible(el) && (
-                        type === 'password'
-                        || /(password|密码|account|账号|email|邮箱|phone|手机|手机号)/i.test(label)
-                    );
-                });
-            }
-        """))
-    except Exception:
-        return False
+    return _safe_eval_bool(browser, """
+        () => {
+            const visible = (el) => {
+                const rect = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                return rect.width > 0
+                    && rect.height > 0
+                    && style.display !== 'none'
+                    && style.visibility !== 'hidden'
+                    && Number(style.opacity || 1) > 0;
+            };
+            return Array.from(document.querySelectorAll('input')).some((el) => {
+                const type = (el.getAttribute('type') || '').toLowerCase();
+                const label = [
+                    el.getAttribute('placeholder'),
+                    el.getAttribute('aria-label'),
+                    el.name,
+                    el.id,
+                ].filter(Boolean).join(' ');
+                return visible(el) && (
+                    type === 'password'
+                    || /(password|密码|account|账号|email|邮箱|phone|手机|手机号)/i.test(label)
+                );
+            });
+        }
+    """)
 
 
 def _page_has_login_entry(browser) -> bool:
-    try:
-        text = (browser.get_text() or "")[:5000].lower()
-    except Exception:
-        text = ""
+    text = _safe_get_text(browser).lower()
     if any(marker in text for marker in _LOGGED_OUT_TEXT_MARKERS):
         return True
 
-    try:
-        return bool(browser.page.evaluate("""
-            () => {
-                const visible = (el) => {
-                    const rect = el.getBoundingClientRect();
-                    const style = getComputedStyle(el);
-                    return rect.width > 0
-                        && rect.height > 0
-                        && style.display !== 'none'
-                        && style.visibility !== 'hidden'
-                        && Number(style.opacity || 1) > 0;
-                };
-                const textOf = (el) => (
-                    el.innerText
-                    || el.value
-                    || el.getAttribute('aria-label')
-                    || el.getAttribute('title')
-                    || ''
-                ).replace(/\\s+/g, '').trim();
-                const loginText = /^(登录|登入|登录\\/注册|注册\\/登录|login|log in|signin|sign in)$/i;
-                return Array.from(document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"], div, span'))
-                    .some((el) => {
-                        const text = textOf(el);
-                        return visible(el)
-                            && text
-                            && !/退出登录|logout|log out|sign out/i.test(text)
-                            && loginText.test(text);
-                    });
-            }
-        """))
-    except Exception:
-        return False
+    return _safe_eval_bool(browser, """
+        () => {
+            const visible = (el) => {
+                const rect = el.getBoundingClientRect();
+                const style = getComputedStyle(el);
+                return rect.width > 0
+                    && rect.height > 0
+                    && style.display !== 'none'
+                    && style.visibility !== 'hidden'
+                    && Number(style.opacity || 1) > 0;
+            };
+            const textOf = (el) => (
+                el.innerText
+                || el.value
+                || el.getAttribute('aria-label')
+                || el.getAttribute('title')
+                || ''
+            ).replace(/\\s+/g, '').trim();
+            const loginText = /^(登录|登入|登录\\/注册|注册\\/登录|login|log in|signin|sign in)$/i;
+            return Array.from(document.querySelectorAll('button, a, [role="button"], input[type="button"], input[type="submit"], div, span'))
+                .some((el) => {
+                    const text = textOf(el);
+                    return visible(el)
+                        && text
+                        && !/退出登录|logout|log out|sign out/i.test(text)
+                        && loginText.test(text);
+                });
+        }
+    """)
 
 
 def _open_login_entry_if_needed(browser) -> bool:
@@ -332,7 +330,7 @@ def _ask_credentials(agent, question="请输入账号和密码"):
 
 def _is_logged_in(browser) -> bool:
     # Login success is the server page's objective state — the agent reads it, not the user.
-    text = browser.get_text()[:3000]
+    text = _safe_get_text(browser, limit=3000)
     if _page_has_qr_login(browser) or _page_has_credential_login(browser) or _page_has_login_entry(browser):
         return False
 
@@ -346,16 +344,18 @@ def _is_logged_in(browser) -> bool:
     return "yes" in verdict.strip().lower()
 
 
-def _agent_sees_qr_login(agent, browser) -> bool:
-    """Use the agent LLM's visual perception for the final QR/password branch."""
+def _classify_login_method(agent, browser) -> str:
+    """Use the agent LLM's visual perception for the QR/password branch.
+
+    DOM and text checks are allowed to open a likely login entry, but they do
+    not decide that a page is QR login. If the model is unavailable or unclear,
+    default to the credential path instead of silently trusting a script hint.
+    """
     llm = getattr(agent, "llm", None)
     if llm is None:
-        return _page_has_qr_login(browser)
+        return _LOGIN_METHOD_CREDENTIALS
 
-    try:
-        text = (browser.get_text() or "")[:3000]
-    except Exception:
-        text = ""
+    text = _safe_get_text(browser, limit=3000)
 
     prompt = (
         f"当前 URL：{browser.page.url}\n"
@@ -384,9 +384,12 @@ def _agent_sees_qr_login(agent, browser) -> bool:
             max_tokens=5,
         )
     except Exception:
-        return _page_has_qr_login(browser)
+        return _LOGIN_METHOD_CREDENTIALS
 
-    return (response.content or "").strip().lower().startswith("yes")
+    verdict = (response.content or "").strip().lower()
+    if verdict.startswith("yes"):
+        return _LOGIN_METHOD_QR
+    return _LOGIN_METHOD_CREDENTIALS
 
 
 def _fill_password(agent, browser, question="请输入账号和密码"):
@@ -402,7 +405,7 @@ def _handle_login_step(agent, browser, failed_attempt=False):
     if not _page_has_qr_login(browser) and not _page_has_credential_login(browser):
         _open_login_entry_if_needed(browser)
 
-    if _agent_sees_qr_login(agent, browser):
+    if _classify_login_method(agent, browser) == _LOGIN_METHOD_QR:
         _send_shot(agent, browser)
         question = "登录失败，请重新扫描上面的二维码，完成后点这里" if failed_attempt else "请用手机扫描上面的二维码，完成后点这里"
         ask_user(agent, question, ["扫好了"])
