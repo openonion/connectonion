@@ -23,7 +23,7 @@ from .ask_user import ask_user
 from .browser_tools import BrowserAutomation
 from .browser_tools.browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 
-_PROFILE = Path.home() / ".co" / "login_agent_profile"
+_PROFILE = Path.home() / ".co" / "login_agent_chrome_profile"
 _PAGE_SETTLE_WAIT_MS = 10000
 _LOGIN_METHOD_QR = "qr"
 _LOGIN_METHOD_CREDENTIALS = "credentials"
@@ -58,10 +58,10 @@ def _open_browser(headless: bool):
     # its own Playwright objects so sync Playwright never crosses agent threads.
     for f in _PROFILE.glob("Singleton*"):
         f.unlink(missing_ok=True)
-    b = BrowserAutomation(use_chrome_profile=True, headless=headless)
+    b = BrowserAutomation(use_chrome_profile=False, headless=headless)
     b.playwright = sync_playwright().start()
     b.browser = b.playwright.chromium.launch_persistent_context(
-        str(_PROFILE), headless=headless, executable_path=None,
+        str(_PROFILE), headless=headless, channel="chrome",
         args=CHROME_DEFAULT_ARGS,
         ignore_default_args=IGNORE_DEFAULT_ARGS + ["--use-mock-keychain"],
         timeout=60000,
@@ -387,7 +387,7 @@ def remote_login(agent, url: str) -> str:
     """远程协助登录一个网站并记住登录态。打开 url，若已登录就直接复用；否则由 agent 判断
     当前页面是扫码还是账号密码登录，成功后持久化供下次复用。url 是登录页地址，例如
     https://x.com/login。"""
-    browser = _open_browser(False)  # headed（自带 Chromium）；服务器无显示器时改 True
+    browser = _open_browser(False)  # headed Google Chrome with a dedicated profile; use True on headless servers
     try:
         browser.page.goto(url, wait_until="domcontentloaded", timeout=30000)
         browser.page.wait_for_timeout(_PAGE_SETTLE_WAIT_MS)

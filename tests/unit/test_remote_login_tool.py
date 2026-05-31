@@ -58,6 +58,63 @@ class FakeIO:
         return {"answer": self.answer}
 
 
+class FakeBrowserPage:
+    def set_default_navigation_timeout(self, timeout):
+        self.default_navigation_timeout = timeout
+
+    def set_viewport_size(self, size):
+        self.viewport_size = size
+
+    def add_init_script(self, script):
+        self.init_script = script
+
+
+class FakeBrowserContext:
+    def __init__(self):
+        self.page = FakeBrowserPage()
+
+    def new_page(self):
+        return self.page
+
+
+class FakeChromium:
+    def __init__(self):
+        self.launch_args = None
+        self.context = FakeBrowserContext()
+
+    def launch_persistent_context(self, *args, **kwargs):
+        self.launch_args = (args, kwargs)
+        return self.context
+
+
+class FakePlaywright:
+    def __init__(self):
+        self.chromium = FakeChromium()
+
+
+class FakePlaywrightStarter:
+    def __init__(self):
+        self.playwright = FakePlaywright()
+
+    def start(self):
+        return self.playwright
+
+
+def test_open_browser_uses_system_chrome_with_dedicated_profile(monkeypatch, tmp_path):
+    starter = FakePlaywrightStarter()
+    monkeypatch.setattr(remote_login_mod, "_PROFILE", tmp_path / "login_agent_chrome_profile")
+    monkeypatch.setattr(remote_login_mod, "sync_playwright", lambda: starter)
+
+    browser = remote_login_mod._open_browser(headless=False)
+
+    args, kwargs = starter.playwright.chromium.launch_args
+    assert args == (str(tmp_path / "login_agent_chrome_profile"),)
+    assert kwargs["channel"] == "chrome"
+    assert "executable_path" not in kwargs
+    assert kwargs["headless"] is False
+    assert browser.use_chrome_profile is False
+
+
 def test_remote_login_uses_per_call_browser_and_closes(monkeypatch):
     opened = []
 
