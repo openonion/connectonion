@@ -7,7 +7,7 @@ Last updated: 2026-06-02
 - Repository: `openonion/connectonion`
 - Active branch: `codex/deploy-co-ai-skills`
 - Active PR: `#145` (`[codex] Add hosted co-ai deploy skills`)
-- Current focus: removing Claude Code skill directories from co-ai runtime skill loading while keeping ConnectOnion `.co/skills` behavior.
+- Current focus: removing the co-ai auto-approve hook while preserving explicit ULW approval skipping.
 
 ## Working Tree Notes
 
@@ -18,6 +18,9 @@ Last updated: 2026-06-02
 - The `skip_tool_approval` flag remains available for explicit modes such as ULW, but deploy/web startup should not set it implicitly.
 - Verification confirmed the approval correction with focused deploy, co-ai startup, tool approval, and ULW tests.
 - Runtime skills correction complete: co-ai slash skill loading and runtime discovery no longer read `.claude/skills`; Claude skills must be copied into `.co/skills` before runtime/deploy usage.
+- Approval inspection: `tool_approval.constants.DANGEROUS_TOOLS` includes shell/run tools, file edit tools, background/task control, external communication, and delete/remove tools, so web-mode co-ai does have real tool calls that should request user approval.
+- co-ai auto-approve cleanup complete: `create_coding_agent()` no longer exposes an `auto_approve` option or registers an `_enable_auto_approve` hook.
+- Explicit ULW mode remains the only current code path in co-ai's plugin stack that sets `skip_tool_approval=True`.
 - New deploy UX: `co deploy --all-skills` now explicitly packages all project `.co/skills` and user `~/.co/skills` skills into a hosted co-ai deploy.
 - Default behavior remains conservative: `co deploy --skills foo` packages only the selected skill names plus bundled built-ins.
 - Duplicate skill names prefer project `.co/skills` over user `~/.co/skills`.
@@ -107,6 +110,9 @@ Last updated: 2026-06-02
 
 ## Verification
 
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_co_ai_agent_main.py tests/unit/test_deploy_commands.py tests/unit/test_tool_approval.py::TestToolClassification tests/unit/test_tool_approval.py::TestDangerousTools tests/unit/test_ulw.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/co_ai/agent.py connectonion/cli/co_ai/main.py connectonion/cli/commands/deploy_co_ai.py connectonion/useful_plugins/tool_approval/approval.py connectonion/useful_plugins/ulw.py`
+- `git diff --check`
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_skills.py tests/unit/test_deploy_commands.py -q`
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_plugins/skills.py connectonion/cli/commands/deploy_co_ai.py connectonion/cli/commands/deploy_commands.py`
 - `git diff --check`

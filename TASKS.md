@@ -1,5 +1,37 @@
 # Tasks
 
+## Current Task: Remove co-ai Auto-Approve Hook
+
+Status: complete
+
+Context:
+
+- `create_coding_agent(auto_approve=True)` added an `_enable_auto_approve` hook that set `skip_tool_approval=True`.
+- That hook bypasses the existing web approval flow for dangerous tools.
+- Code inspection confirms dangerous tools exist in `tool_approval.constants.DANGEROUS_TOOLS`: shell/run tools, write/edit tools, background/task control, external communication, and delete/remove tools.
+- The separate ULW mode still explicitly uses `skip_tool_approval` as part of its autonomous mode behavior.
+
+Scope:
+
+- Remove the co-ai `_enable_auto_approve` hook.
+- Remove the `auto_approve` argument from `create_coding_agent()`.
+- Keep generic `skip_tool_approval` behavior for explicit ULW mode.
+- Add/update tests proving co-ai no longer exposes or registers the auto-approve hook.
+
+Expected result:
+
+- co-ai never bypasses approval through an agent-factory option.
+- Dangerous tools continue to require approval in web mode unless an explicit mode such as ULW is active.
+
+Result:
+
+- Removed `_enable_auto_approve` from `connectonion/cli/co_ai/agent.py`.
+- Removed the `auto_approve` parameter from `create_coding_agent()`.
+- Updated co-ai tests to assert the factory no longer exposes `auto_approve` and no auto-approve hook is registered.
+- Confirmed real approval-gated tools from `DANGEROUS_TOOLS`: shell/run, write/edit, background/task control, external communication, and delete/remove tools.
+- Kept explicit ULW `skip_tool_approval` behavior unchanged.
+- Focused co-ai/deploy/approval/ULW tests, syntax checks, and diff hygiene checks pass.
+
 ## Current Task: Remove Claude Runtime Skills From co-ai
 
 Status: complete

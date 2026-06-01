@@ -1,5 +1,14 @@
 # Implementation Plan
 
+## Remove co-ai Auto-Approve Hook
+
+1. [x] Inspect `tool_approval` constants and co-ai tool wiring to confirm which tools require user approval.
+2. [x] Remove `_enable_auto_approve` from `connectonion/cli/co_ai/agent.py`.
+3. [x] Remove `auto_approve` from `create_coding_agent()`.
+4. [x] Update tests to assert co-ai no longer exposes/registers the auto-approve hook.
+5. [x] Run focused co-ai, deploy, approval, and ULW tests plus syntax/diff checks.
+6. [x] Update `TASKS.md`, `STATUS.md`, and this plan with the result.
+
 ## Remove Claude Runtime Skills From co-ai
 
 1. [x] Remove `.claude/skills` from runtime `_get_skill_paths()`.
