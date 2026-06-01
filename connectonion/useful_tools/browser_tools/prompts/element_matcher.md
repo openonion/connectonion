@@ -68,6 +68,15 @@ ELEMENTS:
 
 Answer: index=1, reasoning="Div with role=button and text 'Reply' IS a button. Modern web apps (like Twitter) use divs with ARIA roles instead of semantic HTML <button> tags"
 
+### Example 8: Icon-only controls
+DESCRIPTION: "QR code login icon in the top right of the login card"
+ELEMENTS:
+[0] div "SMS login" pos=(1392,463)
+[1] button "Login" pos=(1392,685)
+[2] div class="qr-login-switch icon-qrcode" pos=(1618,430) size=42x42
+
+Answer: index=2, reasoning="The icon-only element has QR-related class metadata and is positioned at the top right of the login card"
+
 ## Your Task
 
 DESCRIPTION: "{description}"
@@ -90,6 +99,7 @@ Consider:
   - Container divs often wrap actual inputs - choose the element with the role, not the container
 - Position on page (first, second, top, bottom)
 - Semantic meaning (login=Sign In, search=magnifying glass)
+- Icon-only controls may have no visible text. Use `class`, `id`, `title`, `alt`, `data`, `pos`, and `size` to match visual controls such as QR-code switches, close icons, menus, and toggles.
 - **Distinguish button text from placeholder text** - "Reply" as button text is different from "Post your reply" as placeholder
 - **Exact button text matching** - When looking for a button with specific text (e.g., "Reply"), match the button text exactly, not similar words
 

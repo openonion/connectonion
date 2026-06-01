@@ -24,7 +24,11 @@ from .terminal import yes_no, autocomplete
 from .todo_list import TodoList
 from .slash_command import SlashCommand
 from .ask_user import ask_user
-from .remote_login import remote_login
+from .login_handoff import (
+    close_browser,
+    send_credentials_form_to_user,
+    send_qr_to_user,
+)
 
 # Claude Code-style file tools
 from .file_tools import (
@@ -64,7 +68,9 @@ __all__ = [
     "TodoList",
     "SlashCommand",
     "ask_user",
-    "remote_login",
+    "close_browser",
+    "send_credentials_form_to_user",
+    "send_qr_to_user",
     # Claude Code-style file tools
     "FileTools",
     "read_file",

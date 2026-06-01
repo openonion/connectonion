@@ -149,6 +149,13 @@ class TestAskUserInjection:
         agent = FakeAgent()
         agent.io = Mock()
         agent.io.receive.return_value = {"answer": "test"}
+        streamed_arg_keys = []
+
+        def capture_send(event):
+            if event.get("type") == "tool_result":
+                streamed_arg_keys.append(set(event.get("args", {}).keys()))
+
+        agent.io.send.side_effect = capture_send
 
         logger = Logger("test", log=False)
 
@@ -174,6 +181,11 @@ class TestAskUserInjection:
         # Second call should be the ask_user event
         second_call = agent.io.send.call_args_list[1]
         assert second_call[0][0]["type"] == "ask_user"
+        # Injected agent must not leak into streamed tool_result args.
+        third_call = agent.io.send.call_args_list[2]
+        assert third_call[0][0]["type"] == "tool_result"
+        assert "agent" not in third_call[0][0]["args"]
+        assert streamed_arg_keys == [{"question", "options"}]
 
     def test_agent_not_injected_for_other_tools(self):
         """tool_executor does not inject agent for regular tools."""

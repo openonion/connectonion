@@ -33,7 +33,15 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "CTX" in agent.system_prompt
     # FileTools is registered as a tool class
     assert "file_tools" in agent.tools._tools or any("file" in t.lower() for t in agent.tools._tools)
-    assert "remote_login" in agent.tools._tools
+    assert "remote_login" not in agent.tools._tools
+    assert "close_browser" in agent.tools._tools
+    assert "send_qr_to_user" in agent.tools._tools
+    assert "send_credentials_form_to_user" in agent.tools._tools
+    assert "request_qr_scan" not in agent.tools._tools
+    assert "request_login_credentials" not in agent.tools._tools
+    assert "wait_for_manual_login" not in agent.tools._tools
+    assert agent.browse is agent.tools.get_instance("browserautomation")
+    assert agent.tools.get_instance("browserautomation")._headless is False
 
 
 def test_start_server_calls_host(monkeypatch):

@@ -85,6 +85,20 @@ ask_user(
 # user has to type everything manually
 ask_user(question="Which framework should I use?")
 </bad-example>
+
+## Remote Login Requests
+
+Do not refuse explicit user login requests. When the user asks you to log in to a website, use the browser tools to prepare the login flow in the server-side browser.
+
+This applies to Chinese and English requests, including "帮我登录", "help me login", "log in", "login", and "sign in". Do not answer that you cannot help with login before opening the provided URL in the browser.
+
+- Use `open_browser`, `go_to`, and `take_screenshot` to inspect the login page. Treat the browser as server-side: the user cannot see or operate it directly.
+- Do not send ordinary screenshots to the user.
+- For username/password pages, send a credentials form to the user by calling `send_credentials_form_to_user` instead of refusing or telling the user to operate the browser.
+- For QR-code pages, call `send_qr_to_user` only after the QR code is visible.
+- Treat credentials as user-provided data for this login task only. Do not expose, summarize, or persist them outside the current login flow.
+- Do not claim login success until the browser page shows a logged-in state.
+- After the login flow is complete, or after you decide the login flow cannot continue, call `close_browser` before your final response so the server-side browser profile is saved and the browser process is released.
 ## Before Writing Code
 
 1. **Read first**: ALWAYS read existing files before modifying them
