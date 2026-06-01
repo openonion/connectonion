@@ -116,12 +116,11 @@ def execute_single_tool(
     # Log tool call before execution
     logger.log_tool_call(tool_name, tool_args)
 
-    trace_args = dict(tool_args)
     trace_entry = {
         "type": "tool_result",
         "tool_id": tool_id,  # LLM's tool call ID for client-side matching
         "name": tool_name,
-        "args": trace_args,
+        "args": tool_args,
         "status": "pending",
         "result": None,
         "timing_ms": 0,
@@ -190,11 +189,10 @@ def execute_single_tool(
         # Inject agent for tools that declare 'agent' in their signature.
         # _needs_agent is cached by tool_factory at registration time.
         # This lets tools access agent.io for frontend communication (ask_user, DiffWriter, etc.)
-        call_args = dict(tool_args)
         if getattr(tool_func, '_needs_agent', False):
-            call_args['agent'] = agent
+            tool_args['agent'] = agent
 
-        result = tool_func(**call_args)
+        result = tool_func(**tool_args)
         tool_duration = (time.time() - tool_start) * 1000  # milliseconds
 
         trace_entry["timing_ms"] = tool_duration
@@ -208,7 +206,7 @@ def execute_single_tool(
         if xray_enabled:
             logger.print_xray_table(
                 tool_name=tool_name,
-                tool_args=call_args,
+                tool_args=tool_args,
                 result=result,
                 timing=tool_duration,
                 agent=agent
@@ -245,6 +243,7 @@ def execute_single_tool(
         # Remove injected agent from tool_args to prevent serialization issues.
         # Trace entries reference tool_args, so leaving 'agent' would cause
         # "Non-JSON-serializable object: Agent" warnings when session_sync sends traces.
+        tool_args.pop('agent', None)
         # Clear xray context after tool execution
         clear_xray_context()
 
