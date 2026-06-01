@@ -408,6 +408,14 @@ def check_approval(agent: 'Agent') -> None:
     # Check unified permissions from session
     # =================================================================
     pending = agent.current_session.get('pending_tool')
+
+    if agent.current_session.get('skip_tool_approval'):
+        tool_name = pending['name'] if pending else 'unknown'
+        tool_args = pending.get('arguments', {}) if pending else {}
+        if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+            agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'auto approve')
+        return
+
     if pending:
         tool_name = pending['name']
         tool_args = pending['arguments']

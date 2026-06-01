@@ -44,7 +44,7 @@ from .tools import (
 )
 from .skills import skill
 from .plugins import login_cleanup, system_reminder
-from connectonion import Agent, bash, TodoList
+from connectonion import Agent, bash, TodoList, after_user_input
 from connectonion.useful_tools import (
     close_browser,
     send_credentials_form_to_user,
@@ -61,14 +61,24 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 GLOBAL_CO_DIR = Path.home() / ".co"
 
 
+@after_user_input
+def _enable_auto_approve(agent: Agent) -> None:
+    agent.current_session["skip_tool_approval"] = True
+
+
 def create_coding_agent(
+    name: str = "oo",
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
     auto_approve: bool = False,
+    co_dir: Path | None = None,
+    browser_headless: bool = False,
+    browser_channel: str | None = None,
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
-    browser = BrowserAutomation(headless=False)
+    browser = BrowserAutomation(headless=browser_headless, browser_channel=browser_channel)
+    agent_co_dir = co_dir or GLOBAL_CO_DIR
 
     tools = [
         file_tools,
@@ -103,16 +113,18 @@ def create_coding_agent(
 
     # Use SDK's subagents plugin instead of custom task implementation
     plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw, image_result_formatter, runtime_input, login_cleanup]
+    if auto_approve:
+        plugins.insert(0, [_enable_auto_approve])
 
     agent = Agent(
-        name="oo",
+        name=name,
         tools=tools,
         plugins=plugins,
         on_events=[],
         system_prompt=system_prompt,
         model=model,
         max_iterations=max_iterations,
-        co_dir=GLOBAL_CO_DIR,
+        co_dir=agent_co_dir,
     )
     agent.browse = browser
     # This browser helper blocks on stdin, which is wrong for co ai's websocket

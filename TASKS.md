@@ -1,6 +1,403 @@
 # Tasks
 
-## Current Task: Login Handoff Tool Boundary
+## Current Task: Hosted co-ai Browser Uses Chrome Channel
+
+Status: complete
+
+Context:
+
+- Hosted co-ai browser automation currently installs/uses Playwright Chromium for deploy.
+- Login-heavy workflows are more compatible when running against branded Google Chrome's stable channel where available.
+- Playwright supports branded browser channels such as `chrome`, but Chrome must be installed in the container and selected at launch.
+- Using Chrome improves compatibility but does not make automation invisible; cloud IP, headless mode, automation flags, and new profiles can still trigger login risk systems.
+
+Scope:
+
+- Add a browser channel option to `BrowserAutomation`.
+- Pass `browser_channel="chrome"` for deployed co-ai.
+- Install Chrome, not default Chromium, in the generated co-ai Dockerfile.
+- Keep local co ai behavior unchanged unless a browser channel is explicitly provided.
+- Add focused tests for deploy entrypoint/package generation and co-ai agent factory wiring.
+
+Expected result:
+
+- New `co deploy --skills ...` co-ai containers install Google Chrome during image build.
+- Hosted co-ai browser tools launch via Playwright's `chrome` channel.
+- Local co ai can still use the existing local Chrome path/fallback behavior.
+
+Result:
+
+- Added `browser_channel` support to `BrowserAutomation` and `create_coding_agent()`.
+- Hosted co-ai generated entrypoints now pass `browser_headless=True` and `browser_channel="chrome"`.
+- Generated co-ai Dockerfiles now install the Playwright Chrome channel with `python -m playwright install --with-deps chrome`.
+- `co deploy --skill ...` is accepted as a singular alias for `--skills ...`; repeated/comma-separated skill parsing remains unchanged.
+- Selected skill `requirements.txt` files are referenced from the generated root `requirements.txt`, so skill-specific Python dependencies install during image build.
+- co-ai deploy env collection now merges project `.env`, allowed API keys from global `~/.co/keys.env`, and allowed API keys from the current process environment without dumping the whole shell environment.
+- `auto_approve=True` now sets the session `skip_tool_approval` flag, and the approval plugin respects that flag without switching to ULW mode.
+- Focused tests cover the generated deploy package, skill dependency wiring, env-var merge behavior, co-ai factory wiring, CLI skill alias behavior, BrowserAutomation launch options, and approval skip behavior.
+
+## Previous Task: co-ai Deploy Installs Packaged Source
+
+Status: complete
+
+Context:
+
+- The previous browser-runtime fix added a co-ai Dockerfile and Playwright Chromium install step, but it still left `requirements.txt` as `connectonion=={version}`.
+- That means Docker build installs dependencies from the published PyPI package, then runtime imports the packaged `/app/connectonion` source through `sys.path`.
+- This can drift: newly added co-ai source, package data, or dependency declarations may not match the published package used during build.
+- The co-ai deploy package should install the packaged local source itself, including the current `pyproject.toml` dependencies.
+
+Scope:
+
+- Add package metadata needed to install the packaged local ConnectOnion source.
+- Change co-ai generated `requirements.txt` to install the local package.
+- Keep the co-ai Dockerfile installing dependencies from the generated requirements file, then installing Playwright Chromium.
+- Keep project deploy behavior unchanged.
+- Update package-builder regression coverage.
+
+Expected result:
+
+- `co deploy --skills ...` builds a co-ai image from the exact local packaged source.
+- Hosted co-ai has the current package code, package data, and declared dependencies installed.
+- Hosted co-ai browser tools still get Chromium installed at image-build time.
+
+Result:
+
+- co-ai deploy packages now include local package metadata (`pyproject.toml`, plus README/LICENSE when available) alongside the packaged `connectonion/` source.
+- Generated co-ai `requirements.txt` installs `.` when local metadata is available, so Docker build installs the packaged source and its declared dependencies.
+- The co-ai Dockerfile copies the full package before `pip install -r requirements.txt`, then installs Playwright Chromium during image build.
+- If the CLI is running from an installed package without local project metadata, the package builder keeps the previous `connectonion=={version}` fallback.
+
+## Previous Task: co-ai Deploy Browser Runtime
+
+Status: complete
+
+Context:
+
+- The current hosted co-ai session failed the user's browser request before normal page automation and then tried to run `playwright install chromium` through Bash.
+- `oo-api` adds a generic Dockerfile only when the package does not include one; that generated Dockerfile only installs Python requirements and does not install Playwright browser binaries or OS dependencies.
+- The co-ai deploy package currently includes browser tools, so the package should provide a deploy-specific Dockerfile that installs Chromium during image build.
+
+Scope:
+
+- Add a generated Dockerfile to co-ai deploy packages only.
+- Install Python requirements first, then run `python -m playwright install --with-deps chromium` at build time.
+- Keep project deploy behavior unchanged.
+- Add package-builder regression coverage.
+
+Expected result:
+
+- `co deploy --skills ...` builds a co-ai image with Playwright Chromium already installed.
+- Hosted co-ai browser tools should not need to call `playwright install chromium` at runtime.
+
+Result:
+
+- co-ai deploy packages now include a generated Dockerfile.
+- The generated Dockerfile installs Python requirements and runs `python -m playwright install --with-deps chromium` during image build.
+- Project deploy behavior is unchanged; this Dockerfile is only generated for the co-ai deploy package path.
+- Added package-builder coverage proving the Dockerfile is included and contains the Chromium install step.
+
+## Previous Task: Restored Running Session Stop State
+
+Status: complete
+
+Context:
+
+- A restored chat session can show a tool card still marked `RUNNING` while the input button remains the disabled send arrow.
+- The current chat loading state only follows the live SDK `status`, so a page refresh/reconnect can lose the visible stop affordance even though persisted UI still contains active work.
+- In the current hosted co-ai session, the visible running item is a `Bash` tool running `playwright install chromium`; the browser dependency problem is separate, but the frontend should still present a stop control for the active restored item.
+
+Scope:
+
+- Derive oo-chat loading state from both live SDK processing and active restored UI items.
+- Make `RemoteAgent.stop()` settle locally running UI items so clicking stop does not leave the page stuck in loading state.
+- Add focused SDK regression coverage for stopping restored running items.
+
+Expected result:
+
+- A restored session with `tool_call: running`, `thinking: running`, `intent: analyzing`, `eval: evaluating`, or `compact: compacting` shows the stop button.
+- Clicking stop returns the local UI to idle without clearing the transcript.
+
+Result:
+
+- `oo-chat` now derives `isLoading` from both live SDK `isProcessing` and active restored UI items.
+- `RemoteAgent.stop()` now settles restored running local UI items as stopped/error/done before returning to idle.
+- Added focused SDK regression coverage for stopping restored running items.
+- Reloading the current local session now shows the `Stop response` button while the restored UI still contains active work.
+
+## Previous Task: Chat Input Stop Button
+
+Status: complete
+
+Context:
+
+- During hosted agent execution, the input send button remains an inactive arrow instead of switching to a visible stop control.
+- Users need a local stop affordance in the send-button position, matching normal chat UX.
+- The current backend does not expose safe thread cancellation, so first implementation should stop the client-side active stream by closing the current WebSocket and returning UI state to idle without clearing the transcript.
+
+Scope:
+
+- Add a `stop()` method to the TypeScript remote agent/react hook layer.
+- Wire `stop` through `oo-chat`'s `useAgentSDK`, `Chat`, and `ChatInput`.
+- Render the send button as a stop button while loading.
+- Keep text entry and existing message history intact.
+
+Expected result:
+
+- While an agent response is running, the send button position shows a stop icon.
+- Clicking it stops the current client stream and returns the UI to idle without deleting the conversation.
+
+Result:
+
+- Added `RemoteAgent.stop()` in the TypeScript SDK to close the active WebSocket, clear the optimistic thinking placeholder, settle local input state, and return the client UI to idle without clearing the transcript.
+- Exposed `stop()` through `useAgentForHuman()` and `oo-chat`'s `useAgentSDK()`.
+- Wired `onStop` through the chat page, `Chat`, and `ChatInput`.
+- `ChatInput` now switches the send-button position from arrow to stop icon while `isLoading` is true.
+- Added a focused SDK regression test for client-side stop behavior.
+
+## Previous Task: Deployed Slash Skills Use Agent co_dir
+
+Status: complete
+
+Context:
+
+- The deployed page now shows `agent-4-linkedin` and `/deploy-smoke`, proving relay profile metadata reaches the frontend.
+- Invoking `/deploy-smoke` still let the model run normal coding tools before outputting the marker, which means the backend slash-skill interceptor did not reliably load the deployed `.co/skills/deploy-smoke/SKILL.md`.
+- Skill discovery for metadata uses `agent.co_dir`, but the slash invocation loader still searches `Path.cwd()/.co/skills`, which can diverge in hosted deployments.
+- The connection also shows intermittent `Authentication timed out`; current evidence points to slow relay/agent handshake and auth retries, but the immediate correctness bug is slash skill routing.
+
+Scope:
+
+- Add a failing test proving `/deploy-smoke` loads from `agent.co_dir` even when process cwd is somewhere else.
+- Update the skills plugin so slash invocation and the `skill()` tool load skills from the same `co_dir` source as metadata discovery.
+- Keep existing local cwd behavior as a fallback.
+- Verify focused skills tests and deploy-related tests.
+
+Expected result:
+
+- Hosted `co ai` slash skills use the packaged `.co/skills` directory and replace `/deploy-smoke` with the skill instructions before the LLM runs.
+- The smoke skill no longer triggers exploratory `ls/read_file` behavior just to discover skill files.
+
+Result:
+
+- Added a regression test that reproduces the hosted case: process cwd differs from `agent.co_dir`, and `/deploy-smoke` must still load from `agent.co_dir/skills/deploy-smoke/SKILL.md`.
+- Updated the skills plugin path resolver so slash invocation and the `skill()` tool load from `agent.co_dir` first, then cwd, user skills, and built-ins.
+- Updated generated co-ai deploy entrypoints to pass `CO_DIR = PACKAGE_ROOT / ".co"` so hosted agents use the package's `.co` directory even if cwd changes.
+- Local cwd behavior remains as a fallback for normal local agents.
+
+## Previous Task: Frontend Reads Relay Profile for Hosted co-ai
+
+Status: complete
+
+Context:
+
+- Hosted co-ai now publishes relay profile metadata, and named deploys can set the deployed agent identity.
+- The chat landing page still renders address-only because `oo-chat` and the TypeScript SDK only read relay endpoints, then try direct agent `/info` for name/tools/skills.
+- For hosted relay traffic, direct `/info` may be unreachable or stale from the browser, while `/api/relay/agents/{address}/profile` is the stable metadata path.
+
+Scope:
+
+- Teach the TypeScript SDK and `oo-chat` agent-info hook to read relay profile metadata.
+- Normalize profile `tools` so both current object-shaped payloads and string arrays render correctly.
+- Keep direct `/info` as a best-effort enrichment path, without making UI metadata depend on it.
+- Align hosted Python profile tools with the SDK's `string[]` shape while retaining frontend tolerance for older deployed profiles.
+
+Expected result:
+
+- A deployed co-ai page can show the deploy name, selected skills, tools, model, and version from relay profile even if direct `/info` cannot be reached.
+- Existing direct `/info` metadata still wins when it is available and address-verified.
+- The dashboard/chat address-only fallback is reserved for agents that truly have no relay profile.
+
+Result:
+
+- `connectonion-ts.fetchAgentInfo()` now reads `/api/relay/agents/{address}/profile`, normalizes skills/tools, and returns profile metadata when direct `/info` cannot be reached.
+- `oo-chat`'s `useAgentInfo()` now uses the same relay-profile fallback, so the landing page/sidebar/settings can render name, skills, tools, model, and version from relay metadata.
+- Direct `/info` remains a best-effort enrichment path and no longer gates metadata or online status.
+- Hosted Python relay profiles now publish `tools` as a string array, matching SDK/frontend expectations; the frontend still accepts older `{name: ...}` tool objects.
+
+## Previous Task: Named co-ai Deploys Publish Relay Profile Metadata
+
+Status: complete
+
+Context:
+
+- Hosted co-ai deploy now starts and connects through the relay, but the frontend only shows the address because the host ANNOUNCE does not publish profile metadata.
+- The deployed co-ai agent name is still hardcoded as `oo`, and the deploy project name defaults to `co-ai`, so repeated co-ai deploys refresh the same dashboard/app identity.
+- The desired UX is `co deploy --name agent-4-linkedin --skills ...`: deploy co-ai with selected skills, use the name for backend project identity, Agent metadata, and relay profile display.
+
+Scope:
+
+- Add a lightweight deploy name option that works with co-ai deploys and is safe for agent URLs.
+- Pass the selected deploy name into the generated co-ai entrypoint and `create_coding_agent()`.
+- Publish relay profile metadata from `host()` using the already extracted agent metadata so frontend/directory/profile endpoints can show name, skills, tools, model, and version.
+- Keep existing `co deploy --skills ...` behavior compatible, defaulting to `co-ai` when no name is provided.
+
+Expected result:
+
+- `co deploy --name agent-4-linkedin --skills deploy-smoke` uploads with `project_name=agent-4-linkedin`.
+- The generated hosted co-ai Agent has `agent.name == "agent-4-linkedin"`.
+- Relay ANNOUNCE includes profile metadata, so the frontend can render a name and available skills/tools instead of address-only UI.
+
+Result:
+
+- Added `co deploy --name/-n` and validate it for URL-safe lowercase letters, numbers, and hyphens.
+- Direct co-ai deploy still defaults to `co-ai`, but `--name agent-4-linkedin` now sets the upload `project_name`, generated entrypoint agent name, and hosted Agent name.
+- `create_coding_agent(name=...)` now accepts custom names while local `co ai` keeps the default `oo`.
+- `host()` now publishes a signed relay profile built from agent metadata: alias/name, bio, version, model, tools, and skills.
+- Relay heartbeat re-announces preserve the profile payload instead of dropping it on refresh.
+
+## Previous Task: Deploy Env Vars Sent to Backend Secrets Field
+
+Status: complete
+
+Context:
+
+- Real co-ai deploy now imports packaged source from `/app/connectonion`, so the previous site-packages import bug is fixed.
+- The remote container now fails at startup with `ValueError: OPENONION_API_KEY not found in environment`.
+- The CLI sends environment variables as multipart field `env_vars`, but the production `oo-api` deploy route accepts `secrets` and the deploy service only parses `secrets` into `docker run -e ...`.
+
+Scope:
+
+- Update the CLI deploy upload payload so env vars are sent in the backend-compatible `secrets` field.
+- Keep sending `env_vars` as a compatibility field for any backend version that already expects it.
+- Add regression coverage for co-ai deploy passing `OPENONION_API_KEY` through the upload payload.
+
+Expected result:
+
+- `co deploy --skills ...` uploads `OPENONION_API_KEY` in the field the current deploy backend injects into the Docker container.
+- Existing project deploy payload behavior remains compatible.
+
+Result:
+
+- CLI deploy now serializes env vars once and sends the JSON under both `env_vars` and `secrets`.
+- This keeps compatibility with the SDK-side `env_vars` naming while matching the production `oo-api` backend that reads `secrets` for Docker env injection.
+- Added regression coverage proving `co deploy --skills ...` includes `OPENONION_API_KEY` in `secrets`.
+
+## Previous Task: co-ai Deploy EntryPoint Imports Packaged Source
+
+Status: complete
+
+Context:
+
+- Real `co deploy --skills deploy-smoke` reached the deploy server and built a container, but startup failed.
+- Traceback showed `/app/.co/deploy/co_ai_entrypoint.py` imported `connectonion.cli.co_ai.agent` from `/usr/local/lib/python3.11/site-packages/connectonion`, not the packaged `/app/connectonion` source.
+- The installed PyPI version did not yet include `create_coding_agent(co_dir=...)`, causing `TypeError: unexpected keyword argument 'co_dir'`.
+
+Scope:
+
+- Update the generated co-ai entrypoint so it prepends the deployment package root (`/app`) to `sys.path` before importing `connectonion`.
+- Add regression coverage proving the generated entrypoint prefers packaged source over site-packages.
+- Keep the direct co-ai deploy UX and project deploy behavior unchanged.
+
+Expected result:
+
+- Deployed co-ai containers import the generated package source from `/app/connectonion`.
+- The `create_coding_agent(co_dir=..., browser_headless=True)` entrypoint works before these changes are published to PyPI.
+
+Result:
+
+- Generated co-ai entrypoints now calculate `PACKAGE_ROOT = Path(__file__).resolve().parents[2]` and insert it at the front of `sys.path` before importing `connectonion`.
+- This makes `/app/connectonion` take precedence over `/usr/local/lib/python*/site-packages/connectonion` inside the deployed container.
+- Added regression coverage to ensure the `sys.path` insertion happens before `from connectonion import host`.
+
+## Previous Task: Direct co-ai Deploy Without Project Scaffold
+
+Status: complete
+
+Context:
+
+- The first co-ai deploy implementation still inherited project deploy assumptions: git repo, `.co/host.yaml`, and a committed project file.
+- The intended UX is to deploy hosted `co ai` directly by attaching selected skills, without preparing or committing a separate agent entrypoint.
+
+Scope:
+
+- Make `co deploy --skills <name>` select co-ai deployment automatically.
+- Let co-ai deployment run from any directory without git, `.co/host.yaml`, or `agent.py`.
+- Build a self-contained temporary co-ai package with generated entrypoint, selected skills, package source, and a minimal `requirements.txt`.
+- Keep explicit `--template project` behavior as the backwards-compatible project deploy path.
+- Update tests and docs to match the direct co-ai deploy UX.
+
+Expected result:
+
+- `co deploy --skills alpha,beta` deploys co-ai directly.
+- `co deploy --template co-ai --skills alpha` also works without project files.
+- Existing `co deploy` inside a normal ConnectOnion project continues to deploy the project.
+- Explicit `co deploy --template project --skills alpha` is rejected because project deploys do not consume skills.
+
+Result:
+
+- `co deploy --skills ...` now auto-selects co-ai deploy and does not require git, `.co/host.yaml`, or `agent.py`.
+- `co deploy --template co-ai --skills ...` uses the same direct co-ai path.
+- `co deploy` in a git/ConnectOnion project still follows the project deploy path.
+- Explicit `--template project --skills ...` is rejected.
+- Co-ai deploy packages are self-contained: current ConnectOnion package source, generated `requirements.txt`, generated `.co/deploy/co_ai_entrypoint.py`, and selected skills are written only into the temporary tarball staging directory.
+
+## Previous Task: Login Handoff Privacy and Cleanup
+
+Status: complete
+
+Context:
+
+- Hosted `co ai` creates fresh Agent/tool instances for new requests, so the frontend chat session should not rely on a live Playwright browser object surviving across turns.
+- The lightweight architecture is to complete QR or credential handoff inside the current tool loop, then close the server-side browser when the login flow ends.
+- Local LinkedIn testing showed the model used `keyboard_type(text="...")` for the submitted password, exposing it in trace/UI.
+- The model also ended after a failed login without explicitly calling `close_browser`.
+
+Scope:
+
+- Keep `send_qr_to_user` and `send_credentials_form_to_user` as blocking user handoff tools.
+- Update prompt guidance so the model does not end the turn by asking the user to message later after scanning or entering credentials.
+- Require `close_browser` after login success, failure, or abandonment.
+- Do not return raw credentials from the credential handoff.
+- Add a narrow tool that types saved credentials into the focused browser field without exposing their values in tool arguments.
+- Add a co ai completion cleanup safety net for login handoff turns.
+- Avoid session-scoped browser registries, browser workers, or core runtime changes.
+
+Result:
+
+- Login prompt guidance now says to keep handoffs inside the same turn and continue checking browser state after the handoff returns.
+- QR and credential tool docs now explicitly prohibit ending the turn with "tell me later" style instructions.
+- Cleanup guidance now covers success, failure, and abandonment.
+- `send_credentials_form_to_user` stores credentials on the current Agent instance and returns only instructions, not credential values.
+- `type_saved_login_credential(field="username"|"password")` types the saved value into the focused browser field without putting the secret in trace args.
+- co ai registers a login cleanup `on_complete` plugin that closes the browser after a login handoff turn when needed.
+- Added regression coverage for same-turn login lifecycle, hidden credential typing, and automatic login cleanup.
+
+## Previous Task: co-ai Deploy Template
+
+Status: complete
+
+Context:
+
+- `co deploy` currently deploys a complete project agent by reading `.co/host.yaml`, validating that its entrypoint calls `host(...)`, packaging `git archive HEAD`, and uploading that tarball.
+- The desired flow is to deploy a hosted `co ai` coding agent from CLI arguments, then add selected skills with `--skills`, without requiring users to maintain a full deployable agent entrypoint in the project.
+
+Scope:
+
+- Keep `co deploy` default behavior backwards-compatible.
+- Add `co deploy --template co-ai --skills ...` as a separate deploy path.
+- Generate a temporary co-ai host entrypoint only inside the deployment package.
+- Package selected skills from project `.co/skills`, user `~/.co/skills`, or built-in co-ai skills.
+- Add focused tests for CLI argument behavior, package contents, missing skills, and co-ai agent factory options.
+
+Expected result:
+
+- `co deploy` continues to deploy the project configured by `.co/host.yaml`.
+- `co deploy --template co-ai --skills alpha,beta` uploads a tarball with the generated co-ai entrypoint and selected `.co/skills/*` directories.
+- The user working tree is not modified by co-ai deploy packaging.
+- Missing skills stop deployment before upload with a clear suggestion to run `co skills discover && co skills copy <name>`.
+- Deployed co-ai agents can use project `.co` state and headless browser automation.
+
+Result:
+
+- Added `--template`, `--skills`, `--model`, and `--max-iterations` options to `co deploy`.
+- Kept the default `project` deploy path compatible with existing `.co/host.yaml` and `host(...)` validation.
+- Added co-ai deploy packaging that starts from `git archive HEAD`, overlays `.co/deploy/co_ai_entrypoint.py`, and copies selected skill directories into `.co/skills/`.
+- Added skill resolution priority: project `.co/skills`, user `~/.co/skills`, then built-in co-ai skills.
+- Updated `create_coding_agent()` with deploy-safe `co_dir` and `browser_headless` options.
+- Updated deploy documentation for the new co-ai template path.
+
+## Previous Task: Login Handoff Tool Boundary
 
 Status: complete
 

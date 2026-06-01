@@ -43,6 +43,49 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "wait_for_manual_login" not in agent.tools._tools
     assert agent.browse is agent.tools.get_instance("browserautomation")
     assert agent.tools.get_instance("browserautomation")._headless is False
+    assert agent_mod._enable_auto_approve in agent.events["after_user_input"]
+    agent.current_session = {}
+    agent_mod._enable_auto_approve(agent)
+    assert agent.current_session["skip_tool_approval"] is True
+
+
+def test_create_coding_agent_accepts_deploy_co_dir_and_headless_browser(monkeypatch, tmp_path):
+    class FakeLLM:
+        model = "fake-model"
+
+    deploy_co_dir = tmp_path / ".co"
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+
+    agent = agent_mod.create_coding_agent(
+        model="fake",
+        max_iterations=9,
+        co_dir=deploy_co_dir,
+        browser_headless=True,
+        browser_channel="chrome",
+    )
+
+    assert agent.co_dir == deploy_co_dir
+    assert agent.tools.get_instance("browserautomation")._headless is True
+    assert agent.tools.get_instance("browserautomation")._browser_channel == "chrome"
+
+
+def test_create_coding_agent_accepts_custom_name(monkeypatch, tmp_path):
+    class FakeLLM:
+        model = "fake-model"
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+
+    agent = agent_mod.create_coding_agent(
+        name="agent-4-linkedin",
+        model="fake",
+        co_dir=tmp_path / ".co",
+    )
+
+    assert agent.name == "agent-4-linkedin"
 
 
 def test_start_server_calls_host(monkeypatch):

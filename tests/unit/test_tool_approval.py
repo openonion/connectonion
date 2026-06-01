@@ -128,6 +128,20 @@ class TestNoIO:
         # Should not raise (skips approval)
         check_approval(agent)
 
+    def test_skip_tool_approval_flag_skips_web_approval(self):
+        """Auto-approved agents should not block on WebSocket approval."""
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session['skip_tool_approval'] = True
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'python script.py', 'description': 'Run script'}
+        }
+
+        check_approval(agent)
+
+        assert io.sent == []
+
 
 class TestSafeTools:
     """Test safe tools skip approval."""

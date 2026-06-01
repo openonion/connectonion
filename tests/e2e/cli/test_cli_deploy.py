@@ -15,10 +15,12 @@ Components under test:
 """
 
 import os
+import json
 import shutil
 import tempfile
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch, MagicMock
 import pytest
 
@@ -60,6 +62,76 @@ class TestCliDeploy:
 
             result = self.runner.invoke(cli, ['deploy'])
             assert "Not a ConnectOnion project" in result.output
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    @patch('connectonion.cli.commands.deploy_commands.requests.get')
+    def test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold(self, mock_get, mock_post):
+        """Test --skills deploys co-ai without requiring git or .co/host.yaml."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+            from connectonion.cli.commands import deploy_commands
+
+            Path("package.tar.gz").write_bytes(b"package")
+
+            captured = {}
+
+            def fake_create_package(**kwargs):
+                captured.update(kwargs)
+                return SimpleNamespace(
+                    tarball_path=Path("package.tar.gz"),
+                    entrypoint=".co/deploy/co_ai_entrypoint.py",
+                )
+
+            mock_post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"id": "abc123", "url": "https://test-agent.agents.openonion.ai"},
+            )
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"status": "running", "url": "https://test-agent.agents.openonion.ai"},
+            )
+
+            with patch.object(deploy_commands, "create_deploy_package", side_effect=fake_create_package):
+                with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                    result = self.runner.invoke(
+                        cli,
+                        [
+                            "deploy",
+                            "--name", "agent-4-linkedin",
+                            "--skill", "alpha,beta",
+                            "--skills", "gamma",
+                            "--model", "co/test-model",
+                            "--max-iterations", "44",
+                        ],
+                    )
+
+            assert result.exit_code == 0
+            assert captured["template"] == "co-ai"
+            assert captured["skills"] == ["alpha", "beta", "gamma"]
+            assert captured["project_name"] == "agent-4-linkedin"
+            assert captured["model"] == "co/test-model"
+            assert captured["max_iterations"] == 44
+            upload_data = mock_post.call_args.kwargs["data"]
+            assert upload_data["project_name"] == "agent-4-linkedin"
+            assert upload_data["entrypoint"] == ".co/deploy/co_ai_entrypoint.py"
+            assert json.loads(upload_data["secrets"])["OPENONION_API_KEY"] == "test-token"
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_deploy_rejects_skills_without_co_ai_template(self, mock_post):
+        """Test --skills is scoped to the co-ai deploy template."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            os.makedirs(".git")
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
+            Path("agent.py").write_text('from connectonion import host\nhost(None)\n')
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                result = self.runner.invoke(cli, ['deploy', '--template', 'project', '--skills', 'alpha'])
+
+            assert "--skills requires --template co-ai" in result.output
+            mock_post.assert_not_called()
 
     @SKIP_NO_GIT
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
@@ -225,5 +297,3 @@ class TestCliDeploy:
                 result = self.runner.invoke(cli, ['deploy'])
 
             assert "Deploy failed" in result.output
-
-
