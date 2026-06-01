@@ -6,10 +6,22 @@ from types import SimpleNamespace
 import connectonion.useful_tools as useful_tools
 
 login_handoff_mod = importlib.import_module("connectonion.useful_tools.login_handoff")
+login_cleanup_mod = importlib.import_module("connectonion.cli.co_ai.plugins.login_cleanup")
+
+
+class FakeKeyboard:
+    def __init__(self):
+        self.typed = []
+
+    def type(self, text):
+        self.typed.append(text)
 
 
 class FakePage:
     url = "https://example.com/login"
+
+    def __init__(self):
+        self.keyboard = FakeKeyboard()
 
 
 class FakeBrowser:
@@ -74,6 +86,7 @@ def test_send_qr_to_user_sends_screenshot_then_ask_user():
         },
     ]
     assert agent.io.receives == 1
+    assert agent._login_handoff_active is True
     assert browser.saved is True
     assert "已扫码" in result
     assert "data:image/png;base64" not in result
@@ -120,8 +133,33 @@ def test_send_credentials_form_to_user_sends_structured_ask_user():
         }
     ]
     assert agent.io.receives == 1
-    assert '"username"' in result
-    assert '"password"' in result
+    assert agent._login_handoff_active is True
+    assert agent._login_credentials == {"username": "me@example.com", "password": "secret"}
+    assert "secret" not in result
+    assert "me@example.com" not in result
+    assert "type_saved_login_credential" in result
+
+
+def test_type_saved_login_credential_types_without_returning_secret():
+    browser = FakeBrowser()
+    agent = SimpleNamespace(
+        browse=browser,
+        _login_credentials={"username": "me@example.com", "password": "secret"},
+    )
+
+    result = login_handoff_mod.type_saved_login_credential(agent, "password")
+
+    assert browser.page.keyboard.typed == ["secret"]
+    assert result == "Typed saved password into the focused browser field."
+    assert "secret" not in result
+
+
+def test_type_saved_login_credential_requires_saved_value():
+    agent = SimpleNamespace(browse=FakeBrowser(), _login_credentials={})
+
+    result = login_handoff_mod.type_saved_login_credential(agent, "password")
+
+    assert result == "No saved password credential is available."
 
 
 def test_send_credentials_form_to_user_requires_io():
@@ -134,7 +172,11 @@ def test_send_credentials_form_to_user_requires_io():
 
 def test_close_browser_closes_existing_browser():
     browser = FakeBrowser()
-    agent = SimpleNamespace(browse=browser)
+    agent = SimpleNamespace(
+        browse=browser,
+        _login_handoff_active=True,
+        _login_credentials={"username": "me@example.com", "password": "secret"},
+    )
 
     result = login_handoff_mod.close_browser(agent)
 
@@ -142,6 +184,8 @@ def test_close_browser_closes_existing_browser():
     assert browser.closed is True
     assert browser.browser is None
     assert browser.page is None
+    assert not hasattr(agent, "_login_handoff_active")
+    assert not hasattr(agent, "_login_credentials")
 
 
 def test_close_browser_is_noop_when_browser_already_closed():
@@ -162,6 +206,16 @@ def test_close_browser_requires_agent_browser_context():
     result = login_handoff_mod.close_browser(agent)
 
     assert "requires agent.browse" in result
+
+
+def test_login_cleanup_closes_active_login_browser_on_complete():
+    browser = FakeBrowser()
+    agent = SimpleNamespace(browse=browser, _login_handoff_active=True)
+
+    login_cleanup_mod.close_login_browser_on_complete(agent)
+
+    assert browser.closed is True
+    assert not hasattr(agent, "_login_handoff_active")
 
 
 def test_old_login_tool_names_are_not_exported():

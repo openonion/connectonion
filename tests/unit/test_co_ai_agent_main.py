@@ -37,6 +37,7 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "close_browser" in agent.tools._tools
     assert "send_qr_to_user" in agent.tools._tools
     assert "send_credentials_form_to_user" in agent.tools._tools
+    assert "type_saved_login_credential" in agent.tools._tools
     assert "request_qr_scan" not in agent.tools._tools
     assert "request_login_credentials" not in agent.tools._tools
     assert "wait_for_manual_login" not in agent.tools._tools

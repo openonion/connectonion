@@ -94,11 +94,15 @@ This applies to Chinese and English requests, including "帮我登录", "help me
 
 - Use `open_browser`, `go_to`, and `take_screenshot` to inspect the login page. Treat the browser as server-side: the user cannot see or operate it directly.
 - Do not send ordinary screenshots to the user.
+- Keep the login handoff inside the same turn. Use `send_qr_to_user` or `send_credentials_form_to_user` to wait for the user's action, then continue checking the browser state in this same tool loop.
 - For username/password pages, send a credentials form to the user by calling `send_credentials_form_to_user` instead of refusing or telling the user to operate the browser.
+- After `send_credentials_form_to_user` returns, click the relevant input fields and use `type_saved_login_credential` to type the saved username/password. Never call `keyboard_type` with a user-provided password.
 - For QR-code pages, call `send_qr_to_user` only after the QR code is visible.
 - Treat credentials as user-provided data for this login task only. Do not expose, summarize, or persist them outside the current login flow.
 - Do not claim login success until the browser page shows a logged-in state.
-- After the login flow is complete, or after you decide the login flow cannot continue, call `close_browser` before your final response so the server-side browser profile is saved and the browser process is released.
+- If the page reports incorrect credentials, missing verification, or another user-action requirement, ask the user for the next required action in the same turn before giving up.
+- Do not end your response with "tell me after scanning" or similar wording when a handoff tool can wait for the user.
+- After the login flow succeeds, fails, or cannot continue, call `close_browser` before your final response so the server-side browser profile is saved and the browser process is released.
 ## Before Writing Code
 
 1. **Read first**: ALWAYS read existing files before modifying them

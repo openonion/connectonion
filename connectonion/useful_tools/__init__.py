@@ -28,6 +28,7 @@ from .login_handoff import (
     close_browser,
     send_credentials_form_to_user,
     send_qr_to_user,
+    type_saved_login_credential,
 )
 
 # Claude Code-style file tools
@@ -71,6 +72,7 @@ __all__ = [
     "close_browser",
     "send_credentials_form_to_user",
     "send_qr_to_user",
+    "type_saved_login_credential",
     # Claude Code-style file tools
     "FileTools",
     "read_file",

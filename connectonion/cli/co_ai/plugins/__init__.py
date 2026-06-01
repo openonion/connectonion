@@ -14,5 +14,6 @@ Architecture:
 """
 
 from .system_reminder import system_reminder
+from .login_cleanup import login_cleanup
 
-__all__ = ['system_reminder']
+__all__ = ['system_reminder', 'login_cleanup']

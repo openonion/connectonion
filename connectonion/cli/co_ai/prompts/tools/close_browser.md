@@ -11,5 +11,5 @@ Use `close_browser()` after a server-side browser flow is finished.
 ## Guidelines
 
 - Call this after confirming a login succeeded.
-- Call this if you decide the login flow cannot continue and you are about to report that to the user.
+- Call this if login failed, was abandoned, or cannot continue and you are about to report that to the user.
 - Do not call this while you are still waiting for the user to scan a QR code, enter credentials, complete 2FA, or otherwise continue the active login flow.

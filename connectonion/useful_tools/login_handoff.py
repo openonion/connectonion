@@ -1,8 +1,29 @@
 """User handoff tools for server-side login flows."""
 
+import json
+
 from .ask_user import ask_user
 
 _QR_SCAN_OPTION = "已扫码，继续检查登录状态"
+_CREDENTIAL_FIELDS = {"username", "password"}
+
+
+def _clear_saved_credentials(agent) -> None:
+    for attr in ("_login_credentials", "_login_handoff_active"):
+        if hasattr(agent, attr):
+            delattr(agent, attr)
+
+
+def _parse_credentials(answer):
+    if isinstance(answer, dict):
+        return answer
+    if not isinstance(answer, str):
+        return {}
+    try:
+        parsed = json.loads(answer)
+    except json.JSONDecodeError:
+        return {}
+    return parsed if isinstance(parsed, dict) else {}
 
 
 def send_qr_to_user(agent) -> str:
@@ -11,6 +32,7 @@ def send_qr_to_user(agent) -> str:
     if not browser or not agent.io:
         return "send_qr_to_user requires agent.browse and agent.io."
 
+    agent._login_handoff_active = True
     screenshot = browser.take_screenshot()
     if screenshot:
         agent.io.send_image(screenshot)
@@ -60,22 +82,60 @@ def send_credentials_form_to_user(agent) -> str:
         ],
     })
     answer = agent.io.receive().get("answer", "")
-    if not answer:
+    credentials = _parse_credentials(answer)
+    username = credentials.get("username")
+    password = credentials.get("password")
+    if not username or not password:
         return "No credentials were provided."
-    return answer
+
+    agent._login_handoff_active = True
+    agent._login_credentials = {
+        "username": str(username),
+        "password": str(password),
+    }
+    return (
+        "Credentials saved for this login flow. Focus the username field and "
+        "call type_saved_login_credential(field=\"username\"), then focus the "
+        "password field and call type_saved_login_credential(field=\"password\"). "
+        "Do not use keyboard_type for saved credentials."
+    )
+
+
+def type_saved_login_credential(agent, field: str) -> str:
+    """Type a saved login credential into the focused browser field."""
+    if field not in _CREDENTIAL_FIELDS:
+        return 'field must be "username" or "password".'
+
+    credentials = getattr(agent, "_login_credentials", None) or {}
+    value = credentials.get(field)
+    if not value:
+        return f"No saved {field} credential is available."
+
+    browser = getattr(agent, "browse", None)
+    page = getattr(browser, "page", None) if browser else None
+    if not page:
+        return "type_saved_login_credential requires an open agent.browse page."
+
+    page.keyboard.type(value)
+    return f"Typed saved {field} into the focused browser field."
 
 
 def close_browser(agent) -> str:
     """Close the agent-side browser after a login/browser flow is finished."""
     browser = getattr(agent, "browse", None)
     if not browser:
+        _clear_saved_credentials(agent)
         return "close_browser requires agent.browse."
 
     if not getattr(browser, "browser", None) and not getattr(browser, "page", None):
+        _clear_saved_credentials(agent)
         return "Browser is already closed."
 
     close = getattr(browser, "close", None)
     if not callable(close):
+        _clear_saved_credentials(agent)
         return "agent.browse does not support close()."
 
-    return close()
+    result = close()
+    _clear_saved_credentials(agent)
+    return result
