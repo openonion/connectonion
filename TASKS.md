@@ -1,5 +1,34 @@
 # Tasks
 
+## Current Task: Remove Claude Runtime Skills From co-ai
+
+Status: complete
+
+Context:
+
+- ConnectOnion runtime skills should come from `.co/skills`, user `~/.co/skills`, and bundled built-ins.
+- Claude Code skills may be discoverable/copyable through CLI migration commands, but they should not be loaded automatically by co-ai runtime or hosted deploy behavior.
+- Runtime skill discovery currently includes `.claude/skills`, which can unexpectedly expose unrelated Claude workflows.
+
+Scope:
+
+- Remove `.claude/skills` from runtime skill path resolution.
+- Remove `.claude/skills` from runtime skill discovery metadata.
+- Add a regression test proving slash invocation does not load a Claude-only skill.
+- Keep `co skills discover/copy` behavior out of scope.
+
+Expected result:
+
+- co-ai runtime and hosted co-ai only load ConnectOnion skills from `.co/skills`, `~/.co/skills`, and built-ins.
+- Claude skills must be explicitly copied into `.co/skills` before runtime/deploy usage.
+
+Result:
+
+- Runtime skill path resolution no longer checks project, cwd, or user `.claude/skills`.
+- Runtime skill discovery no longer lists `.claude/skills`.
+- Added a regression test proving `/claude-only` is ignored when it exists only under `.claude/skills`.
+- Focused skills/deploy tests, syntax checks, and diff hygiene checks pass.
+
 ## Current Task: Require co-ai User Approval by Default
 
 Status: complete

@@ -82,7 +82,7 @@ if TYPE_CHECKING:
 class SkillInfo:
     name: str
     description: str
-    location: str  # project | claude-project | user | claude-user | builtin
+    location: str  # project | user | builtin
 
 
 # =============================================================================
@@ -126,18 +126,13 @@ def _get_skill_paths(
     # 1. Agent/project-level ConnectOnion skills
     add(co_base / 'skills' / skill_name / 'SKILL.md')
 
-    # 2. Project-level Claude Code skills
-    add(base / '.claude' / 'skills' / skill_name / 'SKILL.md')
-
-    # 3. cwd fallback for local usage that has no agent.co_dir
+    # 2. cwd fallback for local usage that has no agent.co_dir
     add(Path.cwd() / '.co' / 'skills' / skill_name / 'SKILL.md')
-    add(Path.cwd() / '.claude' / 'skills' / skill_name / 'SKILL.md')
 
-    # 4. User-level skills
+    # 3. User-level skills
     add(home / '.co' / 'skills' / skill_name / 'SKILL.md')
-    add(home / '.claude' / 'skills' / skill_name / 'SKILL.md')
 
-    # 5. Built-in skills
+    # 4. Built-in skills
     builtin_base = Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin'
     add(builtin_base / skill_name / 'SKILL.md')
 
@@ -202,7 +197,7 @@ def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
 
 
 def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Path] = None) -> List['SkillInfo']:
-    """Discover all available skills from ConnectOnion and Claude Code directories.
+    """Discover all available ConnectOnion skills.
 
     Args:
         co_dir: Path to .co directory (defaults to cwd/.co)
@@ -220,9 +215,7 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
 
     search_paths = [
         ('project', co_base / 'skills'),
-        ('claude-project', base / '.claude' / 'skills'),
         ('user', Path.home() / '.co' / 'skills'),
-        ('claude-user', Path.home() / '.claude' / 'skills'),
         ('builtin', builtin_base),
     ]
 

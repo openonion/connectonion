@@ -316,6 +316,31 @@ class TestSkillInvocation:
 
         assert agent.current_session['messages'][-1]['content'] == "DEPLOY_SMOKE_SKILL_ACTIVE_2026_06_01"
 
+    def test_handle_skill_invocation_ignores_claude_skills(self, tmp_path, monkeypatch):
+        """Test runtime skill loading does not treat Claude skills as ConnectOnion skills."""
+        skill_dir = tmp_path / ".claude" / "skills" / "claude-only"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: claude-only\n"
+            "description: Claude-only skill\n"
+            "tools: []\n"
+            "---\n\n"
+            "SHOULD_NOT_LOAD\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+
+        agent = FakeAgent()
+        agent.current_session['messages'] = [
+            {'role': 'user', 'content': '/claude-only'}
+        ]
+
+        handle_skill_invocation(agent)
+
+        assert agent.current_session['messages'][-1]['content'] == "/claude-only"
+
 
 class TestCleanup:
     """Tests for cleanup on turn end."""

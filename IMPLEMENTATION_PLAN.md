@@ -1,5 +1,13 @@
 # Implementation Plan
 
+## Remove Claude Runtime Skills From co-ai
+
+1. [x] Remove `.claude/skills` from runtime `_get_skill_paths()`.
+2. [x] Remove `.claude/skills` from runtime `_discover_all_skills()`.
+3. [x] Add a regression test that a Claude-only skill is not invoked by slash command.
+4. [x] Run focused skills/deploy tests, syntax checks, and diff hygiene checks.
+5. [x] Update `TASKS.md`, `STATUS.md`, and this plan with the result.
+
 ## Require co-ai User Approval by Default
 
 1. [x] Remove default `auto_approve=True` from generated co-ai deploy entrypoints.
