@@ -1,5 +1,16 @@
 # Implementation Plan
 
+## Deploy Timeout and Package Build Simplification
+
+1. [x] Confirm 524 root cause from current code path: POST `/api/v1/deploy` awaited SSH upload, Docker build/run, Caddy route update, and cleanup.
+2. [x] Change oo-api deploy POST to create a deployment row and return `deploying` before slow build work.
+3. [x] Detach the slow deploy build from the POST request and preserve status polling via the existing status endpoint.
+4. [x] Remove forced Docker `--no-cache` from backend deploy builds.
+5. [x] Simplify the generated co-ai Dockerfile so it copies only install/runtime inputs instead of `COPY . .`.
+6. [x] Run focused deploy tests and syntax/diff checks.
+7. [x] Update `TASKS.md`, `STATUS.md`, and this plan with the local fix result.
+8. [x] Deploy oo-api change to production and verify real `co deploy` no longer 524s.
+
 ## Hosted co-ai Browser Uses Chrome Channel
 
 1. [x] Confirm the current deploy path installs/uses default Playwright Chromium.

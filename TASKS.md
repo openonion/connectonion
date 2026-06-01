@@ -1,5 +1,34 @@
 # Tasks
 
+## Current Task: Deploy Timeout and Package Build Simplification
+
+Status: complete
+
+Context:
+
+- `co deploy --name agent-4-linkedin --skills deploy-smoke` failed at `Uploading...` with Cloudflare 524.
+- The backend deploy API was doing the full Docker build/run path inside the POST request, so Cloudflare could time out before the CLI reached its existing status polling loop.
+- The co-ai generated Dockerfile also copied the entire package before dependency installation, which makes Docker layer caching less useful for repeated deploys.
+
+Scope:
+
+- Keep the CLI/status-polling contract simple: POST returns a deployment id and `deploying`, then CLI polls status.
+- Move slow backend build/run work out of the POST response path.
+- Remove unnecessary cache busting from deploy builds.
+- Keep the co-ai deploy package self-contained and compatible with selected skills.
+
+Expected result:
+
+- Deploy POST should return quickly with `status=deploying` instead of waiting for Docker build.
+- Repeated deploys should have a better chance of reusing Docker layers.
+- CLI remains the same user flow: upload, then poll until running or failed.
+
+Result:
+
+- Local implementation and focused tests are complete.
+- `oo-api` production was deployed with the detached deploy task fix.
+- Real `co deploy --name agent-4-linkedin --skills deploy-smoke` no longer 524s at `Uploading...`; it entered `Building...` and completed successfully.
+
 ## Current Task: Hosted co-ai Browser Uses Chrome Channel
 
 Status: complete

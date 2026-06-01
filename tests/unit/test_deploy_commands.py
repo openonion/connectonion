@@ -103,7 +103,10 @@ def test_create_co_ai_deploy_package_is_self_contained_without_project_scaffold(
     assert "host(create_agent, trust=\"careful\", co_dir=CO_DIR)" in entrypoint
     assert requirements == ".\n"
     assert "FROM python:3.11-slim" in dockerfile
-    assert "COPY . ." in dockerfile
+    assert "COPY pyproject.toml README.md requirements.txt ./" in dockerfile
+    assert "COPY connectonion ./connectonion" in dockerfile
+    assert "COPY .co ./.co" in dockerfile
+    assert "COPY . ." not in dockerfile
     assert "RUN pip install --no-cache-dir -r requirements.txt" in dockerfile
     assert "python -m playwright install --with-deps chrome" in dockerfile
     assert "CMD [\"python\", \".co/deploy/co_ai_entrypoint.py\"]" in dockerfile

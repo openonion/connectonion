@@ -218,22 +218,33 @@ def _write_co_ai_requirements(
     )
 
 
-def _write_co_ai_dockerfile(staging_dir: Path) -> None:
-    (staging_dir / "Dockerfile").write_text(
-        "\n".join([
-            "FROM python:3.11-slim",
-            "WORKDIR /app",
-            "ENV PYTHONUNBUFFERED=1",
-            "ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
-            "COPY . .",
-            "RUN pip install --no-cache-dir -r requirements.txt",
-            "RUN python -m playwright install --with-deps chrome",
-            "ENV PORT=8000",
-            f"CMD [\"python\", \"{CO_AI_ENTRYPOINT}\"]",
-            "",
-        ]),
-        encoding="utf-8",
-    )
+def _write_co_ai_dockerfile(staging_dir: Path, *, install_local_package: bool) -> None:
+    lines = [
+        "FROM python:3.11-slim",
+        "WORKDIR /app",
+        "ENV PYTHONUNBUFFERED=1",
+        "ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
+    ]
+    if install_local_package:
+        lines.extend([
+            "COPY pyproject.toml README.md requirements.txt ./",
+            "COPY connectonion ./connectonion",
+            "COPY .co ./.co",
+        ])
+    else:
+        lines.extend([
+            "COPY requirements.txt ./",
+            "COPY connectonion ./connectonion",
+            "COPY .co ./.co",
+        ])
+    lines.extend([
+        "RUN pip install --no-cache-dir -r requirements.txt",
+        "RUN python -m playwright install --with-deps chrome",
+        "ENV PORT=8000",
+        f"CMD [\"python\", \"{CO_AI_ENTRYPOINT}\"]",
+        "",
+    ])
+    (staging_dir / "Dockerfile").write_text("\n".join(lines), encoding="utf-8")
 
 
 def create_deploy_package(
@@ -262,7 +273,6 @@ def create_deploy_package(
 
     _copy_connectonion_package(staging_dir)
     install_local_package = _copy_connectonion_project_metadata(staging_dir)
-    _write_co_ai_dockerfile(staging_dir)
     _write_co_ai_entrypoint(
         staging_dir / CO_AI_ENTRYPOINT,
         model=model,
@@ -287,6 +297,7 @@ def create_deploy_package(
         install_local_package=install_local_package,
         skill_requirements=skill_requirement_files,
     )
+    _write_co_ai_dockerfile(staging_dir, install_local_package=install_local_package)
 
     _make_tarball(staging_dir, tarball_path)
     return DeployPackage(tarball_path=tarball_path, entrypoint=CO_AI_ENTRYPOINT)

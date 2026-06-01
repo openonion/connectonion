@@ -7,11 +7,16 @@ Last updated: 2026-06-01
 - Repository: `openonion/connectonion`
 - Active branch: `codex/co-ai-remote-login-tool`
 - Active PR: `#143` (`[codex] Add remote login tool to co ai`)
-- Current focus: finishing hosted co-ai deploy for the two active scenarios: server-side Chrome/headless browser automation and selected skills packaged into the co-ai deploy.
+- Current focus: fixing real deploy 524 timeout and simplifying the co-ai deploy build path without changing the user-facing deploy flow.
 
 ## Working Tree Notes
 
 - `AGENTS.md` and `test-deploy/` were present before this status baseline.
+- New deploy timeout finding: `oo-api` POST `/api/v1/deploy` awaited the entire slow deploy path: package extraction, rsync to GCE, Docker build, Docker run, Caddy route update, old-version cleanup. That matches the Cloudflare 524 at `Uploading...`.
+- Fix in `oo-api`: POST `/api/v1/deploy` now creates the deployment row and returns `status=deploying` quickly; the slow build/run path runs in a detached asyncio task and updates the existing deployment status.
+- Backend build simplification: `docker build --no-cache` was removed so repeated deploys can use Docker layer cache.
+- co-ai package simplification: generated Dockerfile no longer uses `COPY . .` before installation; it copies package metadata, `connectonion/`, and `.co/` explicitly before installing requirements and Chrome.
+- Production verification passed: after redeploying `oo-api`, real `co deploy --name agent-4-linkedin --skills deploy-smoke` moved from `Uploading...` to `Building...` and completed with `https://agent-4-linkedin-0x92f834c6.agents.openonion.ai`.
 - Current frontend finding: deployed co-ai relays successfully and host ANNOUNCE can publish profile metadata, but the frontend falls back to address-only display because its agent-info hook does not read `/api/relay/agents/{address}/profile`.
 - SDK finding: `connectonion-ts` has the same direct-`/info` dependency in `fetchAgentInfo()`, so consumers also lose name/skills/tools when relay endpoints are reachable only through `/ws/input`.
 - Fix: `connectonion-ts.fetchAgentInfo()` and `oo-chat`'s `useAgentInfo()` now read relay profile metadata from `/api/relay/agents/{address}/profile` and use it as the fallback display source.
@@ -98,6 +103,10 @@ Last updated: 2026-06-01
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/unit/test_browser_automation.py tests/unit/test_tool_approval.py::TestNoIO::test_skip_tool_approval_flag_skips_web_approval tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py connectonion/cli/co_ai/agent.py connectonion/useful_tools/browser_tools/browser.py connectonion/useful_plugins/tool_approval/approval.py`
 - `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
+- `python3 -m pytest tests/test_deploy.py -q` in `/Users/yfshuu/coding/openonion/oo-api`
+- `python3 -c "compile(...)"` syntax check for `oo-api/deploy/routes.py`, `oo-api/deploy/service.py`, and `connectonion/cli/commands/deploy_commands.py`
+- `git diff --check` in both `connectonion` and `oo-api`
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py -q`
 - `/opt/homebrew/bin/python3 -m pytest tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/commands/deploy_commands.py`
