@@ -117,6 +117,43 @@ class TestCliDeploy:
             assert json.loads(upload_data["secrets"])["OPENONION_API_KEY"] == "test-token"
 
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    @patch('connectonion.cli.commands.deploy_commands.requests.get')
+    def test_deploy_with_all_skills_auto_uses_co_ai_without_project_scaffold(self, mock_get, mock_post):
+        """Test --all-skills deploys co-ai and asks package builder to include all local skills."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+            from connectonion.cli.commands import deploy_commands
+
+            Path("package.tar.gz").write_bytes(b"package")
+            captured = {}
+
+            def fake_create_package(**kwargs):
+                captured.update(kwargs)
+                return SimpleNamespace(
+                    tarball_path=Path("package.tar.gz"),
+                    entrypoint=".co/deploy/co_ai_entrypoint.py",
+                )
+
+            mock_post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"id": "abc123", "url": "https://test-agent.agents.openonion.ai"},
+            )
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"status": "running", "url": "https://test-agent.agents.openonion.ai"},
+            )
+
+            with patch.object(deploy_commands, "create_deploy_package", side_effect=fake_create_package):
+                with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                    result = self.runner.invoke(cli, ["deploy", "--name", "agent-full", "--all-skills"])
+
+            assert result.exit_code == 0
+            assert captured["template"] == "co-ai"
+            assert captured["skills"] == []
+            assert captured["all_skills"] is True
+            assert captured["project_name"] == "agent-full"
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
     def test_deploy_rejects_skills_without_co_ai_template(self, mock_post):
         """Test --skills is scoped to the co-ai deploy template."""
         with self.runner.isolated_filesystem():
@@ -131,6 +168,23 @@ class TestCliDeploy:
                 result = self.runner.invoke(cli, ['deploy', '--template', 'project', '--skills', 'alpha'])
 
             assert "--skills requires --template co-ai" in result.output
+            mock_post.assert_not_called()
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_deploy_rejects_all_skills_without_co_ai_template(self, mock_post):
+        """Test --all-skills is scoped to the co-ai deploy template."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            os.makedirs(".git")
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
+            Path("agent.py").write_text('from connectonion import host\nhost(None)\n')
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                result = self.runner.invoke(cli, ['deploy', '--template', 'project', '--all-skills'])
+
+            assert "--all-skills requires --template co-ai" in result.output
             mock_post.assert_not_called()
 
     @SKIP_NO_GIT

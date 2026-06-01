@@ -130,6 +130,22 @@ def resolve_deploy_skill(name: str, project_dir: Path) -> Path:
     )
 
 
+def discover_deploy_skill_names(project_dir: Path) -> list[str]:
+    """Discover deployable project/user skill names with project priority."""
+    names = []
+    seen = set()
+    for skills_dir in (project_dir / ".co" / "skills", Path.home() / ".co" / "skills"):
+        if not skills_dir.exists():
+            continue
+        for skill_dir in sorted(skills_dir.iterdir(), key=lambda path: path.name):
+            if skill_dir.name in seen:
+                continue
+            if (skill_dir / "SKILL.md").exists():
+                names.append(skill_dir.name)
+                seen.add(skill_dir.name)
+    return names
+
+
 def _write_co_ai_entrypoint(path: Path, *, model: str, max_iterations: int, agent_name: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     model_literal = json.dumps(model)
@@ -252,6 +268,7 @@ def create_deploy_package(
     project_dir: Path,
     template: str,
     skills: list[str],
+    all_skills: bool = False,
     project_name: str,
     entrypoint: str,
     model: str,
@@ -280,8 +297,18 @@ def create_deploy_package(
         agent_name=project_name,
     )
 
-    skill_requirement_files = []
+    deploy_skill_names = []
+    seen_skill_names = set()
+    for skill_name in discover_deploy_skill_names(project_dir) if all_skills else []:
+        deploy_skill_names.append(skill_name)
+        seen_skill_names.add(skill_name)
     for skill_name in skills:
+        if skill_name not in seen_skill_names:
+            deploy_skill_names.append(skill_name)
+            seen_skill_names.add(skill_name)
+
+    skill_requirement_files = []
+    for skill_name in deploy_skill_names:
         source = resolve_deploy_skill(skill_name, project_dir)
         destination = staging_dir / ".co" / "skills" / skill_name
         if destination.exists():
@@ -303,10 +330,16 @@ def create_deploy_package(
     return DeployPackage(tarball_path=tarball_path, entrypoint=CO_AI_ENTRYPOINT)
 
 
-def resolve_deploy_template(template: str, skill_names: list[str], project_dir: Path) -> str:
+def resolve_deploy_template(
+    template: str,
+    skill_names: list[str],
+    project_dir: Path,
+    *,
+    all_skills: bool = False,
+) -> str:
     """Resolve the user-facing deploy mode."""
     if template == "auto":
-        if skill_names:
+        if skill_names or all_skills:
             return "co-ai"
         if (project_dir / ".git").exists() or (project_dir / ".co" / "host.yaml").exists():
             return "project"
@@ -346,6 +379,7 @@ def handle_deploy(
     name: str | None = None,
     template: str = "auto",
     skills: list[str] | None = None,
+    all_skills: bool = False,
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
 ):
@@ -356,13 +390,21 @@ def handle_deploy(
     skill_names = parse_skill_names(skills)
 
     try:
-        deploy_template = resolve_deploy_template(template, skill_names, project_dir)
+        deploy_template = resolve_deploy_template(
+            template,
+            skill_names,
+            project_dir,
+            all_skills=all_skills,
+        )
     except DeployConfigError as e:
         console.print(f"[red]{e}[/red]")
         return
 
     if deploy_template == "project" and skill_names:
         console.print("[red]--skills requires --template co-ai[/red]")
+        return
+    if deploy_template == "project" and all_skills:
+        console.print("[red]--all-skills requires --template co-ai[/red]")
         return
 
     host_yaml_path = Path(".co") / "host.yaml"
@@ -429,6 +471,7 @@ def handle_deploy(
             project_dir=project_dir,
             template=deploy_template,
             skills=skill_names,
+            all_skills=all_skills,
             project_name=project_name,
             entrypoint=entrypoint,
             model=model,

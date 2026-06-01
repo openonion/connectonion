@@ -54,6 +54,53 @@ def test_resolve_deploy_skill_prefers_project_over_user_and_builtin(tmp_path, mo
     assert deploy_commands.resolve_deploy_skill("alpha", project) == project_skill
 
 
+def test_discover_deploy_skill_names_lists_project_then_user_with_project_priority(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    user_home = tmp_path / "home"
+    project.mkdir()
+    user_home.mkdir()
+    _write_skill(project, "alpha", "project")
+    _write_skill(project, "shared", "project")
+    _write_skill(user_home, "beta", "user")
+    _write_skill(user_home, "shared", "user")
+    monkeypatch.setattr(Path, "home", lambda: user_home)
+
+    assert deploy_commands.discover_deploy_skill_names(project) == ["alpha", "shared", "beta"]
+
+
+def test_create_co_ai_deploy_package_with_all_skills_copies_project_and_user_skills(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    user_home = tmp_path / "home"
+    project.mkdir()
+    user_home.mkdir()
+    _write_skill(project, "alpha", "project")
+    _write_skill(project, "shared", "project")
+    _write_skill(user_home, "beta", "user")
+    _write_skill(user_home, "shared", "user")
+    monkeypatch.setattr(Path, "home", lambda: user_home)
+
+    package = deploy_commands.create_deploy_package(
+        project_dir=project,
+        template="co-ai",
+        skills=[],
+        all_skills=True,
+        project_name="demo",
+        entrypoint="agent.py",
+        model="co/test-model",
+        max_iterations=33,
+    )
+
+    with tarfile.open(package.tarball_path, "r:gz") as tar:
+        names = set(tar.getnames())
+        shared = tar.extractfile(".co/skills/shared/SKILL.md").read().decode("utf-8")
+
+    assert ".co/skills/alpha/SKILL.md" in names
+    assert ".co/skills/beta/SKILL.md" in names
+    assert ".co/skills/shared/SKILL.md" in names
+    assert "project" in shared
+    assert "user" not in shared
+
+
 def test_create_co_ai_deploy_package_is_self_contained_without_project_scaffold(tmp_path, monkeypatch):
     project = tmp_path / "project"
     project.mkdir()
@@ -65,6 +112,7 @@ def test_create_co_ai_deploy_package_is_self_contained_without_project_scaffold(
         project_dir=project,
         template="co-ai",
         skills=["alpha"],
+        all_skills=False,
         project_name="demo",
         entrypoint="agent.py",
         model="co/test-model",
@@ -121,6 +169,7 @@ def test_create_co_ai_deploy_package_installs_skill_requirements(tmp_path):
         project_dir=project,
         template="co-ai",
         skills=["image-gen"],
+        all_skills=False,
         project_name="demo",
         entrypoint="agent.py",
         model="co/test-model",
@@ -146,6 +195,7 @@ def test_create_co_ai_deploy_package_fails_before_upload_when_skill_missing(tmp_
             project_dir=project,
             template="co-ai",
             skills=["missing"],
+            all_skills=False,
             project_name="demo",
             entrypoint="agent.py",
             model="co/test-model",

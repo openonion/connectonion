@@ -1,5 +1,29 @@
 # Tasks
 
+## Current Task: Explicit All-Skills co-ai Deploy
+
+Status: complete
+
+Context:
+
+- Local `co ai` discovers every project/user/builtin skill and can show many skills, such as 59 skills on the developer machine.
+- Hosted `co deploy --skills deploy-smoke` intentionally packages only explicitly selected skills plus bundled built-ins, so it showed fewer skills.
+- Users need an explicit opt-in when they really want local project/user skills deployed wholesale.
+
+Scope:
+
+- Add a clear `--all-skills` CLI flag for co-ai deploy.
+- Keep default deploy behavior conservative: do not upload all local user skills unless explicitly requested.
+- Discover all project `.co/skills/*/SKILL.md` and user `~/.co/skills/*/SKILL.md` directories with project priority on duplicate names.
+- Keep `--all-skills` scoped to the co-ai deploy template.
+
+Result:
+
+- `co deploy --name agent-full --all-skills` now auto-selects co-ai deploy and packages all project/user skills.
+- `co deploy --template project --all-skills` is rejected before upload.
+- Explicit `--skills ...` remains supported and can be combined with discovered all-skills names without duplicating packages.
+- Focused deploy CLI/package tests pass.
+
 ## Current Task: Deploy Timeout and Package Build Simplification
 
 Status: complete

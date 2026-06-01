@@ -1,5 +1,16 @@
 # Implementation Plan
 
+## Explicit All-Skills co-ai Deploy
+
+1. [x] Add failing tests for discovering all project/user deploy skill names with project priority.
+2. [x] Add failing package-builder coverage for `all_skills=True`.
+3. [x] Add failing CLI coverage for `co deploy --all-skills` auto-selecting co-ai.
+4. [x] Add failing CLI coverage rejecting `--template project --all-skills`.
+5. [x] Implement `discover_deploy_skill_names()` and wire `all_skills` through package creation.
+6. [x] Add the `--all-skills` Typer option and deploy handler validation.
+7. [x] Run focused deploy tests, syntax checks, and diff hygiene checks.
+8. [x] Update `TASKS.md`, `STATUS.md`, and this plan.
+
 ## Deploy Timeout and Package Build Simplification
 
 1. [x] Confirm 524 root cause from current code path: POST `/api/v1/deploy` awaited SSH upload, Docker build/run, Caddy route update, and cleanup.

@@ -7,11 +7,15 @@ Last updated: 2026-06-01
 - Repository: `openonion/connectonion`
 - Active branch: `codex/co-ai-remote-login-tool`
 - Active PR: `#143` (`[codex] Add remote login tool to co ai`)
-- Current focus: fixing real deploy 524 timeout and simplifying the co-ai deploy build path without changing the user-facing deploy flow.
+- Current focus: adding an explicit all-skills opt-in for hosted co-ai deploy while keeping default deploy behavior conservative.
 
 ## Working Tree Notes
 
 - `AGENTS.md` and `test-deploy/` were present before this status baseline.
+- New deploy UX: `co deploy --all-skills` now explicitly packages all project `.co/skills` and user `~/.co/skills` skills into a hosted co-ai deploy.
+- Default behavior remains conservative: `co deploy --skills foo` packages only the selected skill names plus bundled built-ins.
+- Duplicate skill names prefer project `.co/skills` over user `~/.co/skills`.
+- `--all-skills` auto-selects co-ai deploy in `--template auto` mode and is rejected with `--template project`.
 - New deploy timeout finding: `oo-api` POST `/api/v1/deploy` awaited the entire slow deploy path: package extraction, rsync to GCE, Docker build, Docker run, Caddy route update, old-version cleanup. That matches the Cloudflare 524 at `Uploading...`.
 - Fix in `oo-api`: POST `/api/v1/deploy` now creates the deployment row and returns `status=deploying` quickly; the slow build/run path runs in a detached asyncio task and updates the existing deployment status.
 - Backend build simplification: `docker build --no-cache` was removed so repeated deploys can use Docker layer cache.
@@ -97,6 +101,9 @@ Last updated: 2026-06-01
 
 ## Verification
 
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_all_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_skills_without_co_ai_template tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_all_skills_without_co_ai_template -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py`
+- `git diff --check`
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/unit/test_browser_automation.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py connectonion/cli/co_ai/agent.py connectonion/useful_tools/browser_tools/browser.py`
 - `git diff --check`

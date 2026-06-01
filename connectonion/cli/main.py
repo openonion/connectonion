@@ -101,12 +101,20 @@ def deploy(
     name: Optional[str] = typer.Option(None, "--name", "-n", help="Cloud project/agent name for this deployment"),
     template: str = typer.Option("auto", "--template", help="Deploy template: auto, project, or co-ai"),
     skills: Optional[List[str]] = typer.Option(None, "--skills", "--skill", help="Skill names for co-ai deploy; repeat or comma-separate"),
+    all_skills: bool = typer.Option(False, "--all-skills", help="Deploy all project and user skills with co-ai"),
     model: str = typer.Option("co/gemini-3-flash-preview", "--model", "-m", help="Model for co-ai deploy"),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations for co-ai deploy"),
 ):
     """Deploy to ConnectOnion Cloud."""
     from .commands.deploy_commands import handle_deploy
-    handle_deploy(name=name, template=template, skills=skills, model=model, max_iterations=max_iterations)
+    handle_deploy(
+        name=name,
+        template=template,
+        skills=skills,
+        all_skills=all_skills,
+        model=model,
+        max_iterations=max_iterations,
+    )
 
 
 @app.command()
