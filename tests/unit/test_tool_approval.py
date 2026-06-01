@@ -128,6 +128,22 @@ class TestNoIO:
         # Should not raise (skips approval)
         check_approval(agent)
 
+    def test_skip_tool_approval_flag_does_not_skip_web_approval(self):
+        """Generic skip_tool_approval is ignored; explicit modes own bypass behavior."""
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session['skip_tool_approval'] = True
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'python script.py', 'description': 'Run script'}
+        }
+
+        with pytest.raises(ValueError, match="Connection closed while waiting for approval"):
+            check_approval(agent)
+
+        assert io.sent
+        assert io.sent[0]['type'] == 'approval_needed'
+
 
 class TestSafeTools:
     """Test safe tools skip approval."""
@@ -693,7 +709,7 @@ class TestPollModeChanges:
 
         assert agent.current_session['mode'] == 'ulw'
         assert agent.current_session['ulw_turns'] == 50
-        assert agent.current_session['skip_tool_approval'] is True
+        assert 'skip_tool_approval' not in agent.current_session
 
     def test_poll_mode_changes_handles_multiple_signals(self):
         """poll_mode_changes should process multiple mode_change signals."""

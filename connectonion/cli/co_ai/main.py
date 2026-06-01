@@ -10,7 +10,7 @@ This file provides the `start_server()` function that:
 Architecture:
 - Uses agent factory pattern for stateless agent creation
 - Trust level set to "careful" for web deployment
-- Auto-approve mode for web usage (no terminal prompts)
+- Web usage routes dangerous tool approvals through the connected chat client
 
 Used by:
 - CLI command: `co ai` (see cli/main.py)
@@ -61,7 +61,6 @@ def start_server(
         return create_coding_agent(
             model=model,
             max_iterations=max_iterations,
-            auto_approve=True,  # Always auto-approve in web mode
         )
 
     # Use global ~/.co/ for consistent identity across all co ai sessions

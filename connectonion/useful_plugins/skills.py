@@ -82,59 +82,79 @@ if TYPE_CHECKING:
 class SkillInfo:
     name: str
     description: str
-    location: str  # project | claude-project | user | claude-user | builtin
+    location: str  # project | user | builtin
 
 
 # =============================================================================
 # SKILL DISCOVERY
 # =============================================================================
 
-def _get_skill_paths(skill_name: str) -> List[Path]:
+def _get_skill_paths(
+    skill_name: str,
+    co_dir: Optional[Path] = None,
+    project_dir: Optional[Path] = None,
+) -> List[Path]:
     """Get potential paths for a skill in priority order.
 
     Priority:
-    1. .co/skills/skill-name/SKILL.md (project-level)
-    2. ~/.co/skills/skill-name/SKILL.md (user-level)
-    3. builtin skills (bundled with ConnectOnion)
+    1. agent co_dir/skills/skill-name/SKILL.md (hosted/project agent)
+    2. cwd .co/skills/skill-name/SKILL.md (local fallback)
+    3. ~/.co/skills/skill-name/SKILL.md (user-level)
+    4. builtin skills (bundled with ConnectOnion)
 
     Args:
         skill_name: Skill name (e.g., "commit")
+        co_dir: Agent .co directory, when available
+        project_dir: Project root, when available
 
     Returns:
         List of Path objects in priority order
     """
     paths = []
     home = Path.home()
+    seen = set()
 
-    # 1. Project-level ConnectOnion: .co/skills/skill-name/SKILL.md
-    paths.append(Path.cwd() / '.co' / 'skills' / skill_name / 'SKILL.md')
+    def add(path: Path) -> None:
+        key = str(path)
+        if key not in seen:
+            seen.add(key)
+            paths.append(path)
 
-    # 2. Project-level Claude Code: .claude/skills/skill-name/SKILL.md
-    paths.append(Path.cwd() / '.claude' / 'skills' / skill_name / 'SKILL.md')
+    base = project_dir or (co_dir.parent if co_dir else Path.cwd())
+    co_base = co_dir or (base / '.co')
 
-    # 3. User-level ConnectOnion: ~/.co/skills/skill-name/SKILL.md
-    paths.append(home / '.co' / 'skills' / skill_name / 'SKILL.md')
+    # 1. Agent/project-level ConnectOnion skills
+    add(co_base / 'skills' / skill_name / 'SKILL.md')
 
-    # 4. User-level Claude Code: ~/.claude/skills/skill-name/SKILL.md
-    paths.append(home / '.claude' / 'skills' / skill_name / 'SKILL.md')
+    # 2. cwd fallback for local usage that has no agent.co_dir
+    add(Path.cwd() / '.co' / 'skills' / skill_name / 'SKILL.md')
 
-    # 5. Built-in: connectonion/cli/co_ai/skills/builtin/skill-name/SKILL.md
+    # 3. User-level skills
+    add(home / '.co' / 'skills' / skill_name / 'SKILL.md')
+
+    # 4. Built-in skills
     builtin_base = Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin'
-    paths.append(builtin_base / skill_name / 'SKILL.md')
+    add(builtin_base / skill_name / 'SKILL.md')
 
     return paths
 
 
-def _load_skill(skill_name: str) -> Optional[Dict[str, Any]]:
+def _load_skill(
+    skill_name: str,
+    co_dir: Optional[Path] = None,
+    project_dir: Optional[Path] = None,
+) -> Optional[Dict[str, Any]]:
     """Load skill from filesystem.
 
     Args:
         skill_name: Skill name (e.g., "commit")
+        co_dir: Agent .co directory, when available
+        project_dir: Project root, when available
 
     Returns:
         Dict with 'path', 'frontmatter', 'instructions' or None if not found
     """
-    for path in _get_skill_paths(skill_name):
+    for path in _get_skill_paths(skill_name, co_dir=co_dir, project_dir=project_dir):
         if path.exists():
             content = path.read_text()
             frontmatter, instructions = _parse_skill_content(content)
@@ -177,7 +197,7 @@ def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
 
 
 def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Path] = None) -> List['SkillInfo']:
-    """Discover all available skills from ConnectOnion and Claude Code directories.
+    """Discover all available ConnectOnion skills.
 
     Args:
         co_dir: Path to .co directory (defaults to cwd/.co)
@@ -195,9 +215,7 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
 
     search_paths = [
         ('project', co_base / 'skills'),
-        ('claude-project', base / '.claude' / 'skills'),
         ('user', Path.home() / '.co' / 'skills'),
-        ('claude-user', Path.home() / '.claude' / 'skills'),
         ('builtin', builtin_base),
     ]
 
@@ -321,7 +339,8 @@ def handle_skill_invocation(agent: 'Agent') -> None:
         return
 
     # Load skill
-    skill = _load_skill(skill_name)
+    co_dir = getattr(agent, 'co_dir', None)
+    skill = _load_skill(skill_name, co_dir=co_dir)
     if not skill:
         # Skill not found - don't interfere
         return
@@ -364,7 +383,8 @@ def skill(agent: 'Agent', name: str) -> str:
     Returns:
         Skill instructions for the agent to follow
     """
-    skill_data = _load_skill(name)
+    co_dir = getattr(agent, 'co_dir', None)
+    skill_data = _load_skill(name, co_dir=co_dir)
     if not skill_data:
         co_dir = getattr(agent, 'co_dir', None)
         available = _discover_all_skills(co_dir=co_dir)

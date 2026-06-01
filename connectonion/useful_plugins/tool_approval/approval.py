@@ -44,7 +44,7 @@ Mode System (session['mode']):
         - Used for: rapid editing with approval only for risky ops
 
     ulw (handled by ulw plugin):
-        - Sets skip_tool_approval=True → bypasses all checks
+        - Handled explicitly by mode='ulw'
         - Used for: unlimited write access (trusted scenarios)
 
 Unified Permissions (session['permissions']):
@@ -399,8 +399,6 @@ def check_approval(agent: 'Agent') -> None:
         'plan': Only read-only tools allowed, exit_plan_and_implement needs approval
         'accept_edits': File edit tools auto-approved, other dangerous tools need approval
 
-    Other plugins can set session['skip_tool_approval'] = True to bypass all checks.
-
     Raises:
         ValueError: If tool rejected or blocked by mode
     """
@@ -408,6 +406,7 @@ def check_approval(agent: 'Agent') -> None:
     # Check unified permissions from session
     # =================================================================
     pending = agent.current_session.get('pending_tool')
+
     if pending:
         tool_name = pending['name']
         tool_args = pending['arguments']
@@ -465,7 +464,7 @@ def check_approval(agent: 'Agent') -> None:
                     return
 
     # =================================================================
-    # Check if another plugin requested to skip approvals (e.g., ulw)
+    # Check explicit autonomous modes.
     # =================================================================
     if agent.current_session.get('mode') == 'ulw':
         pending = agent.current_session.get('pending_tool')
@@ -740,9 +739,6 @@ def handle_mode_change(agent: 'Agent', mode: str) -> None:
     old_mode = _get_mode(agent)
     if old_mode == mode:
         return  # No change
-
-    # Clear skip_tool_approval when switching to a mode we handle
-    agent.current_session.pop('skip_tool_approval', None)
 
     _set_mode(agent, mode)
     _log(agent, f"[cyan]Mode changed: {old_mode} → {mode}[/cyan]")

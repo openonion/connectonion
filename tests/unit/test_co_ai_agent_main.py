@@ -11,6 +11,7 @@ Components under test:
 
 
 from types import SimpleNamespace
+import inspect
 
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
@@ -25,7 +26,7 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "CTX")
     monkeypatch.setattr(agent_mod, "GLOBAL_CO_DIR", tmp_path / ".co")
 
-    agent = agent_mod.create_coding_agent(model="fake", max_iterations=5, auto_approve=True)
+    agent = agent_mod.create_coding_agent(model="fake", max_iterations=5)
 
     assert agent.name == "oo"
     assert agent.max_iterations == 5
@@ -43,6 +44,51 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "wait_for_manual_login" not in agent.tools._tools
     assert agent.browse is agent.tools.get_instance("browserautomation")
     assert agent.tools.get_instance("browserautomation")._headless is False
+    assert "auto_approve" not in inspect.signature(agent_mod.create_coding_agent).parameters
+    assert all(
+        handler.__name__ != "_enable_auto_approve"
+        for handlers in agent.events.values()
+        for handler in handlers
+    )
+
+
+def test_create_coding_agent_accepts_deploy_co_dir_and_headless_browser(monkeypatch, tmp_path):
+    class FakeLLM:
+        model = "fake-model"
+
+    deploy_co_dir = tmp_path / ".co"
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+
+    agent = agent_mod.create_coding_agent(
+        model="fake",
+        max_iterations=9,
+        co_dir=deploy_co_dir,
+        browser_headless=True,
+        browser_channel="chrome",
+    )
+
+    assert agent.co_dir == deploy_co_dir
+    assert agent.tools.get_instance("browserautomation")._headless is True
+    assert agent.tools.get_instance("browserautomation")._browser_channel == "chrome"
+
+
+def test_create_coding_agent_accepts_custom_name(monkeypatch, tmp_path):
+    class FakeLLM:
+        model = "fake-model"
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+
+    agent = agent_mod.create_coding_agent(
+        name="agent-4-linkedin",
+        model="fake",
+        co_dir=tmp_path / ".co",
+    )
+
+    assert agent.name == "agent-4-linkedin"
 
 
 def test_start_server_calls_host(monkeypatch):
@@ -69,3 +115,4 @@ def test_start_server_calls_host(monkeypatch):
     # factory should create agent with given params
     called["factory"]()
     assert created and created[0][1]["model"] == "m1"
+    assert "auto_approve" not in created[0][1]

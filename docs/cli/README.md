@@ -844,12 +844,18 @@ Deploy your agent to ConnectOnion Cloud.
 **Basic usage:**
 ```bash
 co deploy
+co deploy --skills ship-feature,review-pr
+co deploy --skill ship-feature
+co deploy --name agent-4-linkedin --skills linkedin
 ```
 
 **Requirements:**
-- Git repository with committed code
-- `.co/host.yaml` (created by `co create` or `co init`)
 - Authenticated (`co auth`)
+- `co deploy --skills ...` or `co deploy --skill ...` deploys hosted `co ai` directly and bundles selected skills
+- Selected skill `requirements.txt` files are installed in the hosted co-ai image
+- co-ai deploy uploads project `.env` values plus allowed API keys from `~/.co/keys.env` and the current shell environment
+- `--name` creates a distinct cloud project/agent identity; use lowercase letters, numbers, and hyphens
+- Project deploys require a git repository, `.co/host.yaml`, and an entrypoint that calls `host()`
 
 **Example:**
 ```bash

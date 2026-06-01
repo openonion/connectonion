@@ -1,18 +1,93 @@
 # Project Status
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## Baseline
 
 - Repository: `openonion/connectonion`
-- Active branch: `codex/co-ai-remote-login-tool`
-- Active PR: `#143` (`[codex] Add remote login tool to co ai`)
-- Current focus: Login handoff behavior. Browser automation tools open and inspect login pages; QR login sends the QR screenshot through `send_qr_to_user`; credential login sends a structured account/password `ask_user` through `send_credentials_form_to_user`.
+- Active branch: `codex/deploy-co-ai-skills`
+- Active PR: `#145` (`[codex] Add hosted co-ai deploy skills`)
+- Current focus: removing the generic `skip_tool_approval` approval bypass while preserving explicit ULW mode behavior.
 
 ## Working Tree Notes
 
 - `AGENTS.md` and `test-deploy/` were present before this status baseline.
-- This iteration should stay scoped to `remote_login`, its directly coupled prompt/tests, and local server restart verification.
+- Refactor complete: co-ai deploy package construction, selected/all skill resolution, generated entrypoint/Dockerfile creation, and deploy env loading now live in `connectonion/cli/commands/deploy_co_ai.py`.
+- Compatibility note: `deploy_commands.py` still imports/re-exports the deploy helper names used by existing tests and callers.
+- Current approval correction: generated hosted co-ai entrypoints and local `co ai` web startup no longer pass `auto_approve=True` by default.
+- Legacy note: `skip_tool_approval` previously existed for explicit modes such as ULW, but deploy/web startup no longer sets it.
+- Verification confirmed the approval correction with focused deploy, co-ai startup, tool approval, and ULW tests.
+- Runtime skills correction complete: co-ai slash skill loading and runtime discovery no longer read `.claude/skills`; Claude skills must be copied into `.co/skills` before runtime/deploy usage.
+- Approval inspection: `tool_approval.constants.DANGEROUS_TOOLS` includes shell/run tools, file edit tools, background/task control, external communication, and delete/remove tools, so web-mode co-ai does have real tool calls that should request user approval.
+- co-ai auto-approve cleanup complete: `create_coding_agent()` no longer exposes an `auto_approve` option or registers an `_enable_auto_approve` hook.
+- Explicit ULW mode now relies on `mode == "ulw"` instead of setting `skip_tool_approval=True`.
+- Generic approval skip cleanup complete: `tool_approval` ignores `session["skip_tool_approval"]`; ULW relies on `mode == "ulw"` instead.
+- New deploy UX: `co deploy --all-skills` now explicitly packages all project `.co/skills` and user `~/.co/skills` skills into a hosted co-ai deploy.
+- Default behavior remains conservative: `co deploy --skills foo` packages only the selected skill names plus bundled built-ins.
+- Duplicate skill names prefer project `.co/skills` over user `~/.co/skills`.
+- `--all-skills` auto-selects co-ai deploy in `--template auto` mode and is rejected with `--template project`.
+- New deploy timeout finding: `oo-api` POST `/api/v1/deploy` awaited the entire slow deploy path: package extraction, rsync to GCE, Docker build, Docker run, Caddy route update, old-version cleanup. That matches the Cloudflare 524 at `Uploading...`.
+- Fix in `oo-api`: POST `/api/v1/deploy` now creates the deployment row and returns `status=deploying` quickly; the slow build/run path runs in a detached asyncio task and updates the existing deployment status.
+- Backend build simplification: `docker build --no-cache` was removed so repeated deploys can use Docker layer cache.
+- co-ai package simplification: generated Dockerfile no longer uses `COPY . .` before installation; it copies package metadata, `connectonion/`, and `.co/` explicitly before installing requirements and Chrome.
+- Production verification passed: after redeploying `oo-api`, real `co deploy --name agent-4-linkedin --skills deploy-smoke` moved from `Uploading...` to `Building...` and completed with `https://agent-4-linkedin-0x92f834c6.agents.openonion.ai`.
+- Current frontend finding: deployed co-ai relays successfully and host ANNOUNCE can publish profile metadata, but the frontend falls back to address-only display because its agent-info hook does not read `/api/relay/agents/{address}/profile`.
+- SDK finding: `connectonion-ts` has the same direct-`/info` dependency in `fetchAgentInfo()`, so consumers also lose name/skills/tools when relay endpoints are reachable only through `/ws/input`.
+- Fix: `connectonion-ts.fetchAgentInfo()` and `oo-chat`'s `useAgentInfo()` now read relay profile metadata from `/api/relay/agents/{address}/profile` and use it as the fallback display source.
+- Fix: profile tools are normalized on the frontend/SDK from either `["bash"]` or `[{name: "bash"}]`, and Python host profile publication now emits the SDK-preferred string array.
+- Direct `/info` remains best effort and address-verified; it can enrich profile metadata but no longer decides whether hosted relay agents show name/skills/tools.
+- New runtime finding: local frontend shows `agent-4-linkedin` and `/deploy-smoke`, but invoking `/deploy-smoke` still allowed the model to run ordinary coding tools before outputting the smoke marker.
+- Suspected root cause: `setup_skills()` discovers metadata using `agent.co_dir`, while `handle_skill_invocation()` loads slash skills through `Path.cwd()/.co/skills`; hosted deployment can have a different cwd than the packaged `.co` directory.
+- Fix: skills plugin slash invocation and the runtime `skill()` tool now resolve `agent.co_dir/skills` first, then fall back to cwd/user/builtin paths.
+- Fix: generated co-ai deploy entrypoints now define `CO_DIR = PACKAGE_ROOT / ".co"` and pass that absolute package path into both `create_coding_agent()` and `host()`.
+- Connection instability finding: local dev logs show `/api/auth` responses ranging from sub-second to 37 seconds, and the SDK has a fixed 30-second `CONNECTED` timeout. That explains intermittent "Authentication timed out" during cold or slow handshakes, but it is separate from skill loading correctness.
+- Current UI finding: `ChatInput` receives `isLoading` from `Chat`, but does not destructure or use it, so the send button remains an arrow instead of switching to a stop button while the agent is running.
+- Stop boundary decision: first implementation should close the client WebSocket and return local UI state to idle without clearing the transcript. Python worker thread cancellation needs a separate backend protocol and is not part of this UI fix.
+- Fix: `connectonion-ts` now exposes `RemoteAgent.stop()` and `useAgentForHuman().stop()`, closing the active WebSocket, removing the optimistic thinking placeholder, and returning local status to idle without clearing existing chat items.
+- Fix: `oo-chat` now wires `stop` through `useAgentSDK`, the session page, `Chat`, and `ChatInput`.
+- Fix: the send button now renders a stop icon while `isLoading` is true and calls the stop handler from the same button position.
+- Local dev note: after rebuilding `connectonion-ts`, the stale copied `oo-chat/node_modules/connectonion` package had to be removed and reinstalled with `npm install --install-links` so Next.js used the new `stop()` type/runtime.
+- Current UI regression: restored sessions can contain `tool_call: running` while the live SDK status has already returned to `idle`/`connected`, so `oo-chat` renders the disabled send arrow instead of the stop button.
+- Root cause: `useAgentSDK()` derives `isLoading` only from SDK `isProcessing`, not from active persisted `cleanUI` items.
+- Runtime note: the previous visible running command was `playwright install chromium`, which pointed to a separate hosted co-ai browser-runtime packaging issue; that deploy package now installs the browser during image build.
+- Fix: `useAgentSDK()` now treats restored active `thinking`, `tool_call`, `intent`, `eval`, and `compact` items as loading.
+- Fix: `RemoteAgent.stop()` now settles restored running local UI items before returning to idle, so the stop button does not stay stuck after the user stops a recovered session.
+- Local browser verification: reloading the current `localhost:3000` session showed an enabled `Stop response` button while the restored transcript still contained active work.
+- Current hosted browser finding: co-ai packages do not include a Dockerfile, so `oo-api` injects its generic Python Dockerfile and only installs `requirements.txt`.
+- Root cause: Python `playwright` is installed, but Chromium browser binaries and OS dependencies are not installed during image build, so the agent falls back to runtime `playwright install chromium` attempts.
+- Fix direction: generate a co-ai-specific Dockerfile inside the deploy package that installs the required Playwright browser before starting the app.
+- Fix: co-ai deploy packages now include a generated Dockerfile that installs Python requirements, runs `python -m playwright install --with-deps chrome`, copies the package, and starts `.co/deploy/co_ai_entrypoint.py`.
+- Project deploy packaging remains unchanged; only the co-ai deploy path writes this Dockerfile into the temporary package.
+- Follow-up packaging issue: co-ai generated `requirements.txt` still points at `connectonion=={version}`, so Docker build installs dependency metadata from the published package and then runtime imports the packaged source via `sys.path`.
+- Desired correction: include local project metadata in the co-ai package and install `.` from the package during Docker build, so source, package data, and declared dependencies all come from the same packaged revision.
+- Fix: co-ai deploy packages now copy `pyproject.toml`, `README.md`, and `LICENSE` when available, and generated `requirements.txt` installs `.` instead of `connectonion=={version}`.
+- Fix: the generated co-ai Dockerfile now copies the package before `pip install -r requirements.txt`, so the Docker build installs the packaged source and its declared dependencies before installing Playwright Chrome.
+- Fallback: when the CLI is running from an installed package without local project metadata, co-ai packaging still falls back to `connectonion=={version}` rather than failing.
+- Current browser runtime correction: default Playwright Chromium is acceptable for many automation tasks, but hosted co-ai login flows should prefer branded Google Chrome where available.
+- Risk note: Chrome channel improves browser compatibility but does not guarantee bypassing login risk systems; headless mode, automation control, fresh profiles, and cloud IPs can still be detected.
+- Fix: `BrowserAutomation` now accepts an explicit `browser_channel`, and hosted co-ai generated entrypoints pass `browser_headless=True` plus `browser_channel="chrome"`.
+- Fix: `create_coding_agent()` accepts `co_dir`, `browser_headless`, and `browser_channel`, while local `co ai` keeps the existing visible browser behavior by default.
+- Deploy UX: `co deploy --skill foo` is now accepted as a singular alias for `co deploy --skills foo`; comma-separated and repeated skill values are still supported.
+- Deploy skill dependency fix: when a selected skill directory contains `requirements.txt`, the generated co-ai root `requirements.txt` references it, so dependencies such as Gemini image-generation packages can install during Docker build.
+- Deploy env fix: co-ai deploy now merges project `.env`, allowed API keys from global `~/.co/keys.env`, and allowed API keys from the current process environment, while still avoiding a full shell-environment dump.
+- Auto-approval fix: `create_coding_agent(auto_approve=True)` now marks each turn with `skip_tool_approval`, and the tool approval plugin respects that flag without switching the session into ULW continuation mode.
+- Deferred artifact note: high-volume image output still needs a separate artifact/static-file delivery design; current deploy work only ensures skill code, dependencies, and keys reach the container.
+- Current deploy UX finding: direct co-ai deploy defaults the backend project name to `co-ai` and `create_coding_agent()` hardcodes `Agent("oo")`, so separate co-ai deployments cannot be named as distinct agents yet.
+- Fix: `co deploy --name/-n` sets the cloud project name for co-ai deploys and is written into the generated co-ai entrypoint as `create_coding_agent(name=...)`.
+- Fix: `host()` now builds a relay profile from hosted agent metadata and includes it in signed ANNOUNCE messages; relay heartbeat re-announces preserve the same profile.
+- Frontend expectation after redeploy: `/api/relay/agents/{address}/profile` should return `profile.name` / `profile.alias`, `skills`, `tools`, `model`, and `version`, so chat/directory UI no longer needs to fall back to address-only display.
+- Real deploy finding: `co deploy --skills deploy-smoke` uploaded and built, but container startup imported `connectonion` from site-packages and failed because the PyPI version lacks the new `create_coding_agent(co_dir=...)` parameter.
+- Root cause: the generated entrypoint lives under `/app/.co/deploy`, so Python's default `sys.path[0]` is `/app/.co/deploy`, not `/app`; the packaged source directory is not preferred unless the entrypoint inserts the package root.
+- Fix: generated co-ai entrypoint now prepends `/app` to `sys.path` before importing `connectonion`.
+- New real deploy finding: remote logs now show imports from `/app/connectonion`, then fail with `OPENONION_API_KEY not found in environment`.
+- Root cause: the production `oo-api` deploy route takes a `secrets` form field and only parses `secrets` into Docker `-e` env vars, while the CLI currently sends the JSON under `env_vars`.
+- Fix: CLI deploy now sends the same serialized env-var JSON under both `env_vars` and `secrets`.
+- The first co-ai deploy implementation still inherited project deploy prerequisites. This iteration removes those prerequisites for co-ai deploy while keeping explicit project deploy backwards-compatible.
+- Current direct co-ai deploy behavior: `co deploy --skills ...` builds a self-contained temporary co-ai package and does not require git, `.co/host.yaml`, or `agent.py`.
+- The login handoff task is complete; this iteration is scoped to deploy CLI/package builder behavior and the directly coupled co-ai agent factory options.
+- Default `co deploy` must remain backwards-compatible with project `.co/host.yaml` deployment.
+- The new co-ai deploy path should avoid backend API changes by constructing a temporary tarball overlay containing `.co/deploy/co_ai_entrypoint.py` and selected `.co/skills/*` directories.
+- Prior login-handoff notes below are retained as historical context for the active branch.
 - Local runtime issue observed: `remote_login` starts a second Playwright sync context inside the websocket/async runtime and fails with "using Playwright Sync API inside the asyncio loop"; the agent then falls back to browser tools and `wait_for_manual_login`.
 - Design correction: do not put browser/process/login lifecycle inside `remote_login`; the browser tool owns browser context and process behavior.
 - Remote-agent assumption: the user cannot see the server-side browser window, so QR login must send the QR screenshot through oo-chat as a user action request.
@@ -30,9 +105,95 @@ Last updated: 2026-06-01
 - Local oo-chat integration note: the local npm package copy under `oo-chat/node_modules/connectonion` was patched to match the SDK source fix because oo-chat was still loading the published `connectonion@0.1.4` store implementation.
 - Local oo-chat now depends on `file:../connectonion-ts` and no longer uses `transpilePackages: ['connectonion']`; this keeps local dev on the fixed SDK while avoiding the Turbopack/CommonJS `require is not defined` path.
 - Browser cleanup follow-up: `close_browser` is now a login/browser-flow handoff tool. It calls the existing `agent.browse.close()` after login succeeds or the login flow is abandoned, so the persistent profile is saved and the server-side browser process is released.
+- Browser lifecycle boundary: do not reuse live Playwright browser objects across hosted turns. Each turn may get a fresh Agent/tool instance; persistent browser profile/cookies carry login state across turns, while QR and credential handoffs wait inside the active turn.
+- Credential privacy fix: `send_credentials_form_to_user` now stores credentials only on the current Agent instance and returns no raw username/password. The agent must focus the relevant field and call `type_saved_login_credential(field="username"|"password")`, so password values do not appear in `keyboard_type(...)` tool arguments, trace rows, or UI.
+- Cleanup safety net: co ai now registers a login cleanup `on_complete` plugin that closes the server-side browser after a login handoff turn if the model did not explicitly call `close_browser`.
 
 ## Verification
 
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_tool_approval.py tests/unit/test_ulw.py tests/unit/test_co_ai_agent_main.py tests/unit/test_deploy_commands.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_plugins/tool_approval/approval.py connectonion/useful_plugins/tool_approval/__init__.py connectonion/useful_plugins/tool_approval/constants.py connectonion/useful_plugins/ulw.py connectonion/cli/co_ai/agent.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_co_ai_agent_main.py tests/unit/test_deploy_commands.py tests/unit/test_tool_approval.py::TestToolClassification tests/unit/test_tool_approval.py::TestDangerousTools tests/unit/test_ulw.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/co_ai/agent.py connectonion/cli/co_ai/main.py connectonion/cli/commands/deploy_co_ai.py connectonion/useful_plugins/tool_approval/approval.py connectonion/useful_plugins/ulw.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_skills.py tests/unit/test_deploy_commands.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_plugins/skills.py connectonion/cli/commands/deploy_co_ai.py connectonion/cli/commands/deploy_commands.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/unit/test_tool_approval.py::TestNoIO::test_skip_tool_approval_flag_skips_web_approval tests/unit/test_ulw.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/co_ai/main.py connectonion/cli/co_ai/agent.py connectonion/cli/commands/deploy_co_ai.py connectonion/useful_plugins/tool_approval/approval.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_all_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_skills_without_co_ai_template tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_all_skills_without_co_ai_template -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py connectonion/cli/commands/deploy_co_ai.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_all_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_skills_without_co_ai_template tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_all_skills_without_co_ai_template -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/unit/test_browser_automation.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py connectonion/cli/co_ai/agent.py connectonion/useful_tools/browser_tools/browser.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/unit/test_browser_automation.py tests/unit/test_tool_approval.py::TestNoIO::test_skip_tool_approval_flag_skips_web_approval tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py connectonion/cli/co_ai/agent.py connectonion/useful_tools/browser_tools/browser.py connectonion/useful_plugins/tool_approval/approval.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
+- `python3 -m pytest tests/test_deploy.py -q` in `/Users/yfshuu/coding/openonion/oo-api`
+- `python3 -c "compile(...)"` syntax check for `oo-api/deploy/routes.py`, `oo-api/deploy/service.py`, and `connectonion/cli/commands/deploy_commands.py`
+- `git diff --check` in both `connectonion` and `oo-api`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py -q`
+- `/opt/homebrew/bin/python3 -m pytest tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/commands/deploy_commands.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py -q`
+- `/opt/homebrew/bin/python3 -m pytest tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/commands/deploy_commands.py`
+- `npm run build` in `connectonion-ts`
+- `npm test -- tests/remote-agent-stop.test.jsx --runInBand` in `connectonion-ts`
+- `npm install --install-links` in `oo-chat` after rebuilding the local SDK dependency
+- `npm run lint -- components/chat/use-agent-sdk.ts components/chat/chat-input.tsx components/chat/chat.tsx components/chat/types.ts 'app/[address]/[sessionId]/page.tsx'` in `oo-chat` (passed with existing warnings for `<img>` and unused props)
+- `npm run build` in `oo-chat`
+- Browser check at `http://localhost:3000/0xde16917a4129ccb4029cd422b75c4582bf8173c3d4a6c11b7164074231765e85/76cff8ba-6b8e-4390-b49d-6fd7c8b7eade`: after reload, the restored active UI rendered an enabled `Stop response` button.
+- `git diff --check` in `connectonion`
+- `git -C /Users/yfshuu/coding/openonion/connectonion-ts diff --check`
+- `git -C /Users/yfshuu/coding/openonion/oo-chat diff --check`
+- `npm test -- tests/endpoint.test.ts --runInBand` in `connectonion-ts`
+- `npm run build` in `connectonion-ts`
+- `npm test -- tests/remote-agent-stop.test.jsx --runInBand` in `connectonion-ts`
+- `npm run lint -- components/chat/chat-input.tsx components/chat/chat.tsx components/chat/types.ts components/chat/use-agent-sdk.ts 'app/[address]/[sessionId]/page.tsx' hooks/use-agent-info.ts` in `oo-chat` (passed with existing warnings for `<img>` and unused props)
+- `npm run build` in `oo-chat`
+- Browser smoke at `http://localhost:3000/0x23dab67914ca9eb8c01e838e638ad9c5327f8c7b60752fca4a798837dff249b0/7cee4ca7-d5ca-435c-8443-f465ef6afed8`: after sending a prompt, button label changed to `Stop response`; after clicking stop, it returned to `Send message`.
+- Browser check at `http://localhost:3000/0xde16917a4129ccb4029cd422b75c4582bf8173c3d4a6c11b7164074231765e85/76cff8ba-6b8e-4390-b49d-6fd7c8b7eade`: after reload, the restored active UI rendered an enabled `Stop response` button.
+- `git diff --check` in `connectonion`
+- `git -C /Users/yfshuu/coding/openonion/connectonion-ts diff --check`
+- `git -C /Users/yfshuu/coding/openonion/oo-chat diff --check`
+- Note: `npm test -- tests/connect.test.ts --runInBand` in `connectonion-ts` is not usable in the current package because Jest is not configured to transform TypeScript test files; the stop regression uses the package's built `dist` output from a `.jsx` Jest test instead.
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_skills.py tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/e2e/cli/test_cli_deploy.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_plugins/skills.py connectonion/cli/commands/deploy_commands.py`
+- `npm run build` in `connectonion-ts`
+- `npm run lint -- hooks/use-agent-info.ts components/chat/types.ts` in `oo-chat`
+- `npm run build` in `oo-chat`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_host_relay.py::TestHostRelayConnection::test_build_relay_profile_includes_skills_tools_and_version tests/unit/test_host_relay.py::TestHostRelayConnection::test_host_passes_profile_to_relay_lifespan -q`
+- `git diff --check` in `connectonion`
+- `git -C /Users/yfshuu/coding/openonion/connectonion-ts diff --check`
+- `git -C /Users/yfshuu/coding/openonion/oo-chat diff --check`
+- Note: `npm run lint -- src/connect/endpoint.ts src/connect/types.ts` in `connectonion-ts` is not usable because that package currently has no ESLint config; `npm run build` passed instead.
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/unit/test_host_relay.py::TestHostRelayConnection::test_host_passes_profile_to_relay_lifespan tests/unit/test_host_relay.py::TestHostRelayConnection::test_build_relay_profile_includes_skills_tools_and_version tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/unit/test_host_relay.py tests/unit/test_relay.py tests/unit/test_announce.py tests/e2e/cli/test_cli_deploy.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/commands/deploy_commands.py connectonion/cli/main.py connectonion/cli/co_ai/agent.py connectonion/network/host/server.py connectonion/network/relay.py`
+- `git diff --check`
+- `python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/e2e/cli/test_cli_deploy.py -q`
+- `python3 -m py_compile connectonion/cli/commands/deploy_commands.py`
+- `git diff --check`
+- `python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/e2e/cli/test_cli_deploy.py -q`
+- `python3 -m py_compile connectonion/cli/commands/deploy_commands.py connectonion/cli/main.py connectonion/cli/co_ai/agent.py`
+- `git diff --check`
+- `python3 -m pytest tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold -q`
+- `python3 -m pytest tests/unit/test_deploy_commands.py tests/e2e/cli/test_cli_deploy.py -q`
+- `python3 -m py_compile connectonion/cli/commands/deploy_commands.py connectonion/cli/main.py`
+- `python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/e2e/cli/test_cli_deploy.py -q`
+- `git diff --check`
+- `python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/e2e/cli/test_cli_deploy.py -q`
+- `python3 -m py_compile connectonion/cli/commands/deploy_commands.py connectonion/cli/main.py connectonion/cli/co_ai/agent.py`
+- `git diff --check`
 - `python3 -m pytest tests/unit/test_remote_login_tool.py tests/unit/test_co_ai_agent_main.py`
 - `python3 -m py_compile connectonion/useful_tools/remote_login.py connectonion/cli/co_ai/agent.py`
 - `git diff --check`
@@ -49,6 +210,9 @@ Last updated: 2026-06-01
 - `python3 -m pytest tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py::test_create_coding_agent tests/unit/test_co_ai_prompts_assembler.py::test_login_handoff_prompt_allows_user_mediated_credential_login`
 - `python3 -m pytest tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py tests/unit/test_co_ai_prompts_assembler.py tests/unit/test_ask_user.py tests/unit/test_tool_executor.py tests/unit/test_image_result_formatter.py tests/unit/test_co_ai_tools_misc.py`
 - `python3 -m py_compile connectonion/useful_tools/login_handoff.py connectonion/useful_tools/__init__.py connectonion/cli/co_ai/agent.py`
+- `python3 -m pytest tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py::test_create_coding_agent tests/unit/test_co_ai_prompts_assembler.py::test_login_handoff_prompt_allows_user_mediated_credential_login -q`
+- `python3 -m py_compile connectonion/useful_tools/login_handoff.py connectonion/cli/co_ai/plugins/login_cleanup.py connectonion/cli/co_ai/agent.py`
+- `git diff --check`
 - Local LinkedIn smoke after restart: co ai used `open_browser`, `go_to`, and `send_credentials_form_to_user`; oo-chat rendered separate `账号` and `密码` fields.
 - oo-chat component check: `npx eslint components/chat/chat-ask-user.tsx`
 - SDK persistence smoke: simulated a 200k-character base64 image through oo-chat's loaded `connectonion/dist/react/store.js`; persisted localStorage payload stayed small and contained no `data:image/png;base64`.

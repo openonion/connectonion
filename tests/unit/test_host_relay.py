@@ -122,6 +122,46 @@ class TestHostRelayConnection:
                             call_args = mock_relay.call_args
                             assert call_args[0][0] == "wss://oo.openonion.ai"
 
+    def test_host_passes_profile_to_relay_lifespan(self, tmp_path, create_mock_agent):
+        """Test host ANNOUNCE profile includes agent metadata for frontend display."""
+        mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}
+
+        with patch.object(Path, 'cwd', return_value=tmp_path):
+            with patch('connectonion.address.load', return_value=mock_addr):
+                with patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())) as mock_relay:
+                    with patch('uvicorn.run'):
+                        with patch.object(host_module, '_print_host_banner'):
+                            host_module.host(create_mock_agent, relay_url="ws://test")
+
+                            profile = mock_relay.call_args.kwargs["profile"]
+                            assert profile["alias"] == "test_agent"
+                            assert profile["name"] == "test_agent"
+                            assert profile["model"] == "test-model"
+                            assert profile["tools"] == []
+                            assert profile["skills"] == []
+
+    def test_build_relay_profile_includes_skills_tools_and_version(self):
+        metadata = {
+            "name": "agent-4-linkedin",
+            "model": "co/test-model",
+            "tools": ["bash", "skill"],
+            "skills": [
+                {"name": "deploy-smoke", "description": "Smoke-test deployed co-ai", "location": "project"}
+            ],
+        }
+
+        profile = host_module._build_relay_profile(metadata, "Deployed co-ai agent")
+
+        assert profile["alias"] == "agent-4-linkedin"
+        assert profile["name"] == "agent-4-linkedin"
+        assert profile["bio"] == "Deployed co-ai agent"
+        assert profile["model"] == "co/test-model"
+        assert profile["version"]
+        assert profile["tools"] == ["bash", "skill"]
+        assert profile["skills"] == [
+            {"name": "deploy-smoke", "description": "Smoke-test deployed co-ai", "location": "project"}
+        ]
+
     def test_host_starts_relay_with_custom_url(self, tmp_path, create_mock_agent):
         """Test that host() uses custom relay URL."""
         mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}

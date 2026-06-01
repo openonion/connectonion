@@ -62,13 +62,17 @@ GLOBAL_CO_DIR = Path.home() / ".co"
 
 
 def create_coding_agent(
+    name: str = "oo",
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
-    auto_approve: bool = False,
+    co_dir: Path | None = None,
+    browser_headless: bool = False,
+    browser_channel: str | None = None,
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
-    browser = BrowserAutomation(headless=False)
+    browser = BrowserAutomation(headless=browser_headless, browser_channel=browser_channel)
+    agent_co_dir = co_dir or GLOBAL_CO_DIR
 
     tools = [
         file_tools,
@@ -105,14 +109,14 @@ def create_coding_agent(
     plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw, image_result_formatter, runtime_input, login_cleanup]
 
     agent = Agent(
-        name="oo",
+        name=name,
         tools=tools,
         plugins=plugins,
         on_events=[],
         system_prompt=system_prompt,
         model=model,
         max_iterations=max_iterations,
-        co_dir=GLOBAL_CO_DIR,
+        co_dir=agent_co_dir,
     )
     agent.browse = browser
     # This browser helper blocks on stdin, which is wrong for co ai's websocket

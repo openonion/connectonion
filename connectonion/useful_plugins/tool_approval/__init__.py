@@ -111,7 +111,7 @@ Architecture - Unified Permission System Lifecycle:
     │                                                                         │
     │ 3. TOOL EXECUTION (@before_each_tool)                                   │
     │    check_approval()                                                     │
-    │    ├─ Check skip flags (no_io, skip_tool_approval)                      │
+    │    ├─ Check IO and explicit mode state                                  │
     │    ├─ Check mode (safe/plan/accept_edits)                               │
     │    ├─ Iterate permissions dict:                                         │
     │    │  ├─ matches_permission_pattern(tool_name, args, key)               │
@@ -166,7 +166,7 @@ Architecture - Unified Permission System Lifecycle:
 
 Integration with other plugins:
     - skills plugin: grants turn-scoped permissions, snapshots/restores
-    - ulw plugin: sets skip_tool_approval=True to bypass all checks
+    - ulw plugin: uses mode='ulw' to bypass approval checks
     - tool_approval: owns matches_permission_pattern() for validation
     - co_ai CLI: includes tool_approval by default for WebSocket agent
 

@@ -245,7 +245,7 @@ class TestSkillInvocation:
         handle_skill_invocation(agent)
 
         # Skill should be loaded
-        mock_load.assert_called_once_with('commit')
+        mock_load.assert_called_once_with('commit', co_dir=None)
 
         # Message should be replaced with instructions
         assert agent.current_session['messages'][-1]['content'] == 'Create a git commit'
@@ -285,6 +285,61 @@ class TestSkillInvocation:
         # Should not crash, just return
         # Message should not be replaced
         assert agent.current_session['messages'][-1]['content'] == '/nonexistent'
+
+    def test_handle_skill_invocation_loads_from_agent_co_dir_when_cwd_differs(self, tmp_path, monkeypatch):
+        """Test deployed agents load slash skills from agent.co_dir, not only cwd."""
+        project = tmp_path / "project"
+        co_dir = project / ".co"
+        skill_dir = co_dir / "skills" / "deploy-smoke"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: deploy-smoke\n"
+            "description: Smoke deploy skill\n"
+            "tools: []\n"
+            "---\n\n"
+            "DEPLOY_SMOKE_SKILL_ACTIVE_2026_06_01\n",
+            encoding="utf-8",
+        )
+
+        other_cwd = tmp_path / "other"
+        other_cwd.mkdir()
+        monkeypatch.chdir(other_cwd)
+
+        agent = FakeAgent()
+        agent.co_dir = co_dir
+        agent.current_session['messages'] = [
+            {'role': 'user', 'content': '/deploy-smoke'}
+        ]
+
+        handle_skill_invocation(agent)
+
+        assert agent.current_session['messages'][-1]['content'] == "DEPLOY_SMOKE_SKILL_ACTIVE_2026_06_01"
+
+    def test_handle_skill_invocation_ignores_claude_skills(self, tmp_path, monkeypatch):
+        """Test runtime skill loading does not treat Claude skills as ConnectOnion skills."""
+        skill_dir = tmp_path / ".claude" / "skills" / "claude-only"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: claude-only\n"
+            "description: Claude-only skill\n"
+            "tools: []\n"
+            "---\n\n"
+            "SHOULD_NOT_LOAD\n",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setattr(Path, "home", lambda: tmp_path / "home")
+
+        agent = FakeAgent()
+        agent.current_session['messages'] = [
+            {'role': 'user', 'content': '/claude-only'}
+        ]
+
+        handle_skill_invocation(agent)
+
+        assert agent.current_session['messages'][-1]['content'] == "/claude-only"
 
 
 class TestCleanup:

@@ -34,6 +34,7 @@ import uvicorn
 import websockets
 from rich.console import Console
 
+from ... import __version__
 from ... import address
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
@@ -117,6 +118,36 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
                    for s in raw_skills],
     }
     return metadata, sample
+
+
+def _build_relay_profile(agent_metadata: dict, summary: str) -> dict:
+    """Build publishable relay profile metadata from hosted agent metadata."""
+    agent_name = str(agent_metadata.get("name") or "agent")
+    profile = {
+        "alias": agent_name,
+        "name": agent_name,
+        "bio": (summary or "")[:1000],
+        "version": __version__,
+        "model": str(agent_metadata.get("model") or ""),
+        "tools": [str(tool_name) for tool_name in agent_metadata.get("tools", [])],
+        "skills": [],
+    }
+
+    for skill in agent_metadata.get("skills", []):
+        if not isinstance(skill, dict):
+            continue
+        skill_name = skill.get("name")
+        if not skill_name:
+            continue
+        item = {
+            "name": str(skill_name),
+            "description": str(skill.get("description") or "")[:1000],
+        }
+        if skill.get("location"):
+            item["location"] = str(skill["location"])
+        profile["skills"].append(item)
+
+    return profile
 
 
 def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict):
@@ -231,7 +262,15 @@ def _print_host_banner(
     console.print()
 
 
-def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner):
+def _create_relay_lifespan(
+    relay_url: str,
+    addr_data: dict,
+    summary: str,
+    port: int,
+    relay_session_runner,
+    *,
+    profile: dict | None = None,
+):
     """Create relay startup/shutdown callbacks for ASGI lifespan.
 
     Args:
@@ -240,6 +279,7 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         summary: Summary text for relay announcement
         port: HTTP port for endpoint discovery
         relay_session_runner: async (send_msg, recv_msg) -> None, runs protocol for one relay session
+        profile: Optional publishable metadata for frontend/directory display
 
     Returns:
         Tuple of (on_startup, on_shutdown) async callbacks
@@ -253,7 +293,13 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         async def relay_loop():
             while True:
                 ws = await relay.connect(relay_url)
-                announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
+                announce_msg = announce.create_announce_message(
+                    addr_data,
+                    summary,
+                    endpoints=endpoints,
+                    relay=relay_url,
+                    profile=profile,
+                )
                 await relay.serve_loop(
                     ws, announce_msg,
                     addr_data=addr_data, session_handler=relay_session_runner,
@@ -400,6 +446,7 @@ def host(
         address.save(addr_data, co_dir)
 
     agent_metadata["address"] = addr_data['address']
+    relay_profile = _build_relay_profile(agent_metadata, summary)
 
     storage = SessionStorage()
 
@@ -436,7 +483,12 @@ def host(
             enable_ping=False,
         )
         on_startup, on_shutdown = _create_relay_lifespan(
-            relay_url, addr_data, summary, port, relay_session_runner
+            relay_url,
+            addr_data,
+            summary,
+            port,
+            relay_session_runner,
+            profile=relay_profile,
         )
 
     app = asgi_create_app(

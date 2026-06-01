@@ -20,11 +20,19 @@ Get your agent running in production.
 Deploy to ConnectOnion Cloud with one command.
 
 ```bash
-cd my-agent
-git init && git add -A && git commit -m "Initial commit"
 co auth  # If not already authenticated
-co deploy
+co deploy --skills ship-feature,review-pr
+co deploy --skill ship-feature
+co deploy --name agent-4-linkedin --skills linkedin
 ```
+
+This deploys the built-in `co ai` coding agent with the selected skills. `--skill` is a singular alias for `--skills`. No project `agent.py`, `.co/host.yaml`, or git commit is required for this co-ai path.
+
+```bash
+co deploy --skills ship-feature --skills review-pr --model co/gemini-3-flash-preview
+```
+
+To deploy a traditional project agent instead, run `co deploy` from a ConnectOnion project with `.co/host.yaml` and a committed `host(...)` entrypoint, or pass `--template project`.
 
 **Output:**
 ```
@@ -47,22 +55,24 @@ Container logs:
 
 URL format: `{project_name}-{your_address[:10]}.agents.openonion.ai`
 
-Re-deploying the same project updates the same URL (like Heroku).
+Re-deploying the same project name updates the same URL. Use `--name` for separate co-ai deployments such as `agent-4-linkedin` and `agent-4-sales`.
 
 ### Requirements
 
-- Git repository with committed code
-- `.co/host.yaml` (created by `co create` or `co init`)
 - Authenticated (`co auth`)
-- Entrypoint must call `host()` (exports the ASGI app for the container)
+- `co deploy --skills ...` resolves skills from project `.co/skills/`, user `~/.co/skills/`, then built-in co-ai skills
+- If a selected skill has `requirements.txt`, those Python dependencies are installed during the co-ai image build
+- co-ai deploy env collection reads project `.env`, global `~/.co/keys.env`, and allowed API keys from the current process environment
+- `--name` must use lowercase letters, numbers, and hyphens because it becomes part of the hosted agent URL
+- Project deploys require a git repository, `.co/host.yaml`, and an entrypoint that calls `host()`
 
 ### How It Works
 
 ```
 co deploy
-  ├─ Validate: git repo? .co/host.yaml? API key? entrypoint has host()?
-  ├─ Package: git archive HEAD → tarball
-  ├─ Collect: load env vars from .env
+  ├─ Choose mode: project if in a ConnectOnion project, otherwise co-ai
+  ├─ Package: project git archive OR generated co-ai package
+  ├─ Collect: load env vars from project .env, ~/.co/keys.env, and allowed API key env vars
   ├─ Upload: POST tarball + project_name + env_vars + entrypoint to API
   ├─ Build: backend builds Docker image, installs dependencies
   ├─ Run: starts container with your env vars injected
@@ -70,11 +80,13 @@ co deploy
   └─ Done: returns agent URL + container logs
 ```
 
+For `co deploy --skills ...`, packaging creates a temporary self-contained co-ai app with the current ConnectOnion package source, `requirements.txt`, a generated `.co/deploy/co_ai_entrypoint.py`, and the selected `.co/skills/<name>/` directories. If a selected skill contains `requirements.txt`, the generated root `requirements.txt` references it. It does not read or modify your working tree except for resolving project-level skills if present.
+
 **Step by step:**
 
-1. **Validate locally** — checks that you're in a git repo, `.co/host.yaml` exists, you have an `OPENONION_API_KEY`, and your entrypoint file calls `host()`
-2. **Package source** — runs `git archive` on HEAD to create a tarball (only committed files are included)
-3. **Collect env vars** — reads your `.env` file (API keys, database URLs, etc.) to inject into the container
+1. **Validate locally** — checks that you have an `OPENONION_API_KEY`; project deploys also check git, `.co/host.yaml`, and `host()`
+2. **Package source** — creates a generated co-ai package, or runs `git archive` for project deploys
+3. **Collect env vars** — reads project `.env`, selected API keys from `~/.co/keys.env`, and selected API keys from the shell environment to inject into the container
 4. **Upload** — sends the tarball, project name, entrypoint path, and env vars to the deploy API
 5. **Build & run** — the backend builds a Docker image from your source, installs `requirements.txt`, and starts the container
 6. **Poll status** — CLI checks deployment status every 3 seconds until the container is running or fails
