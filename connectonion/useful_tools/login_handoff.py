@@ -14,18 +14,6 @@ def _clear_saved_credentials(agent) -> None:
             delattr(agent, attr)
 
 
-def _parse_credentials(answer):
-    if isinstance(answer, dict):
-        return answer
-    if not isinstance(answer, str):
-        return {}
-    try:
-        parsed = json.loads(answer)
-    except json.JSONDecodeError:
-        return {}
-    return parsed if isinstance(parsed, dict) else {}
-
-
 def send_qr_to_user(agent) -> str:
     """Send the current browser screenshot to the user and wait for QR scan."""
     browser = getattr(agent, "browse", None)
@@ -82,7 +70,13 @@ def send_credentials_form_to_user(agent) -> str:
         ],
     })
     answer = agent.io.receive().get("answer", "")
-    credentials = _parse_credentials(answer)
+    if not answer:
+        return "No credentials were provided."
+
+    credentials = json.loads(answer)
+    if not isinstance(credentials, dict):
+        raise TypeError("Credential answer must be a JSON object.")
+
     username = credentials.get("username")
     password = credentials.get("password")
     if not username or not password:
