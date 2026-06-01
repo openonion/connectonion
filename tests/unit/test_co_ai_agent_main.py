@@ -112,3 +112,4 @@ def test_start_server_calls_host(monkeypatch):
     # factory should create agent with given params
     called["factory"]()
     assert created and created[0][1]["model"] == "m1"
+    assert "auto_approve" not in created[0][1]

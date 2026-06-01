@@ -152,7 +152,6 @@ def _write_co_ai_entrypoint(path: Path, *, model: str, max_iterations: int, agen
             f"        name={name_literal},",
             f"        model={model_literal},",
             f"        max_iterations={max_iterations},",
-            "        auto_approve=True,",
             "        co_dir=CO_DIR,",
             "        browser_headless=True,",
             "        browser_channel=\"chrome\",",

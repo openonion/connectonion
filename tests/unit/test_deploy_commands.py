@@ -145,6 +145,7 @@ def test_create_co_ai_deploy_package_is_self_contained_without_project_scaffold(
     assert "model=\"co/test-model\"" in entrypoint
     assert "max_iterations=33" in entrypoint
     assert "name=\"demo\"" in entrypoint
+    assert "auto_approve=True" not in entrypoint
     assert "browser_headless=True" in entrypoint
     assert "browser_channel=\"chrome\"" in entrypoint
     assert "co_dir=CO_DIR" in entrypoint

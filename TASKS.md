@@ -1,5 +1,35 @@
 # Tasks
 
+## Current Task: Require co-ai User Approval by Default
+
+Status: complete
+
+Context:
+
+- The hosted co-ai deploy entrypoint currently passes `auto_approve=True`, which sets `skip_tool_approval=True` on each turn.
+- That bypasses the existing chat approval flow for dangerous tools.
+- The safer default for both local web co-ai and hosted co-ai is to send approval requests to the connected user.
+
+Scope:
+
+- Stop enabling `auto_approve` by default in generated co-ai deploy entrypoints.
+- Stop enabling `auto_approve` by default in local `co ai` web server startup.
+- Keep the lower-level `skip_tool_approval` mechanism for explicit modes such as ULW.
+- Add regression assertions so generated deploy packages and web startup do not silently re-enable auto approval.
+
+Expected result:
+
+- Dangerous hosted/local co-ai tool calls should route through the existing user approval UI when an IO client is connected.
+- No blanket auto-approval is enabled by default.
+
+Result:
+
+- Generated co-ai deploy entrypoints no longer pass `auto_approve=True`.
+- Local `co ai` web startup no longer passes `auto_approve=True`.
+- Existing `skip_tool_approval` behavior remains for explicit modes/plugins such as ULW.
+- Added regression assertions for deploy entrypoint generation and local web startup kwargs.
+- Focused deploy/co-ai/approval/ULW tests, syntax checks, and diff hygiene checks pass.
+
 ## Current Task: Split co-ai Deploy Packaging Helpers
 
 Status: complete

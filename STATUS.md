@@ -7,13 +7,16 @@ Last updated: 2026-06-02
 - Repository: `openonion/connectonion`
 - Active branch: `codex/deploy-co-ai-skills`
 - Active PR: `#145` (`[codex] Add hosted co-ai deploy skills`)
-- Current focus: splitting co-ai deploy package-building helpers out of `connectonion/cli/commands/deploy_commands.py` without changing deploy behavior.
+- Current focus: making local and hosted co-ai route dangerous tool calls through user approval by default instead of blanket auto-approving.
 
 ## Working Tree Notes
 
 - `AGENTS.md` and `test-deploy/` were present before this status baseline.
 - Refactor complete: co-ai deploy package construction, selected/all skill resolution, generated entrypoint/Dockerfile creation, and deploy env loading now live in `connectonion/cli/commands/deploy_co_ai.py`.
 - Compatibility note: `deploy_commands.py` still imports/re-exports the deploy helper names used by existing tests and callers.
+- Current approval correction: generated hosted co-ai entrypoints and local `co ai` web startup no longer pass `auto_approve=True` by default.
+- The `skip_tool_approval` flag remains available for explicit modes such as ULW, but deploy/web startup should not set it implicitly.
+- Verification confirmed the approval correction with focused deploy, co-ai startup, tool approval, and ULW tests.
 - New deploy UX: `co deploy --all-skills` now explicitly packages all project `.co/skills` and user `~/.co/skills` skills into a hosted co-ai deploy.
 - Default behavior remains conservative: `co deploy --skills foo` packages only the selected skill names plus bundled built-ins.
 - Duplicate skill names prefer project `.co/skills` over user `~/.co/skills`.
@@ -103,6 +106,9 @@ Last updated: 2026-06-02
 
 ## Verification
 
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/unit/test_co_ai_agent_main.py tests/unit/test_tool_approval.py::TestNoIO::test_skip_tool_approval_flag_skips_web_approval tests/unit/test_ulw.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/co_ai/main.py connectonion/cli/co_ai/agent.py connectonion/cli/commands/deploy_co_ai.py connectonion/useful_plugins/tool_approval/approval.py`
+- `git diff --check`
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_all_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_skills_without_co_ai_template tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_all_skills_without_co_ai_template -q`
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py connectonion/cli/commands/deploy_co_ai.py`
 - `git diff --check`

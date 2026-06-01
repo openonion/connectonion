@@ -1,5 +1,13 @@
 # Implementation Plan
 
+## Require co-ai User Approval by Default
+
+1. [x] Remove default `auto_approve=True` from generated co-ai deploy entrypoints.
+2. [x] Remove default `auto_approve=True` from local `co ai` web server startup.
+3. [x] Add regression assertions for generated entrypoints and web startup kwargs.
+4. [x] Run focused co-ai/deploy approval tests, syntax checks, and diff hygiene checks.
+5. [x] Update `TASKS.md`, `STATUS.md`, and this plan with the result.
+
 ## Split co-ai Deploy Packaging Helpers
 
 1. [x] Add a dedicated `deploy_co_ai.py` module for co-ai deploy package construction and deploy-time skill/env helpers.
