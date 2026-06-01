@@ -1,5 +1,12 @@
 # Implementation Plan
 
+## Split co-ai Deploy Packaging Helpers
+
+1. [x] Add a dedicated `deploy_co_ai.py` module for co-ai deploy package construction and deploy-time skill/env helpers.
+2. [x] Update `deploy_commands.py` to import/re-export those helpers while retaining project deploy packaging and upload orchestration.
+3. [x] Run focused deploy tests, syntax checks, and diff hygiene checks.
+4. [x] Update `TASKS.md`, `STATUS.md`, and this plan with the result.
+
 ## Explicit All-Skills co-ai Deploy
 
 1. [x] Add failing tests for discovering all project/user deploy skill names with project priority.

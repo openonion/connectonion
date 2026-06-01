@@ -1,5 +1,34 @@
 # Tasks
 
+## Current Task: Split co-ai Deploy Packaging Helpers
+
+Status: complete
+
+Context:
+
+- `connectonion/cli/commands/deploy_commands.py` grew large after the co-ai deploy work.
+- The new co-ai-specific packaging logic is separable from the legacy project deploy upload/polling flow.
+- Tests still import helper functions through `deploy_commands`, so the split should preserve that compatibility surface.
+
+Scope:
+
+- Move co-ai deploy packaging, skills discovery, skill resolution, generated entrypoint/Dockerfile, and deploy env loading into a dedicated module.
+- Keep `deploy_commands.py` focused on CLI orchestration, project git archive packaging, upload, and deploy status polling.
+- Preserve existing `deploy_commands` helper imports through re-exported names.
+- Do not change deploy behavior.
+
+Expected result:
+
+- `deploy_commands.py` is materially shorter and easier to review.
+- Existing deploy tests continue to pass without behavior changes.
+
+Result:
+
+- Added `connectonion/cli/commands/deploy_co_ai.py` for co-ai deploy packaging, deploy-time skills/env handling, generated entrypoint, generated requirements, and generated Dockerfile logic.
+- `deploy_commands.py` now keeps project deploy archive creation, template resolution, upload, and status polling.
+- Existing helper names are still importable from `deploy_commands.py`.
+- Focused deploy tests, syntax checks, and diff hygiene checks pass.
+
 ## Current Task: Explicit All-Skills co-ai Deploy
 
 Status: complete

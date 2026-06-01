@@ -1,17 +1,19 @@
 # Project Status
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## Baseline
 
 - Repository: `openonion/connectonion`
-- Active branch: `codex/co-ai-remote-login-tool`
-- Active PR: `#143` (`[codex] Add remote login tool to co ai`)
-- Current focus: adding an explicit all-skills opt-in for hosted co-ai deploy while keeping default deploy behavior conservative.
+- Active branch: `codex/deploy-co-ai-skills`
+- Active PR: `#145` (`[codex] Add hosted co-ai deploy skills`)
+- Current focus: splitting co-ai deploy package-building helpers out of `connectonion/cli/commands/deploy_commands.py` without changing deploy behavior.
 
 ## Working Tree Notes
 
 - `AGENTS.md` and `test-deploy/` were present before this status baseline.
+- Refactor complete: co-ai deploy package construction, selected/all skill resolution, generated entrypoint/Dockerfile creation, and deploy env loading now live in `connectonion/cli/commands/deploy_co_ai.py`.
+- Compatibility note: `deploy_commands.py` still imports/re-exports the deploy helper names used by existing tests and callers.
 - New deploy UX: `co deploy --all-skills` now explicitly packages all project `.co/skills` and user `~/.co/skills` skills into a hosted co-ai deploy.
 - Default behavior remains conservative: `co deploy --skills foo` packages only the selected skill names plus bundled built-ins.
 - Duplicate skill names prefer project `.co/skills` over user `~/.co/skills`.
@@ -101,6 +103,9 @@ Last updated: 2026-06-01
 
 ## Verification
 
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_all_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_skills_without_co_ai_template tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_all_skills_without_co_ai_template -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py connectonion/cli/commands/deploy_co_ai.py`
+- `git diff --check`
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_deploy_commands.py tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_with_all_skills_auto_uses_co_ai_without_project_scaffold tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_skills_without_co_ai_template tests/e2e/cli/test_cli_deploy.py::TestCliDeploy::test_deploy_rejects_all_skills_without_co_ai_template -q`
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/main.py connectonion/cli/commands/deploy_commands.py`
 - `git diff --check`
