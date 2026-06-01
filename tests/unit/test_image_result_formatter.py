@@ -192,6 +192,39 @@ class TestFormatImageResult:
         assert base64_data not in tool_msg
         assert base64_data not in image_text
 
+    def test_drops_raw_base64_from_text_context(self):
+        """Raw base64 image results should not be copied into text context."""
+        agent = FakeAgent()
+        base64_data = "A" * 150
+        agent.current_session['trace'] = [
+            {
+                'type': 'tool_result',
+                'name': 'take_screenshot',
+                'status': 'success',
+                'result': base64_data,
+                'tool_id': 'call_123'
+            }
+        ]
+        agent.current_session['messages'] = [
+            {
+                'role': 'tool',
+                'content': base64_data,
+                'tool_call_id': 'call_123'
+            }
+        ]
+
+        _format_image_result(agent)
+
+        tool_msg = agent.current_session['messages'][0]['content']
+        image_msg = agent.current_session['messages'][1]
+        image_text = image_msg['content'][0]['text']
+
+        assert base64_data not in tool_msg
+        assert base64_data not in image_text
+        assert tool_msg == "Screenshot captured (image provided below)"
+        assert image_text == "Here is the image from 'take_screenshot':"
+        assert image_msg['content'][1]['image_url']['url'].endswith(base64_data)
+
     def test_prints_formatting_message(self):
         """Test that formatting message is printed."""
         agent = FakeAgent()

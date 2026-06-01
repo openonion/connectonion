@@ -102,13 +102,15 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
     return False, "", ""
 
 
-def _text_without_image_data(text: str) -> str:
+def _text_without_image_data(text: str, base64_data: str = "") -> str:
     """Return surrounding text while removing inline image payloads."""
     if not isinstance(text, str):
         return ""
 
     data_url_pattern = r'data:image/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+'
     cleaned = re.sub(data_url_pattern, "[image data omitted]", text).strip()
+    if base64_data and cleaned == base64_data.strip():
+        return ""
     if len(cleaned) > 4000:
         return cleaned[:4000] + "\n...[truncated]"
     return cleaned
@@ -153,7 +155,7 @@ def _format_image_result(agent: 'Agent') -> None:
         is_image, mime_type, base64_data = _is_base64_image(result)
         if not is_image:
             continue
-        text_context = _text_without_image_data(result)
+        text_context = _text_without_image_data(result, base64_data)
 
         # Find the matching tool message
         for i, msg in enumerate(messages):
