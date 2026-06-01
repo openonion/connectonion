@@ -1,5 +1,35 @@
 # Tasks
 
+## Current Task: Remove Generic Tool Approval Skip Flag
+
+Status: complete
+
+Context:
+
+- `tool_approval.check_approval()` still honored `session["skip_tool_approval"]` as a generic bypass.
+- co-ai no longer sets that flag, but keeping the generic branch makes future accidental bypasses easy.
+- ULW can be represented directly by `session["mode"] == "ulw"`; `tool_approval` already has an explicit ULW branch.
+
+Scope:
+
+- Remove the generic `skip_tool_approval` bypass from `tool_approval`.
+- Stop ULW from setting or clearing `skip_tool_approval`.
+- Update tests so the old flag no longer bypasses approval.
+- Keep explicit `mode == "ulw"` approval behavior.
+
+Expected result:
+
+- No generic session flag can bypass tool approvals.
+- Only explicit approval modes and configured permissions control approval behavior.
+
+Result:
+
+- Removed the generic `skip_tool_approval` bypass branch from `tool_approval.check_approval()`.
+- ULW no longer sets or clears `skip_tool_approval`; it relies on `mode == "ulw"`.
+- Updated tool approval, constants, and ULW comments/docs to remove skip-flag semantics.
+- Added/updated tests proving a stale `skip_tool_approval=True` still sends `approval_needed`.
+- Focused approval/ULW/co-ai/deploy tests, syntax checks, and diff hygiene checks pass.
+
 ## Current Task: Remove co-ai Auto-Approve Hook
 
 Status: complete

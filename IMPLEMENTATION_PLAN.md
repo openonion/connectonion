@@ -1,5 +1,14 @@
 # Implementation Plan
 
+## Remove Generic Tool Approval Skip Flag
+
+1. [x] Remove the generic `session["skip_tool_approval"]` bypass branch from `check_approval()`.
+2. [x] Update ULW to rely only on `mode == "ulw"`.
+3. [x] Update documentation/comments that described `skip_tool_approval`.
+4. [x] Add/update tests proving the old flag does not bypass approval while ULW still does.
+5. [x] Run focused approval/ULW/co-ai/deploy tests plus syntax/diff checks.
+6. [x] Update `TASKS.md`, `STATUS.md`, and this plan with the result.
+
 ## Remove co-ai Auto-Approve Hook
 
 1. [x] Inspect `tool_approval` constants and co-ai tool wiring to confirm which tools require user approval.

@@ -37,7 +37,7 @@ def test_mode_change_defaults_to_100_turns():
     assert agent.current_session['mode'] == 'ulw'
     assert agent.current_session['ulw_turns'] == ULW_DEFAULT_TURNS
     assert agent.current_session['ulw_turns_used'] == 0
-    assert agent.current_session['skip_tool_approval'] is True
+    assert 'skip_tool_approval' not in agent.current_session
 
 
 def test_mode_change_uses_explicit_turns():
@@ -97,7 +97,6 @@ def test_keep_working_at_max_with_switch_mode_exits_to_new_mode():
     agent.current_session['ulw_turns_used'] = 1
     ulw_keep_working(agent)
     assert agent.current_session['mode'] == 'review'
-    assert 'skip_tool_approval' not in agent.current_session
     assert 'ulw_turns' not in agent.current_session
     assert agent.input_calls == []
 
@@ -173,5 +172,4 @@ def test_inject_prompt_replaces_existing_prompt_section():
     agent.current_session['ulw_prompt'] = 'new goal'
     inject_ulw_prompt(agent)
     assert agent.current_session['messages'][0]['content'] == 'base\n\n[Prompt]\nnew goal'
-
 

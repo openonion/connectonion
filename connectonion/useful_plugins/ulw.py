@@ -2,15 +2,15 @@
 Purpose: ULW (Ultra Light Work) plugin - autonomous agent mode with turn-based checkpoints
 LLM-Note:
   Dependencies: imports from [core/events.py] | imported by [useful_plugins/__init__.py]
-  Data flow: mode_change to 'ulw' → set skip_tool_approval=True → on_complete fires → continue until max turns
-  State/Effects: sets mode, ulw_turns, ulw_turns_used, skip_tool_approval in session
-  Integration: communicates with tool_approval via skip_tool_approval flag in session
+  Data flow: mode_change to 'ulw' → set mode='ulw' → on_complete fires → continue until max turns
+  State/Effects: sets mode, ulw_turns, ulw_turns_used in session
+  Integration: communicates with tool_approval via mode='ulw' in session
   Errors: no explicit error handling, agent.input() failures propagate
 
 ULW Mode - Ultra Light Work.
 
 When in ULW mode:
-1. All tool approvals are skipped (via skip_tool_approval flag)
+1. All tool approvals are skipped while session mode is 'ulw'
 2. Agent keeps working until max turns reached
 3. At checkpoint, user can continue, switch mode, or stop
 
@@ -55,7 +55,6 @@ def handle_ulw_mode_change(agent: 'Agent', turns: int = None) -> None:
     - mode = 'ulw'
     - ulw_turns = max turns before checkpoint
     - ulw_turns_used = 0
-    - skip_tool_approval = True (tells tool_approval to skip all checks)
 
     Args:
         agent: Agent instance
@@ -67,7 +66,6 @@ def handle_ulw_mode_change(agent: 'Agent', turns: int = None) -> None:
     agent.current_session['mode'] = 'ulw'
     agent.current_session['ulw_turns'] = turns or ULW_DEFAULT_TURNS
     agent.current_session['ulw_turns_used'] = 0
-    agent.current_session['skip_tool_approval'] = True
 
     # Notify frontend
     if agent.io:
@@ -79,9 +77,8 @@ def handle_ulw_mode_change(agent: 'Agent', turns: int = None) -> None:
 def _exit_ulw_mode(agent: 'Agent', new_mode: str = 'safe') -> None:
     """Exit ULW mode and switch to another mode.
 
-    Cleans up ULW state and clears skip_tool_approval flag.
+    Cleans up ULW state.
     """
-    agent.current_session.pop('skip_tool_approval', None)
     agent.current_session.pop('ulw_turns', None)
     agent.current_session.pop('ulw_turns_used', None)
     agent.current_session['mode'] = new_mode
