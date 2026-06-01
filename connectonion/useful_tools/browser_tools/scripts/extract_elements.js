@@ -105,6 +105,51 @@
         return text.trim().replace(/\s+/g, ' ').substring(0, 80);
     }
 
+    function cleanAttr(value, maxLength = 80) {
+        if (!value) return null;
+        const cleaned = String(value).trim().replace(/\s+/g, ' ');
+        return cleaned ? cleaned.substring(0, maxLength) : null;
+    }
+
+    function getClassName(el) {
+        const raw = typeof el.className === 'string'
+            ? el.className
+            : el.getAttribute('class');
+        return cleanAttr(raw, 120);
+    }
+
+    function getAltText(el) {
+        if (el.tagName === 'IMG') {
+            return cleanAttr(el.getAttribute('alt'));
+        }
+        const img = el.querySelector?.('img[alt]');
+        if (img) {
+            return cleanAttr(img.getAttribute('alt'));
+        }
+        const svgTitle = el.querySelector?.('svg title, title');
+        if (svgTitle) {
+            return cleanAttr(svgTitle.textContent);
+        }
+        return null;
+    }
+
+    function getDataAttrs(el) {
+        const attrs = [];
+        for (const attr of Array.from(el.attributes || [])) {
+            if (
+                attr.name === 'data-testid' ||
+                attr.name === 'data-test' ||
+                attr.name === 'data-qa' ||
+                attr.name === 'data-cy' ||
+                attr.name === 'data-role' ||
+                attr.name === 'data-type'
+            ) {
+                attrs.push(`${attr.name}=${attr.value}`);
+            }
+        }
+        return cleanAttr(attrs.join(' '), 120);
+    }
+
     /**
      * Extract interactive elements from a document context (main page, iframe, or shadow root).
      *
@@ -136,9 +181,13 @@
             // Skip hidden inputs
             if (tag === 'input' && el.type === 'hidden') return;
 
-            // Skip empty elements with no text or useful attributes
             const text = getText(el, document);
             const ariaLabel = el.getAttribute('aria-label');
+            const title = cleanAttr(el.getAttribute('title'));
+            const alt = getAltText(el);
+            const elementId = cleanAttr(el.id);
+            const className = getClassName(el);
+            const dataAttrs = getDataAttrs(el);
 
             // Get placeholder (including from aria-describedby reference)
             let placeholder = el.placeholder || el.getAttribute('data-placeholder') || el.getAttribute('aria-placeholder');
@@ -152,11 +201,20 @@
                 }
             }
 
-            if (!text && !ariaLabel && !placeholder && tag !== 'input') return;
-
-            // Skip very small elements (likely icons)
             const rect = el.getBoundingClientRect();
-            if (rect.width < 20 && rect.height < 20 && !text) return;
+            const hasUsefulMetadata = Boolean(ariaLabel || placeholder || title || alt || elementId || className || dataAttrs);
+            const hasIconSizedBox = rect.width >= 8 && rect.height >= 8 && rect.width <= 160 && rect.height <= 160;
+            const isIconOnlyControl = !text && tag !== 'input' && hasIconSizedBox && (
+                isClickable || hasClickHandler || isInteractiveRole || hasTabIndex ||
+                tag === 'button' || tag === 'a' || tag === 'label'
+            );
+
+            // Keep normal semantic controls, and also keep small clickable icon-only
+            // controls that modern sites often render without accessible text.
+            if (!text && !ariaLabel && !placeholder && tag !== 'input' && !hasUsefulMetadata && !isIconOnlyControl) return;
+
+            // Skip very small elements unless they are plausible icon controls.
+            if (rect.width < 20 && rect.height < 20 && !text && !isIconOnlyControl) return;
 
             // Check visibility
             if (!isVisible(el)) return;
@@ -174,6 +232,11 @@
                 placeholder: placeholder || null,
                 input_type: el.type || null,
                 href: (tag === 'a' && el.href) ? el.href.substring(0, 100) : null,
+                title: title,
+                alt: alt,
+                element_id: elementId,
+                class_name: className,
+                data_attrs: dataAttrs,
                 x: Math.round(rect.x),
                 y: Math.round(rect.y),
                 width: Math.round(rect.width),

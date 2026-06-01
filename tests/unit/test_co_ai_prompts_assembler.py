@@ -12,6 +12,12 @@ Components under test:
 
 from pathlib import Path
 
+from connectonion.useful_tools import (
+    close_browser,
+    send_credentials_form_to_user,
+    send_qr_to_user,
+    type_saved_login_credential,
+)
 from connectonion.cli.co_ai.prompts.assembler import (
     PromptContext,
     interpolate,
@@ -19,6 +25,9 @@ from connectonion.cli.co_ai.prompts.assembler import (
     load_reminder,
     load_agent_prompt,
 )
+
+
+PROMPTS_DIR = Path(__file__).resolve().parents[2] / "connectonion" / "cli" / "co_ai" / "prompts"
 
 
 def test_interpolate_basic_and_defaults():
@@ -65,3 +74,34 @@ def test_prompt_context_and_assemble(tmp_path):
 
     agent_prompt = load_agent_prompt(str(prompts), "explore", extra_vars={"PROJECT": "Test"})
     assert agent_prompt == "Explore Test"
+
+
+def test_login_handoff_prompt_allows_user_mediated_credential_login():
+    prompt = assemble_prompt(
+        prompts_dir=str(PROMPTS_DIR),
+        tools=[
+            close_browser,
+            send_credentials_form_to_user,
+            send_qr_to_user,
+            type_saved_login_credential,
+        ],
+    )
+
+    assert "Do not refuse explicit user login requests" in prompt
+    assert "help me login" in prompt
+    assert "log in" in prompt
+    assert "sign in" in prompt
+    assert "open_browser" in prompt
+    assert "go_to" in prompt
+    assert "take_screenshot" in prompt
+    assert "send_credentials_form_to_user" in prompt
+    assert "send_qr_to_user" in prompt
+    assert "type_saved_login_credential" in prompt
+    assert "close_browser" in prompt
+    assert "same turn" in prompt
+    assert "same tool loop" in prompt
+    assert "Never call `keyboard_type` with a user-provided password" in prompt
+    assert "succeeds, fails, or cannot continue" in prompt
+    assert "remote_login" not in prompt
+    assert "request_login_credentials" not in prompt
+    assert "request_qr_scan" not in prompt

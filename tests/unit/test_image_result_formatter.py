@@ -156,6 +156,75 @@ class TestFormatImageResult:
         assert content[1]['type'] == 'image_url'
         assert 'data:image/png;base64' in content[1]['image_url']['url']
 
+    def test_preserves_text_context_around_embedded_image(self):
+        """Text surrounding an embedded image should stay visible to the LLM."""
+        agent = FakeAgent()
+        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
+        result = (
+            "Visible text:\nScan the QR code with your mobile app\n\n"
+            f"Screenshot:\ndata:image/png;base64,{base64_data}"
+        )
+        agent.current_session['trace'] = [
+            {
+                'type': 'tool_result',
+                'name': 'take_screenshot',
+                'status': 'success',
+                'result': result,
+                'tool_id': 'call_123'
+            }
+        ]
+        agent.current_session['messages'] = [
+            {
+                'role': 'tool',
+                'content': result,
+                'tool_call_id': 'call_123'
+            }
+        ]
+
+        _format_image_result(agent)
+
+        tool_msg = agent.current_session['messages'][0]['content']
+        image_msg = agent.current_session['messages'][1]
+        image_text = image_msg['content'][0]['text']
+
+        assert "Scan the QR code" in tool_msg
+        assert "Scan the QR code" in image_text
+        assert base64_data not in tool_msg
+        assert base64_data not in image_text
+
+    def test_drops_raw_base64_from_text_context(self):
+        """Raw base64 image results should not be copied into text context."""
+        agent = FakeAgent()
+        base64_data = "A" * 150
+        agent.current_session['trace'] = [
+            {
+                'type': 'tool_result',
+                'name': 'take_screenshot',
+                'status': 'success',
+                'result': base64_data,
+                'tool_id': 'call_123'
+            }
+        ]
+        agent.current_session['messages'] = [
+            {
+                'role': 'tool',
+                'content': base64_data,
+                'tool_call_id': 'call_123'
+            }
+        ]
+
+        _format_image_result(agent)
+
+        tool_msg = agent.current_session['messages'][0]['content']
+        image_msg = agent.current_session['messages'][1]
+        image_text = image_msg['content'][0]['text']
+
+        assert base64_data not in tool_msg
+        assert base64_data not in image_text
+        assert tool_msg == "Screenshot captured (image provided below)"
+        assert image_text == "Here is the image from 'take_screenshot':"
+        assert image_msg['content'][1]['image_url']['url'].endswith(base64_data)
+
     def test_prints_formatting_message(self):
         """Test that formatting message is printed."""
         agent = FakeAgent()
@@ -267,8 +336,8 @@ class TestFormatImageResult:
         assert 'image/png' in trace_result
         assert len(trace_result) < 100  # Much shorter than original
 
-    def test_sends_image_to_io_when_available(self):
-        """Test that image is sent to frontend via agent.io when available."""
+    def test_does_not_send_image_to_io_by_default(self):
+        """Image tool results are model-visible, not automatically user-visible."""
         agent = FakeAgent(with_io=True)
         base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
         agent.current_session['trace'] = [
@@ -290,10 +359,7 @@ class TestFormatImageResult:
 
         _format_image_result(agent)
 
-        # Verify send_image was called with the correct data URL
-        agent.io.send_image.assert_called_once()
-        call_args = agent.io.send_image.call_args[0][0]
-        assert call_args == f"data:image/png;base64,{base64_data}"
+        agent.io.send_image.assert_not_called()
 
     def test_skips_sending_to_io_when_not_available(self):
         """Test that no error occurs when io is None."""

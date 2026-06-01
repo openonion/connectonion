@@ -47,7 +47,12 @@ def test_ask_user_round_trip():
 
     result = ask_user(agent, "Continue?", options=["yes", "no"])
     assert result == "yes"
-    assert io.sent[0]["type"] == "ask_user"
+    assert io.sent[0] == {
+        "type": "ask_user",
+        "question": "Continue?",
+        "options": ["yes", "no"],
+        "multi_select": False,
+    }
 
 
 def test_load_guide_existing_and_missing():

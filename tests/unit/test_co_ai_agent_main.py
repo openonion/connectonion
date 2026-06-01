@@ -16,13 +16,14 @@ import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
 
 
-def test_create_coding_agent(monkeypatch):
+def test_create_coding_agent(monkeypatch, tmp_path):
     class FakeLLM:
         model = "fake-model"
 
     monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
     monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
     monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "CTX")
+    monkeypatch.setattr(agent_mod, "GLOBAL_CO_DIR", tmp_path / ".co")
 
     agent = agent_mod.create_coding_agent(model="fake", max_iterations=5, auto_approve=True)
 
@@ -32,6 +33,16 @@ def test_create_coding_agent(monkeypatch):
     assert "CTX" in agent.system_prompt
     # FileTools is registered as a tool class
     assert "file_tools" in agent.tools._tools or any("file" in t.lower() for t in agent.tools._tools)
+    assert "remote_login" not in agent.tools._tools
+    assert "close_browser" in agent.tools._tools
+    assert "send_qr_to_user" in agent.tools._tools
+    assert "send_credentials_form_to_user" in agent.tools._tools
+    assert "type_saved_login_credential" in agent.tools._tools
+    assert "request_qr_scan" not in agent.tools._tools
+    assert "request_login_credentials" not in agent.tools._tools
+    assert "wait_for_manual_login" not in agent.tools._tools
+    assert agent.browse is agent.tools.get_instance("browserautomation")
+    assert agent.tools.get_instance("browserautomation")._headless is False
 
 
 def test_start_server_calls_host(monkeypatch):

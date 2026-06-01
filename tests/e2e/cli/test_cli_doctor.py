@@ -201,11 +201,13 @@ class TestHandleDoctorConnectivity:
 
     @patch('connectonion.cli.commands.doctor_commands.console')
     @patch('connectonion.cli.commands.doctor_commands.shutil.which')
+    @patch('connectonion.cli.commands.doctor_commands.requests.post')
     @patch('connectonion.cli.commands.doctor_commands.requests.get')
-    def test_doctor_checks_backend_health(self, mock_get, mock_which, mock_console):
+    def test_doctor_checks_backend_health(self, mock_get, mock_post, mock_which, mock_console):
         """Test that doctor checks backend health endpoint."""
         mock_which.return_value = '/usr/local/bin/co'
         mock_get.return_value.status_code = 200
+        mock_post.return_value.status_code = 200
 
         from connectonion.cli.commands.doctor_commands import handle_doctor
 
@@ -217,11 +219,13 @@ class TestHandleDoctorConnectivity:
 
     @patch('connectonion.cli.commands.doctor_commands.console')
     @patch('connectonion.cli.commands.doctor_commands.shutil.which')
+    @patch('connectonion.cli.commands.doctor_commands.requests.post')
     @patch('connectonion.cli.commands.doctor_commands.requests.get')
-    def test_doctor_handles_backend_error(self, mock_get, mock_which, mock_console):
+    def test_doctor_handles_backend_error(self, mock_get, mock_post, mock_which, mock_console):
         """Test that doctor handles backend error gracefully."""
         mock_which.return_value = '/usr/local/bin/co'
         mock_get.return_value.status_code = 503
+        mock_post.return_value.status_code = 200
 
         from connectonion.cli.commands.doctor_commands import handle_doctor
 
@@ -272,4 +276,3 @@ class TestHandleDoctorVirtualEnv:
             handle_doctor()
 
         assert mock_console.print.called
-

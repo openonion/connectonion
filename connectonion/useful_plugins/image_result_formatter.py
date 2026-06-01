@@ -1,7 +1,7 @@
 """
 LLM-Note: Image Result Formatter Plugin - Automatically detects and formats base64 image tool results for multimodal LLM consumption
 
-Purpose: Automatically format base64 image tool results for multimodal LLM consumption and send to frontend
+Purpose: Automatically format base64 image tool results for multimodal LLM consumption
 
 Image Result Formatter Plugin - Automatically formats base64 image results for model consumption.
 
@@ -31,7 +31,7 @@ LIFECYCLE - When and How Messages Are Modified:
 │ 3. Shorten tool message content (remove base64)                        │
 │ 4. Insert user message with image after tool message                   │
 │ 5. Update trace result to short summary                                │
-│ 6. Send image to frontend via agent.io.send_image() if available       │
+│ 6. Leave frontend display to explicit user-facing tools               │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ AFTER Plugin                                                            │
 │ messages = [                                                            │
@@ -102,6 +102,20 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
     return False, "", ""
 
 
+def _text_without_image_data(text: str, base64_data: str = "") -> str:
+    """Return surrounding text while removing inline image payloads."""
+    if not isinstance(text, str):
+        return ""
+
+    data_url_pattern = r'data:image/(png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+'
+    cleaned = re.sub(data_url_pattern, "[image data omitted]", text).strip()
+    if base64_data and cleaned == base64_data.strip():
+        return ""
+    if len(cleaned) > 4000:
+        return cleaned[:4000] + "\n...[truncated]"
+    return cleaned
+
+
 def _format_image_result(agent: 'Agent') -> None:
     """
     Format base64 images in tool results to proper multimodal message format.
@@ -141,12 +155,16 @@ def _format_image_result(agent: 'Agent') -> None:
         is_image, mime_type, base64_data = _is_base64_image(result)
         if not is_image:
             continue
+        text_context = _text_without_image_data(result, base64_data)
 
         # Find the matching tool message
         for i, msg in enumerate(messages):
             if msg.get('role') == 'tool' and msg.get('tool_call_id') == tool_call_id:
                 # Shorten the tool message content (remove base64 to save tokens)
-                messages[i]['content'] = f"Screenshot captured (image provided below)"
+                if text_context:
+                    messages[i]['content'] = f"{text_context}\n\nScreenshot captured (image provided below)"
+                else:
+                    messages[i]['content'] = "Screenshot captured (image provided below)"
 
                 # Insert a user message with the image right after the tool message
                 messages.insert(i + 1, {
@@ -154,7 +172,11 @@ def _format_image_result(agent: 'Agent') -> None:
                     "content": [
                         {
                             "type": "text",
-                            "text": f"Here is the image from '{tool_name}':"
+                            "text": (
+                                f"{text_context}\n\nHere is the image from '{tool_name}':"
+                                if text_context
+                                else f"Here is the image from '{tool_name}':"
+                            )
                         },
                         {
                             "type": "image_url",
@@ -169,11 +191,6 @@ def _format_image_result(agent: 'Agent') -> None:
 
         # Update trace result to short message (avoids token overflow in other plugins like ReAct)
         trace_entry['result'] = f"🖼️ Tool '{tool_name}' returned image ({mime_type})"
-
-        # Send image to frontend via WebSocket if available
-        if agent.io:
-            data_url = f"data:{mime_type};base64,{base64_data}"
-            agent.io.send_image(data_url)
 
 
 # Plugin is an event list

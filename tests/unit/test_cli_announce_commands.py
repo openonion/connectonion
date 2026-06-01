@@ -50,11 +50,13 @@ def test_announce_ws_url_accepts_base_and_endpoint_urls():
     assert announce._announce_ws_url("wss://oo.openonion.ai/ws/announce") == "wss://oo.openonion.ai/ws/announce"
 
 
-def test_build_published_skills_only_includes_publish_true_with_body(isolated_announce_home):
+def test_build_listed_skills_lists_all_and_only_inlines_published_bodies(isolated_announce_home):
     profile = announce._load_profile()
 
-    skills = announce._build_published_skills(profile)
+    skills = announce._build_listed_skills(profile)
 
     assert skills == [
         {"name": "public", "description": "Public skill", "body": "Public body"},
+        {"name": "private", "description": "Private skill"},
+        {"name": "missing", "description": "Missing skill"},
     ]
