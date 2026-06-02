@@ -1137,7 +1137,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             full_page: If True, captures entire page height (may lose details but shows overview)
 
         Returns:
-            Base64 encoded image data with system reminder for full-page screenshots
+            Base64 encoded image data
         """
         if not PLAYWRIGHT_AVAILABLE:
             return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
@@ -1166,12 +1166,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
 
         screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
 
-        if full_page:
-            return f"""data:image/png;base64,{screenshot_base64}
-
-SYSTEM REMINDER: Full-page screenshots provide an overview of the entire page but may not show details clearly. Some elements might not be loaded yet (lazy loading). If you need to verify specific content or see details clearly, consider: scroll() to the target area first, then take a regular screenshot (full_page=False), or use scroll() multiple times and take screenshots at each position."""
-        else:
-            return f"data:image/png;base64,{screenshot_base64}"
+        return f"data:image/png;base64,{screenshot_base64}"
 
     def set_viewport(self, width: int, height: int) -> str:
         """Set the browser viewport size."""
