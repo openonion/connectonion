@@ -98,12 +98,16 @@ def test_login_handoff_prompt_allows_user_mediated_credential_login():
     assert "send_qr_to_user" in prompt
     assert "type_saved_login_credential" in prompt
     assert "close_browser" in prompt
+    assert "verification code" in prompt
+    assert "2FA" in prompt
+    assert "field=\"verification_code\"" in prompt
     assert "same turn" in prompt
     assert "same tool loop" in prompt
-    assert "Never call `keyboard_type` with a user-provided password" in prompt
+    assert "Never call `keyboard_type` with a user-provided password or verification code" in prompt
     assert "Leave the browser open after login succeeds" in prompt
     assert "Do not call `close_browser` automatically after successful login" in prompt
     assert "After the login flow succeeds, fails, or cannot continue, call `close_browser`" not in prompt
+    assert "close the browser before your final response" not in prompt
     assert "Call this after confirming a login succeeded." not in prompt
     assert "remote_login" not in prompt
     assert "request_login_credentials" not in prompt

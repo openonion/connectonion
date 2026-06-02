@@ -139,6 +139,112 @@ def test_send_credentials_form_to_user_sends_structured_ask_user():
     assert "type_saved_login_credential" in result
 
 
+def test_send_credentials_form_to_user_accepts_custom_login_fields():
+    agent = SimpleNamespace(
+        io=FakeIO(
+            answer=(
+                '{"username":"me@example.com","password":"secret",'
+                '"verification_code":"123456"}'
+            )
+        )
+    )
+
+    result = login_handoff_mod.send_credentials_form_to_user(
+        agent,
+        question="请输入账号、密码和验证码。",
+        fields=[
+            {"name": "username", "label": "账号", "type": "text", "required": True},
+            {"name": "password", "label": "密码", "type": "password", "required": True},
+            {
+                "name": "verification_code",
+                "label": "验证码",
+                "type": "text",
+                "required": True,
+                "autocomplete": "one-time-code",
+            },
+        ],
+    )
+
+    assert agent.io.sent == [
+        {
+            "type": "ask_user",
+            "text": "请输入账号、密码和验证码。",
+            "question": "请输入账号、密码和验证码。",
+            "options": [],
+            "multi_select": False,
+            "input_type": "credentials",
+            "fields": [
+                {"name": "username", "label": "账号", "type": "text", "required": True},
+                {"name": "password", "label": "密码", "type": "password", "required": True},
+                {
+                    "name": "verification_code",
+                    "label": "验证码",
+                    "type": "text",
+                    "required": True,
+                    "autocomplete": "one-time-code",
+                },
+            ],
+        }
+    ]
+    assert agent._login_handoff_active is True
+    assert agent._login_credentials == {
+        "username": "me@example.com",
+        "password": "secret",
+        "verification_code": "123456",
+    }
+    assert "verification_code" in result
+    assert "secret" not in result
+    assert "123456" not in result
+
+
+def test_send_credentials_form_to_user_derives_missing_field_names_from_labels():
+    agent = SimpleNamespace(
+        io=FakeIO(answer='{"email_or_phone":"me@example.com","password":"secret"}')
+    )
+
+    result = login_handoff_mod.send_credentials_form_to_user(
+        agent,
+        question="Please enter your LinkedIn credentials.",
+        fields=[
+            {"label": "Email or phone", "type": "text", "required": True},
+            {"label": "Password", "type": "password", "required": True},
+        ],
+    )
+
+    assert agent.io.sent == [
+        {
+            "type": "ask_user",
+            "text": "Please enter your LinkedIn credentials.",
+            "question": "Please enter your LinkedIn credentials.",
+            "options": [],
+            "multi_select": False,
+            "input_type": "credentials",
+            "fields": [
+                {
+                    "name": "email_or_phone",
+                    "label": "Email or phone",
+                    "type": "text",
+                    "required": True,
+                },
+                {
+                    "name": "password",
+                    "label": "Password",
+                    "type": "password",
+                    "required": True,
+                },
+            ],
+        }
+    ]
+    assert agent._login_credentials == {
+        "email_or_phone": "me@example.com",
+        "password": "secret",
+    }
+    assert "email_or_phone" in result
+    assert "password" in result
+    assert "me@example.com" not in result
+    assert "secret" not in result
+
+
 def test_type_saved_login_credential_types_without_returning_secret():
     browser = FakeBrowser()
     agent = SimpleNamespace(
@@ -151,6 +257,20 @@ def test_type_saved_login_credential_types_without_returning_secret():
     assert browser.page.keyboard.typed == ["secret"]
     assert result == "Typed saved password into the focused browser field."
     assert "secret" not in result
+
+
+def test_type_saved_login_credential_types_custom_saved_field():
+    browser = FakeBrowser()
+    agent = SimpleNamespace(
+        browse=browser,
+        _login_credentials={"verification_code": "123456"},
+    )
+
+    result = login_handoff_mod.type_saved_login_credential(agent, "verification_code")
+
+    assert browser.page.keyboard.typed == ["123456"]
+    assert result == "Typed saved verification_code into the focused browser field."
+    assert "123456" not in result
 
 
 def test_type_saved_login_credential_requires_saved_value():

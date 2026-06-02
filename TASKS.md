@@ -1,5 +1,68 @@
 # Tasks
 
+## Current Task: Credential Field Name Fallback
+
+Status: complete
+
+Context:
+
+- Local LinkedIn test showed `send_credentials_form_to_user` can still fail when the LLM passes field objects without `name`.
+- User wants the backend to be more forgiving by deriving a stable field name from labels instead of failing immediately.
+- This task is scoped to the credential handoff field normalization only.
+
+Scope:
+
+- Keep the existing `send_credentials_form_to_user` tool name and form behavior.
+- Derive missing field names from `label`, `placeholder`, `autocomplete`, or field type when possible.
+- Preserve explicit `name` values when provided.
+- Keep returned tool results free of raw credential values.
+
+Expected result:
+
+- A field like `{"label": "Email or phone", "type": "text"}` is normalized with `name="email_or_phone"`.
+- A field like `{"label": "Password", "type": "password"}` is normalized with `name="password"`.
+- Focused login handoff tests pass.
+
+Result:
+
+- `send_credentials_form_to_user` now derives missing field names from `label`, then `placeholder`, then `autocomplete`, then non-text field `type`, with a `field_N` fallback.
+- LinkedIn-style fields without explicit names normalize to `email_or_phone` and `password`.
+- Existing explicit field names are still preserved.
+- Focused login handoff, co ai agent, prompt assembler, syntax, and diff hygiene checks pass.
+
+## Current Task: Generalize Existing Credential Handoff Fields
+
+Status: complete
+
+Context:
+
+- User wants `send_credentials_form_to_user` to be more general for verification codes, 2FA, phone numbers, and other login fields.
+- User explicitly requested not adding new tool names; directly change the existing tool and prompt guidance.
+- The existing tool currently always renders username/password and `type_saved_login_credential` only accepts those two field names.
+
+Scope:
+
+- Keep the existing tool names: `send_credentials_form_to_user` and `type_saved_login_credential`.
+- Add support for caller-provided arbitrary structured fields while preserving the no-argument username/password default.
+- Store submitted values under their requested field names without returning raw values.
+- Allow `type_saved_login_credential(field=...)` to type any saved field value, including verification codes.
+- Update co ai prompt/tool docs to use the existing credential handoff for account/password, OTP/2FA, captcha code, phone, and other login form fields.
+
+Expected result:
+
+- co ai can ask the user for exactly the login fields currently required by the page without adding another tool.
+- Sensitive submitted values remain out of assistant text/tool results.
+- Focused login handoff and prompt tests pass.
+
+Result:
+
+- `send_credentials_form_to_user` now accepts optional `question` and `fields` arguments while keeping the no-argument username/password default.
+- The same structured ask-user event can now request arbitrary login fields such as `verification_code`, OTP/2FA, phone, email, and captcha code.
+- Submitted values are saved under their requested field names without returning raw values to the model.
+- `type_saved_login_credential(field=...)` can now type any saved field value, not only username/password.
+- co ai prompt/tool docs now direct the model to use the existing credential handoff for extra verification fields and to avoid `keyboard_type` for passwords or verification codes.
+- Focused login handoff, co ai agent registration, prompt assembler, syntax, and diff hygiene checks pass.
+
 ## Current Task: Login Leaves Browser Open
 
 Status: complete

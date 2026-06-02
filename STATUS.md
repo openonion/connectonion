@@ -1,13 +1,13 @@
 # Project Status
 
-Last updated: 2026-06-02
+Last updated: 2026-06-03
 
 ## Baseline
 
 - Repository: `openonion/connectonion`
 - Active branch: `codex/co-ai-remote-login-tool`
 - Active PR: `#143` (`[codex] Add remote login tool to co ai`)
-- Current focus: keeping the co ai browser open after successful login.
+- Current focus: making credential handoff field normalization tolerate fields that omit `name`.
 
 ## Working Tree Notes
 
@@ -21,6 +21,14 @@ Last updated: 2026-06-02
 - Fix: `co_ai.main.start_server()` now creates one `Agent` at server startup and passes that instance to `host()`, instead of passing a per-request factory.
 - New user direction: after login finishes, co ai should not close the browser; leave it open for follow-up actions.
 - Fix: co ai login/browser lifecycle prompts now leave the browser open after successful login and reserve `close_browser` for explicit close requests or abandoned browser flows.
+- New user direction: do not add separate form tools; directly update `send_credentials_form_to_user` and prompts so the same handoff can ask for arbitrary login fields such as OTP/2FA verification codes.
+- Fix: `send_credentials_form_to_user` now accepts optional `question` and `fields` arguments while preserving its default username/password form.
+- Fix: `type_saved_login_credential` now types any saved field name from that form, including `verification_code`, without returning raw values.
+- Prompt guidance now tells co ai to use the existing credential handoff for verification code, OTP, 2FA, phone, email, captcha code, and other login fields.
+- Runtime finding: local LinkedIn test showed the LLM can pass custom credential field objects without `name`, causing `Credential field requires a name.`
+- Current task: derive stable field names from labels/placeholders/autocomplete/type instead of failing on missing `name`.
+- Fix: missing credential field names are now derived from `label`, `placeholder`, `autocomplete`, non-text `type`, or a `field_N` fallback.
+- Local co ai backend was restarted after the fix; `GET /health` returned healthy.
 - GitHub PR #143 reported `mergeable=CONFLICTING` / `mergeStateStatus=DIRTY` after the lifecycle fix.
 - Latest `origin/main` conflicted only in `connectonion/useful_tools/browser_tools/browser.py`.
 - Conflict resolution keeps `main`'s browser-tool updates and preserves the PR behavior that closes stale browser/page/playwright state before reopening.
@@ -66,6 +74,15 @@ Last updated: 2026-06-02
 - `git diff --check`
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_co_ai_prompts_assembler.py tests/unit/test_co_ai_system_reminder_plugin.py tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py -q`
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/co_ai/plugins/system_reminder.py connectonion/cli/co_ai/prompts/assembler.py connectonion/useful_tools/login_handoff.py connectonion/cli/co_ai/agent.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_prompts_assembler.py -q`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py tests/unit/test_co_ai_prompts_assembler.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_tools/login_handoff.py connectonion/cli/co_ai/agent.py connectonion/cli/co_ai/prompts/assembler.py`
+- `git diff --check`
+- Local restart check: `curl -sS http://localhost:8000/health`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_login_handoff_tools.py::test_send_credentials_form_to_user_derives_missing_field_names_from_labels -q`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py tests/unit/test_co_ai_prompts_assembler.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_tools/login_handoff.py connectonion/cli/co_ai/agent.py connectonion/cli/co_ai/prompts/assembler.py`
 - `git diff --check`
 - `python3 -m pytest tests/unit/test_remote_login_tool.py tests/unit/test_co_ai_agent_main.py`
 - `python3 -m py_compile connectonion/useful_tools/remote_login.py connectonion/cli/co_ai/agent.py`

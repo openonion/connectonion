@@ -1,5 +1,24 @@
 # Implementation Plan
 
+## Credential Field Name Fallback
+
+1. [x] Record the scoped runtime follow-up in control docs.
+2. [x] Add a failing test for custom credential fields that omit `name`.
+3. [x] Update field normalization to derive stable field names.
+4. [x] Run focused login handoff tests and syntax/diff checks.
+5. [x] Update `STATUS.md`, `TASKS.md`, and this plan with the result.
+6. [x] Restart local co ai so the running test server uses the fix.
+
+## Generalize Existing Credential Handoff Fields
+
+1. [x] Record the scoped task in control docs.
+2. [x] Add failing tests for arbitrary fields on `send_credentials_form_to_user`.
+3. [x] Add failing tests for `type_saved_login_credential` typing non-username/password saved values.
+4. [x] Update the existing login handoff implementation without adding new tool names.
+5. [x] Update co ai prompt/tool guidance for OTP/2FA and arbitrary login fields.
+6. [x] Run focused tests, syntax checks, and diff hygiene checks.
+7. [x] Update `STATUS.md`, `TASKS.md`, and this plan with the result.
+
 ## Login Leaves Browser Open
 
 1. [x] Record the narrowed login browser lifecycle task in control docs.

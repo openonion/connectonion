@@ -1,17 +1,96 @@
 """User handoff tools for server-side login flows."""
 
 import json
+import re
+from typing import Any, Dict, List, Optional
 
 from .ask_user import ask_user
 
 _QR_SCAN_OPTION = "已扫码，继续检查登录状态"
-_CREDENTIAL_FIELDS = {"username", "password"}
+_DEFAULT_CREDENTIAL_FIELDS = [
+    {
+        "name": "username",
+        "label": "账号",
+        "type": "text",
+        "required": True,
+        "autocomplete": "username",
+    },
+    {
+        "name": "password",
+        "label": "密码",
+        "type": "password",
+        "required": True,
+        "autocomplete": "current-password",
+    },
+]
+_FIELD_KEYS = {"name", "label", "type", "required", "autocomplete", "placeholder"}
 
 
 def _clear_saved_credentials(agent) -> None:
     for attr in ("_login_credentials", "_login_handoff_active"):
         if hasattr(agent, attr):
             delattr(agent, attr)
+
+
+def _field_name_from_text(value: Any) -> str:
+    text = str(value or "").strip().lower()
+    if not text:
+        return ""
+
+    parts = re.findall(r"[a-z0-9]+", text)
+    if parts:
+        return "_".join(parts)
+
+    parts = re.findall(r"\w+", text)
+    return "_".join(parts)
+
+
+def _derive_field_name(field: Dict[str, Any], index: int) -> str:
+    for key in ("label", "placeholder", "autocomplete"):
+        name = _field_name_from_text(field.get(key))
+        if name:
+            return name
+
+    input_type = str(field.get("type", "")).strip().lower()
+    if input_type and input_type != "text":
+        return _field_name_from_text(input_type)
+
+    return f"field_{index + 1}"
+
+
+def _normalize_credential_fields(fields: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+    if not fields:
+        return [field.copy() for field in _DEFAULT_CREDENTIAL_FIELDS]
+
+    normalized = []
+    for index, field in enumerate(fields):
+        if not isinstance(field, dict):
+            raise TypeError("Credential fields must be JSON objects.")
+
+        name = str(field.get("name", "")).strip()
+        if not name:
+            name = _derive_field_name(field, index)
+
+        clean = {key: field[key] for key in _FIELD_KEYS if key in field}
+        clean["name"] = name
+        clean.setdefault("label", name.replace("_", " ").replace("-", " ").title())
+        clean.setdefault("type", "text")
+        clean["required"] = bool(clean.get("required", True))
+        normalized.append(clean)
+
+    return normalized
+
+
+def _parse_form_answer(answer) -> Dict[str, Any]:
+    if isinstance(answer, str):
+        if not answer:
+            return {}
+        answer = json.loads(answer)
+
+    if not isinstance(answer, dict):
+        raise TypeError("Credential answer must be a JSON object.")
+
+    return answer
 
 
 def send_qr_to_user(agent) -> str:
@@ -40,65 +119,60 @@ def send_qr_to_user(agent) -> str:
     )
 
 
-def send_credentials_form_to_user(agent) -> str:
-    """Ask the user for login credentials with username/password fields."""
+def send_credentials_form_to_user(
+    agent,
+    question: str = "",
+    fields: Optional[List[Dict[str, Any]]] = None,
+) -> str:
+    """Ask the user for login credentials or verification fields."""
     if not agent.io:
         return "send_credentials_form_to_user requires agent.io."
 
+    credential_fields = _normalize_credential_fields(fields)
+    prompt = question or (
+        "请输入账号和密码。" if fields is None else "请输入当前登录页面需要的信息。"
+    )
     agent.io.send({
         "type": "ask_user",
-        "text": "请输入账号和密码。",
-        "question": "请输入账号和密码。",
+        "text": prompt,
+        "question": prompt,
         "options": [],
         "multi_select": False,
         "input_type": "credentials",
-        "fields": [
-            {
-                "name": "username",
-                "label": "账号",
-                "type": "text",
-                "required": True,
-                "autocomplete": "username",
-            },
-            {
-                "name": "password",
-                "label": "密码",
-                "type": "password",
-                "required": True,
-                "autocomplete": "current-password",
-            },
-        ],
+        "fields": credential_fields,
     })
     answer = agent.io.receive().get("answer", "")
-    if not answer:
-        return "No credentials were provided."
+    credentials = _parse_form_answer(answer)
 
-    credentials = json.loads(answer)
-    if not isinstance(credentials, dict):
-        raise TypeError("Credential answer must be a JSON object.")
+    saved = {}
+    for field in credential_fields:
+        name = field["name"]
+        value = credentials.get(name)
+        if value in (None, ""):
+            if field.get("required", True):
+                return "No credentials were provided."
+            continue
+        saved[name] = str(value)
 
-    username = credentials.get("username")
-    password = credentials.get("password")
-    if not username or not password:
+    if not saved:
         return "No credentials were provided."
 
     agent._login_handoff_active = True
-    agent._login_credentials = {
-        "username": str(username),
-        "password": str(password),
-    }
+    agent._login_credentials = saved
+    field_names = ", ".join(saved)
     return (
-        "Credentials saved for this login flow. Focus the username field and "
-        "call type_saved_login_credential(field=\"username\"), then focus the "
-        "password field and call type_saved_login_credential(field=\"password\"). "
-        "Do not use keyboard_type for saved credentials."
+        f"Credentials saved for this login flow for fields: {field_names}. "
+        "Focus each matching browser field and call "
+        "type_saved_login_credential(field=\"field_name\"). Do not use "
+        "keyboard_type for saved credentials or verification codes."
     )
 
 
 def type_saved_login_credential(agent, field: str) -> str:
     """Type a saved login credential into the focused browser field."""
-    if field not in _CREDENTIAL_FIELDS:
-        return 'field must be "username" or "password".'
+    field = str(field).strip()
+    if not field:
+        return "field is required."
 
     credentials = getattr(agent, "_login_credentials", None) or {}
     value = credentials.get(field)
