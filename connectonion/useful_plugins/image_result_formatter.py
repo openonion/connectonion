@@ -31,7 +31,7 @@ LIFECYCLE - When and How Messages Are Modified:
 │ 3. Shorten tool message content (remove base64)                        │
 │ 4. Insert user message with image after tool message                   │
 │ 5. Update trace result to short summary                                │
-│ 6. Leave frontend display to explicit user-facing tools               │
+│ 6. Send the image to frontend IO when available                       │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ AFTER Plugin                                                            │
 │ messages = [                                                            │
@@ -167,6 +167,7 @@ def _format_image_result(agent: 'Agent') -> None:
                     messages[i]['content'] = "Screenshot captured (image provided below)"
 
                 # Insert a user message with the image right after the tool message
+                data_url = f"data:{mime_type};base64,{base64_data}"
                 messages.insert(i + 1, {
                     "role": "user",
                     "content": [
@@ -180,10 +181,13 @@ def _format_image_result(agent: 'Agent') -> None:
                         },
                         {
                             "type": "image_url",
-                            "image_url": {"url": f"data:{mime_type};base64,{base64_data}"}
+                            "image_url": {"url": data_url}
                         }
                     ]
                 })
+
+                if getattr(agent, "io", None):
+                    agent.io.send_image(data_url)
 
                 processed_tool_ids.add(tool_call_id)
                 agent.logger.print(f"[dim]🖼️  Formatted '{tool_name}' result as image[/dim]")

@@ -1,5 +1,40 @@
 # Tasks
 
+## Current Task: PR #143 Auto-Display Screenshot Tool Results
+
+Status: complete
+
+Context:
+
+- Reviewer/user wants the removed `agent.io.send_image(data_url)` path restored in `image_result_formatter`.
+- Desired behavior: all screenshot/image tool results should still be model-visible and also display directly in the frontend when `agent.io` is available.
+- Prior localStorage quota protection should remain in the frontend/SDK persistence layer; this task changes real-time WebSocket display, not persistence.
+- User also requested deleting `connectonion/cli/co_ai/plugins/login_cleanup.py`; browser cleanup should now be explicit through `close_browser` and lifecycle-safe through `open_browser()` closing stale contexts.
+
+Scope:
+
+- Update image formatter tests so image tool results call `agent.io.send_image(...)` when IO is available.
+- Keep the inserted multimodal `image_url` message for agent/LLM visibility.
+- Restore real-time frontend image delivery from `image_result_formatter`.
+- Remove `login_cleanup` from co ai plugin exports and agent registration.
+- Remove obsolete login cleanup tests that exercise the deleted plugin, while keeping direct `close_browser` tool coverage.
+- Run focused image formatter tests plus relevant browser/login/co-ai checks.
+
+Expected result:
+
+- Ordinary screenshot/image tool results appear in the frontend immediately.
+- The same images remain visible to the LLM through `current_session["messages"]`.
+- Full base64 images still should not be persisted to localStorage by the frontend/SDK persistence layer.
+- co ai no longer imports or registers a completion-time login cleanup hook.
+
+Result:
+
+- `image_result_formatter` now builds one `data:{mime_type};base64,...` URL per image tool result, inserts it as a multimodal `image_url` message for the LLM, and sends the same data URL through `agent.io.send_image(...)` when IO is available.
+- Image formatter unit and e2e coverage now asserts frontend IO delivery for single and multiple image tool results.
+- `connectonion/cli/co_ai/plugins/login_cleanup.py` was deleted.
+- co ai no longer exports or registers `login_cleanup`; browser cleanup remains available through the explicit `close_browser` tool and stale contexts are closed by `open_browser()`.
+- Focused image, login handoff, co ai, browser, syntax, and diff checks pass.
+
 ## Current Task: PR #143 Main Merge Conflict
 
 Status: complete

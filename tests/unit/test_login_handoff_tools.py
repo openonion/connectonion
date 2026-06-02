@@ -6,7 +6,6 @@ from types import SimpleNamespace
 import connectonion.useful_tools as useful_tools
 
 login_handoff_mod = importlib.import_module("connectonion.useful_tools.login_handoff")
-login_cleanup_mod = importlib.import_module("connectonion.cli.co_ai.plugins.login_cleanup")
 
 
 class FakeKeyboard:
@@ -206,16 +205,6 @@ def test_close_browser_requires_agent_browser_context():
     result = login_handoff_mod.close_browser(agent)
 
     assert "requires agent.browse" in result
-
-
-def test_login_cleanup_closes_active_login_browser_on_complete():
-    browser = FakeBrowser()
-    agent = SimpleNamespace(browse=browser, _login_handoff_active=True)
-
-    login_cleanup_mod.close_login_browser_on_complete(agent)
-
-    assert browser.closed is True
-    assert not hasattr(agent, "_login_handoff_active")
 
 
 def test_old_login_tool_names_are_not_exported():

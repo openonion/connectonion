@@ -14,6 +14,7 @@ from types import SimpleNamespace
 
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
+import connectonion.cli.co_ai.plugins as plugins_mod
 
 
 def test_create_coding_agent(monkeypatch, tmp_path):
@@ -43,6 +44,12 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "wait_for_manual_login" not in agent.tools._tools
     assert agent.browse is agent.tools.get_instance("browserautomation")
     assert agent.tools.get_instance("browserautomation")._headless is False
+    assert not hasattr(agent_mod, "login_cleanup")
+
+
+def test_co_ai_plugins_do_not_export_login_cleanup():
+    assert not hasattr(plugins_mod, "login_cleanup")
+    assert "login_cleanup" not in plugins_mod.__all__
 
 
 def test_start_server_calls_host(monkeypatch):

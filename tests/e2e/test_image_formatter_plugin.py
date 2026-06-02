@@ -3,7 +3,7 @@
 This test demonstrates the complete workflow of the image formatter plugin:
 1. Tool returns base64 image
 2. Plugin detects and formats the image for LLM
-3. Plugin leaves frontend display to explicit user-facing tools
+3. Plugin sends the image to frontend IO when available
 4. LLM receives properly formatted image message
 """
 
@@ -12,14 +12,14 @@ LLM-Note: E2E tests for image_result_formatter plugin
 
 What it tests:
 - TestImageFormatterPluginE2E: Complete image handling workflow
-  - test_complete_image_workflow_with_io: Tool returns image → plugin formats for the model
+  - test_complete_image_workflow_with_io: Tool returns image → plugin formats for the model and frontend IO
   - take_screenshot: Example tool returning base64 PNG
   - Image detection and multimodal message formatting
 
 Components under test:
 - connectonion.useful_plugins.image_result_formatter
 - Image handling in tool results
-- Model-visible image formatting without automatic frontend display
+- Model-visible image formatting with frontend IO display
 """
 
 import pytest
@@ -58,7 +58,7 @@ class TestImageFormatterPluginE2E:
         This demonstrates the full integration of:
         - Tool returning base64 image
         - Plugin detecting and formatting the image
-        - Plugin leaving frontend image display to explicit handoff tools
+        - Plugin sending the image to frontend IO when available
         - LLM receiving properly formatted message
         """
         # Create mock LLM with two responses
@@ -105,9 +105,7 @@ class TestImageFormatterPluginE2E:
         assert response is not None
         assert "screenshot" in response.lower() or "see" in response.lower()
 
-        # The formatter makes images model-visible only. User-visible delivery
-        # is handled by explicit handoff tools such as send_qr_to_user.
-        mock_io.send_image.assert_not_called()
+        mock_io.send_image.assert_called_once_with(take_screenshot("https://example.com"))
 
         # Verify messages were properly formatted
         messages = agent.current_session['messages']
@@ -264,8 +262,7 @@ class TestImageFormatterPluginE2E:
 
         assert response is not None
 
-        # The formatter should not auto-send ordinary image tool results to the frontend.
-        mock_io.send_image.assert_not_called()
+        assert mock_io.send_image.call_count == 2
 
         # Verify both images are in messages (plugin inserts user messages, not assistant)
         messages = agent.current_session['messages']

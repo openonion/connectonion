@@ -1,5 +1,17 @@
 # Implementation Plan
 
+## PR #143 Auto-Display Screenshot Tool Results
+
+1. [x] Record the new screenshot frontend-display task in control docs.
+2. [x] Add the user-requested `login_cleanup.py` removal to the current task scope.
+3. [x] Add/update failing tests that expect `image_result_formatter` to call `agent.io.send_image(...)` when IO is available.
+4. [x] Add/update failing tests that expect co ai not to export/register `login_cleanup`.
+5. [x] Restore `agent.io.send_image(data_url)` while preserving multimodal `image_url` insertion for the LLM.
+6. [x] Remove `login_cleanup.py` and its co ai registration/export.
+7. [x] Run focused image formatter, browser/login/co-ai, syntax, and diff checks.
+8. [x] Update `STATUS.md`, `TASKS.md`, and this plan with the result.
+9. [x] Commit and push the PR update.
+
 ## PR #143 Main Merge Conflict
 
 1. [x] Fetch latest `origin/main` and confirm PR #143 is `CONFLICTING`.

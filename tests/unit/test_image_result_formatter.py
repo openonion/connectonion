@@ -336,30 +336,34 @@ class TestFormatImageResult:
         assert 'image/png' in trace_result
         assert len(trace_result) < 100  # Much shorter than original
 
-    def test_does_not_send_image_to_io_by_default(self):
-        """Image tool results are model-visible, not automatically user-visible."""
+    def test_sends_image_to_io_when_available(self):
+        """Image tool results are model-visible and sent to frontend IO."""
         agent = FakeAgent(with_io=True)
         base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
+        data_url = f"data:image/png;base64,{base64_data}"
         agent.current_session['trace'] = [
             {
                 'type': 'tool_result',
                 'name': 'screenshot',
                 'status': 'success',
-                'result': f"data:image/png;base64,{base64_data}",
+                'result': data_url,
                 'tool_id': 'call_123'
             }
         ]
         agent.current_session['messages'] = [
             {
                 'role': 'tool',
-                'content': f"data:image/png;base64,{base64_data}",
+                'content': data_url,
                 'tool_call_id': 'call_123'
             }
         ]
 
         _format_image_result(agent)
 
-        agent.io.send_image.assert_not_called()
+        agent.io.send_image.assert_called_once_with(data_url)
+        image_msg = agent.current_session['messages'][1]
+        image_part = next(item for item in image_msg['content'] if item['type'] == 'image_url')
+        assert image_part['image_url']['url'] == data_url
 
     def test_skips_sending_to_io_when_not_available(self):
         """Test that no error occurs when io is None."""

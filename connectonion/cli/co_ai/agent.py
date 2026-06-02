@@ -43,7 +43,7 @@ from .tools import (
     load_guide,
 )
 from .skills import skill
-from .plugins import login_cleanup, system_reminder
+from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
 from connectonion.useful_tools import (
     close_browser,
@@ -102,7 +102,7 @@ def create_coding_agent(
         system_prompt += f"\n\n---\n\n{project_context}"
 
     # Use SDK's subagents plugin instead of custom task implementation
-    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw, image_result_formatter, runtime_input, login_cleanup]
+    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw, image_result_formatter, runtime_input]
 
     agent = Agent(
         name="oo",
