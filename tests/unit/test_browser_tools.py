@@ -27,6 +27,7 @@ class FakeLocatorItem:
         self.text = text
         self.box = box or {"x": 10, "y": 20, "width": 100, "height": 40}
         self.force_clicked = False
+        self.uploaded_files = []
 
     def bounding_box(self):
         return self.box
@@ -36,6 +37,9 @@ class FakeLocatorItem:
 
     def inner_text(self):
         return self.text
+
+    def set_input_files(self, file_path):
+        self.uploaded_files.append(file_path)
 
 
 class FakeLocator:
@@ -47,6 +51,26 @@ class FakeLocator:
 
     def nth(self, index):
         return self.items[index]
+
+
+class FakeFileChooser:
+    def __init__(self):
+        self.files = []
+
+    def set_files(self, file_path):
+        self.files.append(file_path)
+
+
+class FakeFileChooserContext:
+    def __init__(self, chooser):
+        self.value = chooser
+        self.timeout = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
 
 
 class FakeSelectorPage(FakePage):
@@ -62,6 +86,10 @@ class FakeSelectorPage(FakePage):
 
     def wait_for_timeout(self, ms):
         self.waits.append(ms)
+
+    @property
+    def frames(self):
+        return [self]
 
 
 class FakeTextFilteredClickPage(FakeSelectorPage):
@@ -219,6 +247,47 @@ def test_type_text_by_selector_focuses_and_types():
     assert page.keyboard.typed == ["Great point."]
     assert page.waits == [1000]
     assert "Typed text into element 1/1" in result
+
+
+def test_upload_file_by_selector_sets_input_file(tmp_path, monkeypatch):
+    cover = tmp_path / "cover.png"
+    cover.write_bytes(b"png")
+    item = FakeLocatorItem(text="")
+    page = FakeSelectorPage([item])
+    browser = BrowserAutomation(headless=True)
+    browser.page = page
+    monkeypatch.setattr(browser, "_save_context", lambda: None)
+
+    result = browser.upload_file_by_selector('input[type="file"]', str(cover))
+
+    assert item.uploaded_files == [str(cover)]
+    assert page.waits == [1500]
+    assert '"uploaded": true' in result
+    assert '"selector": "input[type=\\"file\\"]"' in result
+
+
+def test_upload_file_after_click_by_selector_sets_file_chooser(tmp_path, monkeypatch):
+    cover = tmp_path / "cover.png"
+    cover.write_bytes(b"png")
+    item = FakeLocatorItem(text="Upload from computer")
+    chooser = FakeFileChooser()
+    page = FakeSelectorPage([item])
+    page.expect_file_chooser = lambda timeout=0: FakeFileChooserContext(chooser)
+    browser = BrowserAutomation(headless=True)
+    browser.page = page
+    monkeypatch.setattr(browser, "_save_context", lambda: None)
+
+    result = browser.upload_file_after_click_by_selector(
+        "button",
+        str(cover),
+        text="Upload from computer",
+    )
+
+    assert item.force_clicked is True
+    assert chooser.files == [str(cover)]
+    assert page.waits == [2500]
+    assert '"uploaded": true' in result
+    assert '"text": "Upload from computer"' in result
 
 
 def test_run_page_script_executes_local_js_with_json_args(tmp_path):

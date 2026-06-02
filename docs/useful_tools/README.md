@@ -72,7 +72,7 @@ See [co copy](../cli/copy.md) for full details.
 - **DiffWriter** - Edit files with visual diffs (legacy)
 
 ### Browser
-- **BrowserAutomation** - Natural language browser automation with persistent sessions
+- **BrowserAutomation** - Natural language browser automation with persistent sessions, screenshots, forms, and file uploads
 
 ### Communication
 - **Gmail** - Send/read Gmail

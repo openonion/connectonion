@@ -294,6 +294,145 @@ class BrowserAutomation:
         self.page.wait_for_timeout(1000)
         return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
 
+    def upload_file_by_selector(
+        self,
+        selector: str,
+        file_path: str,
+        index: int = 0,
+        frame_url_contains: str = "",
+        frame_name: str = "",
+    ) -> str:
+        """Upload a local file into an existing `<input type=file>` selector.
+
+        This is frame-aware because many logged-in apps render editors inside
+        iframes. The selector should point to a file input, often
+        `input[type="file"]`. Hidden file inputs are allowed; Playwright can set
+        files on them directly.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        path = Path(file_path).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        if not path.exists():
+            return f"File not found: {path}"
+        if not path.is_file():
+            return f"Path is not a file: {path}"
+
+        matches = []
+        for frame_index, frame in enumerate(self.page.frames):
+            url = getattr(frame, "url", "") or ""
+            raw_name = getattr(frame, "name", "") or ""
+            name = raw_name() if callable(raw_name) else raw_name
+            if frame_url_contains and frame_url_contains not in url:
+                continue
+            if frame_name and frame_name != name:
+                continue
+
+            locator = frame.locator(selector)
+            count = locator.count()
+            for locator_index in range(count):
+                matches.append((frame_index, name, url, locator.nth(locator_index)))
+
+        if not matches:
+            return f"No file input found for selector: {selector}"
+        if index < 0 or index >= len(matches):
+            return f"Selector matched {len(matches)} file input(s); index {index} is out of range"
+
+        frame_index, name, url, target = matches[index]
+        target.set_input_files(str(path))
+        self.page.wait_for_timeout(1500)
+        self._save_context()
+        return json.dumps(
+            {
+                "ok": True,
+                "uploaded": True,
+                "file": str(path),
+                "selector": selector,
+                "index": index,
+                "frame": {"index": frame_index, "name": name, "url": url},
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    def upload_file_after_click_by_selector(
+        self,
+        click_selector: str,
+        file_path: str,
+        index: int = 0,
+        text: str = "",
+        frame_url_contains: str = "",
+        frame_name: str = "",
+        timeout_ms: int = 5000,
+    ) -> str:
+        """Click a control that opens a file chooser, then upload a local file.
+
+        Use this when the app exposes an upload button such as "Upload from
+        computer" instead of a stable visible file input.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        path = Path(file_path).expanduser()
+        if not path.is_absolute():
+            path = Path.cwd() / path
+        if not path.exists():
+            return f"File not found: {path}"
+        if not path.is_file():
+            return f"Path is not a file: {path}"
+
+        matches = []
+        for frame_index, frame in enumerate(self.page.frames):
+            url = getattr(frame, "url", "") or ""
+            raw_name = getattr(frame, "name", "") or ""
+            name = raw_name() if callable(raw_name) else raw_name
+            if frame_url_contains and frame_url_contains not in url:
+                continue
+            if frame_name and frame_name != name:
+                continue
+
+            locator = frame.locator(click_selector)
+            count = locator.count()
+            for locator_index in range(count):
+                target = locator.nth(locator_index)
+                if text:
+                    try:
+                        candidate_text = target.inner_text().replace("\u00a0", " ").strip()
+                    except Exception:
+                        candidate_text = ""
+                    if candidate_text != text:
+                        continue
+                matches.append((frame_index, name, url, target))
+
+        if not matches:
+            suffix = f" with text: {text}" if text else ""
+            return f"No upload trigger found for selector: {click_selector}{suffix}"
+        if index < 0 or index >= len(matches):
+            return f"Selector matched {len(matches)} upload trigger(s); index {index} is out of range"
+
+        frame_index, name, url, target = matches[index]
+        with self.page.expect_file_chooser(timeout=timeout_ms) as chooser_info:
+            target.click(force=True)
+        chooser = chooser_info.value
+        chooser.set_files(str(path))
+        self.page.wait_for_timeout(2500)
+        self._save_context()
+        return json.dumps(
+            {
+                "ok": True,
+                "uploaded": True,
+                "file": str(path),
+                "click_selector": click_selector,
+                "text": text,
+                "index": index,
+                "frame": {"index": frame_index, "name": name, "url": url},
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+
     def _load_script_args(self, script_path: str, args_json: str) -> tuple[Optional[str], Optional[dict], Optional[str]]:
         path = Path(script_path).expanduser()
         if not path.is_absolute():
