@@ -1,13 +1,14 @@
 """
 LLM-Note: Image result formatter plugin.
 
-Purpose: Convert image tool results from base64 text into multimodal image
-messages for the model, and send the same image to frontend IO when available.
+Purpose: Remove raw base64 image payloads from the tool message, add a
+multimodal image message so the LLM can see the image, and send image results to
+frontend IO when available.
 
 Data flow: after_tools event -> scan successful tool_result trace entries ->
 detect image data URL or raw base64 -> replace the matching tool message with a
-short placeholder -> insert a user message containing text + image_url -> shorten
-the trace result.
+short placeholder -> insert a user message containing image_url -> shorten the
+trace result.
 
 State/Effects: mutates agent.current_session["messages"] and trace entries;
 optionally calls agent.io.send_image(data_url). Non-image tool results are ignored.
