@@ -14,7 +14,7 @@ from dotenv import dotenv_values
 from connectonion import __version__
 
 
-CO_AI_ENTRYPOINT = ".co/deploy/co_ai_entrypoint.py"
+CO_AI_ENTRYPOINT = "agent.py"
 PACKAGE_ROOT = Path(__file__).resolve().parents[2]
 PROJECT_ROOT = PACKAGE_ROOT.parent
 DEPLOY_NAME_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$")
@@ -130,35 +130,57 @@ def discover_deploy_skill_names(project_dir: Path) -> list[str]:
     return names
 
 
-def _write_co_ai_entrypoint(path: Path, *, model: str, max_iterations: int, agent_name: str) -> None:
+def _write_co_ai_entrypoint(
+    path: Path,
+    *,
+    model: str,
+    max_iterations: int,
+    agent_name: str,
+    browser: bool,
+) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     model_literal = json.dumps(model)
     name_literal = json.dumps(agent_name)
-    path.write_text(
+    lines = [
+        "import sys",
+        "from pathlib import Path",
+        "",
+        "PACKAGE_ROOT = Path(__file__).resolve().parent",
+        "sys.path.insert(0, str(PACKAGE_ROOT))",
+        "CO_DIR = PACKAGE_ROOT / \".co\"",
+        "",
+        "from connectonion import host",
+        "from connectonion.cli.co_ai.agent import create_coding_agent",
+        "",
+        "",
+        "def create_agent():",
+        "    return create_coding_agent(",
+        f"        name={name_literal},",
+        f"        model={model_literal},",
+        f"        max_iterations={max_iterations},",
+        "        co_dir=CO_DIR,",
+        "        browser_headless=True,",
+    ]
+    if browser:
+        lines.append("        browser_channel=\"chrome\",")
+    lines.extend([
+        "    )",
+        "",
+        "",
+        "host(create_agent, trust=\"careful\", co_dir=CO_DIR)",
+        "",
+    ])
+    path.write_text("\n".join(lines), encoding="utf-8")
+
+
+def _write_co_ai_host_yaml(staging_dir: Path, *, agent_name: str) -> None:
+    host_yaml = staging_dir / ".co" / "host.yaml"
+    host_yaml.parent.mkdir(parents=True, exist_ok=True)
+    host_yaml.write_text(
         "\n".join([
-            "import sys",
-            "from pathlib import Path",
-            "",
-            "PACKAGE_ROOT = Path(__file__).resolve().parents[2]",
-            "sys.path.insert(0, str(PACKAGE_ROOT))",
-            "CO_DIR = PACKAGE_ROOT / \".co\"",
-            "",
-            "from connectonion import host",
-            "from connectonion.cli.co_ai.agent import create_coding_agent",
-            "",
-            "",
-            "def create_agent():",
-            "    return create_coding_agent(",
-            f"        name={name_literal},",
-            f"        model={model_literal},",
-            f"        max_iterations={max_iterations},",
-            "        co_dir=CO_DIR,",
-            "        browser_headless=True,",
-            "        browser_channel=\"chrome\",",
-            "    )",
-            "",
-            "",
-            "host(create_agent, trust=\"careful\", co_dir=CO_DIR)",
+            f"name: {agent_name}",
+            f"entrypoint: {CO_AI_ENTRYPOINT}",
+            "env: .env",
             "",
         ]),
         encoding="utf-8",
@@ -196,44 +218,35 @@ def _copy_connectonion_project_metadata(staging_dir: Path) -> bool:
 def _write_co_ai_requirements(
     staging_dir: Path,
     *,
-    install_local_package: bool,
     skill_requirements: list[Path] | None = None,
 ) -> None:
-    lines = ["." if install_local_package else f"connectonion=={__version__}"]
+    lines = [f"connectonion=={__version__}"]
     for requirement_path in sorted(skill_requirements or []):
-        lines.append(f"-r {requirement_path.relative_to(staging_dir).as_posix()}")
+        content = requirement_path.read_text(encoding="utf-8").strip()
+        if content:
+            lines.append("")
+            lines.append(f"# {requirement_path.relative_to(staging_dir).as_posix()}")
+            lines.extend(content.splitlines())
     (staging_dir / "requirements.txt").write_text(
         "\n".join(lines) + "\n",
         encoding="utf-8",
     )
 
 
-def _write_co_ai_dockerfile(staging_dir: Path, *, install_local_package: bool) -> None:
+def _write_co_ai_dockerfile(staging_dir: Path) -> None:
     lines = [
         "FROM python:3.11-slim",
         "WORKDIR /app",
         "ENV PYTHONUNBUFFERED=1",
         "ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
-    ]
-    if install_local_package:
-        lines.extend([
-            "COPY pyproject.toml README.md requirements.txt ./",
-            "COPY connectonion ./connectonion",
-            "COPY .co ./.co",
-        ])
-    else:
-        lines.extend([
-            "COPY requirements.txt ./",
-            "COPY connectonion ./connectonion",
-            "COPY .co ./.co",
-        ])
-    lines.extend([
+        "COPY requirements.txt .",
         "RUN pip install --no-cache-dir -r requirements.txt",
         "RUN python -m playwright install --with-deps chrome",
+        "COPY . .",
         "ENV PORT=8000",
         f"CMD [\"python\", \"{CO_AI_ENTRYPOINT}\"]",
         "",
-    ])
+    ]
     (staging_dir / "Dockerfile").write_text("\n".join(lines), encoding="utf-8")
 
 
@@ -245,6 +258,7 @@ def create_co_ai_deploy_package(
     project_name: str,
     model: str,
     max_iterations: int,
+    browser: bool = False,
 ) -> DeployPackage:
     """Build a self-contained co-ai deploy tarball."""
     temp_dir = Path(tempfile.mkdtemp())
@@ -253,13 +267,15 @@ def create_co_ai_deploy_package(
     staging_dir.mkdir()
 
     _copy_connectonion_package(staging_dir)
-    install_local_package = _copy_connectonion_project_metadata(staging_dir)
+    _copy_connectonion_project_metadata(staging_dir)
     _write_co_ai_entrypoint(
         staging_dir / CO_AI_ENTRYPOINT,
         model=model,
         max_iterations=max_iterations,
         agent_name=project_name,
+        browser=browser,
     )
+    _write_co_ai_host_yaml(staging_dir, agent_name=project_name)
 
     deploy_skill_names = []
     seen_skill_names = set()
@@ -285,10 +301,10 @@ def create_co_ai_deploy_package(
 
     _write_co_ai_requirements(
         staging_dir,
-        install_local_package=install_local_package,
         skill_requirements=skill_requirement_files,
     )
-    _write_co_ai_dockerfile(staging_dir, install_local_package=install_local_package)
+    if browser:
+        _write_co_ai_dockerfile(staging_dir)
 
     _make_tarball(staging_dir, tarball_path)
     return DeployPackage(tarball_path=tarball_path, entrypoint=CO_AI_ENTRYPOINT)

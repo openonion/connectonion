@@ -7,11 +7,20 @@ Last updated: 2026-06-02
 - Repository: `openonion/connectonion`
 - Active branch: `codex/deploy-co-ai-skills`
 - Active PR: `#145` (`[codex] Add hosted co-ai deploy skills`)
-- Current focus: removing the generic `skip_tool_approval` approval bypass while preserving explicit ULW mode behavior.
+- Current focus: lightweight co-ai deploy browser flag implementation and production verification are complete.
 
 ## Working Tree Notes
 
 - `AGENTS.md` and `test-deploy/` were present before this status baseline.
+- New deploy target: co-ai deploy should generate a normal deploy project inside the temporary tarball (`agent.py`, `.co/host.yaml`, selected `.co/skills/*`, and `requirements.txt`) instead of requiring the user to create those files.
+- New browser boundary: `co deploy --skills foo` should not install Chrome, while `co deploy --skills linkedin-post --browser` should generate a Dockerfile that installs Google Chrome and make the generated agent use `browser_channel="chrome"`.
+- Implementation result: generated co-ai deploy packages now use root `agent.py` plus `.co/host.yaml`, and upload `entrypoint=agent.py`.
+- Default non-browser co-ai packages no longer include a Dockerfile or Chrome install; selected skill `requirements.txt` contents are inlined into root `requirements.txt` so the existing `oo-api` generic Dockerfile can install them before `COPY . .`.
+- Browser co-ai packages include a Dockerfile that installs Google Chrome during build and generated `agent.py` passes `browser_channel="chrome"`.
+- `--browser` is wired through CLI/package creation and rejected for explicit `--template project`.
+- Real production deploy passed: `co deploy --name agent-4-linkedin --skills deploy-smoke --browser` created active deployment `15c33c6a`.
+- Server verification passed for `agent-4-linkedin-0x92f834c6-15c33c6a`: container is running, `/usr/bin/google-chrome` exists, Chrome reports `Google Chrome 148.0.7778.215`, `xvfb-run` exists, and Playwright launched `channel="chrome"` successfully.
+- Cleanup result: deploy API and server state now show only `agent-4-linkedin-0x92f834c6-15c33c6a` for the `co-ai` / `agent-4-linkedin` cleanup scope; old `co-ai` and old `agent-4-linkedin` containers/images/deploy dirs were removed.
 - Refactor complete: co-ai deploy package construction, selected/all skill resolution, generated entrypoint/Dockerfile creation, and deploy env loading now live in `connectonion/cli/commands/deploy_co_ai.py`.
 - Compatibility note: `deploy_commands.py` still imports/re-exports the deploy helper names used by existing tests and callers.
 - Current approval correction: generated hosted co-ai entrypoints and local `co ai` web startup no longer pass `auto_approve=True` by default.
@@ -112,6 +121,14 @@ Last updated: 2026-06-02
 ## Verification
 
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_tool_approval.py tests/unit/test_ulw.py tests/unit/test_co_ai_agent_main.py tests/unit/test_deploy_commands.py -q`
+- `python3 -m pytest tests/unit/test_deploy_commands.py -q`
+- `python3 -m pytest tests/e2e/cli/test_cli_deploy.py -q`
+- `python3 -m pytest tests/unit/test_co_ai_agent_main.py tests/unit/test_browser_automation.py -q`
+- `python3 -m py_compile connectonion/cli/commands/deploy_co_ai.py connectonion/cli/commands/deploy_commands.py connectonion/cli/main.py`
+- `git diff --check`
+- Real deploy: `PYTHONPATH=/Users/yfshuu/coding/openonion/connectonion /opt/homebrew/bin/python3 -m connectonion.cli.main deploy --name agent-4-linkedin --skills deploy-smoke --browser`
+- Server verification: `docker exec agent-4-linkedin-0x92f834c6-15c33c6a google-chrome --version`
+- Server verification: Playwright launched `chromium.launch(channel="chrome", headless=True, args=["--no-sandbox"])` and printed `PLAYWRIGHT_CHROME_OK 148.0.7778.215`.
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_plugins/tool_approval/approval.py connectonion/useful_plugins/tool_approval/__init__.py connectonion/useful_plugins/tool_approval/constants.py connectonion/useful_plugins/ulw.py connectonion/cli/co_ai/agent.py`
 - `git diff --check`
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_co_ai_agent_main.py tests/unit/test_deploy_commands.py tests/unit/test_tool_approval.py::TestToolClassification tests/unit/test_tool_approval.py::TestDangerousTools tests/unit/test_ulw.py -q`

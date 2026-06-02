@@ -69,6 +69,7 @@ def create_deploy_package(
     template: str,
     skills: list[str],
     all_skills: bool = False,
+    browser: bool = False,
     project_name: str,
     entrypoint: str,
     model: str,
@@ -89,6 +90,7 @@ def create_deploy_package(
             project_name=project_name,
             model=model,
             max_iterations=max_iterations,
+            browser=browser,
         )
 
     raise DeployConfigError("Unsupported deploy template. Use 'project' or 'co-ai'.")
@@ -144,6 +146,7 @@ def handle_deploy(
     template: str = "auto",
     skills: list[str] | None = None,
     all_skills: bool = False,
+    browser: bool = False,
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
 ):
@@ -169,6 +172,9 @@ def handle_deploy(
         return
     if deploy_template == "project" and all_skills:
         console.print("[red]--all-skills requires --template co-ai[/red]")
+        return
+    if deploy_template == "project" and browser:
+        console.print("[red]--browser requires --template co-ai[/red]")
         return
 
     host_yaml_path = Path(".co") / "host.yaml"
@@ -236,6 +242,7 @@ def handle_deploy(
             template=deploy_template,
             skills=skill_names,
             all_skills=all_skills,
+            browser=browser,
             project_name=project_name,
             entrypoint=entrypoint,
             model=model,

@@ -121,24 +121,25 @@ def test_create_co_ai_deploy_package_is_self_contained_without_project_scaffold(
 
     after = sorted(str(p.relative_to(project)) for p in project.rglob("*"))
     assert after == before
-    assert package.entrypoint == ".co/deploy/co_ai_entrypoint.py"
+    assert package.entrypoint == "agent.py"
 
     with tarfile.open(package.tarball_path, "r:gz") as tar:
         names = set(tar.getnames())
-        assert ".co/deploy/co_ai_entrypoint.py" in names
+        assert "agent.py" in names
+        assert ".co/host.yaml" in names
         assert ".co/skills/alpha/SKILL.md" in names
         assert ".co/skills/alpha/helper.txt" in names
         assert "connectonion/cli/co_ai/agent.py" in names
         assert "pyproject.toml" in names
         assert "README.md" in names
         assert "requirements.txt" in names
-        assert "Dockerfile" in names
-        entrypoint = tar.extractfile(".co/deploy/co_ai_entrypoint.py").read().decode("utf-8")
+        assert "Dockerfile" not in names
+        entrypoint = tar.extractfile("agent.py").read().decode("utf-8")
+        host_yaml = tar.extractfile(".co/host.yaml").read().decode("utf-8")
         requirements = tar.extractfile("requirements.txt").read().decode("utf-8")
-        dockerfile = tar.extractfile("Dockerfile").read().decode("utf-8")
 
     assert "create_coding_agent" in entrypoint
-    assert "PACKAGE_ROOT = Path(__file__).resolve().parents[2]" in entrypoint
+    assert "PACKAGE_ROOT = Path(__file__).resolve().parent" in entrypoint
     assert "sys.path.insert(0, str(PACKAGE_ROOT))" in entrypoint
     assert "CO_DIR = PACKAGE_ROOT / \".co\"" in entrypoint
     assert entrypoint.index("sys.path.insert") < entrypoint.index("from connectonion import host")
@@ -147,18 +148,46 @@ def test_create_co_ai_deploy_package_is_self_contained_without_project_scaffold(
     assert "name=\"demo\"" in entrypoint
     assert "auto_approve=True" not in entrypoint
     assert "browser_headless=True" in entrypoint
-    assert "browser_channel=\"chrome\"" in entrypoint
+    assert "browser_channel=\"chrome\"" not in entrypoint
     assert "co_dir=CO_DIR" in entrypoint
     assert "host(create_agent, trust=\"careful\", co_dir=CO_DIR)" in entrypoint
-    assert requirements == ".\n"
+    assert "name: demo" in host_yaml
+    assert "entrypoint: agent.py" in host_yaml
+    assert requirements.startswith("connectonion==")
+    assert "-r .co/skills" not in requirements
+
+
+def test_create_co_ai_deploy_package_with_browser_generates_chrome_dockerfile(tmp_path):
+    project = tmp_path / "project"
+    project.mkdir()
+    _write_skill(project, "linkedin")
+
+    package = deploy_commands.create_deploy_package(
+        project_dir=project,
+        template="co-ai",
+        skills=["linkedin"],
+        all_skills=False,
+        project_name="agent-4-linkedin",
+        entrypoint="agent.py",
+        model="co/test-model",
+        max_iterations=33,
+        browser=True,
+    )
+
+    with tarfile.open(package.tarball_path, "r:gz") as tar:
+        names = set(tar.getnames())
+        assert "Dockerfile" in names
+        entrypoint = tar.extractfile("agent.py").read().decode("utf-8")
+        dockerfile = tar.extractfile("Dockerfile").read().decode("utf-8")
+
+    assert package.entrypoint == "agent.py"
+    assert "browser_channel=\"chrome\"" in entrypoint
     assert "FROM python:3.11-slim" in dockerfile
-    assert "COPY pyproject.toml README.md requirements.txt ./" in dockerfile
-    assert "COPY connectonion ./connectonion" in dockerfile
-    assert "COPY .co ./.co" in dockerfile
-    assert "COPY . ." not in dockerfile
+    assert "COPY requirements.txt ." in dockerfile
+    assert "COPY . ." in dockerfile
     assert "RUN pip install --no-cache-dir -r requirements.txt" in dockerfile
     assert "python -m playwright install --with-deps chrome" in dockerfile
-    assert "CMD [\"python\", \".co/deploy/co_ai_entrypoint.py\"]" in dockerfile
+    assert "CMD [\"python\", \"agent.py\"]" in dockerfile
 
 
 def test_create_co_ai_deploy_package_installs_skill_requirements(tmp_path):
@@ -183,7 +212,10 @@ def test_create_co_ai_deploy_package_installs_skill_requirements(tmp_path):
         skill_requirements = tar.extractfile(".co/skills/image-gen/requirements.txt").read().decode("utf-8")
 
     assert ".co/skills/image-gen/requirements.txt" in names
-    assert requirements == ".\n-r .co/skills/image-gen/requirements.txt\n"
+    assert requirements.startswith("connectonion==")
+    assert "google-genai>=1.0" in requirements
+    assert "Pillow>=10" in requirements
+    assert "-r .co/skills/image-gen/requirements.txt" not in requirements
     assert "google-genai>=1.0" in skill_requirements
 
 

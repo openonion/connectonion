@@ -79,7 +79,7 @@ class TestCliDeploy:
                 captured.update(kwargs)
                 return SimpleNamespace(
                     tarball_path=Path("package.tar.gz"),
-                    entrypoint=".co/deploy/co_ai_entrypoint.py",
+                    entrypoint="agent.py",
                 )
 
             mock_post.return_value = MagicMock(
@@ -100,6 +100,7 @@ class TestCliDeploy:
                             "--name", "agent-4-linkedin",
                             "--skill", "alpha,beta",
                             "--skills", "gamma",
+                            "--browser",
                             "--model", "co/test-model",
                             "--max-iterations", "44",
                         ],
@@ -111,9 +112,10 @@ class TestCliDeploy:
             assert captured["project_name"] == "agent-4-linkedin"
             assert captured["model"] == "co/test-model"
             assert captured["max_iterations"] == 44
+            assert captured["browser"] is True
             upload_data = mock_post.call_args.kwargs["data"]
             assert upload_data["project_name"] == "agent-4-linkedin"
-            assert upload_data["entrypoint"] == ".co/deploy/co_ai_entrypoint.py"
+            assert upload_data["entrypoint"] == "agent.py"
             assert json.loads(upload_data["secrets"])["OPENONION_API_KEY"] == "test-token"
 
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
@@ -131,7 +133,7 @@ class TestCliDeploy:
                 captured.update(kwargs)
                 return SimpleNamespace(
                     tarball_path=Path("package.tar.gz"),
-                    entrypoint=".co/deploy/co_ai_entrypoint.py",
+                    entrypoint="agent.py",
                 )
 
             mock_post.return_value = MagicMock(
@@ -152,6 +154,24 @@ class TestCliDeploy:
             assert captured["skills"] == []
             assert captured["all_skills"] is True
             assert captured["project_name"] == "agent-full"
+            assert captured["browser"] is False
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_deploy_rejects_browser_without_co_ai_template(self, mock_post):
+        """Test --browser is scoped to generated co-ai deploys."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            os.makedirs(".git")
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
+            Path("agent.py").write_text('from connectonion import host\nhost(None)\n')
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                result = self.runner.invoke(cli, ['deploy', '--template', 'project', '--browser'])
+
+            assert "--browser requires --template co-ai" in result.output
+            mock_post.assert_not_called()
 
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
     def test_deploy_rejects_skills_without_co_ai_template(self, mock_post):

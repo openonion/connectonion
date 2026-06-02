@@ -1,5 +1,15 @@
 # Implementation Plan
 
+## Lightweight co-ai Deploy Browser Flag
+
+1. [x] Record the current deploy task and target behavior in project control docs.
+2. [x] Add failing package-builder tests for generated `agent.py`, `.co/host.yaml`, and default no-Chrome behavior.
+3. [x] Add failing CLI coverage for `--browser` plumbing.
+4. [x] Implement generated project-scaffold packaging and browser-only Chrome Dockerfile behavior.
+5. [x] Run focused deploy tests, syntax checks, and diff hygiene checks.
+6. [x] Real deploy a browser co-ai agent, verify Chrome on the server, and remove old co-ai/linkedin containers/images.
+7. [x] Update `TASKS.md`, `STATUS.md`, and this plan with the result.
+
 ## Remove Generic Tool Approval Skip Flag
 
 1. [x] Remove the generic `session["skip_tool_approval"]` bypass branch from `check_approval()`.

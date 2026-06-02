@@ -1,5 +1,41 @@
 # Tasks
 
+## Current Task: Lightweight co-ai Deploy Browser Flag
+
+Status: complete
+
+Context:
+
+- co-ai deploy should still upload a normal deploy package for the existing `oo-api` backend.
+- Users should not need to create `.co/host.yaml`, `agent.py`, or a handwritten `host(...)` entrypoint for co-ai deploy.
+- The CLI should generate those project-scaffold files only inside the temporary tarball, not in the user's working tree.
+- Browser deployments need Google Chrome in the container, but non-browser skill deploys should stay lightweight.
+
+Scope:
+
+- Generate a normal-looking co-ai deploy package with `agent.py`, `.co/host.yaml`, selected `.co/skills/*`, and `requirements.txt`.
+- Add/keep `--browser` CLI plumbing so only browser deploys generate a Dockerfile that installs Google Chrome and select `browser_channel="chrome"`.
+- Keep default `co deploy --skills foo` lightweight for non-browser skills such as image generation.
+- Verify with focused tests and a real deploy, then confirm the server container has Chrome only for the browser deployment path.
+- After successful verification, remove old remote `co-ai` / `agent-4-linkedin` containers/images so only the latest verified image remains.
+
+Expected result:
+
+- `co deploy --skills foo` creates a lightweight generated co-ai project package without Chrome installation.
+- `co deploy --skills linkedin-post --browser` creates a generated co-ai project package with a Chrome-installing Dockerfile.
+- The generated files live only in the tarball and do not modify the user's project directory.
+- The deployed browser agent runs on the server with Google Chrome available.
+
+Result:
+
+- co-ai deploy packages now generate a normal deploy scaffold inside the tarball: `agent.py`, `.co/host.yaml`, selected `.co/skills/*`, and `requirements.txt`.
+- Default `co deploy --skills foo` packages no Dockerfile and no Chrome install; skill requirements are inlined into root `requirements.txt` so the existing `oo-api` generic Dockerfile can install them.
+- `co deploy --skills foo --browser` adds a generated Dockerfile that installs Google Chrome with Playwright and makes the generated agent use `browser_channel="chrome"`.
+- `--browser` is rejected for explicit `--template project`.
+- Production browser deploy succeeded for `agent-4-linkedin` after the directly related `oo-api` Docker build timeout fix.
+- Server verification confirmed the latest container has `/usr/bin/google-chrome`, `Google Chrome 148.0.7778.215`, `xvfb-run`, and Playwright can launch channel `chrome`.
+- Old `co-ai` and old `agent-4-linkedin` versions were removed; only `agent-4-linkedin-0x92f834c6-15c33c6a` remains on the server for those patterns.
+
 ## Current Task: Remove Generic Tool Approval Skip Flag
 
 Status: complete
