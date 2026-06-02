@@ -1,5 +1,14 @@
 # Implementation Plan
 
+## co ai Web Server Reuses One Agent Instance
+
+1. [x] Record the new co ai agent-reuse task in control docs.
+2. [x] Add a failing test proving `start_server()` passes one concrete agent instance to `host()`, not a per-request factory.
+3. [x] Update `start_server()` to create the agent once and pass the instance to `host()`.
+4. [x] Run focused co ai tests, syntax checks, and diff hygiene checks.
+5. [x] Update `STATUS.md`, `TASKS.md`, and this plan with the result.
+6. [x] Commit, push, and restart local co ai for manual testing.
+
 ## PR #143 Auto-Display Screenshot Tool Results
 
 1. [x] Record the new screenshot frontend-display task in control docs.

@@ -1,5 +1,34 @@
 # Tasks
 
+## Current Task: co ai Web Server Reuses One Agent Instance
+
+Status: complete
+
+Context:
+
+- User clarified that co ai hosted mode should not create a fresh agent for each continued conversation input.
+- Runtime logs showed the practical failure mode: after one turn opens the persistent Chrome profile, a later turn can create a fresh `BrowserAutomation` instance and fail to launch with `Opening in existing browser session` / `Target page, context or browser has been closed`.
+- The desired co ai behavior is one long-lived agent instance for the web server, so browser tool state can survive continued inputs and `open_browser()` can close/reopen the browser it owns.
+
+Scope:
+
+- Update `co_ai.main.start_server()` so it creates one co ai agent instance and passes that instance to `host()`.
+- Update tests so `start_server()` no longer expects a request factory.
+- Keep this scoped to co ai startup; do not change the generic host session architecture in this iteration.
+
+Expected result:
+
+- A local `co ai` server reuses the same `Agent` and `BrowserAutomation` object across continued inputs.
+- The generic `host()` API remains unchanged.
+- Focused co ai tests and syntax checks pass.
+
+Result:
+
+- `co_ai.main.start_server()` now creates one co ai `Agent` at server startup and passes that concrete instance to `host()`.
+- The existing generic `host()` API remains unchanged; this is scoped to co ai startup.
+- The startup unit test now proves `host()` receives the created agent instance rather than a request factory.
+- Focused co ai/browser/login tests, syntax checks, and diff hygiene checks pass.
+
 ## Current Task: PR #143 Auto-Display Screenshot Tool Results
 
 Status: complete

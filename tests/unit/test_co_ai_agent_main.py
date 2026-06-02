@@ -52,17 +52,18 @@ def test_co_ai_plugins_do_not_export_login_cleanup():
     assert "login_cleanup" not in plugins_mod.__all__
 
 
-def test_start_server_calls_host(monkeypatch):
+def test_start_server_reuses_one_agent_instance(monkeypatch):
     created = []
 
     def fake_create(*args, **kwargs):
-        created.append((args, kwargs))
-        return SimpleNamespace(name="agent")
+        agent = SimpleNamespace(name="agent")
+        created.append((args, kwargs, agent))
+        return agent
 
     called = {}
 
-    def fake_host(factory, port, trust, co_dir=None, relay_url=None):
-        called.update({"factory": factory, "port": port, "trust": trust, "relay_url": relay_url})
+    def fake_host(agent, port, trust, co_dir=None, relay_url=None):
+        called.update({"agent": agent, "port": port, "trust": trust, "relay_url": relay_url})
 
     monkeypatch.setattr(main_mod, "host", fake_host)
     monkeypatch.setattr(agent_mod, "create_coding_agent", fake_create)
@@ -72,7 +73,6 @@ def test_start_server_calls_host(monkeypatch):
     assert called["port"] == 1234
     assert called["trust"] == "careful"
     assert called["relay_url"] is None
-    assert callable(called["factory"])
-    # factory should create agent with given params
-    called["factory"]()
     assert created and created[0][1]["model"] == "m1"
+    assert created[0][1]["max_iterations"] == 7
+    assert called["agent"] is created[0][2]
