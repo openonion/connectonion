@@ -9,6 +9,7 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 
+import requests
 from dotenv import dotenv_values
 
 from connectonion import __version__
@@ -39,6 +40,23 @@ class DeployConfigError(Exception):
 class DeployPackage:
     tarball_path: Path
     entrypoint: str
+
+
+def resolve_connectonion_pypi_version() -> str:
+    """Resolve the latest published ConnectOnion version from PyPI."""
+    try:
+        response = requests.get("https://pypi.org/pypi/connectonion/json", timeout=10)
+        response.raise_for_status()
+        data = response.json()
+    except requests.RequestException as exc:
+        raise DeployConfigError(
+            f"Could not resolve latest connectonion version from PyPI for --runtime pypi: {exc}"
+        ) from exc
+
+    version = str(data.get("info", {}).get("version") or "").strip()
+    if not version:
+        raise DeployConfigError("Could not resolve latest connectonion version from PyPI for --runtime pypi.")
+    return version
 
 
 def parse_skill_names(raw_skills: list[str] | None) -> list[str]:
@@ -136,7 +154,6 @@ def _write_co_ai_entrypoint(
     model: str,
     max_iterations: int,
     agent_name: str,
-    browser: bool,
 ) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     model_literal = json.dumps(model)
@@ -160,9 +177,8 @@ def _write_co_ai_entrypoint(
         f"        max_iterations={max_iterations},",
         "        co_dir=CO_DIR,",
         "        browser_headless=True,",
+        "        browser_channel=\"chrome\",",
     ]
-    if browser:
-        lines.append("        browser_channel=\"chrome\",")
     lines.extend([
         "    )",
         "",
@@ -250,33 +266,7 @@ def _write_co_ai_dockerfile(staging_dir: Path) -> None:
     (staging_dir / "Dockerfile").write_text("\n".join(lines), encoding="utf-8")
 
 
-def create_co_ai_deploy_package(
-    *,
-    project_dir: Path,
-    skills: list[str],
-    all_skills: bool,
-    project_name: str,
-    model: str,
-    max_iterations: int,
-    browser: bool = False,
-) -> DeployPackage:
-    """Build a self-contained co-ai deploy tarball."""
-    temp_dir = Path(tempfile.mkdtemp())
-    tarball_path = temp_dir / "agent.tar.gz"
-    staging_dir = temp_dir / "staging"
-    staging_dir.mkdir()
-
-    _copy_connectonion_package(staging_dir)
-    _copy_connectonion_project_metadata(staging_dir)
-    _write_co_ai_entrypoint(
-        staging_dir / CO_AI_ENTRYPOINT,
-        model=model,
-        max_iterations=max_iterations,
-        agent_name=project_name,
-        browser=browser,
-    )
-    _write_co_ai_host_yaml(staging_dir, agent_name=project_name)
-
+def _select_deploy_skill_names(project_dir: Path, *, skills: list[str], all_skills: bool) -> list[str]:
     deploy_skill_names = []
     seen_skill_names = set()
     for skill_name in discover_deploy_skill_names(project_dir) if all_skills else []:
@@ -286,9 +276,12 @@ def create_co_ai_deploy_package(
         if skill_name not in seen_skill_names:
             deploy_skill_names.append(skill_name)
             seen_skill_names.add(skill_name)
+    return deploy_skill_names
 
+
+def _copy_deploy_skills(staging_dir: Path, project_dir: Path, skill_names: list[str]) -> list[Path]:
     skill_requirement_files = []
-    for skill_name in deploy_skill_names:
+    for skill_name in skill_names:
         source = resolve_deploy_skill(skill_name, project_dir)
         destination = staging_dir / ".co" / "skills" / skill_name
         if destination.exists():
@@ -298,13 +291,93 @@ def create_co_ai_deploy_package(
         requirements_file = destination / "requirements.txt"
         if requirements_file.exists():
             skill_requirement_files.append(requirements_file)
+    return skill_requirement_files
+
+
+def _write_pypi_runtime_manifest(
+    staging_dir: Path,
+    *,
+    runtime_version: str,
+    agent_name: str,
+    model: str,
+    max_iterations: int,
+    skills: list[str],
+) -> None:
+    manifest = {
+        "runtime": "pypi",
+        "runtime_package": "connectonion",
+        "runtime_version": runtime_version,
+        "agent_name": agent_name,
+        "entrypoint": CO_AI_ENTRYPOINT,
+        "model": model,
+        "max_iterations": max_iterations,
+        "browser": True,
+        "skills": skills,
+    }
+    (staging_dir / "manifest.json").write_text(
+        json.dumps(manifest, indent=2, sort_keys=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+def create_co_ai_deploy_package(
+    *,
+    project_dir: Path,
+    skills: list[str],
+    all_skills: bool,
+    project_name: str,
+    model: str,
+    max_iterations: int,
+    runtime: str = "local",
+    runtime_version: str | None = None,
+) -> DeployPackage:
+    """Build a co-ai deploy tarball."""
+    if runtime not in ("local", "pypi"):
+        raise DeployConfigError("Unsupported co-ai runtime. Use 'local' or 'pypi'.")
+
+    temp_dir = Path(tempfile.mkdtemp())
+    tarball_path = temp_dir / "agent.tar.gz"
+    staging_dir = temp_dir / "staging"
+    staging_dir.mkdir()
+
+    deploy_skill_names = _select_deploy_skill_names(
+        project_dir,
+        skills=skills,
+        all_skills=all_skills,
+    )
+
+    if runtime == "pypi":
+        if not runtime_version:
+            raise DeployConfigError("Missing PyPI runtime version for --runtime pypi.")
+        _write_pypi_runtime_manifest(
+            staging_dir,
+            runtime_version=runtime_version,
+            agent_name=project_name,
+            model=model,
+            max_iterations=max_iterations,
+            skills=deploy_skill_names,
+        )
+        _copy_deploy_skills(staging_dir, project_dir, deploy_skill_names)
+        _make_tarball(staging_dir, tarball_path)
+        return DeployPackage(tarball_path=tarball_path, entrypoint=CO_AI_ENTRYPOINT)
+
+    _copy_connectonion_package(staging_dir)
+    _copy_connectonion_project_metadata(staging_dir)
+    _write_co_ai_entrypoint(
+        staging_dir / CO_AI_ENTRYPOINT,
+        model=model,
+        max_iterations=max_iterations,
+        agent_name=project_name,
+    )
+    _write_co_ai_host_yaml(staging_dir, agent_name=project_name)
+
+    skill_requirement_files = _copy_deploy_skills(staging_dir, project_dir, deploy_skill_names)
 
     _write_co_ai_requirements(
         staging_dir,
         skill_requirements=skill_requirement_files,
     )
-    if browser:
-        _write_co_ai_dockerfile(staging_dir)
+    _write_co_ai_dockerfile(staging_dir)
 
     _make_tarball(staging_dir, tarball_path)
     return DeployPackage(tarball_path=tarball_path, entrypoint=CO_AI_ENTRYPOINT)

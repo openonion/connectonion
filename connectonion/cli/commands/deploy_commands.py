@@ -29,6 +29,7 @@ from .deploy_co_ai import (
     discover_deploy_skill_names,
     load_deploy_env_vars,
     parse_skill_names,
+    resolve_connectonion_pypi_version,
     resolve_deploy_skill,
     validate_deploy_name,
 )
@@ -48,6 +49,7 @@ __all__ = [
     "handle_deploy",
     "load_deploy_env_vars",
     "parse_skill_names",
+    "resolve_connectonion_pypi_version",
     "resolve_deploy_skill",
     "resolve_deploy_template",
     "validate_deploy_name",
@@ -69,20 +71,26 @@ def create_deploy_package(
     template: str,
     skills: list[str],
     all_skills: bool = False,
-    browser: bool = False,
+    runtime: str = "local",
     project_name: str,
     entrypoint: str,
     model: str,
     max_iterations: int,
 ) -> DeployPackage:
     """Build the tarball sent to the deploy API."""
+    if runtime not in ("local", "pypi"):
+        raise DeployConfigError("Unsupported co-ai runtime. Use 'local' or 'pypi'.")
+
     if template == "project":
+        if runtime != "local":
+            raise DeployConfigError("--runtime pypi requires --template co-ai")
         temp_dir = Path(tempfile.mkdtemp())
         tarball_path = temp_dir / "agent.tar.gz"
         _archive_git_head(project_dir, tarball_path, gzip=True)
         return DeployPackage(tarball_path=tarball_path, entrypoint=entrypoint)
 
     if template == "co-ai":
+        runtime_version = resolve_connectonion_pypi_version() if runtime == "pypi" else None
         return create_co_ai_deploy_package(
             project_dir=project_dir,
             skills=skills,
@@ -90,7 +98,8 @@ def create_deploy_package(
             project_name=project_name,
             model=model,
             max_iterations=max_iterations,
-            browser=browser,
+            runtime=runtime,
+            runtime_version=runtime_version,
         )
 
     raise DeployConfigError("Unsupported deploy template. Use 'project' or 'co-ai'.")
@@ -102,9 +111,12 @@ def resolve_deploy_template(
     project_dir: Path,
     *,
     all_skills: bool = False,
+    runtime: str = "local",
 ) -> str:
     """Resolve the user-facing deploy mode."""
     if template == "auto":
+        if runtime == "pypi":
+            return "co-ai"
         if skill_names or all_skills:
             return "co-ai"
         if (project_dir / ".git").exists() or (project_dir / ".co" / "host.yaml").exists():
@@ -144,9 +156,9 @@ def _check_host_export(entrypoint: str) -> bool:
 def handle_deploy(
     name: str | None = None,
     template: str = "auto",
+    runtime: str = "local",
     skills: list[str] | None = None,
     all_skills: bool = False,
-    browser: bool = False,
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
 ):
@@ -156,12 +168,17 @@ def handle_deploy(
     project_dir = Path.cwd()
     skill_names = parse_skill_names(skills)
 
+    if runtime not in ("local", "pypi"):
+        console.print("[red]Unsupported co-ai runtime. Use 'local' or 'pypi'.[/red]")
+        return
+
     try:
         deploy_template = resolve_deploy_template(
             template,
             skill_names,
             project_dir,
             all_skills=all_skills,
+            runtime=runtime,
         )
     except DeployConfigError as e:
         console.print(f"[red]{e}[/red]")
@@ -173,8 +190,8 @@ def handle_deploy(
     if deploy_template == "project" and all_skills:
         console.print("[red]--all-skills requires --template co-ai[/red]")
         return
-    if deploy_template == "project" and browser:
-        console.print("[red]--browser requires --template co-ai[/red]")
+    if deploy_template == "project" and runtime != "local":
+        console.print("[red]--runtime pypi requires --template co-ai[/red]")
         return
 
     host_yaml_path = Path(".co") / "host.yaml"
@@ -240,9 +257,9 @@ def handle_deploy(
         package = create_deploy_package(
             project_dir=project_dir,
             template=deploy_template,
+            runtime=runtime,
             skills=skill_names,
             all_skills=all_skills,
-            browser=browser,
             project_name=project_name,
             entrypoint=entrypoint,
             model=model,
@@ -280,6 +297,7 @@ def handle_deploy(
                 "env_vars": serialized_env_vars,
                 "secrets": serialized_env_vars,
                 "entrypoint": upload_entrypoint,
+                "runtime": runtime,
             },
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=600,  # 10 minutes for docker build

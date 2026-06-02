@@ -1,5 +1,6 @@
 """Tests for deploy command packaging helpers."""
 
+import json
 import os
 import subprocess
 import tarfile
@@ -101,7 +102,7 @@ def test_create_co_ai_deploy_package_with_all_skills_copies_project_and_user_ski
     assert "user" not in shared
 
 
-def test_create_co_ai_deploy_package_is_self_contained_without_project_scaffold(tmp_path, monkeypatch):
+def test_create_co_ai_deploy_package_is_self_contained_and_chrome_enabled_by_default(tmp_path, monkeypatch):
     project = tmp_path / "project"
     project.mkdir()
     _write_skill(project, "alpha")
@@ -133,10 +134,11 @@ def test_create_co_ai_deploy_package_is_self_contained_without_project_scaffold(
         assert "pyproject.toml" in names
         assert "README.md" in names
         assert "requirements.txt" in names
-        assert "Dockerfile" not in names
+        assert "Dockerfile" in names
         entrypoint = tar.extractfile("agent.py").read().decode("utf-8")
         host_yaml = tar.extractfile(".co/host.yaml").read().decode("utf-8")
         requirements = tar.extractfile("requirements.txt").read().decode("utf-8")
+        dockerfile = tar.extractfile("Dockerfile").read().decode("utf-8")
 
     assert "create_coding_agent" in entrypoint
     assert "PACKAGE_ROOT = Path(__file__).resolve().parent" in entrypoint
@@ -148,16 +150,18 @@ def test_create_co_ai_deploy_package_is_self_contained_without_project_scaffold(
     assert "name=\"demo\"" in entrypoint
     assert "auto_approve=True" not in entrypoint
     assert "browser_headless=True" in entrypoint
-    assert "browser_channel=\"chrome\"" not in entrypoint
+    assert "browser_channel=\"chrome\"" in entrypoint
     assert "co_dir=CO_DIR" in entrypoint
     assert "host(create_agent, trust=\"careful\", co_dir=CO_DIR)" in entrypoint
     assert "name: demo" in host_yaml
     assert "entrypoint: agent.py" in host_yaml
     assert requirements.startswith("connectonion==")
     assert "-r .co/skills" not in requirements
+    assert "RUN python -m playwright install --with-deps chrome" in dockerfile
+    assert "CMD [\"python\", \"agent.py\"]" in dockerfile
 
 
-def test_create_co_ai_deploy_package_with_browser_generates_chrome_dockerfile(tmp_path):
+def test_create_co_ai_deploy_package_local_runtime_generates_chrome_dockerfile(tmp_path):
     project = tmp_path / "project"
     project.mkdir()
     _write_skill(project, "linkedin")
@@ -171,7 +175,6 @@ def test_create_co_ai_deploy_package_with_browser_generates_chrome_dockerfile(tm
         entrypoint="agent.py",
         model="co/test-model",
         max_iterations=33,
-        browser=True,
     )
 
     with tarfile.open(package.tarball_path, "r:gz") as tar:
@@ -188,6 +191,56 @@ def test_create_co_ai_deploy_package_with_browser_generates_chrome_dockerfile(tm
     assert "RUN pip install --no-cache-dir -r requirements.txt" in dockerfile
     assert "python -m playwright install --with-deps chrome" in dockerfile
     assert "CMD [\"python\", \"agent.py\"]" in dockerfile
+
+
+def test_create_co_ai_pypi_runtime_package_uploads_manifest_and_selected_skills_only(tmp_path, monkeypatch):
+    project = tmp_path / "project"
+    project.mkdir()
+    _write_skill(project, "image-gen", requirements="google-genai>=1.0\nPillow>=10\n")
+    monkeypatch.setattr(
+        deploy_commands,
+        "resolve_connectonion_pypi_version",
+        lambda: "0.9.9",
+        raising=False,
+    )
+
+    package = deploy_commands.create_deploy_package(
+        project_dir=project,
+        template="co-ai",
+        runtime="pypi",
+        skills=["image-gen"],
+        all_skills=False,
+        project_name="agent-image",
+        entrypoint="agent.py",
+        model="co/test-model",
+        max_iterations=33,
+    )
+
+    assert package.entrypoint == "agent.py"
+    with tarfile.open(package.tarball_path, "r:gz") as tar:
+        names = set(tar.getnames())
+        manifest = json.loads(tar.extractfile("manifest.json").read().decode("utf-8"))
+        skill_requirements = tar.extractfile(".co/skills/image-gen/requirements.txt").read().decode("utf-8")
+
+    assert manifest == {
+        "runtime": "pypi",
+        "runtime_package": "connectonion",
+        "runtime_version": "0.9.9",
+        "agent_name": "agent-image",
+        "entrypoint": "agent.py",
+        "model": "co/test-model",
+        "max_iterations": 33,
+        "browser": True,
+        "skills": ["image-gen"],
+    }
+    assert ".co/skills/image-gen/SKILL.md" in names
+    assert ".co/skills/image-gen/helper.txt" in names
+    assert "google-genai>=1.0" in skill_requirements
+    assert "agent.py" not in names
+    assert ".co/host.yaml" not in names
+    assert "Dockerfile" not in names
+    assert "requirements.txt" not in names
+    assert "connectonion/cli/co_ai/agent.py" not in names
 
 
 def test_create_co_ai_deploy_package_installs_skill_requirements(tmp_path):

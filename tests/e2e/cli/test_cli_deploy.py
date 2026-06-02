@@ -100,7 +100,6 @@ class TestCliDeploy:
                             "--name", "agent-4-linkedin",
                             "--skill", "alpha,beta",
                             "--skills", "gamma",
-                            "--browser",
                             "--model", "co/test-model",
                             "--max-iterations", "44",
                         ],
@@ -112,10 +111,11 @@ class TestCliDeploy:
             assert captured["project_name"] == "agent-4-linkedin"
             assert captured["model"] == "co/test-model"
             assert captured["max_iterations"] == 44
-            assert captured["browser"] is True
+            assert captured["runtime"] == "local"
             upload_data = mock_post.call_args.kwargs["data"]
             assert upload_data["project_name"] == "agent-4-linkedin"
             assert upload_data["entrypoint"] == "agent.py"
+            assert upload_data["runtime"] == "local"
             assert json.loads(upload_data["secrets"])["OPENONION_API_KEY"] == "test-token"
 
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
@@ -154,11 +154,67 @@ class TestCliDeploy:
             assert captured["skills"] == []
             assert captured["all_skills"] is True
             assert captured["project_name"] == "agent-full"
-            assert captured["browser"] is False
+            assert captured["runtime"] == "local"
 
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
-    def test_deploy_rejects_browser_without_co_ai_template(self, mock_post):
-        """Test --browser is scoped to generated co-ai deploys."""
+    def test_deploy_rejects_removed_browser_option(self, mock_post):
+        """Test --browser is no longer a deploy option."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                result = self.runner.invoke(cli, ['deploy', '--skills', 'alpha', '--browser'])
+
+            combined_output = result.output + result.stderr
+            assert result.exit_code != 0
+            assert "--browser" in combined_output
+            mock_post.assert_not_called()
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    @patch('connectonion.cli.commands.deploy_commands.requests.get')
+    def test_deploy_with_pypi_runtime_uses_co_ai_lightweight_package(self, mock_get, mock_post):
+        """Test --runtime pypi is passed to the co-ai package builder and backend."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+            from connectonion.cli.commands import deploy_commands
+
+            Path("package.tar.gz").write_bytes(b"package")
+            captured = {}
+
+            def fake_create_package(**kwargs):
+                captured.update(kwargs)
+                return SimpleNamespace(
+                    tarball_path=Path("package.tar.gz"),
+                    entrypoint="agent.py",
+                )
+
+            mock_post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"id": "abc123", "url": "https://agent-image.agents.openonion.ai"},
+            )
+            mock_get.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"status": "running", "url": "https://agent-image.agents.openonion.ai"},
+            )
+
+            with patch.object(deploy_commands, "create_deploy_package", side_effect=fake_create_package):
+                with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                    result = self.runner.invoke(
+                        cli,
+                        ["deploy", "--name", "agent-image", "--skills", "image-gen", "--runtime", "pypi"],
+                    )
+
+            assert result.exit_code == 0
+            assert captured["template"] == "co-ai"
+            assert captured["runtime"] == "pypi"
+            assert captured["skills"] == ["image-gen"]
+            upload_data = mock_post.call_args.kwargs["data"]
+            assert upload_data["runtime"] == "pypi"
+            assert upload_data["entrypoint"] == "agent.py"
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_deploy_rejects_pypi_runtime_without_co_ai_template(self, mock_post):
+        """Test --runtime pypi is scoped to generated co-ai deploys."""
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
@@ -168,9 +224,9 @@ class TestCliDeploy:
             Path("agent.py").write_text('from connectonion import host\nhost(None)\n')
 
             with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
-                result = self.runner.invoke(cli, ['deploy', '--template', 'project', '--browser'])
+                result = self.runner.invoke(cli, ['deploy', '--template', 'project', '--runtime', 'pypi'])
 
-            assert "--browser requires --template co-ai" in result.output
+            assert "--runtime pypi requires --template co-ai" in result.output
             mock_post.assert_not_called()
 
     @patch('connectonion.cli.commands.deploy_commands.requests.post')

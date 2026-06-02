@@ -1,11 +1,46 @@
 # Tasks
 
+## Current Task: co-ai Deploy Runtime v4
+
+Status: complete
+
+Context:
+
+- The previous browser deploy design made Chrome opt-in with `--browser`.
+- The requested behavior is now stricter and simpler: hosted co-ai deploys should include browser/Chrome support by default, with no compatibility `--browser` option.
+- A new v4 lightweight runtime should exist alongside the current local-source package path, so users can deploy co-ai from the published PyPI runtime and upload only selected skills plus a small manifest.
+
+Scope:
+
+- Remove the deploy `--browser` CLI option and related compatibility handling.
+- Make the existing co-ai deploy package path always generate Chrome-enabled `agent.py` and Dockerfile behavior.
+- Add `--runtime local|pypi` for co-ai deploys, defaulting to `local` so the current self-contained package path remains available as v3.
+- Make `--runtime pypi` build a lightweight manifest-plus-skills package for server-side materialization.
+- Update `oo-api` so it can materialize the pypi runtime package into a normal deploy project during build.
+
+Expected result:
+
+- `co deploy --skills foo` uses the local-source co-ai runtime and includes Chrome by default.
+- `co deploy --skills foo --runtime pypi` uploads only manifest metadata and selected skills; the backend builds a normal runtime package using published `connectonion`.
+- `co deploy --browser` is no longer accepted.
+- Project deploy behavior remains unchanged unless `--runtime pypi` is explicitly passed, which should be rejected for project deploys.
+
+Result:
+
+- Removed the deploy `--browser` option from the CLI and handler path.
+- Added `--runtime local|pypi` for co-ai deploys, defaulting to `local`.
+- Local co-ai deploy packages still upload a self-contained source package, but now always generate Chrome-enabled `agent.py` and Dockerfile behavior.
+- PyPI runtime co-ai deploy packages upload only `manifest.json` and selected `.co/skills/*` directories.
+- `oo-api` now materializes PyPI runtime manifests into normal deploy projects during extraction: `agent.py`, `.co/host.yaml`, `requirements.txt`, and a Chrome-installing Dockerfile.
+- Project deploy remains the existing git archive / `.co/host.yaml` path and rejects `--runtime pypi`.
+
 ## Current Task: Lightweight co-ai Deploy Browser Flag
 
 Status: complete
 
 Context:
 
+- Superseded by `co-ai Deploy Runtime v4`: hosted co-ai deploys now include Chrome by default and deploy `--browser` is removed.
 - co-ai deploy should still upload a normal deploy package for the existing `oo-api` backend.
 - Users should not need to create `.co/host.yaml`, `agent.py`, or a handwritten `host(...)` entrypoint for co-ai deploy.
 - The CLI should generate those project-scaffold files only inside the temporary tarball, not in the user's working tree.

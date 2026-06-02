@@ -1,5 +1,15 @@
 # Implementation Plan
 
+## co-ai Deploy Runtime v4
+
+1. [x] Record the new runtime/browser default in project control docs.
+2. [x] Add failing ConnectOnion tests for default Chrome packaging, removed `--browser`, and `--runtime pypi` manifest packaging.
+3. [x] Implement CLI/package changes in ConnectOnion.
+4. [x] Add failing oo-api tests for materializing pypi runtime deploy packages.
+5. [x] Implement oo-api pypi runtime materialization.
+6. [x] Run focused tests, syntax checks, and diff hygiene checks across touched repos.
+7. [x] Update `TASKS.md`, `STATUS.md`, and this plan with the final result.
+
 ## Lightweight co-ai Deploy Browser Flag
 
 1. [x] Record the current deploy task and target behavior in project control docs.
