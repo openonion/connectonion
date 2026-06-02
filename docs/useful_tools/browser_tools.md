@@ -142,6 +142,22 @@ browser.check_checkbox("I agree to terms")
 browser.check_checkbox("newsletter", checked=False)  # Uncheck
 ```
 
+### File Uploads
+
+```python
+# Upload to an existing file input. Hidden inputs are supported.
+browser.upload_file_by_selector('input[type="file"]', "cover.png")
+
+# Click an upload button that opens the OS file picker, then attach the file.
+browser.upload_file_after_click_by_selector(
+    "button",
+    "cover.png",
+    text="Upload from computer",
+)
+```
+
+Both upload helpers accept `frame_url_contains` and `frame_name` for editors that render upload controls inside iframes. Pass `index` when the selector matches multiple file inputs or upload buttons.
+
 ### Waiting
 
 ```python

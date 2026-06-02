@@ -1,5 +1,14 @@
 # Implementation Plan
 
+## PR #143 Main Merge Conflict
+
+1. [x] Fetch latest `origin/main` and confirm PR #143 is `CONFLICTING`.
+2. [x] Merge `origin/main` into the PR branch and identify conflict files.
+3. [x] Resolve `connectonion/useful_tools/browser_tools/browser.py` by preserving main updates plus close-before-reopen behavior.
+4. [x] Run focused tests, syntax checks, and diff hygiene checks.
+5. [x] Update `STATUS.md`, `TASKS.md`, and this plan with final verification.
+6. [x] Commit and push the merge-conflict resolution.
+
 ## PR #143 Browser Open Closes Previous Instance
 
 1. [x] Verify the new PR comment and current browser cleanup boundary.

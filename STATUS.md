@@ -7,11 +7,15 @@ Last updated: 2026-06-02
 - Repository: `openonion/connectonion`
 - Active branch: `codex/co-ai-remote-login-tool`
 - Active PR: `#143` (`[codex] Add remote login tool to co ai`)
-- Current focus: PR #143 browser lifecycle review feedback is addressed.
+- Current focus: resolving PR #143's merge conflict against latest `main`.
 
 ## Working Tree Notes
 
 - `AGENTS.md` and `test-deploy/` were present before this status baseline.
+- GitHub PR #143 reported `mergeable=CONFLICTING` / `mergeStateStatus=DIRTY` after the lifecycle fix.
+- Latest `origin/main` conflicted only in `connectonion/useful_tools/browser_tools/browser.py`.
+- Conflict resolution keeps `main`'s browser-tool updates and preserves the PR behavior that closes stale browser/page/playwright state before reopening.
+- Post-merge verification passed with focused browser/login/co-ai tests, syntax checks, and diff hygiene checks.
 - New PR #143 review comment: continuing a login conversation should not leave the previous server-side browser process open when the agent opens a new browser instance.
 - Current finding: `login_cleanup` only closes after `_login_handoff_active` completion; direct lifecycle protection belongs in `BrowserAutomation.open_browser()` so cleanup does not rely only on model behavior or a cleanup hook.
 - Fix: `BrowserAutomation.open_browser()` now closes any existing browser/page/playwright state before launching a fresh persistent browser context.
@@ -38,6 +42,9 @@ Last updated: 2026-06-02
 
 ## Verification
 
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_browser_automation.py tests/unit/test_browser_tools.py tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py tests/unit/test_co_ai_prompts_assembler.py tests/unit/test_co_ai_system_reminder_plugin.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_tools/browser_tools/browser.py connectonion/useful_tools/login_handoff.py connectonion/cli/co_ai/plugins/login_cleanup.py connectonion/cli/co_ai/plugins/system_reminder.py`
+- `git diff --check`
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_browser_automation.py tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py tests/unit/test_co_ai_prompts_assembler.py tests/unit/test_co_ai_system_reminder_plugin.py -q`
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_tools/browser_tools/browser.py connectonion/useful_tools/login_handoff.py connectonion/cli/co_ai/plugins/login_cleanup.py connectonion/cli/co_ai/plugins/system_reminder.py`
 - `git diff --check`

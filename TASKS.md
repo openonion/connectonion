@@ -1,5 +1,27 @@
 # Tasks
 
+## Current Task: PR #143 Main Merge Conflict
+
+Status: complete
+
+Context:
+
+- GitHub reports PR #143 as `CONFLICTING` against `main`.
+- Latest `origin/main` conflicts with the PR branch in `connectonion/useful_tools/browser_tools/browser.py`.
+- The resolution must preserve `main` updates while keeping PR #143's browser lifecycle behavior.
+
+Scope:
+
+- Merge latest `origin/main` into the PR #143 branch.
+- Resolve the `browser.py` conflict by keeping the current main browser-tool code and the PR behavior that closes any existing browser context before reopening.
+- Run focused browser/login/co-ai tests and syntax/diff checks.
+
+Result:
+
+- `origin/main` was merged into the PR branch.
+- The `browser.py` conflict was resolved with close-before-reopen behavior preserved.
+- Focused browser/login/co-ai tests, syntax checks, and diff hygiene checks pass after the merge.
+
 ## Current Task: PR #143 Browser Open Closes Previous Instance
 
 Status: complete

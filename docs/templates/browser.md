@@ -48,6 +48,8 @@ All tools from `BrowserAutomation`:
 | `scroll(times, description)` | Scroll page or specific element |
 | `select_option(field, option)` | Select dropdown option |
 | `check_checkbox(description, checked)` | Check or uncheck checkbox |
+| `upload_file_by_selector(selector, file_path, index, frame_url_contains, frame_name)` | Upload to an existing file input |
+| `upload_file_after_click_by_selector(click_selector, file_path, index, text, frame_url_contains, frame_name, timeout_ms)` | Click an upload trigger and attach a local file |
 | `wait(seconds)` | Wait for specified seconds |
 | `wait_for_element(description)` | Wait for element to appear |
 | `wait_for_text(text)` | Wait for text on page |
@@ -139,6 +141,22 @@ browser.hover("the Like button")
 browser.take_screenshot()           # See the hover menu
 browser.mouse_click(x, y)          # Click specific item by coordinates
 ```
+
+### File Uploads
+
+```python
+# Set an existing file input directly
+browser.upload_file_by_selector('input[type="file"]', "cover.png")
+
+# Click a visible upload button and satisfy the file chooser
+browser.upload_file_after_click_by_selector(
+    "button",
+    "cover.png",
+    text="Upload from computer",
+)
+```
+
+Use `frame_url_contains` or `frame_name` when the upload UI lives inside an iframe.
 
 ## Notes
 

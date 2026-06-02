@@ -81,9 +81,22 @@ When something fails:
 
 ### Finding Elements
 - Use natural descriptions first
+- Use `click_element_by_selector(selector, index)` when a skill provides a stable CSS selector.
+- Use `run_page_script(script_path, args_json)` when a skill provides a local JavaScript file for page-specific DOM extraction or verification.
+- Use `run_frame_script(script_path, args_json, frame_url_contains, frame_name)` when the target UI may be inside an iframe or frame-like surface and main-page `run_page_script` cannot see it.
+- Use `extract_items_by_selector(...)` when a skill provides stable container/text/action selectors for repeated page items.
+- Use `click_element_near_selector(...)` when a skill provides an anchor selector and a nearby target selector.
 - Fall back to text matching if needed
 - Never expose CSS selectors to users
 - **Take a screenshot when you find important elements**
+
+### Saving Page Context
+When a user wants to analyze a site's HTML/CSS, make a workflow more accurate, or debug why a click matched the wrong element, use `save_page_context(name)`.
+
+It saves under `~/.co/browser_context/`:
+- `page.html` - current page HTML
+- `styles.css` - accessible stylesheet rules
+- `elements.json` - clickable elements with text, aria labels, positions, and the exact locator the browser agent can use
 
 ### Form Filling
 1. Find all form fields first
@@ -207,6 +220,35 @@ You select: index=1 (first conversation by vertical position)
 ```
 
 The key insight: **You match descriptions to indexed elements, never generate CSS selectors.**
+
+## Fixed Selector Workflows
+
+Some skills may provide a stable CSS selector discovered from saved page context. In that case, use the selector tool directly:
+
+```
+count_elements_by_selector('button[aria-label="Reaction button state: no reaction"]')
+click_element_by_selector('button[aria-label="Reaction button state: no reaction"]', index=0)
+type_text_by_selector('div[contenteditable="true"][role="textbox"]', 'Draft text')
+run_page_script(
+    script_path='.co/skills/linkedin-comment-submit/scripts/extract-feed-posts.js',
+    args_json='{"maxPosts":3}'
+)
+extract_items_by_selector(
+    container_selector='div[role="listitem"]',
+    text_selector='p[componentkey^="feed-commentary_"]',
+    action_selector='button',
+    action_text='Comment',
+    max_items=3
+)
+click_element_near_selector(
+    anchor_selector='div[contenteditable="true"][role="textbox"]',
+    target_selector='button',
+    target_text='Comment',
+    require_anchor_text=True
+)
+```
+
+Use this only for selectors supplied by a skill or verified from saved page context. Do not invent brittle selectors from class names.
 
 ## Error Handling
 

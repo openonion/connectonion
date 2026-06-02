@@ -258,6 +258,25 @@ class TestSkillInvocation:
         assert '_permission_snapshot' in agent.current_session
 
     @patch.object(skills_module, '_load_skill')
+    def test_handle_skill_invocation_preserves_slash_arguments(self, mock_load):
+        """Test that /command arguments are appended to skill instructions."""
+        agent = FakeAgent()
+        agent.current_session['messages'] = [
+            {'role': 'user', 'content': '/linkedin-comment-writer Post: Hello world'}
+        ]
+
+        mock_load.return_value = {
+            'frontmatter': {},
+            'instructions': 'Write a LinkedIn comment'
+        }
+
+        handle_skill_invocation(agent)
+
+        assert agent.current_session['messages'][-1]['content'] == (
+            'Write a LinkedIn comment\n\n---\n## Arguments\nPost: Hello world'
+        )
+
+    @patch.object(skills_module, '_load_skill')
     def test_handle_skill_invocation_ignores_non_slash(self, mock_load):
         """Test that non-slash messages are ignored."""
         agent = FakeAgent()
