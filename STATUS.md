@@ -7,7 +7,7 @@ Last updated: 2026-06-02
 - Repository: `openonion/connectonion`
 - Active branch: `codex/co-ai-remote-login-tool`
 - Active PR: `#143` (`[codex] Add remote login tool to co ai`)
-- Current focus: making co ai web server reuse one long-lived Agent instance across continued inputs.
+- Current focus: keeping the co ai browser open after successful login.
 
 ## Working Tree Notes
 
@@ -19,6 +19,8 @@ Last updated: 2026-06-02
 - Fix: `connectonion/cli/co_ai/plugins/login_cleanup.py` was removed and co ai no longer imports, exports, or registers the cleanup plugin.
 - New user direction: co ai hosted mode should not create a fresh agent on each continued input; the local web server should hold one Agent instance so browser tool state can persist across turns.
 - Fix: `co_ai.main.start_server()` now creates one `Agent` at server startup and passes that instance to `host()`, instead of passing a per-request factory.
+- New user direction: after login finishes, co ai should not close the browser; leave it open for follow-up actions.
+- Fix: co ai login/browser lifecycle prompts now leave the browser open after successful login and reserve `close_browser` for explicit close requests or abandoned browser flows.
 - GitHub PR #143 reported `mergeable=CONFLICTING` / `mergeStateStatus=DIRTY` after the lifecycle fix.
 - Latest `origin/main` conflicted only in `connectonion/useful_tools/browser_tools/browser.py`.
 - Conflict resolution keeps `main`'s browser-tool updates and preserves the PR behavior that closes stale browser/page/playwright state before reopening.
@@ -61,6 +63,9 @@ Last updated: 2026-06-02
 - `git diff --check`
 - `/opt/homebrew/bin/python3 -m pytest tests/unit/test_co_ai_agent_main.py tests/unit/test_login_handoff_tools.py tests/unit/test_browser_automation.py tests/unit/test_browser_tools.py -q`
 - `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/co_ai/main.py connectonion/cli/co_ai/agent.py connectonion/useful_tools/browser_tools/browser.py connectonion/useful_tools/login_handoff.py`
+- `git diff --check`
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_co_ai_prompts_assembler.py tests/unit/test_co_ai_system_reminder_plugin.py tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/cli/co_ai/plugins/system_reminder.py connectonion/cli/co_ai/prompts/assembler.py connectonion/useful_tools/login_handoff.py connectonion/cli/co_ai/agent.py`
 - `git diff --check`
 - `python3 -m pytest tests/unit/test_remote_login_tool.py tests/unit/test_co_ai_agent_main.py`
 - `python3 -m py_compile connectonion/useful_tools/remote_login.py connectonion/cli/co_ai/agent.py`

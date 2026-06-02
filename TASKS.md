@@ -1,5 +1,34 @@
 # Tasks
 
+## Current Task: Login Leaves Browser Open
+
+Status: complete
+
+Context:
+
+- User narrowed the request to one change: after a login flow finishes, co ai should not close the browser.
+- Current prompts tell the model to call `close_browser` after login succeeds, fails, or cannot continue.
+- With the co ai web server now reusing one Agent instance, keeping the browser open after login lets the user continue operating the logged-in page in later turns.
+
+Scope:
+
+- Update co ai login/browser lifecycle prompts so successful login keeps the browser open.
+- Keep `close_browser` available for explicit user requests or abandoned/unusable browser flows.
+- Update prompt tests to reject automatic close-after-login guidance.
+
+Expected result:
+
+- co ai no longer tells the model to call `close_browser` after a successful login.
+- Browser state remains available for follow-up turns after login.
+- Focused prompt/system-reminder tests pass.
+
+Result:
+
+- The main login prompt now tells co ai to leave the browser open after login succeeds.
+- The `open_browser` lifecycle reminder no longer tells the model to call `close_browser` before the final response after login.
+- The `close_browser` tool prompt now says not to call it automatically after successful login; it remains available when the user explicitly asks or a browser flow is abandoned/cannot continue.
+- Focused prompt, system-reminder, login handoff, co ai agent, syntax, and diff checks pass.
+
 ## Current Task: co ai Web Server Reuses One Agent Instance
 
 Status: complete

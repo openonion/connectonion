@@ -102,7 +102,8 @@ This applies to Chinese and English requests, including "帮我登录", "help me
 - Do not claim login success until the browser page shows a logged-in state.
 - If the page reports incorrect credentials, missing verification, or another user-action requirement, ask the user for the next required action in the same turn before giving up.
 - Do not end your response with "tell me after scanning" or similar wording when a handoff tool can wait for the user.
-- After the login flow succeeds, fails, or cannot continue, call `close_browser` before your final response so the server-side browser profile is saved and the browser process is released.
+- Leave the browser open after login succeeds so the user can continue using the logged-in page in follow-up turns.
+- Do not call `close_browser` automatically after successful login. Call it only when the user explicitly asks to close the browser or the browser flow is abandoned and cannot continue.
 ## Before Writing Code
 
 1. **Read first**: ALWAYS read existing files before modifying them

@@ -1,5 +1,14 @@
 # Implementation Plan
 
+## Login Leaves Browser Open
+
+1. [x] Record the narrowed login browser lifecycle task in control docs.
+2. [x] Add/update failing tests for successful-login browser-open guidance.
+3. [x] Update main login prompt, `close_browser` tool prompt, and browser lifecycle reminder.
+4. [x] Run focused prompt/system-reminder tests, syntax checks, and diff hygiene checks.
+5. [x] Update `STATUS.md`, `TASKS.md`, and this plan with the result.
+6. [x] Commit and push the prompt-only change.
+
 ## co ai Web Server Reuses One Agent Instance
 
 1. [x] Record the new co ai agent-reuse task in control docs.
