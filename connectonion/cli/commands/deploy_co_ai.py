@@ -176,7 +176,7 @@ def _write_co_ai_entrypoint(
         f"        model={model_literal},",
         f"        max_iterations={max_iterations},",
         "        co_dir=CO_DIR,",
-        "        browser_headless=True,",
+        "        browser_headless=False,",
         "        browser_channel=\"chrome\",",
     ]
     lines.extend([
@@ -257,10 +257,11 @@ def _write_co_ai_dockerfile(staging_dir: Path) -> None:
         "ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright",
         "COPY requirements.txt .",
         "RUN pip install --no-cache-dir -r requirements.txt",
+        "RUN apt-get update && apt-get install -y --no-install-recommends xvfb xauth && rm -rf /var/lib/apt/lists/*",
         "RUN python -m playwright install --with-deps chrome",
         "COPY . .",
         "ENV PORT=8000",
-        f"CMD [\"python\", \"{CO_AI_ENTRYPOINT}\"]",
+        f"CMD [\"xvfb-run\", \"-a\", \"python\", \"{CO_AI_ENTRYPOINT}\"]",
         "",
     ]
     (staging_dir / "Dockerfile").write_text("\n".join(lines), encoding="utf-8")

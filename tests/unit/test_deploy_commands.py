@@ -149,7 +149,7 @@ def test_create_co_ai_deploy_package_is_self_contained_and_chrome_enabled_by_def
     assert "max_iterations=33" in entrypoint
     assert "name=\"demo\"" in entrypoint
     assert "auto_approve=True" not in entrypoint
-    assert "browser_headless=True" in entrypoint
+    assert "browser_headless=False" in entrypoint
     assert "browser_channel=\"chrome\"" in entrypoint
     assert "co_dir=CO_DIR" in entrypoint
     assert "host(create_agent, trust=\"careful\", co_dir=CO_DIR)" in entrypoint
@@ -157,8 +157,9 @@ def test_create_co_ai_deploy_package_is_self_contained_and_chrome_enabled_by_def
     assert "entrypoint: agent.py" in host_yaml
     assert requirements.startswith("connectonion==")
     assert "-r .co/skills" not in requirements
+    assert "apt-get install -y --no-install-recommends xvfb xauth" in dockerfile
     assert "RUN python -m playwright install --with-deps chrome" in dockerfile
-    assert "CMD [\"python\", \"agent.py\"]" in dockerfile
+    assert "CMD [\"xvfb-run\", \"-a\", \"python\", \"agent.py\"]" in dockerfile
 
 
 def test_create_co_ai_deploy_package_local_runtime_generates_chrome_dockerfile(tmp_path):
@@ -189,8 +190,9 @@ def test_create_co_ai_deploy_package_local_runtime_generates_chrome_dockerfile(t
     assert "COPY requirements.txt ." in dockerfile
     assert "COPY . ." in dockerfile
     assert "RUN pip install --no-cache-dir -r requirements.txt" in dockerfile
+    assert "apt-get install -y --no-install-recommends xvfb xauth" in dockerfile
     assert "python -m playwright install --with-deps chrome" in dockerfile
-    assert "CMD [\"python\", \"agent.py\"]" in dockerfile
+    assert "CMD [\"xvfb-run\", \"-a\", \"python\", \"agent.py\"]" in dockerfile
 
 
 def test_create_co_ai_pypi_runtime_package_uploads_manifest_and_selected_skills_only(tmp_path, monkeypatch):
