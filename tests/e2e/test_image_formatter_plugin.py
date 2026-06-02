@@ -117,7 +117,7 @@ class TestImageFormatterPluginE2E:
         )
         assert tool_msg is not None
         # Tool message should be shortened (not contain the full base64)
-        assert "Screenshot captured" in tool_msg['content']
+        assert tool_msg['content'] == "Tool returned an image (provided below)"
         assert "iVBORw0KGgo" not in tool_msg['content']
 
         # Find the user message with image (plugin inserts user message, not assistant)
