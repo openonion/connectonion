@@ -56,6 +56,14 @@ def test_parse_and_find_reminders():
     assert "Use" in intent
 
 
+def test_browser_lifecycle_reminder_triggers_on_open_browser():
+    content = plugin._find_tool_reminder(plugin._REMINDERS, "open_browser", {})
+
+    assert content is not None
+    assert "close_browser" in content
+    assert "previous server-side browser" in content
+
+
 def test_detect_intent_and_inject_tool(monkeypatch):
     class Intent:
         def __init__(self, ack, is_build):

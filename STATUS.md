@@ -1,17 +1,22 @@
 # Project Status
 
-Last updated: 2026-06-01
+Last updated: 2026-06-02
 
 ## Baseline
 
 - Repository: `openonion/connectonion`
 - Active branch: `codex/co-ai-remote-login-tool`
 - Active PR: `#143` (`[codex] Add remote login tool to co ai`)
-- Current focus: Login handoff behavior. Browser automation tools open and inspect login pages; QR login sends the QR screenshot through `send_qr_to_user`; credential login sends a structured account/password `ask_user` through `send_credentials_form_to_user`.
+- Current focus: PR #143 browser lifecycle review feedback is addressed.
 
 ## Working Tree Notes
 
 - `AGENTS.md` and `test-deploy/` were present before this status baseline.
+- New PR #143 review comment: continuing a login conversation should not leave the previous server-side browser process open when the agent opens a new browser instance.
+- Current finding: `login_cleanup` only closes after `_login_handoff_active` completion; direct lifecycle protection belongs in `BrowserAutomation.open_browser()` so cleanup does not rely only on model behavior or a cleanup hook.
+- Fix: `BrowserAutomation.open_browser()` now closes any existing browser/page/playwright state before launching a fresh persistent browser context.
+- Fix: added an `open_browser` system reminder that explains the previous context is closed on open and reminds the agent to call `close_browser` when the flow finishes.
+- Regression coverage added for close-before-reopen behavior and lifecycle reminder matching.
 - This iteration should stay scoped to `remote_login`, its directly coupled prompt/tests, and local server restart verification.
 - Local runtime issue observed: `remote_login` starts a second Playwright sync context inside the websocket/async runtime and fails with "using Playwright Sync API inside the asyncio loop"; the agent then falls back to browser tools and `wait_for_manual_login`.
 - Design correction: do not put browser/process/login lifecycle inside `remote_login`; the browser tool owns browser context and process behavior.
@@ -33,6 +38,9 @@ Last updated: 2026-06-01
 
 ## Verification
 
+- `/opt/homebrew/bin/python3 -m pytest tests/unit/test_browser_automation.py tests/unit/test_login_handoff_tools.py tests/unit/test_co_ai_agent_main.py tests/unit/test_co_ai_prompts_assembler.py tests/unit/test_co_ai_system_reminder_plugin.py -q`
+- `/opt/homebrew/bin/python3 -m py_compile connectonion/useful_tools/browser_tools/browser.py connectonion/useful_tools/login_handoff.py connectonion/cli/co_ai/plugins/login_cleanup.py connectonion/cli/co_ai/plugins/system_reminder.py`
+- `git diff --check`
 - `python3 -m pytest tests/unit/test_remote_login_tool.py tests/unit/test_co_ai_agent_main.py`
 - `python3 -m py_compile connectonion/useful_tools/remote_login.py connectonion/cli/co_ai/agent.py`
 - `git diff --check`

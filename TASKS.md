@@ -1,5 +1,29 @@
 # Tasks
 
+## Current Task: PR #143 Browser Open Closes Previous Instance
+
+Status: complete
+
+Context:
+
+- PR #143 has a new review comment on `connectonion/cli/co_ai/plugins/login_cleanup.py` asking whether continuing a login conversation leaves the previous browser instance open.
+- `login_cleanup` closes the browser only after a login handoff turn marked `_login_handoff_active`.
+- The safer lifecycle is for `open_browser()` itself to close any existing live browser context before launching a new persistent browser instance.
+
+Scope:
+
+- Add regression coverage proving `BrowserAutomation.open_browser()` closes an existing browser/page/playwright context before opening a new one.
+- Change browser lifecycle code so opening a new browser instance releases any previous instance instead of returning early with `Browser already open`.
+- Add system-reminder guidance for `open_browser` so the model still calls `close_browser` when the flow finishes.
+- Keep the existing persistent profile path behavior so login cookies survive across browser restarts.
+
+Result:
+
+- `BrowserAutomation.open_browser()` now closes any existing browser/page/playwright state before launching a fresh persistent browser context.
+- The browser profile path stays unchanged, so cookies and login state persist across the close/reopen boundary.
+- Added an `open_browser` system reminder that tells the agent the previous context is closed on open and to call `close_browser` when the browser/login flow finishes.
+- Added regression coverage for closing the old context before reopening and for the new browser lifecycle reminder.
+
 ## Current Task: Login Handoff Tool Boundary
 
 Status: complete

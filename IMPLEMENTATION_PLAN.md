@@ -1,5 +1,14 @@
 # Implementation Plan
 
+## PR #143 Browser Open Closes Previous Instance
+
+1. [x] Verify the new PR comment and current browser cleanup boundary.
+2. [x] Add a failing regression test for `open_browser()` replacing an existing browser instance by closing the old context.
+3. [x] Update `BrowserAutomation.open_browser()` to close stale live state before launching a new persistent context.
+4. [x] Add an `open_browser` system reminder for browser lifecycle cleanup guidance.
+5. [x] Run focused browser/login/co-ai tests, syntax checks, and diff hygiene checks.
+6. [x] Update `STATUS.md`, `TASKS.md`, and this plan with the result.
+
 ## PR #143 Remote Login Review
 
 1. [x] Add tests that fail while `remote_login` still performs tool-side judgment or direct user prompting.
