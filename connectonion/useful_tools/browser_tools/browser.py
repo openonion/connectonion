@@ -62,13 +62,19 @@ class BrowserAutomation:
     This ensures session persistence even if the process crashes.
     """
 
-    def __init__(self, use_chrome_profile: bool = True, headless: bool = False):
+    def __init__(
+        self,
+        use_chrome_profile: bool = True,
+        headless: bool = False,
+        browser_channel: str | None = None,
+    ):
         """Initialize browser automation.
 
         Args:
             use_chrome_profile: If True, uses your Chrome cookies/sessions.
                                Chrome must be closed before running.
             headless: If True, browser runs without visible window (default True).
+            browser_channel: Optional Playwright browser channel, such as "chrome".
         """
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
@@ -78,7 +84,12 @@ class BrowserAutomation:
         self.use_chrome_profile = use_chrome_profile
         self._screenshots = []
         self._headless = headless
+        self._browser_channel = browser_channel
         self.screenshots_dir = str(SCREENSHOTS_DIR)
+
+    def _install_hint(self) -> str:
+        browser = self._browser_channel or "chromium"
+        return f"Browser tools not installed. Run: pip install playwright && playwright install {browser}"
 
     def open_browser(self, headless: bool = None) -> str:
         """Open a new browser window.
@@ -91,7 +102,7 @@ class BrowserAutomation:
         if headless is None:
             headless = self._headless
         if not PLAYWRIGHT_AVAILABLE:
-            return "Browser tools not installed. Run: pip install playwright && playwright install chromium"
+            return self._install_hint()
 
         if self.browser:
             return "Browser already open"
@@ -109,10 +120,14 @@ class BrowserAutomation:
         # See: https://github.com/microsoft/playwright/issues/31736
         # Can test removing this in the future if cookie issues persist
 
-        # Use Google Chrome instead of Chromium for better X.com compatibility
-        chrome_path = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-        if not os.path.exists(chrome_path):
-            chrome_path = None  # Fall back to Chromium if Chrome not installed
+        # Use Google Chrome instead of Chromium for better X.com compatibility.
+        # Hosted co-ai passes browser_channel="chrome"; local macOS keeps the
+        # existing explicit Chrome path fallback for developer convenience.
+        chrome_path = None
+        if self._browser_channel is None:
+            candidate = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+            if os.path.exists(candidate):
+                chrome_path = candidate
 
         # Session persistence: use ONLY user_data_dir (simple approach)
         # - Persistent Chrome profile at ~/.co/browser_profile/
@@ -121,13 +136,20 @@ class BrowserAutomation:
         # - No need for storage_state.json complexity (browser-use uses that for portability)
 
         # Launch browser with browser-use anti-detection config (see browser_config.py)
+        launch_options = {
+            "headless": headless,
+            "args": CHROME_DEFAULT_ARGS,  # 53 args + 30 disabled features from browser-use
+            "ignore_default_args": IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # + macOS cookie fix
+            "timeout": 120000,
+        }
+        if self._browser_channel:
+            launch_options["channel"] = self._browser_channel
+        elif chrome_path:
+            launch_options["executable_path"] = chrome_path
+
         self.browser = self.playwright.chromium.launch_persistent_context(
             str(profile_dir),  # Persistent profile at ~/.co/browser_profile/
-            headless=headless,
-            executable_path=chrome_path,
-            args=CHROME_DEFAULT_ARGS,  # 53 args + 30 disabled features from browser-use
-            ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # + macOS cookie fix
-            timeout=120000,
+            **launch_options,
         )
 
         self.page = self.browser.new_page()
@@ -463,7 +485,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             Base64 encoded image data with system reminder for full-page screenshots
         """
         if not PLAYWRIGHT_AVAILABLE:
-            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
+            return self._install_hint()
 
         if not self.page:
             return "Browser not open"
@@ -682,5 +704,3 @@ SYSTEM REMINDER: Full-page screenshots provide an overview of the entire page bu
         """Context manager exit - ensures browser closes and saves context."""
         self.close()
         return False
-
-

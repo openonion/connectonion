@@ -4,9 +4,9 @@ LLM-Note:
   Dependencies: imports from [typer, rich.console, typing, __version__] | imported by [setup.py entry_points, __main__.py] | loads commands from [cli/commands/{init, create, deploy, auth, status, reset, doctor, browser}_commands.py] | tested by [tests/e2e/cli/test_cli_help.py]
   Data flow: cli() entry point → creates Typer app → registers command callbacks (init, create, deploy, auth, status, reset, doctor, browser) → Typer parses args → invokes corresponding handle_*() function from commands module → command outputs via rich.Console
   State/Effects: no persistent state | writes to stdout via rich.Console | lazy imports command handlers on invocation | registers typer.Option and typer.Argument decorators | uses typer.Exit() for early termination
-  Integration: exposes cli() entry point registered in setup.py as 'co' command | app() is the Typer instance | commands: init, create, deploy, auth [google|microsoft], status, reset, doctor, browser | --version flag shows version | -b/--browser flag shortcuts browser command | no args shows custom help via _show_help()
+  Integration: exposes cli() entry point registered in setup.py as 'co' command | app() is the Typer instance | commands: init, create, deploy, auth [google|microsoft], status, reset, doctor, browser | --version flag shows version | no args shows custom help via _show_help()
   Performance: fast startup (lazy imports) | Typer arg parsing is O(n) args | Rich console initialization is lightweight
-  Errors: typer.Exit() on --version or --browser | invalid commands show Typer error with suggestions | command-specific errors handled in respective handlers
+  Errors: typer.Exit() on --version | invalid commands show Typer error with suggestions | command-specific errors handled in respective handlers
 """
 
 import typer
@@ -97,10 +97,24 @@ def create(
 
 
 @app.command()
-def deploy():
+def deploy(
+    name: Optional[str] = typer.Option(None, "--name", "-n", help="Cloud project/agent name for this deployment"),
+    template: str = typer.Option("auto", "--template", help="Deploy template: auto, project, or co-ai"),
+    skills: Optional[List[str]] = typer.Option(None, "--skills", "--skill", help="Skill names for co-ai deploy; repeat or comma-separate"),
+    all_skills: bool = typer.Option(False, "--all-skills", help="Deploy all project and user skills with co-ai"),
+    model: str = typer.Option("co/gemini-3-flash-preview", "--model", "-m", help="Model for co-ai deploy"),
+    max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations for co-ai deploy"),
+):
     """Deploy to ConnectOnion Cloud."""
     from .commands.deploy_commands import handle_deploy
-    handle_deploy()
+    handle_deploy(
+        name=name,
+        template=template,
+        skills=skills,
+        all_skills=all_skills,
+        model=model,
+        max_iterations=max_iterations,
+    )
 
 
 @app.command()
