@@ -110,22 +110,22 @@ def test_send_credentials_form_to_user_sends_structured_ask_user():
     assert agent.io.sent == [
         {
             "type": "ask_user",
-            "text": "请输入账号和密码。",
-            "question": "请输入账号和密码。",
+            "text": "Please enter your username and password.",
+            "question": "Please enter your username and password.",
             "options": [],
             "multi_select": False,
             "input_type": "credentials",
             "fields": [
                 {
                     "name": "username",
-                    "label": "账号",
+                    "label": "Username",
                     "type": "text",
                     "required": True,
                     "autocomplete": "username",
                 },
                 {
                     "name": "password",
-                    "label": "密码",
+                    "label": "Password",
                     "type": "password",
                     "required": True,
                     "autocomplete": "current-password",
@@ -153,13 +153,13 @@ def test_send_credentials_form_to_user_accepts_custom_login_fields():
 
     result = login_handoff_mod.send_credentials_form_to_user(
         agent,
-        question="请输入账号、密码和验证码。",
+        question="Please enter your username, password, and verification code.",
         fields=[
-            {"name": "username", "label": "账号", "type": "text", "required": True},
-            {"name": "password", "label": "密码", "type": "password", "required": True},
+            {"name": "username", "label": "Username", "type": "text", "required": True},
+            {"name": "password", "label": "Password", "type": "password", "required": True},
             {
                 "name": "verification_code",
-                "label": "验证码",
+                "label": "Verification code",
                 "type": "text",
                 "required": True,
                 "autocomplete": "one-time-code",
@@ -170,17 +170,17 @@ def test_send_credentials_form_to_user_accepts_custom_login_fields():
     assert agent.io.sent == [
         {
             "type": "ask_user",
-            "text": "请输入账号、密码和验证码。",
-            "question": "请输入账号、密码和验证码。",
+            "text": "Please enter your username, password, and verification code.",
+            "question": "Please enter your username, password, and verification code.",
             "options": [],
             "multi_select": False,
             "input_type": "credentials",
             "fields": [
-                {"name": "username", "label": "账号", "type": "text", "required": True},
-                {"name": "password", "label": "密码", "type": "password", "required": True},
+                {"name": "username", "label": "Username", "type": "text", "required": True},
+                {"name": "password", "label": "Password", "type": "password", "required": True},
                 {
                     "name": "verification_code",
-                    "label": "验证码",
+                    "label": "Verification code",
                     "type": "text",
                     "required": True,
                     "autocomplete": "one-time-code",

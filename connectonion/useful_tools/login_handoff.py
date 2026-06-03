@@ -9,14 +9,14 @@ _QR_SCAN_OPTION = "I scanned it. Continue checking login status."
 _DEFAULT_CREDENTIAL_FIELDS = [
     {
         "name": "username",
-        "label": "账号",
+        "label": "Username",
         "type": "text",
         "required": True,
         "autocomplete": "username",
     },
     {
         "name": "password",
-        "label": "密码",
+        "label": "Password",
         "type": "password",
         "required": True,
         "autocomplete": "current-password",
@@ -93,7 +93,9 @@ def send_credentials_form_to_user(
 
     credential_fields = _credential_fields(fields)
     prompt = question or (
-        "请输入账号和密码。" if fields is None else "请输入当前登录页面需要的信息。"
+        "Please enter your username and password."
+        if fields is None
+        else "Please enter the information required by the current login page."
     )
     agent.io.send({
         "type": "ask_user",
