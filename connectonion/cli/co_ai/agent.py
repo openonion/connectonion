@@ -45,9 +45,6 @@ from .tools import (
 from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
-from connectonion.useful_tools import (
-    request_user_login,
-)
 from connectonion.useful_tools.browser_tools import BrowserAutomation
 from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents, image_result_formatter, runtime_input
 from connectonion.useful_plugins.skills import skills as skills_plugin
@@ -70,7 +67,6 @@ def create_coding_agent(
     tools = [
         file_tools,
         browser,
-        request_user_login,
         bash,
         # task is now provided by subagents plugin (no need to import from .tools)
         enter_plan_mode,

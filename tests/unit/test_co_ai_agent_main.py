@@ -14,7 +14,6 @@ from types import SimpleNamespace
 
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
-import connectonion.cli.co_ai.plugins as plugins_mod
 
 
 def test_create_coding_agent(monkeypatch, tmp_path):
@@ -34,23 +33,11 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "CTX" in agent.system_prompt
     # FileTools is registered as a tool class
     assert "file_tools" in agent.tools._tools or any("file" in t.lower() for t in agent.tools._tools)
-    assert "remote_login" not in agent.tools._tools
-    assert "close_browser" not in agent.tools._tools
-    assert "request_user_login" in agent.tools._tools
-    assert "send_qr_to_user" not in agent.tools._tools
-    assert "send_credentials_form_to_user" not in agent.tools._tools
-    assert "type_saved_login_credential" not in agent.tools._tools
-    assert "request_qr_scan" not in agent.tools._tools
-    assert "request_login_credentials" not in agent.tools._tools
+    assert "ask_user" in agent.tools._tools
+    # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools
     assert agent.browse is agent.tools.get_instance("browserautomation")
     assert agent.tools.get_instance("browserautomation")._headless is False
-    assert not hasattr(agent_mod, "login_cleanup")
-
-
-def test_co_ai_plugins_do_not_export_login_cleanup():
-    assert not hasattr(plugins_mod, "login_cleanup")
-    assert "login_cleanup" not in plugins_mod.__all__
 
 
 def test_start_server_reuses_one_agent_instance(monkeypatch):

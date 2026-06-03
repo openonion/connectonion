@@ -24,9 +24,6 @@ from .terminal import yes_no, autocomplete
 from .todo_list import TodoList
 from .slash_command import SlashCommand
 from .ask_user import ask_user
-from .login_request import (
-    request_user_login,
-)
 
 # Claude Code-style file tools
 from .file_tools import (
@@ -66,7 +63,6 @@ __all__ = [
     "TodoList",
     "SlashCommand",
     "ask_user",
-    "request_user_login",
     # Claude Code-style file tools
     "FileTools",
     "read_file",

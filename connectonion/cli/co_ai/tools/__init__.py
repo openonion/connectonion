@@ -63,8 +63,10 @@ from connectonion.cli.co_ai.tools.background import run_background, task_output,
 # Planning tools (CLI-specific)
 from connectonion.cli.co_ai.tools.plan_mode import enter_plan_mode, exit_plan_and_implement, write_plan
 
+# ask_user from useful_tools (single source of truth)
+from connectonion.useful_tools import ask_user
+
 # Interaction tools (CLI-specific)
-from connectonion.cli.co_ai.tools.ask_user import ask_user
 from connectonion.cli.co_ai.tools.load_guide import load_guide
 
 __all__ = [

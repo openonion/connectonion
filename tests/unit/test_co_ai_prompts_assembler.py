@@ -12,9 +12,7 @@ Components under test:
 
 from pathlib import Path
 
-from connectonion.useful_tools import (
-    request_user_login,
-)
+from connectonion.cli.co_ai.tools import ask_user
 from connectonion.cli.co_ai.prompts.assembler import (
     PromptContext,
     interpolate,
@@ -73,11 +71,11 @@ def test_prompt_context_and_assemble(tmp_path):
     assert agent_prompt == "Explore Test"
 
 
-def test_login_request_prompt_allows_user_mediated_credential_login():
+def test_login_prompt_uses_ask_user_and_screenshot():
     prompt = assemble_prompt(
         prompts_dir=str(PROMPTS_DIR),
         tools=[
-            request_user_login,
+            ask_user,
         ],
     )
 
@@ -88,21 +86,9 @@ def test_login_request_prompt_allows_user_mediated_credential_login():
     assert "open_browser" in prompt
     assert "go_to" in prompt
     assert "take_screenshot" in prompt
-    assert "request_user_login" in prompt
-    assert "send_credentials_form_to_user" not in prompt
-    assert "send_qr_to_user" not in prompt
-    assert "type_saved_login_credential" not in prompt
-    assert "verification code" in prompt
+    assert "ask_user" in prompt
+    assert 'fields=[{"name": "username"' in prompt
     assert "2FA" in prompt
-    assert 'request_user_login(mode="message"' in prompt
-    assert "same turn" in prompt
     assert "same tool loop" in prompt
-    assert "Do not expose, summarize, type, or persist them in the agent" in prompt
+    assert "Do not repeat credentials in assistant messages" in prompt
     assert "Leave the browser open after login succeeds" in prompt
-    assert "close_browser" not in prompt
-    assert "After the login flow succeeds, fails, or cannot continue, call `close_browser`" not in prompt
-    assert "close the browser before your final response" not in prompt
-    assert "Call this after confirming a login succeeded." not in prompt
-    assert "remote_login" not in prompt
-    assert "request_login_credentials" not in prompt
-    assert "request_qr_scan" not in prompt
