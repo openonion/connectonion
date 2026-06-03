@@ -5,7 +5,7 @@ from typing import Any, Dict, List, Optional
 
 from .ask_user import ask_user
 
-_QR_SCAN_OPTION = "已扫码，继续检查登录状态"
+_QR_SCAN_OPTION = "I scanned it. Continue checking login status."
 _DEFAULT_CREDENTIAL_FIELDS = [
     {
         "name": "username",
@@ -69,7 +69,7 @@ def send_qr_to_user(agent) -> str:
 
     answer = ask_user(
         agent,
-        "请扫描截图中的二维码。完成扫码后，请选择“已扫码，继续检查登录状态”。",
+        "Please scan the QR code in the screenshot. After scanning it, choose \"I scanned it. Continue checking login status.\"",
         [_QR_SCAN_OPTION],
     )
     browser._save_context()

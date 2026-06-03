@@ -67,7 +67,7 @@ class FakeIO:
 def test_send_qr_to_user_sends_screenshot_then_ask_user():
     browser = FakeBrowser()
     agent = SimpleNamespace(
-        io=FakeIO(answer="已扫码"),
+        io=FakeIO(answer="I scanned it"),
         browse=browser,
     )
 
@@ -81,15 +81,15 @@ def test_send_qr_to_user_sends_screenshot_then_ask_user():
         },
         {
             "type": "ask_user",
-            "question": "请扫描截图中的二维码。完成扫码后，请选择“已扫码，继续检查登录状态”。",
-            "options": ["已扫码，继续检查登录状态"],
+            "question": "Please scan the QR code in the screenshot. After scanning it, choose \"I scanned it. Continue checking login status.\"",
+            "options": ["I scanned it. Continue checking login status."],
             "multi_select": False,
         },
     ]
     assert agent.io.receives == 1
     assert agent._login_handoff_active is True
     assert browser.saved is True
-    assert "已扫码" in result
+    assert "I scanned it" in result
     assert "data:image/png;base64" not in result
 
 
