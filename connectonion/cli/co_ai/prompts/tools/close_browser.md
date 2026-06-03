@@ -7,7 +7,7 @@ Use `close_browser()` only when the user asks to close the server-side browser o
 - Saves the persistent browser context.
 - Closes the current server-side browser page/context.
 - Releases the Playwright browser process.
-- A later `open_browser` call also closes any previous live browser context before launching a fresh one.
+- A later `open_browser` call opens a new browser because `close_browser` clears the browser/page state.
 
 ## Guidelines
 

@@ -81,11 +81,26 @@ class BrowserAutomation:
         self._headless = headless
         self.screenshots_dir = str(SCREENSHOTS_DIR)
 
-    def open_browser(self, headless: bool = None) -> str:
+    def _browser_is_usable(self) -> bool:
+        """Return True when the current Playwright page can still be operated."""
+        if not self.browser or not self.page:
+            return False
+
+        try:
+            is_closed = getattr(self.page, "is_closed", None)
+            if callable(is_closed) and is_closed():
+                return False
+            _ = self.page.url
+            return True
+        except Exception:
+            return False
+
+    def open_browser(self, headless: bool = None, force: bool = False) -> str:
         """Open a new browser window.
 
         Args:
             headless: If True, browser runs without visible window. Defaults to the value set in __init__.
+            force: If True, close the current browser first and open a fresh context.
 
         Note: If use_chrome_profile=True, Chrome must be completely closed.
         """
@@ -94,12 +109,15 @@ class BrowserAutomation:
         if not PLAYWRIGHT_AVAILABLE:
             return "Browser tools not installed. Run: pip install playwright && playwright install chromium"
 
-        if self.browser and self.page:
-            return "Browser already open"
-
-        had_stale_browser_state = bool(self.browser or self.page or self.playwright)
-        if had_stale_browser_state:
+        if self._browser_is_usable():
+            if not force:
+                return "Browser already open and usable. Continue using the current browser page."
             self.close()
+            had_previous_browser_state = True
+        else:
+            had_previous_browser_state = bool(self.browser or self.page or self.playwright)
+            if had_previous_browser_state:
+                self.close()
 
         self.playwright = sync_playwright().start()
 
@@ -151,7 +169,9 @@ class BrowserAutomation:
         """
         )
 
-        if had_stale_browser_state:
+        if force and had_previous_browser_state:
+            return f"Previous browser closed by force. Browser opened with persistent profile: {profile_dir}"
+        if had_previous_browser_state:
             return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
         return f"Browser opened with persistent profile: {profile_dir}"
 
@@ -1335,18 +1355,33 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
 
     def close(self) -> str:
         """Close the browser and save persistent context."""
-        self._save_context()
+        cleanup_errors = []
+        try:
+            self._save_context()
+        except Exception as exc:
+            cleanup_errors.append(f"save context failed: {exc}")
 
-        if self.page:
-            self.page.close()
-        if self.browser:
-            self.browser.close()
-        if self.playwright:
-            self.playwright.stop()
+        try:
+            if self.page:
+                self.page.close()
+        except Exception as exc:
+            cleanup_errors.append(f"close page failed: {exc}")
+        try:
+            if self.browser:
+                self.browser.close()
+        except Exception as exc:
+            cleanup_errors.append(f"close browser failed: {exc}")
+        try:
+            if self.playwright:
+                self.playwright.stop()
+        except Exception as exc:
+            cleanup_errors.append(f"stop playwright failed: {exc}")
 
         self.page = None
         self.browser = None
         self.playwright = None
+        if cleanup_errors:
+            return "Browser closed with cleanup warnings: " + "; ".join(cleanup_errors)
         return "Browser closed"
 
     def __enter__(self):
