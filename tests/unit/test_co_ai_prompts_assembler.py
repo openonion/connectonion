@@ -13,9 +13,7 @@ Components under test:
 from pathlib import Path
 
 from connectonion.useful_tools import (
-    send_credentials_form_to_user,
-    send_qr_to_user,
-    type_saved_login_credential,
+    request_login_from_user,
 )
 from connectonion.cli.co_ai.prompts.assembler import (
     PromptContext,
@@ -79,9 +77,7 @@ def test_login_handoff_prompt_allows_user_mediated_credential_login():
     prompt = assemble_prompt(
         prompts_dir=str(PROMPTS_DIR),
         tools=[
-            send_credentials_form_to_user,
-            send_qr_to_user,
-            type_saved_login_credential,
+            request_login_from_user,
         ],
     )
 
@@ -92,15 +88,16 @@ def test_login_handoff_prompt_allows_user_mediated_credential_login():
     assert "open_browser" in prompt
     assert "go_to" in prompt
     assert "take_screenshot" in prompt
-    assert "send_credentials_form_to_user" in prompt
-    assert "send_qr_to_user" in prompt
-    assert "type_saved_login_credential" in prompt
+    assert "request_login_from_user" in prompt
+    assert "send_credentials_form_to_user" not in prompt
+    assert "send_qr_to_user" not in prompt
+    assert "type_saved_login_credential" not in prompt
     assert "verification code" in prompt
     assert "2FA" in prompt
-    assert "use `ask_user`" in prompt
+    assert 'request_login_from_user(mode="message"' in prompt
     assert "same turn" in prompt
     assert "same tool loop" in prompt
-    assert "Never call `keyboard_type` with a user-provided password" in prompt
+    assert "Do not expose, summarize, type, or persist them in the agent" in prompt
     assert "Leave the browser open after login succeeds" in prompt
     assert "close_browser" not in prompt
     assert "After the login flow succeeds, fails, or cannot continue, call `close_browser`" not in prompt

@@ -94,14 +94,13 @@ This applies to Chinese and English requests, including "帮我登录", "help me
 
 - Use `open_browser`, `go_to`, and `take_screenshot` to inspect the login page. If `open_browser` reports that the browser is already open and usable, continue operating the current page directly. Treat the browser as server-side: the user cannot see or operate it directly.
 - Do not send ordinary screenshots to the user.
-- Keep the login handoff inside the same turn. Use `send_qr_to_user` or `send_credentials_form_to_user` to wait for the user's action, then continue checking the browser state in this same tool loop.
-- For username/password pages, call `send_credentials_form_to_user` instead of refusing or telling the user to operate the browser.
-- After `send_credentials_form_to_user` returns, click the username and password fields and use `type_saved_login_credential` to type each saved value. Never call `keyboard_type` with a user-provided password.
-- For verification code, OTP, 2FA, phone, email, captcha code, or other extra login fields, use `ask_user` for the required message or choice. Do not ask the user to send a later chat message when a handoff tool can wait in the same turn.
-- For QR-code pages, call `send_qr_to_user` only after the QR code is visible.
-- Treat credentials as user-provided data for this login task only. Do not expose, summarize, or persist them outside the current login flow.
+- Keep the login handoff inside the same turn. Use `request_login_from_user` to wait for the user's action, then continue checking the browser state in this same tool loop.
+- For username/password pages, call `request_login_from_user(mode="credentials")` instead of refusing or telling the user to operate the browser.
+- For verification code, OTP, 2FA, phone, email, captcha code, or other extra login fields, call `request_login_from_user(mode="message", message=...)`. Do not ask the user to send a later chat message when a handoff tool can wait in the same turn.
+- For QR-code pages, call `request_login_from_user(mode="qr")` only after the QR code is visible.
+- Treat credentials as frontend-handled user data for this login task only. Do not expose, summarize, type, or persist them in the agent.
 - Do not claim login success until the browser page shows a logged-in state.
-- If the page reports incorrect username/password, call `send_credentials_form_to_user` for corrected credentials in the same turn before giving up.
+- If the page reports incorrect username/password, call `request_login_from_user(mode="credentials")` for corrected credentials in the same turn before giving up.
 - Do not end your response with "tell me after scanning" or similar wording when a handoff tool can wait for the user.
 - Leave the browser open after login succeeds so the user can continue using the logged-in page in follow-up turns.
 ## Before Writing Code

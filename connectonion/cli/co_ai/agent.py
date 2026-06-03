@@ -46,9 +46,7 @@ from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
 from connectonion.useful_tools import (
-    send_credentials_form_to_user,
-    send_qr_to_user,
-    type_saved_login_credential,
+    request_login_from_user,
 )
 from connectonion.useful_tools.browser_tools import BrowserAutomation
 from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents, image_result_formatter, runtime_input
@@ -72,9 +70,7 @@ def create_coding_agent(
     tools = [
         file_tools,
         browser,
-        send_credentials_form_to_user,
-        send_qr_to_user,
-        type_saved_login_credential,
+        request_login_from_user,
         bash,
         # task is now provided by subagents plugin (no need to import from .tools)
         enter_plan_mode,

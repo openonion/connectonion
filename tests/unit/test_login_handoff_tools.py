@@ -8,19 +8,8 @@ import connectonion.useful_tools as useful_tools
 login_handoff_mod = importlib.import_module("connectonion.useful_tools.login_handoff")
 
 
-class FakeKeyboard:
-    def __init__(self):
-        self.typed = []
-
-    def type(self, text):
-        self.typed.append(text)
-
-
 class FakePage:
     url = "https://example.com/login"
-
-    def __init__(self):
-        self.keyboard = FakeKeyboard()
 
 
 class FakeBrowser:
@@ -62,14 +51,14 @@ class FakeIO:
         return {"answer": self.answer}
 
 
-def test_send_qr_to_user_sends_screenshot_then_ask_user():
+def test_request_login_from_user_qr_sends_screenshot_then_ask_user():
     browser = FakeBrowser()
     agent = SimpleNamespace(
         io=FakeIO(answer="I scanned it"),
         browse=browser,
     )
 
-    result = login_handoff_mod.send_qr_to_user(agent)
+    result = login_handoff_mod.request_login_from_user(agent, "qr")
 
     assert browser.screenshot_calls == [(None, False)]
     assert agent.io.sent == [
@@ -90,19 +79,19 @@ def test_send_qr_to_user_sends_screenshot_then_ask_user():
     assert "data:image/png;base64" not in result
 
 
-def test_send_qr_to_user_requires_existing_browser_context():
+def test_request_login_from_user_qr_requires_existing_browser_context():
     agent = SimpleNamespace(io=FakeIO(), tools=SimpleNamespace(_instances={}))
 
-    result = login_handoff_mod.send_qr_to_user(agent)
+    result = login_handoff_mod.request_login_from_user(agent, "qr")
 
-    assert "requires agent.browse and agent.io" in result
+    assert 'mode="qr"' in result
     assert agent.io.sent == []
 
 
-def test_send_credentials_form_to_user_sends_structured_ask_user():
+def test_request_login_from_user_credentials_sends_structured_ask_user():
     agent = SimpleNamespace(io=FakeIO(answer='{"username":"me@example.com","password":"secret"}'))
 
-    result = login_handoff_mod.send_credentials_form_to_user(agent)
+    result = login_handoff_mod.request_login_from_user(agent, "credentials")
 
     assert agent.io.sent == [
         {
@@ -131,41 +120,38 @@ def test_send_credentials_form_to_user_sends_structured_ask_user():
         }
     ]
     assert agent.io.receives == 1
-    assert agent._login_credentials == {"username": "me@example.com", "password": "secret"}
+    assert not hasattr(agent, "_login_credentials")
     assert "secret" not in result
     assert "me@example.com" not in result
-    assert "type_saved_login_credential" in result
+    assert result == "Login credentials request sent to the user."
 
 
-def test_type_saved_login_credential_types_without_returning_secret():
-    browser = FakeBrowser()
-    agent = SimpleNamespace(
-        browse=browser,
-        _login_credentials={"username": "me@example.com", "password": "secret"},
+def test_request_login_from_user_message_sends_plain_ask_user():
+    agent = SimpleNamespace(io=FakeIO(answer="Done"))
+
+    result = login_handoff_mod.request_login_from_user(
+        agent,
+        "message",
+        "Please enter the OTP shown on your phone.",
     )
 
-    result = login_handoff_mod.type_saved_login_credential(agent, "password")
-
-    assert browser.page.keyboard.typed == ["secret"]
-    assert result == "Typed saved password into the focused browser field."
-    assert "secret" not in result
-    assert not hasattr(agent, "_login_credentials")
-
-
-def test_type_saved_login_credential_requires_saved_value():
-    agent = SimpleNamespace(browse=FakeBrowser(), _login_credentials={})
-
-    result = login_handoff_mod.type_saved_login_credential(agent, "password")
-
-    assert result == "No saved password credential is available."
+    assert agent.io.sent == [
+        {
+            "type": "ask_user",
+            "question": "Please enter the OTP shown on your phone.",
+            "options": [],
+            "multi_select": False,
+        }
+    ]
+    assert result == "Login message sent to the user. User response: Done."
 
 
-def test_send_credentials_form_to_user_requires_io():
+def test_request_login_from_user_requires_io():
     agent = SimpleNamespace(io=None)
 
-    result = login_handoff_mod.send_credentials_form_to_user(agent)
+    result = login_handoff_mod.request_login_from_user(agent, "credentials")
 
-    assert "requires agent.io" in result
+    assert "request_login_from_user requires agent.io" in result
 
 
 def test_old_login_tool_names_are_not_exported():
@@ -173,5 +159,11 @@ def test_old_login_tool_names_are_not_exported():
     assert "remote_login" not in useful_tools.__all__
     assert not hasattr(useful_tools, "request_qr_scan")
     assert not hasattr(useful_tools, "request_login_credentials")
+    assert not hasattr(useful_tools, "send_qr_to_user")
+    assert not hasattr(useful_tools, "send_credentials_form_to_user")
+    assert not hasattr(useful_tools, "type_saved_login_credential")
     assert not hasattr(useful_tools, "close_browser")
+    assert "send_qr_to_user" not in useful_tools.__all__
+    assert "send_credentials_form_to_user" not in useful_tools.__all__
+    assert "type_saved_login_credential" not in useful_tools.__all__
     assert "close_browser" not in useful_tools.__all__
