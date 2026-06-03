@@ -25,7 +25,6 @@ from .todo_list import TodoList
 from .slash_command import SlashCommand
 from .ask_user import ask_user
 from .login_handoff import (
-    close_browser,
     send_credentials_form_to_user,
     send_qr_to_user,
     type_saved_login_credential,
@@ -69,7 +68,6 @@ __all__ = [
     "TodoList",
     "SlashCommand",
     "ask_user",
-    "close_browser",
     "send_credentials_form_to_user",
     "send_qr_to_user",
     "type_saved_login_credential",

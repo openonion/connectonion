@@ -1,7 +1,6 @@
 """User handoff tools for server-side login flows."""
 
 import json
-from typing import Any, Dict, List, Optional
 
 from .ask_user import ask_user
 
@@ -22,29 +21,15 @@ _DEFAULT_CREDENTIAL_FIELDS = [
         "autocomplete": "current-password",
     },
 ]
+_CREDENTIAL_FIELDS = {"username", "password"}
 
 
 def _clear_saved_credentials(agent) -> None:
-    for attr in ("_login_credentials", "_login_handoff_active"):
-        if hasattr(agent, attr):
-            delattr(agent, attr)
+    if hasattr(agent, "_login_credentials"):
+        delattr(agent, "_login_credentials")
 
 
-def _credential_fields(fields: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
-    if not fields:
-        return [field.copy() for field in _DEFAULT_CREDENTIAL_FIELDS]
-
-    for field in fields:
-        if not isinstance(field, dict):
-            raise TypeError("Credential fields must be JSON objects.")
-        name = str(field.get("name", "")).strip()
-        if not name:
-            raise ValueError("Credential fields must include a non-empty name.")
-
-    return [field.copy() for field in fields]
-
-
-def _parse_form_answer(answer) -> Dict[str, Any]:
+def _parse_form_answer(answer) -> dict:
     if isinstance(answer, str):
         if not answer:
             return {}
@@ -62,7 +47,6 @@ def send_qr_to_user(agent) -> str:
     if not browser or not agent.io:
         return "send_qr_to_user requires agent.browse and agent.io."
 
-    agent._login_handoff_active = True
     screenshot = browser.take_screenshot()
     if screenshot:
         agent.io.send_image(screenshot)
@@ -84,60 +68,45 @@ def send_qr_to_user(agent) -> str:
 
 def send_credentials_form_to_user(
     agent,
-    question: str = "",
-    fields: Optional[List[Dict[str, Any]]] = None,
+    question: str = "Please enter your username and password.",
 ) -> str:
-    """Ask the user for login credentials or verification fields."""
+    """Ask the user for username/password without exposing values to the LLM."""
     if not agent.io:
         return "send_credentials_form_to_user requires agent.io."
 
-    credential_fields = _credential_fields(fields)
-    prompt = question or (
-        "Please enter your username and password."
-        if fields is None
-        else "Please enter the information required by the current login page."
-    )
     agent.io.send({
         "type": "ask_user",
-        "text": prompt,
-        "question": prompt,
+        "text": question,
+        "question": question,
         "options": [],
         "multi_select": False,
         "input_type": "credentials",
-        "fields": credential_fields,
+        "fields": [field.copy() for field in _DEFAULT_CREDENTIAL_FIELDS],
     })
     answer = agent.io.receive().get("answer", "")
     credentials = _parse_form_answer(answer)
-
-    saved = {}
-    for field in credential_fields:
-        name = field["name"]
-        value = credentials.get(name)
-        if value in (None, ""):
-            if field.get("required", True):
-                return "No credentials were provided."
-            continue
-        saved[name] = str(value)
-
-    if not saved:
+    username = credentials.get("username")
+    password = credentials.get("password")
+    if not username or not password:
         return "No credentials were provided."
 
-    agent._login_handoff_active = True
-    agent._login_credentials = saved
-    field_names = ", ".join(saved)
+    agent._login_credentials = {
+        "username": str(username),
+        "password": str(password),
+    }
     return (
-        f"Credentials saved for this login flow for fields: {field_names}. "
-        "Focus each matching browser field and call "
-        "type_saved_login_credential(field=\"field_name\"). Do not use "
-        "keyboard_type for saved credentials or verification codes."
+        "Credentials saved for this login flow. Focus the username field and "
+        "call type_saved_login_credential(field=\"username\"), then focus the "
+        "password field and call type_saved_login_credential(field=\"password\"). "
+        "Do not use keyboard_type for saved credentials."
     )
 
 
 def type_saved_login_credential(agent, field: str) -> str:
     """Type a saved login credential into the focused browser field."""
     field = str(field).strip()
-    if not field:
-        return "field is required."
+    if field not in _CREDENTIAL_FIELDS:
+        return 'field must be "username" or "password".'
 
     credentials = getattr(agent, "_login_credentials", None) or {}
     value = credentials.get(field)
@@ -150,25 +119,6 @@ def type_saved_login_credential(agent, field: str) -> str:
         return "type_saved_login_credential requires an open agent.browse page."
 
     page.keyboard.type(value)
+    if field == "password":
+        _clear_saved_credentials(agent)
     return f"Typed saved {field} into the focused browser field."
-
-
-def close_browser(agent) -> str:
-    """Close the agent-side browser after a login/browser flow is finished."""
-    browser = getattr(agent, "browse", None)
-    if not browser:
-        _clear_saved_credentials(agent)
-        return "close_browser requires agent.browse."
-
-    if not getattr(browser, "browser", None) and not getattr(browser, "page", None):
-        _clear_saved_credentials(agent)
-        return "Browser is already closed."
-
-    close = getattr(browser, "close", None)
-    if not callable(close):
-        _clear_saved_credentials(agent)
-        return "agent.browse does not support close()."
-
-    result = close()
-    _clear_saved_credentials(agent)
-    return result

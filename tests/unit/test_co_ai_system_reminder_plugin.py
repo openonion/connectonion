@@ -60,11 +60,9 @@ def test_browser_lifecycle_reminder_triggers_on_open_browser():
     content = plugin._find_tool_reminder(plugin._REMINDERS, "open_browser", {})
 
     assert content is not None
-    assert "close_browser" in content
     assert "previous server-side browser" in content
     assert "Leave the browser open after a successful login" in content
-    assert "Do not call `close_browser` automatically after successful login" in content
-    assert "call `close_browser` before your final response" not in content
+    assert "close_browser" not in content
 
 
 def test_detect_intent_and_inject_tool(monkeypatch):

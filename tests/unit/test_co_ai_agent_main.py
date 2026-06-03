@@ -35,7 +35,7 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # FileTools is registered as a tool class
     assert "file_tools" in agent.tools._tools or any("file" in t.lower() for t in agent.tools._tools)
     assert "remote_login" not in agent.tools._tools
-    assert "close_browser" in agent.tools._tools
+    assert "close_browser" not in agent.tools._tools
     assert "send_qr_to_user" in agent.tools._tools
     assert "send_credentials_form_to_user" in agent.tools._tools
     assert "type_saved_login_credential" in agent.tools._tools

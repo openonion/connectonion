@@ -46,7 +46,6 @@ from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
 from connectonion.useful_tools import (
-    close_browser,
     send_credentials_form_to_user,
     send_qr_to_user,
     type_saved_login_credential,
@@ -73,7 +72,6 @@ def create_coding_agent(
     tools = [
         file_tools,
         browser,
-        close_browser,
         send_credentials_form_to_user,
         send_qr_to_user,
         type_saved_login_credential,
