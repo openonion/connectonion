@@ -8,7 +8,7 @@ This file provides the `start_server()` function that:
 - Loads global API keys from ~/.co/keys.env
 
 Architecture:
-- Uses agent factory pattern for stateless agent creation
+- Uses one hosted coding agent for the web chat session
 - Trust level set to "careful" for web deployment
 - Auto-approve mode for web usage (no terminal prompts)
 
@@ -57,18 +57,11 @@ def start_server(
     """
     from .agent import create_coding_agent
 
-    shared_browser = None
-
-    def agent_factory():
-        nonlocal shared_browser
-        agent = create_coding_agent(
-            model=model,
-            max_iterations=max_iterations,
-            auto_approve=True,  # Always auto-approve in web mode
-            browser=shared_browser,
-        )
-        shared_browser = agent.browse
-        return agent
+    agent = create_coding_agent(
+        model=model,
+        max_iterations=max_iterations,
+        auto_approve=True,  # Always auto-approve in web mode
+    )
 
     # Use global ~/.co/ for consistent identity across all co ai sessions
     co_dir = Path.home() / '.co'
@@ -83,6 +76,6 @@ def start_server(
         threading.Thread(target=open_chat_delayed, daemon=True).start()
 
     # Start server with same co_dir (relay enabled by default for web chat).
-    # co ai creates a fresh Agent per request while sharing the browser helper
-    # so logged-in pages can persist across continued inputs.
-    host(agent_factory, port=port, trust="careful", co_dir=co_dir)
+    # co ai keeps one Agent instance so browser/tool state can persist across
+    # continued inputs in the same local web server.
+    host(agent, port=port, trust="careful", co_dir=co_dir)

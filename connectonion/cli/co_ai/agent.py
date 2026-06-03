@@ -65,11 +65,10 @@ def create_coding_agent(
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
     auto_approve: bool = False,
-    browser: BrowserAutomation | None = None,
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
-    browser = browser or BrowserAutomation(headless=False)
+    browser = BrowserAutomation(headless=False)
 
     tools = [
         file_tools,
