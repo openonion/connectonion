@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import connectonion.useful_tools as useful_tools
 
-login_handoff_mod = importlib.import_module("connectonion.useful_tools.login_handoff")
+login_request_mod = importlib.import_module("connectonion.useful_tools.login_request")
 
 
 class FakePage:
@@ -51,14 +51,14 @@ class FakeIO:
         return {"answer": self.answer}
 
 
-def test_request_login_from_user_qr_sends_screenshot_then_ask_user():
+def test_request_user_login_qr_sends_screenshot_then_ask_user():
     browser = FakeBrowser()
     agent = SimpleNamespace(
         io=FakeIO(answer="I scanned it"),
         browse=browser,
     )
 
-    result = login_handoff_mod.request_login_from_user(agent, "qr")
+    result = login_request_mod.request_user_login(agent, "qr")
 
     assert browser.screenshot_calls == [(None, False)]
     assert agent.io.sent == [
@@ -79,19 +79,19 @@ def test_request_login_from_user_qr_sends_screenshot_then_ask_user():
     assert "data:image/png;base64" not in result
 
 
-def test_request_login_from_user_qr_requires_existing_browser_context():
+def test_request_user_login_qr_requires_existing_browser_context():
     agent = SimpleNamespace(io=FakeIO(), tools=SimpleNamespace(_instances={}))
 
-    result = login_handoff_mod.request_login_from_user(agent, "qr")
+    result = login_request_mod.request_user_login(agent, "qr")
 
     assert 'mode="qr"' in result
     assert agent.io.sent == []
 
 
-def test_request_login_from_user_credentials_sends_structured_ask_user():
+def test_request_user_login_credentials_sends_structured_ask_user():
     agent = SimpleNamespace(io=FakeIO(answer='{"username":"me@example.com","password":"secret"}'))
 
-    result = login_handoff_mod.request_login_from_user(agent, "credentials")
+    result = login_request_mod.request_user_login(agent, "credentials")
 
     assert agent.io.sent == [
         {
@@ -126,10 +126,10 @@ def test_request_login_from_user_credentials_sends_structured_ask_user():
     assert result == "Login credentials request sent to the user."
 
 
-def test_request_login_from_user_message_sends_plain_ask_user():
+def test_request_user_login_message_sends_plain_ask_user():
     agent = SimpleNamespace(io=FakeIO(answer="Done"))
 
-    result = login_handoff_mod.request_login_from_user(
+    result = login_request_mod.request_user_login(
         agent,
         "message",
         "Please enter the OTP shown on your phone.",
@@ -146,12 +146,12 @@ def test_request_login_from_user_message_sends_plain_ask_user():
     assert result == "Login message sent to the user. User response: Done."
 
 
-def test_request_login_from_user_requires_io():
+def test_request_user_login_requires_io():
     agent = SimpleNamespace(io=None)
 
-    result = login_handoff_mod.request_login_from_user(agent, "credentials")
+    result = login_request_mod.request_user_login(agent, "credentials")
 
-    assert "request_login_from_user requires agent.io" in result
+    assert "request_user_login requires agent.io" in result
 
 
 def test_old_login_tool_names_are_not_exported():

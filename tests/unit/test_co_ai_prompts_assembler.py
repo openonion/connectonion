@@ -13,7 +13,7 @@ Components under test:
 from pathlib import Path
 
 from connectonion.useful_tools import (
-    request_login_from_user,
+    request_user_login,
 )
 from connectonion.cli.co_ai.prompts.assembler import (
     PromptContext,
@@ -73,11 +73,11 @@ def test_prompt_context_and_assemble(tmp_path):
     assert agent_prompt == "Explore Test"
 
 
-def test_login_handoff_prompt_allows_user_mediated_credential_login():
+def test_login_request_prompt_allows_user_mediated_credential_login():
     prompt = assemble_prompt(
         prompts_dir=str(PROMPTS_DIR),
         tools=[
-            request_login_from_user,
+            request_user_login,
         ],
     )
 
@@ -88,13 +88,13 @@ def test_login_handoff_prompt_allows_user_mediated_credential_login():
     assert "open_browser" in prompt
     assert "go_to" in prompt
     assert "take_screenshot" in prompt
-    assert "request_login_from_user" in prompt
+    assert "request_user_login" in prompt
     assert "send_credentials_form_to_user" not in prompt
     assert "send_qr_to_user" not in prompt
     assert "type_saved_login_credential" not in prompt
     assert "verification code" in prompt
     assert "2FA" in prompt
-    assert 'request_login_from_user(mode="message"' in prompt
+    assert 'request_user_login(mode="message"' in prompt
     assert "same turn" in prompt
     assert "same tool loop" in prompt
     assert "Do not expose, summarize, type, or persist them in the agent" in prompt

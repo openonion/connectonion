@@ -1,6 +1,6 @@
 # Tool: Request Login From User
 
-Use `request_login_from_user(mode, message)` when a server-side login flow needs the user to act.
+Use `request_user_login(mode, message)` when a server-side login flow needs the user to act.
 
 ## Modes
 

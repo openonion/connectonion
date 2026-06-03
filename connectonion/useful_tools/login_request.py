@@ -1,23 +1,45 @@
 """User handoff tools for server-side login flows."""
 
+from typing import Literal
+
+from pydantic import BaseModel, Field
+
 from .ask_user import ask_user
 
 _QR_SCAN_OPTION = "I scanned it. Continue checking login status."
-_DEFAULT_CREDENTIAL_FIELDS = [
-    {
-        "name": "username",
-        "label": "Username",
-        "type": "text",
-        "required": True,
-        "autocomplete": "username",
-    },
-    {
-        "name": "password",
-        "label": "Password",
-        "type": "password",
-        "required": True,
-        "autocomplete": "current-password",
-    },
+
+
+class LoginCredentialField(BaseModel):
+    name: str
+    label: str
+    type: Literal["text", "password"]
+    required: bool = True
+    autocomplete: str
+
+
+class LoginUserRequest(BaseModel):
+    type: Literal["ask_user"] = "ask_user"
+    text: str | None = None
+    question: str
+    options: list[str] = Field(default_factory=list)
+    multi_select: bool = False
+    input_type: Literal["credentials"] | None = None
+    fields: list[LoginCredentialField] | None = None
+
+
+_CREDENTIAL_FIELDS = [
+    LoginCredentialField(
+        name="username",
+        label="Username",
+        type="text",
+        autocomplete="username",
+    ),
+    LoginCredentialField(
+        name="password",
+        label="Password",
+        type="password",
+        autocomplete="current-password",
+    ),
 ]
 
 # Frontend contract:
@@ -29,20 +51,20 @@ _DEFAULT_CREDENTIAL_FIELDS = [
 # passwords itself.
 
 
-def request_login_from_user(
+def request_user_login(
     agent,
     mode: str,
     message: str = "",
 ) -> str:
     """Send one login handoff request to the user."""
     if not agent.io:
-        return "request_login_from_user requires agent.io."
+        return "request_user_login requires agent.io."
 
     mode = str(mode).strip().lower()
     if mode == "qr":
         browser = getattr(agent, "browse", None)
         if not browser:
-            return "request_login_from_user(mode=\"qr\") requires agent.browse."
+            return "request_user_login(mode=\"qr\") requires agent.browse."
 
         screenshot = browser.take_screenshot()
         if screenshot:
@@ -63,15 +85,13 @@ def request_login_from_user(
 
     if mode == "credentials":
         prompt = message or "Please enter your username and password."
-        agent.io.send({
-            "type": "ask_user",
-            "text": prompt,
-            "question": prompt,
-            "options": [],
-            "multi_select": False,
-            "input_type": "credentials",
-            "fields": [field.copy() for field in _DEFAULT_CREDENTIAL_FIELDS],
-        })
+        payload = LoginUserRequest(
+            text=prompt,
+            question=prompt,
+            input_type="credentials",
+            fields=_CREDENTIAL_FIELDS,
+        )
+        agent.io.send(payload.model_dump(exclude_none=True))
         agent.io.receive()
         return "Login credentials request sent to the user."
 
