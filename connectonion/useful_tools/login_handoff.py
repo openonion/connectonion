@@ -1,7 +1,6 @@
 """User handoff tools for server-side login flows."""
 
 import json
-import re
 from typing import Any, Dict, List, Optional
 
 from .ask_user import ask_user
@@ -23,7 +22,6 @@ _DEFAULT_CREDENTIAL_FIELDS = [
         "autocomplete": "current-password",
     },
 ]
-_FIELD_KEYS = {"name", "label", "type", "required", "autocomplete", "placeholder"}
 
 
 def _clear_saved_credentials(agent) -> None:
@@ -32,53 +30,18 @@ def _clear_saved_credentials(agent) -> None:
             delattr(agent, attr)
 
 
-def _field_name_from_text(value: Any) -> str:
-    text = str(value or "").strip().lower()
-    if not text:
-        return ""
-
-    parts = re.findall(r"[a-z0-9]+", text)
-    if parts:
-        return "_".join(parts)
-
-    parts = re.findall(r"\w+", text)
-    return "_".join(parts)
-
-
-def _derive_field_name(field: Dict[str, Any], index: int) -> str:
-    for key in ("label", "placeholder", "autocomplete"):
-        name = _field_name_from_text(field.get(key))
-        if name:
-            return name
-
-    input_type = str(field.get("type", "")).strip().lower()
-    if input_type and input_type != "text":
-        return _field_name_from_text(input_type)
-
-    return f"field_{index + 1}"
-
-
-def _normalize_credential_fields(fields: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
+def _credential_fields(fields: Optional[List[Dict[str, Any]]]) -> List[Dict[str, Any]]:
     if not fields:
         return [field.copy() for field in _DEFAULT_CREDENTIAL_FIELDS]
 
-    normalized = []
-    for index, field in enumerate(fields):
+    for field in fields:
         if not isinstance(field, dict):
             raise TypeError("Credential fields must be JSON objects.")
-
         name = str(field.get("name", "")).strip()
         if not name:
-            name = _derive_field_name(field, index)
+            raise ValueError("Credential fields must include a non-empty name.")
 
-        clean = {key: field[key] for key in _FIELD_KEYS if key in field}
-        clean["name"] = name
-        clean.setdefault("label", name.replace("_", " ").replace("-", " ").title())
-        clean.setdefault("type", "text")
-        clean["required"] = bool(clean.get("required", True))
-        normalized.append(clean)
-
-    return normalized
+    return [field.copy() for field in fields]
 
 
 def _parse_form_answer(answer) -> Dict[str, Any]:
@@ -128,7 +91,7 @@ def send_credentials_form_to_user(
     if not agent.io:
         return "send_credentials_form_to_user requires agent.io."
 
-    credential_fields = _normalize_credential_fields(fields)
+    credential_fields = _credential_fields(fields)
     prompt = question or (
         "请输入账号和密码。" if fields is None else "请输入当前登录页面需要的信息。"
     )

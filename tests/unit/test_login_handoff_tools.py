@@ -3,6 +3,8 @@
 import importlib
 from types import SimpleNamespace
 
+import pytest
+
 import connectonion.useful_tools as useful_tools
 
 login_handoff_mod = importlib.import_module("connectonion.useful_tools.login_handoff")
@@ -197,52 +199,22 @@ def test_send_credentials_form_to_user_accepts_custom_login_fields():
     assert "123456" not in result
 
 
-def test_send_credentials_form_to_user_derives_missing_field_names_from_labels():
+def test_send_credentials_form_to_user_requires_custom_field_names():
     agent = SimpleNamespace(
         io=FakeIO(answer='{"email_or_phone":"me@example.com","password":"secret"}')
     )
 
-    result = login_handoff_mod.send_credentials_form_to_user(
-        agent,
-        question="Please enter your LinkedIn credentials.",
-        fields=[
-            {"label": "Email or phone", "type": "text", "required": True},
-            {"label": "Password", "type": "password", "required": True},
-        ],
-    )
-
-    assert agent.io.sent == [
-        {
-            "type": "ask_user",
-            "text": "Please enter your LinkedIn credentials.",
-            "question": "Please enter your LinkedIn credentials.",
-            "options": [],
-            "multi_select": False,
-            "input_type": "credentials",
-            "fields": [
-                {
-                    "name": "email_or_phone",
-                    "label": "Email or phone",
-                    "type": "text",
-                    "required": True,
-                },
-                {
-                    "name": "password",
-                    "label": "Password",
-                    "type": "password",
-                    "required": True,
-                },
+    with pytest.raises(ValueError, match="non-empty name"):
+        login_handoff_mod.send_credentials_form_to_user(
+            agent,
+            question="Please enter your LinkedIn credentials.",
+            fields=[
+                {"label": "Email or phone", "type": "text", "required": True},
+                {"name": "password", "label": "Password", "type": "password", "required": True},
             ],
-        }
-    ]
-    assert agent._login_credentials == {
-        "email_or_phone": "me@example.com",
-        "password": "secret",
-    }
-    assert "email_or_phone" in result
-    assert "password" in result
-    assert "me@example.com" not in result
-    assert "secret" not in result
+        )
+
+    assert agent.io.sent == []
 
 
 def test_type_saved_login_credential_types_without_returning_secret():

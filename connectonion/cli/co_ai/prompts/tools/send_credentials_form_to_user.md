@@ -13,7 +13,7 @@ Use `send_credentials_form_to_user()` when a server-side login page needs user-p
 
 - Use this instead of the generic `ask_user` tool for username/password, OTP, 2FA, verification code, phone, email, captcha code, or other login form fields.
 - Call with no arguments for the default username/password form.
-- When the page asks for different fields, pass `question` and `fields`, for example a text field named `verification_code` with label `Verification code`.
+- When the page asks for different fields, pass `question` and `fields`. Every custom field must include a `name`, for example a text field named `verification_code` with label `Verification code`.
 - After this tool returns, focus the relevant input fields and call `type_saved_login_credential(field="verification_code")` or the matching field name to fill the current login page in the same turn.
 - Do not call `keyboard_type` with a user-provided password or verification code.
 - Do not repeat credentials in assistant messages.
