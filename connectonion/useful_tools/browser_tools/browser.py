@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup
   Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), keyboard_type(text), keyboard_press(key), wait_for_login(seconds) | used by `co browser` CLI command
   Performance: headless by default (faster) | persistent context (instant profile load) | vision model for element finding (slower but accurate) | screenshots base64-encoded for LLM analysis | auto-save adds 500ms delay after critical actions
-  Errors: returns error string if Playwright not installed | closes existing browser state before reinitializing | element not found returns descriptive error
+  Errors: returns error string if Playwright not installed | returns "Browser already open" if live browser exists | element not found returns descriptive error
 Browser Agent for CLI - Natural language browser automation.
 
 This module provides a browser automation agent that understands natural language
@@ -94,8 +94,11 @@ class BrowserAutomation:
         if not PLAYWRIGHT_AVAILABLE:
             return "Browser tools not installed. Run: pip install playwright && playwright install chromium"
 
-        had_existing_browser = bool(self.browser or self.page or self.playwright)
-        if had_existing_browser:
+        if self.browser and self.page:
+            return "Browser already open"
+
+        had_stale_browser_state = bool(self.browser or self.page or self.playwright)
+        if had_stale_browser_state:
             self.close()
 
         self.playwright = sync_playwright().start()
@@ -148,8 +151,8 @@ class BrowserAutomation:
         """
         )
 
-        if had_existing_browser:
-            return f"Previous browser closed. Browser opened with persistent profile: {profile_dir}"
+        if had_stale_browser_state:
+            return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
         return f"Browser opened with persistent profile: {profile_dir}"
 
     def go_to(self, url: str) -> str:

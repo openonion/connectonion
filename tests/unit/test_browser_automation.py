@@ -35,7 +35,7 @@ class FakeContext:
         self.closed = True
 
 
-def test_open_browser_closes_existing_context_before_reopening(monkeypatch, tmp_path):
+def test_open_browser_is_noop_when_context_is_already_open(monkeypatch, tmp_path):
     contexts = []
     playwrights = []
 
@@ -73,10 +73,10 @@ def test_open_browser_closes_existing_context_before_reopening(monkeypatch, tmp_
     second_result = browser.open_browser()
 
     assert "Browser opened with persistent profile" in first_result
-    assert "Browser opened with persistent profile" in second_result
-    assert len(contexts) == 2
-    assert first_page.closed is True
-    assert first_context.closed is True
-    assert first_playwright.stopped is True
-    assert browser.browser is contexts[1]
-    assert browser.page is contexts[1].page
+    assert second_result == "Browser already open"
+    assert len(contexts) == 1
+    assert first_page.closed is False
+    assert first_context.closed is False
+    assert first_playwright.stopped is False
+    assert browser.browser is contexts[0]
+    assert browser.page is contexts[0].page
