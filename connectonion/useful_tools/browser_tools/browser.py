@@ -111,7 +111,7 @@ class BrowserAutomation:
 
         if self._browser_is_usable():
             if not force:
-                return "Browser already open and usable. Continue using the current browser page."
+                return "<system-reminder>Browser already open and usable. Continue using the current browser page.</system-reminder>"
             self.close()
             had_previous_browser_state = True
         else:
