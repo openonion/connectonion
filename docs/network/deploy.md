@@ -110,6 +110,43 @@ DATABASE_URL=postgres://...
 
 ---
 
+## co-ai agent (skills + browser)
+
+`co init --template co-ai` scaffolds a hosted coding agent — the same agent as
+the `co ai` command, wrapped in `host()`, plus a `Dockerfile` that ships a real
+Chrome + Xvfb browser runtime so browser tools work out of the box.
+
+```bash
+co init --template co-ai
+git init && git add -A && git commit -m "co-ai agent"
+co deploy
+```
+
+### Skills
+
+The deployed agent loads skills from `.co/skills/` via the normal loader.
+
+- **Project skills** — anything committed under `.co/skills/` is packaged by
+  `git archive`, no flag needed:
+  ```bash
+  co skills copy <name>          # lands in .co/skills/<name>/
+  git add .co/skills && git commit
+  co deploy
+  ```
+- **External skills** — to bundle skill directories that live outside the
+  project (e.g. `~/.co/skills` or a shared skills repo), pass `--skills PATH`
+  (repeatable). Each directory's skills are merged into the container's
+  `.co/skills/` from a temp dir (your working tree is untouched); on a name
+  clash, later paths win:
+  ```bash
+  co deploy --skills ~/.co/skills --skills ~/work/social-skills
+  ```
+
+> Your local `~/.claude/skills` are **not** auto-deployed. `co deploy` ships the
+> project plus whatever `--skills` you name — not your whole local skill library.
+
+---
+
 ## After Deployment
 
 ### Access Your Agent
