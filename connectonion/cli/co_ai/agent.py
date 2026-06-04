@@ -58,8 +58,8 @@ GLOBAL_CO_DIR = Path.home() / ".co"
 def create_coding_agent(
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
-    browser_channel: str = None,
-    co_dir: Path = None,
+    browser_channel: str = None,  # select browser by Playwright channel — the container's chrome has no fs path to detect; local picks by OS path
+    co_dir: Path = None,  # which .co to discover skills from; pinned to the project's .co (not ~/.co) when hosted
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
