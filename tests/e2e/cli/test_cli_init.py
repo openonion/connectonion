@@ -72,6 +72,26 @@ class TestCliInit:
             # Should import Agent
             assert "from connectonion import Agent" in code
 
+    def test_init_co_ai_template_scaffolds_hostable_browser_project(self):
+        """co init --template co-ai creates a host-ready project with a browser runtime."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
+            assert result.exit_code == 0
+
+            agent_code = Path("agent.py").read_text()
+            compile(agent_code, "agent.py", "exec")
+            assert "host(" in agent_code                     # host-ready entrypoint
+            assert "create_coding_agent" in agent_code        # mirrors `co ai`
+
+            assert 'browser_channel="chrome"' in agent_code   # real Chrome, not chromium
+
+            dockerfile = Path("Dockerfile").read_text()
+            assert "playwright install --with-deps chrome" in dockerfile   # real Chrome + deps
+            assert "xvfb" in dockerfile                        # headful under virtual display
+            assert Path("requirements.txt").read_text().strip() != ""
+
     def test_init_creates_config_file(self):
         """Test that init creates proper host.yaml."""
         with self.runner.isolated_filesystem():

@@ -63,13 +63,16 @@ class BrowserAutomation:
     This ensures session persistence even if the process crashes.
     """
 
-    def __init__(self, use_chrome_profile: bool = True, headless: bool = False):
+    def __init__(self, use_chrome_profile: bool = True, headless: bool = False, browser_channel: Optional[str] = None):
         """Initialize browser automation.
 
         Args:
             use_chrome_profile: If True, uses your Chrome cookies/sessions.
                                Chrome must be closed before running.
             headless: If True, browser runs without visible window (default True).
+            browser_channel: Playwright channel (e.g. "chrome") to launch instead of
+                             bundled Chromium. Used by hosted deploys that install real
+                             Chrome via `playwright install chrome`.
         """
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
@@ -79,6 +82,7 @@ class BrowserAutomation:
         self.use_chrome_profile = use_chrome_profile
         self._screenshots = []
         self._headless = headless
+        self.browser_channel = browser_channel
         self.screenshots_dir = str(SCREENSHOTS_DIR)
 
     def _browser_is_usable(self) -> bool:
@@ -133,9 +137,14 @@ class BrowserAutomation:
         # Can test removing this in the future if cookie issues persist
 
         # Use Google Chrome instead of Chromium for better X.com compatibility
-        chrome_path = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-        if not os.path.exists(chrome_path):
-            chrome_path = None  # Fall back to Chromium if Chrome not installed
+        # browser_channel (e.g. "chrome") takes precedence — hosted deploys install real
+        # Chrome via `playwright install chrome` and select it by channel, not by path.
+        channel_kwargs = {}
+        if self.browser_channel:
+            channel_kwargs["channel"] = self.browser_channel
+        else:
+            chrome_path = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
+            channel_kwargs["executable_path"] = chrome_path if os.path.exists(chrome_path) else None
 
         # Session persistence: use ONLY user_data_dir (simple approach)
         # - Persistent Chrome profile at ~/.co/browser_profile/
@@ -147,10 +156,10 @@ class BrowserAutomation:
         self.browser = self.playwright.chromium.launch_persistent_context(
             str(profile_dir),  # Persistent profile at ~/.co/browser_profile/
             headless=headless,
-            executable_path=chrome_path,
             args=CHROME_DEFAULT_ARGS,  # 53 args + 30 disabled features from browser-use
             ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # + macOS cookie fix
             timeout=120000,
+            **channel_kwargs,
         )
 
         self.page = self.browser.new_page()

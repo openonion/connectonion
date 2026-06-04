@@ -12,7 +12,9 @@ LLM-Note:
 import json
 import os
 import re
+import shutil
 import subprocess
+import tarfile
 import tempfile
 import time
 import yaml
@@ -52,7 +54,43 @@ def _check_host_export(entrypoint: str) -> bool:
     return False
 
 
-def handle_deploy():
+def _build_tarball_with_skills(project_dir: Path, skills_path: Path) -> Path:
+    """git archive HEAD into a temp staging dir, overlay skills under .co/skills/, re-tar.
+
+    The working tree is never touched — everything happens in a temp dir.
+    Each entry under skills_path lands at .co/skills/<name>/ so the deployed
+    agent finds them via the existing loader path.
+    """
+    work = Path(tempfile.mkdtemp())
+    staging = work / "staging"
+    staging.mkdir()
+
+    head_tar = work / "head.tar"
+    subprocess.run(
+        ["git", "archive", "--format=tar", "-o", str(head_tar), "HEAD"],
+        cwd=project_dir,
+        check=True,
+    )
+    with tarfile.open(head_tar) as tar:
+        tar.extractall(staging)
+
+    skills_dest = staging / ".co" / "skills"
+    skills_dest.mkdir(parents=True, exist_ok=True)
+    for item in sorted(skills_path.iterdir()):
+        target = skills_dest / item.name
+        if item.is_dir():
+            shutil.copytree(item, target, dirs_exist_ok=True)
+        else:
+            shutil.copy2(item, target)
+
+    tarball = work / "agent.tar.gz"
+    with tarfile.open(tarball, "w:gz") as tar:
+        for path in sorted(staging.rglob("*")):
+            tar.add(path, arcname=str(path.relative_to(staging)), recursive=False)
+    return tarball
+
+
+def handle_deploy(co_ai: bool = False, skills: str | None = None):
     """Deploy agent to ConnectOnion Cloud."""
     console.print("\n[cyan]Deploying to ConnectOnion Cloud...[/cyan]\n")
 
@@ -69,6 +107,8 @@ def handle_deploy():
     if not host_yaml_path.exists():
         console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
         return
+
+    skills_path = Path(skills) if skills is not None else None
 
     # Must have API key
     api_key = load_api_key()
@@ -106,13 +146,16 @@ def handle_deploy():
     # Load env vars from .env (user's API keys, config for the agent container)
     env_vars = dotenv_values(env_file) if Path(env_file).exists() else {}
 
-    # Create tarball from git
-    tarball_path = Path(tempfile.mkdtemp()) / "agent.tar.gz"
-    subprocess.run(
-        ["git", "archive", "--format=tar.gz", "-o", str(tarball_path), "HEAD"],
-        cwd=project_dir,
-        check=True,
-    )
+    # Create tarball from git, bundling an external skills dir when requested
+    if skills_path is not None:
+        tarball_path = _build_tarball_with_skills(project_dir, skills_path)
+    else:
+        tarball_path = Path(tempfile.mkdtemp()) / "agent.tar.gz"
+        subprocess.run(
+            ["git", "archive", "--format=tar.gz", "-o", str(tarball_path), "HEAD"],
+            cwd=project_dir,
+            check=True,
+        )
 
     # Show package size
     tarball_size = tarball_path.stat().st_size
@@ -130,15 +173,18 @@ def handle_deploy():
 
     # Upload
     console.print("Uploading...")
+    deploy_data = {
+        "project_name": project_name,
+        "env_vars": json.dumps(env_vars),
+        "entrypoint": entrypoint,
+    }
+    if co_ai:
+        deploy_data["runtime"] = "co-ai"
     with open(tarball_path, "rb") as f:
         response = requests.post(
             f"{API_BASE}/api/v1/deploy",
             files={"package": ("agent.tar.gz", f, "application/gzip")},
-            data={
-                "project_name": project_name,
-                "env_vars": json.dumps(env_vars),
-                "entrypoint": entrypoint,
-            },
+            data=deploy_data,
             headers={"Authorization": f"Bearer {api_key}"},
             timeout=600,  # 10 minutes for docker build
         )

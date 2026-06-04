@@ -72,7 +72,7 @@ def _show_help():
 
 @app.command()
 def init(
-    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: minimal, playwright, custom"),
+    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: minimal, playwright, co-ai, custom"),
     yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
@@ -86,7 +86,7 @@ def init(
 @app.command()
 def create(
     name: Optional[str] = typer.Argument(None, help="Project name"),
-    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: minimal, playwright, custom"),
+    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: minimal, playwright, co-ai, custom"),
     yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
@@ -97,10 +97,13 @@ def create(
 
 
 @app.command()
-def deploy():
+def deploy(
+    co_ai: bool = typer.Option(False, "--co-ai", help="Deploy with the co-ai runtime (browser-enabled)"),
+    skills: Optional[str] = typer.Option(None, "--skills", help="Path to a skills directory to bundle into .co/skills/"),
+):
     """Deploy to ConnectOnion Cloud."""
     from .commands.deploy_commands import handle_deploy
-    handle_deploy()
+    handle_deploy(co_ai=co_ai, skills=skills)
 
 
 @app.command()

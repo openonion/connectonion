@@ -58,10 +58,11 @@ GLOBAL_CO_DIR = Path.home() / ".co"
 def create_coding_agent(
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
+    browser_channel: str = None,
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
-    browser = BrowserAutomation(headless=False)
+    browser = BrowserAutomation(headless=False, browser_channel=browser_channel)
 
     tools = [
         file_tools,

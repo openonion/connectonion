@@ -1,0 +1,1 @@
+connectonion @ git+https://github.com/openonion/connectonion@co-ai-init-deploy

@@ -227,3 +227,65 @@ class TestCliDeploy:
             assert "Deploy failed" in result.output
 
 
+@SKIP_NO_GIT
+class TestDeploySkillsPackaging:
+    """Test --skills bundling into the deploy tarball."""
+
+    def _make_repo(self, root: Path):
+        subprocess.run(['git', 'init'], cwd=root, capture_output=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@test.com'], cwd=root, capture_output=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, capture_output=True)
+        (root / ".co").mkdir()
+        (root / ".co" / "host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
+        (root / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+        subprocess.run(['git', 'add', '.'], cwd=root, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'init'], cwd=root, capture_output=True)
+
+    def test_skills_dir_lands_under_co_skills(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball_with_skills
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._make_repo(repo)
+
+        skills = tmp_path / "skills"
+        (skills / "hello").mkdir(parents=True)
+        (skills / "hello" / "SKILL.md").write_text("---\nname: hello\n---\nhi\n")
+        (skills / "hello" / "run.py").write_text("print('hi')\n")
+
+        tarball = _build_tarball_with_skills(repo, skills)
+        names = set(tarfile.open(tarball).getnames())
+
+        assert "agent.py" in names                       # project files preserved
+        assert ".co/skills/hello/SKILL.md" in names        # skill placed at loader path
+        assert ".co/skills/hello/run.py" in names          # supporting files kept
+
+    def test_missing_skills_path_raises(self, tmp_path):
+        from connectonion.cli.commands.deploy_commands import _build_tarball_with_skills
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._make_repo(repo)
+
+        with pytest.raises(FileNotFoundError):
+            _build_tarball_with_skills(repo, tmp_path / "does-not-exist")
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.get')
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_co_ai_flag_signals_runtime_in_upload(self, mock_post, mock_get):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        runner = ArgparseCliRunner()
+        with runner.isolated_filesystem():
+            self._make_repo(Path("."))
+
+            mock_post.return_value = MagicMock(status_code=200, json=lambda: {"id": "x", "url": "u"})
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "running", "logs": ""})
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                handle_deploy(co_ai=True)
+
+            assert mock_post.call_args.kwargs["data"]["runtime"] == "co-ai"
+
+
