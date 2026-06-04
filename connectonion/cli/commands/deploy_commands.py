@@ -260,18 +260,28 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
     if url:
         console.print(f"Agent URL: {url}")
 
-    # Always fetch and display container logs
+    # Show the agent's startup logs. The banner appears a few seconds after the
+    # container starts, so poll until it shows up (a slow log fetch must not
+    # crash a deploy that already succeeded).
     if deployment_id:
-        logs_resp = requests.get(
-            f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=10,
-        )
-        if logs_resp.status_code == 200:
-            logs = logs_resp.json().get("logs", "")
-            if logs:
-                console.print()
-                console.print("[dim]Container logs:[/dim]")
-                console.print(f"[dim]{logs}[/dim]")
+        logs = ""
+        for _ in range(10):
+            try:
+                logs_resp = requests.get(
+                    f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=40",
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    timeout=10,
+                )
+            except requests.exceptions.RequestException:
+                time.sleep(3)
+                continue
+            if logs_resp.status_code == 200 and (logs_resp.json().get("logs") or "").strip():
+                logs = logs_resp.json().get("logs", "")
+                break
+            time.sleep(3)
+        if logs.strip():
+            console.print()
+            console.print("[dim]Container logs:[/dim]")
+            console.print(f"[dim]{logs}[/dim]")
 
     console.print()
