@@ -193,6 +193,7 @@ async def serve_loop(
     summary = announce_message.get("summary", "")
     endpoints = announce_message.get("endpoints", [])
     relay_url = announce_message.get("relay")
+    profile = announce_message.get("profile")
 
     sessions: Dict[str, asyncio.Queue] = {}
 
@@ -227,7 +228,7 @@ async def serve_loop(
             # Stay in the loop.
             if addr_data:
                 fresh_announce = announce_module.create_announce_message(
-                    addr_data, summary, endpoints=endpoints, relay=relay_url
+                    addr_data, summary, endpoints=endpoints, relay=relay_url, profile=profile
                 )
                 await send_announce(websocket, fresh_announce)
             else:

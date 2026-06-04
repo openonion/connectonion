@@ -231,7 +231,7 @@ def _print_host_banner(
     console.print()
 
 
-def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner):
+def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner, profile: dict = None):
     """Create relay startup/shutdown callbacks for ASGI lifespan.
 
     Args:
@@ -253,7 +253,7 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         async def relay_loop():
             while True:
                 ws = await relay.connect(relay_url)
-                announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
+                announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url, profile=profile)
                 await relay.serve_loop(
                     ws, announce_msg,
                     addr_data=addr_data, session_handler=relay_session_runner,
@@ -435,8 +435,13 @@ def host(
             whitelist=whitelist,
             enable_ping=False,
         )
+        profile = {
+            "alias": agent_metadata["name"],
+            "skills": [{"name": s["name"], "description": s["description"]}
+                       for s in agent_metadata["skills"]],
+        }
         on_startup, on_shutdown = _create_relay_lifespan(
-            relay_url, addr_data, summary, port, relay_session_runner
+            relay_url, addr_data, summary, port, relay_session_runner, profile
         )
 
     app = asgi_create_app(
