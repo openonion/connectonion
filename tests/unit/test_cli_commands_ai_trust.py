@@ -37,7 +37,6 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
-    assert created["auto_approve"] is True
 
 
 def test_trust_commands_list_and_actions(tmp_path, monkeypatch):

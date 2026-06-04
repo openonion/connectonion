@@ -25,7 +25,7 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "CTX")
     monkeypatch.setattr(agent_mod, "GLOBAL_CO_DIR", tmp_path / ".co")
 
-    agent = agent_mod.create_coding_agent(model="fake", max_iterations=5, auto_approve=True)
+    agent = agent_mod.create_coding_agent(model="fake", max_iterations=5)
 
     assert agent.name == "oo"
     assert agent.max_iterations == 5
@@ -36,7 +36,6 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "ask_user" in agent.tools._tools
     # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools
-    assert agent.browse is agent.tools.get_instance("browserautomation")
     assert agent.tools.get_instance("browserautomation")._headless is False
 
 

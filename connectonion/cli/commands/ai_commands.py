@@ -29,7 +29,6 @@ def handle_ai(
     agent = create_coding_agent(
         model=model,
         max_iterations=max_iterations,
-        auto_approve=not bool(prompt),
     )
 
     if prompt:

@@ -21,7 +21,6 @@ import webbrowser
 import threading
 import time
 from pathlib import Path
-from dotenv import load_dotenv
 from connectonion import host, address
 
 logging.basicConfig(
