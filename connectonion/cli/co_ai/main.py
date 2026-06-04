@@ -2,8 +2,7 @@
 LLM-Note: Entry point for 'co ai' command - starts ConnectOnion AI coding agent web server.
 
 This file provides the `start_server()` function that:
-- Creates a coding agent via agent.create_coding_agent()
-- Hosts it via connectonion.host() on specified port
+- Hosts a provided coding agent via connectonion.host() on specified port
 - Opens web chat at chat.openonion.ai with agent address
 - Loads global API keys from ~/.co/keys.env
 
@@ -38,16 +37,14 @@ logging.basicConfig(
 
 
 def start_server(
+    agent,
     port: int = 8000,
-    model: str = "co/gemini-3-flash-preview",
-    max_iterations: int = 20,
 ):
     """Start AI coding agent web server.
 
     Args:
+        agent: Agent instance to host
         port: Port to run server on
-        model: LLM model to use
-        max_iterations: Max tool iterations
 
     The server will be accessible at:
     - POST http://localhost:{port}/input
@@ -55,14 +52,6 @@ def start_server(
     - GET http://localhost:{port}/health
     - GET http://localhost:{port}/info
     """
-    from .agent import create_coding_agent
-
-    agent = create_coding_agent(
-        model=model,
-        max_iterations=max_iterations,
-        auto_approve=True,  # Always auto-approve in web mode
-    )
-
     # Use global ~/.co/ for consistent identity across all co ai sessions
     co_dir = Path.home() / '.co'
     addr_data = address.load(co_dir)

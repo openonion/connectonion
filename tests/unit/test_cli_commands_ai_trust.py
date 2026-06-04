@@ -16,13 +16,28 @@ import connectonion.cli.commands.trust_commands as trust_mod
 
 def test_handle_ai_calls_start_server(monkeypatch):
     called = {}
-    monkeypatch.setattr("connectonion.cli.co_ai.main.start_server", lambda **kw: called.update(kw))
+    created = {}
+
+    def fake_create_coding_agent(**kwargs):
+        agent = object()
+        created.update(kwargs)
+        created["agent"] = agent
+        return agent
+
+    def fake_start_server(agent, **kwargs):
+        called.update(kwargs)
+        called["agent"] = agent
+
+    monkeypatch.setattr("connectonion.cli.co_ai.agent.create_coding_agent", fake_create_coding_agent)
+    monkeypatch.setattr("connectonion.cli.co_ai.main.start_server", fake_start_server)
 
     ai_mod.handle_ai(port=1111, model="m", max_iterations=3)
 
     assert called["port"] == 1111
-    assert called["model"] == "m"
-    assert called["max_iterations"] == 3
+    assert called["agent"] is created["agent"]
+    assert created["model"] == "m"
+    assert created["max_iterations"] == 3
+    assert created["auto_approve"] is True
 
 
 def test_trust_commands_list_and_actions(tmp_path, monkeypatch):

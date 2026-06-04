@@ -40,27 +40,18 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert agent.tools.get_instance("browserautomation")._headless is False
 
 
-def test_start_server_reuses_one_agent_instance(monkeypatch):
-    created = []
-
-    def fake_create(*args, **kwargs):
-        agent = SimpleNamespace(name="agent")
-        created.append((args, kwargs, agent))
-        return agent
-
+def test_start_server_hosts_provided_agent(monkeypatch):
+    agent = SimpleNamespace(name="agent")
     called = {}
 
     def fake_host(agent, port, trust, co_dir=None, relay_url=None):
         called.update({"agent": agent, "port": port, "trust": trust, "relay_url": relay_url})
 
     monkeypatch.setattr(main_mod, "host", fake_host)
-    monkeypatch.setattr(agent_mod, "create_coding_agent", fake_create)
 
-    main_mod.start_server(port=1234, model="m1", max_iterations=7)
+    main_mod.start_server(agent, port=1234)
 
     assert called["port"] == 1234
     assert called["trust"] == "careful"
     assert called["relay_url"] is None
-    assert created and created[0][1]["model"] == "m1"
-    assert created[0][1]["max_iterations"] == 7
-    assert called["agent"] is created[0][2]
+    assert called["agent"] is agent
