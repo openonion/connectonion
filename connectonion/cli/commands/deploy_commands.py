@@ -175,7 +175,7 @@ def handle_deploy(co_ai: bool = False, skills: str | None = None):
     console.print("Uploading...")
     deploy_data = {
         "project_name": project_name,
-        "env_vars": json.dumps(env_vars),
+        "secrets": json.dumps(env_vars),
         "entrypoint": entrypoint,
     }
     if co_ai:
