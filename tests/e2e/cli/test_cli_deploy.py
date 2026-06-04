@@ -309,3 +309,79 @@ class TestDeploySkillsPackaging:
             assert mock_post.call_args.kwargs["data"]["runtime"] == "co-ai"
 
 
+class TestCoAiWorktreeDeploy:
+    """--co-ai packages the working tree directly — no git init/commit needed."""
+
+    def test_worktree_tarball_includes_project_skips_junk(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball_worktree
+
+        proj = tmp_path / "proj"
+        (proj / ".co" / "skills" / "hello").mkdir(parents=True)
+        (proj / ".co" / "skills" / "hello" / "SKILL.md").write_text("hi\n")
+        (proj / ".co" / "host.yaml").write_text("name: demo\n")
+        (proj / ".co" / "keys").mkdir()
+        (proj / ".co" / "keys" / "agent.key").write_text("secret\n")
+        (proj / ".co" / "docs").mkdir()
+        (proj / ".co" / "docs" / "big.md").write_text("doc\n")
+        (proj / "agent.py").write_text("x\n")
+        (proj / ".env").write_text("OPENAI_API_KEY=sk-secret\n")
+        (proj / ".git").mkdir()
+        (proj / ".git" / "config").write_text("x\n")
+        (proj / "__pycache__").mkdir()
+        (proj / "__pycache__" / "x.pyc").write_text("x\n")
+
+        tarball = _build_tarball_worktree(proj, [])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert "agent.py" in names
+        assert ".co/host.yaml" in names
+        assert ".co/skills/hello/SKILL.md" in names
+        assert ".env" not in names                       # secret skipped
+        assert ".co/keys/agent.key" not in names           # key skipped
+        assert ".co/docs/big.md" not in names              # docs skipped
+        assert ".git/config" not in names                  # git skipped
+        assert "__pycache__/x.pyc" not in names            # cache skipped
+
+    def test_worktree_tarball_overlays_external_skills(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball_worktree
+
+        proj = tmp_path / "proj"
+        (proj / ".co").mkdir(parents=True)
+        (proj / ".co" / "host.yaml").write_text("name: demo\n")
+        (proj / "agent.py").write_text("x\n")
+
+        skills = tmp_path / "ext"
+        (skills / "world").mkdir(parents=True)
+        (skills / "world" / "SKILL.md").write_text("yo\n")
+        (skills / ".hidden").mkdir()
+        (skills / ".hidden" / "x").write_text("x\n")
+
+        tarball = _build_tarball_worktree(proj, [skills])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert ".co/skills/world/SKILL.md" in names
+        assert ".co/skills/.hidden/x" not in names         # dotfiles skipped
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.get')
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_co_ai_deploys_without_git(self, mock_post, mock_get):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        runner = ArgparseCliRunner()
+        with runner.isolated_filesystem():
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+            # deliberately no `git init` — co-ai must deploy from the working tree
+
+            mock_post.return_value = MagicMock(status_code=200, json=lambda: {"id": "x", "url": "u"})
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "running", "logs": ""})
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                handle_deploy(co_ai=True)
+
+            assert mock_post.called
+
+

@@ -94,14 +94,50 @@ def _build_tarball_with_skills(project_dir: Path, skills_paths: list[Path]) -> P
     return tarball
 
 
+_WORKTREE_SKIP_TOP = {".git", ".env", "__pycache__"}
+_WORKTREE_SKIP_CO = {"keys", "cache", "logs", "history", "docs"}
+
+
+def _worktree_skip(rel: Path) -> bool:
+    """Paths left out of a co-ai working-tree package (secrets, caches, docs)."""
+    parts = rel.parts
+    if parts and parts[0] in _WORKTREE_SKIP_TOP:
+        return True
+    if "__pycache__" in parts or rel.suffix == ".pyc":
+        return True
+    if len(parts) >= 2 and parts[0] == ".co" and parts[1] in _WORKTREE_SKIP_CO:
+        return True
+    return False
+
+
+def _build_tarball_worktree(project_dir: Path, skills_paths: list[Path]) -> Path:
+    """Package the working tree directly (no git), so a freshly scaffolded co-ai
+    project deploys without git init/commit. Skips secrets/caches/docs and
+    overlays external --skills dirs into .co/skills/."""
+    tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
+    with tarfile.open(tarball, "w:gz") as tar:
+        for path in sorted(project_dir.rglob("*")):
+            rel = path.relative_to(project_dir)
+            if _worktree_skip(rel):
+                continue
+            tar.add(path, arcname=str(rel), recursive=False)
+        for skills_path in skills_paths:
+            for item in sorted(skills_path.iterdir()):
+                if item.name.startswith("."):
+                    continue
+                tar.add(item, arcname=f".co/skills/{item.name}")
+    return tarball
+
+
 def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
     """Deploy agent to ConnectOnion Cloud."""
     console.print("\n[cyan]Deploying to ConnectOnion Cloud...[/cyan]\n")
 
     project_dir = Path.cwd()
 
-    # Must be a git repo
-    if not (project_dir / ".git").exists():
+    # --co-ai packages the working tree directly, so a freshly scaffolded project
+    # deploys without git init/commit. Plain deploy still ships committed code.
+    if not co_ai and not (project_dir / ".git").exists():
         console.print("[red]Not a git repository. Run 'git init' first.[/red]")
         return
 
@@ -154,8 +190,11 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
     # Load env vars from .env (user's API keys, config for the agent container)
     env_vars = dotenv_values(env_file) if Path(env_file).exists() else {}
 
-    # Create tarball from git, bundling an external skills dir when requested
-    if skills_paths:
+    # Package source. --co-ai ships the working tree (no commit needed); plain
+    # deploy ships committed code via git archive, bundling --skills when requested.
+    if co_ai:
+        tarball_path = _build_tarball_worktree(project_dir, skills_paths)
+    elif skills_paths:
         tarball_path = _build_tarball_with_skills(project_dir, skills_paths)
     else:
         tarball_path = Path(tempfile.mkdtemp()) / "agent.tar.gz"

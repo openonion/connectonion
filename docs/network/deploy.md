@@ -118,26 +118,28 @@ Chrome + Xvfb browser runtime so browser tools work out of the box.
 
 ```bash
 co init --template co-ai
-git init && git add -A && git commit -m "co-ai agent"
 co deploy --co-ai
 ```
+
+No `git init`/`commit` in between — `--co-ai` packages the working tree directly
+(skipping `.env`, `.co/keys`, caches, and docs), so the freshly scaffolded
+project deploys as-is.
 
 ### Skills
 
 The deployed agent loads skills from `.co/skills/` via the normal loader.
 
-- **Project skills** — anything committed under `.co/skills/` is packaged by
-  `git archive`, no `--skills` needed:
+- **Project skills** — anything under `.co/skills/` is packaged from the working
+  tree, no `--skills` needed:
   ```bash
   co skills copy <name>          # lands in .co/skills/<name>/
-  git add .co/skills && git commit
   co deploy --co-ai
   ```
 - **External skills** — to bundle skill directories that live outside the
   project (e.g. `~/.co/skills` or a shared skills repo), pass `--skills PATH`
   (repeatable). Each directory's skills are merged into the container's
-  `.co/skills/` from a temp dir (your working tree is untouched); on a name
-  clash, later paths win:
+  `.co/skills/` (your working tree is untouched); on a name clash, later paths
+  win:
   ```bash
   co deploy --co-ai --skills ~/.co/skills --skills ~/work/social-skills
   ```
