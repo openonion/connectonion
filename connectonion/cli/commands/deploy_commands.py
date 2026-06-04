@@ -320,8 +320,10 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
                 continue
             if logs_resp.status_code == 200:
                 candidate = (logs_resp.json().get("logs") or "").strip()
-                # skip not-ready placeholders while the container is still building
-                if candidate and not candidate.startswith("Error:"):
+                # The backend returns a docker "No such container" error until the
+                # container exists; keep polling past it. Don't filter on a bare
+                # "Error:" prefix — a running container's own logs may start that way.
+                if candidate and "No such container" not in candidate:
                     logs = candidate
                     break
             time.sleep(3)
