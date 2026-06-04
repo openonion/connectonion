@@ -243,7 +243,7 @@ class TestDeploySkillsPackaging:
 
     def test_skills_dir_lands_under_co_skills(self, tmp_path):
         import tarfile
-        from connectonion.cli.commands.deploy_commands import _build_tarball_with_skills
+        from connectonion.cli.commands.deploy_commands import _build_tarball
 
         repo = tmp_path / "repo"
         repo.mkdir()
@@ -261,7 +261,7 @@ class TestDeploySkillsPackaging:
         (more / "world").mkdir(parents=True)
         (more / "world" / "SKILL.md").write_text("---\nname: world\n---\nyo\n")
 
-        tarball = _build_tarball_with_skills(repo, [skills, more])
+        tarball = _build_tarball(repo, [skills, more], from_git=True)
         names = set(tarfile.open(tarball).getnames())
 
         assert "agent.py" in names                       # project files preserved
@@ -271,14 +271,14 @@ class TestDeploySkillsPackaging:
         assert ".co/skills/.git/config" not in names       # dotfiles skipped
 
     def test_missing_skills_path_raises(self, tmp_path):
-        from connectonion.cli.commands.deploy_commands import _build_tarball_with_skills
+        from connectonion.cli.commands.deploy_commands import _build_tarball
 
         repo = tmp_path / "repo"
         repo.mkdir()
         self._make_repo(repo)
 
         with pytest.raises(FileNotFoundError):
-            _build_tarball_with_skills(repo, [tmp_path / "does-not-exist"])
+            _build_tarball(repo, [tmp_path / "does-not-exist"], from_git=True)
 
     def test_missing_skills_path_errors_clearly(self):
         runner = ArgparseCliRunner()
@@ -314,7 +314,7 @@ class TestCoAiWorktreeDeploy:
 
     def test_worktree_tarball_includes_project_skips_junk(self, tmp_path):
         import tarfile
-        from connectonion.cli.commands.deploy_commands import _build_tarball_worktree
+        from connectonion.cli.commands.deploy_commands import _build_tarball
 
         proj = tmp_path / "proj"
         (proj / ".co" / "skills" / "hello").mkdir(parents=True)
@@ -331,7 +331,7 @@ class TestCoAiWorktreeDeploy:
         (proj / "__pycache__").mkdir()
         (proj / "__pycache__" / "x.pyc").write_text("x\n")
 
-        tarball = _build_tarball_worktree(proj, [])
+        tarball = _build_tarball(proj, [], from_git=False)
         names = set(tarfile.open(tarball).getnames())
 
         assert "agent.py" in names
@@ -345,7 +345,7 @@ class TestCoAiWorktreeDeploy:
 
     def test_worktree_tarball_overlays_external_skills(self, tmp_path):
         import tarfile
-        from connectonion.cli.commands.deploy_commands import _build_tarball_worktree
+        from connectonion.cli.commands.deploy_commands import _build_tarball
 
         proj = tmp_path / "proj"
         (proj / ".co").mkdir(parents=True)
@@ -358,7 +358,7 @@ class TestCoAiWorktreeDeploy:
         (skills / ".hidden").mkdir()
         (skills / ".hidden" / "x").write_text("x\n")
 
-        tarball = _build_tarball_worktree(proj, [skills])
+        tarball = _build_tarball(proj, [skills], from_git=False)
         names = set(tarfile.open(tarball).getnames())
 
         assert ".co/skills/world/SKILL.md" in names

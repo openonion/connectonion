@@ -12,7 +12,6 @@ LLM-Note:
 import json
 import os
 import re
-import shutil
 import subprocess
 import tarfile
 import tempfile
@@ -54,78 +53,31 @@ def _check_host_export(entrypoint: str) -> bool:
     return False
 
 
-def _build_tarball_with_skills(project_dir: Path, skills_paths: list[Path]) -> Path:
-    """git archive HEAD into a temp staging dir, overlay skills under .co/skills/, re-tar.
-
-    The working tree is never touched — everything happens in a temp dir.
-    Each entry under every skills path lands at .co/skills/<name>/ so the deployed
-    agent finds them via the existing loader path. Multiple paths merge; later
-    paths win on name collision.
-    """
-    work = Path(tempfile.mkdtemp())
-    staging = work / "staging"
-    staging.mkdir()
-
-    head_tar = work / "head.tar"
-    subprocess.run(
-        ["git", "archive", "--format=tar", "-o", str(head_tar), "HEAD"],
-        cwd=project_dir,
-        check=True,
-    )
-    with tarfile.open(head_tar) as tar:
-        tar.extractall(staging)
-
-    skills_dest = staging / ".co" / "skills"
-    skills_dest.mkdir(parents=True, exist_ok=True)
-    for skills_path in skills_paths:
-        for item in sorted(skills_path.iterdir()):
-            if item.name.startswith("."):
-                continue  # skip .git/.gitignore etc — only bundle skill dirs
-            target = skills_dest / item.name
-            if item.is_dir():
-                shutil.copytree(item, target, dirs_exist_ok=True)
-            else:
-                shutil.copy2(item, target)
-
-    tarball = work / "agent.tar.gz"
-    with tarfile.open(tarball, "w:gz") as tar:
-        for path in sorted(staging.rglob("*")):
-            tar.add(path, arcname=str(path.relative_to(staging)), recursive=False)
-    return tarball
-
-
-_WORKTREE_SKIP_TOP = {".git", ".env", "__pycache__"}
-_WORKTREE_SKIP_CO = {"keys", "cache", "logs", "history", "docs"}
-
-
-def _worktree_skip(rel: Path) -> bool:
-    """Paths left out of a co-ai working-tree package (secrets, caches, docs)."""
-    parts = rel.parts
-    if parts and parts[0] in _WORKTREE_SKIP_TOP:
-        return True
-    if "__pycache__" in parts or rel.suffix == ".pyc":
-        return True
-    if len(parts) >= 2 and parts[0] == ".co" and parts[1] in _WORKTREE_SKIP_CO:
-        return True
-    return False
-
-
-def _build_tarball_worktree(project_dir: Path, skills_paths: list[Path]) -> Path:
-    """Package the working tree directly (no git), so a freshly scaffolded co-ai
-    project deploys without git init/commit. Skips secrets/caches/docs and
-    overlays external --skills dirs into .co/skills/."""
+def _build_tarball(project_dir: Path, skills_paths: list[Path], from_git: bool) -> Path:
+    """Package the agent (committed code when from_git, else the working tree minus
+    secrets/caches/docs) plus external --skills under .co/skills/ (later paths win)."""
     tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
-        for path in sorted(project_dir.rglob("*")):
-            rel = path.relative_to(project_dir)
-            if _worktree_skip(rel):
-                continue
-            tar.add(path, arcname=str(rel), recursive=False)
+        if from_git:
+            head = Path(tempfile.mkdtemp()) / "head.tar"
+            subprocess.run(["git", "archive", "--format=tar", "-o", str(head), "HEAD"],
+                           cwd=project_dir, check=True)
+            with tarfile.open(head) as src:
+                for m in src.getmembers():
+                    tar.addfile(m, src.extractfile(m) if m.isfile() else None)
+        else:
+            skip_top, skip_co = {".git", ".env", "__pycache__"}, {"keys", "cache", "logs", "history", "docs"}
+            for path in sorted(project_dir.rglob("*")):
+                p = path.relative_to(project_dir).parts
+                if p[0] in skip_top or "__pycache__" in p or path.suffix == ".pyc":
+                    continue
+                if p[0] == ".co" and len(p) > 1 and p[1] in skip_co:
+                    continue
+                tar.add(path, arcname=str(Path(*p)), recursive=False)
         for skills_path in skills_paths:
             for item in sorted(skills_path.iterdir()):
-                if item.name.startswith("."):
-                    continue
-                tar.add(item, arcname=f".co/skills/{item.name}")
+                if not item.name.startswith("."):  # only skill dirs, not .git etc
+                    tar.add(item, arcname=f".co/skills/{item.name}")
     return tarball
 
 
@@ -191,18 +143,8 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
     env_vars = dotenv_values(env_file) if Path(env_file).exists() else {}
 
     # Package source. --co-ai ships the working tree (no commit needed); plain
-    # deploy ships committed code via git archive, bundling --skills when requested.
-    if co_ai:
-        tarball_path = _build_tarball_worktree(project_dir, skills_paths)
-    elif skills_paths:
-        tarball_path = _build_tarball_with_skills(project_dir, skills_paths)
-    else:
-        tarball_path = Path(tempfile.mkdtemp()) / "agent.tar.gz"
-        subprocess.run(
-            ["git", "archive", "--format=tar.gz", "-o", str(tarball_path), "HEAD"],
-            cwd=project_dir,
-            check=True,
-        )
+    # deploy ships committed code via git archive HEAD. Either way --skills merge in.
+    tarball_path = _build_tarball(project_dir, skills_paths, from_git=not co_ai)
 
     # Show package size
     tarball_size = tarball_path.stat().st_size

@@ -38,26 +38,6 @@ from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
 
-# Standard Google Chrome install locations per OS, checked when no explicit
-# browser_channel is given. First existing path wins; None falls back to chromium.
-_CHROME_PATHS = {
-    "Darwin": ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"],
-    "Linux": ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/opt/google/chrome/chrome"],
-    "Windows": [
-        r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe",
-    ],
-}
-
-
-def _local_chrome_path() -> Optional[str]:
-    """First installed Chrome path for the current OS, or None (use chromium)."""
-    for path in _CHROME_PATHS.get(platform.system(), []):
-        if os.path.exists(path):
-            return path
-    return None
-
-
 # Check Playwright availability
 try:
     from playwright.sync_api import sync_playwright, Page, Browser, Playwright
@@ -163,7 +143,13 @@ class BrowserAutomation:
         if self.browser_channel:
             channel_kwargs["channel"] = self.browser_channel
         else:
-            channel_kwargs["executable_path"] = _local_chrome_path()
+            chrome_paths = {
+                "Darwin": ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"],
+                "Linux": ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/opt/google/chrome/chrome"],
+                "Windows": [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                            r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"],
+            }.get(platform.system(), [])
+            channel_kwargs["executable_path"] = next((p for p in chrome_paths if os.path.exists(p)), None)
 
         # Session persistence: use ONLY user_data_dir (simple approach)
         # - Persistent Chrome profile at ~/.co/browser_profile/
