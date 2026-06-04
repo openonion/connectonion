@@ -139,9 +139,9 @@ class BrowserAutomation:
         # Use Google Chrome instead of Chromium for better X.com compatibility
         # browser_channel (e.g. "chrome") takes precedence — hosted deploys install real
         # Chrome via `playwright install chrome` and select it by channel, not by path.
-        channel_kwargs = {}
+        browser_kwargs = {}
         if self.browser_channel:
-            channel_kwargs["channel"] = self.browser_channel
+            browser_kwargs["channel"] = self.browser_channel
         else:
             chrome_paths = {
                 "Darwin": ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"],
@@ -149,7 +149,7 @@ class BrowserAutomation:
                 "Windows": [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
                             r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"],
             }.get(platform.system(), [])
-            channel_kwargs["executable_path"] = next((p for p in chrome_paths if os.path.exists(p)), None)
+            browser_kwargs["executable_path"] = next((p for p in chrome_paths if os.path.exists(p)), None)
 
         # Session persistence: use ONLY user_data_dir (simple approach)
         # - Persistent Chrome profile at ~/.co/browser_profile/
@@ -164,7 +164,7 @@ class BrowserAutomation:
             args=CHROME_DEFAULT_ARGS,  # 53 args + 30 disabled features from browser-use
             ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # + macOS cookie fix
             timeout=120000,
-            **channel_kwargs,
+            **browser_kwargs,
         )
 
         self.page = self.browser.new_page()

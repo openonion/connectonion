@@ -261,7 +261,7 @@ class TestDeploySkillsPackaging:
         (more / "world").mkdir(parents=True)
         (more / "world" / "SKILL.md").write_text("---\nname: world\n---\nyo\n")
 
-        tarball = _build_tarball(repo, [skills, more], from_git=True)
+        tarball = _build_tarball(repo, [skills, more], use_git_archive=True)
         names = set(tarfile.open(tarball).getnames())
 
         assert "agent.py" in names                       # project files preserved
@@ -269,16 +269,6 @@ class TestDeploySkillsPackaging:
         assert ".co/skills/hello/run.py" in names          # supporting files kept
         assert ".co/skills/world/SKILL.md" in names        # second --skills dir merged
         assert ".co/skills/.git/config" not in names       # dotfiles skipped
-
-    def test_missing_skills_path_raises(self, tmp_path):
-        from connectonion.cli.commands.deploy_commands import _build_tarball
-
-        repo = tmp_path / "repo"
-        repo.mkdir()
-        self._make_repo(repo)
-
-        with pytest.raises(FileNotFoundError):
-            _build_tarball(repo, [tmp_path / "does-not-exist"], from_git=True)
 
     def test_missing_skills_path_errors_clearly(self):
         runner = ArgparseCliRunner()
@@ -331,7 +321,7 @@ class TestCoAiWorktreeDeploy:
         (proj / "__pycache__").mkdir()
         (proj / "__pycache__" / "x.pyc").write_text("x\n")
 
-        tarball = _build_tarball(proj, [], from_git=False)
+        tarball = _build_tarball(proj, [], use_git_archive=False)
         names = set(tarfile.open(tarball).getnames())
 
         assert "agent.py" in names
@@ -358,7 +348,7 @@ class TestCoAiWorktreeDeploy:
         (skills / ".hidden").mkdir()
         (skills / ".hidden" / "x").write_text("x\n")
 
-        tarball = _build_tarball(proj, [skills], from_git=False)
+        tarball = _build_tarball(proj, [skills], use_git_archive=False)
         names = set(tarfile.open(tarball).getnames())
 
         assert ".co/skills/world/SKILL.md" in names

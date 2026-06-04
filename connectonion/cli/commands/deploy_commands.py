@@ -53,33 +53,34 @@ def _check_host_export(entrypoint: str) -> bool:
     return False
 
 
-def _build_tarball(project_dir: Path, skills_paths: list[Path], from_git: bool) -> Path:
-    """Package the agent (committed code when from_git, else the working tree minus
-    secrets/caches/docs) plus external --skills under .co/skills/ (later paths win)."""
+def _build_tarball(project_dir: Path, skills_paths: list[Path], use_git_archive: bool) -> Path:
+    """Package the agent (committed code when use_git_archive, else the working tree
+    minus secrets/caches/docs) plus external --skills under .co/skills/ (later paths win)."""
     tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
-        if from_git:
-            head = Path(tempfile.mkdtemp()) / "head.tar"
-            subprocess.run(["git", "archive", "--format=tar", "-o", str(head), "HEAD"],
+        if use_git_archive:
+            head_tar = Path(tempfile.mkdtemp()) / "head.tar"
+            subprocess.run(["git", "archive", "--format=tar", "-o", str(head_tar), "HEAD"],
                            cwd=project_dir, check=True)
-            with tarfile.open(head) as src:
-                for m in src.getmembers():
-                    tar.addfile(m, src.extractfile(m) if m.isfile() else None)
+            with tarfile.open(head_tar) as src:
+                for member in src.getmembers():
+                    tar.addfile(member, src.extractfile(member) if member.isfile() else None)
         else:
-            skip_top = {".git", ".env", "__pycache__"}
-            skip_co = {"keys", "cache", "logs", "history", "docs"}
+            skip_at_root = {".git", ".env", "__pycache__"}
+            skip_under_co = {"keys", "cache", "logs", "history", "docs"}
             for path in sorted(project_dir.rglob("*")):
                 rel = path.relative_to(project_dir)
                 parts = rel.parts
-                if parts[0] in skip_top or "__pycache__" in parts or rel.suffix == ".pyc":
+                if parts[0] in skip_at_root or "__pycache__" in parts or rel.suffix == ".pyc":
                     continue
-                if parts[0] == ".co" and len(parts) > 1 and parts[1] in skip_co:
+                if parts[0] == ".co" and len(parts) > 1 and parts[1] in skip_under_co:
                     continue
                 tar.add(path, arcname=str(rel), recursive=False)
         for skills_path in skills_paths:
             for item in sorted(skills_path.iterdir()):
-                if not item.name.startswith("."):  # only skill dirs, not .git etc
-                    tar.add(item, arcname=f".co/skills/{item.name}")
+                if item.name.startswith("."):
+                    continue  # skip .git/.gitignore etc — only skill dirs
+                tar.add(item, arcname=f".co/skills/{item.name}")
     return tarball
 
 
@@ -146,7 +147,7 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
 
     # Package source. --co-ai ships the working tree (no commit needed); plain
     # deploy ships committed code via git archive HEAD. Either way --skills merge in.
-    tarball_path = _build_tarball(project_dir, skills_paths, from_git=not co_ai)
+    tarball_path = _build_tarball(project_dir, skills_paths, use_git_archive=not co_ai)
 
     # Show package size
     tarball_size = tarball_path.stat().st_size
@@ -261,7 +262,9 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
                 )
             except requests.exceptions.RequestException:
                 resp = None  # transient fetch error; retry without crashing the deploy
-            candidate = (resp.json().get("logs") or "").strip() if resp and resp.status_code == 200 else ""
+            candidate = ""
+            if resp is not None and resp.status_code == 200:
+                candidate = (resp.json().get("logs") or "").strip()
             # The backend returns a docker "No such container" error until the container
             # exists; keep polling past it. Don't drop a bare "Error:" prefix — a running
             # container's own logs may start that way.

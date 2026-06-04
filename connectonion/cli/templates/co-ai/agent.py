@@ -1,8 +1,6 @@
-"""Hosted co-ai coding agent — entrypoint for `co init --template co-ai`.
+"""Hosted co-ai coding agent — `co init --template co-ai` entrypoint.
 
-Mirrors the built-in `co ai` agent (create_coding_agent), wrapped in host() so
-`co deploy` can serve it. co_dir points at this project's .co so bundled skills
-(.co/skills/) and config (.co/host.yaml) are used, not the global ~/.co.
+CO_DIR pins skills and host.yaml to this project's .co, not the global ~/.co.
 """
 
 from pathlib import Path
