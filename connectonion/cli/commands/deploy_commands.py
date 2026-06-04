@@ -254,24 +254,22 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
         logs = ""
         for _ in range(10):
             try:
-                logs_resp = requests.get(
+                resp = requests.get(
                     f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=40",
                     headers={"Authorization": f"Bearer {api_key}"},
                     timeout=10,
                 )
             except requests.exceptions.RequestException:
-                time.sleep(3)
-                continue
-            if logs_resp.status_code == 200:
-                candidate = (logs_resp.json().get("logs") or "").strip()
-                # The backend returns a docker "No such container" error until the
-                # container exists; keep polling past it. Don't filter on a bare
-                # "Error:" prefix — a running container's own logs may start that way.
-                if candidate and "No such container" not in candidate:
-                    logs = candidate
-                    break
+                resp = None  # transient fetch error; retry without crashing the deploy
+            candidate = (resp.json().get("logs") or "").strip() if resp and resp.status_code == 200 else ""
+            # The backend returns a docker "No such container" error until the container
+            # exists; keep polling past it. Don't drop a bare "Error:" prefix — a running
+            # container's own logs may start that way.
+            if candidate and "No such container" not in candidate:
+                logs = candidate
+                break
             time.sleep(3)
-        if logs.strip():
+        if logs:
             console.print()
             console.print("[dim]Container logs:[/dim]")
             console.print(f"[dim]{logs}[/dim]")
