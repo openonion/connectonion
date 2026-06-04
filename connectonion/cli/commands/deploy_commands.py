@@ -66,14 +66,16 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path], from_git: bool) 
                 for m in src.getmembers():
                     tar.addfile(m, src.extractfile(m) if m.isfile() else None)
         else:
-            skip_top, skip_co = {".git", ".env", "__pycache__"}, {"keys", "cache", "logs", "history", "docs"}
+            skip_top = {".git", ".env", "__pycache__"}
+            skip_co = {"keys", "cache", "logs", "history", "docs"}
             for path in sorted(project_dir.rglob("*")):
-                p = path.relative_to(project_dir).parts
-                if p[0] in skip_top or "__pycache__" in p or path.suffix == ".pyc":
+                rel = path.relative_to(project_dir)
+                parts = rel.parts
+                if parts[0] in skip_top or "__pycache__" in parts or rel.suffix == ".pyc":
                     continue
-                if p[0] == ".co" and len(p) > 1 and p[1] in skip_co:
+                if parts[0] == ".co" and len(parts) > 1 and parts[1] in skip_co:
                     continue
-                tar.add(path, arcname=str(Path(*p)), recursive=False)
+                tar.add(path, arcname=str(rel), recursive=False)
         for skills_path in skills_paths:
             for item in sorted(skills_path.iterdir()):
                 if not item.name.startswith("."):  # only skill dirs, not .git etc
@@ -100,7 +102,7 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
         console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
         return
 
-    skills_paths = [Path(s) for s in skills] if skills else []
+    skills_paths = [Path(s) for s in (skills or [])]
     for sp in skills_paths:
         if not sp.is_dir():
             console.print(f"[red]Skills path not found or not a directory: {sp}[/red]")
