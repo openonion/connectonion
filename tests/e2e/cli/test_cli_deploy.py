@@ -253,13 +253,22 @@ class TestDeploySkillsPackaging:
         (skills / "hello").mkdir(parents=True)
         (skills / "hello" / "SKILL.md").write_text("---\nname: hello\n---\nhi\n")
         (skills / "hello" / "run.py").write_text("print('hi')\n")
+        (skills / ".git").mkdir()                          # should be skipped
+        (skills / ".git" / "config").write_text("x\n")
 
-        tarball = _build_tarball_with_skills(repo, skills)
+        # second skills dir — both should merge under .co/skills/
+        more = tmp_path / "more"
+        (more / "world").mkdir(parents=True)
+        (more / "world" / "SKILL.md").write_text("---\nname: world\n---\nyo\n")
+
+        tarball = _build_tarball_with_skills(repo, [skills, more])
         names = set(tarfile.open(tarball).getnames())
 
         assert "agent.py" in names                       # project files preserved
         assert ".co/skills/hello/SKILL.md" in names        # skill placed at loader path
         assert ".co/skills/hello/run.py" in names          # supporting files kept
+        assert ".co/skills/world/SKILL.md" in names        # second --skills dir merged
+        assert ".co/skills/.git/config" not in names       # dotfiles skipped
 
     def test_missing_skills_path_raises(self, tmp_path):
         from connectonion.cli.commands.deploy_commands import _build_tarball_with_skills
@@ -269,7 +278,7 @@ class TestDeploySkillsPackaging:
         self._make_repo(repo)
 
         with pytest.raises(FileNotFoundError):
-            _build_tarball_with_skills(repo, tmp_path / "does-not-exist")
+            _build_tarball_with_skills(repo, [tmp_path / "does-not-exist"])
 
     @patch('connectonion.cli.commands.deploy_commands.requests.get')
     @patch('connectonion.cli.commands.deploy_commands.requests.post')

@@ -54,12 +54,13 @@ def _check_host_export(entrypoint: str) -> bool:
     return False
 
 
-def _build_tarball_with_skills(project_dir: Path, skills_path: Path) -> Path:
+def _build_tarball_with_skills(project_dir: Path, skills_paths: list[Path]) -> Path:
     """git archive HEAD into a temp staging dir, overlay skills under .co/skills/, re-tar.
 
     The working tree is never touched — everything happens in a temp dir.
-    Each entry under skills_path lands at .co/skills/<name>/ so the deployed
-    agent finds them via the existing loader path.
+    Each entry under every skills path lands at .co/skills/<name>/ so the deployed
+    agent finds them via the existing loader path. Multiple paths merge; later
+    paths win on name collision.
     """
     work = Path(tempfile.mkdtemp())
     staging = work / "staging"
@@ -76,14 +77,15 @@ def _build_tarball_with_skills(project_dir: Path, skills_path: Path) -> Path:
 
     skills_dest = staging / ".co" / "skills"
     skills_dest.mkdir(parents=True, exist_ok=True)
-    for item in sorted(skills_path.iterdir()):
-        if item.name.startswith("."):
-            continue  # skip .git/.gitignore etc — only bundle skill dirs
-        target = skills_dest / item.name
-        if item.is_dir():
-            shutil.copytree(item, target, dirs_exist_ok=True)
-        else:
-            shutil.copy2(item, target)
+    for skills_path in skills_paths:
+        for item in sorted(skills_path.iterdir()):
+            if item.name.startswith("."):
+                continue  # skip .git/.gitignore etc — only bundle skill dirs
+            target = skills_dest / item.name
+            if item.is_dir():
+                shutil.copytree(item, target, dirs_exist_ok=True)
+            else:
+                shutil.copy2(item, target)
 
     tarball = work / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
@@ -92,7 +94,7 @@ def _build_tarball_with_skills(project_dir: Path, skills_path: Path) -> Path:
     return tarball
 
 
-def handle_deploy(co_ai: bool = False, skills: str | None = None):
+def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
     """Deploy agent to ConnectOnion Cloud."""
     console.print("\n[cyan]Deploying to ConnectOnion Cloud...[/cyan]\n")
 
@@ -110,7 +112,7 @@ def handle_deploy(co_ai: bool = False, skills: str | None = None):
         console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
         return
 
-    skills_path = Path(skills) if skills is not None else None
+    skills_paths = [Path(s) for s in skills] if skills else []
 
     # Must have API key
     api_key = load_api_key()
@@ -149,8 +151,8 @@ def handle_deploy(co_ai: bool = False, skills: str | None = None):
     env_vars = dotenv_values(env_file) if Path(env_file).exists() else {}
 
     # Create tarball from git, bundling an external skills dir when requested
-    if skills_path is not None:
-        tarball_path = _build_tarball_with_skills(project_dir, skills_path)
+    if skills_paths:
+        tarball_path = _build_tarball_with_skills(project_dir, skills_paths)
     else:
         tarball_path = Path(tempfile.mkdtemp()) / "agent.tar.gz"
         subprocess.run(

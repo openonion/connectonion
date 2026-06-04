@@ -99,7 +99,7 @@ def create(
 @app.command()
 def deploy(
     co_ai: bool = typer.Option(False, "--co-ai", help="Deploy with the co-ai runtime (browser-enabled)"),
-    skills: Optional[str] = typer.Option(None, "--skills", help="Path to a skills directory to bundle into .co/skills/"),
+    skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skills directory to bundle into .co/skills/ (repeatable)"),
 ):
     """Deploy to ConnectOnion Cloud."""
     from .commands.deploy_commands import handle_deploy
