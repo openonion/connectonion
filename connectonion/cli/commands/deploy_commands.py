@@ -275,9 +275,12 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
             except requests.exceptions.RequestException:
                 time.sleep(3)
                 continue
-            if logs_resp.status_code == 200 and (logs_resp.json().get("logs") or "").strip():
-                logs = logs_resp.json().get("logs", "")
-                break
+            if logs_resp.status_code == 200:
+                candidate = (logs_resp.json().get("logs") or "").strip()
+                # skip not-ready placeholders while the container is still building
+                if candidate and not candidate.startswith("Error:"):
+                    logs = candidate
+                    break
             time.sleep(3)
         if logs.strip():
             console.print()
