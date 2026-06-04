@@ -246,11 +246,9 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
     if url:
         console.print(f"Agent URL: {url}")
 
-    # Show the agent's startup logs. Status flips to "running" when the container
-    # process starts, a beat before the app finishes importing and prints its banner,
-    # so wait briefly before fetching.
+    # Show the agent's startup logs (best-effort).
     if deployment_id:
-        time.sleep(5)
+        time.sleep(5)  # "running" fires when the container starts; wait for the app to print its banner or crash
         logs_resp = requests.get(
             f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
             headers={"Authorization": f"Bearer {api_key}"},
