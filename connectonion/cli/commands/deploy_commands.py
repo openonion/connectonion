@@ -248,33 +248,21 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
     if url:
         console.print(f"Agent URL: {url}")
 
-    # Show the agent's startup logs. The banner appears a few seconds after the
-    # container starts, so poll until it shows up (a slow log fetch must not
-    # crash a deploy that already succeeded).
+    # Show the agent's startup logs. Status flips to "running" when the container
+    # process starts, a beat before the app finishes importing and prints its banner,
+    # so wait briefly before fetching.
     if deployment_id:
-        logs = ""
-        for _ in range(10):
-            try:
-                resp = requests.get(
-                    f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=40",
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    timeout=10,
-                )
-            except requests.exceptions.RequestException:
-                resp = None  # transient fetch error; retry without crashing the deploy
-            candidate = ""
-            if resp is not None and resp.status_code == 200:
-                candidate = (resp.json().get("logs") or "").strip()
-            # The backend returns a docker "No such container" error until the container
-            # exists; keep polling past it. Don't drop a bare "Error:" prefix — a running
-            # container's own logs may start that way.
-            if candidate and "No such container" not in candidate:
-                logs = candidate
-                break
-            time.sleep(3)
-        if logs:
-            console.print()
-            console.print("[dim]Container logs:[/dim]")
-            console.print(f"[dim]{logs}[/dim]")
+        time.sleep(5)
+        logs_resp = requests.get(
+            f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+        if logs_resp.status_code == 200:
+            logs = logs_resp.json().get("logs", "")
+            if logs:
+                console.print()
+                console.print("[dim]Container logs:[/dim]")
+                console.print(f"[dim]{logs}[/dim]")
 
     console.print()
