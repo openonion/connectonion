@@ -2,13 +2,12 @@
 LLM-Note: Entry point for 'co ai' command - starts ConnectOnion AI coding agent web server.
 
 This file provides the `start_server()` function that:
-- Creates a coding agent via agent.create_coding_agent()
-- Hosts it via connectonion.host() on specified port
+- Hosts a provided coding agent via connectonion.host() on specified port
 - Opens web chat at chat.openonion.ai with agent address
 - Loads global API keys from ~/.co/keys.env
 
 Architecture:
-- Uses agent factory pattern for stateless agent creation
+- Uses one hosted coding agent for the web chat session
 - Trust level set to "careful" for web deployment
 - Auto-approve mode for web usage (no terminal prompts)
 
@@ -22,7 +21,6 @@ import webbrowser
 import threading
 import time
 from pathlib import Path
-from dotenv import load_dotenv
 from connectonion import host, address
 
 logging.basicConfig(
@@ -38,16 +36,14 @@ logging.basicConfig(
 
 
 def start_server(
+    agent,
     port: int = 8000,
-    model: str = "co/gemini-3-flash-preview",
-    max_iterations: int = 20,
 ):
     """Start AI coding agent web server.
 
     Args:
+        agent: Agent instance to host
         port: Port to run server on
-        model: LLM model to use
-        max_iterations: Max tool iterations
 
     The server will be accessible at:
     - POST http://localhost:{port}/input
@@ -55,15 +51,6 @@ def start_server(
     - GET http://localhost:{port}/health
     - GET http://localhost:{port}/info
     """
-    from .agent import create_coding_agent
-
-    def agent_factory():
-        return create_coding_agent(
-            model=model,
-            max_iterations=max_iterations,
-            auto_approve=True,  # Always auto-approve in web mode
-        )
-
     # Use global ~/.co/ for consistent identity across all co ai sessions
     co_dir = Path.home() / '.co'
     addr_data = address.load(co_dir)
@@ -76,5 +63,7 @@ def start_server(
 
         threading.Thread(target=open_chat_delayed, daemon=True).start()
 
-    # Start server with same co_dir (relay enabled by default for web chat)
-    host(agent_factory, port=port, trust="careful", co_dir=co_dir)
+    # Start server with same co_dir (relay enabled by default for web chat).
+    # co ai keeps one Agent instance so browser/tool state can persist across
+    # continued inputs in the same local web server.
+    host(agent, port=port, trust="careful", co_dir=co_dir)

@@ -16,15 +16,16 @@ import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
 
 
-def test_create_coding_agent(monkeypatch):
+def test_create_coding_agent(monkeypatch, tmp_path):
     class FakeLLM:
         model = "fake-model"
 
     monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
     monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
     monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "CTX")
+    monkeypatch.setattr(agent_mod, "GLOBAL_CO_DIR", tmp_path / ".co")
 
-    agent = agent_mod.create_coding_agent(model="fake", max_iterations=5, auto_approve=True)
+    agent = agent_mod.create_coding_agent(model="fake", max_iterations=5)
 
     assert agent.name == "oo"
     assert agent.max_iterations == 5
@@ -32,29 +33,24 @@ def test_create_coding_agent(monkeypatch):
     assert "CTX" in agent.system_prompt
     # FileTools is registered as a tool class
     assert "file_tools" in agent.tools._tools or any("file" in t.lower() for t in agent.tools._tools)
+    assert "ask_user" in agent.tools._tools
+    # agent.py removes this stdin-blocking helper; it must not come back
+    assert "wait_for_manual_login" not in agent.tools._tools
+    assert agent.tools.get_instance("browserautomation")._headless is False
 
 
-def test_start_server_calls_host(monkeypatch):
-    created = []
-
-    def fake_create(*args, **kwargs):
-        created.append((args, kwargs))
-        return SimpleNamespace(name="agent")
-
+def test_start_server_hosts_provided_agent(monkeypatch):
+    agent = SimpleNamespace(name="agent")
     called = {}
 
-    def fake_host(factory, port, trust, co_dir=None, relay_url=None):
-        called.update({"factory": factory, "port": port, "trust": trust, "relay_url": relay_url})
+    def fake_host(agent, port, trust, co_dir=None, relay_url=None):
+        called.update({"agent": agent, "port": port, "trust": trust, "relay_url": relay_url})
 
     monkeypatch.setattr(main_mod, "host", fake_host)
-    monkeypatch.setattr(agent_mod, "create_coding_agent", fake_create)
 
-    main_mod.start_server(port=1234, model="m1", max_iterations=7)
+    main_mod.start_server(agent, port=1234)
 
     assert called["port"] == 1234
     assert called["trust"] == "careful"
     assert called["relay_url"] is None
-    assert callable(called["factory"])
-    # factory should create agent with given params
-    called["factory"]()
-    assert created and created[0][1]["model"] == "m1"
+    assert called["agent"] is agent

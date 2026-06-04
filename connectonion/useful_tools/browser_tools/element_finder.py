@@ -65,6 +65,11 @@ class InteractiveElement(BaseModel):
     placeholder: Optional[str] = None
     input_type: Optional[str] = None
     href: Optional[str] = None
+    title: Optional[str] = None
+    alt: Optional[str] = None
+    element_id: Optional[str] = None
+    class_name: Optional[str] = None
+    data_attrs: Optional[str] = None
     x: int = 0
     y: int = 0
     width: int = 0
@@ -128,8 +133,20 @@ def format_elements_for_llm(elements: List[InteractiveElement]) -> str:
             parts.append(f'placeholder="{el.placeholder}"')
         if el.aria_label:
             parts.append(f'aria="{el.aria_label}"')
+        if el.title:
+            parts.append(f'title="{el.title}"')
+        if el.alt:
+            parts.append(f'alt="{el.alt}"')
+        if el.element_id:
+            parts.append(f'id="{el.element_id}"')
+        if el.class_name:
+            parts.append(f'class="{el.class_name}"')
+        if el.data_attrs:
+            parts.append(f'data="{el.data_attrs}"')
 
         parts.append(f"pos=({el.x},{el.y})")
+        if not el.text and (el.width or el.height):
+            parts.append(f"size={el.width}x{el.height}")
 
         # Show frame context (especially useful for SCORM/iframe content)
         if el.frame != "main":

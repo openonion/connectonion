@@ -3,7 +3,7 @@
 This test demonstrates the complete workflow of the image formatter plugin:
 1. Tool returns base64 image
 2. Plugin detects and formats the image for LLM
-3. Plugin sends image to frontend via WebSocket
+3. Plugin sends the image to frontend IO when available
 4. LLM receives properly formatted image message
 """
 
@@ -12,14 +12,14 @@ LLM-Note: E2E tests for image_result_formatter plugin
 
 What it tests:
 - TestImageFormatterPluginE2E: Complete image handling workflow
-  - test_complete_image_workflow_with_io: Tool returns image → plugin formats → sends to frontend
+  - test_complete_image_workflow_with_io: Tool returns image → plugin formats for the model and frontend IO
   - take_screenshot: Example tool returning base64 PNG
-  - Image detection, formatting, and WebSocket transmission
+  - Image detection and multimodal message formatting
 
 Components under test:
 - connectonion.useful_plugins.image_result_formatter
 - Image handling in tool results
-- WebSocket IO integration for image display
+- Model-visible image formatting with frontend IO display
 """
 
 import pytest
@@ -53,12 +53,12 @@ class TestImageFormatterPluginE2E:
 
     def test_complete_image_workflow_with_io(self):
         """
-        Test complete workflow: tool returns image -> plugin formats -> sends to frontend.
+        Test complete workflow: tool returns image -> plugin formats for the model.
 
         This demonstrates the full integration of:
         - Tool returning base64 image
         - Plugin detecting and formatting the image
-        - Plugin sending to WebSocket IO
+        - Plugin sending the image to frontend IO when available
         - LLM receiving properly formatted message
         """
         # Create mock LLM with two responses
@@ -105,11 +105,7 @@ class TestImageFormatterPluginE2E:
         assert response is not None
         assert "screenshot" in response.lower() or "see" in response.lower()
 
-        # Verify the image was sent to WebSocket
-        mock_io.send_image.assert_called_once()
-        call_args = mock_io.send_image.call_args[0][0]
-        assert call_args.startswith("data:image/png;base64,")
-        assert "iVBORw0KGgo" in call_args  # PNG header in base64
+        mock_io.send_image.assert_called_once_with(take_screenshot("https://example.com"))
 
         # Verify messages were properly formatted
         messages = agent.current_session['messages']
@@ -121,7 +117,7 @@ class TestImageFormatterPluginE2E:
         )
         assert tool_msg is not None
         # Tool message should be shortened (not contain the full base64)
-        assert "Screenshot captured" in tool_msg['content']
+        assert tool_msg['content'] == "Tool returned an image (provided below)"
         assert "iVBORw0KGgo" not in tool_msg['content']
 
         # Find the user message with image (plugin inserts user message, not assistant)
@@ -266,7 +262,6 @@ class TestImageFormatterPluginE2E:
 
         assert response is not None
 
-        # Verify both images were sent to WebSocket
         assert mock_io.send_image.call_count == 2
 
         # Verify both images are in messages (plugin inserts user messages, not assistant)

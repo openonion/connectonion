@@ -68,6 +68,38 @@ def test_role_appears_when_present():
     assert 'role=checkbox' in line
 
 
+def test_icon_metadata_appears_when_present():
+    line = format_elements_for_llm([_el(
+        index=2,
+        tag='div',
+        title='QR code',
+        alt='scan login',
+        element_id='qr-switch',
+        class_name='qr-login-switch icon-qrcode',
+        data_attrs='data-testid=qr-login',
+        x=1618,
+        y=430,
+        width=42,
+        height=42,
+    )])
+    assert 'title="QR code"' in line
+    assert 'alt="scan login"' in line
+    assert 'id="qr-switch"' in line
+    assert 'class="qr-login-switch icon-qrcode"' in line
+    assert 'data="data-testid=qr-login"' in line
+    assert 'size=42x42' in line
+
+
+def test_size_only_shown_for_elements_without_text():
+    with_text = _el(index=0, tag='button', text='Login', width=100, height=40)
+    without_text = _el(index=1, tag='div', class_name='icon-menu', width=24, height=24)
+
+    lines = format_elements_for_llm([with_text, without_text]).split('\n')
+
+    assert 'size=' not in lines[0]
+    assert 'size=24x24' in lines[1]
+
+
 # ---------- href truncation ----------
 
 def test_href_strips_query_string():

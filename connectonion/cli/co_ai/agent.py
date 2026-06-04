@@ -58,11 +58,10 @@ GLOBAL_CO_DIR = Path.home() / ".co"
 def create_coding_agent(
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
-    auto_approve: bool = False,
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
-    browser = BrowserAutomation(headless=True)
+    browser = BrowserAutomation(headless=False)
 
     tools = [
         file_tools,
@@ -104,5 +103,8 @@ def create_coding_agent(
         max_iterations=max_iterations,
         co_dir=GLOBAL_CO_DIR,
     )
+    # This browser helper blocks on stdin, which is wrong for co ai's websocket
+    # chat runtime. Use browser tools plus frontend-mediated user handoffs.
+    agent.tools.remove("wait_for_manual_login")
 
     return agent

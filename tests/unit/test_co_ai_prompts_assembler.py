@@ -12,6 +12,7 @@ Components under test:
 
 from pathlib import Path
 
+from connectonion.cli.co_ai.tools import ask_user
 from connectonion.cli.co_ai.prompts.assembler import (
     PromptContext,
     interpolate,
@@ -19,6 +20,9 @@ from connectonion.cli.co_ai.prompts.assembler import (
     load_reminder,
     load_agent_prompt,
 )
+
+
+PROMPTS_DIR = Path(__file__).resolve().parents[2] / "connectonion" / "cli" / "co_ai" / "prompts"
 
 
 def test_interpolate_basic_and_defaults():
@@ -65,3 +69,26 @@ def test_prompt_context_and_assemble(tmp_path):
 
     agent_prompt = load_agent_prompt(str(prompts), "explore", extra_vars={"PROJECT": "Test"})
     assert agent_prompt == "Explore Test"
+
+
+def test_login_prompt_uses_ask_user_and_screenshot():
+    prompt = assemble_prompt(
+        prompts_dir=str(PROMPTS_DIR),
+        tools=[
+            ask_user,
+        ],
+    )
+
+    assert "Do not refuse explicit user login requests" in prompt
+    assert "help me login" in prompt
+    assert "log in" in prompt
+    assert "sign in" in prompt
+    assert "open_browser" in prompt
+    assert "go_to" in prompt
+    assert "take_screenshot" in prompt
+    assert "ask_user" in prompt
+    assert 'fields=[{"name": "username"' in prompt
+    assert "2FA" in prompt
+    assert "same tool loop" in prompt
+    assert "Do not repeat credentials in assistant messages" in prompt
+    assert "Leave the browser open after login succeeds" in prompt

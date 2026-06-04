@@ -174,3 +174,7 @@ test-package-*.tar.gz
 # Agent runtime directory
 .co/
 NIGHT_RUNNER_PROGRESS.md
+IMPLEMENTATION_PLAN.md
+STATUS.md
+TASK.md
+TASKS.md

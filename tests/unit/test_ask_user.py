@@ -104,6 +104,24 @@ class TestAskUserTool:
         })
         assert result == "my-project"
 
+    def test_ask_user_with_fields(self):
+        """ask_user includes fields in the event when provided."""
+        agent = FakeAgent()
+        agent.io = Mock()
+        agent.io.receive.return_value = {"answer": '{"username":"me"}'}
+
+        fields = [{"name": "username", "label": "Username", "type": "text"}]
+        result = ask_user(agent, "Login?", options=[], fields=fields)
+
+        agent.io.send.assert_called_once_with({
+            "type": "ask_user",
+            "question": "Login?",
+            "options": [],
+            "multi_select": False,
+            "fields": fields,
+        })
+        assert result == '{"username":"me"}'
+
     def test_ask_user_empty_answer(self):
         """ask_user returns empty string if no answer in response."""
         agent = FakeAgent()

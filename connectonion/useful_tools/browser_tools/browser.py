@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup
   Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), keyboard_type(text), keyboard_press(key), wait_for_login(seconds) | used by `co browser` CLI command
   Performance: headless by default (faster) | persistent context (instant profile load) | vision model for element finding (slower but accurate) | screenshots base64-encoded for LLM analysis | auto-save adds 500ms delay after critical actions
-  Errors: returns error string if Playwright not installed | returns "Browser already open" if reinitializing | element not found returns descriptive error
+  Errors: returns error string if Playwright not installed | returns "Browser already open" if live browser exists | element not found returns descriptive error
 Browser Agent for CLI - Natural language browser automation.
 
 This module provides a browser automation agent that understands natural language
@@ -81,11 +81,26 @@ class BrowserAutomation:
         self._headless = headless
         self.screenshots_dir = str(SCREENSHOTS_DIR)
 
-    def open_browser(self, headless: bool = None) -> str:
+    def _browser_is_usable(self) -> bool:
+        """Return True when the current Playwright page can still be operated."""
+        if not self.browser or not self.page:
+            return False
+
+        try:
+            is_closed = getattr(self.page, "is_closed", None)
+            if callable(is_closed) and is_closed():
+                return False
+            _ = self.page.url
+            return True
+        except Exception:
+            return False
+
+    def open_browser(self, headless: bool = None, force: bool = False) -> str:
         """Open a new browser window.
 
         Args:
             headless: If True, browser runs without visible window. Defaults to the value set in __init__.
+            force: If True, close the current browser first and open a fresh context.
 
         Note: If use_chrome_profile=True, Chrome must be completely closed.
         """
@@ -94,8 +109,15 @@ class BrowserAutomation:
         if not PLAYWRIGHT_AVAILABLE:
             return "Browser tools not installed. Run: pip install playwright && playwright install chromium"
 
-        if self.browser:
-            return "Browser already open"
+        if self._browser_is_usable():
+            if not force:
+                return "<system-reminder>Browser already open and usable. Continue using the current browser page.</system-reminder>"
+            self.close()
+            had_previous_browser_state = True
+        else:
+            had_previous_browser_state = bool(self.browser or self.page or self.playwright)
+            if had_previous_browser_state:
+                self.close()
 
         self.playwright = sync_playwright().start()
 
@@ -147,6 +169,10 @@ class BrowserAutomation:
         """
         )
 
+        if force and had_previous_browser_state:
+            return f"Previous browser closed by force. Browser opened with persistent profile: {profile_dir}"
+        if had_previous_browser_state:
+            return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
         return f"Browser opened with persistent profile: {profile_dir}"
 
     def go_to(self, url: str) -> str:
@@ -1134,7 +1160,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             full_page: If True, captures entire page height (may lose details but shows overview)
 
         Returns:
-            Base64 encoded image data with system reminder for full-page screenshots
+            Base64 encoded image data
         """
         if not PLAYWRIGHT_AVAILABLE:
             return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
@@ -1163,12 +1189,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
 
         screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
 
-        if full_page:
-            return f"""data:image/png;base64,{screenshot_base64}
-
-SYSTEM REMINDER: Full-page screenshots provide an overview of the entire page but may not show details clearly. Some elements might not be loaded yet (lazy loading). If you need to verify specific content or see details clearly, consider: scroll() to the target area first, then take a regular screenshot (full_page=False), or use scroll() multiple times and take screenshots at each position."""
-        else:
-            return f"data:image/png;base64,{screenshot_base64}"
+        return f"data:image/png;base64,{screenshot_base64}"
 
     def set_viewport(self, width: int, height: int) -> str:
         """Set the browser viewport size."""
@@ -1334,18 +1355,33 @@ SYSTEM REMINDER: Full-page screenshots provide an overview of the entire page bu
 
     def close(self) -> str:
         """Close the browser and save persistent context."""
-        self._save_context()
+        cleanup_errors = []
+        try:
+            self._save_context()
+        except Exception as exc:
+            cleanup_errors.append(f"save context failed: {exc}")
 
-        if self.page:
-            self.page.close()
-        if self.browser:
-            self.browser.close()
-        if self.playwright:
-            self.playwright.stop()
+        try:
+            if self.page:
+                self.page.close()
+        except Exception as exc:
+            cleanup_errors.append(f"close page failed: {exc}")
+        try:
+            if self.browser:
+                self.browser.close()
+        except Exception as exc:
+            cleanup_errors.append(f"close browser failed: {exc}")
+        try:
+            if self.playwright:
+                self.playwright.stop()
+        except Exception as exc:
+            cleanup_errors.append(f"stop playwright failed: {exc}")
 
         self.page = None
         self.browser = None
         self.playwright = None
+        if cleanup_errors:
+            return "Browser closed with cleanup warnings: " + "; ".join(cleanup_errors)
         return "Browser closed"
 
     def __enter__(self):

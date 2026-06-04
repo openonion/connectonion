@@ -12,7 +12,7 @@ Components under test:
 
 from types import SimpleNamespace
 
-from connectonion.cli.co_ai.tools.ask_user import ask_user
+from connectonion.cli.co_ai.tools import ask_user
 from connectonion.cli.co_ai.tools.load_guide import load_guide
 from connectonion.cli.co_ai.tools.plan_mode import (
     enter_plan_mode,
@@ -47,7 +47,31 @@ def test_ask_user_round_trip():
 
     result = ask_user(agent, "Continue?", options=["yes", "no"])
     assert result == "yes"
-    assert io.sent[0]["type"] == "ask_user"
+    assert io.sent[0] == {
+        "type": "ask_user",
+        "question": "Continue?",
+        "options": ["yes", "no"],
+        "multi_select": False,
+    }
+
+
+def test_ask_user_with_fields():
+    io = FakeIO([{"answer": '{"username":"me","password":"secret"}'}])
+    agent = SimpleNamespace(io=io)
+    fields = [
+        {"name": "username", "label": "Username", "type": "text"},
+        {"name": "password", "label": "Password", "type": "password"},
+    ]
+
+    result = ask_user(agent, "Enter your login.", options=[], fields=fields)
+    assert result == '{"username":"me","password":"secret"}'
+    assert io.sent[0] == {
+        "type": "ask_user",
+        "question": "Enter your login.",
+        "options": [],
+        "multi_select": False,
+        "fields": fields,
+    }
 
 
 def test_load_guide_existing_and_missing():

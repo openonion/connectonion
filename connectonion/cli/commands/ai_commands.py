@@ -25,12 +25,16 @@ def handle_ai(
         co ai                                    # Start web server
         co ai "Create a calculator agent"        # One-shot
     """
+    from ..co_ai.agent import create_coding_agent
+    agent = create_coding_agent(
+        model=model,
+        max_iterations=max_iterations,
+    )
+
     if prompt:
-        from ..co_ai.agent import create_coding_agent
-        agent = create_coding_agent(model=model, max_iterations=max_iterations)
         result = agent.input(prompt)
         # Print the agent's response for one-shot mode
         print("\n" + result)
     else:
         from ..co_ai.main import start_server
-        start_server(port=port, model=model, max_iterations=max_iterations)
+        start_server(agent, port=port)

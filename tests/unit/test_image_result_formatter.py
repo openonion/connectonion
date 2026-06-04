@@ -142,7 +142,7 @@ class TestFormatImageResult:
         _format_image_result(agent)
 
         # Check tool message was shortened
-        assert 'Screenshot captured' in agent.current_session['messages'][0]['content']
+        assert agent.current_session['messages'][0]['content'] == "Tool returned an image (provided below)"
 
         # Check user message with image was inserted (images are added as user messages)
         assert len(agent.current_session['messages']) == 2
@@ -155,6 +155,39 @@ class TestFormatImageResult:
         assert content[0]['type'] == 'text'
         assert content[1]['type'] == 'image_url'
         assert 'data:image/png;base64' in content[1]['image_url']['url']
+
+    def test_drops_raw_base64_from_text_context(self):
+        """Raw base64 image results should not be copied into text context."""
+        agent = FakeAgent()
+        base64_data = "A" * 150
+        agent.current_session['trace'] = [
+            {
+                'type': 'tool_result',
+                'name': 'take_screenshot',
+                'status': 'success',
+                'result': base64_data,
+                'tool_id': 'call_123'
+            }
+        ]
+        agent.current_session['messages'] = [
+            {
+                'role': 'tool',
+                'content': base64_data,
+                'tool_call_id': 'call_123'
+            }
+        ]
+
+        _format_image_result(agent)
+
+        tool_msg = agent.current_session['messages'][0]['content']
+        image_msg = agent.current_session['messages'][1]
+        image_text = image_msg['content'][0]['text']
+
+        assert base64_data not in tool_msg
+        assert base64_data not in image_text
+        assert tool_msg == "Tool returned an image (provided below)"
+        assert image_text == "Here is the image from 'take_screenshot':"
+        assert image_msg['content'][1]['image_url']['url'].endswith(base64_data)
 
     def test_prints_formatting_message(self):
         """Test that formatting message is printed."""
@@ -268,32 +301,33 @@ class TestFormatImageResult:
         assert len(trace_result) < 100  # Much shorter than original
 
     def test_sends_image_to_io_when_available(self):
-        """Test that image is sent to frontend via agent.io when available."""
+        """Image tool results are model-visible and sent to frontend IO."""
         agent = FakeAgent(with_io=True)
         base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
+        data_url = f"data:image/png;base64,{base64_data}"
         agent.current_session['trace'] = [
             {
                 'type': 'tool_result',
                 'name': 'screenshot',
                 'status': 'success',
-                'result': f"data:image/png;base64,{base64_data}",
+                'result': data_url,
                 'tool_id': 'call_123'
             }
         ]
         agent.current_session['messages'] = [
             {
                 'role': 'tool',
-                'content': f"data:image/png;base64,{base64_data}",
+                'content': data_url,
                 'tool_call_id': 'call_123'
             }
         ]
 
         _format_image_result(agent)
 
-        # Verify send_image was called with the correct data URL
-        agent.io.send_image.assert_called_once()
-        call_args = agent.io.send_image.call_args[0][0]
-        assert call_args == f"data:image/png;base64,{base64_data}"
+        agent.io.send_image.assert_called_once_with(data_url)
+        image_msg = agent.current_session['messages'][1]
+        image_part = next(item for item in image_msg['content'] if item['type'] == 'image_url')
+        assert image_part['image_url']['url'] == data_url
 
     def test_skips_sending_to_io_when_not_available(self):
         """Test that no error occurs when io is None."""
