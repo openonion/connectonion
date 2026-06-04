@@ -280,6 +280,17 @@ class TestDeploySkillsPackaging:
         with pytest.raises(FileNotFoundError):
             _build_tarball_with_skills(repo, [tmp_path / "does-not-exist"])
 
+    def test_missing_skills_path_errors_clearly(self):
+        runner = ArgparseCliRunner()
+        with runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+            subprocess.run(['git', 'init'], capture_output=True)
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
+
+            result = runner.invoke(cli, ['deploy', '--co-ai', '--skills', 'does-not-exist'])
+            assert "Skills path not found" in result.output
+
     @patch('connectonion.cli.commands.deploy_commands.requests.get')
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
     def test_co_ai_flag_signals_runtime_in_upload(self, mock_post, mock_get):

@@ -113,6 +113,10 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
         return
 
     skills_paths = [Path(s) for s in skills] if skills else []
+    for sp in skills_paths:
+        if not sp.is_dir():
+            console.print(f"[red]Skills path not found or not a directory: {sp}[/red]")
+            return
 
     # Must have API key
     api_key = load_api_key()
