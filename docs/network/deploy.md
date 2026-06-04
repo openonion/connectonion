@@ -118,10 +118,10 @@ Chrome + Xvfb browser runtime so browser tools work out of the box.
 
 ```bash
 co init --template co-ai
-co deploy --co-ai
+co deploy --template co-ai
 ```
 
-No `git init`/`commit` in between — `--co-ai` packages the working tree directly
+No `git init`/`commit` in between — `--template co-ai` packages the working tree directly
 (skipping `.env`, `.co/keys`, caches, and docs), so the freshly scaffolded
 project deploys as-is.
 
@@ -133,7 +133,7 @@ The deployed agent loads skills from `.co/skills/` via the normal loader.
   tree, no `--skills` needed:
   ```bash
   co skills copy <name>          # lands in .co/skills/<name>/
-  co deploy --co-ai
+  co deploy --template co-ai
   ```
 - **External skills** — to bundle skill directories that live outside the
   project (e.g. `~/.co/skills` or a shared skills repo), pass `--skills PATH`
@@ -141,7 +141,7 @@ The deployed agent loads skills from `.co/skills/` via the normal loader.
   `.co/skills/` (your working tree is untouched); on a name clash, later paths
   win:
   ```bash
-  co deploy --co-ai --skills ~/.co/skills --skills ~/work/social-skills
+  co deploy --template co-ai --skills ~/.co/skills --skills ~/work/social-skills
   ```
 
 > Your local `~/.claude/skills` are **not** auto-deployed. `co deploy` ships the

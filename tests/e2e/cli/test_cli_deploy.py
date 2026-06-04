@@ -278,12 +278,12 @@ class TestDeploySkillsPackaging:
             os.makedirs(".co")
             Path(".co/host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
 
-            result = runner.invoke(cli, ['deploy', '--co-ai', '--skills', 'does-not-exist'])
+            result = runner.invoke(cli, ['deploy', '--template', 'co-ai', '--skills', 'does-not-exist'])
             assert "Skills path not found" in result.output
 
 
 class TestCoAiWorktreeDeploy:
-    """--co-ai packages the working tree directly — no git init/commit needed."""
+    """--template co-ai packages the working tree directly — no git init/commit needed."""
 
     def test_worktree_tarball_includes_project_skips_junk(self, tmp_path):
         import tarfile
@@ -353,7 +353,7 @@ class TestCoAiWorktreeDeploy:
             mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "running", "logs": ""})
 
             with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
-                handle_deploy(co_ai=True)
+                handle_deploy(template="co-ai")
 
             assert mock_post.called
 

@@ -84,14 +84,19 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path], use_git_archive:
     return tarball
 
 
-def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
+def handle_deploy(template: str | None = None, skills: list[str] | None = None):
     """Deploy agent to ConnectOnion Cloud."""
     console.print("\n[cyan]Deploying to ConnectOnion Cloud...[/cyan]\n")
 
+    if template and template != "co-ai":
+        console.print(f"[red]Unknown deploy template: {template}. Only 'co-ai' is supported.[/red]")
+        return
+    co_ai = template == "co-ai"
+
     project_dir = Path.cwd()
 
-    # --co-ai packages the working tree directly, so a freshly scaffolded project
-    # deploys without git init/commit. Plain deploy still ships committed code.
+    # --template co-ai packages the working tree directly, so a freshly scaffolded
+    # project deploys without git init/commit. Plain deploy still ships committed code.
     if not co_ai and not (project_dir / ".git").exists():
         console.print("[red]Not a git repository. Run 'git init' first.[/red]")
         return
@@ -145,8 +150,8 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
     # Load env vars from .env (user's API keys, config for the agent container)
     env_vars = dotenv_values(env_file) if Path(env_file).exists() else {}
 
-    # Package source. --co-ai ships the working tree (no commit needed); plain
-    # deploy ships committed code via git archive HEAD. Either way --skills merge in.
+    # Package source. --template co-ai ships the working tree (no commit needed);
+    # plain deploy ships committed code via git archive HEAD. Either way --skills merge in.
     tarball_path = _build_tarball(project_dir, skills_paths, use_git_archive=not co_ai)
 
     # Show package size

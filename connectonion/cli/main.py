@@ -98,12 +98,12 @@ def create(
 
 @app.command()
 def deploy(
-    co_ai: bool = typer.Option(False, "--co-ai", help="Deploy a co-ai project from the working tree (no git commit needed)"),
+    template: Optional[str] = typer.Option(None, "-t", "--template", help="Project template to deploy (co-ai: ship the working tree, no git commit needed)"),
     skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skills directory to bundle into .co/skills/ (repeatable)"),
 ):
     """Deploy to ConnectOnion Cloud."""
     from .commands.deploy_commands import handle_deploy
-    handle_deploy(co_ai=co_ai, skills=skills)
+    handle_deploy(template=template, skills=skills)
 
 
 @app.command()
