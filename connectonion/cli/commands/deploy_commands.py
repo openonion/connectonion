@@ -170,8 +170,6 @@ def handle_deploy(co_ai: bool = False, skills: list[str] | None = None):
         "secrets": json.dumps(env_vars),
         "entrypoint": entrypoint,
     }
-    if co_ai:
-        deploy_data["runtime"] = "co-ai"
     with open(tarball_path, "rb") as f:
         response = requests.post(
             f"{API_BASE}/api/v1/deploy",

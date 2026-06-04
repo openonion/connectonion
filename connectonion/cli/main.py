@@ -98,7 +98,7 @@ def create(
 
 @app.command()
 def deploy(
-    co_ai: bool = typer.Option(False, "--co-ai", help="Deploy with the co-ai runtime (browser-enabled)"),
+    co_ai: bool = typer.Option(False, "--co-ai", help="Deploy a co-ai project from the working tree (no git commit needed)"),
     skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skills directory to bundle into .co/skills/ (repeatable)"),
 ):
     """Deploy to ConnectOnion Cloud."""

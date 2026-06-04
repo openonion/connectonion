@@ -281,23 +281,6 @@ class TestDeploySkillsPackaging:
             result = runner.invoke(cli, ['deploy', '--co-ai', '--skills', 'does-not-exist'])
             assert "Skills path not found" in result.output
 
-    @patch('connectonion.cli.commands.deploy_commands.requests.get')
-    @patch('connectonion.cli.commands.deploy_commands.requests.post')
-    def test_co_ai_flag_signals_runtime_in_upload(self, mock_post, mock_get):
-        from connectonion.cli.commands.deploy_commands import handle_deploy
-
-        runner = ArgparseCliRunner()
-        with runner.isolated_filesystem():
-            self._make_repo(Path("."))
-
-            mock_post.return_value = MagicMock(status_code=200, json=lambda: {"id": "x", "url": "u"})
-            mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "running", "logs": ""})
-
-            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
-                handle_deploy(co_ai=True)
-
-            assert mock_post.call_args.kwargs["data"]["runtime"] == "co-ai"
-
 
 class TestCoAiWorktreeDeploy:
     """--co-ai packages the working tree directly — no git init/commit needed."""
