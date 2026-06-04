@@ -77,6 +77,8 @@ def _build_tarball_with_skills(project_dir: Path, skills_path: Path) -> Path:
     skills_dest = staging / ".co" / "skills"
     skills_dest.mkdir(parents=True, exist_ok=True)
     for item in sorted(skills_path.iterdir()):
+        if item.name.startswith("."):
+            continue  # skip .git/.gitignore etc — only bundle skill dirs
         target = skills_dest / item.name
         if item.is_dir():
             shutil.copytree(item, target, dirs_exist_ok=True)
