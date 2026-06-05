@@ -1,1 +1,1 @@
-connectonion
+connectonion @ git+https://github.com/openonion/connectonion@coai-deploy-profile-test
