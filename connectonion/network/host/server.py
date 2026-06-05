@@ -435,10 +435,12 @@ def host(
             whitelist=whitelist,
             enable_ping=False,
         )
+        # Clamp to the relay's profile limits (alias 80, skill description 1000,
+        # max 100 skills) so one long field doesn't get the whole ANNOUNCE rejected.
         profile = {
-            "alias": agent_metadata["name"],
-            "skills": [{"name": s["name"], "description": s["description"]}
-                       for s in agent_metadata["skills"]],
+            "alias": agent_metadata["name"][:80],
+            "skills": [{"name": s["name"], "description": (s["description"] or "")[:1000]}
+                       for s in agent_metadata["skills"][:100]],
         }
         on_startup, on_shutdown = _create_relay_lifespan(
             relay_url, addr_data, summary, port, relay_session_runner, profile
