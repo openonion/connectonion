@@ -717,6 +717,87 @@ class TestSessionToChatItems:
 
         assert items == []
 
+    # ------------------------------------------------------------------
+    # <system-reminder> tag stripping
+    # ------------------------------------------------------------------
+
+    def test_strip_system_reminder_from_user_msg(self):
+        """Message containing only a <system-reminder> block emits no chat item."""
+        session = {
+            'messages': [
+                {'role': 'user', 'content': '<system-reminder>\n<build-context>\n</system-reminder>'},
+                {'role': 'assistant', 'content': 'OK'},
+            ],
+            'trace': [],
+        }
+
+        items = session_to_chat_items(session)
+
+        # The user bubble should be suppressed entirely; only the assistant response remains.
+        assert len(items) == 1
+        assert items[0]['type'] == 'agent'
+
+    def test_strip_system_reminder_inline(self):
+        """Real text + trailing system-reminder block → only real text remains."""
+        session = {
+            'messages': [
+                {
+                    'role': 'user',
+                    'content': (
+                        'Deploy the app'
+                        '<system-reminder>\n<build-context>\n</system-reminder>'
+                    ),
+                },
+            ],
+            'trace': [],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert len(items) == 1
+        assert items[0]['type'] == 'user'
+        assert items[0]['content'] == 'Deploy the app'
+
+    def test_strip_does_not_affect_assistant_msg(self):
+        """Assistant message mentioning 'system-reminder' in normal text is unchanged."""
+        session = {
+            'messages': [
+                {'role': 'assistant', 'content': 'The system reminder feature is working fine.'},
+            ],
+            'trace': [],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert len(items) == 1
+        assert items[0]['type'] == 'agent'
+        assert items[0]['content'] == 'The system reminder feature is working fine.'
+
+    def test_strip_system_reminder_from_tool_result(self):
+        """Tool result containing <system-reminder> is stripped."""
+        session = {
+            'messages': [],
+            'trace': [
+                {
+                    'type': 'tool_result',
+                    'tool_id': 't1',
+                    'name': 'bash',
+                    'result': (
+                        'file content'
+                        '<system-reminder>tool reminder</system-reminder>'
+                    ),
+                    'status': 'success',
+                    'timing_ms': 10,
+                },
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert len(items) == 1
+        assert items[0]['type'] == 'tool_call'
+        assert items[0]['result'] == 'file content'
+
     def test_generates_unique_ids(self):
         """Generates unique IDs for each item."""
         session = {

@@ -20,7 +20,27 @@ Streaming-only event types (llm_call, llm_result, compact, etc.) are not
 reconstructed — they're live-only feedback and don't survive reconnect by design.
 """
 
+import re
+
 from ....useful_plugins.runtime_input import RUNTIME_INPUT_FRAME_PREFIX
+
+# Regex to strip <system-reminder>...</system-reminder> blocks (internal Claude
+# API markers) that plugins inject into messages. These are intended only for
+# the LLM and must not appear in user-visible chat UI. Non-greedy match with
+# surrounding whitespace to avoid leaving bare newlines.
+_SYSTEM_REMINDER_RE = re.compile(r'\s*<system-reminder>.*?</system-reminder>\s*', re.DOTALL)
+
+
+def _strip_system_reminders(content: str) -> str:
+    """Remove <system-reminder>...</system-reminder> blocks from a string.
+
+    Returns the cleaned string with surrounding whitespace normalised.
+    Non-string values (e.g. list content blocks) are returned unchanged.
+    """
+    if not isinstance(content, str):
+        return content
+    stripped = _SYSTEM_REMINDER_RE.sub('', content)
+    return stripped.strip()
 
 
 def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
@@ -84,7 +104,7 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
             'name': name,
             'args': entry.get('args'),
             'status': ui_status,
-            'result': entry.get('result'),
+            'result': _strip_system_reminders(entry.get('result', '')),
             'timing_ms': entry.get('timing_ms'),
         }
 
@@ -124,6 +144,11 @@ def session_to_chat_items(session: dict) -> list[dict]:
             content = msg.get('content', '')
             if isinstance(content, str) and content.startswith(RUNTIME_INPUT_FRAME_PREFIX):
                 content = content[len(RUNTIME_INPUT_FRAME_PREFIX):]
+            content = _strip_system_reminders(content)
+            if not content:
+                # Entire message was just a <system-reminder> block — suppress the bubble.
+                user_count += 1
+                continue
             items_ui.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
             user_count += 1
             if user_count < len(turn_entries):
@@ -132,7 +157,9 @@ def session_to_chat_items(session: dict) -> list[dict]:
                     if item_ui:
                         items_ui.append(item_ui)
         elif role == 'assistant' and msg.get('content'):
-            items_ui.append({'id': f"msg-{msg_idx}", 'type': 'agent', 'content': msg.get('content', '')})
+            content = _strip_system_reminders(msg.get('content', ''))
+            if content:
+                items_ui.append({'id': f"msg-{msg_idx}", 'type': 'agent', 'content': content})
 
     # Fallback: if no user_input markers found in trace, append all remaining trace
     # entries at the end so the data isn't silently dropped (older sessions).
