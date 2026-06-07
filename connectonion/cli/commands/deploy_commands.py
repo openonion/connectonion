@@ -53,34 +53,88 @@ def _check_host_export(entrypoint: str) -> bool:
     return False
 
 
-def _build_tarball(project_dir: Path, skills_paths: list[Path], use_git_archive: bool) -> Path:
-    """Package the agent (committed code when use_git_archive, else the working tree
-    minus secrets/caches/docs) plus external --skills under .co/skills/ (later paths win)."""
+def _should_skip_deploy_path(rel: Path) -> bool:
+    """Return True for local-only files that must not be uploaded."""
+    parts = rel.parts
+    if not parts:
+        return True
+    if any(part in {".git", "__pycache__", "node_modules", "dist", "build"} for part in parts):
+        return True
+    if any(part == ".env" or part.startswith(".env.") for part in parts):
+        return True
+    if parts[0] == ".co" and len(parts) > 1 and parts[1] in {"keys", "cache", "logs", "history", "docs"}:
+        return True
+    return rel.suffix in {".pyc", ".pyo"}
+
+
+def _iter_git_tracked_files(project_dir: Path) -> list[Path]:
+    """Return tracked files, using current working-tree contents."""
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=project_dir,
+        check=True,
+        capture_output=True,
+    )
+    return [
+        Path(raw.decode())
+        for raw in result.stdout.split(b"\0")
+        if raw
+    ]
+
+
+def _is_git_repo(project_dir: Path) -> bool:
+    result = subprocess.run(
+        ["git", "rev-parse", "--is-inside-work-tree"],
+        cwd=project_dir,
+        capture_output=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() == b"true"
+
+
+def _add_tree(tar: tarfile.TarFile, source: Path, arc_prefix: Path) -> None:
+    for path in sorted(source.rglob("*")):
+        if not path.is_file():
+            continue
+        rel = arc_prefix / path.relative_to(source)
+        if _should_skip_deploy_path(rel):
+            continue
+        tar.add(path, arcname=str(rel), recursive=False)
+
+
+def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
+    """Package git-tracked files when available, otherwise the initialized folder.
+
+    .env is read separately as deploy secrets and is never included in the package.
+    External --skills directories are overlaid under .co/skills/ with the same
+    deny rules applied recursively.
+    """
     tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
-        if use_git_archive:
-            head_tar = Path(tempfile.mkdtemp()) / "head.tar"
-            subprocess.run(["git", "archive", "--format=tar", "-o", str(head_tar), "HEAD"],
-                           cwd=project_dir, check=True)
-            with tarfile.open(head_tar) as src:
-                for member in src.getmembers():
-                    tar.addfile(member, src.extractfile(member) if member.isfile() else None)
-        else:
-            skip_at_root = {".git", ".env", "__pycache__"}
-            skip_under_co = {"keys", "cache", "logs", "history", "docs"}
-            for path in sorted(project_dir.rglob("*")):
-                rel = path.relative_to(project_dir)
-                parts = rel.parts
-                if parts[0] in skip_at_root or "__pycache__" in parts or rel.suffix == ".pyc":
+        if _is_git_repo(project_dir):
+            for rel in sorted(_iter_git_tracked_files(project_dir)):
+                if _should_skip_deploy_path(rel):
                     continue
-                if parts[0] == ".co" and len(parts) > 1 and parts[1] in skip_under_co:
+                path = project_dir / rel
+                if path.is_file():
+                    tar.add(path, arcname=str(rel), recursive=False)
+        else:
+            for path in sorted(project_dir.rglob("*")):
+                if not path.is_file():
+                    continue
+                rel = path.relative_to(project_dir)
+                if _should_skip_deploy_path(rel):
                     continue
                 tar.add(path, arcname=str(rel), recursive=False)
         for skills_path in skills_paths:
             for item in sorted(skills_path.iterdir()):
                 if item.name.startswith("."):
                     continue  # skip .git/.gitignore etc — only skill dirs
-                tar.add(item, arcname=f".co/skills/{item.name}")
+                if item.is_file():
+                    rel = Path(".co") / "skills" / item.name
+                    if not _should_skip_deploy_path(rel):
+                        tar.add(item, arcname=str(rel), recursive=False)
+                elif item.is_dir():
+                    _add_tree(tar, item, Path(".co") / "skills" / item.name)
     return tarball
 
 
@@ -91,15 +145,7 @@ def handle_deploy(template: str | None = None, skills: list[str] | None = None):
     if template and template != "co-ai":
         console.print(f"[red]Unknown deploy template: {template}. Only 'co-ai' is supported.[/red]")
         return
-    co_ai = template == "co-ai"
-
     project_dir = Path.cwd()
-
-    # --template co-ai packages the working tree directly, so a freshly scaffolded
-    # project deploys without git init/commit. Plain deploy still ships committed code.
-    if not co_ai and not (project_dir / ".git").exists():
-        console.print("[red]Not a git repository. Run 'git init' first.[/red]")
-        return
 
     # Must be a ConnectOnion project
     host_yaml_path = Path(".co") / "host.yaml"
@@ -150,9 +196,10 @@ def handle_deploy(template: str | None = None, skills: list[str] | None = None):
     # Load env vars from .env (user's API keys, config for the agent container)
     env_vars = dotenv_values(env_file) if Path(env_file).exists() else {}
 
-    # Package source. --template co-ai ships the working tree (no commit needed);
-    # plain deploy ships committed code via git archive HEAD. Either way --skills merge in.
-    tarball_path = _build_tarball(project_dir, skills_paths, use_git_archive=not co_ai)
+    # Package source. Git projects upload tracked files with current working-tree
+    # contents; non-git projects upload the initialized folder. Either way .env is
+    # sent as secrets below, never included in the tarball, and --skills merge in.
+    tarball_path = _build_tarball(project_dir, skills_paths)
 
     # Show package size
     tarball_size = tarball_path.stat().st_size
@@ -254,12 +301,15 @@ def handle_deploy(template: str | None = None, skills: list[str] | None = None):
     # Show the agent's startup logs (best-effort).
     if deployment_id:
         time.sleep(5)  # "running" fires when the container starts; wait for the app to print its banner or crash
-        logs_resp = requests.get(
-            f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=10,
-        )
-        if logs_resp.status_code == 200:
+        try:
+            logs_resp = requests.get(
+                f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10,
+            )
+        except requests.exceptions.RequestException:
+            logs_resp = None
+        if logs_resp is not None and logs_resp.status_code == 200:
             logs = logs_resp.json().get("logs", "")
             if logs:
                 console.print()

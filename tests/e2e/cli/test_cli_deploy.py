@@ -38,17 +38,16 @@ class TestCliDeploy:
         """Setup test environment."""
         self.runner = ArgparseCliRunner()
 
-    def test_deploy_requires_git_repo(self):
-        """Test that deploy fails if not in a git repo."""
+    def test_deploy_requires_entrypoint(self):
+        """Test that initialized non-git projects validate their entrypoint."""
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            # Create .co folder but no .git
             os.makedirs(".co")
             Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
 
             result = self.runner.invoke(cli, ['deploy'])
-            assert "Not a git repository" in result.output
+            assert "Entrypoint not found" in result.output
 
     def test_deploy_requires_co_project(self):
         """Test that deploy fails if not a ConnectOnion project."""
@@ -261,7 +260,7 @@ class TestDeploySkillsPackaging:
         (more / "world").mkdir(parents=True)
         (more / "world" / "SKILL.md").write_text("---\nname: world\n---\nyo\n")
 
-        tarball = _build_tarball(repo, [skills, more], use_git_archive=True)
+        tarball = _build_tarball(repo, [skills, more])
         names = set(tarfile.open(tarball).getnames())
 
         assert "agent.py" in names                       # project files preserved
@@ -282,8 +281,8 @@ class TestDeploySkillsPackaging:
             assert "Skills path not found" in result.output
 
 
-class TestCoAiWorktreeDeploy:
-    """--template co-ai packages the working tree directly — no git init/commit needed."""
+class TestDeployPackaging:
+    """Deploy packages tracked files when git exists, otherwise the initialized folder."""
 
     def test_worktree_tarball_includes_project_skips_junk(self, tmp_path):
         import tarfile
@@ -304,7 +303,7 @@ class TestCoAiWorktreeDeploy:
         (proj / "__pycache__").mkdir()
         (proj / "__pycache__" / "x.pyc").write_text("x\n")
 
-        tarball = _build_tarball(proj, [], use_git_archive=False)
+        tarball = _build_tarball(proj, [])
         names = set(tarfile.open(tarball).getnames())
 
         assert "agent.py" in names
@@ -331,15 +330,67 @@ class TestCoAiWorktreeDeploy:
         (skills / ".hidden").mkdir()
         (skills / ".hidden" / "x").write_text("x\n")
 
-        tarball = _build_tarball(proj, [skills], use_git_archive=False)
+        tarball = _build_tarball(proj, [skills])
         names = set(tarfile.open(tarball).getnames())
 
         assert ".co/skills/world/SKILL.md" in names
         assert ".co/skills/.hidden/x" not in names         # dotfiles skipped
 
+    def test_external_skills_skip_nested_local_only_files(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        proj = tmp_path / "proj"
+        (proj / ".co").mkdir(parents=True)
+        (proj / ".co" / "host.yaml").write_text("name: demo\n")
+        (proj / "agent.py").write_text("x\n")
+
+        skills = tmp_path / "ext"
+        (skills / "world" / ".git").mkdir(parents=True)
+        (skills / "world" / ".git" / "config").write_text("secret repo\n")
+        (skills / "world" / ".env.local").write_text("TOKEN=secret\n")
+        (skills / "world" / "SKILL.md").write_text("yo\n")
+
+        tarball = _build_tarball(proj, [skills])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert ".co/skills/world/SKILL.md" in names
+        assert ".co/skills/world/.git/config" not in names
+        assert ".co/skills/world/.env.local" not in names
+
+    @SKIP_NO_GIT
+    def test_git_repo_packages_tracked_working_tree_files(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(['git', 'init'], cwd=repo, capture_output=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@test.com'], cwd=repo, capture_output=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=repo, capture_output=True)
+        (repo / ".co").mkdir()
+        (repo / ".co" / "host.yaml").write_text("name: demo\n")
+        (repo / "agent.py").write_text("committed\n")
+        subprocess.run(['git', 'add', '.'], cwd=repo, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'init'], cwd=repo, capture_output=True)
+
+        (repo / "agent.py").write_text("modified but tracked\n")
+        (repo / "scratch.txt").write_text("untracked\n")
+        (repo / ".env.local").write_text("secret\n")
+
+        tarball = _build_tarball(repo, [])
+        with tarfile.open(tarball) as tar:
+            names = set(tar.getnames())
+            agent = tar.extractfile("agent.py").read().decode()
+
+        assert "agent.py" in names
+        assert agent == "modified but tracked\n"
+        assert "scratch.txt" not in names
+        assert ".env.local" not in names
+
     @patch('connectonion.cli.commands.deploy_commands.requests.get')
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
-    def test_co_ai_deploys_without_git(self, mock_post, mock_get):
+    def test_deploys_initialized_folder_without_git(self, mock_post, mock_get):
         from connectonion.cli.commands.deploy_commands import handle_deploy
 
         runner = ArgparseCliRunner()
@@ -347,14 +398,12 @@ class TestCoAiWorktreeDeploy:
             os.makedirs(".co")
             Path(".co/host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
             Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
-            # deliberately no `git init` — co-ai must deploy from the working tree
+            # deliberately no `git init` — initialized folders deploy directly
 
             mock_post.return_value = MagicMock(status_code=200, json=lambda: {"id": "x", "url": "u"})
             mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "running", "logs": ""})
 
             with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
-                handle_deploy(template="co-ai")
+                handle_deploy()
 
             assert mock_post.called
-
-

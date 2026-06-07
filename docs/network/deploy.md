@@ -21,7 +21,6 @@ Deploy to ConnectOnion Cloud with one command.
 
 ```bash
 cd my-agent
-git init && git add -A && git commit -m "Initial commit"
 co auth  # If not already authenticated
 co deploy
 ```
@@ -51,7 +50,6 @@ Re-deploying the same project updates the same URL (like Heroku).
 
 ### Requirements
 
-- Git repository with committed code
 - `.co/host.yaml` (created by `co create` or `co init`)
 - Authenticated (`co auth`)
 - Entrypoint must call `host()` (exports the ASGI app for the container)
@@ -60,10 +58,10 @@ Re-deploying the same project updates the same URL (like Heroku).
 
 ```
 co deploy
-  ├─ Validate: git repo? .co/host.yaml? API key? entrypoint has host()?
-  ├─ Package: git archive HEAD → tarball
+  ├─ Validate: .co/host.yaml? API key? entrypoint has host()?
+  ├─ Package: git-tracked files when in a repo, otherwise initialized folder
   ├─ Collect: load env vars from .env
-  ├─ Upload: POST tarball + project_name + env_vars + entrypoint to API
+  ├─ Upload: POST tarball + project_name + secrets + entrypoint to API
   ├─ Build: backend builds Docker image, installs dependencies
   ├─ Run: starts container with your env vars injected
   ├─ Poll: checks status every 3s until running (or error)
@@ -72,10 +70,10 @@ co deploy
 
 **Step by step:**
 
-1. **Validate locally** — checks that you're in a git repo, `.co/host.yaml` exists, you have an `OPENONION_API_KEY`, and your entrypoint file calls `host()`
-2. **Package source** — runs `git archive` on HEAD to create a tarball (only committed files are included)
+1. **Validate locally** — checks that `.co/host.yaml` exists, you have an `OPENONION_API_KEY`, and your entrypoint file calls `host()`
+2. **Package source** — in git repos, packages tracked files using their current working-tree contents; outside git, packages the initialized folder. Untracked files in a git repo are not deployed. Local-only files such as `.env`, `.co/keys`, caches, logs, docs, and build output are skipped.
 3. **Collect env vars** — reads your `.env` file (API keys, database URLs, etc.) to inject into the container
-4. **Upload** — sends the tarball, project name, entrypoint path, and env vars to the deploy API
+4. **Upload** — sends the tarball, project name, entrypoint path, and secrets to the deploy API
 5. **Build & run** — the backend builds a Docker image from your source, installs `requirements.txt`, and starts the container
 6. **Poll status** — CLI checks deployment status every 3 seconds until the container is running or fails
 7. **Show result** — prints the agent URL and fetches the first container logs so you can verify startup
@@ -118,22 +116,23 @@ Chrome + Xvfb browser runtime so browser tools work out of the box.
 
 ```bash
 co init --template co-ai
-co deploy --template co-ai
+co deploy
 ```
 
-No `git init`/`commit` in between — `--template co-ai` packages the working tree directly
-(skipping `.env`, `.co/keys`, caches, and docs), so the freshly scaffolded
-project deploys as-is.
+No `git init`/`commit` in between — `co deploy` packages the initialized folder
+directly when no git repo exists (skipping `.env`, `.co/keys`, caches, and
+docs), so the freshly scaffolded project deploys as-is.
 
 ### Skills
 
 The deployed agent loads skills from `.co/skills/` via the normal loader.
 
-- **Project skills** — anything under `.co/skills/` is packaged from the working
-  tree, no `--skills` needed:
+- **Project skills** — skills under `.co/skills/` deploy with the project. In a
+  git repo they must be tracked by git; outside git they are packaged from the
+  initialized folder:
   ```bash
   co skills copy <name>          # lands in .co/skills/<name>/
-  co deploy --template co-ai
+  co deploy
   ```
 - **External skills** — to bundle skill directories that live outside the
   project (e.g. `~/.co/skills` or a shared skills repo), pass `--skills PATH`
@@ -141,7 +140,7 @@ The deployed agent loads skills from `.co/skills/` via the normal loader.
   `.co/skills/` (your working tree is untouched); on a name clash, later paths
   win:
   ```bash
-  co deploy --template co-ai --skills ~/.co/skills --skills ~/work/social-skills
+  co deploy --skills ~/.co/skills --skills ~/work/social-skills
   ```
 
 > Your local `~/.claude/skills` are **not** auto-deployed. `co deploy` ships the
