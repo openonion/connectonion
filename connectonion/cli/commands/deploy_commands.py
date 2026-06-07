@@ -11,7 +11,6 @@ LLM-Note:
 
 import fnmatch
 import json
-import os
 import re
 import shutil
 import subprocess
@@ -29,6 +28,7 @@ from .project_cmd_lib import GITIGNORE_CONTENT, load_api_key
 console = Console()
 
 API_BASE = "https://oo.openonion.ai"
+DASHBOARD_URL = "https://o.openonion.ai/dashboard"
 
 
 def _check_host_export(entrypoint: str) -> bool:
@@ -107,6 +107,19 @@ def _is_git_repo(project_dir: Path) -> bool:
     return result.returncode == 0 and result.stdout.strip() == b"true"
 
 
+def _format_bytes(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.2f} MB"
+
+
+def _count_packaged_files(tarball: Path) -> int:
+    with tarfile.open(tarball) as tar:
+        return len([member for member in tar.getmembers() if member.isfile()])
+
+
 def _add_directory_to_tarball(
     tar: tarfile.TarFile,
     source: Path,
@@ -116,9 +129,10 @@ def _add_directory_to_tarball(
     for path in sorted(source.rglob("*")):
         if not path.is_file():
             continue
-        rel = arc_prefix / path.relative_to(source)
-        if _is_ignored_for_deploy(rel, ignore_patterns):
+        source_rel = path.relative_to(source)
+        if _is_ignored_for_deploy(source_rel, ignore_patterns):
             continue
+        rel = arc_prefix / source_rel
         tar.add(path, arcname=str(rel), recursive=False)
 
 
@@ -147,35 +161,45 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                     continue
                 tar.add(path, arcname=str(rel), recursive=False)
         for skills_path in skills_paths:
-            _add_directory_to_tarball(tar, skills_path, Path(".co") / "skills", ignore_patterns)
+            _add_directory_to_tarball(
+                tar,
+                skills_path,
+                Path(".co") / "skills",
+                _load_deploy_ignore_patterns(skills_path),
+            )
     return tarball
 
 
 def _deploy_template_project(template: str, skills: list[str]) -> bool:
     """Create a temporary template project, deploy it, and clean up on success."""
-    original_dir = Path.cwd()
-    temp_root = Path(tempfile.mkdtemp(prefix="connectonion-deploy-"))
+    temp_root = Path.cwd() / ".tmp" / "connectonion-deploy"
+    if temp_root.exists():
+        shutil.rmtree(temp_root)
+    temp_root.mkdir(parents=True)
     project_name = f"{template}-agent"
     project_dir = temp_root / project_name
 
     console.print(f"[cyan]Creating temporary {template} project...[/cyan]")
-    try:
-        from .create import handle_create
+    from .create import handle_create
 
-        # Reuse the normal project creation path so template deploy stays in sync
-        # with `co create --template <name> -y` and does not mutate cwd.
-        os.chdir(temp_root)
-        handle_create(name=project_name, ai=None, key=None, template=template, description=None, yes=True)
+    # Reuse the normal project creation path so template deploy stays in sync
+    # with `co create --template <name> -y` and does not mutate cwd.
+    handle_create(
+        name=project_name,
+        ai=None,
+        key=None,
+        template=template,
+        description=None,
+        yes=True,
+        parent_dir=temp_root,
+    )
 
-        if not (project_dir / ".co" / "host.yaml").exists():
-            console.print(f"[red]Template project creation did not produce a deployable project: {project_dir}[/red]")
-            return False
+    if not (project_dir / ".co" / "host.yaml").exists():
+        console.print(f"[red]Template project creation did not produce a deployable project: {project_dir}[/red]")
+        shutil.rmtree(temp_root)
+        return False
 
-        # Deploy from the generated project exactly like a user would after `cd`.
-        os.chdir(project_dir)
-        success = _deploy_current_project(skills)
-    finally:
-        os.chdir(original_dir)
+    success = _deploy_current_project(skills, project_dir)
 
     if success:
         shutil.rmtree(temp_root)
@@ -185,14 +209,14 @@ def _deploy_template_project(template: str, skills: list[str]) -> bool:
     return success
 
 
-def _deploy_current_project(skills: list[str]) -> bool:
+def _deploy_current_project(skills: list[str], project_dir: Path | None = None) -> bool:
     """Deploy the current ConnectOnion project."""
     console.print("\n[cyan]Deploying to ConnectOnion Cloud...[/cyan]\n")
 
-    project_dir = Path.cwd()
+    project_dir = Path.cwd() if project_dir is None else project_dir
 
     # Must be a ConnectOnion project
-    host_yaml_path = Path(".co") / "host.yaml"
+    host_yaml_path = project_dir / ".co" / "host.yaml"
 
     if not host_yaml_path.exists():
         console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
@@ -220,13 +244,14 @@ def _deploy_current_project(skills: list[str]) -> bool:
     entrypoint = config.get("entrypoint", "agent.py")
 
     # Validate entrypoint exists
-    if not Path(entrypoint).exists():
+    entrypoint_path = project_dir / entrypoint
+    if not entrypoint_path.exists():
         console.print(f"[red]Entrypoint not found: {entrypoint}[/red]")
         console.print("[dim]Set 'entrypoint' in .co/host.yaml[/dim]")
         return False
 
     # Validate entrypoint exports ASGI app via host()
-    if not _check_host_export(entrypoint):
+    if not _check_host_export(str(entrypoint_path)):
         console.print(f"[red]Entrypoint '{entrypoint}' does not export an ASGI app.[/red]")
         console.print()
         console.print("[yellow]To deploy, your agent must call host():[/yellow]")
@@ -240,42 +265,42 @@ def _deploy_current_project(skills: list[str]) -> bool:
         return False
 
     # Load env vars from .env as runtime secrets; .env itself stays out of the tarball.
-    env_vars = dotenv_values(env_file) if Path(env_file).exists() else {}
+    env_path = project_dir / env_file
+    env_vars = dotenv_values(env_path) if env_path.exists() else {}
 
     # Package source. Git projects upload tracked files with current working-tree
     # contents; non-git projects upload the initialized folder. Either way .env is
     # sent as secrets below, never included in the tarball, and --skills merge in.
     tarball_path = _build_tarball(project_dir, skills_paths)
 
-    # Show package size
     tarball_size = tarball_path.stat().st_size
-    if tarball_size < 1024:
-        size_str = f"{tarball_size} B"
-    elif tarball_size < 1024 * 1024:
-        size_str = f"{tarball_size / 1024:.1f} KB"
-    else:
-        size_str = f"{tarball_size / (1024 * 1024):.2f} MB"
+    size_str = _format_bytes(tarball_size)
 
     console.print(f"  Project: {project_name}")
-    console.print(f"  Package: {size_str}")
-    console.print(f"  Env vars: {len(env_vars)} keys")
+    console.print(f"  Source: {project_dir}")
+    console.print(f"  Package: {size_str} ({_count_packaged_files(tarball_path)} files)")
+    console.print(f"  Env: {env_path} ({len(env_vars)} keys)")
+    if skills_paths:
+        console.print("  Skills:")
+        for skills_path in skills_paths:
+            console.print(f"    {skills_path} -> .co/skills/")
     console.print()
 
-    # Upload
-    console.print("Uploading...")
     deploy_data = {
         "project_name": project_name,
         "secrets": json.dumps(env_vars),
         "entrypoint": entrypoint,
     }
-    with open(tarball_path, "rb") as f:
-        response = requests.post(
-            f"{API_BASE}/api/v1/deploy",
-            files={"package": ("agent.tar.gz", f, "application/gzip")},
-            data=deploy_data,
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=600,  # 10 minutes for docker build
-        )
+    console.print(f"Uploading package to {API_BASE}...")
+    with console.status("[cyan]Uploading package...[/cyan]"):
+        with open(tarball_path, "rb") as f:
+            response = requests.post(
+                f"{API_BASE}/api/v1/deploy",
+                files={"package": ("agent.tar.gz", f, "application/gzip")},
+                data=deploy_data,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=600,  # 10 minutes for docker build
+            )
 
     if response.status_code != 200:
         console.print(f"[red]Deploy failed: {response.text}[/red]")
@@ -290,14 +315,16 @@ def _deploy_current_project(skills: list[str]) -> bool:
 
     deployment_id = result.get("id")
     url = result.get("url", "")
+    if deployment_id:
+        console.print(f"Deployment: {deployment_id}")
 
     # Wait for deployment
-    console.print("Building...")
+    console.print("Building container on ConnectOnion Cloud...")
     deploy_success = False
     final_status = "unknown"
     timeout_count = 0
 
-    for _ in range(100):
+    for attempt in range(100):
         try:
             status_resp = requests.get(
                 f"{API_BASE}/api/v1/deploy/{deployment_id}/status",
@@ -322,6 +349,7 @@ def _deploy_current_project(skills: list[str]) -> bool:
 
         result = status_resp.json()
         final_status = result.get("status", "unknown")
+        console.print(f"  [{attempt + 1}/100] status: {final_status}")
 
         if final_status == "running":
             deploy_success = True
@@ -342,6 +370,8 @@ def _deploy_current_project(skills: list[str]) -> bool:
     # Always show URL if we have one
     if url:
         console.print(f"Agent URL: {url}")
+    if deploy_success:
+        console.print(f"Dashboard: {DASHBOARD_URL}")
 
     # Show the agent's startup logs (best-effort).
     if deployment_id:

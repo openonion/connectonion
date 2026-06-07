@@ -30,14 +30,19 @@ co deploy
 Deploying to ConnectOnion Cloud...
 
   Project: my-agent
-  Package: 12.3 KB
-  Env vars: 3 keys
+  Source: /Users/me/my-agent
+  Package: 12.3 KB (8 files)
+  Env: /Users/me/my-agent/.env (3 keys)
 
-Uploading...
-Building...
+Uploading package to https://oo.openonion.ai...
+Deployment: a1b2c3d4
+Building container on ConnectOnion Cloud...
+  [1/100] status: deploying
+  [2/100] status: running
 
 Deployed!
 Agent URL: https://my-agent-0x7a9f3b2c.agents.openonion.ai
+Dashboard: https://o.openonion.ai/dashboard
 
 Container logs:
   Agent started on port 8000
@@ -81,12 +86,11 @@ co deploy
 Each deploy creates a new version. The last 5 versions are kept for rollback.
 
 `co deploy --template <name>` is a shortcut for deploying a template:
-it creates a temporary `<name>-agent` project with the same code path as
+it creates `.tmp/connectonion-deploy/<name>-agent` with the same code path as
 `co create --template <name> -y`, deploys from that generated project, then
-deletes the temporary folder after a successful deploy. If deploy fails, the
-temporary project path is printed and kept for debugging. Template names are
-validated by the same `co create` template logic, not by a separate deploy
-allowlist.
+deletes `.tmp/connectonion-deploy/` after a successful deploy. If deploy fails,
+that folder is printed and kept for debugging. Template names are validated by
+the same `co create` template logic, not by a separate deploy allowlist.
 
 ### Configuration
 
@@ -137,9 +141,9 @@ For a one-command deploy that does not modify the current folder:
 co deploy --template co-ai
 ```
 
-That creates a temporary template project, deploys it, and cleans it up after
-success. Any template supported by `co create --template <name>` uses the same
-flow.
+That creates `.tmp/connectonion-deploy/co-ai-agent`, deploys it, and cleans it up
+after success. Any template supported by `co create --template <name>` uses the
+same flow.
 
 ### Skills
 

@@ -333,6 +333,28 @@ class TestDeployPackaging:
 
         assert ".co/skills/world/SKILL.md" in names
 
+    def test_external_skills_folder_uses_its_own_gitignore(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        proj = tmp_path / "proj"
+        (proj / ".co").mkdir(parents=True)
+        (proj / ".co" / "host.yaml").write_text("name: demo\n")
+        (proj / "agent.py").write_text("x\n")
+
+        skills = tmp_path / "social-media-management-skills"
+        (skills / "linkedin-post-draft").mkdir(parents=True)
+        (skills / "linkedin-post-draft" / "SKILL.md").write_text("draft\n")
+        (skills / ".tmp").mkdir()
+        (skills / ".tmp" / "linkedin_post_submitted.png").write_text("debug image\n")
+        (skills / ".gitignore").write_text(".tmp/\n")
+
+        tarball = _build_tarball(proj, [skills])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert ".co/skills/linkedin-post-draft/SKILL.md" in names
+        assert ".co/skills/.tmp/linkedin_post_submitted.png" not in names
+
     def test_external_skills_skip_nested_local_only_files(self, tmp_path):
         import tarfile
         from connectonion.cli.commands.deploy_commands import _build_tarball
@@ -387,7 +409,8 @@ class TestDeployPackaging:
 
     @patch('connectonion.cli.commands.deploy_commands.requests.get')
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
-    def test_deploys_initialized_folder_without_git(self, mock_post, mock_get):
+    @patch('connectonion.cli.commands.deploy_commands.time.sleep')
+    def test_deploys_initialized_folder_without_git(self, mock_sleep, mock_post, mock_get, capsys):
         from connectonion.cli.commands.deploy_commands import handle_deploy
 
         runner = ArgparseCliRunner()
@@ -404,6 +427,8 @@ class TestDeployPackaging:
                 handle_deploy()
 
             assert mock_post.called
+            output = capsys.readouterr().out
+            assert "Dashboard: https://o.openonion.ai/dashboard" in output
 
     @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
     @patch('connectonion.cli.commands.create.handle_create')
@@ -412,14 +437,14 @@ class TestDeployPackaging:
 
         deployed_from = []
 
-        def create_project(name, ai, key, template, description, yes):
-            project = Path.cwd() / name
+        def create_project(name, ai, key, template, description, yes, parent_dir=None):
+            project = parent_dir / name
             (project / ".co").mkdir(parents=True)
             (project / ".co" / "host.yaml").write_text("name: co-ai-agent\nentrypoint: agent.py\n")
             (project / "agent.py").write_text("from connectonion import host\nhost(None)\n")
 
-        def deploy_current(skills):
-            deployed_from.append(Path.cwd())
+        def deploy_current(skills, project_dir=None):
+            deployed_from.append(project_dir)
             return True
 
         mock_create.side_effect = create_project
@@ -437,8 +462,9 @@ class TestDeployPackaging:
             template="minimal",
             description=None,
             yes=True,
+            parent_dir=project_dir.parent,
         )
-        assert mock_deploy.call_args[0][0] == []
+        assert mock_deploy.call_args[0] == ([], project_dir)
 
     @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
     @patch('connectonion.cli.commands.create.handle_create')
@@ -448,8 +474,8 @@ class TestDeployPackaging:
         skills = tmp_path / "social-media-management-skills"
         skills.mkdir()
 
-        def create_project(name, ai, key, template, description, yes):
-            project = Path.cwd() / name
+        def create_project(name, ai, key, template, description, yes, parent_dir=None):
+            project = parent_dir / name
             (project / ".co").mkdir(parents=True)
             (project / ".co" / "host.yaml").write_text("name: co-ai-agent\nentrypoint: agent.py\n")
             (project / "agent.py").write_text("from connectonion import host\nhost(None)\n")
@@ -459,6 +485,7 @@ class TestDeployPackaging:
 
         assert handle_deploy(template="co-ai", skills=[str(skills)]) is True
         assert mock_deploy.call_args[0][0] == [str(skills.resolve())]
+        assert mock_deploy.call_args[0][1].name == "co-ai-agent"
 
     def test_template_deploy_rejects_unknown_template(self):
         from connectonion.cli.commands.deploy_commands import handle_deploy
@@ -472,14 +499,14 @@ class TestDeployPackaging:
 
         deployed_from = []
 
-        def create_project(name, ai, key, template, description, yes):
-            project = Path.cwd() / name
+        def create_project(name, ai, key, template, description, yes, parent_dir=None):
+            project = parent_dir / name
             (project / ".co").mkdir(parents=True)
             (project / ".co" / "host.yaml").write_text("name: co-ai-agent\nentrypoint: agent.py\n")
             (project / "agent.py").write_text("from connectonion import host\nhost(None)\n")
 
-        def deploy_current(skills):
-            deployed_from.append(Path.cwd())
+        def deploy_current(skills, project_dir=None):
+            deployed_from.append(project_dir)
             return False
 
         mock_create.side_effect = create_project
