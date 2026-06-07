@@ -367,7 +367,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
         console.print("[bold green]Deployed![/bold green]")
     else:
         console.print(f"[yellow]Deploy status: {final_status}[/yellow]")
-        console.print("[yellow]Check status with 'co deployments' or try again.[/yellow]")
+        console.print("[yellow]Check status with 'co status' or try again.[/yellow]")
 
     # Always show URL if we have one
     if url:

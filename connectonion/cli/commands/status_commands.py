@@ -14,10 +14,54 @@ import requests
 from pathlib import Path
 from rich.console import Console
 from rich.panel import Panel
+from rich.table import Table
 
 from .project_cmd_lib import load_api_key
 
 console = Console()
+
+API_BASE = "https://oo.openonion.ai"
+
+
+def _fetch_deployments(api_key: str):
+    """Return deployments for the current account from ConnectOnion Cloud."""
+    response = requests.get(
+        f"{API_BASE}/api/v1/deployments",
+        headers={"Authorization": f"Bearer {api_key}"},
+        timeout=30,
+    )
+    if response.status_code != 200:
+        console.print(f"\n[yellow]Could not load deployments: {response.status_code}[/yellow]")
+        return []
+    return response.json().get("deployments", [])
+
+
+def _show_deployments(deployments):
+    """Print a compact deployed-agent table."""
+    if not deployments:
+        console.print("\n[cyan]Deployed Agents:[/cyan] none")
+        return
+
+    table = Table(title="Deployed Agents", show_header=True, header_style="bold cyan")
+    table.add_column("Project")
+    table.add_column("Status")
+    table.add_column("Active")
+    table.add_column("Container")
+    table.add_column("URL")
+
+    for deployment in deployments:
+        is_active = "yes" if deployment.get("is_active") else "no"
+        container = "running" if deployment.get("container_running") else "stopped"
+        table.add_row(
+            str(deployment.get("project_name") or ""),
+            str(deployment.get("status") or "unknown"),
+            is_active,
+            container,
+            str(deployment.get("url") or ""),
+        )
+
+    console.print()
+    console.print(table)
 
 
 def handle_status():
@@ -99,6 +143,8 @@ def handle_status():
         title="📊 Account Status",
         border_style="cyan"
     ))
+
+    _show_deployments(_fetch_deployments(api_key))
 
     if user.get('balance_usd', 0) <= 0:
         console.print("\n[yellow]⚠️  Low balance! Add credits at https://o.openonion.ai/purchase[/yellow]")

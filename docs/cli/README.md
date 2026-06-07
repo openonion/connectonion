@@ -199,9 +199,9 @@ $ co auth
 
 ---
 
-#### `co status` - Check Account Balance
+#### `co status` - Check Account and Deployments
 
-Shows your managed keys balance and usage.
+Shows your managed keys balance, usage, and deployed agents.
 
 **Basic usage:**
 ```bash
@@ -218,12 +218,20 @@ ConnectOnion Account Status
 Address:  0x7a9f3b2c8d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a
 Email:    0x7a9f3b2c@mail.openonion.ai
 Balance:  $5.00
+
+Deployed Agents
+┏━━━━━━━━━━━━━┳━━━━━━━━━┳━━━━━━━━┳━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┓
+┃ Project     ┃ Status  ┃ Active ┃ Container ┃ URL                                        ┃
+┡━━━━━━━━━━━━━╇━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
+│ co-ai-agent │ running │ yes    │ running   │ https://co-ai-agent-0x....agents.openonion.ai │
+└─────────────┴─────────┴────────┴───────────┴────────────────────────────────────────────┘
 ```
 
 **When to use:**
 - Check remaining credits
 - Verify authentication
 - See account details
+- See deployed agents and their URLs
 
 ---
 
@@ -882,7 +890,7 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 | `co setup` | Global identity + skill library | No | ✅ Yes (idempotent) |
 | `co sub` | Subscribe to a publisher's skills | No | ✅ Yes (idempotent) |
 | `co auth` | Get managed keys | No | ✅ Yes |
-| `co status` | Check balance | No | ✅ Yes |
+| `co status` | Check balance and deployments | No | ✅ Yes |
 | `co deploy` | Deploy to cloud | No | ✅ Yes |
 | `co reset` | Reset account | Yes | ⚠️ Destructive |
 | `co doctor` | Diagnose issues | No | ✅ Yes |
