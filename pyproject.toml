@@ -119,7 +119,6 @@ markers = [
 filterwarnings = [
     "ignore::DeprecationWarning",
 ]
-addopts = "-m 'not real_api and not slow'"
 
 [tool.ruff]
 line-length = 120

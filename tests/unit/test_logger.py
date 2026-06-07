@@ -50,8 +50,9 @@ class TestSlugify:
 class TestLoggerInit:
     """Test Logger initialization."""
 
-    def test_default_init(self):
+    def test_default_init(self, tmp_path, monkeypatch):
         """Test Logger with default parameters."""
+        monkeypatch.chdir(tmp_path)
         logger = Logger("test-agent")
 
         assert logger.agent_name == "test-agent"
@@ -78,8 +79,9 @@ class TestLoggerInit:
         assert logger.enable_file is False
         assert logger.console is not None  # Console still shows output
 
-    def test_custom_log_path(self):
+    def test_custom_log_path(self, tmp_path, monkeypatch):
         """Test Logger with custom log path."""
+        monkeypatch.chdir(tmp_path)
         logger = Logger("test-agent", log="custom/path.log")
 
         assert logger.log_file_path == Path("custom/path.log")

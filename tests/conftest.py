@@ -6,7 +6,7 @@ LLM-Note: Global pytest configuration and shared test fixtures
 What it tests:
 - pytest_configure: Registers custom test markers (slow, integration, unit, benchmark, e2e_online)
 - pytest_addoption: CLI options for relay URL configuration
-- pytest_collection_modifyitems: Auto-marks tests by folder path, skips real_api tests if API keys missing
+- pytest_collection_modifyitems: Auto-marks tests by folder path, skips external tests locally unless explicitly enabled
 
 Shared fixtures provided:
 - temp_dir: Temporary directory for test isolation
@@ -40,6 +40,11 @@ from tests.utils.mock_helpers import MockLLM
 import os
 from dotenv import load_dotenv
 
+# Unit/e2e tests should not write audit logs into the project .co directory.
+# Users can still override this with an explicit CONNECTONION_LOG value.
+os.environ.setdefault("CONNECTONION_LOG", "false")
+REPO_ROOT = Path(__file__).resolve().parents[1]
+
 # Load .env file for API keys
 load_dotenv()
 
@@ -50,6 +55,23 @@ def temp_dir():
     temp_dir = tempfile.mkdtemp()
     yield temp_dir
     shutil.rmtree(temp_dir)
+
+
+@pytest.fixture(autouse=True)
+def restore_working_directory():
+    """Keep tests from leaking os.chdir() state into later tests."""
+    try:
+        original_cwd = Path.cwd()
+    except (FileNotFoundError, OSError):
+        os.chdir(REPO_ROOT)
+        original_cwd = REPO_ROOT
+
+    yield
+
+    try:
+        os.chdir(original_cwd)
+    except (FileNotFoundError, OSError):
+        os.chdir(REPO_ROOT)
 
 
 @pytest.fixture
@@ -289,8 +311,13 @@ def pytest_addoption(parser):
     )
 
 
+def _truthy_env(name: str) -> bool:
+    """Return whether an environment variable is explicitly truthy."""
+    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def pytest_collection_modifyitems(config, items):
-    """Auto-mark tests by folder and skip real_api if keys are missing."""
+    """Auto-mark tests by folder and skip external tests outside opted-in runs."""
 
     # Auto-mark tests based on folder path
     for item in items:
@@ -305,18 +332,21 @@ def pytest_collection_modifyitems(config, items):
         if "real_api" in parts:
             item.add_marker(pytest.mark.real_api)
 
-    # Check for API keys
-    has_openai = bool(os.getenv("OPENAI_API_KEY"))
-    has_anthropic = bool(os.getenv("ANTHROPIC_API_KEY"))
-    has_google = bool(os.getenv("GOOGLE_API_KEY") or os.getenv("GEMINI_API_KEY"))
-    has_openonion = bool(os.getenv("OPENONION_API_KEY"))
+    run_real_api = _truthy_env("RUN_REAL_API_TESTS") or _truthy_env("CI")
+    run_network = _truthy_env("RUN_NETWORK_TESTS") or _truthy_env("CI")
 
-    has_any_key = has_openai or has_anthropic or has_google or has_openonion
-
-    if not has_any_key:
-        skip_marker = pytest.mark.skip(
-            reason="API keys not found. Copy tests/.env.example to tests/.env and add your keys."
+    if not run_real_api:
+        skip_real_api = pytest.mark.skip(
+            reason="Set RUN_REAL_API_TESTS=1 to run external API tests locally."
         )
         for item in items:
             if "real_api" in item.keywords:
-                item.add_marker(skip_marker)
+                item.add_marker(skip_real_api)
+
+    if not run_network:
+        skip_network = pytest.mark.skip(
+            reason="Set RUN_NETWORK_TESTS=1 to run external network/relay tests locally."
+        )
+        for item in items:
+            if "network" in item.keywords:
+                item.add_marker(skip_network)

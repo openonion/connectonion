@@ -161,6 +161,9 @@ class TestAuthMicrosoftFlow:
         """Test successful Microsoft OAuth flow."""
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
+            fake_home = Path.cwd()
+            (fake_home / ".co").mkdir()
+            (fake_home / ".co" / "keys.env").write_text("OPENONION_API_KEY=test-key\n")
 
             mock_revoke_response = Mock()
             mock_revoke_response.status_code = 404
@@ -194,7 +197,9 @@ class TestAuthMicrosoftFlow:
 
             mock_webbrowser.open.return_value = True
 
-            with patch('time.sleep', return_value=None):
+            with patch('time.sleep', return_value=None), \
+                 patch('connectonion.cli.commands.auth_commands.Path.home', return_value=fake_home), \
+                 patch('connectonion.cli.commands.auth_commands.load_api_key', return_value='test-key'):
                 from connectonion.cli.main import cli
                 result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
@@ -257,5 +262,4 @@ class TestAuthMicrosoftFlow:
             result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
             assert 'timed out' in result.output.lower() or result.exit_code != 0
-
 

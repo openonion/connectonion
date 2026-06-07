@@ -35,5 +35,7 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
+          RUN_REAL_API_TESTS: "1"
+          RUN_NETWORK_TESTS: "1"
         run: |
-          pytest tests/ -v --tb=short -m "not slow and not real_api and not network"
+          pytest tests/ -v --tb=short

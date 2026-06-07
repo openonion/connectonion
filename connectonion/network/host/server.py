@@ -31,7 +31,6 @@ from pathlib import Path
 from typing import Callable, Union
 
 import uvicorn
-import websockets
 from rich.console import Console
 
 from ... import address
@@ -59,6 +58,10 @@ from .http_router import (
     admin_admins_add_handler,
     admin_admins_remove_handler,
 )
+
+RELAY_PROFILE_ALIAS_LIMIT = 80
+RELAY_PROFILE_SKILL_LIMIT = 100
+RELAY_PROFILE_SKILL_DESCRIPTION_LIMIT = 1000
 
 
 def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
@@ -117,6 +120,21 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
                    for s in raw_skills],
     }
     return metadata, sample
+
+
+def _build_relay_profile(agent_metadata: dict) -> dict:
+    """Build the publishable relay directory profile from host metadata."""
+    skills = []
+    for skill in agent_metadata.get("skills", [])[:RELAY_PROFILE_SKILL_LIMIT]:
+        skills.append({
+            "name": skill["name"],
+            "description": (skill.get("description") or "")[:RELAY_PROFILE_SKILL_DESCRIPTION_LIMIT],
+        })
+
+    return {
+        "alias": agent_metadata["name"][:RELAY_PROFILE_ALIAS_LIMIT],
+        "skills": skills,
+    }
 
 
 def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict):
@@ -231,7 +249,14 @@ def _print_host_banner(
     console.print()
 
 
-def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner, profile: dict = None):
+def _create_relay_lifespan(
+    relay_url: str,
+    addr_data: dict,
+    summary: str,
+    port: int,
+    relay_session_runner,
+    profile: dict | None = None,
+):
     """Create relay startup/shutdown callbacks for ASGI lifespan.
 
     Args:
@@ -253,7 +278,13 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         async def relay_loop():
             while True:
                 ws = await relay.connect(relay_url)
-                announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url, profile=profile)
+                announce_msg = announce.create_announce_message(
+                    addr_data,
+                    summary,
+                    endpoints=endpoints,
+                    relay=relay_url,
+                    profile=profile,
+                )
                 await relay.serve_loop(
                     ws, announce_msg,
                     addr_data=addr_data, session_handler=relay_session_runner,
@@ -435,15 +466,14 @@ def host(
             whitelist=whitelist,
             enable_ping=False,
         )
-        # Clamp to the relay's profile limits (alias 80, skill description 1000,
-        # max 100 skills) so one long field doesn't get the whole ANNOUNCE rejected.
-        profile = {
-            "alias": agent_metadata["name"][:80],
-            "skills": [{"name": s["name"], "description": (s["description"] or "")[:1000]}
-                       for s in agent_metadata["skills"][:100]],
-        }
+        profile = _build_relay_profile(agent_metadata)
         on_startup, on_shutdown = _create_relay_lifespan(
-            relay_url, addr_data, summary, port, relay_session_runner, profile
+            relay_url,
+            addr_data,
+            summary,
+            port,
+            relay_session_runner,
+            profile=profile,
         )
 
     app = asgi_create_app(

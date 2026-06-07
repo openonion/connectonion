@@ -36,9 +36,11 @@ Auto-applied by folder in `tests/conftest.py`:
 | `tests/e2e/cli/` | `e2e`, `cli` |
 | `tests/e2e/real_api/` | `e2e`, `real_api` |
 
-Additional opt-in markers: `slow`, `network`, `deploy`, `e2e_online`.
+Additional markers: `slow`, `network`, `deploy`, `e2e_online`.
 
-Default `pytest` invocation excludes `real_api` and `network` (see `pytest.ini` `addopts`).
+Default `pytest` invocation collects the full suite. Local runs skip external `real_api`
+and `network` tests unless enabled with `RUN_REAL_API_TESTS=1` or
+`RUN_NETWORK_TESTS=1`; CI sets both flags and runs without marker exclusions.
 
 ## Decision Tree
 
@@ -54,11 +56,12 @@ Does the test exercise ONE source file with all deps mocked?
 ## Running
 
 ```bash
-pytest                              # default: unit + e2e (no real_api, no network)
+pytest                              # local default; external tests self-skip unless enabled
 pytest -m unit                      # only unit
-pytest -m e2e                       # all e2e (cli + real_api + offline)
+pytest -m e2e                       # e2e; external tests self-skip locally unless enabled
 pytest -m cli                       # only e2e/cli
-pytest -m real_api                  # only e2e/real_api (needs API keys)
+RUN_REAL_API_TESTS=1 pytest -m real_api      # only e2e/real_api (needs API keys)
+RUN_NETWORK_TESTS=1 pytest -m network        # only network/relay tests
 pytest tests/unit/test_agent.py     # single file
 ```
 

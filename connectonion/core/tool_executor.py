@@ -166,7 +166,7 @@ def execute_single_tool(
     )
 
     # Initialize timing (for error case if before_tool fails)
-    tool_start = time.time()
+    tool_start = time.perf_counter()
 
     try:
         # Set pending_tool for before_tool handlers to access
@@ -184,7 +184,7 @@ def execute_single_tool(
         agent.current_session.pop('pending_tool', None)
 
         # Execute the tool with timing (restart timer AFTER events for accurate tool timing)
-        tool_start = time.time()
+        tool_start = time.perf_counter()
 
         # Inject agent for tools that declare 'agent' in their signature.
         # _needs_agent is cached by tool_factory at registration time.
@@ -193,7 +193,7 @@ def execute_single_tool(
             tool_args['agent'] = agent
 
         result = tool_func(**tool_args)
-        tool_duration = (time.time() - tool_start) * 1000  # milliseconds
+        tool_duration = (time.perf_counter() - tool_start) * 1000  # milliseconds
 
         trace_entry["timing_ms"] = tool_duration
         trace_entry["result"] = str(result)
@@ -216,7 +216,7 @@ def execute_single_tool(
 
     except Exception as e:
         # Calculate timing from initial start (includes before_tool if it succeeded)
-        tool_duration = (time.time() - tool_start) * 1000
+        tool_duration = (time.perf_counter() - tool_start) * 1000
 
         trace_entry["timing_ms"] = tool_duration
         trace_entry["status"] = "error"

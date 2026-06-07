@@ -154,9 +154,11 @@ class TestHandleDoctorApiKeyChecks:
 
     @patch('connectonion.cli.commands.doctor_commands.console')
     @patch('connectonion.cli.commands.doctor_commands.shutil.which')
-    def test_doctor_detects_api_key_from_env(self, mock_which, mock_console):
+    @patch('connectonion.cli.commands.doctor_commands.requests.post')
+    def test_doctor_detects_api_key_from_env(self, mock_post, mock_which, mock_console):
         """Test that doctor detects API key from environment variable."""
         mock_which.return_value = '/usr/local/bin/co'
+        mock_post.return_value.status_code = 200
 
         from connectonion.cli.commands.doctor_commands import handle_doctor
 
@@ -169,9 +171,11 @@ class TestHandleDoctorApiKeyChecks:
 
     @patch('connectonion.cli.commands.doctor_commands.console')
     @patch('connectonion.cli.commands.doctor_commands.shutil.which')
-    def test_doctor_detects_api_key_from_local_env(self, mock_which, mock_console):
+    @patch('connectonion.cli.commands.doctor_commands.requests.post')
+    def test_doctor_detects_api_key_from_local_env(self, mock_post, mock_which, mock_console):
         """Test that doctor detects API key from local .env file."""
         mock_which.return_value = '/usr/local/bin/co'
+        mock_post.return_value.status_code = 200
 
         with tempfile.TemporaryDirectory() as tmpdir:
             original_cwd = os.getcwd()

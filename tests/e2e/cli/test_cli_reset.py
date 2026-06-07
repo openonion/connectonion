@@ -90,29 +90,6 @@ class TestHandleResetConfirmation:
 
             assert mock_console.print.called
 
-    @patch('connectonion.cli.commands.reset_commands.console')
-    @patch('connectonion.cli.commands.reset_commands.Prompt.ask')
-    def test_reset_cancelled_on_yes_lowercase(self, mock_ask, mock_console):
-        """Test reset is cancelled on lowercase 'y' (requires uppercase 'Y')."""
-        mock_ask.return_value = 'y'
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            fake_home = Path(tmpdir) / "fake_home"
-            fake_home.mkdir()
-            (fake_home / ".co").mkdir()
-
-            with patch.object(Path, 'home', return_value=fake_home):
-                from connectonion.cli.commands.reset_commands import handle_reset
-                handle_reset()
-
-            # The code does .upper() == 'Y', so lowercase 'y' should work
-            # Actually looking at the code: confirmation.upper() != "Y"
-            # So 'y'.upper() == 'Y' is True, should proceed
-            # Let me check the code again... it compares confirmation.upper() != "Y"
-            # So 'y'.upper() == 'Y', and != "Y" is False, so it would proceed
-            # Actually this means lowercase 'y' SHOULD work, let me update test
-
-
 class TestHandleResetDeletion:
     """Tests for deletion operations."""
 
@@ -377,4 +354,3 @@ class TestHandleResetDirectoryStructure:
 
             keys_dir = fake_home / ".co" / "keys"
             assert keys_dir.exists()
-

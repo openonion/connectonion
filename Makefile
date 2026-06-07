@@ -3,7 +3,7 @@ PYTEST?=pytest
 .PHONY: test test-unit test-integration test-cli test-e2e test-real cov
 
 test:
-	$(PYTEST) -m "not real_api"
+	$(PYTEST)
 
 test-unit:
 	$(PYTEST) -m unit
@@ -21,4 +21,4 @@ test-real:
 	$(PYTEST) -m real_api
 
 cov:
-	$(PYTEST) --cov=connectonion --cov-report=term-missing -m "not real_api"
+	$(PYTEST) --cov=connectonion --cov-report=term-missing

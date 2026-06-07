@@ -27,7 +27,7 @@ import json
 import asyncio
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from connectonion.network import relay
-import websockets
+from websockets.exceptions import ConnectionClosed, WebSocketException
 
 
 class TestRelayConnection:
@@ -70,9 +70,9 @@ class TestRelayConnection:
     async def test_connect_handles_connection_error(self):
         """Test connection error handling."""
         with patch('websockets.connect', new_callable=AsyncMock) as mock_connect:
-            mock_connect.side_effect = websockets.exceptions.WebSocketException("Connection failed")
+            mock_connect.side_effect = WebSocketException("Connection failed")
 
-            with pytest.raises(websockets.exceptions.WebSocketException):
+            with pytest.raises(WebSocketException):
                 await relay.connect()
 
 
@@ -193,9 +193,9 @@ class TestWaitForTask:
     async def test_recv_relay_msg_handles_connection_closed(self):
         """Test error handling when connection closes."""
         mock_ws = AsyncMock()
-        mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(None, None)
+        mock_ws.recv.side_effect = ConnectionClosed(None, None)
 
-        with pytest.raises(websockets.exceptions.ConnectionClosed):
+        with pytest.raises(ConnectionClosed):
             await relay.recv_relay_msg(mock_ws)
 
 
@@ -258,7 +258,7 @@ class TestServeLoop:
         }
 
         # Make recv_relay_msg raise ConnectionClosed immediately to exit loop
-        mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(None, None)
+        mock_ws.recv.side_effect = ConnectionClosed(None, None)
 
         with patch('rich.console.Console.print'):
             await relay.serve_loop(mock_ws, announce_msg, session_handler=AsyncMock())
@@ -296,7 +296,7 @@ class TestServeLoop:
 
         mock_ws.recv.side_effect = [
             json.dumps(error_msg),
-            websockets.exceptions.ConnectionClosed(None, None)
+            ConnectionClosed(None, None)
         ]
 
         # Should print error but not crash
@@ -322,7 +322,7 @@ class TestServeLoop:
             if not hasattr(recv_with_timeout_then_close, 'called'):
                 recv_with_timeout_then_close.called = True
                 raise asyncio.TimeoutError()
-            raise websockets.exceptions.ConnectionClosed(None, None)
+            raise ConnectionClosed(None, None)
 
         mock_ws.recv.side_effect = recv_with_timeout_then_close
 
@@ -339,12 +339,58 @@ class TestServeLoop:
         assert announce_count >= 2, "Should send initial ANNOUNCE + heartbeat ANNOUNCE"
 
     @pytest.mark.asyncio
+    async def test_serve_loop_heartbeat_resigns_profile(self):
+        """Heartbeat ANNOUNCE preserves profile data when re-signing."""
+        mock_ws = AsyncMock()
+        profile = {
+            "alias": "agent",
+            "skills": [{"name": "lookup", "description": "Find records"}],
+        }
+        announce_msg = {
+            "type": "ANNOUNCE",
+            "address": "0xtest",
+            "timestamp": 12345,
+            "summary": "Agent",
+            "endpoints": ["http://localhost:8000"],
+            "relay": "wss://relay.test",
+            "profile": profile,
+        }
+        addr_data = {"address": "0xtest", "signing_key": b"key"}
+
+        async def recv_with_timeout_then_close():
+            if not hasattr(recv_with_timeout_then_close, "called"):
+                recv_with_timeout_then_close.called = True
+                raise asyncio.TimeoutError()
+            raise ConnectionClosed(None, None)
+
+        mock_ws.recv.side_effect = recv_with_timeout_then_close
+
+        with patch("rich.console.Console.print"):
+            with patch("connectonion.network.announce.create_announce_message") as mock_create:
+                mock_create.return_value = {"type": "ANNOUNCE", "address": "0xtest", "profile": profile}
+                await relay.serve_loop(
+                    mock_ws,
+                    announce_msg,
+                    heartbeat_interval=1,
+                    addr_data=addr_data,
+                    session_handler=AsyncMock(),
+                )
+
+        mock_create.assert_called_once_with(
+            addr_data,
+            "Agent",
+            endpoints=["http://localhost:8000"],
+            relay="wss://relay.test",
+            profile=profile,
+        )
+
+    @pytest.mark.asyncio
     async def test_serve_loop_exits_on_connection_closed(self):
         """Test that serve_loop exits gracefully when connection closes."""
         mock_ws = AsyncMock()
         announce_msg = {"type": "ANNOUNCE", "address": "0xtest", "timestamp": 1}
 
-        mock_ws.recv.side_effect = websockets.exceptions.ConnectionClosed(None, None)
+        mock_ws.recv.side_effect = ConnectionClosed(None, None)
 
         with patch('rich.console.Console.print') as mock_print:
             await relay.serve_loop(mock_ws, announce_msg, session_handler=AsyncMock())
@@ -367,7 +413,7 @@ class TestServeLoop:
             if call_count == 1:
                 raise asyncio.TimeoutError()
             else:
-                raise websockets.exceptions.ConnectionClosed(None, None)
+                raise ConnectionClosed(None, None)
 
         mock_ws.recv.side_effect = recv_with_custom_interval
 

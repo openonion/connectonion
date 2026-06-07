@@ -43,14 +43,15 @@ cp tests/.env.example tests/.env
 # Edit tests/.env and add your API keys
 
 # Notes:
-# - real_api tests are excluded by default via pytest.ini addopts
-# - enable them by running with: pytest -m real_api
+# - pytest collects the full suite by default
+# - local real_api/network tests self-skip unless RUN_REAL_API_TESTS=1 or RUN_NETWORK_TESTS=1
+# - CI enables both categories in .github/workflows/tests.yml
 ```
 
 ### 2. Run Tests by Category
 
 ```bash
-# Default: unit + offline e2e (excludes real_api, network)
+# Local default: full collection; external real_api/network tests self-skip unless enabled
 pytest
 
 # Only unit (fast)
@@ -63,7 +64,10 @@ pytest -m e2e
 pytest -m cli
 
 # Real API tests (requires API keys, costs money)
-pytest -m real_api
+RUN_REAL_API_TESTS=1 pytest -m real_api
+
+# Network/relay tests
+RUN_NETWORK_TESTS=1 pytest -m network
 ```
 
 ---
@@ -271,7 +275,8 @@ Current coverage targets:
 
 CI runs on pull requests and pushes to main:
 - Installs dependencies
-- Runs `pytest -m "not real_api"`
+- Runs `pytest tests/ -v --tb=short` without marker exclusions
+- Sets `RUN_REAL_API_TESTS=1` and `RUN_NETWORK_TESTS=1`
 - Reports durations and failures
 
 See `.github/workflows/tests.yml` for CI configuration.

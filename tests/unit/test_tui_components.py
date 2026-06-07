@@ -17,8 +17,7 @@ Components under test:
 """
 
 
-import pytest
-from unittest.mock import patch, Mock
+from unittest.mock import Mock
 
 
 class TestFuzzyMatch:
@@ -236,107 +235,12 @@ class TestFooter:
         assert str(result) == ""
 
 
-class TestKeys:
-    """Tests for keys module (keyboard input)."""
-
-    @patch('sys.stdin')
-    def test_getch_on_unix(self, mock_stdin):
-        """Test getch on Unix-like systems."""
-        # This test is platform-specific and uses mocks
-        # The actual implementation requires terminal access
-        pass
-
-    def test_read_key_mapping(self):
-        """Test arrow key to string mapping."""
-        # The mapping is: {'A': 'up', 'B': 'down', 'C': 'right', 'D': 'left'}
-        # This is a documentation test - actual key reading requires terminal
-        mapping = {'A': 'up', 'B': 'down', 'C': 'right', 'D': 'left'}
-
-        assert mapping['A'] == 'up'
-        assert mapping['B'] == 'down'
-        assert mapping['C'] == 'right'
-        assert mapping['D'] == 'left'
-
-
-class TestStatusBar:
-    """Tests for StatusBar class (if importable)."""
-
-    def test_status_bar_import(self):
-        """Test StatusBar can be imported."""
-        try:
-            from connectonion.tui.status_bar import StatusBar
-            assert StatusBar is not None
-        except ImportError:
-            pytest.skip("StatusBar not available")
-
-
-class TestDropdown:
-    """Tests for Dropdown class (if importable)."""
-
-    def test_dropdown_import(self):
-        """Test Dropdown can be imported."""
-        try:
-            from connectonion.tui.dropdown import Dropdown
-            assert Dropdown is not None
-        except ImportError:
-            pytest.skip("Dropdown not available")
-
-
-class TestProviders:
-    """Tests for providers module (if importable)."""
-
-    def test_providers_import(self):
-        """Test providers can be imported."""
-        try:
-            from connectonion.tui import providers
-            assert providers is not None
-        except ImportError:
-            pytest.skip("providers not available")
-
-
-class TestInput:
-    """Tests for Input class (if importable)."""
-
-    def test_input_import(self):
-        """Test Input can be imported."""
-        try:
-            from connectonion.tui.input import SmartInput
-            assert SmartInput is not None
-        except ImportError:
-            pytest.skip("SmartInput not available")
-
-
-class TestPick:
-    """Tests for Pick class (if importable)."""
-
-    def test_pick_import(self):
-        """Test Pick can be imported."""
-        try:
-            from connectonion.tui.pick import Pick
-            assert Pick is not None
-        except ImportError:
-            pytest.skip("Pick not available")
-
-
 class TestTriggerAutoComplete:
     """Tests for TriggerAutoComplete class."""
-
-    def test_import(self):
-        """Test TriggerAutoComplete can be imported."""
-        from connectonion.tui.chat import TriggerAutoComplete
-        assert TriggerAutoComplete is not None
 
     def test_find_trigger_position(self):
         """Test _find_trigger_position finds trigger char."""
         from connectonion.tui.chat import TriggerAutoComplete
-        from textual.widgets import Input
-        from textual_autocomplete import DropdownItem
-
-        # Create minimal autocomplete (can't fully test without app context)
-        items = [DropdownItem(main="/help", id="/help")]
-        target = Mock()
-        target.message_signal = Mock()
-        target.message_signal.subscribe = Mock()
 
         ac = TriggerAutoComplete.__new__(TriggerAutoComplete)
         ac.trigger = "/"
@@ -448,46 +352,8 @@ class TestTriggerAutoComplete:
         result = ac.apply_completion("John Doe - john@example.com", target_state)
         assert result == "Hello @john@example.com"
 
-    def test_should_show_dropdown_overridden(self):
-        """Test should_show_dropdown shows dropdown with empty search string when trigger present."""
-        from connectonion.tui.chat import TriggerAutoComplete
-
-        # Verify the method exists (behavior needs app context to fully test)
-        assert hasattr(TriggerAutoComplete, 'should_show_dropdown')
-
-
 class TestChatWidgets:
     """Tests for Chat widget classes."""
-
-    def test_chat_status_bar_import(self):
-        """Test ChatStatusBar can be imported."""
-        from connectonion.tui.chat import ChatStatusBar
-        assert ChatStatusBar is not None
-
-    def test_hints_footer_import(self):
-        """Test HintsFooter can be imported."""
-        from connectonion.tui.chat import HintsFooter
-        assert HintsFooter is not None
-
-    def test_welcome_message_import(self):
-        """Test WelcomeMessage can be imported."""
-        from connectonion.tui.chat import WelcomeMessage
-        assert WelcomeMessage is not None
-
-    def test_user_message_import(self):
-        """Test UserMessage can be imported."""
-        from connectonion.tui.chat import UserMessage
-        assert UserMessage is not None
-
-    def test_assistant_message_import(self):
-        """Test AssistantMessage can be imported."""
-        from connectonion.tui.chat import AssistantMessage
-        assert AssistantMessage is not None
-
-    def test_thinking_indicator_import(self):
-        """Test ThinkingIndicator can be imported."""
-        from connectonion.tui.chat import ThinkingIndicator
-        assert ThinkingIndicator is not None
 
     def test_thinking_indicator_frames(self):
         """Test ThinkingIndicator has animation frames."""
@@ -505,36 +371,3 @@ class TestChatWidgets:
         assert hasattr(ThinkingIndicator, 'show_elapsed')
         assert hasattr(ThinkingIndicator, 'function_call')
         assert hasattr(ThinkingIndicator, 'reset_elapsed')
-
-    def test_chat_import(self):
-        """Test Chat app can be imported."""
-        from connectonion.tui.chat import Chat
-        assert Chat is not None
-
-
-class TestChatExports:
-    """Tests for connectonion.tui exports."""
-
-    def test_all_chat_components_exported(self):
-        """Test all chat components are exported from tui module."""
-        from connectonion.tui import (
-            Chat,
-            TriggerAutoComplete,
-            ChatStatusBar,
-            HintsFooter,
-            WelcomeMessage,
-            UserMessage,
-            AssistantMessage,
-            ThinkingIndicator,
-            CommandItem,
-        )
-
-        assert Chat is not None
-        assert TriggerAutoComplete is not None
-        assert ChatStatusBar is not None
-        assert HintsFooter is not None
-        assert WelcomeMessage is not None
-        assert UserMessage is not None
-        assert AssistantMessage is not None
-        assert ThinkingIndicator is not None
-        assert CommandItem is not None

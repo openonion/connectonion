@@ -23,6 +23,7 @@ import tempfile
 import shutil
 from pathlib import Path
 import pytest
+from unittest.mock import patch
 
 from .argparse_runner import ArgparseCliRunner
 
@@ -33,6 +34,12 @@ class TestCliInit:
     def setup_method(self):
         """Setup test environment."""
         self.runner = ArgparseCliRunner()
+        self.auth_patcher = patch('connectonion.cli.commands.init.authenticate', return_value=True)
+        self.auth_patcher.start()
+
+    def teardown_method(self):
+        """Restore patched dependencies."""
+        self.auth_patcher.stop()
 
     def test_init_creates_working_agent(self):
         """Test that init creates a working agent setup."""

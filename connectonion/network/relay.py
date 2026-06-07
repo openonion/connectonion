@@ -19,6 +19,7 @@ import json
 import asyncio
 from typing import Dict, Any
 import websockets
+from websockets.exceptions import ConnectionClosed
 
 
 async def connect(relay_url: str = "wss://oo.openonion.ai"):
@@ -82,7 +83,7 @@ async def recv_relay_msg(websocket, timeout: float = None) -> Dict[str, Any]:
 
     Raises:
         asyncio.TimeoutError: If timeout expires
-        websockets.exceptions.ConnectionClosed: If connection lost
+        ConnectionClosed: If connection lost
 
     Example:
         >>> msg = await recv_relay_msg(ws)
@@ -236,7 +237,7 @@ async def serve_loop(
                 await send_announce(websocket, announce_message)
             console.print(f"{prefix} [red]♥[/red]")
 
-        except websockets.exceptions.ConnectionClosed:
+        except ConnectionClosed:
             # Relay WS closed cleanly (relay redeployed, network blip, NAT idle
             # cut). Wake every per-session recv_msg by putting None into its
             # queue so children exit cleanly, then break out — server.py's

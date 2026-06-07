@@ -67,8 +67,12 @@ class Agent:
         # Initialize logger (unified: terminal + file + YAML evals)
         # Environment variable override (highest priority)
         effective_log = log
-        if os.getenv('CONNECTONION_LOG'):
-            effective_log = Path(os.getenv('CONNECTONION_LOG'))
+        env_log = os.getenv('CONNECTONION_LOG')
+        if env_log:
+            if env_log.strip().lower() in {"0", "false", "no", "off"}:
+                effective_log = False
+            else:
+                effective_log = Path(env_log)
 
         self.logger = Logger(agent_name=name, quiet=quiet, log=effective_log, co_dir=co_dir)
 

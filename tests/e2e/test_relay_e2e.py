@@ -156,6 +156,11 @@ def agent_server():
 
 @pytest.mark.e2e
 @pytest.mark.network
+@pytest.mark.real_api
+@pytest.mark.skipif(
+    not os.getenv("OPENONION_API_KEY"),
+    reason="OPENONION_API_KEY required for hosted co/* model relay E2E tests",
+)
 class TestRelayE2E:
 
     def test_direct_websocket(self, agent_server):

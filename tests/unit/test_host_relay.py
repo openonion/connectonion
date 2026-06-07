@@ -26,6 +26,7 @@ is tested separately in test_relay.py.
 import copy
 import sys
 import pytest
+from types import SimpleNamespace
 from pathlib import Path
 from unittest.mock import Mock, AsyncMock, patch, MagicMock
 from connectonion import Agent
@@ -56,6 +57,42 @@ def create_mock_agent(mock_llm):
     def factory():
         return Agent("test_agent", llm=mock_llm, quiet=True)
     return factory
+
+
+class TestRelayProfile:
+    """Test relay directory profile construction for hosted agents."""
+
+    def test_build_relay_profile_publishes_alias_and_limited_skill_descriptions(self):
+        metadata = {
+            "name": "a" * 90,
+            "skills": [
+                {"name": f"skill_{i}", "description": "d" * 1200, "location": "project"}
+                for i in range(101)
+            ],
+        }
+
+        profile = host_module._build_relay_profile(metadata)
+
+        assert profile["alias"] == "a" * 80
+        assert len(profile["skills"]) == 100
+        assert profile["skills"][0] == {"name": "skill_0", "description": "d" * 1000}
+        assert "location" not in profile["skills"][0]
+
+    def test_extract_agent_metadata_handles_skills_without_descriptions(self, mock_llm):
+        def create_agent():
+            agent = Agent("skill_host", llm=mock_llm, quiet=True)
+            agent.skills = [
+                SimpleNamespace(name="blank", description=None, location="project")
+            ]
+            return agent
+
+        metadata, _ = host_module._extract_agent_metadata(create_agent)
+        profile = host_module._build_relay_profile(metadata)
+
+        assert profile == {
+            "alias": "skill_host",
+            "skills": [{"name": "blank", "description": ""}],
+        }
 
 
 class TestHostRelayKeyManagement:

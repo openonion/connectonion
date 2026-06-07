@@ -18,6 +18,10 @@ Components under test:
 - Trust list display with full addresses for copying
 """
 
+import tempfile
+from pathlib import Path
+from unittest.mock import patch
+
 from .argparse_runner import ArgparseCliRunner
 
 
@@ -27,10 +31,19 @@ class TestTrustCommand:
     def setup_method(self):
         """Setup test environment."""
         self.runner = ArgparseCliRunner()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.co_dir = Path(self.temp_dir.name) / ".co"
+        self.co_dir.mkdir()
+        self.tool_co_dir_patcher = patch("connectonion.network.trust.tools.CO_DIR", self.co_dir)
+        self.command_co_dir_patcher = patch("connectonion.cli.commands.trust_commands.CO_DIR", self.co_dir)
+        self.tool_co_dir_patcher.start()
+        self.command_co_dir_patcher.start()
 
     def teardown_method(self):
         """Cleanup test environment."""
-        pass
+        self.command_co_dir_patcher.stop()
+        self.tool_co_dir_patcher.stop()
+        self.temp_dir.cleanup()
 
     def test_trust_help(self):
         """Test 'co trust --help' shows command-specific help."""
@@ -199,10 +212,19 @@ class TestTrustAdminCommand:
     def setup_method(self):
         """Setup test environment."""
         self.runner = ArgparseCliRunner()
+        self.temp_dir = tempfile.TemporaryDirectory()
+        self.co_dir = Path(self.temp_dir.name) / ".co"
+        self.co_dir.mkdir()
+        self.tool_co_dir_patcher = patch("connectonion.network.trust.tools.CO_DIR", self.co_dir)
+        self.command_co_dir_patcher = patch("connectonion.cli.commands.trust_commands.CO_DIR", self.co_dir)
+        self.tool_co_dir_patcher.start()
+        self.command_co_dir_patcher.start()
 
     def teardown_method(self):
         """Cleanup test environment."""
-        pass
+        self.command_co_dir_patcher.stop()
+        self.tool_co_dir_patcher.stop()
+        self.temp_dir.cleanup()
 
     def test_trust_admin_help(self):
         """Test 'co trust admin --help' shows subcommand help."""

@@ -78,17 +78,20 @@ pip install -e .  # Development mode
 
 ### Testing
 ```bash
-# Run all tests except real API calls (default)
-python -m pytest
+# Run the default local suite
+# External real_api/network tests self-skip locally unless explicitly enabled.
+python -m pytest tests/
 
 # Run specific test categories
 python -m pytest tests/unit           # Unit tests (fast, mocked)
-python -m pytest tests/integration    # Integration tests (no external APIs)
-python -m pytest tests/cli            # CLI tests
-python -m pytest tests/e2e            # End-to-end example agent
+python -m pytest tests/e2e            # E2E tests (CLI + offline + real_api folder)
+python -m pytest tests/e2e/cli        # CLI tests
 
 # Run real API tests (requires keys)
-python -m pytest tests/real_api -m real_api
+RUN_REAL_API_TESTS=1 python -m pytest -m real_api
+
+# Run network/relay tests
+RUN_NETWORK_TESTS=1 python -m pytest -m network
 
 # Run with coverage
 python -m pytest --cov=connectonion --cov-report=term-missing
@@ -272,33 +275,36 @@ Tools that need access to `agent.io` (for frontend communication) declare `agent
 ## Test Organization
 
 ### Folder Structure (see `tests/TEST_ORGANIZATION.md`)
+
+Two layers — **unit** and **e2e**. CLI and real-API tests are subtypes of e2e.
+
 - `tests/unit/` - One test file per source file, mocked dependencies, fast (<1s)
-- `tests/integration/` - Multi-component tests, no external APIs, medium speed
-- `tests/real_api/` - Actual API calls, requires keys, slow (5-30s), costs money
-- `tests/cli/` - CLI command tests, file system operations
-- `tests/e2e/` - Complete example agent (living documentation)
+- `tests/e2e/` - End-to-end workflows
+  - `tests/e2e/cli/` - Real `co` CLI invocations
+  - `tests/e2e/real_api/` - Actual API calls, requires keys, slow (5-30s), costs money
+  - `tests/e2e/manual/` - Demo scripts (not collected by pytest)
 
 ### Running Tests
 ```bash
-# Fast feedback loop (unit + integration only)
-pytest -m "not real_api"
+# Default local suite
+pytest tests/
 
 # Test specific module
 pytest tests/unit/test_agent.py
 
 # Real API tests (set API keys first)
 export OPENAI_API_KEY=sk-...
-pytest tests/real_api/test_real_openai.py -m real_api
+RUN_REAL_API_TESTS=1 pytest -m real_api
 
-# All tests except real API (default, for CI)
-pytest
+# Network/relay tests
+RUN_NETWORK_TESTS=1 pytest -m network
 ```
 
 ### Test Markers
-- `@pytest.mark.unit` - Unit tests
-- `@pytest.mark.integration` - Integration tests
-- `@pytest.mark.real_api` - Requires API keys
-- `@pytest.mark.cli` - CLI tests
+- `@pytest.mark.unit` - Unit tests (auto-applied for `tests/unit/`)
+- `@pytest.mark.e2e` - E2E tests (auto-applied for `tests/e2e/`)
+- `@pytest.mark.cli` - CLI tests (auto-applied for `tests/e2e/cli/`)
+- `@pytest.mark.real_api` - Requires API keys (auto-applied for `tests/e2e/real_api/`)
 - `@pytest.mark.slow` - Takes >10 seconds
 - `@pytest.mark.network` - Requires network/relay
 
