@@ -84,8 +84,7 @@ class TestCliInit:
             compile(agent_code, "agent.py", "exec")
             assert "host(" in agent_code                     # host-ready entrypoint
             assert "create_coding_agent" in agent_code        # mirrors `co ai`
-
-            assert 'browser_channel="chrome"' in agent_code   # real Chrome, not chromium
+            assert "browser_channel" not in agent_code        # use BrowserAutomation's default Chrome detection
 
             dockerfile = Path("Dockerfile").read_text()
             assert "playwright install --with-deps chrome" in dockerfile   # real Chrome + deps
