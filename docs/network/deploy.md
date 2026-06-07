@@ -80,6 +80,12 @@ co deploy
 
 Each deploy creates a new version. The last 5 versions are kept for rollback.
 
+`co deploy --template co-ai` is a special shortcut: it creates a temporary
+`co-ai-agent` project with the same code path as `co create --template co-ai -y`,
+deploys from that generated project, then deletes the temporary folder after a
+successful deploy. If deploy fails, the temporary project path is printed and kept
+for debugging.
+
 ### Configuration
 
 ```yaml
@@ -123,6 +129,15 @@ No `git init`/`commit` in between — `co deploy` packages the initialized folde
 directly when no git repo exists (skipping `.env`, `.co/keys`, caches, and
 docs), so the freshly scaffolded project deploys as-is.
 
+For a one-command deploy that does not modify the current folder:
+
+```bash
+co deploy --template co-ai
+```
+
+That creates a temporary `co-ai-agent` project, deploys it, and cleans it up after
+success.
+
 ### Skills
 
 The deployed agent loads skills from `.co/skills/` via the normal loader.
@@ -134,9 +149,9 @@ The deployed agent loads skills from `.co/skills/` via the normal loader.
   co skills copy <name>          # lands in .co/skills/<name>/
   co deploy
   ```
-- **External skills** — to bundle skill directories that live outside the
+- **External skills** — to bundle a skills folder that lives outside the
   project (e.g. `~/.co/skills` or a shared skills repo), pass `--skills PATH`
-  (repeatable). Each directory's skills are merged into the container's
+  (repeatable). The folder contents are copied into the container's
   `.co/skills/` (your working tree is untouched); on a name clash, later paths
   win:
   ```bash

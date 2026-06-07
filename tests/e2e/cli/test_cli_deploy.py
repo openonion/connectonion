@@ -315,7 +315,7 @@ class TestDeployPackaging:
         assert ".git/config" not in names                  # git skipped
         assert "__pycache__/x.pyc" not in names            # cache skipped
 
-    def test_worktree_tarball_overlays_external_skills(self, tmp_path):
+    def test_worktree_tarball_copies_external_skills_folder(self, tmp_path):
         import tarfile
         from connectonion.cli.commands.deploy_commands import _build_tarball
 
@@ -327,14 +327,11 @@ class TestDeployPackaging:
         skills = tmp_path / "ext"
         (skills / "world").mkdir(parents=True)
         (skills / "world" / "SKILL.md").write_text("yo\n")
-        (skills / ".hidden").mkdir()
-        (skills / ".hidden" / "x").write_text("x\n")
 
         tarball = _build_tarball(proj, [skills])
         names = set(tarfile.open(tarball).getnames())
 
         assert ".co/skills/world/SKILL.md" in names
-        assert ".co/skills/.hidden/x" not in names         # dotfiles skipped
 
     def test_external_skills_skip_nested_local_only_files(self, tmp_path):
         import tarfile
@@ -407,3 +404,64 @@ class TestDeployPackaging:
                 handle_deploy()
 
             assert mock_post.called
+
+    @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
+    @patch('connectonion.cli.commands.create.handle_create')
+    def test_template_deploy_uses_temp_project_and_cleans_up_on_success(self, mock_create, mock_deploy):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        deployed_from = []
+
+        def create_project(name, ai, key, template, description, yes):
+            project = Path.cwd() / name
+            (project / ".co").mkdir(parents=True)
+            (project / ".co" / "host.yaml").write_text("name: co-ai-agent\nentrypoint: agent.py\n")
+            (project / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+        def deploy_current(skills):
+            deployed_from.append(Path.cwd())
+            return True
+
+        mock_create.side_effect = create_project
+        mock_deploy.side_effect = deploy_current
+
+        assert handle_deploy(template="co-ai") is True
+
+        project_dir = deployed_from[0]
+        assert project_dir.name == "co-ai-agent"
+        assert not project_dir.parent.exists()
+        mock_create.assert_called_once_with(
+            name="co-ai-agent",
+            ai=None,
+            key=None,
+            template="co-ai",
+            description=None,
+            yes=True,
+        )
+
+    @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
+    @patch('connectonion.cli.commands.create.handle_create')
+    def test_template_deploy_keeps_temp_project_on_failure(self, mock_create, mock_deploy):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        deployed_from = []
+
+        def create_project(name, ai, key, template, description, yes):
+            project = Path.cwd() / name
+            (project / ".co").mkdir(parents=True)
+            (project / ".co" / "host.yaml").write_text("name: co-ai-agent\nentrypoint: agent.py\n")
+            (project / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+        def deploy_current(skills):
+            deployed_from.append(Path.cwd())
+            return False
+
+        mock_create.side_effect = create_project
+        mock_deploy.side_effect = deploy_current
+
+        assert handle_deploy(template="co-ai") is False
+
+        project_dir = deployed_from[0]
+        assert project_dir.name == "co-ai-agent"
+        assert project_dir.parent.exists()
+        shutil.rmtree(project_dir.parent)
