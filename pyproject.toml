@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "0.9.5"
+version = "0.9.6"
 description = "A simple Python framework for creating AI agents with behavior tracking"
 readme = "README.md"
 license = {text = "MIT"}
@@ -100,6 +100,7 @@ include = [
     "connectonion/**/*.txt",
     "connectonion/**/*.yaml",
     "connectonion/**/*.example",
+    "connectonion/cli/templates/**/Dockerfile",
 ]
 
 [tool.pytest.ini_options]

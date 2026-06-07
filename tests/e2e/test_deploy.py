@@ -162,13 +162,13 @@ def test_deploy_manual(api_url):
     tarball = create_agent_tarball()
 
     # Pass auth token as OPENONION_API_KEY so the deployed agent can call LLMs
-    env_vars = json.dumps({"OPENONION_API_KEY": auth_token})
+    secrets = json.dumps({"OPENONION_API_KEY": auth_token})
 
     print(f"\nDeploying {project_name}...")
     response = requests.post(
         f"{api_url}/api/v1/deploy",
         files={"package": ("agent.tar.gz", tarball, "application/gzip")},
-        data={"project_name": project_name, "entrypoint": "agent.py", "env_vars": env_vars},
+        data={"project_name": project_name, "entrypoint": "agent.py", "secrets": secrets},
         headers=auth_headers,
         timeout=300,
     )
@@ -205,14 +205,14 @@ def test_deploy_and_cleanup(api_url):
     deployment_id = None
 
     # Pass auth token so deployed agent can call LLMs
-    env_vars = json.dumps({"OPENONION_API_KEY": auth_token})
+    secrets = json.dumps({"OPENONION_API_KEY": auth_token})
 
     # 1. Deploy
     print(f"\n1. Deploying {project_name}...")
     response = requests.post(
         f"{api_url}/api/v1/deploy",
         files={"package": ("agent.tar.gz", tarball, "application/gzip")},
-        data={"project_name": project_name, "entrypoint": "agent.py", "env_vars": env_vars},
+        data={"project_name": project_name, "entrypoint": "agent.py", "secrets": secrets},
         headers=auth_headers,
         timeout=300,
     )

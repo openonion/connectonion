@@ -1,18 +1,20 @@
 """
-Purpose: Deploy agent projects to ConnectOnion Cloud with git archive packaging and env vars
+Purpose: Deploy agent projects to ConnectOnion Cloud with local packaging and env vars
 LLM-Note:
-  Dependencies: imports from [os, subprocess, tempfile, time, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
-  Data flow: handle_deploy() → validates git repo and .co/host.yaml → load_api_key() loads OPENONION_API_KEY → reads host.yaml for project name, entrypoint, env file path → dotenv_values() loads env vars from .env → git archive creates tarball of HEAD → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
-  State/Effects: creates temporary tarball file in tempdir | reads .co/host.yaml, .env files | makes network POST request | prints progress to stdout via rich.Console | does not modify project files
-  Integration: exposes handle_deploy() for CLI | expects git repo with .co/host.yaml (name, entrypoint, env) | uses Bearer token auth | returns void (prints results)
-  Performance: git archive is fast | network timeout 600s for upload, 10s for status checks | polls every 3s up to 100 times (~5 min)
-  Errors: fails if not git repo | fails if not ConnectOnion project (no host.yaml) | fails if no API key | prints backend error messages
+  Dependencies: imports from [fnmatch, json, os, re, shutil, subprocess, tarfile, tempfile, time, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
+  Data flow: handle_deploy() → optionally creates a temporary template project via co create → validates .co/host.yaml → load_api_key() loads OPENONION_API_KEY → reads host.yaml for project name, entrypoint, env file path → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
+  State/Effects: creates temporary tarball file in tempdir | template deploy creates/deletes a temporary project on success | reads .co/host.yaml, .env files | makes network POST request | prints progress to stdout via rich.Console | normal deploy does not modify project files
+  Integration: exposes handle_deploy() for CLI | expects .co/host.yaml (name, entrypoint, env) unless --template is used | uses Bearer token auth | returns bool success
+  Performance: packaging is local file I/O | network timeout 600s for upload, 30s for status checks | polls every 3s up to 100 times (~5 min)
+  Errors: fails if not ConnectOnion project (no host.yaml) | fails if no API key | prints backend error messages
 """
 
+import fnmatch
 import json
-import os
 import re
+import shutil
 import subprocess
+import tarfile
 import tempfile
 import time
 import yaml
@@ -21,11 +23,12 @@ from pathlib import Path
 from rich.console import Console
 from dotenv import dotenv_values
 
-from .project_cmd_lib import load_api_key
+from .project_cmd_lib import GITIGNORE_CONTENT, load_api_key
 
 console = Console()
 
 API_BASE = "https://oo.openonion.ai"
+DASHBOARD_URL = "https://o.openonion.ai/dashboard"
 
 
 def _check_host_export(entrypoint: str) -> bool:
@@ -52,29 +55,188 @@ def _check_host_export(entrypoint: str) -> bool:
     return False
 
 
-def handle_deploy():
-    """Deploy agent to ConnectOnion Cloud."""
+def _load_deploy_ignore_patterns(project_dir: Path) -> list[str]:
+    """Use ConnectOnion's default .gitignore plus the project's .gitignore."""
+    lines = GITIGNORE_CONTENT.splitlines()
+    gitignore = project_dir / ".gitignore"
+    if gitignore.exists():
+        lines.extend(gitignore.read_text().splitlines())
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+
+
+def _path_matches_ignore_pattern(rel: Path, pattern: str) -> bool:
+    rel_text = rel.as_posix()
+    pattern = pattern.lstrip("/")
+
+    if pattern.endswith("/"):
+        dirname = pattern.rstrip("/")
+        if "/" in dirname:
+            return rel_text == dirname or rel_text.startswith(dirname + "/")
+        return dirname in rel.parts
+
+    if "/" in pattern:
+        return fnmatch.fnmatch(rel_text, pattern)
+    return fnmatch.fnmatch(rel.name, pattern)
+
+
+def _is_ignored_for_deploy(rel: Path, ignore_patterns: list[str]) -> bool:
+    return any(_path_matches_ignore_pattern(rel, pattern) for pattern in ignore_patterns)
+
+
+def _iter_git_tracked_files(project_dir: Path) -> list[Path]:
+    """Return tracked files, using current working-tree contents."""
+    result = subprocess.run(
+        ["git", "ls-files", "-z"],
+        cwd=project_dir,
+        check=True,
+        capture_output=True,
+    )
+    return [
+        Path(raw.decode())
+        for raw in result.stdout.split(b"\0")
+        if raw
+    ]
+
+
+def _is_git_repo(project_dir: Path) -> bool:
+    if not (project_dir / ".git").exists():
+        return False
+    result = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        cwd=project_dir,
+        capture_output=True,
+    )
+    return result.returncode == 0 and Path(result.stdout.decode().strip()).resolve() == project_dir.resolve()
+
+
+def _format_bytes(size: int) -> str:
+    if size < 1024:
+        return f"{size} B"
+    if size < 1024 * 1024:
+        return f"{size / 1024:.1f} KB"
+    return f"{size / (1024 * 1024):.2f} MB"
+
+
+def _count_packaged_files(tarball: Path) -> int:
+    with tarfile.open(tarball) as tar:
+        return len([member for member in tar.getmembers() if member.isfile()])
+
+
+def _add_directory_to_tarball(
+    tar: tarfile.TarFile,
+    source: Path,
+    arc_prefix: Path,
+    ignore_patterns: list[str],
+) -> None:
+    for path in sorted(source.rglob("*")):
+        if not path.is_file():
+            continue
+        source_rel = path.relative_to(source)
+        if _is_ignored_for_deploy(source_rel, ignore_patterns):
+            continue
+        rel = arc_prefix / source_rel
+        tar.add(path, arcname=str(rel), recursive=False)
+
+
+def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
+    """Package git-tracked files when available, otherwise the initialized folder.
+
+    .env is read separately as deploy secrets and is never included in the package.
+    External --skills directories are copied into .co/skills/.
+    """
+    ignore_patterns = _load_deploy_ignore_patterns(project_dir)
+    tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
+    with tarfile.open(tarball, "w:gz") as tar:
+        if _is_git_repo(project_dir):
+            for rel in sorted(_iter_git_tracked_files(project_dir)):
+                if _is_ignored_for_deploy(rel, ignore_patterns):
+                    continue
+                path = project_dir / rel
+                if path.is_file():
+                    tar.add(path, arcname=str(rel), recursive=False)
+        else:
+            for path in sorted(project_dir.rglob("*")):
+                if not path.is_file():
+                    continue
+                rel = path.relative_to(project_dir)
+                if _is_ignored_for_deploy(rel, ignore_patterns):
+                    continue
+                tar.add(path, arcname=str(rel), recursive=False)
+        for skills_path in skills_paths:
+            _add_directory_to_tarball(
+                tar,
+                skills_path,
+                Path(".co") / "skills",
+                _load_deploy_ignore_patterns(skills_path),
+            )
+    return tarball
+
+
+def _deploy_template_project(template: str, skills: list[str]) -> bool:
+    """Create a temporary template project, deploy it, and clean up on success."""
+    temp_root = Path.cwd() / ".tmp" / "connectonion-deploy"
+    if temp_root.exists():
+        shutil.rmtree(temp_root)
+    temp_root.mkdir(parents=True)
+    project_name = f"{template}-agent"
+    project_dir = temp_root / project_name
+
+    console.print(f"[cyan]Creating temporary {template} project...[/cyan]")
+    from .create import handle_create
+
+    # Reuse the normal project creation path so template deploy stays in sync
+    # with `co create --template <name> -y` and does not mutate cwd.
+    handle_create(
+        name=project_name,
+        ai=None,
+        key=None,
+        template=template,
+        description=None,
+        yes=True,
+        parent_dir=temp_root,
+    )
+
+    if not (project_dir / ".co" / "host.yaml").exists():
+        console.print(f"[red]Template project creation did not produce a deployable project: {project_dir}[/red]")
+        shutil.rmtree(temp_root)
+        return False
+
+    success = _deploy_current_project(skills, project_dir)
+
+    if success:
+        shutil.rmtree(temp_root)
+    else:
+        # Keep failed template deploys inspectable; otherwise users lose build context.
+        console.print(f"[yellow]Temporary deploy project kept for debugging: {project_dir}[/yellow]")
+    return success
+
+
+def _deploy_current_project(skills: list[str], project_dir: Path | None = None) -> bool:
+    """Deploy the current ConnectOnion project."""
     console.print("\n[cyan]Deploying to ConnectOnion Cloud...[/cyan]\n")
 
-    project_dir = Path.cwd()
-
-    # Must be a git repo
-    if not (project_dir / ".git").exists():
-        console.print("[red]Not a git repository. Run 'git init' first.[/red]")
-        return
+    project_dir = Path.cwd() if project_dir is None else project_dir
 
     # Must be a ConnectOnion project
-    host_yaml_path = Path(".co") / "host.yaml"
+    host_yaml_path = project_dir / ".co" / "host.yaml"
 
     if not host_yaml_path.exists():
         console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
-        return
+        return False
+
+    # `--skills PATH` means "copy this folder into remote .co/skills".
+    # Resolve here so template deploys can pass paths from the original cwd.
+    skills_paths = [Path(s).expanduser().resolve() for s in (skills or [])]
+    for sp in skills_paths:
+        if not sp.is_dir():
+            console.print(f"[red]Skills path not found or not a directory: {sp}[/red]")
+            return False
 
     # Must have API key
     api_key = load_api_key()
     if not api_key:
         console.print("[red]No API key. Run 'co auth' first.[/red]")
-        return
+        return False
 
     # Load config from host.yaml
     with open(host_yaml_path, 'r') as f:
@@ -84,13 +246,14 @@ def handle_deploy():
     entrypoint = config.get("entrypoint", "agent.py")
 
     # Validate entrypoint exists
-    if not Path(entrypoint).exists():
+    entrypoint_path = project_dir / entrypoint
+    if not entrypoint_path.exists():
         console.print(f"[red]Entrypoint not found: {entrypoint}[/red]")
         console.print("[dim]Set 'entrypoint' in .co/host.yaml[/dim]")
-        return
+        return False
 
     # Validate entrypoint exports ASGI app via host()
-    if not _check_host_export(entrypoint):
+    if not _check_host_export(str(entrypoint_path)):
         console.print(f"[red]Entrypoint '{entrypoint}' does not export an ASGI app.[/red]")
         console.print()
         console.print("[yellow]To deploy, your agent must call host():[/yellow]")
@@ -101,69 +264,69 @@ def handle_deploy():
         console.print("  [cyan]host(agent)  # Starts HTTP server[/cyan]")
         console.print()
         console.print("[dim]See: https://docs.connectonion.com/deploy[/dim]")
-        return
+        return False
 
-    # Load env vars from .env (user's API keys, config for the agent container)
-    env_vars = dotenv_values(env_file) if Path(env_file).exists() else {}
+    # Load env vars from .env as runtime secrets; .env itself stays out of the tarball.
+    env_path = project_dir / env_file
+    env_vars = dotenv_values(env_path) if env_path.exists() else {}
 
-    # Create tarball from git
-    tarball_path = Path(tempfile.mkdtemp()) / "agent.tar.gz"
-    subprocess.run(
-        ["git", "archive", "--format=tar.gz", "-o", str(tarball_path), "HEAD"],
-        cwd=project_dir,
-        check=True,
-    )
+    # Package source. Git projects upload tracked files with current working-tree
+    # contents; non-git projects upload the initialized folder. Either way .env is
+    # sent as secrets below, never included in the tarball, and --skills merge in.
+    tarball_path = _build_tarball(project_dir, skills_paths)
 
-    # Show package size
     tarball_size = tarball_path.stat().st_size
-    if tarball_size < 1024:
-        size_str = f"{tarball_size} B"
-    elif tarball_size < 1024 * 1024:
-        size_str = f"{tarball_size / 1024:.1f} KB"
-    else:
-        size_str = f"{tarball_size / (1024 * 1024):.2f} MB"
+    size_str = _format_bytes(tarball_size)
 
     console.print(f"  Project: {project_name}")
-    console.print(f"  Package: {size_str}")
-    console.print(f"  Env vars: {len(env_vars)} keys")
+    console.print(f"  Source: {project_dir}")
+    console.print(f"  Package: {size_str} ({_count_packaged_files(tarball_path)} files)")
+    console.print(f"  Env: {env_path} ({len(env_vars)} keys)")
+    if skills_paths:
+        console.print("  Skills:")
+        for skills_path in skills_paths:
+            console.print(f"    {skills_path} -> .co/skills/")
     console.print()
 
-    # Upload
-    console.print("Uploading...")
-    with open(tarball_path, "rb") as f:
-        response = requests.post(
-            f"{API_BASE}/api/v1/deploy",
-            files={"package": ("agent.tar.gz", f, "application/gzip")},
-            data={
-                "project_name": project_name,
-                "env_vars": json.dumps(env_vars),
-                "entrypoint": entrypoint,
-            },
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=600,  # 10 minutes for docker build
-        )
+    deploy_data = {
+        "project_name": project_name,
+        "secrets": json.dumps(env_vars),
+        "entrypoint": entrypoint,
+    }
+    console.print(f"Uploading package to {API_BASE}...")
+    with console.status("[cyan]Uploading package...[/cyan]"):
+        with open(tarball_path, "rb") as f:
+            response = requests.post(
+                f"{API_BASE}/api/v1/deploy",
+                files={"package": ("agent.tar.gz", f, "application/gzip")},
+                data=deploy_data,
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=600,  # 10 minutes for docker build
+            )
 
     if response.status_code != 200:
         console.print(f"[red]Deploy failed: {response.text}[/red]")
-        return
+        return False
 
     result = response.json()
 
     # Check for error response (backend returns 200 with error dict)
     if "error" in result:
         console.print(f"[red]Deploy failed: {result['error']}[/red]")
-        return
+        return False
 
     deployment_id = result.get("id")
     url = result.get("url", "")
+    if deployment_id:
+        console.print(f"Deployment: {deployment_id}")
 
     # Wait for deployment
-    console.print("Building...")
+    console.print("Building container on ConnectOnion Cloud...")
     deploy_success = False
     final_status = "unknown"
     timeout_count = 0
 
-    for _ in range(100):
+    for attempt in range(100):
         try:
             status_resp = requests.get(
                 f"{API_BASE}/api/v1/deploy/{deployment_id}/status",
@@ -188,6 +351,7 @@ def handle_deploy():
 
         result = status_resp.json()
         final_status = result.get("status", "unknown")
+        console.print(f"  [{attempt + 1}/100] status: {final_status}")
 
         if final_status == "running":
             deploy_success = True
@@ -196,28 +360,33 @@ def handle_deploy():
             break
         if final_status in ("error", "failed"):
             console.print(f"[red]Deploy failed: {result.get('error_message') or 'Unknown error'}[/red]")
-            return
+            return False
         time.sleep(3)
 
-    console.print()
     if deploy_success:
         console.print("[bold green]Deployed![/bold green]")
     else:
         console.print(f"[yellow]Deploy status: {final_status}[/yellow]")
-        console.print("[yellow]Check status with 'co deployments' or try again.[/yellow]")
+        console.print("[yellow]Check status with 'co status' or try again.[/yellow]")
 
     # Always show URL if we have one
     if url:
         console.print(f"Agent URL: {url}")
+    if deploy_success:
+        console.print(f"Dashboard: {DASHBOARD_URL}")
 
-    # Always fetch and display container logs
+    # Show the agent's startup logs (best-effort).
     if deployment_id:
-        logs_resp = requests.get(
-            f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
-            headers={"Authorization": f"Bearer {api_key}"},
-            timeout=10,
-        )
-        if logs_resp.status_code == 200:
+        time.sleep(5)  # "running" fires when the container starts; wait for the app to print its banner or crash
+        try:
+            logs_resp = requests.get(
+                f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
+                headers={"Authorization": f"Bearer {api_key}"},
+                timeout=10,
+            )
+        except requests.exceptions.RequestException:
+            logs_resp = None
+        if logs_resp is not None and logs_resp.status_code == 200:
             logs = logs_resp.json().get("logs", "")
             if logs:
                 console.print()
@@ -225,3 +394,13 @@ def handle_deploy():
                 console.print(f"[dim]{logs}[/dim]")
 
     console.print()
+    return deploy_success
+
+
+def handle_deploy(template: str | None = None, skills: list[str] | None = None):
+    """Deploy agent to ConnectOnion Cloud."""
+    skills = skills or []
+    if template:
+        absolute_skills = [str(Path(s).expanduser().resolve()) for s in skills]
+        return _deploy_template_project(template, absolute_skills)
+    return _deploy_current_project(skills)

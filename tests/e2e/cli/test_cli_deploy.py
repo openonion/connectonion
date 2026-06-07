@@ -38,17 +38,16 @@ class TestCliDeploy:
         """Setup test environment."""
         self.runner = ArgparseCliRunner()
 
-    def test_deploy_requires_git_repo(self):
-        """Test that deploy fails if not in a git repo."""
+    def test_deploy_requires_entrypoint(self):
+        """Test that initialized non-git projects validate their entrypoint."""
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
-            # Create .co folder but no .git
             os.makedirs(".co")
             Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
 
             result = self.runner.invoke(cli, ['deploy'])
-            assert "Not a git repository" in result.output
+            assert "Entrypoint not found" in result.output
 
     def test_deploy_requires_co_project(self):
         """Test that deploy fails if not a ConnectOnion project."""
@@ -227,3 +226,319 @@ class TestCliDeploy:
             assert "Deploy failed" in result.output
 
 
+@SKIP_NO_GIT
+class TestDeploySkillsPackaging:
+    """Test --skills bundling into the deploy tarball."""
+
+    def _make_repo(self, root: Path):
+        subprocess.run(['git', 'init'], cwd=root, capture_output=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@test.com'], cwd=root, capture_output=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, capture_output=True)
+        (root / ".co").mkdir()
+        (root / ".co" / "host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
+        (root / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+        subprocess.run(['git', 'add', '.'], cwd=root, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'init'], cwd=root, capture_output=True)
+
+    def test_skills_dir_lands_under_co_skills(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._make_repo(repo)
+
+        skills = tmp_path / "skills"
+        (skills / "hello").mkdir(parents=True)
+        (skills / "hello" / "SKILL.md").write_text("---\nname: hello\n---\nhi\n")
+        (skills / "hello" / "run.py").write_text("print('hi')\n")
+        (skills / ".git").mkdir()                          # should be skipped
+        (skills / ".git" / "config").write_text("x\n")
+
+        # second skills dir — both should merge under .co/skills/
+        more = tmp_path / "more"
+        (more / "world").mkdir(parents=True)
+        (more / "world" / "SKILL.md").write_text("---\nname: world\n---\nyo\n")
+
+        tarball = _build_tarball(repo, [skills, more])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert "agent.py" in names                       # project files preserved
+        assert ".co/skills/hello/SKILL.md" in names        # skill placed at loader path
+        assert ".co/skills/hello/run.py" in names          # supporting files kept
+        assert ".co/skills/world/SKILL.md" in names        # second --skills dir merged
+        assert ".co/skills/.git/config" not in names       # dotfiles skipped
+
+    def test_missing_skills_path_errors_clearly(self):
+        runner = ArgparseCliRunner()
+        with runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+            subprocess.run(['git', 'init'], capture_output=True)
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
+
+            result = runner.invoke(cli, ['deploy', '--template', 'co-ai', '--skills', 'does-not-exist'])
+            assert "Skills path not found" in result.output
+
+
+class TestDeployPackaging:
+    """Deploy packages tracked files when git exists, otherwise the initialized folder."""
+
+    def test_worktree_tarball_includes_project_skips_junk(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        proj = tmp_path / "proj"
+        (proj / ".co" / "skills" / "hello").mkdir(parents=True)
+        (proj / ".co" / "skills" / "hello" / "SKILL.md").write_text("hi\n")
+        (proj / ".co" / "host.yaml").write_text("name: demo\n")
+        (proj / ".co" / "keys").mkdir()
+        (proj / ".co" / "keys" / "agent.key").write_text("secret\n")
+        (proj / ".co" / "docs").mkdir()
+        (proj / ".co" / "docs" / "big.md").write_text("doc\n")
+        (proj / "agent.py").write_text("x\n")
+        (proj / ".env").write_text("OPENAI_API_KEY=sk-secret\n")
+        (proj / ".git").mkdir()
+        (proj / ".git" / "config").write_text("x\n")
+        (proj / "__pycache__").mkdir()
+        (proj / "__pycache__" / "x.pyc").write_text("x\n")
+
+        tarball = _build_tarball(proj, [])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert "agent.py" in names
+        assert ".co/host.yaml" in names
+        assert ".co/skills/hello/SKILL.md" in names
+        assert ".env" not in names                       # secret skipped
+        assert ".co/keys/agent.key" not in names           # key skipped
+        assert ".co/docs/big.md" not in names              # docs skipped
+        assert ".git/config" not in names                  # git skipped
+        assert "__pycache__/x.pyc" not in names            # cache skipped
+
+    def test_worktree_tarball_copies_external_skills_folder(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        proj = tmp_path / "proj"
+        (proj / ".co").mkdir(parents=True)
+        (proj / ".co" / "host.yaml").write_text("name: demo\n")
+        (proj / "agent.py").write_text("x\n")
+
+        skills = tmp_path / "ext"
+        (skills / "world").mkdir(parents=True)
+        (skills / "world" / "SKILL.md").write_text("yo\n")
+
+        tarball = _build_tarball(proj, [skills])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert ".co/skills/world/SKILL.md" in names
+
+    @SKIP_NO_GIT
+    def test_nested_temp_project_inside_git_repo_packages_as_folder(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(['git', 'init'], cwd=repo, capture_output=True)
+
+        proj = repo / ".tmp" / "connectonion-deploy" / "co-ai-agent"
+        (proj / ".co").mkdir(parents=True)
+        (proj / ".co" / "host.yaml").write_text("name: co-ai-agent\n")
+        (proj / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+        (proj / "Dockerfile").write_text("FROM python:3.11-slim\n")
+        (proj / "requirements.txt").write_text("connectonion\n")
+
+        tarball = _build_tarball(proj, [])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert "agent.py" in names
+        assert "Dockerfile" in names
+        assert "requirements.txt" in names
+        assert ".co/host.yaml" in names
+
+    def test_external_skills_folder_uses_its_own_gitignore(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        proj = tmp_path / "proj"
+        (proj / ".co").mkdir(parents=True)
+        (proj / ".co" / "host.yaml").write_text("name: demo\n")
+        (proj / "agent.py").write_text("x\n")
+
+        skills = tmp_path / "social-media-management-skills"
+        (skills / "linkedin-post-draft").mkdir(parents=True)
+        (skills / "linkedin-post-draft" / "SKILL.md").write_text("draft\n")
+        (skills / ".tmp").mkdir()
+        (skills / ".tmp" / "linkedin_post_submitted.png").write_text("debug image\n")
+        (skills / ".gitignore").write_text(".tmp/\n")
+
+        tarball = _build_tarball(proj, [skills])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert ".co/skills/linkedin-post-draft/SKILL.md" in names
+        assert ".co/skills/.tmp/linkedin_post_submitted.png" not in names
+
+    def test_external_skills_skip_nested_local_only_files(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        proj = tmp_path / "proj"
+        (proj / ".co").mkdir(parents=True)
+        (proj / ".co" / "host.yaml").write_text("name: demo\n")
+        (proj / "agent.py").write_text("x\n")
+
+        skills = tmp_path / "ext"
+        (skills / "world" / ".git").mkdir(parents=True)
+        (skills / "world" / ".git" / "config").write_text("secret repo\n")
+        (skills / "world" / ".env.local").write_text("TOKEN=secret\n")
+        (skills / "world" / "SKILL.md").write_text("yo\n")
+
+        tarball = _build_tarball(proj, [skills])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert ".co/skills/world/SKILL.md" in names
+        assert ".co/skills/world/.git/config" not in names
+        assert ".co/skills/world/.env.local" not in names
+
+    @SKIP_NO_GIT
+    def test_git_repo_packages_tracked_working_tree_files(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(['git', 'init'], cwd=repo, capture_output=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@test.com'], cwd=repo, capture_output=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=repo, capture_output=True)
+        (repo / ".co").mkdir()
+        (repo / ".co" / "host.yaml").write_text("name: demo\n")
+        (repo / "agent.py").write_text("committed\n")
+        subprocess.run(['git', 'add', '.'], cwd=repo, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'init'], cwd=repo, capture_output=True)
+
+        (repo / "agent.py").write_text("modified but tracked\n")
+        (repo / "scratch.txt").write_text("untracked\n")
+        (repo / ".env.local").write_text("secret\n")
+
+        tarball = _build_tarball(repo, [])
+        with tarfile.open(tarball) as tar:
+            names = set(tar.getnames())
+            agent = tar.extractfile("agent.py").read().decode()
+
+        assert "agent.py" in names
+        assert agent == "modified but tracked\n"
+        assert "scratch.txt" not in names
+        assert ".env.local" not in names
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.get')
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    @patch('connectonion.cli.commands.deploy_commands.time.sleep')
+    def test_deploys_initialized_folder_without_git(self, mock_sleep, mock_post, mock_get, capsys):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        runner = ArgparseCliRunner()
+        with runner.isolated_filesystem():
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+            # deliberately no `git init` — initialized folders deploy directly
+
+            mock_post.return_value = MagicMock(status_code=200, json=lambda: {"id": "x", "url": "u"})
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "running", "logs": ""})
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                handle_deploy()
+
+            assert mock_post.called
+            output = capsys.readouterr().out
+            assert "Dashboard: https://o.openonion.ai/dashboard" in output
+
+    @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
+    @patch('connectonion.cli.commands.create.handle_create')
+    def test_template_deploy_uses_temp_project_and_cleans_up_on_success(self, mock_create, mock_deploy):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        deployed_from = []
+
+        def create_project(name, ai, key, template, description, yes, parent_dir=None):
+            project = parent_dir / name
+            (project / ".co").mkdir(parents=True)
+            (project / ".co" / "host.yaml").write_text("name: co-ai-agent\nentrypoint: agent.py\n")
+            (project / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+        def deploy_current(skills, project_dir=None):
+            deployed_from.append(project_dir)
+            return True
+
+        mock_create.side_effect = create_project
+        mock_deploy.side_effect = deploy_current
+
+        assert handle_deploy(template="minimal") is True
+
+        project_dir = deployed_from[0]
+        assert project_dir.name == "minimal-agent"
+        assert not project_dir.parent.exists()
+        mock_create.assert_called_once_with(
+            name="minimal-agent",
+            ai=None,
+            key=None,
+            template="minimal",
+            description=None,
+            yes=True,
+            parent_dir=project_dir.parent,
+        )
+        assert mock_deploy.call_args[0] == ([], project_dir)
+
+    @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
+    @patch('connectonion.cli.commands.create.handle_create')
+    def test_template_deploy_passes_assigned_skills_path(self, mock_create, mock_deploy, tmp_path):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        skills = tmp_path / "social-media-management-skills"
+        skills.mkdir()
+
+        def create_project(name, ai, key, template, description, yes, parent_dir=None):
+            project = parent_dir / name
+            (project / ".co").mkdir(parents=True)
+            (project / ".co" / "host.yaml").write_text("name: co-ai-agent\nentrypoint: agent.py\n")
+            (project / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+        mock_create.side_effect = create_project
+        mock_deploy.return_value = True
+
+        assert handle_deploy(template="co-ai", skills=[str(skills)]) is True
+        assert mock_deploy.call_args[0][0] == [str(skills.resolve())]
+        assert mock_deploy.call_args[0][1].name == "co-ai-agent"
+
+    def test_template_deploy_rejects_unknown_template(self):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        assert handle_deploy(template="does-not-exist") is False
+
+    @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
+    @patch('connectonion.cli.commands.create.handle_create')
+    def test_template_deploy_keeps_temp_project_on_failure(self, mock_create, mock_deploy):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        deployed_from = []
+
+        def create_project(name, ai, key, template, description, yes, parent_dir=None):
+            project = parent_dir / name
+            (project / ".co").mkdir(parents=True)
+            (project / ".co" / "host.yaml").write_text("name: co-ai-agent\nentrypoint: agent.py\n")
+            (project / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+        def deploy_current(skills, project_dir=None):
+            deployed_from.append(project_dir)
+            return False
+
+        mock_create.side_effect = create_project
+        mock_deploy.side_effect = deploy_current
+
+        assert handle_deploy(template="co-ai") is False
+
+        project_dir = deployed_from[0]
+        assert project_dir.name == "co-ai-agent"
+        assert project_dir.parent.exists()
+        shutil.rmtree(project_dir.parent)

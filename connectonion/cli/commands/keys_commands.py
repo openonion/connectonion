@@ -119,7 +119,7 @@ def handle_keys(reveal: bool = False):
     # --- Secrets Table ---
     sec_table = Table(show_header=False, box=None, padding=(0, 2))
     sec_table.add_column("key", style="cyan", min_width=14)
-    sec_table.add_column("value")
+    sec_table.add_column("value", overflow="fold", no_wrap=False)
 
     # Recovery phrase
     seed = addr_data.get("seed_phrase")
@@ -144,7 +144,7 @@ def handle_keys(reveal: bool = False):
     if google_email or microsoft_email:
         oauth_table = Table(show_header=False, box=None, padding=(0, 2))
         oauth_table.add_column("key", style="cyan", min_width=14)
-        oauth_table.add_column("value")
+        oauth_table.add_column("value", overflow="fold", no_wrap=False)
 
         if google_email:
             oauth_table.add_row("Google", f"[green]✓[/green] {google_email}")

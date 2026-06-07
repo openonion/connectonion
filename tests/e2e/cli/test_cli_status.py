@@ -143,8 +143,9 @@ class TestHandleStatusSuccess:
     @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
+    @patch('connectonion.cli.commands.status_commands.requests.get')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_displays_account_info(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
+    def test_status_displays_account_info(self, mock_post, mock_get, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status displays account information."""
         mock_load_key.return_value = "test-api-key-12345"
         mock_load.return_value = {"address": "0x1234567890abcdef"}
@@ -161,6 +162,20 @@ class TestHandleStatusSuccess:
             }
         }
         mock_post.return_value = mock_response
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=lambda: {
+                "deployments": [
+                    {
+                        "project_name": "co-ai-agent",
+                        "status": "running",
+                        "is_active": True,
+                        "container_running": True,
+                        "url": "https://co-ai-agent.agents.openonion.ai",
+                    }
+                ]
+            },
+        )
 
         with tempfile.TemporaryDirectory() as tmpdir:
             original_cwd = os.getcwd()
@@ -179,6 +194,7 @@ class TestHandleStatusSuccess:
 
                 # Should have called the API
                 mock_post.assert_called_once()
+                mock_get.assert_called_once()
                 # Should have printed to console
                 assert mock_console.print.called
             finally:
@@ -188,8 +204,9 @@ class TestHandleStatusSuccess:
     @patch('connectonion.cli.commands.status_commands.load_api_key')
     @patch('connectonion.address.load')
     @patch('connectonion.address.sign')
+    @patch('connectonion.cli.commands.status_commands.requests.get')
     @patch('connectonion.cli.commands.status_commands.requests.post')
-    def test_status_shows_low_balance_warning(self, mock_post, mock_sign, mock_load, mock_load_key, mock_console):
+    def test_status_shows_low_balance_warning(self, mock_post, mock_get, mock_sign, mock_load, mock_load_key, mock_console):
         """Test status shows warning when balance is low."""
         mock_load_key.return_value = "test-api-key-12345"
         mock_load.return_value = {"address": "0x1234567890abcdef"}
@@ -205,6 +222,7 @@ class TestHandleStatusSuccess:
             }
         }
         mock_post.return_value = mock_response
+        mock_get.return_value = Mock(status_code=200, json=lambda: {"deployments": []})
 
         with tempfile.TemporaryDirectory() as tmpdir:
             original_cwd = os.getcwd()
@@ -223,6 +241,46 @@ class TestHandleStatusSuccess:
                 assert mock_console.print.called
             finally:
                 os.chdir(original_cwd)
+
+
+class TestDeploymentsStatus:
+    """Tests for deployment list display in co status."""
+
+    @patch('connectonion.cli.commands.status_commands.requests.get')
+    def test_fetch_deployments(self, mock_get):
+        """Test loading deployments from the cloud API."""
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=lambda: {
+                "deployments": [
+                    {
+                        "project_name": "my-agent",
+                        "status": "running",
+                        "is_active": True,
+                        "container_running": True,
+                        "url": "https://my-agent.agents.openonion.ai",
+                    }
+                ]
+            },
+        )
+
+        from connectonion.cli.commands.status_commands import _fetch_deployments
+
+        deployments = _fetch_deployments("api-key")
+
+        assert deployments[0]["project_name"] == "my-agent"
+        mock_get.assert_called_once()
+
+    @patch('connectonion.cli.commands.status_commands.console')
+    @patch('connectonion.cli.commands.status_commands.requests.get')
+    def test_fetch_deployments_api_error_returns_empty_list(self, mock_get, mock_console):
+        """Test deployment API errors do not hide account status."""
+        mock_get.return_value = Mock(status_code=500)
+
+        from connectonion.cli.commands.status_commands import _fetch_deployments
+
+        assert _fetch_deployments("api-key") == []
+        assert mock_console.print.called
 
 
 class TestHandleStatusApiError:
@@ -296,4 +354,3 @@ class TestHandleStatusApiError:
                 assert mock_console.print.called
             finally:
                 os.chdir(original_cwd)
-
