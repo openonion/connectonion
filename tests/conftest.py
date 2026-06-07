@@ -40,9 +40,6 @@ from tests.utils.mock_helpers import MockLLM
 import os
 from dotenv import load_dotenv
 
-# Unit/e2e tests should not write audit logs into the project .co directory.
-# Users can still override this with an explicit CONNECTONION_LOG value.
-os.environ.setdefault("CONNECTONION_LOG", "false")
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
 # Load .env file for API keys

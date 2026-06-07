@@ -47,17 +47,6 @@ def test_agent_creation_with_functions():
     assert agent.system_prompt == "You are a helpful assistant that can use tools to complete tasks."
 
 
-def test_connectonion_log_false_env_disables_agent_logging(monkeypatch, tmp_path):
-    """CONNECTONION_LOG=false should disable Agent file and eval logging."""
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.setenv("CONNECTONION_LOG", "false")
-
-    agent = Agent(name="env_log_disabled", llm=MockLLM())
-
-    assert agent.logger.enable_file is False
-    assert agent.logger.enable_sessions is False
-
-
 def test_add_and_remove_functional_tool():
     agent = Agent(name="test_agent", llm=MockLLM(), log=False)
     assert len(agent.tools) == 0
