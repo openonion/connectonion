@@ -149,13 +149,13 @@ The deployed agent loads skills from `.co/skills/` via the normal loader.
   co skills copy <name>          # lands in .co/skills/<name>/
   co deploy
   ```
-- **External skills** — to bundle a skills folder that lives outside the
-  project (e.g. `~/.co/skills` or a shared skills repo), pass `--skills PATH`
+- **External skills** — to bundle any skills folder that lives outside the
+  project, pass `--skills PATH`
   (repeatable). The folder contents are copied into the container's
   `.co/skills/` (your working tree is untouched); on a name clash, later paths
   win:
   ```bash
-  co deploy --skills ~/.co/skills --skills ~/work/social-skills
+  co deploy --skills /Users/changxing/project/OnCourse/platform/social-media-management-skills
   ```
 
 > Your local `~/.claude/skills` are **not** auto-deployed. `co deploy` ships the

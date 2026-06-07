@@ -438,6 +438,27 @@ class TestDeployPackaging:
             description=None,
             yes=True,
         )
+        assert mock_deploy.call_args[0][0] == []
+
+    @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
+    @patch('connectonion.cli.commands.create.handle_create')
+    def test_template_deploy_passes_assigned_skills_path(self, mock_create, mock_deploy, tmp_path):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        skills = tmp_path / "social-media-management-skills"
+        skills.mkdir()
+
+        def create_project(name, ai, key, template, description, yes):
+            project = Path.cwd() / name
+            (project / ".co").mkdir(parents=True)
+            (project / ".co" / "host.yaml").write_text("name: co-ai-agent\nentrypoint: agent.py\n")
+            (project / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+        mock_create.side_effect = create_project
+        mock_deploy.return_value = True
+
+        assert handle_deploy(template="co-ai", skills=[str(skills)]) is True
+        assert mock_deploy.call_args[0][0] == [str(skills.resolve())]
 
     @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
     @patch('connectonion.cli.commands.create.handle_create')

@@ -198,7 +198,7 @@ def _deploy_current_project(skills: list[str]) -> bool:
         console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
         return False
 
-    skills_paths = [Path(s) for s in (skills or [])]
+    skills_paths = [Path(s).expanduser().resolve() for s in (skills or [])]
     for sp in skills_paths:
         if not sp.is_dir():
             console.print(f"[red]Skills path not found or not a directory: {sp}[/red]")
