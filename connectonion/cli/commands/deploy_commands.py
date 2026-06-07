@@ -151,10 +151,19 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
     return tarball
 
 
+def _available_templates() -> list[str]:
+    templates_dir = Path(__file__).parent.parent / "templates"
+    return sorted(path.name for path in templates_dir.iterdir() if path.is_dir())
+
+
 def _deploy_template_project(template: str, skills: list[str]) -> bool:
     """Create a temporary template project, deploy it, and clean up on success."""
-    if template != "co-ai":
-        console.print(f"[red]Unknown deploy template: {template}. Only 'co-ai' is supported.[/red]")
+    available_templates = _available_templates()
+    if template not in available_templates:
+        console.print(
+            f"[red]Unknown deploy template: {template}. "
+            f"Available templates: {', '.join(available_templates)}[/red]"
+        )
         return False
 
     original_dir = Path.cwd()

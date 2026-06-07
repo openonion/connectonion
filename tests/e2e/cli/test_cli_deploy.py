@@ -425,16 +425,16 @@ class TestDeployPackaging:
         mock_create.side_effect = create_project
         mock_deploy.side_effect = deploy_current
 
-        assert handle_deploy(template="co-ai") is True
+        assert handle_deploy(template="minimal") is True
 
         project_dir = deployed_from[0]
-        assert project_dir.name == "co-ai-agent"
+        assert project_dir.name == "minimal-agent"
         assert not project_dir.parent.exists()
         mock_create.assert_called_once_with(
-            name="co-ai-agent",
+            name="minimal-agent",
             ai=None,
             key=None,
-            template="co-ai",
+            template="minimal",
             description=None,
             yes=True,
         )
@@ -459,6 +459,11 @@ class TestDeployPackaging:
 
         assert handle_deploy(template="co-ai", skills=[str(skills)]) is True
         assert mock_deploy.call_args[0][0] == [str(skills.resolve())]
+
+    def test_template_deploy_rejects_unknown_template(self):
+        from connectonion.cli.commands.deploy_commands import handle_deploy
+
+        assert handle_deploy(template="does-not-exist") is False
 
     @patch('connectonion.cli.commands.deploy_commands._deploy_current_project')
     @patch('connectonion.cli.commands.create.handle_create')

@@ -98,7 +98,7 @@ def create(
 
 @app.command()
 def deploy(
-    template: Optional[str] = typer.Option(None, "-t", "--template", help="Project template to deploy (currently supports co-ai)"),
+    template: Optional[str] = typer.Option(None, "-t", "--template", help="Create and deploy a template project"),
     skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skills directory to bundle into .co/skills/ (repeatable)"),
 ):
     """Deploy to ConnectOnion Cloud."""
