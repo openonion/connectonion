@@ -90,9 +90,10 @@ cat setup.py | grep "version="               # or setup.py
 ```
 
 Apply versioning rules (read VERSIONING.md if it exists, otherwise use semver):
-- PATCH +1 for bug fixes, docs, small improvements
-- MINOR bump for new user-facing features
-- If VERSIONING.md exists, follow its rollover rules exactly
+- Default to PATCH +1 for normal shipped work, including small user-facing improvements
+- Use MINOR only when the user explicitly asks for it or the change is clearly a larger compatibility-safe feature release
+- Use MAJOR only for breaking changes, stable-release milestones explicitly requested by the user, or required rollover rules
+- If VERSIONING.md exists, follow its rollover rules exactly, but do not jump to a larger bump unless the rules require it
 
 ### 5b. Update version in all files that contain it
 
