@@ -843,13 +843,18 @@ def get_special_directory_warning(directory: str) -> str:
 
 GITIGNORE_CONTENT = """\
 # ConnectOnion
-.env
+.env*
+.git/
 .co/keys/
 .co/cache/
 .co/logs/
 .co/history/
+.co/docs/
 *.py[cod]
 __pycache__/
+node_modules/
+dist/
+build/
 todo.md
 """
 

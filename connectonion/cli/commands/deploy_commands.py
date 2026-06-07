@@ -10,6 +10,7 @@ LLM-Note:
 """
 
 import json
+import fnmatch
 import os
 import re
 import subprocess
@@ -22,7 +23,7 @@ from pathlib import Path
 from rich.console import Console
 from dotenv import dotenv_values
 
-from .project_cmd_lib import load_api_key
+from .project_cmd_lib import GITIGNORE_CONTENT, load_api_key
 
 console = Console()
 
@@ -53,27 +54,32 @@ def _check_host_export(entrypoint: str) -> bool:
     return False
 
 
-def _should_skip_deploy_path(rel: Path) -> bool:
-    """Skip files that belong only on the developer's machine."""
-    parts = rel.parts
-    if not parts:
-        return True
+def _load_deploy_ignore_patterns(project_dir: Path) -> list[str]:
+    """Use ConnectOnion's default .gitignore plus the project's .gitignore."""
+    lines = GITIGNORE_CONTENT.splitlines()
+    gitignore = project_dir / ".gitignore"
+    if gitignore.exists():
+        lines.extend(gitignore.read_text().splitlines())
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
 
-    local_dirs = {".git", "__pycache__", "node_modules", "dist", "build"}
-    for part in parts:
-        if part in local_dirs:
-            return True
-        if part == ".env" or part.startswith(".env."):
-            return True
 
-    co_runtime_dirs = {"keys", "cache", "logs", "history", "docs"}
-    if parts[0] == ".co" and len(parts) > 1 and parts[1] in co_runtime_dirs:
-        return True
+def _path_matches_ignore_pattern(rel: Path, pattern: str) -> bool:
+    rel_text = rel.as_posix()
+    pattern = pattern.lstrip("/")
 
-    if rel.suffix in {".pyc", ".pyo"}:
-        return True
+    if pattern.endswith("/"):
+        dirname = pattern.rstrip("/")
+        if "/" in dirname:
+            return rel_text == dirname or rel_text.startswith(dirname + "/")
+        return dirname in rel.parts
 
-    return False
+    if "/" in pattern:
+        return fnmatch.fnmatch(rel_text, pattern)
+    return fnmatch.fnmatch(rel.name, pattern)
+
+
+def _is_ignored_for_deploy(rel: Path, ignore_patterns: list[str]) -> bool:
+    return any(_path_matches_ignore_pattern(rel, pattern) for pattern in ignore_patterns)
 
 
 def _iter_git_tracked_files(project_dir: Path) -> list[Path]:
@@ -100,12 +106,17 @@ def _is_git_repo(project_dir: Path) -> bool:
     return result.returncode == 0 and result.stdout.strip() == b"true"
 
 
-def _add_tree(tar: tarfile.TarFile, source: Path, arc_prefix: Path) -> None:
+def _add_directory_to_tarball(
+    tar: tarfile.TarFile,
+    source: Path,
+    arc_prefix: Path,
+    ignore_patterns: list[str],
+) -> None:
     for path in sorted(source.rglob("*")):
         if not path.is_file():
             continue
         rel = arc_prefix / path.relative_to(source)
-        if _should_skip_deploy_path(rel):
+        if _is_ignored_for_deploy(rel, ignore_patterns):
             continue
         tar.add(path, arcname=str(rel), recursive=False)
 
@@ -115,13 +126,14 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
 
     .env is read separately as deploy secrets and is never included in the package.
     External --skills directories are overlaid under .co/skills/ with the same
-    deny rules applied recursively.
+    ignore rules applied recursively.
     """
+    ignore_patterns = _load_deploy_ignore_patterns(project_dir)
     tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
         if _is_git_repo(project_dir):
             for rel in sorted(_iter_git_tracked_files(project_dir)):
-                if _should_skip_deploy_path(rel):
+                if _is_ignored_for_deploy(rel, ignore_patterns):
                     continue
                 path = project_dir / rel
                 if path.is_file():
@@ -131,7 +143,7 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                 if not path.is_file():
                     continue
                 rel = path.relative_to(project_dir)
-                if _should_skip_deploy_path(rel):
+                if _is_ignored_for_deploy(rel, ignore_patterns):
                     continue
                 tar.add(path, arcname=str(rel), recursive=False)
         for skills_path in skills_paths:
@@ -140,10 +152,10 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                     continue  # skip .git/.gitignore etc — only skill dirs
                 if item.is_file():
                     rel = Path(".co") / "skills" / item.name
-                    if not _should_skip_deploy_path(rel):
+                    if not _is_ignored_for_deploy(rel, ignore_patterns):
                         tar.add(item, arcname=str(rel), recursive=False)
                 elif item.is_dir():
-                    _add_tree(tar, item, Path(".co") / "skills" / item.name)
+                    _add_directory_to_tarball(tar, item, Path(".co") / "skills" / item.name, ignore_patterns)
     return tarball
 
 
