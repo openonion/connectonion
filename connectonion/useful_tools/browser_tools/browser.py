@@ -132,10 +132,14 @@ class BrowserAutomation:
         # See: https://github.com/microsoft/playwright/issues/31736
         # Can test removing this in the future if cookie issues persist
 
-        # Use Google Chrome instead of Chromium for better X.com compatibility
-        chrome_path = '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome'
-        if not os.path.exists(chrome_path):
-            chrome_path = None  # Fall back to Chromium if Chrome not installed
+        # Use Google Chrome instead of Chromium when it exists.
+        chrome_paths = {
+            "Darwin": ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"],
+            "Linux": ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/opt/google/chrome/chrome"],
+            "Windows": [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
+                        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"],
+        }.get(platform.system(), [])
+        chrome_path = next((p for p in chrome_paths if os.path.exists(p)), None)
 
         # Session persistence: use ONLY user_data_dir (simple approach)
         # - Persistent Chrome profile at ~/.co/browser_profile/

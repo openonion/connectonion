@@ -58,6 +58,7 @@ GLOBAL_CO_DIR = Path.home() / ".co"
 def create_coding_agent(
     model: str = "co/gemini-3-flash-preview",
     max_iterations: int = 100,
+    co_dir: Path = Path(".co"),
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
@@ -101,7 +102,7 @@ def create_coding_agent(
         system_prompt=system_prompt,
         model=model,
         max_iterations=max_iterations,
-        co_dir=GLOBAL_CO_DIR,
+        co_dir=co_dir,
     )
     # This browser helper blocks on stdin, which is wrong for co ai's websocket
     # chat runtime. Use browser tools plus frontend-mediated user handoffs.

@@ -38,7 +38,8 @@ console = Console()
 
 
 def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
-                  template: Optional[str], description: Optional[str], yes: bool):
+                  template: Optional[str], description: Optional[str], yes: bool,
+                  parent_dir: Optional[Path] = None):
     """Create a new ConnectOnion project in a new directory."""
     # Ensure global config exists first
     ensure_global_config()
@@ -230,15 +231,17 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             console.print(f"[red]❌ {error_msg}[/red]")
             return
 
-    # Create new project directory
-    project_dir = Path(name)
+    # Create new project directory. CLI calls use cwd; template deploy can pass
+    # a temporary parent without changing the process-wide working directory.
+    base_dir = Path.cwd() if parent_dir is None else parent_dir
+    project_dir = base_dir / name
 
     # Check if directory exists and suggest alternative
     if project_dir.exists():
         base_name = name
         counter = 2
         suggested_name = f"{base_name}-{counter}"
-        while Path(suggested_name).exists():
+        while (base_dir / suggested_name).exists():
             counter += 1
             suggested_name = f"{base_name}-{counter}"
 

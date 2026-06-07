@@ -12,6 +12,7 @@ Components under test:
 
 import connectonion.cli.commands.ai_commands as ai_mod
 import connectonion.cli.commands.trust_commands as trust_mod
+from connectonion.cli.co_ai.agent import GLOBAL_CO_DIR
 
 
 def test_handle_ai_calls_start_server(monkeypatch):
@@ -37,6 +38,7 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
+    assert created["co_dir"] == GLOBAL_CO_DIR
 
 
 def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
