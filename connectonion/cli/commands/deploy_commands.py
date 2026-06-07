@@ -151,21 +151,8 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
     return tarball
 
 
-def _available_templates() -> list[str]:
-    templates_dir = Path(__file__).parent.parent / "templates"
-    return sorted(path.name for path in templates_dir.iterdir() if path.is_dir())
-
-
 def _deploy_template_project(template: str, skills: list[str]) -> bool:
     """Create a temporary template project, deploy it, and clean up on success."""
-    available_templates = _available_templates()
-    if template not in available_templates:
-        console.print(
-            f"[red]Unknown deploy template: {template}. "
-            f"Available templates: {', '.join(available_templates)}[/red]"
-        )
-        return False
-
     original_dir = Path.cwd()
     temp_root = Path(tempfile.mkdtemp(prefix="connectonion-deploy-"))
     project_name = f"{template}-agent"
@@ -175,13 +162,16 @@ def _deploy_template_project(template: str, skills: list[str]) -> bool:
     try:
         from .create import handle_create
 
+        # Reuse the normal project creation path so template deploy stays in sync
+        # with `co create --template <name> -y` and does not mutate cwd.
         os.chdir(temp_root)
         handle_create(name=project_name, ai=None, key=None, template=template, description=None, yes=True)
 
         if not (project_dir / ".co" / "host.yaml").exists():
-            console.print(f"[red]Template project creation failed: {project_dir}[/red]")
+            console.print(f"[red]Template project creation did not produce a deployable project: {project_dir}[/red]")
             return False
 
+        # Deploy from the generated project exactly like a user would after `cd`.
         os.chdir(project_dir)
         success = _deploy_current_project(skills)
     finally:
@@ -190,6 +180,7 @@ def _deploy_template_project(template: str, skills: list[str]) -> bool:
     if success:
         shutil.rmtree(temp_root)
     else:
+        # Keep failed template deploys inspectable; otherwise users lose build context.
         console.print(f"[yellow]Temporary deploy project kept for debugging: {project_dir}[/yellow]")
     return success
 
@@ -207,6 +198,8 @@ def _deploy_current_project(skills: list[str]) -> bool:
         console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
         return False
 
+    # `--skills PATH` means "copy this folder into remote .co/skills".
+    # Resolve here so template deploys can pass paths from the original cwd.
     skills_paths = [Path(s).expanduser().resolve() for s in (skills or [])]
     for sp in skills_paths:
         if not sp.is_dir():
@@ -246,7 +239,7 @@ def _deploy_current_project(skills: list[str]) -> bool:
         console.print("[dim]See: https://docs.connectonion.com/deploy[/dim]")
         return False
 
-    # Load env vars from .env (user's API keys, config for the agent container)
+    # Load env vars from .env as runtime secrets; .env itself stays out of the tarball.
     env_vars = dotenv_values(env_file) if Path(env_file).exists() else {}
 
     # Package source. Git projects upload tracked files with current working-tree
