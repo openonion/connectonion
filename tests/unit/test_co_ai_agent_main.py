@@ -11,6 +11,7 @@ Components under test:
 
 
 from types import SimpleNamespace
+from pathlib import Path
 
 import connectonion.cli.co_ai.agent as agent_mod
 import connectonion.cli.co_ai.main as main_mod
@@ -37,6 +38,7 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools
     assert agent.tools.get_instance("browserautomation")._headless is False
+    assert agent.co_dir == Path(".co")
 
 
 def test_start_server_hosts_provided_agent(monkeypatch):
