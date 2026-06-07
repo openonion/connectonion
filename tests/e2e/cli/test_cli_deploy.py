@@ -333,6 +333,30 @@ class TestDeployPackaging:
 
         assert ".co/skills/world/SKILL.md" in names
 
+    @SKIP_NO_GIT
+    def test_nested_temp_project_inside_git_repo_packages_as_folder(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        subprocess.run(['git', 'init'], cwd=repo, capture_output=True)
+
+        proj = repo / ".tmp" / "connectonion-deploy" / "co-ai-agent"
+        (proj / ".co").mkdir(parents=True)
+        (proj / ".co" / "host.yaml").write_text("name: co-ai-agent\n")
+        (proj / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+        (proj / "Dockerfile").write_text("FROM python:3.11-slim\n")
+        (proj / "requirements.txt").write_text("connectonion\n")
+
+        tarball = _build_tarball(proj, [])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert "agent.py" in names
+        assert "Dockerfile" in names
+        assert "requirements.txt" in names
+        assert ".co/host.yaml" in names
+
     def test_external_skills_folder_uses_its_own_gitignore(self, tmp_path):
         import tarfile
         from connectonion.cli.commands.deploy_commands import _build_tarball

@@ -99,12 +99,14 @@ def _iter_git_tracked_files(project_dir: Path) -> list[Path]:
 
 
 def _is_git_repo(project_dir: Path) -> bool:
+    if not (project_dir / ".git").exists():
+        return False
     result = subprocess.run(
-        ["git", "rev-parse", "--is-inside-work-tree"],
+        ["git", "rev-parse", "--show-toplevel"],
         cwd=project_dir,
         capture_output=True,
     )
-    return result.returncode == 0 and result.stdout.strip() == b"true"
+    return result.returncode == 0 and Path(result.stdout.decode().strip()).resolve() == project_dir.resolve()
 
 
 def _format_bytes(size: int) -> str:

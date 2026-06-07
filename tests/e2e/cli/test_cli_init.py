@@ -84,6 +84,7 @@ class TestCliInit:
             compile(agent_code, "agent.py", "exec")
             assert "host(" in agent_code                     # host-ready entrypoint
             assert "create_coding_agent" in agent_code        # mirrors `co ai`
+            assert "def create_agent" not in agent_code        # keep one hosted coding agent instance
             assert "browser_channel" not in agent_code        # use BrowserAutomation's default Chrome detection
 
             dockerfile = Path("Dockerfile").read_text()
