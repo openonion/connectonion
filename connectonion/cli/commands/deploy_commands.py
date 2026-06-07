@@ -54,17 +54,26 @@ def _check_host_export(entrypoint: str) -> bool:
 
 
 def _should_skip_deploy_path(rel: Path) -> bool:
-    """Return True for local-only files that must not be uploaded."""
+    """Skip files that belong only on the developer's machine."""
     parts = rel.parts
     if not parts:
         return True
-    if any(part in {".git", "__pycache__", "node_modules", "dist", "build"} for part in parts):
+
+    local_dirs = {".git", "__pycache__", "node_modules", "dist", "build"}
+    for part in parts:
+        if part in local_dirs:
+            return True
+        if part == ".env" or part.startswith(".env."):
+            return True
+
+    co_runtime_dirs = {"keys", "cache", "logs", "history", "docs"}
+    if parts[0] == ".co" and len(parts) > 1 and parts[1] in co_runtime_dirs:
         return True
-    if any(part == ".env" or part.startswith(".env.") for part in parts):
+
+    if rel.suffix in {".pyc", ".pyo"}:
         return True
-    if parts[0] == ".co" and len(parts) > 1 and parts[1] in {"keys", "cache", "logs", "history", "docs"}:
-        return True
-    return rel.suffix in {".pyc", ".pyo"}
+
+    return False
 
 
 def _iter_git_tracked_files(project_dir: Path) -> list[Path]:
