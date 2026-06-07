@@ -86,6 +86,7 @@ Desktop.ini
 
 # Claude Code specific
 .claude/
+.codex/
 
 # Logs
 *.log
