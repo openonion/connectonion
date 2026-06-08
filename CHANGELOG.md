@@ -108,6 +108,19 @@ This refactor embodies our core philosophy by:
 
 ---
 
+## [1.0.1] - 2026-06-08
+
+Supersedes the earlier 1.0.0 upload so unpinned `pip install connectonion`
+resolves to a build that includes the hosted-agent endpoint fix below.
+
+### 🐛 Fixes
+
+#### Hosted agents announce their reachable public URL
+- `host()` announces `https://{domain}` + `wss://{domain}/ws` to the relay when `AGENT_PUBLIC_DOMAIN` is set, instead of unreachable in-container IPs.
+- Fixes peers being unable to connect to cloud-deployed (`co deploy`) agents.
+
+---
+
 ## [0.9.7] - 2026-06-08
 
 ### 🐛 Fixes
