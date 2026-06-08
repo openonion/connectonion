@@ -14,6 +14,7 @@ Simple function-based approach - no classes needed for MVP.
 """
 
 import json
+import os
 import time
 from typing import Dict, List, Any
 
@@ -39,6 +40,10 @@ def get_ips() -> List[str]:
 
 def get_endpoints(port: int) -> List[str]:
     """Get all endpoints as full URLs (http and ws for each IP)."""
+    domain = os.getenv("AGENT_PUBLIC_DOMAIN", "").strip().rstrip("/")
+    if domain:
+        return [f"https://{domain}", f"wss://{domain}/ws"]
+
     endpoints = []
     for ip in get_ips():
         endpoints.append(f"http://{ip}:{port}")

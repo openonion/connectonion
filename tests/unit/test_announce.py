@@ -15,7 +15,32 @@ import time
 import pytest
 from unittest.mock import patch, Mock
 
-from connectonion.network.announce import create_announce_message
+from connectonion.network.announce import create_announce_message, get_endpoints
+
+
+class TestGetEndpoints:
+    """Test endpoint discovery for relay ANNOUNCE."""
+
+    def test_uses_public_domain_when_set(self, monkeypatch):
+        """Cloud deploys announce the Caddy URL, not raw container IPs."""
+        monkeypatch.setenv("AGENT_PUBLIC_DOMAIN", "agent.agents.openonion.ai")
+
+        assert get_endpoints(8000) == [
+            "https://agent.agents.openonion.ai",
+            "wss://agent.agents.openonion.ai/ws",
+        ]
+
+    def test_uses_ip_discovery_without_public_domain(self, monkeypatch):
+        """Local hosts keep the existing localhost/IP endpoint behavior."""
+        monkeypatch.delenv("AGENT_PUBLIC_DOMAIN", raising=False)
+        monkeypatch.setattr("connectonion.network.announce.get_ips", lambda: ["localhost", "10.0.0.2"])
+
+        assert get_endpoints(8000) == [
+            "http://localhost:8000",
+            "ws://localhost:8000/ws",
+            "http://10.0.0.2:8000",
+            "ws://10.0.0.2:8000/ws",
+        ]
 
 
 class TestCreateAnnounceMessage:

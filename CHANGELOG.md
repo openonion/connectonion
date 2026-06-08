@@ -108,6 +108,17 @@ This refactor embodies our core philosophy by:
 
 ---
 
+## [0.9.7] - 2026-06-08
+
+### 🐛 Fixes
+
+#### Hosted agents announce their reachable public URL
+- `host()` now announces `https://{domain}` + `wss://{domain}/ws` to the relay when `AGENT_PUBLIC_DOMAIN` is set, instead of unreachable in-container IPs (`localhost`/Docker bridge/raw public IP:port).
+- Fixes peers being unable to connect to cloud-deployed agents (`co deploy`): the relay now hands out the Caddy-routed URL that is actually reachable.
+- Local hosting is unchanged — without `AGENT_PUBLIC_DOMAIN`, endpoint discovery still uses localhost/LAN IPs.
+
+---
+
 ## [0.1.9] - 2025-10-05
 
 ### 🎉 New Features
