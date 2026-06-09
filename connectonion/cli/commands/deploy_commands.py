@@ -270,6 +270,12 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     env_path = project_dir / env_file
     env_vars = dotenv_values(env_path) if env_path.exists() else {}
 
+    # AGENT_CONFIG_PATH in .env points at the deployer's local ~/.co (an absolute
+    # host path). Inside the container the bundled .co lands at /app/.co, so rewrite
+    # it — never ship a local host path as a runtime secret.
+    if env_vars.get("AGENT_CONFIG_PATH"):
+        env_vars["AGENT_CONFIG_PATH"] = "/app/.co"
+
     # Package source. Git projects upload tracked files with current working-tree
     # contents; non-git projects upload the initialized folder. Either way .env is
     # sent as secrets below, never included in the tarball, and --skills merge in.

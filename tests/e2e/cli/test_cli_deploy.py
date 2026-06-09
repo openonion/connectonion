@@ -103,6 +103,55 @@ class TestCliDeploy:
 
             assert "Deployed!" in result.output or result.exit_code == 0
 
+    @SKIP_NO_GIT
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    @patch('connectonion.cli.commands.deploy_commands.requests.get')
+    @patch('connectonion.cli.commands.deploy_commands.subprocess.run')
+    def test_deploy_rewrites_agent_config_path_to_container(self, mock_subprocess, mock_get, mock_post):
+        """AGENT_CONFIG_PATH (a local host path) must be rewritten to the in-container
+        /app/.co before being sent as a deploy secret — never leak the deployer's home."""
+        import json
+
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            subprocess.run(['git', 'init'], capture_output=True)
+            subprocess.run(['git', 'config', 'user.email', 'test@test.com'], capture_output=True)
+            subprocess.run(['git', 'config', 'user.name', 'Test'], capture_output=True)
+
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
+            Path("agent.py").write_text(
+                "from connectonion import Agent, host\n"
+                "agent = Agent('test-agent')\n"
+                "host(agent)\n"
+            )
+            # .env carries the deployer's local config path plus auth keys
+            Path(".env").write_text(
+                "AGENT_CONFIG_PATH=/Users/somedev/.co\n"
+                "AGENT_ADDRESS=0xcd92510bb6cc090374ecc345ef8c19b9d3797624fd1fbf7e078a9372fc31bdc1\n"
+                "OPENONION_API_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.fake.sig\n"
+            )
+
+            subprocess.run(['git', 'add', '.'], capture_output=True)
+            subprocess.run(['git', 'commit', '-m', 'init'], capture_output=True)
+
+            mock_subprocess.return_value = MagicMock(returncode=0)
+            mock_post.return_value = MagicMock(
+                status_code=200,
+                json=lambda: {"id": "abc123", "url": "https://test-agent-abc123.agents.openonion.ai"},
+            )
+            mock_get.return_value = MagicMock(status_code=200, json=lambda: {"status": "running"})
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                self.runner.invoke(cli, ['deploy'])
+
+            secrets = json.loads(mock_post.call_args.kwargs["data"]["secrets"])
+            assert secrets["AGENT_CONFIG_PATH"] == "/app/.co"
+            assert "/Users/somedev" not in json.dumps(secrets)   # no host path leak
+            assert secrets["OPENONION_API_KEY"].startswith("eyJ")  # auth key preserved
+            assert secrets["AGENT_ADDRESS"].startswith("0xcd92")   # identity preserved
+
     def test_deploy_fetches_logs_after_success(self):
         """Test that deploy fetches and displays container logs after deployment.
 
