@@ -119,6 +119,28 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
     return metadata, sample
 
 
+def _build_agent_profile(agent_metadata: dict, project_dir: Path) -> dict:
+    """Build the publishable profile sent with the first ANNOUNCE of a connection.
+
+    Only project-level skills are published: skill discovery also picks up
+    ~/.co/skills (the operator's personal toolbox), which must not leak into
+    the public directory. Locations are filesystem paths and stay private,
+    same as the prompt summary.
+    """
+    profile = {"alias": agent_metadata["name"]}
+    if agent_metadata.get("tools"):
+        profile["tools"] = agent_metadata["tools"]
+    if agent_metadata.get("model"):
+        profile["model"] = agent_metadata["model"]
+    project_root = str(project_dir.resolve())
+    profile["skills"] = [
+        {"name": s["name"], "description": s.get("description", "")}
+        for s in agent_metadata.get("skills", [])
+        if str(Path(s["location"]).resolve()).startswith(project_root)
+    ]
+    return profile
+
+
 def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict):
     """Create route handler dict for ASGI app.
 
@@ -231,7 +253,7 @@ def _print_host_banner(
     console.print()
 
 
-def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner):
+def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner, *, profile: dict | None = None):
     """Create relay startup/shutdown callbacks for ASGI lifespan.
 
     Args:
@@ -240,6 +262,8 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         summary: Summary text for relay announcement
         port: HTTP port for endpoint discovery
         relay_session_runner: async (send_msg, recv_msg) -> None, runs protocol for one relay session
+        profile: publishable display info, sent with the first ANNOUNCE of each
+                 connection; the relay persists it, so heartbeats don't carry it
 
     Returns:
         Tuple of (on_startup, on_shutdown) async callbacks
@@ -253,7 +277,9 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         async def relay_loop():
             while True:
                 ws = await relay.connect(relay_url)
-                announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
+                announce_msg = announce.create_announce_message(
+                    addr_data, summary, endpoints=endpoints, relay=relay_url, profile=profile
+                )
                 await relay.serve_loop(
                     ws, announce_msg,
                     addr_data=addr_data, session_handler=relay_session_runner,
@@ -436,7 +462,8 @@ def host(
             enable_ping=False,
         )
         on_startup, on_shutdown = _create_relay_lifespan(
-            relay_url, addr_data, summary, port, relay_session_runner
+            relay_url, addr_data, summary, port, relay_session_runner,
+            profile=_build_agent_profile(agent_metadata, Path.cwd()),
         )
 
     app = asgi_create_app(
