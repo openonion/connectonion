@@ -3,7 +3,7 @@ Purpose: Natural language browser automation via Playwright with persistent prof
 LLM-Note:
   Dependencies: imports from [playwright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_agent.py]
   Data flow: BrowserAutomation() initializes Playwright → opens browser with persistent context → provides tools (navigate, find_element, click, type_text, screenshot, scroll, wait_for_login) → auto-saves cookies after each critical action → Agent uses these tools via natural language → element_finder.py uses vision LLM to locate elements | screenshots saved to .tmp/ directory
-  State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup
+  State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup | all public methods dispatch to one dedicated browser thread (Playwright sync API is thread-bound), so a shared instance is safe to call from any thread
   Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), keyboard_type(text), keyboard_press(key), wait_for_login(seconds) | used by `co browser` CLI command
   Performance: headless by default (faster) | persistent context (instant profile load) | vision model for element finding (slower but accurate) | screenshots base64-encoded for LLM analysis | auto-save adds 500ms delay after critical actions
   Errors: returns error string if Playwright not installed | returns "Browser already open" if live browser exists | element not found returns descriptive error
@@ -23,8 +23,12 @@ Features:
 
 import os
 import base64
+import functools
+import inspect
 import json
 import platform
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -48,6 +52,29 @@ except ImportError:
 # Path to the browser agent system prompt
 
 
+# Playwright's sync API binds to the thread that started it and raises
+# "Cannot switch to a different thread" from any other. Servers like host()
+# run each agent turn on an arbitrary threadpool thread, so consecutive turns
+# crash the shared browser. Route every public method through the instance's
+# dedicated worker thread: playwright starts there and every call lands there.
+def _runs_on_browser_thread(method):
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if threading.current_thread() is self._executor_thread:
+            return method(self, *args, **kwargs)
+        return self._executor.submit(method, self, *args, **kwargs).result()
+
+    return wrapper
+
+
+def _public_methods_run_on_browser_thread(cls):
+    for name, method in vars(cls).copy().items():
+        if not name.startswith("_") and inspect.isfunction(method):
+            setattr(cls, name, _runs_on_browser_thread(method))
+    return cls
+
+
+@_public_methods_run_on_browser_thread
 class BrowserAutomation:
     """Browser automation with natural language support.
 
@@ -80,6 +107,9 @@ class BrowserAutomation:
         self._screenshots = []
         self._headless = headless
         self.screenshots_dir = str(SCREENSHOTS_DIR)
+        # All public methods run on this one thread (see _public_methods_run_on_browser_thread).
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
+        self._executor_thread = self._executor.submit(threading.current_thread).result()
 
     def _browser_is_usable(self) -> bool:
         """Return True when the current Playwright page can still be operated."""
@@ -1396,3 +1426,4 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         """Context manager exit - ensures browser closes and saves context."""
         self.close()
         return False
+
