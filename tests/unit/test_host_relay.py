@@ -2,7 +2,8 @@
 LLM-Note: Tests for host relay
 
 What it tests:
-- Host Relay functionality
+- Host Relay functionality (ANNOUNCE/heartbeat protocol, including the
+  display profile published with the first ANNOUNCE of each connection)
 
 Components under test:
 - Module: host_relay
@@ -105,6 +106,44 @@ class TestHostRelayKeyManagement:
 
 class TestHostRelayConnection:
     """Test relay connection handling in host()."""
+
+    def test_profile_publishes_project_skills_only(self, tmp_path):
+        """Published profile carries display fields only: project-level skills,
+        no ~/.co user-level skills, no filesystem locations, no prompt summary."""
+        project_skill = tmp_path / ".co" / "skills" / "deploy-smoke" / "SKILL.md"
+        profile = host_module._build_agent_profile({
+            "name": "test_agent",
+            "tools": ["search"],
+            "model": "co/gemini-2.5-flash",
+            "summary": "private prompt summary",
+            "skills": [
+                {"name": "deploy-smoke", "description": "Smoke test", "location": str(project_skill)},
+                {"name": "linkedin-login", "description": "Operator skill",
+                 "location": "/Users/me/.co/skills/linkedin-login/SKILL.md"},
+            ],
+        }, tmp_path)
+
+        assert profile == {
+            "alias": "test_agent",
+            "tools": ["search"],
+            "model": "co/gemini-2.5-flash",
+            "skills": [{"name": "deploy-smoke", "description": "Smoke test"}],
+        }
+
+    def test_host_passes_profile_to_relay_lifespan(self, tmp_path, create_mock_agent):
+        """Hosted agents publish their profile with the relay ANNOUNCE."""
+        mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}
+
+        with patch.object(Path, 'cwd', return_value=tmp_path):
+            with patch('connectonion.address.load', return_value=mock_addr):
+                with patch.object(host_module, '_create_relay_lifespan', return_value=(AsyncMock(), AsyncMock())) as mock_relay:
+                    with patch('uvicorn.run'):
+                        with patch.object(host_module, '_print_host_banner'):
+                            host_module.host(create_mock_agent, port=8080)
+
+        profile = mock_relay.call_args.kwargs["profile"]
+        assert profile["alias"]
+        assert "summary" not in profile
 
     def test_host_starts_relay_with_default_url(self, tmp_path, create_mock_agent):
         """Test that host() uses default relay URL (from config)."""
