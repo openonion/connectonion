@@ -106,21 +106,21 @@ class TestHostRelayKeyManagement:
 class TestHostRelayConnection:
     """Test relay connection handling in host()."""
 
-    def test_profile_publishes_project_skills_only(self, tmp_path):
+    def test_profile_publishes_project_skills_only(self):
         """Published profile carries display fields only: project-level skills,
-        no ~/.co user-level skills, no filesystem locations, no prompt summary."""
-        project_skill = tmp_path / ".co" / "skills" / "deploy-smoke" / "SKILL.md"
+        no user/builtin skills (location is the discovery category, not a
+        path), no prompt summary."""
         profile = host_module._build_agent_profile({
             "name": "test_agent",
             "tools": ["search"],
             "model": "co/gemini-2.5-flash",
             "summary": "private prompt summary",
             "skills": [
-                {"name": "deploy-smoke", "description": "Smoke test", "location": str(project_skill)},
-                {"name": "linkedin-login", "description": "Operator skill",
-                 "location": "/Users/me/.co/skills/linkedin-login/SKILL.md"},
+                {"name": "deploy-smoke", "description": "Smoke test", "location": "project"},
+                {"name": "linkedin-login", "description": "Operator skill", "location": "user"},
+                {"name": "commit", "description": "Built-in skill", "location": "builtin"},
             ],
-        }, tmp_path)
+        })
 
         assert profile == {
             "alias": "test_agent",

@@ -119,24 +119,23 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
     return metadata, sample
 
 
-def _build_agent_profile(agent_metadata: dict, project_dir: Path) -> dict:
+def _build_agent_profile(agent_metadata: dict) -> dict:
     """Build the publishable profile sent with the first ANNOUNCE of a connection.
 
-    Only project-level skills are published: skill discovery also picks up
-    ~/.co/skills (the operator's personal toolbox), which must not leak into
-    the public directory. Locations are filesystem paths and stay private,
-    same as the prompt summary.
+    Only project-level skills are published (skill.location is the discovery
+    category: project/user/builtin): discovery also picks up ~/.co/skills —
+    the operator's personal toolbox, which must not leak into the public
+    directory. The prompt summary stays private for the same reason.
     """
     profile = {"alias": agent_metadata["name"]}
     if agent_metadata.get("tools"):
         profile["tools"] = agent_metadata["tools"]
     if agent_metadata.get("model"):
         profile["model"] = agent_metadata["model"]
-    project_root = str(project_dir.resolve())
     profile["skills"] = [
         {"name": s["name"], "description": s.get("description", "")}
         for s in agent_metadata.get("skills", [])
-        if str(Path(s["location"]).resolve()).startswith(project_root)
+        if s.get("location") == "project"
     ]
     return profile
 
@@ -463,7 +462,7 @@ def host(
         )
         on_startup, on_shutdown = _create_relay_lifespan(
             relay_url, addr_data, summary, port, relay_session_runner,
-            profile=_build_agent_profile(agent_metadata, Path.cwd()),
+            profile=_build_agent_profile(agent_metadata),
         )
 
     app = asgi_create_app(
