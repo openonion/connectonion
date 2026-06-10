@@ -91,6 +91,18 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
     return None
 
 
+def _append_trace_items(items_ui: list[dict], entry: dict, idx: int) -> None:
+    """Append a trace entry's ChatItem(s): the item itself, plus a standalone
+    image bubble when the entry carries an image (mirrors the live agent_image
+    event so replayed history shows screenshots too)."""
+    item_ui = _trace_entry_to_item_ui(entry, idx)
+    if item_ui:
+        items_ui.append(item_ui)
+    image = entry.get('image')
+    if image:
+        items_ui.append({'id': f"img-{idx}", 'type': 'agent', 'content': '', 'images': [image]})
+
+
 def session_to_chat_items(session: dict) -> list[dict]:
     """Convert session → ChatItem[] for UI rendering, interleaved chronologically by turn.
 
@@ -128,9 +140,7 @@ def session_to_chat_items(session: dict) -> list[dict]:
             user_count += 1
             if user_count < len(turn_entries):
                 for trace_idx, entry in turn_entries[user_count]:
-                    item_ui = _trace_entry_to_item_ui(entry, trace_idx)
-                    if item_ui:
-                        items_ui.append(item_ui)
+                    _append_trace_items(items_ui, entry, trace_idx)
         elif role == 'assistant' and msg.get('content'):
             items_ui.append({'id': f"msg-{msg_idx}", 'type': 'agent', 'content': msg.get('content', '')})
 
@@ -138,8 +148,6 @@ def session_to_chat_items(session: dict) -> list[dict]:
     # entries at the end so the data isn't silently dropped (older sessions).
     if len(turn_entries) == 1 and turn_entries[0]:
         for trace_idx, entry in turn_entries[0]:
-            item_ui = _trace_entry_to_item_ui(entry, trace_idx)
-            if item_ui:
-                items_ui.append(item_ui)
+            _append_trace_items(items_ui, entry, trace_idx)
 
     return items_ui

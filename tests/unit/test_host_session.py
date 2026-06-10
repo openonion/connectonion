@@ -735,6 +735,31 @@ class TestSessionToChatItems:
         ids = [item['id'] for item in items]
         assert len(ids) == len(set(ids))  # All unique
 
+    def test_emits_image_bubble_for_screenshot(self):
+        """A tool_result carrying an image (set by image_result_formatter) replays
+        as a tool_call item plus a standalone agent image bubble, so screenshots
+        survive a rebuild from server history instead of vanishing."""
+        data_url = "data:image/png;base64,iVBORw0KGgo="
+        session = {
+            'messages': [
+                {'role': 'user', 'content': 'screenshot'},
+                {'role': 'assistant', 'content': 'done'},
+            ],
+            'trace': [
+                {'type': 'user_input', 'turn': 1},
+                {'type': 'tool_result', 'tool_id': 't1', 'name': 'take_screenshot',
+                 'status': 'success', 'result': "Tool 'take_screenshot' returned image (image/png)",
+                 'image': data_url},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+        types = [i['type'] for i in items]
+        assert types == ['user', 'tool_call', 'agent', 'agent']
+        img_item = items[2]
+        assert img_item['images'] == [data_url]
+        assert img_item['content'] == ''
+
 
 class TestReconnectionScenarios:
     """End-to-end reconnection scenario tests."""

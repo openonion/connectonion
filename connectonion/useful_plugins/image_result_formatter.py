@@ -95,6 +95,11 @@ def _format_image_result(agent: 'Agent') -> None:
         if agent.io:
             agent.io.send_image(data_url)
 
+        # Keep the data URL on the trace (not sent to the LLM) so session replay
+        # can re-emit the image into chat_items. Without this, the shortened
+        # result below is the only trace record and screenshots vanish whenever
+        # the client rebuilds its UI from the server's canonical history.
+        trace_entry['image'] = data_url
         trace_entry['result'] = f"Tool '{tool_name}' returned image ({mime_type})"
         agent.logger.print(f"[dim]Formatted '{tool_name}' result as image[/dim]")
 
