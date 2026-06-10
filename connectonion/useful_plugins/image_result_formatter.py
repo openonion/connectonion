@@ -8,7 +8,8 @@ frontend IO when available.
 Data flow: after_tools event -> scan successful tool_result trace entries ->
 detect image data URL or raw base64 -> replace the matching tool message with a
 short placeholder -> insert a user message containing image_url -> shorten the
-trace result.
+trace result, keeping the data URL on trace_entry['image'] so session replay
+(host/session/ui.py) can re-emit the screenshot into chat_items.
 
 State/Effects: mutates agent.current_session["messages"] and trace entries;
 optionally calls agent.io.send_image(data_url). Non-image tool results are ignored.
@@ -95,6 +96,11 @@ def _format_image_result(agent: 'Agent') -> None:
         if agent.io:
             agent.io.send_image(data_url)
 
+        # Keep the data URL on the trace (not sent to the LLM) so session replay
+        # can re-emit the image into chat_items. Without this, the shortened
+        # result below is the only trace record and screenshots vanish whenever
+        # the client rebuilds its UI from the server's canonical history.
+        trace_entry['image'] = data_url
         trace_entry['result'] = f"Tool '{tool_name}' returned image ({mime_type})"
         agent.logger.print(f"[dim]Formatted '{tool_name}' result as image[/dim]")
 
