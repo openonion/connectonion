@@ -130,11 +130,15 @@ class WebSocketIO(IO):
             self._cursor = 0
 
     def _wait_for_msgs_from_agent(self, cursor, stop_event=None):
-        """Block until new agent messages available or finished. Returns (messages, done)."""
+        """Wait up to ~1s for new agent messages. Returns (messages, done).
+
+        Must return promptly even with no news: this runs on the event loop's
+        shared default executor, and a forwarder for an idle session (agent
+        blocked in receive()) would otherwise pin a pool thread forever —
+        enough idle sessions exhaust the pool and starve every new connection.
+        """
         with self._agent_condition:
-            while len(self._msgs_from_agent) <= cursor and not self._finished:
-                if stop_event and stop_event.is_set():
-                    return [], True
+            if len(self._msgs_from_agent) <= cursor and not self._finished:
                 self._agent_condition.wait(timeout=1.0)
             if stop_event and stop_event.is_set():
                 return [], True
