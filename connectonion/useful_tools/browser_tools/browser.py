@@ -23,8 +23,12 @@ Features:
 
 import os
 import base64
+import functools
+import inspect
 import json
 import platform
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -1396,3 +1400,28 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         """Context manager exit - ensures browser closes and saves context."""
         self.close()
         return False
+
+
+# Playwright's sync API binds to the thread that started it and raises
+# "Cannot switch to a different thread" from any other. Servers like host()
+# run each agent turn on an arbitrary threadpool thread, so consecutive turns
+# crash the shared browser. Route every public method through one dedicated
+# worker thread: playwright starts there and every later call lands there.
+def _dispatch_to_browser_thread(method):
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        executor = self.__dict__.get("_browser_executor")
+        if executor is None:
+            executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
+            self._browser_executor = executor
+            self._browser_thread = executor.submit(threading.current_thread).result()
+        if threading.current_thread() is self._browser_thread:
+            return method(self, *args, **kwargs)
+        return executor.submit(method, self, *args, **kwargs).result()
+
+    return wrapper
+
+
+for _name, _method in list(vars(BrowserAutomation).items()):
+    if not _name.startswith("_") and inspect.isfunction(_method):
+        setattr(BrowserAutomation, _name, _dispatch_to_browser_thread(_method))
