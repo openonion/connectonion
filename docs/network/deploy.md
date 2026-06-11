@@ -145,6 +145,14 @@ That creates `.tmp/connectonion-deploy/co-ai-agent`, deploys it, and cleans it u
 after success. Any template supported by `co create --template <name>` uses the
 same flow.
 
+`--name` sets the project name (and URL) for a template deploy, so different
+skill combinations of the same base template can run side by side:
+
+```bash
+co deploy --template co-ai --name linkedin-agent \
+  --skills ~/skills/linkedin-login ~/skills/linkedin-post-submit
+```
+
 ### Skills
 
 The deployed agent loads skills from `.co/skills/` via the normal loader.
@@ -156,13 +164,14 @@ The deployed agent loads skills from `.co/skills/` via the normal loader.
   co skills copy <name>          # lands in .co/skills/<name>/
   co deploy
   ```
-- **External skills** — to bundle any skills folder that lives outside the
-  project, pass `--skills PATH`
-  (repeatable). The folder contents are copied into the container's
-  `.co/skills/` (your working tree is untouched); on a name clash, later paths
-  win:
+- **External skills** — to bundle skills that live outside the project, pass
+  `--skills PATH [PATH...]`. A path that is itself a skill (contains
+  `SKILL.md`) lands at `.co/skills/<dirname>/`; a directory of skills has its
+  contents copied into `.co/skills/`. Your working tree is untouched; on a
+  name clash, later paths win:
   ```bash
   co deploy --skills /Users/changxing/project/OnCourse/platform/social-media-management-skills
+  co deploy --skills ~/skills/linkedin-login ~/skills/linkedin-post-submit
   ```
 
 > Your local `~/.claude/skills` are **not** auto-deployed. `co deploy` ships the
