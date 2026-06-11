@@ -13,7 +13,7 @@ import uuid
 
 from rich.console import Console
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
-from .connect import handle_connect
+from .connect import handle_connect, establish_connection
 from .agent_io import start_agent
 from .ping import ping_loop
 
@@ -56,7 +56,16 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 await send_msg({"type": "SESSION_STATUS", "session_id": sid, "status": status})
 
             elif msg_type == "ONBOARD_SUBMIT":
-                await handle_onboard_submit(data, send_msg, route_handlers)
+                identity = await handle_onboard_submit(data, send_msg, route_handlers)
+                pending_connect = conn.pop("pending_connect", None)
+                if identity and pending_connect:
+                    # Finish the CONNECT the trust gate interrupted: the client
+                    # is a contact now and resumes its input once CONNECTED lands.
+                    result = await establish_connection(
+                        pending_connect, identity, send_msg, conn, storage, registry
+                    )
+                    if result:
+                        active_io, forward_task = result
             elif msg_type and msg_type.startswith("ADMIN_"):
                 await handle_admin_message(data, send_msg, route_handlers)
 

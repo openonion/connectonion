@@ -2,7 +2,7 @@
 Purpose: Handle the CONNECT message — Ed25519 signature auth, session merge, status decision, optional reattach to a still-running agent
 LLM-Note:
   Dependencies: imports from [..session (merge_sessions, session_to_chat_items via lazy local import), ...trust.ws_admin (get_onboard_requirements), .agent_io (resume_forwarding), uuid, rich.console] | imported by [.session as part of CONNECT dispatch]
-  Data flow: route_handlers["auth"] verifies sig → if forbidden + onboard methods configured: send ONBOARD_REQUIRED | else if other err: send ERROR | else: populate conn (authenticated/identity/session_id/session) → merge_sessions if stored exists → registry status check (running/connected/new) → send CONNECTED → if running: io.rewind_to(last_msg_id) + resume_forwarding (returns (io, task))
+  Data flow: route_handlers["auth"] verifies sig → if forbidden + onboard methods configured: stash conn['pending_connect'] + send ONBOARD_REQUIRED | else if other err: send ERROR | else: establish_connection(): populate conn (authenticated/identity/session_id/session) → merge_sessions if stored exists → registry status check (running/connected/new) → send CONNECTED → if running: io.rewind_to(last_msg_id) + resume_forwarding (returns (io, task)) | establish_connection is also called by the session loop after a successful onboard, with the onboard-verified identity (no CONNECT replay — its signature may have aged past the 5-minute window)
   State/Effects: mutates conn dict in place (authenticated, identity, session_id, session) | calls registry.update_ping when reattaching to 'connected'
   Integration: handle_connect(data, send_msg, conn, route_handlers, storage, registry, trust, blacklist, whitelist) → returns (io, forward_task) for reattach or None
   Performance: one storage.get + optional merge_sessions per CONNECT | one registry.get for status decision
@@ -27,6 +27,11 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
         trust_agent = route_handlers["trust_agent"]
         onboard_info = get_onboard_requirements(trust_agent)
         if onboard_info:
+            # Stash the CONNECT so a successful onboard can finish establishing
+            # this connection (establish_connection) — the client must not need
+            # a second CONNECT, whose signature may have aged past the 5-minute
+            # window by the time an invite code or payment lands.
+            conn["pending_connect"] = data
             await send_msg({"type": "ONBOARD_REQUIRED", "identity": identity, **onboard_info})
             return
 
@@ -35,6 +40,15 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
         await send_msg({"type": "ERROR", "message": err})
         return
 
+    return await establish_connection(data, identity, send_msg, conn, storage, registry)
+
+
+async def establish_connection(data, identity, send_msg, conn, storage, registry):
+    """Post-auth half of CONNECT: populate conn, merge sessions, send CONNECTED.
+
+    Called by handle_connect and, after a successful onboard, with the stashed
+    pending CONNECT — the identity is then the one verified on ONBOARD_SUBMIT.
+    """
     conn["authenticated"] = True
     conn["identity"] = identity
     session_id = data.get("session_id") or str(uuid.uuid4())
