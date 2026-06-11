@@ -1,6 +1,6 @@
 """WebSocket admin and onboard message handlers.
 
-Purpose: Verify signed websocket frames for ONBOARD_SUBMIT and ADMIN_* actions, then mutate trust state (verify invite/payment, promote/demote/block/unblock, super-admin add/remove) and stream back ONBOARD_SUCCESS / ADMIN_RESULT / ERROR responses.
+Purpose: Verify signed websocket frames for ONBOARD_SUBMIT and ADMIN_* actions, then mutate trust state (verify invite/payment, promote/demote/block/unblock, super-admin add/remove) and stream back ONBOARD_SUCCESS / ADMIN_RESULT / ERROR responses. handle_onboard_submit returns the verified identity so the session loop can finish the trust-gated CONNECT.
 LLM-Note:
   Dependencies: imports from [rich.console] | imported by [network/host/ws_router/session.py (handle_admin_message, handle_onboard_submit), network/host/ws_router/connect.py (get_onboard_requirements during CONNECT)] | tested by [tests/network/test_ws_admin.py, tests/integration/test_onboard_flow.py]
   Data flow:
@@ -39,7 +39,7 @@ def get_onboard_requirements(trust_agent) -> dict | None:
 
 
 async def handle_onboard_submit(data, send_msg, route_handlers):
-    """Handle ONBOARD_SUBMIT message from client."""
+    """Handle ONBOARD_SUBMIT message from client. Returns the verified identity on success."""
     trust_agent = route_handlers["trust_agent"]
 
     _, identity, sig_valid, err = route_handlers["auth"](data, "open")
@@ -65,7 +65,7 @@ async def handle_onboard_submit(data, send_msg, route_handlers):
                 "level": actual_level,
                 "message": f"Invite code verified. You are now a {actual_level}."
             })
-            return
+            return identity
         else:
             console.print(f"[red]✗[/red] Invalid invite code [cyan]{invite_code}[/cyan] from {identity[:16]}...")
             await send_msg({"type": "ERROR", "message": "Invalid invite code"})
@@ -81,7 +81,7 @@ async def handle_onboard_submit(data, send_msg, route_handlers):
                 "level": actual_level,
                 "message": f"Payment verified. You are now a {actual_level}."
             })
-            return
+            return identity
         else:
             console.print(f"[red]✗[/red] Insufficient payment [cyan]${payment}[/cyan] from {identity[:16]}...")
             await send_msg({"type": "ERROR", "message": "Insufficient payment"})
