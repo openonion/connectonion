@@ -91,7 +91,7 @@ $ co logout
 ✅ Logged out successfully
 
 # Configure settings
-$ co config set default_model co/claude-3-5-sonnet
+$ co config set default_model co/claude-sonnet-4-5
 ✅ Default model updated
 ```
 
@@ -101,24 +101,24 @@ All models are available with the `co/` prefix:
 
 ### OpenAI Models
 ```python
+llm_do("Hello", model="co/gpt-5")
+llm_do("Hello", model="co/gpt-5-mini")
 llm_do("Hello", model="co/gpt-4o")
-llm_do("Hello", model="co/gpt-4o-mini")
-llm_do("Hello", model="co/o1-preview")
-llm_do("Hello", model="co/o1-mini")
+llm_do("Hello", model="co/o4-mini")
 ```
 
 ### Anthropic Models
 ```python
-llm_do("Hello", model="co/claude-3-5-sonnet")
-llm_do("Hello", model="co/claude-3-5-haiku")
-llm_do("Hello", model="co/claude-3-opus")
+llm_do("Hello", model="co/claude-opus-4-5")
+llm_do("Hello", model="co/claude-sonnet-4-5")
+llm_do("Hello", model="co/claude-haiku-4-5")
 ```
 
 ### Google Models
 ```python
-llm_do("Hello", model="co/gemini-1.5-pro")
-llm_do("Hello", model="co/gemini-1.5-flash")
-llm_do("Hello", model="co/gemini-2.0-flash-exp")
+llm_do("Hello", model="co/gemini-3-pro-preview")
+llm_do("Hello", model="co/gemini-3-flash-preview")
+llm_do("Hello", model="co/gemini-2.5-pro")
 ```
 
 ## Real-World Examples
@@ -141,7 +141,7 @@ class Summary(BaseModel):
 
 result = llm_do(
     "Summarize this article about AI...",
-    model="co/claude-3-5-sonnet",
+    model="co/claude-sonnet-4-5",
     output=Summary
 )
 print(result.key_points)
@@ -166,7 +166,7 @@ response = agent.input("Help me write a Python function")
 
 ```python
 # Compare responses from different models
-models = ["co/gpt-4o", "co/claude-3-5-sonnet", "co/gemini-1.5-pro"]
+models = ["co/gpt-4o", "co/claude-sonnet-4-5", "co/gemini-2.5-pro"]
 
 for model in models:
     response = llm_do("What's the meaning of life?", model=model)
@@ -218,8 +218,8 @@ def test_all_models(prompt):
     """Test prompt across all providers."""
     models = {
         "OpenAI": "co/gpt-4o",
-        "Anthropic": "co/claude-3-5-sonnet",
-        "Google": "co/gemini-1.5-pro"
+        "Anthropic": "co/claude-sonnet-4-5",
+        "Google": "co/gemini-2.5-pro"
     }
     
     results = {}
