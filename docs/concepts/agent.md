@@ -454,17 +454,17 @@ Default model is `co/gemini-2.5-pro`. You can use:
 # OpenAI models
 agent = Agent("bot", model="gpt-4o-mini")
 agent = Agent("bot", model="gpt-4o")
-agent = Agent("bot", model="o1-mini")
+agent = Agent("bot", model="o4-mini")
 agent = Agent("bot", model="o1")
 
 # Anthropic Claude
-agent = Agent("bot", model="claude-3-5-sonnet-20241022")
-agent = Agent("bot", model="claude-3-5-haiku-20241022")
+agent = Agent("bot", model="claude-sonnet-4-5")
+agent = Agent("bot", model="claude-haiku-4-5")
 agent = Agent("bot", model="claude-opus-4")
 
 # Google Gemini
-agent = Agent("bot", model="gemini-1.5-pro")
-agent = Agent("bot", model="gemini-1.5-flash")
+agent = Agent("bot", model="gemini-2.5-pro")
+agent = Agent("bot", model="gemini-2.5-flash")
 agent = Agent("bot", model="gemini-2.0-flash-exp")
 ```
 
@@ -473,7 +473,7 @@ agent = Agent("bot", model="gemini-2.0-flash-exp")
 ```python
 # Use managed keys instead of your own
 agent = Agent("bot", model="co/gpt-4o-mini")
-agent = Agent("bot", model="co/claude-3-5-sonnet")
+agent = Agent("bot", model="co/claude-sonnet-4-5")
 ```
 
 ### API Keys
@@ -494,7 +494,7 @@ agent = Agent("bot", api_key="sk-...", model="gpt-4o-mini")
 from connectonion.llm import AnthropicLLM
 
 custom_llm = AnthropicLLM(
-    model="claude-3-5-sonnet-20241022",
+    model="claude-sonnet-4-5",
     api_key="sk-ant-..."
 )
 
@@ -592,8 +592,8 @@ Token usage is automatically shown in console logs after each LLM call:
 
 Cost tracking works with all supported providers:
 - OpenAI (gpt-4o, gpt-4o-mini, o1, o3-mini, o4-mini)
-- Anthropic Claude (claude-3-5-sonnet, claude-3-5-haiku, claude-opus-4)
-- Google Gemini (gemini-2.5-pro, gemini-2.5-flash, gemini-1.5-pro)
+- Anthropic Claude (claude-opus-4-5, claude-sonnet-4-5, claude-haiku-4-5)
+- Google Gemini (gemini-3-pro-preview, gemini-2.5-pro, gemini-2.5-flash)
 
 Unknown models use default pricing estimates.
 
@@ -790,7 +790,7 @@ def create_analyst(name: str, tools: list) -> Agent:
         name=name,
         tools=tools,
         system_prompt=Path("prompts/analyst.md"),
-        model="claude-3-5-sonnet-20241022",
+        model="claude-sonnet-4-5",
         max_iterations=15,
         log=f"logs/{name}.log"
     )

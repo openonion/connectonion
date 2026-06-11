@@ -440,7 +440,7 @@ agent = Agent("coder", model="claude-sonnet-4-5")
 ```python
 # Fastest options from each provider
 agent = Agent("quick", model="gpt-5-nano")       # OpenAI fastest
-agent = Agent("quick", model="gemini-1.5-flash") # Google fast
+agent = Agent("quick", model="gemini-2.5-flash") # Google fast
 agent = Agent("quick", model="claude-haiku-4-5") # Anthropic fast
 ```
 
@@ -448,14 +448,14 @@ agent = Agent("quick", model="claude-haiku-4-5") # Anthropic fast
 ```python
 # Most cost-efficient options
 agent = Agent("budget", model="gpt-5-nano")       # OpenAI cheapest
-agent = Agent("budget", model="gemini-1.5-flash-8b") # Google cheapest
+agent = Agent("budget", model="gemini-2.5-flash-lite") # Google cheapest
 ```
 
 **Long Context (>200K tokens)**
 ```python
 # Models with longest context windows
 agent = Agent("reader", model="gemini-2.5-pro")  # 2M tokens
-agent = Agent("reader", model="gemini-1.5-pro")  # 2M tokens
+agent = Agent("reader", model="gemini-2.5-pro")  # 2M tokens
 ```
 
 **Multimodal (Images, Audio, Video)**
@@ -515,8 +515,8 @@ def select_model(task_type: str, speed_priority: bool = False) -> str:
         return {
             "code": "gpt-5-mini",
             "chat": "gpt-5-nano",
-            "analysis": "gemini-1.5-flash",
-            "creative": "claude-3-5-haiku"
+            "analysis": "gemini-2.5-flash",
+            "creative": "claude-haiku-4-5"
         }.get(task_type, "gpt-5-nano")
     else:
         # Best quality models
@@ -632,7 +632,7 @@ def create_robust_agent(name: str, model: str, max_retries: int = 3):
                 # Try alternative model
                 alternatives = {
                     "gpt-5": "gpt-5-mini",
-                    "gemini-2.5-pro": "gemini-1.5-pro",
+                    "gemini-2.5-pro": "gemini-2.5-flash",
                     "claude-sonnet-4-5": "claude-sonnet-4"
                 }
                 alt_model = alternatives.get(model)

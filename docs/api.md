@@ -28,8 +28,8 @@ Agent(
   - `None`: Uses default prompt
 - **api_key** (`Optional[str]`): OpenAI API key (if not using custom LLM)
 - **model** (`str`): Model to use (default: "co/gemini-2.5-pro")
-  - Managed keys: `co/gemini-2.5-pro`, `co/gpt-4o-mini`, `co/claude-3-5-sonnet`
-  - Your own key: `gpt-4o-mini`, `claude-3-5-sonnet`, `gemini-1.5-pro`
+  - Managed keys: `co/gemini-2.5-pro`, `co/gpt-4o-mini`, `co/claude-sonnet-4-5`
+  - Your own key: `gpt-4o-mini`, `claude-sonnet-4-5`, `gemini-2.5-pro`
 
 ### System Prompt Options
 
@@ -236,7 +236,7 @@ llm = create_llm("gpt-4o-mini")      # → OpenAILLM
 llm = create_llm("o4-mini")          # → OpenAILLM
 
 # Anthropic models
-llm = create_llm("claude-3-5-sonnet") # → AnthropicLLM
+llm = create_llm("claude-sonnet-4-5") # → AnthropicLLM
 
 # Google Gemini models
 llm = create_llm("gemini-2.5-flash")  # → GeminiLLM
@@ -294,7 +294,7 @@ from connectonion.llm import AnthropicLLM
 
 llm = AnthropicLLM(
     api_key="your-key",  # or ANTHROPIC_API_KEY env var
-    model="claude-3-5-sonnet-20241022"
+    model="claude-sonnet-4-5"
 )
 
 agent = Agent("bot", llm=llm)
