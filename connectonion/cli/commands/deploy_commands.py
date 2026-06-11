@@ -163,22 +163,26 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                     continue
                 tar.add(path, arcname=str(rel), recursive=False)
         for skills_path in skills_paths:
+            # A path is either one skill (has SKILL.md) or a directory of skills.
+            arc_prefix = Path(".co") / "skills"
+            if (skills_path / "SKILL.md").exists():
+                arc_prefix = arc_prefix / skills_path.name
             _add_directory_to_tarball(
                 tar,
                 skills_path,
-                Path(".co") / "skills",
+                arc_prefix,
                 _load_deploy_ignore_patterns(skills_path),
             )
     return tarball
 
 
-def _deploy_template_project(template: str, skills: list[str]) -> bool:
+def _deploy_template_project(template: str, skills: list[str], name: str | None = None) -> bool:
     """Create a temporary template project, deploy it, and clean up on success."""
     temp_root = Path.cwd() / ".tmp" / "connectonion-deploy"
     if temp_root.exists():
         shutil.rmtree(temp_root)
     temp_root.mkdir(parents=True)
-    project_name = f"{template}-agent"
+    project_name = name or f"{template}-agent"
     project_dir = temp_root / project_name
 
     console.print(f"[cyan]Creating temporary {template} project...[/cyan]")
@@ -403,10 +407,13 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     return deploy_success
 
 
-def handle_deploy(template: str | None = None, skills: list[str] | None = None):
+def handle_deploy(template: str | None = None, skills: list[str] | None = None, name: str | None = None):
     """Deploy agent to ConnectOnion Cloud."""
     skills = skills or []
     if template:
         absolute_skills = [str(Path(s).expanduser().resolve()) for s in skills]
-        return _deploy_template_project(template, absolute_skills)
+        return _deploy_template_project(template, absolute_skills, name)
+    if name:
+        console.print("[red]--name only applies to template deploys; project name comes from .co/host.yaml[/red]")
+        return False
     return _deploy_current_project(skills)

@@ -99,11 +99,12 @@ def create(
 @app.command()
 def deploy(
     template: Optional[str] = typer.Option(None, "-t", "--template", help="Create and deploy a template project"),
-    skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skills directory to bundle into .co/skills/ (repeatable)"),
+    skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skill directory (contains SKILL.md) or directory of skills to bundle into .co/skills/ (repeatable)"),
+    name: Optional[str] = typer.Option(None, "--name", help="Project name for template deploys (default: {template}-agent)"),
 ):
     """Deploy to ConnectOnion Cloud."""
     from .commands.deploy_commands import handle_deploy
-    handle_deploy(template=template, skills=skills)
+    handle_deploy(template=template, skills=skills, name=name)
 
 
 @app.command()

@@ -318,6 +318,36 @@ class TestDeploySkillsPackaging:
         assert ".co/skills/world/SKILL.md" in names        # second --skills dir merged
         assert ".co/skills/.git/config" not in names       # dotfiles skipped
 
+    def test_single_skill_dir_nests_under_its_name(self, tmp_path):
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._make_repo(repo)
+
+        skill = tmp_path / "linkedin-login"
+        (skill / "scripts").mkdir(parents=True)
+        (skill / "SKILL.md").write_text("---\nname: linkedin-login\n---\nlog in\n")
+        (skill / "scripts" / "fill.js").write_text("x\n")
+
+        tarball = _build_tarball(repo, [skill])
+        names = set(tarfile.open(tarball).getnames())
+
+        assert ".co/skills/linkedin-login/SKILL.md" in names
+        assert ".co/skills/linkedin-login/scripts/fill.js" in names
+        assert ".co/skills/SKILL.md" not in names          # not flattened
+
+    def test_name_without_template_errors_clearly(self):
+        runner = ArgparseCliRunner()
+        with runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
+
+            result = runner.invoke(cli, ['deploy', '--name', 'other-name'])
+            assert "--name only applies to template deploys" in result.output
+
     def test_missing_skills_path_errors_clearly(self):
         runner = ArgparseCliRunner()
         with runner.isolated_filesystem():
