@@ -493,6 +493,59 @@ class BrowserAutomation:
             ensure_ascii=False,
         )
 
+    def click_in_frame(
+        self,
+        selector: str,
+        frame_url_contains: str = "",
+        frame_name: str = "",
+        index: int = 0,
+    ) -> str:
+        """Click an element inside a page frame with a real (trusted) mouse event.
+
+        Iterates page frames, so it reaches cross-origin iframes (e.g. a reCAPTCHA
+        "I'm not a robot" checkbox) that main-page DOM access and run_page_script
+        cannot. The click goes through Playwright's input layer, so the event is
+        isTrusted — unlike a JS `el.click()`, which bot checks reject. Narrow the
+        frame with frame_url_contains or frame_name; `selector` is resolved inside
+        each matching frame.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        matches = []
+        for frame_index, frame in enumerate(self.page.frames):
+            url = getattr(frame, "url", "") or ""
+            raw_name = getattr(frame, "name", "") or ""
+            name = raw_name() if callable(raw_name) else raw_name
+            if frame_url_contains and frame_url_contains not in url:
+                continue
+            if frame_name and frame_name != name:
+                continue
+            locator = frame.locator(selector)
+            for locator_index in range(locator.count()):
+                matches.append((frame_index, name, url, locator.nth(locator_index)))
+
+        if not matches:
+            return f"No element found for selector: {selector} in matching frames"
+        if index < 0 or index >= len(matches):
+            return f"Selector matched {len(matches)} element(s); index {index} is out of range"
+
+        frame_index, name, url, target = matches[index]
+        target.click()
+        self._save_context()
+        self.page.wait_for_timeout(1000)
+        return json.dumps(
+            {
+                "ok": True,
+                "clicked": True,
+                "selector": selector,
+                "index": index,
+                "frame": {"index": frame_index, "name": name, "url": url},
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+
     def _load_script_args(self, script_path: str, args_json: str) -> tuple[Optional[str], Optional[dict], Optional[str]]:
         path = Path(script_path).expanduser()
         if not path.is_absolute():
