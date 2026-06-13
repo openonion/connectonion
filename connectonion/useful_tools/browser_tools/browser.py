@@ -27,7 +27,9 @@ import functools
 import inspect
 import json
 import platform
+import random
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
@@ -72,6 +74,24 @@ def _public_methods_run_on_browser_thread(cls):
         if not name.startswith("_") and inspect.isfunction(method):
             setattr(cls, name, _runs_on_browser_thread(method))
     return cls
+
+
+def _human_mouse_move(page, x: float, y: float) -> None:
+    """Move the cursor to (x, y) like a hand would — gradual, slightly bent, with a small
+    overshoot — instead of one teleport. (x, y) are absolute page-viewport coordinates.
+
+    Used before a real captcha click so the motion INTO the target looks human. Playwright
+    tracks the current cursor internally, so each mouse.move interpolates from wherever the
+    cursor is now through `steps` intermediate (trusted) mousemove events.
+    """
+    # approach a point near the target first, so the path bends instead of going dead straight
+    page.mouse.move(x + random.uniform(-60, 60), y + random.uniform(-45, 45),
+                    steps=random.randint(12, 22))
+    time.sleep(random.uniform(0.04, 0.12))
+    # small overshoot, then settle onto the target
+    page.mouse.move(x + random.uniform(-5, 5), y + random.uniform(-5, 5),
+                    steps=random.randint(6, 12))
+    page.mouse.move(x, y, steps=random.randint(3, 6))
 
 
 @_public_methods_run_on_browser_thread
@@ -531,7 +551,20 @@ class BrowserAutomation:
             return f"Selector matched {len(matches)} element(s); index {index} is out of range"
 
         frame_index, name, url, target = matches[index]
-        target.click()
+        # Human approach: move the cursor to the element like a hand (gradual, off-centre
+        # landing) then a real trusted click, instead of Playwright's instant move-and-click.
+        try:
+            target.scroll_into_view_if_needed(timeout=5000)
+            box = target.bounding_box()
+        except Exception:
+            box = None
+        if box:
+            tx = box["x"] + box["width"] * random.uniform(0.35, 0.65)
+            ty = box["y"] + box["height"] * random.uniform(0.35, 0.65)
+            _human_mouse_move(self.page, tx, ty)
+            self.page.mouse.click(tx, ty)
+        else:
+            target.click(force=True)
         self._save_context()
         self.page.wait_for_timeout(1000)
         return json.dumps(
