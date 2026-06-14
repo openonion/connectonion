@@ -295,10 +295,13 @@ class TestFormatImageResult:
         _format_image_result(agent)
 
         # Trace result should be shortened
-        trace_result = agent.current_session['trace'][0]['result']
+        trace_entry = agent.current_session['trace'][0]
+        trace_result = trace_entry['result']
         assert 'screenshot' in trace_result
         assert 'image/png' in trace_result
         assert len(trace_result) < 100  # Much shorter than original
+        # Full data URL is retained out-of-band so session replay can re-emit it.
+        assert trace_entry['image'] == 'data:image/png;base64,' + 'A' * 1000
 
     def test_sends_image_to_io_when_available(self):
         """Image tool results are model-visible and sent to frontend IO."""

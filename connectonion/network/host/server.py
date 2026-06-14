@@ -3,7 +3,7 @@ Purpose: Host agent as HTTP/WebSocket server with trust-based access control
 LLM-Note:
   Dependencies: imports from [network/asgi/, network/host/ws_router/ (run_ws_session), network/trust/, network/host/session/, network/host/auth.py, network/host/http_router.py, network/announce.py, network/relay.py] | imported by [network/__init__.py as host()] | tested by [tests/network/test_host.py]
   Data flow: host(create_agent, port, trust) → _create_route_handlers() wraps all routes → asgi_create_app() creates FastAPI/Starlette app → uvicorn.run() starts server → each request calls create_agent() for fresh instance → executes via input_handler()/ws_input() → returns result + session | trust enforcement via extract_and_authenticate() at request boundary
-  State/Effects: starts HTTP server on specified port | creates .co/logs/ directory | stores sessions in SessionStorage (in-memory with TTL) | optionally announces to relay server | each request gets fresh agent instance (no state bleeding)
+  State/Effects: starts HTTP server on specified port | creates .co/logs/ directory | stores sessions in SessionStorage (in-memory with TTL) | optionally announces to relay server, publishing a display profile (alias/tools/model + project-level skills only — user/builtin skills stay private) with the first ANNOUNCE of each connection | each request gets fresh agent instance (no state bleeding)
   Integration: exposes host(create_agent, port=8000, trust=None, result_ttl=3600, relay_url="wss://oo.openonion.ai") | creates ASGI app with routes: POST /input, GET /sessions, GET /sessions/{id}, GET /health, GET /info, WebSocket /ws, admin endpoints | trust accepts: "open"/"careful"/"strict" (level), markdown string (policy), or Agent (custom verifier)
   Performance: factory pattern creates fresh agent per request (thread-safe) | SessionStorage auto-expires old results via TTL | WebSocket supports real-time bidirectional I/O | relay connection runs in background thread
   Errors: trust errors return 401/403 via extract_and_authenticate() | missing sessions return None (404) | raises if port already in use
@@ -119,6 +119,27 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
     return metadata, sample
 
 
+def _build_agent_profile(agent_metadata: dict) -> dict:
+    """Build the publishable profile sent with the first ANNOUNCE of a connection.
+
+    Only project-level skills are published (skill.location is the discovery
+    category: project/user/builtin): discovery also picks up ~/.co/skills —
+    the operator's personal toolbox, which must not leak into the public
+    directory. The prompt summary stays private for the same reason.
+    """
+    profile = {"alias": agent_metadata["name"]}
+    if agent_metadata.get("tools"):
+        profile["tools"] = agent_metadata["tools"]
+    if agent_metadata.get("model"):
+        profile["model"] = agent_metadata["model"]
+    profile["skills"] = [
+        {"name": s["name"], "description": s.get("description", "")}
+        for s in agent_metadata.get("skills", [])
+        if s.get("location") == "project"
+    ]
+    return profile
+
+
 def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict):
     """Create route handler dict for ASGI app.
 
@@ -231,7 +252,7 @@ def _print_host_banner(
     console.print()
 
 
-def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner):
+def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner, *, profile: dict | None = None):
     """Create relay startup/shutdown callbacks for ASGI lifespan.
 
     Args:
@@ -240,6 +261,8 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         summary: Summary text for relay announcement
         port: HTTP port for endpoint discovery
         relay_session_runner: async (send_msg, recv_msg) -> None, runs protocol for one relay session
+        profile: publishable display info, sent with the first ANNOUNCE of each
+                 connection; the relay persists it, so heartbeats don't carry it
 
     Returns:
         Tuple of (on_startup, on_shutdown) async callbacks
@@ -253,7 +276,9 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         async def relay_loop():
             while True:
                 ws = await relay.connect(relay_url)
-                announce_msg = announce.create_announce_message(addr_data, summary, endpoints=endpoints, relay=relay_url)
+                announce_msg = announce.create_announce_message(
+                    addr_data, summary, endpoints=endpoints, relay=relay_url, profile=profile
+                )
                 await relay.serve_loop(
                     ws, announce_msg,
                     addr_data=addr_data, session_handler=relay_session_runner,
@@ -436,7 +461,8 @@ def host(
             enable_ping=False,
         )
         on_startup, on_shutdown = _create_relay_lifespan(
-            relay_url, addr_data, summary, port, relay_session_runner
+            relay_url, addr_data, summary, port, relay_session_runner,
+            profile=_build_agent_profile(agent_metadata),
         )
 
     app = asgi_create_app(

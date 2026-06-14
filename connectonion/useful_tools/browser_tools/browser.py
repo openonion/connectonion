@@ -3,7 +3,7 @@ Purpose: Natural language browser automation via Playwright with persistent prof
 LLM-Note:
   Dependencies: imports from [playwright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_agent.py]
   Data flow: BrowserAutomation() initializes Playwright → opens browser with persistent context → provides tools (navigate, find_element, click, type_text, screenshot, scroll, wait_for_login) → auto-saves cookies after each critical action → Agent uses these tools via natural language → element_finder.py uses vision LLM to locate elements | screenshots saved to .tmp/ directory
-  State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup
+  State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup | all public methods dispatch to one dedicated browser thread (Playwright sync API is thread-bound), so a shared instance is safe to call from any thread
   Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), keyboard_type(text), keyboard_press(key), wait_for_login(seconds) | used by `co browser` CLI command
   Performance: headless by default (faster) | persistent context (instant profile load) | vision model for element finding (slower but accurate) | screenshots base64-encoded for LLM analysis | auto-save adds 500ms delay after critical actions
   Errors: returns error string if Playwright not installed | returns "Browser already open" if live browser exists | element not found returns descriptive error
@@ -23,8 +23,15 @@ Features:
 
 import os
 import base64
+import functools
+import inspect
 import json
 import platform
+import random
+import threading
+import time
+import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -48,6 +55,68 @@ except ImportError:
 # Path to the browser agent system prompt
 
 
+# Playwright's sync API binds to the thread that started it and raises
+# "Cannot switch to a different thread" from any other. Servers like host()
+# run each agent turn on an arbitrary threadpool thread, so consecutive turns
+# crash the shared browser. Route every public method through the instance's
+# dedicated worker thread: playwright starts there and every call lands there.
+def _runs_on_browser_thread(method):
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        if threading.current_thread() is self._executor_thread:
+            return method(self, *args, **kwargs)
+        return self._executor.submit(method, self, *args, **kwargs).result()
+
+    return wrapper
+
+
+def _public_methods_run_on_browser_thread(cls):
+    for name, method in vars(cls).copy().items():
+        if not name.startswith("_") and inspect.isfunction(method):
+            setattr(cls, name, _runs_on_browser_thread(method))
+    return cls
+
+
+def _browser_proxy_from_env():
+    """Build Playwright's proxy config from the BROWSER_PROXY env var, or None if unset.
+
+    BROWSER_PROXY routes the browser's traffic through a proxy so the egress IP is e.g.
+    residential instead of the datacenter IP the agent runs on. Formats:
+        socks5://host:port              (no auth — e.g. a SOCKS relay; Chromium ignores SOCKS auth)
+        http://user:pass@host:port      (HTTP proxy with auth — e.g. a residential proxy service)
+    Unset => None => no proxy, current behaviour unchanged.
+    """
+    url = os.environ.get("BROWSER_PROXY", "").strip()
+    if not url:
+        return None
+    p = urllib.parse.urlparse(url)
+    proxy = {"server": f"{p.scheme}://{p.hostname}:{p.port}"}
+    if p.username:
+        proxy["username"] = urllib.parse.unquote(p.username)
+    if p.password:
+        proxy["password"] = urllib.parse.unquote(p.password)
+    return proxy
+
+
+def _human_mouse_move(page, x: float, y: float) -> None:
+    """Move the cursor to (x, y) like a hand would — gradual, slightly bent, with a small
+    overshoot — instead of one teleport. (x, y) are absolute page-viewport coordinates.
+
+    Used before a real captcha click so the motion INTO the target looks human. Playwright
+    tracks the current cursor internally, so each mouse.move interpolates from wherever the
+    cursor is now through `steps` intermediate (trusted) mousemove events.
+    """
+    # approach a point near the target first, so the path bends instead of going dead straight
+    page.mouse.move(x + random.uniform(-60, 60), y + random.uniform(-45, 45),
+                    steps=random.randint(12, 22))
+    time.sleep(random.uniform(0.04, 0.12))
+    # small overshoot, then settle onto the target
+    page.mouse.move(x + random.uniform(-5, 5), y + random.uniform(-5, 5),
+                    steps=random.randint(6, 12))
+    page.mouse.move(x, y, steps=random.randint(3, 6))
+
+
+@_public_methods_run_on_browser_thread
 class BrowserAutomation:
     """Browser automation with natural language support.
 
@@ -80,6 +149,9 @@ class BrowserAutomation:
         self._screenshots = []
         self._headless = headless
         self.screenshots_dir = str(SCREENSHOTS_DIR)
+        # All public methods run on this one thread (see _public_methods_run_on_browser_thread).
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
+        self._executor_thread = self._executor.submit(threading.current_thread).result()
 
     def _browser_is_usable(self) -> bool:
         """Return True when the current Playwright page can still be operated."""
@@ -154,6 +226,7 @@ class BrowserAutomation:
             executable_path=chrome_path,
             args=CHROME_DEFAULT_ARGS,  # 53 args + 30 disabled features from browser-use
             ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # + macOS cookie fix
+            proxy=_browser_proxy_from_env(),  # route egress through BROWSER_PROXY if set, else None
             timeout=120000,
         )
 
@@ -456,6 +529,72 @@ class BrowserAutomation:
                 "file": str(path),
                 "click_selector": click_selector,
                 "text": text,
+                "index": index,
+                "frame": {"index": frame_index, "name": name, "url": url},
+            },
+            indent=2,
+            ensure_ascii=False,
+        )
+
+    def click_in_frame(
+        self,
+        selector: str,
+        frame_url_contains: str = "",
+        frame_name: str = "",
+        index: int = 0,
+    ) -> str:
+        """Click an element inside a page frame with a real (trusted) mouse event.
+
+        Iterates page frames, so it reaches cross-origin iframes (e.g. a reCAPTCHA
+        "I'm not a robot" checkbox) that main-page DOM access and run_page_script
+        cannot. The click goes through Playwright's input layer, so the event is
+        isTrusted — unlike a JS `el.click()`, which bot checks reject. Narrow the
+        frame with frame_url_contains or frame_name; `selector` is resolved inside
+        each matching frame.
+        """
+        if not self.page:
+            return "Browser not open"
+
+        matches = []
+        for frame_index, frame in enumerate(self.page.frames):
+            url = getattr(frame, "url", "") or ""
+            raw_name = getattr(frame, "name", "") or ""
+            name = raw_name() if callable(raw_name) else raw_name
+            if frame_url_contains and frame_url_contains not in url:
+                continue
+            if frame_name and frame_name != name:
+                continue
+            locator = frame.locator(selector)
+            for locator_index in range(locator.count()):
+                matches.append((frame_index, name, url, locator.nth(locator_index)))
+
+        if not matches:
+            return f"No element found for selector: {selector} in matching frames"
+        if index < 0 or index >= len(matches):
+            return f"Selector matched {len(matches)} element(s); index {index} is out of range"
+
+        frame_index, name, url, target = matches[index]
+        # Human approach: move the cursor to the element like a hand (gradual, off-centre
+        # landing) then a real trusted click, instead of Playwright's instant move-and-click.
+        try:
+            target.scroll_into_view_if_needed(timeout=5000)
+            box = target.bounding_box()
+        except Exception:
+            box = None
+        if box:
+            tx = box["x"] + box["width"] * random.uniform(0.35, 0.65)
+            ty = box["y"] + box["height"] * random.uniform(0.35, 0.65)
+            _human_mouse_move(self.page, tx, ty)
+            self.page.mouse.click(tx, ty)
+        else:
+            target.click(force=True)
+        self._save_context()
+        self.page.wait_for_timeout(1000)
+        return json.dumps(
+            {
+                "ok": True,
+                "clicked": True,
+                "selector": selector,
                 "index": index,
                 "frame": {"index": frame_index, "name": name, "url": url},
             },
@@ -1396,3 +1535,4 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         """Context manager exit - ensures browser closes and saves context."""
         self.close()
         return False
+
