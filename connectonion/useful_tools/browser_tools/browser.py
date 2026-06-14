@@ -30,6 +30,7 @@ import platform
 import random
 import threading
 import time
+import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
@@ -74,6 +75,27 @@ def _public_methods_run_on_browser_thread(cls):
         if not name.startswith("_") and inspect.isfunction(method):
             setattr(cls, name, _runs_on_browser_thread(method))
     return cls
+
+
+def _browser_proxy_from_env():
+    """Build Playwright's proxy config from the BROWSER_PROXY env var, or None if unset.
+
+    BROWSER_PROXY routes the browser's traffic through a proxy so the egress IP is e.g.
+    residential instead of the datacenter IP the agent runs on. Formats:
+        socks5://host:port              (no auth — e.g. a SOCKS relay; Chromium ignores SOCKS auth)
+        http://user:pass@host:port      (HTTP proxy with auth — e.g. a residential proxy service)
+    Unset => None => no proxy, current behaviour unchanged.
+    """
+    url = os.environ.get("BROWSER_PROXY", "").strip()
+    if not url:
+        return None
+    p = urllib.parse.urlparse(url)
+    proxy = {"server": f"{p.scheme}://{p.hostname}:{p.port}"}
+    if p.username:
+        proxy["username"] = urllib.parse.unquote(p.username)
+    if p.password:
+        proxy["password"] = urllib.parse.unquote(p.password)
+    return proxy
 
 
 def _human_mouse_move(page, x: float, y: float) -> None:
@@ -204,6 +226,7 @@ class BrowserAutomation:
             executable_path=chrome_path,
             args=CHROME_DEFAULT_ARGS,  # 53 args + 30 disabled features from browser-use
             ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # + macOS cookie fix
+            proxy=_browser_proxy_from_env(),  # route egress through BROWSER_PROXY if set, else None
             timeout=120000,
         )
 
