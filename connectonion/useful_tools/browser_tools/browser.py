@@ -111,13 +111,19 @@ class BrowserAutomation:
     This ensures session persistence even if the process crashes.
     """
 
-    def __init__(self, use_chrome_profile: bool = True, headless: bool = False):
+    def __init__(self, use_chrome_profile: bool = True, headless: bool = False, seed_state: Optional[str] = None):
         """Initialize browser automation.
 
         Args:
             use_chrome_profile: If True, uses your Chrome cookies/sessions.
                                Chrome must be closed before running.
             headless: If True, browser runs without visible window (default True).
+            seed_state: Optional path to a Playwright storage_state JSON (a {"cookies": [...]}
+                        file produced by save_state on another machine). When set, those cookies
+                        are injected into the context once, right after it is created and before
+                        any navigation, so a deployed agent starts already signed in. Cookies are
+                        applied with add_cookies because launch_persistent_context() cannot accept
+                        storage_state=. Unset => no injection, current behaviour unchanged.
         """
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
@@ -127,6 +133,8 @@ class BrowserAutomation:
         self.use_chrome_profile = use_chrome_profile
         self._screenshots = []
         self._headless = headless
+        self._seed_state = seed_state
+        self._seeded = False
         self.screenshots_dir = str(SCREENSHOTS_DIR)
         # All public methods run on this one thread (see _public_methods_run_on_browser_thread).
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
@@ -209,6 +217,16 @@ class BrowserAutomation:
             timeout=120000,
         )
 
+        # Seed a portable login state into the fresh context once, before any navigation, so a
+        # deployed agent starts already signed in. launch_persistent_context() can't take
+        # storage_state=, so the exported cookies are applied with add_cookies. A missing file
+        # raises (fail loud): if a deploy declared a seed it must be packaged.
+        if self._seed_state and not self._seeded:
+            cookies = json.loads(Path(self._seed_state).read_text()).get("cookies", [])
+            if cookies:
+                self.browser.add_cookies(cookies)
+            self._seeded = True
+
         self.page = self.browser.new_page()
         self.page.set_default_navigation_timeout(60000)
 
@@ -230,6 +248,20 @@ class BrowserAutomation:
         if had_previous_browser_state:
             return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
         return f"Browser opened with persistent profile: {profile_dir}"
+
+    def save_state(self, path: str) -> str:
+        """Export the current login state to a portable Playwright storage_state JSON.
+
+        Writes {"cookies": [...], "origins": [...]} to `path`. Run this locally after logging
+        in by hand (headed) to capture a session, then ship the file and pass it back as
+        BrowserAutomation(seed_state=path) on the deployed agent. The JSON is plaintext and
+        portable across machines/OSes; a copied Chrome profile is not (its cookies are
+        encrypted per-OS).
+        """
+        if not self.browser:
+            return "Browser not open"
+        self.browser.storage_state(path=path)
+        return f"Saved login state to {path}"
 
     def go_to(self, url: str) -> str:
         """Navigate to a URL."""
