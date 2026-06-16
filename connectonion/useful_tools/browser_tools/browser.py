@@ -27,9 +27,7 @@ import functools
 import inspect
 import json
 import platform
-import random
 import threading
-import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -96,24 +94,6 @@ def _browser_proxy_from_env():
     if p.password:
         proxy["password"] = urllib.parse.unquote(p.password)
     return proxy
-
-
-def _human_mouse_move(page, x: float, y: float) -> None:
-    """Move the cursor to (x, y) like a hand would — gradual, slightly bent, with a small
-    overshoot — instead of one teleport. (x, y) are absolute page-viewport coordinates.
-
-    Used before a real captcha click so the motion INTO the target looks human. Playwright
-    tracks the current cursor internally, so each mouse.move interpolates from wherever the
-    cursor is now through `steps` intermediate (trusted) mousemove events.
-    """
-    # approach a point near the target first, so the path bends instead of going dead straight
-    page.mouse.move(x + random.uniform(-60, 60), y + random.uniform(-45, 45),
-                    steps=random.randint(12, 22))
-    time.sleep(random.uniform(0.04, 0.12))
-    # small overshoot, then settle onto the target
-    page.mouse.move(x + random.uniform(-5, 5), y + random.uniform(-5, 5),
-                    steps=random.randint(6, 12))
-    page.mouse.move(x, y, steps=random.randint(3, 6))
 
 
 @_public_methods_run_on_browser_thread
@@ -317,13 +297,20 @@ class BrowserAutomation:
             return element.locator
         return f"Could not find element matching: {description}"
 
-    def click_element_by_selector(self, selector: str, index: int = 0, text: str = "") -> str:
+    def click_element_by_selector(self, selector: str, index: int = 0, text: str = "", frame_url_contains: str = "", frame_name: str = "") -> str:
         """Click an element using a CSS selector via Playwright locator().
 
         Use when a workflow has a stable selector such as an aria-label,
         role-compatible attribute, or data-testid. `index` is zero-based.
         If `text` is provided, only visible elements with exactly that text are
         considered.
+
+        Set frame_url_contains or frame_name to resolve the selector inside a page
+        frame, including cross-origin iframes (e.g. a reCAPTCHA checkbox) that
+        main-page selectors can't reach. The click goes through Playwright's input
+        layer either way, so the event is trusted (isTrusted) — a JS el.click()
+        is not. Frame targeting applies to the selector path; `text` matching is
+        main-frame only.
         """
         if not self.page:
             return "Browser not open"
@@ -371,14 +358,32 @@ class BrowserAutomation:
             self.page.wait_for_timeout(1000)
             return f"Clicked element {index + 1}/{count} matching selector: {selector} with text: {text}"
 
-        locator = self.page.locator(selector)
-        count = locator.count()
-        if count == 0:
-            return f"No element found for selector: {selector}"
-        if index < 0 or index >= count:
-            return f"Selector matched {count} elements; index {index} is out of range"
+        if frame_url_contains or frame_name:
+            # Resolve inside matching page frames so cross-origin iframes (e.g. a
+            # reCAPTCHA checkbox) the main-page DOM can't reach are clickable.
+            candidates = []
+            for frame in self.page.frames:
+                url = getattr(frame, "url", "") or ""
+                name = getattr(frame, "name", "") or ""
+                if frame_url_contains and frame_url_contains not in url:
+                    continue
+                if frame_name and frame_name != name:
+                    continue
+                loc = frame.locator(selector)
+                candidates.extend(loc.nth(i) for i in range(loc.count()))
+            where = f" in frames matching {(frame_url_contains or frame_name)!r}"
+        else:
+            loc = self.page.locator(selector)
+            candidates = [loc.nth(i) for i in range(loc.count())]
+            where = ""
 
-        target = locator.nth(index)
+        count = len(candidates)
+        if count == 0:
+            return f"No element found for selector: {selector}{where}"
+        if index < 0 or index >= count:
+            return f"Selector matched {count} elements{where}; index {index} is out of range"
+
+        target = candidates[index]
         box = target.bounding_box()
         if box:
             self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
@@ -387,7 +392,7 @@ class BrowserAutomation:
 
         self._save_context()
         self.page.wait_for_timeout(1000)
-        return f"Clicked element {index + 1}/{count} matching selector: {selector}"
+        return f"Clicked element {index + 1}/{count} matching selector: {selector}{where}"
 
     def count_elements_by_selector(self, selector: str) -> str:
         """Count elements matching a CSS selector via Playwright locator()."""
@@ -561,72 +566,6 @@ class BrowserAutomation:
                 "file": str(path),
                 "click_selector": click_selector,
                 "text": text,
-                "index": index,
-                "frame": {"index": frame_index, "name": name, "url": url},
-            },
-            indent=2,
-            ensure_ascii=False,
-        )
-
-    def click_in_frame(
-        self,
-        selector: str,
-        frame_url_contains: str = "",
-        frame_name: str = "",
-        index: int = 0,
-    ) -> str:
-        """Click an element inside a page frame with a real (trusted) mouse event.
-
-        Iterates page frames, so it reaches cross-origin iframes (e.g. a reCAPTCHA
-        "I'm not a robot" checkbox) that main-page DOM access and run_page_script
-        cannot. The click goes through Playwright's input layer, so the event is
-        isTrusted — unlike a JS `el.click()`, which bot checks reject. Narrow the
-        frame with frame_url_contains or frame_name; `selector` is resolved inside
-        each matching frame.
-        """
-        if not self.page:
-            return "Browser not open"
-
-        matches = []
-        for frame_index, frame in enumerate(self.page.frames):
-            url = getattr(frame, "url", "") or ""
-            raw_name = getattr(frame, "name", "") or ""
-            name = raw_name() if callable(raw_name) else raw_name
-            if frame_url_contains and frame_url_contains not in url:
-                continue
-            if frame_name and frame_name != name:
-                continue
-            locator = frame.locator(selector)
-            for locator_index in range(locator.count()):
-                matches.append((frame_index, name, url, locator.nth(locator_index)))
-
-        if not matches:
-            return f"No element found for selector: {selector} in matching frames"
-        if index < 0 or index >= len(matches):
-            return f"Selector matched {len(matches)} element(s); index {index} is out of range"
-
-        frame_index, name, url, target = matches[index]
-        # Human approach: move the cursor to the element like a hand (gradual, off-centre
-        # landing) then a real trusted click, instead of Playwright's instant move-and-click.
-        try:
-            target.scroll_into_view_if_needed(timeout=5000)
-            box = target.bounding_box()
-        except Exception:
-            box = None
-        if box:
-            tx = box["x"] + box["width"] * random.uniform(0.35, 0.65)
-            ty = box["y"] + box["height"] * random.uniform(0.35, 0.65)
-            _human_mouse_move(self.page, tx, ty)
-            self.page.mouse.click(tx, ty)
-        else:
-            target.click(force=True)
-        self._save_context()
-        self.page.wait_for_timeout(1000)
-        return json.dumps(
-            {
-                "ok": True,
-                "clicked": True,
-                "selector": selector,
                 "index": index,
                 "frame": {"index": frame_index, "name": name, "url": url},
             },
