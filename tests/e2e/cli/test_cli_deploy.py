@@ -363,11 +363,11 @@ class TestDeploySkillsPackaging:
             first.mkdir()
             (first / "SKILL.md").write_text("---\nname: real\n---\nhi\n")
 
-            # First path exists; the bare second path must also be collected
-            # as a skills path and fail validation by name.
+            # --skills is repeatable; the second (missing) path fails validation by name.
             result = runner.invoke(cli, [
                 'deploy',
-                '--skills', str(first), str(tmp_path / 'missing-skill'),
+                '--skills', str(first),
+                '--skills', str(tmp_path / 'missing-skill'),
             ])
             assert "missing-skill" in result.output
             assert "Skills path not found" in result.output

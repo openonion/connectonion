@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [typer, rich.console, typing, __version__] | imported by [setup.py entry_points, __main__.py] | loads commands from [cli/commands/{init, create, deploy, auth, status, reset, doctor, browser}_commands.py] | tested by [tests/e2e/cli/test_cli_help.py]
   Data flow: cli() entry point → creates Typer app → registers command callbacks (init, create, deploy, auth, status, reset, doctor, browser) → Typer parses args → invokes corresponding handle_*() function from commands module → command outputs via rich.Console
   State/Effects: no persistent state | writes to stdout via rich.Console | lazy imports command handlers on invocation | registers typer.Option and typer.Argument decorators | uses typer.Exit() for early termination
-  Integration: exposes cli() entry point registered in setup.py as 'co' command | app() is the Typer instance | commands: init, create, deploy (-t/--template, --skills with one or more paths, --name for template deploys), auth [google|microsoft], status, reset, doctor, browser | --version flag shows version | -b/--browser flag shortcuts browser command | no args shows custom help via _show_help()
+  Integration: exposes cli() entry point registered in setup.py as 'co' command | app() is the Typer instance | commands: init, create, deploy (-t/--template, --skills repeatable, --name for template deploys), auth [google|microsoft], status, reset, doctor, browser | --version flag shows version | -b/--browser flag shortcuts browser command | no args shows custom help via _show_help()
   Performance: fast startup (lazy imports) | Typer arg parsing is O(n) args | Rich console initialization is lightweight
   Errors: typer.Exit() on --version or --browser | invalid commands show Typer error with suggestions | command-specific errors handled in respective handlers
 """
@@ -97,19 +97,15 @@ def create(
     handle_create(name=name, ai=None, key=key, template=template, description=description, yes=yes)
 
 
-@app.command(context_settings={"allow_extra_args": True})
+@app.command()
 def deploy(
-    ctx: typer.Context,
     template: Optional[str] = typer.Option(None, "-t", "--template", help="Create and deploy a template project"),
-    skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skill directory (contains SKILL.md) or directory of skills to bundle into .co/skills/ (accepts multiple paths)"),
+    skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skill directory (contains SKILL.md) or directory of skills to bundle into .co/skills/ (repeatable: --skills a --skills b)"),
     name: Optional[str] = typer.Option(None, "--name", help="Project name for template deploys (default: {template}-agent)"),
 ):
     """Deploy to ConnectOnion Cloud."""
     from .commands.deploy_commands import handle_deploy
-    # Click options take one value each; the extra positionals collected by
-    # allow_extra_args are the rest of `--skills a b c`.
-    all_skills = (skills or []) + list(ctx.args)
-    handle_deploy(template=template, skills=all_skills, name=name)
+    handle_deploy(template=template, skills=skills, name=name)
 
 
 @app.command()
