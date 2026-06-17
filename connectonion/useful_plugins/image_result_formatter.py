@@ -55,6 +55,39 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
     return False, "", ""
 
 
+# How many recent screenshots stay fully visible to the LLM. Older ones are stale
+# page state — useless to the model but they grow the context without bound over a
+# long browser task. Anthropic computer-use keeps the last few tool_result images
+# the same way (_maybe_filter_to_n_most_recent_images).
+KEEP_LAST_N_SCREENSHOTS = 3
+
+
+def _is_image_message(message: dict) -> bool:
+    """True if the message carries an image_url block (a screenshot we inserted)."""
+    content = message.get('content')
+    return isinstance(content, list) and any(
+        isinstance(part, dict) and part.get('type') == 'image_url'
+        for part in content
+    )
+
+
+def _elide_old_screenshots(messages: list, keep_last: int) -> None:
+    """Keep only the last `keep_last` screenshots in the LLM context; replace the
+    image_url block of older ones with a short text placeholder.
+
+    Only the LLM context (agent.current_session['messages']) is touched — each
+    trace_entry['image'] keeps the full data URL, so session replay still re-emits
+    every screenshot to the frontend. Idempotent: an already-elided message no
+    longer has an image_url block, so re-running skips it.
+    """
+    image_indices = [i for i, m in enumerate(messages) if _is_image_message(m)]
+    for i in image_indices[:-keep_last]:
+        messages[i] = {
+            "role": messages[i].get("role", "user"),
+            "content": "[earlier screenshot removed to bound context]",
+        }
+
+
 def _format_image_result(agent: 'Agent') -> None:
     """Replace image tool result text with a multimodal image message."""
     trace = agent.current_session.get('trace', [])
@@ -103,6 +136,10 @@ def _format_image_result(agent: 'Agent') -> None:
         trace_entry['image'] = data_url
         trace_entry['result'] = f"Tool '{tool_name}' returned image ({mime_type})"
         agent.logger.print(f"[dim]Formatted '{tool_name}' result as image[/dim]")
+
+    # Slide the window: at most KEEP_LAST_N_SCREENSHOTS screenshots stay visible to
+    # the LLM. Runs every turn so the context stays bounded over a long browser task.
+    _elide_old_screenshots(messages, KEEP_LAST_N_SCREENSHOTS)
 
 
 # Plugin is an event list

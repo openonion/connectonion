@@ -21,7 +21,9 @@ from unittest.mock import Mock
 from connectonion.useful_plugins.image_result_formatter import (
     _is_base64_image,
     _format_image_result,
+    _is_image_message,
     image_result_formatter,
+    KEEP_LAST_N_SCREENSHOTS,
 )
 from tests.utils.mock_helpers import MockLLM
 
@@ -355,6 +357,70 @@ class TestFormatImageResult:
 
         # Should not raise error even without io
         _format_image_result(agent)
+
+
+class TestScreenshotSlidingWindow:
+    """The LLM context keeps only the last N screenshots; older ones are elided."""
+
+    def _take_screenshot(self, agent, n):
+        """Simulate one turn: a screenshot tool result that gets formatted."""
+        b64 = "A" * 150
+        tool_id = f"call_{n}"
+        agent.current_session['messages'].append({
+            'role': 'tool',
+            'content': f"data:image/png;base64,{b64}",
+            'tool_call_id': tool_id,
+        })
+        agent.current_session['trace'].append({
+            'type': 'tool_result',
+            'name': 'take_screenshot',
+            'status': 'success',
+            'result': f"data:image/png;base64,{b64}",
+            'tool_id': tool_id,
+        })
+        _format_image_result(agent)
+
+    def test_keeps_only_last_n_screenshots(self):
+        agent = FakeAgent()
+        for n in range(5):
+            self._take_screenshot(agent, n)
+
+        image_msgs = [m for m in agent.current_session['messages'] if _is_image_message(m)]
+        assert len(image_msgs) == KEEP_LAST_N_SCREENSHOTS
+
+        placeholders = [
+            m for m in agent.current_session['messages']
+            if m.get('content') == "[earlier screenshot removed to bound context]"
+        ]
+        assert len(placeholders) == 5 - KEEP_LAST_N_SCREENSHOTS
+
+    def test_context_payload_stays_flat_not_linear(self):
+        """The byte size the LLM receives must stop growing once the window fills."""
+        def image_bytes(agent):
+            return sum(
+                len(part['image_url']['url'])
+                for m in agent.current_session['messages'] if _is_image_message(m)
+                for part in m['content'] if part.get('type') == 'image_url'
+            )
+
+        agent = FakeAgent()
+        sizes = []
+        for n in range(6):
+            self._take_screenshot(agent, n)
+            sizes.append(image_bytes(agent))
+
+        # Grows while filling the window, then plateaus (never linear in turn count).
+        assert sizes[-1] == sizes[KEEP_LAST_N_SCREENSHOTS - 1]
+        assert sizes[-1] == sizes[-2]
+
+    def test_replay_trace_keeps_every_screenshot(self):
+        """Eliding the LLM context must not touch the trace the frontend replays."""
+        agent = FakeAgent()
+        for n in range(5):
+            self._take_screenshot(agent, n)
+
+        # Every screenshot is still recoverable out-of-band for session replay.
+        assert all('image' in t for t in agent.current_session['trace'])
 
 
 class TestImageResultFormatterPlugin:
