@@ -123,7 +123,19 @@ def test_dispatch_unknown_command(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("frobnicate now")
     assert ok is False
-    assert payload == "unknown command: frobnicate"
+    assert payload.startswith("unknown command: frobnicate")
+    # agent-friendly next steps
+    assert "co browser help" in payload
+    assert 'do "<instruction>"' in payload
+
+
+def test_dispatch_wrong_args_shows_signature(tmp_path):
+    """A TypeError from wrong args must include the function's usage so an agent can fix it."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch("go_to")  # missing required `url`
+    assert ok is False
+    assert "TypeError" in payload
+    assert "usage: go_to(url)" in payload
 
 
 def test_dispatch_empty(tmp_path):
@@ -149,6 +161,40 @@ def test_dispatch_do_routes_to_nl(tmp_path, monkeypatch):
     assert ok is True
     assert payload == "agent says hi"
     assert captured["command"] == "find the cheapest flight"
+
+
+# ---- self-describing help (no browser launched) -------------------------
+
+def test_signature_str():
+    assert d.signature_str(StubBrowser.go_to) == "(url)"
+    assert d.signature_str(StubBrowser.take_screenshot) == "(path=None, full_page=False)"
+
+
+def test_list_functions_describes_real_methods():
+    """`co browser help` introspects BrowserAutomation: name + signature + summary."""
+    text = d.list_functions()
+    assert "go_to(url)" in text
+    assert "— Navigate to a URL." in text
+    # private methods are hidden
+    assert "_browser_is_usable" not in text
+
+
+def test_handle_browser_help_needs_no_browser(capsys):
+    """`co browser help` prints functions and exits 0 without spawning a daemon."""
+    from connectonion.cli.commands.browser_commands import handle_browser
+    code = handle_browser(["help"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "Functions:" in out
+    assert "go_to(url)" in out
+
+
+def test_handle_browser_no_args_is_usage_error(capsys):
+    from connectonion.cli.commands.browser_commands import handle_browser
+    code = handle_browser([])
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "co browser <function>" in err
 
 
 # ---- full socket round-trip: client.send() ↔ daemon ----------------------

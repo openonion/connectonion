@@ -67,6 +67,32 @@ def _is_verb(browser, name: str) -> bool:
     return callable(attr)
 
 
+def signature_str(method) -> str:
+    """Render a method's call signature without `self`, e.g. '(url)' or '(path=None, full_page=False)'."""
+    parts = []
+    for p in inspect.signature(method).parameters.values():
+        if p.name == "self":
+            continue
+        parts.append(p.name if p.default is inspect.Parameter.empty else f"{p.name}={p.default!r}")
+    return "(" + ", ".join(parts) + ")"
+
+
+def list_functions() -> str:
+    """One line per public browser function: `name(args) — first docstring line`.
+
+    Introspects the BrowserAutomation class (no browser launched) so the CLI is
+    self-describing — an agent can run `co browser help` to discover what it can call.
+    """
+    lines = []
+    for name, method in inspect.getmembers(BrowserAutomation, predicate=inspect.isfunction):
+        if name.startswith("_"):
+            continue
+        doc = (inspect.getdoc(method) or "").splitlines()
+        summary = doc[0] if doc else ""
+        lines.append(f"  {name}{signature_str(method)}" + (f" — {summary}" if summary else ""))
+    return "\n".join(lines)
+
+
 class BrowserDaemon:
     """Single-threaded server owning one BrowserAutomation, dispatching verbs to it."""
 
@@ -88,7 +114,11 @@ class BrowserDaemon:
             return self._run_nl(command)
         if _is_verb(self.browser, verb):
             return self._call_verb(verb, tokens[1:])
-        return False, f"unknown command: {verb}"
+        return False, (
+            f"unknown command: {verb}\n"
+            f"Run 'co browser help' to list functions, or "
+            f"'co browser do \"<instruction>\"' for natural language."
+        )
 
     def _call_verb(self, verb: str, raw_args) -> tuple:
         """Match the verb to a browser method and execute it with coerced args."""
@@ -107,7 +137,9 @@ class BrowserDaemon:
         try:
             result = method(*args, **kw)
         except Exception as exc:  # dispatch boundary: report to client as ERR
-            return False, f"{type(exc).__name__}: {exc}"
+            # On wrong arguments, show the expected signature so an agent can self-correct.
+            hint = f"\nusage: {verb}{signature_str(method)}" if isinstance(exc, TypeError) else ""
+            return False, f"{type(exc).__name__}: {exc}{hint}"
         return True, _stringify(result)
 
     def _run_nl(self, command: str) -> tuple:

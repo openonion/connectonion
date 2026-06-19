@@ -53,9 +53,28 @@ The first word is compared against the browser's function names:
 
 > Quote natural-language instructions: `co browser do "click the blue button"`. A bare word that happens to be a function name (like `click`) is treated as a direct call, not language.
 
+## Discovering Functions
+
+The CLI describes itself — run `help` to list every callable function with its arguments and a one-line summary (no browser is launched):
+
+```bash
+co browser help
+```
+
+```
+Functions:
+  go_to(url) — Navigate to a URL.
+  take_screenshot(path=None, full_page=False) — Take a screenshot of the current page...
+  click(description) — Click on an element using natural language description.
+  get_links_from_page(domain_filter='') — Extract all unique links from the current page...
+  ...
+```
+
+This is the fastest way — for a person or an AI agent — to find the exact function name and arguments before calling it.
+
 ## Common Functions
 
-Any method on the browser is callable. The ones you'll reach for most:
+Any function listed by `co browser help` is callable. The ones you'll reach for most:
 
 ```bash
 co browser go_to <url>                     # navigate
@@ -122,6 +141,38 @@ playwright install chromium
 
 - One browser per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
 - The daemon's socket lives under `$XDG_RUNTIME_DIR/co/browser.sock` (override with `$CO_BROWSER_SOCK`).
+
+## Error Messages
+
+Errors print to **stderr** and exit with code `1`. Each one tells you the next step — handy when an AI agent is driving the CLI and needs to self-correct.
+
+**Unknown function**
+```bash
+$ co browser frobnicate
+unknown command: frobnicate
+Run 'co browser help' to list functions, or 'co browser do "<instruction>"' for natural language.
+```
+The first word didn't match any browser function. List them with `co browser help`, or use `do` to describe the task in plain English.
+
+**Wrong arguments**
+```bash
+$ co browser go_to
+TypeError: BrowserAutomation.go_to() missing 1 required positional argument: 'url'
+usage: go_to(url)
+```
+The function exists but the arguments don't fit. The `usage:` line shows the exact signature — pass the missing argument: `co browser go_to example.com`.
+
+**Authentication required** (only for `do`)
+```bash
+$ co browser do "find the price"
+Browser agent requires authentication. Run: co auth
+```
+The natural-language agent uses managed keys. Run `co auth` once. Direct function calls don't need this.
+
+**Playwright not installed**
+```bash
+Browser tools not installed. Run: pip install playwright && playwright install chromium
+```
 
 ## Troubleshooting
 
