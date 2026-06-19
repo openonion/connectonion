@@ -20,7 +20,7 @@ tests/e2e/test_image_formatter_plugin.py.
 
 import re
 from typing import TYPE_CHECKING
-from ..core.events import after_tools
+from ..core.events import after_tools, before_llm
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -142,6 +142,29 @@ def _format_image_result(agent: 'Agent') -> None:
     _elide_old_screenshots(messages, KEEP_LAST_N_SCREENSHOTS)
 
 
-# Plugin is an event list
-# Uses after_tools because message modification can only happen after all tools finish
-image_result_formatter = [after_tools(_format_image_result)]
+def _sanitize_image_urls(agent: 'Agent') -> None:
+    """Before each LLM call, replace any image_url part whose URL isn't a real
+    data:/http(s) image with a short text note, in place.
+
+    A stale placeholder otherwise reaches the provider and 400s the whole turn:
+    oo-chat strips screenshots to '[image]' for localStorage, and an emptied URL can
+    survive a session round-trip — Gemini then rejects "Unsupported file URI type".
+    Validating here (the before_llm boundary) makes the agent immune to any source.
+    """
+    for msg in agent.current_session.get('messages', []):
+        content = msg.get('content')
+        if not isinstance(content, list):
+            continue
+        for i, part in enumerate(content):
+            if isinstance(part, dict) and part.get('type') == 'image_url':
+                url = (part.get('image_url') or {}).get('url', '')
+                if not (isinstance(url, str) and url.startswith(('data:image/', 'http://', 'https://'))):
+                    content[i] = {'type': 'text', 'text': '[image unavailable]'}
+
+
+# Plugin is an event list.
+# - after_tools: turn a screenshot tool result into a model-visible image message
+#   and slide the screenshot window (message modification must happen after tools).
+# - before_llm: drop stale/invalid image_url parts right before the LLM call, so a
+#   round-tripped placeholder never 400s the provider.
+image_result_formatter = [after_tools(_format_image_result), before_llm(_sanitize_image_urls)]
