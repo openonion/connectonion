@@ -22,6 +22,7 @@ from connectonion.useful_plugins.image_result_formatter import (
     _is_base64_image,
     _format_image_result,
     _is_image_message,
+    _sanitize_image_urls,
     image_result_formatter,
     KEEP_LAST_N_SCREENSHOTS,
 )
@@ -421,6 +422,49 @@ class TestScreenshotSlidingWindow:
 
         # Every screenshot is still recoverable out-of-band for session replay.
         assert all('image' in t for t in agent.current_session['trace'])
+
+
+class TestSanitizeImageUrls:
+    """before_llm sanitizer: stale/invalid image_url parts must not reach the LLM."""
+
+    def _img_msg(self, url):
+        return {"role": "user", "content": [
+            {"type": "text", "text": "x"},
+            {"type": "image_url", "image_url": {"url": url}},
+        ]}
+
+    def test_placeholder_url_becomes_text(self):
+        agent = FakeAgent()
+        agent.current_session['messages'] = [self._img_msg("[image]")]
+        _sanitize_image_urls(agent)
+        part = agent.current_session['messages'][0]['content'][1]
+        assert part == {"type": "text", "text": "[image unavailable]"}
+
+    def test_empty_url_becomes_text(self):
+        agent = FakeAgent()
+        agent.current_session['messages'] = [self._img_msg("")]
+        _sanitize_image_urls(agent)
+        assert agent.current_session['messages'][0]['content'][1]['type'] == 'text'
+
+    def test_valid_data_url_kept(self):
+        agent = FakeAgent()
+        url = "data:image/png;base64,iVBORw0KGgo"
+        agent.current_session['messages'] = [self._img_msg(url)]
+        _sanitize_image_urls(agent)
+        part = agent.current_session['messages'][0]['content'][1]
+        assert part['type'] == 'image_url' and part['image_url']['url'] == url
+
+    def test_https_url_kept(self):
+        agent = FakeAgent()
+        agent.current_session['messages'] = [self._img_msg("https://x/y.png")]
+        _sanitize_image_urls(agent)
+        assert agent.current_session['messages'][0]['content'][1]['type'] == 'image_url'
+
+    def test_string_content_untouched(self):
+        agent = FakeAgent()
+        agent.current_session['messages'] = [{"role": "user", "content": "hello"}]
+        _sanitize_image_urls(agent)
+        assert agent.current_session['messages'][0]['content'] == "hello"
 
 
 class TestImageResultFormatterPlugin:
