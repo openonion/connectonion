@@ -274,15 +274,33 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
         endpoints = announce.get_endpoints(port)
 
         async def relay_loop():
+            # Long-lived supervisor: keep the agent registered on the relay across ANY
+            # transient failure. serve_loop returns on a clean disconnect, but connect()
+            # or serve_loop can also RAISE — a network blip surfaces as OSError, the relay
+            # redeploys, DNS hiccups, a frame is malformed. For a connection meant to live
+            # for days those are normal operation, not bugs. So catch everything except
+            # cancellation, log, back off, and reconnect. Without this, the first
+            # non-ConnectionClosed error escapes the loop and silently kills relay_task:
+            # the agent keeps serving DIRECT connections but never announces again, so its
+            # relay registration goes stale and it becomes unreachable via the relay until
+            # the process is restarted.
+            relay_console = Console()
             while True:
-                ws = await relay.connect(relay_url)
-                announce_msg = announce.create_announce_message(
-                    addr_data, summary, endpoints=endpoints, relay=relay_url, profile=profile
-                )
-                await relay.serve_loop(
-                    ws, announce_msg,
-                    addr_data=addr_data, session_handler=relay_session_runner,
-                )
+                try:
+                    ws = await relay.connect(relay_url)
+                    announce_msg = announce.create_announce_message(
+                        addr_data, summary, endpoints=endpoints, relay=relay_url, profile=profile
+                    )
+                    await relay.serve_loop(
+                        ws, announce_msg,
+                        addr_data=addr_data, session_handler=relay_session_runner,
+                    )
+                except asyncio.CancelledError:
+                    raise  # shutdown — propagate so on_shutdown can await it cleanly
+                except Exception as exc:
+                    relay_console.print(
+                        f"[magenta]\\[host][/magenta] [dim]relay connection error ({exc!r}); reconnecting in 1s[/dim]"
+                    )
                 await asyncio.sleep(1)
 
         relay_task = asyncio.create_task(relay_loop())
@@ -449,8 +467,13 @@ def host(
     if relay_url:
         # Pre-bind run_ws_session's host-wide deps so relay only needs to pass
         # (send_msg, recv_msg). Each call = one client session full lifecycle
-        # (auth → INPUT/OUTPUT cycles → disconnect). enable_ping=False because
-        # relay handles keep-alive via its own ANNOUNCE heartbeat.
+        # (auth → INPUT/OUTPUT cycles → disconnect). enable_ping=True: the 30s PING
+        # is the CLIENT-session keepalive — it's forwarded through the relay to the
+        # browser so the SDK's 60s-silence monitor doesn't declare the connection
+        # dead and reconnect. The relay's ANNOUNCE heartbeat is a different thing
+        # (it only keeps the agent↔relay link alive; it never reaches the client),
+        # so it can't substitute for the PING. Without this, idle relay sessions
+        # churn (silence → reconnect) every ~60s.
         relay_session_runner = partial(run_ws_session,
             route_handlers=route_handlers,
             storage=storage,
@@ -458,7 +481,7 @@ def host(
             trust=trust_agent,
             blacklist=blacklist,
             whitelist=whitelist,
-            enable_ping=False,
+            enable_ping=True,
         )
         on_startup, on_shutdown = _create_relay_lifespan(
             relay_url, addr_data, summary, port, relay_session_runner,

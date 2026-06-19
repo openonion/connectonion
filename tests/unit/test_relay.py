@@ -411,3 +411,39 @@ class TestRelayIntegration:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestRelaySupervisorResilience:
+    """The relay supervisor (server._create_relay_lifespan) must keep reconnecting
+    across ANY transient failure, not die on the first non-ConnectionClosed error."""
+
+    @pytest.mark.asyncio
+    async def test_supervisor_reconnects_after_non_connectionclosed_error(self, monkeypatch):
+        # Regression: the old relay_loop had no try/except around connect()/serve_loop(),
+        # so a network blip surfacing as OSError escaped the loop and silently killed
+        # relay_task — the agent stopped announcing and went stale on the relay until
+        # restart. The supervisor must instead log, back off, and reconnect.
+        import asyncio
+        from connectonion.network import relay as relay_module
+        from connectonion.network.host.server import _create_relay_lifespan
+
+        calls = {"connect": 0}
+
+        async def boom(*args, **kwargs):
+            calls["connect"] += 1
+            raise OSError("simulated network blip")
+
+        monkeypatch.setattr(relay_module, "connect", boom)
+
+        addr_data = {"address": "0x" + "a" * 64}
+        on_startup, on_shutdown = _create_relay_lifespan(
+            "wss://relay.test", addr_data, "summary", 8000, lambda *a, **k: None,
+        )
+
+        await on_startup()
+        await asyncio.sleep(1.3)   # initial attempt + at least one retry after the 1s backoff
+        await on_shutdown()
+
+        assert calls["connect"] >= 2, (
+            "supervisor died after the first error instead of reconnecting"
+        )
