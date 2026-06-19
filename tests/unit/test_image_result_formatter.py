@@ -24,7 +24,6 @@ from connectonion.useful_plugins.image_result_formatter import (
     _is_image_message,
     _sanitize_image_urls,
     image_result_formatter,
-    KEEP_LAST_N_SCREENSHOTS,
 )
 from tests.utils.mock_helpers import MockLLM
 
@@ -387,13 +386,13 @@ class TestScreenshotSlidingWindow:
             self._take_screenshot(agent, n)
 
         image_msgs = [m for m in agent.current_session['messages'] if _is_image_message(m)]
-        assert len(image_msgs) == KEEP_LAST_N_SCREENSHOTS
+        assert len(image_msgs) == 3  # window keeps the last 3 of 5 screenshots
 
         placeholders = [
             m for m in agent.current_session['messages']
             if m.get('content') == "[earlier screenshot removed to bound context]"
         ]
-        assert len(placeholders) == 5 - KEEP_LAST_N_SCREENSHOTS
+        assert len(placeholders) == 2  # the 2 older ones are elided
 
     def test_context_payload_stays_flat_not_linear(self):
         """The byte size the LLM receives must stop growing once the window fills."""
@@ -411,7 +410,7 @@ class TestScreenshotSlidingWindow:
             sizes.append(image_bytes(agent))
 
         # Grows while filling the window, then plateaus (never linear in turn count).
-        assert sizes[-1] == sizes[KEEP_LAST_N_SCREENSHOTS - 1]
+        assert sizes[-1] == sizes[2]  # plateaus once the 3-screenshot window fills
         assert sizes[-1] == sizes[-2]
 
     def test_replay_trace_keeps_every_screenshot(self):

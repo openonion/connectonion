@@ -65,12 +65,6 @@ def _current_session_key():
     return getattr(_session_binding, "key", None)
 
 
-# Context-level methods that must NOT auto-create a tab before they run:
-# open_browser creates the tab itself after launching the context; close/save_state
-# operate on the whole context, and a fresh tab right before teardown is wrong.
-_NO_TAB_METHODS = {"open_browser", "close", "save_state"}
-
-
 # Playwright's sync API binds to the thread that started it and raises
 # "Cannot switch to a different thread" from any other. Servers like host()
 # run each agent turn on an arbitrary threadpool thread, so consecutive turns
@@ -87,7 +81,10 @@ def _runs_on_browser_thread(method):
 
         def run():
             _session_binding.key = key      # propagate onto the worker thread
-            if method.__name__ not in _NO_TAB_METHODS:
+            # Context-level methods must NOT auto-create a tab: open_browser makes the
+            # tab itself after launching the context; close/save_state act on the whole
+            # context, where a fresh tab right before teardown is wrong.
+            if method.__name__ not in {"open_browser", "close", "save_state"}:
                 self._ensure_page(key)      # this session gets / keeps its own tab
             return method(self, *args, **kwargs)
 

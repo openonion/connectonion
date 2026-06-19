@@ -55,13 +55,6 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
     return False, "", ""
 
 
-# How many recent screenshots stay fully visible to the LLM. Older ones are stale
-# page state — useless to the model but they grow the context without bound over a
-# long browser task. Anthropic computer-use keeps the last few tool_result images
-# the same way (_maybe_filter_to_n_most_recent_images).
-KEEP_LAST_N_SCREENSHOTS = 3
-
-
 def _is_image_message(message: dict) -> bool:
     """True if the message carries an image_url block (a screenshot we inserted)."""
     content = message.get('content')
@@ -137,9 +130,10 @@ def _format_image_result(agent: 'Agent') -> None:
         trace_entry['result'] = f"Tool '{tool_name}' returned image ({mime_type})"
         agent.logger.print(f"[dim]Formatted '{tool_name}' result as image[/dim]")
 
-    # Slide the window: at most KEEP_LAST_N_SCREENSHOTS screenshots stay visible to
-    # the LLM. Runs every turn so the context stays bounded over a long browser task.
-    _elide_old_screenshots(messages, KEEP_LAST_N_SCREENSHOTS)
+    # Slide the window: keep only the last 3 screenshots visible to the LLM. Older ones
+    # are stale page state that grow context without bound over a long browser task
+    # (Anthropic computer-use trims tool_result images the same way). Runs every turn.
+    _elide_old_screenshots(messages, 3)
 
 
 def _sanitize_image_urls(agent: 'Agent') -> None:
