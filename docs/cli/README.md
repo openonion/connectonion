@@ -493,37 +493,33 @@ See [sub documentation](sub.md) for the full fan-out behavior and v1 limitations
 
 #### `co browser <command>` - Browser Automation
 
-Execute browser commands quickly.
+Drive one persistent browser from the shell. Call a browser function directly, or use `do` for the AI agent. State persists between commands until you `close`. See [browser.md](browser.md).
 
-**Basic usage:**
+**Direct function calls:**
 ```bash
-co browser "screenshot localhost:3000"
-co browser "click on login button"
-
-# Shortcut
-co -b "screenshot localhost:3000"
+co browser go_to localhost:3000       # navigate
+co browser take_screenshot shot.png   # screenshot
+co browser get_current_url            # print current URL
+co browser get_links_from_page        # one link per line (pipeable)
+co browser close                      # close browser, stop daemon
 ```
 
-**Common commands:**
+**Natural language (AI agent on the same browser):**
 ```bash
-# Screenshots
-co -b "screenshot https://example.com"
+co browser do "click the login button and open the dashboard"
+```
 
-# Page interaction
-co -b "click on submit button"
-co -b "fill form with test data"
-co -b "navigate to /dashboard"
-
-# Data extraction
-co -b "get text from .price"
-co -b "extract all links"
+**Scripting (clean stdout, exit codes):**
+```bash
+url=$(co browser get_current_url)
+co browser get_links_from_page | grep github
+co browser --headless go_to "$DEPLOY_URL"   # --headless for CI
 ```
 
 **When to use:**
-- Quick testing
-- Visual verification
-- Ad-hoc automation
-- Debugging browser tools
+- Scripting exact browser steps (direct calls)
+- Letting the agent handle a task (`do`)
+- Visual verification and debugging
 
 ---
 
