@@ -28,6 +28,7 @@ import inspect
 import json
 import platform
 import threading
+import time
 import urllib.parse
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
@@ -53,17 +54,46 @@ except ImportError:
 # Path to the browser agent system prompt
 
 
+# Carries "which session is the current call for" from the agent thread (set by the
+# bind_browser_session plugin via _bind_session) to the browser worker thread. A
+# threading.local so concurrent agent threads never clobber each other's key; when
+# no plugin sets it the key is None and every call shares one tab (current behaviour).
+_session_binding = threading.local()
+
+
+def _current_session_key():
+    return getattr(_session_binding, "key", None)
+
+
+# Context-level methods that must NOT auto-create a tab before they run:
+# open_browser creates the tab itself after launching the context; close/save_state
+# operate on the whole context, and a fresh tab right before teardown is wrong.
+_NO_TAB_METHODS = {"open_browser", "close", "save_state"}
+
+
 # Playwright's sync API binds to the thread that started it and raises
 # "Cannot switch to a different thread" from any other. Servers like host()
 # run each agent turn on an arbitrary threadpool thread, so consecutive turns
 # crash the shared browser. Route every public method through the instance's
 # dedicated worker thread: playwright starts there and every call lands there.
+#
+# The wrapper also routes per session: it reads the caller thread's session key,
+# propagates it onto the worker thread, and ensures that session's own tab exists
+# before the method runs (so self.page resolves to the right tab).
 def _runs_on_browser_thread(method):
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
-        if threading.current_thread() is self._executor_thread:
+        key = _current_session_key()  # read on the caller (agent) thread
+
+        def run():
+            _session_binding.key = key      # propagate onto the worker thread
+            if method.__name__ not in _NO_TAB_METHODS:
+                self._ensure_page(key)      # this session gets / keeps its own tab
             return method(self, *args, **kwargs)
-        return self._executor.submit(method, self, *args, **kwargs).result()
+
+        if threading.current_thread() is self._executor_thread:
+            return run()
+        return self._executor.submit(run).result()
 
     return wrapper
 
@@ -73,6 +103,7 @@ def _public_methods_run_on_browser_thread(cls):
         if not name.startswith("_") and inspect.isfunction(method):
             setattr(cls, name, _runs_on_browser_thread(method))
     return cls
+
 
 def _browser_proxy_from_env():
     """Build Playwright's proxy config from the BROWSER_PROXY env var, or None if unset.
@@ -93,6 +124,7 @@ def _browser_proxy_from_env():
     if p.password:
         proxy["password"] = urllib.parse.unquote(p.password)
     return proxy
+
 
 @_public_methods_run_on_browser_thread
 class BrowserAutomation:
@@ -126,7 +158,14 @@ class BrowserAutomation:
         """
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
-        self.page: Optional[Page] = None
+        # One tab per session (chat panel) in the shared context, so concurrent
+        # sessions don't navigate over each other. Key = session_id (None = no
+        # session bound = single shared tab, the original single-page behaviour).
+        self._pages: Dict[Optional[str], "Page"] = {}
+        self._page_used: Dict[Optional[str], float] = {}   # key -> last-use monotonic ts (LRU/TTL)
+        self._page_url: Dict[Optional[str], str] = {}      # key -> last url (restore a reclaimed tab)
+        self._tab_idle_ttl = 3600.0   # reclaim a tab after 60 min idle (a panel left untouched)
+        self._max_tabs = 10           # backstop cap; a few real panels never hit it
         self.current_url: str = ""
         self.form_data: Dict[str, Any] = {}
         self.use_chrome_profile = use_chrome_profile
@@ -141,6 +180,18 @@ class BrowserAutomation:
 
     def _browser_is_usable(self) -> bool:
         """Return True when the current Playwright page can still be operated."""
+        key = _current_session_key()
+
+        def run():
+            _session_binding.key = key
+            return self._browser_is_usable_on_browser_thread()
+
+        if threading.current_thread() is self._executor_thread:
+            return run()
+        return self._executor.submit(run).result()
+
+    def _browser_is_usable_on_browser_thread(self) -> bool:
+        """Check browser usability on Playwright's owning thread."""
         if not self.browser or not self.page:
             return False
 
@@ -152,6 +203,105 @@ class BrowserAutomation:
             return True
         except Exception:
             return False
+
+    @property
+    def page(self):
+        """The Playwright tab for the session this call belongs to.
+
+        Each session (chat panel) gets its own tab in the shared, single-login
+        context, so concurrent sessions don't navigate over each other. The session
+        key is set by the bind_browser_session plugin on the agent thread and
+        propagated onto the worker thread by the dispatch decorator; both threads
+        read it from the same threading.local. Returns None until the tab is created
+        (so the existing `if not self.page: ...` guards still read "browser not open").
+        """
+        return self._pages.get(_current_session_key())
+
+    @page.setter
+    def page(self, value):
+        """Set the current session's tab. Internal flows create tabs via
+        _ensure_page; this setter keeps `self.page = <page>` working for callers
+        and tests that inject a page directly (it writes the current session's slot)."""
+        key = _current_session_key()
+        self._pages[key] = value
+        self._page_used[key] = time.monotonic()
+
+    def _bind_session(self, session_id) -> None:
+        """Record, on the CALLER (agent) thread, which session the next browser
+        calls on this thread belong to. Underscore-prefixed so it is neither
+        dispatched to the worker thread nor exposed to the LLM as a tool; the
+        bind_browser_session plugin calls it before each tool, and the dispatch
+        decorator reads the binding to route to the right tab."""
+        _session_binding.key = session_id
+
+    def _ensure_page(self, key) -> None:
+        """Make sure session `key` has a live tab, then reclaim abandoned ones.
+
+        Reused by two callers, always on the worker thread: the dispatch decorator
+        (before every tab-using tool, so self.page resolves to this session's tab)
+        and open_browser (to create the first tab after launching the context).
+
+        Creates the tab in the shared context (restored to its last URL), stamps its
+        last-use time, then reclaims. No-op until the context is open; harmless if the
+        tab already exists.
+
+        Reclaim bounds memory but never closes the active `key`: first tabs idle past
+        _tab_idle_ttl (a panel untouched for an hour), then — only if still over
+        _max_tabs — the least-recently-used ones as a runaway backstop. A reclaimed
+        session transparently gets a fresh restored tab next call (no "target closed").
+        """
+        if not self.browser:
+            return
+
+        page = self._pages.get(key)
+        if page is None or (callable(getattr(page, "is_closed", None)) and page.is_closed()):
+            page = self.browser.new_page()
+            page.set_default_navigation_timeout(60000)
+            page.set_viewport_size({"width": 1920, "height": 1200})
+            # Hide automation indicators (defense in depth; also set via launch args).
+            page.add_init_script(
+                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
+            )
+            restore_url = self._page_url.get(key)
+            if restore_url:  # a reclaimed session comes back to where it was
+                try:
+                    page.goto(restore_url, wait_until="domcontentloaded", timeout=30000)
+                except Exception:
+                    pass
+            self._pages[key] = page
+        self._page_used[key] = time.monotonic()
+
+        now = time.monotonic()
+        for k in [k for k, t in list(self._page_used.items())
+                  if k != key and now - t > self._tab_idle_ttl]:
+            self._close_tab(k)
+        if len(self._pages) > self._max_tabs:
+            lru_first = sorted(
+                (k for k in self._pages if k != key),
+                key=lambda k: self._page_used.get(k, 0.0),
+            )
+            for k in lru_first[: len(self._pages) - self._max_tabs]:
+                self._close_tab(k)
+
+    def _close_tab(self, key) -> Optional[str]:
+        """Close one session's tab, remembering its URL so the session can resume.
+
+        Reused by two callers: _ensure_page's reclaim (best-effort, ignores the
+        return) and close() (surfaces the return as a cleanup warning). Returns an
+        error string if the page would not close, else None."""
+        page = self._pages.pop(key, None)
+        self._page_used.pop(key, None)
+        if page is None:
+            return None
+        try:
+            self._page_url[key] = page.url
+        except Exception:
+            pass
+        try:
+            page.close()
+        except Exception as exc:
+            return f"close page failed: {exc}"
+        return None
 
     def open_browser(self, headless: bool = None, force: bool = False) -> str:
         """Open a new browser window.
@@ -226,21 +376,10 @@ class BrowserAutomation:
                 self.browser.add_cookies(cookies)
             self._seeded = True
 
-        self.page = self.browser.new_page()
-        self.page.set_default_navigation_timeout(60000)
-
-        # Set large viewport to show more content without scrolling
-        self.page.set_viewport_size({"width": 1920, "height": 1200})
-
-        # Hide automation indicators (defense in depth)
-        # Already handled by --disable-blink-features=AutomationControlled in args above
-        self.page.add_init_script(
-            """
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-        """
-        )
+        # Create this session's tab in the freshly launched context (other sessions
+        # get their own tab lazily on first use). _ensure_page applies the viewport
+        # and anti-detection init script when it creates the tab.
+        self._ensure_page(_current_session_key())
 
         if force and had_previous_browser_state:
             return f"Previous browser closed by force. Browser opened with persistent profile: {profile_dir}"
@@ -1295,13 +1434,25 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         print(f"\n[browser] Screenshot saved to: {path}")
         print(f"[browser] Full page: {full_page}, Size: {len(screenshot_bytes)} bytes\n")
 
+        # Bound the payload. The screenshot is sent to the frontend as a base64 data URL
+        # in ONE relay WebSocket frame; base64 inflates bytes ~33% and the relay's default
+        # cap is 1 MB (websockets max_size), so a frame over it drops the relay connection
+        # (and reconnect replays it, so the agent flaps offline). A dense 1920-wide page is
+        # a ~800 KB PNG = >1 MB base64. Re-encode only oversized captures as JPEG
+        # (Playwright-native, no Pillow); keep PNG for the common case so text stays sharp.
+        mime = "image/png"
+        if len(screenshot_bytes) > 600_000:   # ~800 KB base64 + JSON, safely under 1 MB
+            screenshot_bytes = self.page.screenshot(full_page=full_page, type="jpeg", quality=85)
+            mime = "image/jpeg"
+            print(f"[browser] oversized PNG re-encoded as JPEG q85: {len(screenshot_bytes)} bytes\n")
+
         # Wait for page to stabilize after screenshot (especially for full_page which scrolls/resizes)
         # This prevents focus loss when typing after taking a screenshot
         self.page.wait_for_timeout(1000)
 
         screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
 
-        return f"data:image/png;base64,{screenshot_base64}"
+        return f"data:{mime};base64,{screenshot_base64}"
 
     def set_viewport(self, width: int, height: int) -> str:
         """Set the browser viewport size."""
@@ -1473,11 +1624,10 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         except Exception as exc:
             cleanup_errors.append(f"save context failed: {exc}")
 
-        try:
-            if self.page:
-                self.page.close()
-        except Exception as exc:
-            cleanup_errors.append(f"close page failed: {exc}")
+        for key in list(self._pages):     # close every session's tab
+            err = self._close_tab(key)
+            if err:
+                cleanup_errors.append(err)
         try:
             if self.browser:
                 self.browser.close()
@@ -1489,7 +1639,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         except Exception as exc:
             cleanup_errors.append(f"stop playwright failed: {exc}")
 
-        self.page = None
+        self._pages.clear()
+        self._page_used.clear()
+        self._page_url.clear()
         self.browser = None
         self.playwright = None
         if cleanup_errors:
