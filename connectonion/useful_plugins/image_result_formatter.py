@@ -8,7 +8,8 @@ frontend IO when available.
 Data flow: after_tools event -> scan successful tool_result trace entries ->
 detect image data URL or raw base64 -> replace the matching tool message with a
 short placeholder -> insert a user message containing image_url -> shorten the
-trace result.
+trace result, keeping the data URL on trace_entry['image'] so session replay
+(host/session/ui.py) can re-emit the screenshot into chat_items.
 
 State/Effects: mutates agent.current_session["messages"] and trace entries;
 optionally calls agent.io.send_image(data_url). Non-image tool results are ignored.
@@ -19,7 +20,7 @@ tests/e2e/test_image_formatter_plugin.py.
 
 import re
 from typing import TYPE_CHECKING
-from ..core.events import after_tools
+from ..core.events import after_tools, before_llm
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -52,6 +53,32 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
         return True, "image/png", text.strip()
 
     return False, "", ""
+
+
+def _is_image_message(message: dict) -> bool:
+    """True if the message carries an image_url block (a screenshot we inserted)."""
+    content = message.get('content')
+    return isinstance(content, list) and any(
+        isinstance(part, dict) and part.get('type') == 'image_url'
+        for part in content
+    )
+
+
+def _elide_old_screenshots(messages: list, keep_last: int) -> None:
+    """Keep only the last `keep_last` screenshots in the LLM context; replace the
+    image_url block of older ones with a short text placeholder.
+
+    Only the LLM context (agent.current_session['messages']) is touched — each
+    trace_entry['image'] keeps the full data URL, so session replay still re-emits
+    every screenshot to the frontend. Idempotent: an already-elided message no
+    longer has an image_url block, so re-running skips it.
+    """
+    image_indices = [i for i, m in enumerate(messages) if _is_image_message(m)]
+    for i in image_indices[:-keep_last]:
+        messages[i] = {
+            "role": messages[i].get("role", "user"),
+            "content": "[earlier screenshot removed to bound context]",
+        }
 
 
 def _format_image_result(agent: 'Agent') -> None:
@@ -95,10 +122,43 @@ def _format_image_result(agent: 'Agent') -> None:
         if agent.io:
             agent.io.send_image(data_url)
 
+        # Keep the data URL on the trace (not sent to the LLM) so session replay
+        # can re-emit the image into chat_items. Without this, the shortened
+        # result below is the only trace record and screenshots vanish whenever
+        # the client rebuilds its UI from the server's canonical history.
+        trace_entry['image'] = data_url
         trace_entry['result'] = f"Tool '{tool_name}' returned image ({mime_type})"
         agent.logger.print(f"[dim]Formatted '{tool_name}' result as image[/dim]")
 
+    # Slide the window: keep only the last 3 screenshots visible to the LLM. Older ones
+    # are stale page state that grow context without bound over a long browser task
+    # (Anthropic computer-use trims tool_result images the same way). Runs every turn.
+    _elide_old_screenshots(messages, 3)
 
-# Plugin is an event list
-# Uses after_tools because message modification can only happen after all tools finish
-image_result_formatter = [after_tools(_format_image_result)]
+
+def _sanitize_image_urls(agent: 'Agent') -> None:
+    """Before each LLM call, replace any image_url part whose URL isn't a real
+    data:/http(s) image with a short text note, in place.
+
+    A stale placeholder otherwise reaches the provider and 400s the whole turn:
+    oo-chat strips screenshots to '[image]' for localStorage, and an emptied URL can
+    survive a session round-trip — Gemini then rejects "Unsupported file URI type".
+    Validating here (the before_llm boundary) makes the agent immune to any source.
+    """
+    for msg in agent.current_session.get('messages', []):
+        content = msg.get('content')
+        if not isinstance(content, list):
+            continue
+        for i, part in enumerate(content):
+            if isinstance(part, dict) and part.get('type') == 'image_url':
+                url = (part.get('image_url') or {}).get('url', '')
+                if not (isinstance(url, str) and url.startswith(('data:image/', 'http://', 'https://'))):
+                    content[i] = {'type': 'text', 'text': '[image unavailable]'}
+
+
+# Plugin is an event list.
+# - after_tools: turn a screenshot tool result into a model-visible image message
+#   and slide the screenshot window (message modification must happen after tools).
+# - before_llm: drop stale/invalid image_url parts right before the LLM call, so a
+#   round-tripped placeholder never 400s the provider.
+image_result_formatter = [after_tools(_format_image_result), before_llm(_sanitize_image_urls)]

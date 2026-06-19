@@ -454,3 +454,74 @@ class TestHandleAdminMessage:
         assert sent_messages[0]["type"] == "ERROR"
         assert "Unknown admin action" in sent_messages[0]["message"]
 
+
+
+@pytest.mark.asyncio
+class TestOnboardCompletesConnect:
+    async def test_input_after_onboard_runs_without_reconnect(self):
+        """The trust gate interrupts CONNECT before conn is populated. A successful
+        ONBOARD_SUBMIT must finish establishing the connection (CONNECTED sent,
+        conn authenticated) so the client's queued INPUT runs — the original bug
+        rejected it with 'authenticate first (send CONNECT)'."""
+        scope = {"path": "/ws", "type": "websocket"}
+        sent_messages = []
+        frames = [
+            {"type": "CONNECT", "session_id": "sess-1",
+             "payload": {"timestamp": 1234567890}, "from": "0xuser", "signature": "0xsig"},
+            {"type": "ONBOARD_SUBMIT", "payload": {"invite_code": "BETA", "timestamp": 1234567891},
+             "from": "0xuser", "signature": "0xsig2"},
+            {"type": "INPUT", "prompt": "hello", "input_id": "i1"},
+        ]
+        recv_count = [0]
+
+        async def receive():
+            recv_count[0] += 1
+            if recv_count[0] <= len(frames):
+                return {"type": "websocket.receive", "text": json.dumps(frames[recv_count[0] - 1])}
+            # The agent runs on a thread; let it consume the INPUT before closing.
+            import asyncio
+            for _ in range(200):
+                if ws_input.call_count:
+                    break
+                await asyncio.sleep(0.005)
+            return {"type": "websocket.disconnect"}
+
+        async def send(msg):
+            sent_messages.append(msg)
+
+        trust_agent = SimpleNamespace(
+            config={"onboard": {"invite_code": ["BETA"]}},
+            get_self_address=lambda: "0xagent123",
+            is_blocked=lambda identity: False,
+            verify_invite=lambda identity, code: code == "BETA",
+            get_level=lambda identity: "contact",
+        )
+
+        def auth(data, trust, **kw):
+            # CONNECT from a stranger is forbidden; the ONBOARD_SUBMIT signature
+            # check (trust="open") passes.
+            if trust == "open":
+                return None, "0xuser", True, None
+            return None, "0xuser", True, "forbidden: strangers"
+
+        ws_input = Mock(return_value={"result": "done", "duration_ms": 1, "session": {}})
+        storage = Mock()
+        storage.get.return_value = None
+
+        await handle_websocket(
+            scope, receive, send,
+            route_handlers={"auth": auth, "ws_input": ws_input, "trust_agent": trust_agent},
+            storage=storage,
+            registry=ActiveSessionRegistry(),
+            trust="careful",
+        )
+
+        events = _extract_ws_messages(sent_messages)
+        types = [e["type"] for e in events]
+
+        assert "ONBOARD_SUCCESS" in types
+        connected = [e for e in events if e["type"] == "CONNECTED"]
+        assert connected and connected[0]["session_id"] == "sess-1"
+        assert types.index("ONBOARD_SUCCESS") < types.index("CONNECTED")
+        assert not any("authenticate first" in str(e.get("message", "")) for e in events)
+        ws_input.assert_called_once()

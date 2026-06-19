@@ -50,6 +50,28 @@ browser = BrowserAutomation()
 browser.go_to("https://x.com")           # Session restored automatically
 ```
 
+## Portable Login State (cross-machine)
+
+The persistent profile above lives at `~/.co/browser_profile/` and **can't be moved**: its cookies are encrypted per-OS, so copying the folder to another machine (or into a Linux deploy container) won't carry the login.
+
+To reuse a login across machines, export the session as a plaintext, portable `storage_state` JSON and inject it on the other side:
+
+```python
+# On your machine (headed): log in by hand, then export
+browser = BrowserAutomation(headless=False)
+browser.go_to("https://www.linkedin.com/login")
+input("Log in, then press Enter...")
+browser.save_state("linkedin_state.json")   # cookies + origins, plaintext, portable
+
+# On the deployed agent: inject at startup, before any navigation
+browser = BrowserAutomation(seed_state="linkedin_state.json")
+# the first open_browser() applies the cookies once → starts already signed in
+```
+
+Ship `linkedin_state.json` with the deploy (it's a small JSON, not the profile dir). `seed_state` injects via `add_cookies` because `launch_persistent_context()` can't accept a `storage_state` path. Unset `seed_state` → no injection, behaviour unchanged.
+
+> The cookies authenticate, but a different egress IP (e.g. a datacenter IP on a cloud deploy) can still trigger re-verification. Pair with `BROWSER_PROXY` (below) when the target is IP-sensitive.
+
 ## API
 
 ### Navigation
@@ -79,6 +101,26 @@ browser.click("email input field")       # Uses AI to find by description
 ```
 
 Element finding uses a vision LLM — describe what you see, not a CSS selector.
+
+When you have a stable CSS selector, click it directly (faster, deterministic):
+
+```python
+browser.click_element_by_selector('button[type="submit"]')
+browser.click_element_by_selector('button', text="Sign in")   # disambiguate by visible text
+browser.click_element_by_selector('.item', index=2)           # nth match (0-based)
+```
+
+To click inside an iframe — including a **cross-origin** one like a reCAPTCHA
+"I'm not a robot" checkbox that main-page selectors can't reach — pass
+`frame_url_contains` or `frame_name`:
+
+```python
+browser.click_element_by_selector('.recaptcha-checkbox-border', frame_url_contains="recaptcha")
+```
+
+The click goes through Playwright's input layer, so the event is trusted
+(`isTrusted`) — a JS `el.click()` is not, and bot checks reject it. (`text`
+matching stays main-frame only.)
 
 ### Hover and Advanced Mouse
 
@@ -195,6 +237,14 @@ agent.input("Navigate to github.com/trending and screenshot the page")
 agent.input("Fill in the contact form on example.com with test data")
 ```
 
+One `BrowserAutomation` instance is **safe to reuse across turns and across
+concurrent hosted sessions** — keep a single shared browser, don't create or
+close+reopen one per turn. Playwright's sync API binds to the thread that
+started it, and `host()` runs each turn on an arbitrary pool thread; every
+public method is serialized onto one dedicated internal worker thread, so calls
+from any thread land on the right one and the browser (and its login state)
+persists across turns.
+
 ## Common Patterns
 
 ### Login once, reuse session
@@ -228,6 +278,17 @@ browser.go_to("https://example.com/products")
 text = browser.get_text()
 links = browser.get_links_from_page("/product/")
 ```
+
+## Proxy (BROWSER_PROXY)
+
+Set the `BROWSER_PROXY` env var to route the browser's traffic through a proxy — e.g. so a cloud-deployed agent exits from a residential IP instead of the datacenter IP it runs on (which anti-bot systems distrust):
+
+```bash
+BROWSER_PROXY=http://user:pass@host:port   # HTTP proxy with auth (e.g. a residential proxy service)
+BROWSER_PROXY=socks5://host:port           # SOCKS5 relay (no auth — Chromium ignores SOCKS auth)
+```
+
+Read at `open_browser()`; unset → no proxy (behaviour unchanged). On a deploy, put it in `.env` so it's injected as a secret, never baked into the image.
 
 ## Notes
 

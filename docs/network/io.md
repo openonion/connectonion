@@ -493,6 +493,12 @@ Agent Thread (sync)              Async forwarder / router
 
 On reconnect, `ws_router.connect:handle_connect` calls `io.rewind_to(last_msg_id)` (also under the same lock) to reset the cursor — the new forward task replays everything after that id. If `last_msg_id` is omitted or unknown, cursor rewinds to 0 (full replay; client should dedup by id).
 
+### Bounded forwarder wait (idle sessions don't pin threads)
+
+`read_msgs_from_agent` runs its blocking wait on the event loop's **default executor** (`run_in_executor(None, …)`), whose pool is small — `min(32, cpu_count + 4)` threads. So the wait is bounded to **~1 s**: `_wait_for_msgs_from_agent` does `condition.wait(timeout=1.0)`, returns whatever is buffered (often nothing), and the caller loops.
+
+Why it matters: a session whose agent is blocked in `io.receive()` (e.g. an unanswered `ASK_USER`) emits no events. Without the bound, its forwarder would hold an executor thread **forever** — and on a 2-vCPU box the pool is only `2 + 4 = 6` threads, so ~6 idle sessions exhaust it and every new connection's forwarder queues behind them (new clients can't connect / hang). The 1 s cap lets each thread cycle back to the pool, so idle sessions stop starving new ones. New agent events still wake the waiter **immediately** via `condition.notify()` — the cap only governs the idle case, never message latency.
+
 ### mark_agent_done() and close()
 
 - **`io.mark_agent_done()`** — agent done emitting messages. Sets `_finished` flag and notifies all waiters. `read_msgs_from_agent` returns once it drains remaining buffered events.

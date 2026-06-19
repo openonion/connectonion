@@ -245,7 +245,9 @@ Client → ONBOARD_SUBMIT   {payload: {invite_code: "BETA2024"}}
 Server → ONBOARD_SUCCESS  {level: "contact"}    or    ERROR
 ```
 
-`handle_onboard_submit` verifies signature with "open" trust (strangers can't pass strict verification yet), checks blocked status, then validates the invite code or payment via `trust_agent`. On success the client is promoted and can re-CONNECT.
+`handle_onboard_submit` verifies signature with "open" trust (strangers can't pass strict verification yet), checks blocked status, then validates the invite code or payment via `trust_agent`. On success the client is promoted.
+
+The original CONNECT that the trust gate interrupted is **completed server-side** — `handle_connect` stashes it as `conn["pending_connect"]`, and after a verified onboard the session loop calls `establish_connection()` with the onboard-verified identity, ending in `CONNECTED`. The client does **not** re-send CONNECT (its signature could have aged past the 5-minute window while the user typed the code or paid); its pending `INPUT` resumes once `CONNECTED` lands.
 
 ---
 

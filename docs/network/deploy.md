@@ -116,7 +116,12 @@ Variables from your `.env` file are securely passed to your agent container:
 OPENONION_API_KEY=eyJ...    # Required for co/ models
 OPENAI_API_KEY=sk-xxx       # Third-party API keys
 DATABASE_URL=postgres://...
+BROWSER_PROXY=http://user:pass@host:port  # Route the browser through a residential proxy
 ```
+
+`BROWSER_PROXY` is read by the browser tools and routes the agent's browser
+egress through a proxy — useful because deployed agents run on datacenter IPs
+that anti-bot systems distrust. See [Browser Tools › Proxy](../useful_tools/browser_tools.md#proxy-browser_proxy).
 
 ---
 
@@ -145,6 +150,14 @@ That creates `.tmp/connectonion-deploy/co-ai-agent`, deploys it, and cleans it u
 after success. Any template supported by `co create --template <name>` uses the
 same flow.
 
+`--name` sets the project name (and URL) for a template deploy, so different
+skill combinations of the same base template can run side by side:
+
+```bash
+co deploy --template co-ai --name linkedin-agent \
+  --skills ~/skills/linkedin-login --skills ~/skills/linkedin-post-submit
+```
+
 ### Skills
 
 The deployed agent loads skills from `.co/skills/` via the normal loader.
@@ -156,13 +169,14 @@ The deployed agent loads skills from `.co/skills/` via the normal loader.
   co skills copy <name>          # lands in .co/skills/<name>/
   co deploy
   ```
-- **External skills** — to bundle any skills folder that lives outside the
-  project, pass `--skills PATH`
-  (repeatable). The folder contents are copied into the container's
-  `.co/skills/` (your working tree is untouched); on a name clash, later paths
-  win:
+- **External skills** — to bundle skills that live outside the project, pass
+  `--skills PATH` (repeatable). A path that is itself a skill (contains
+  `SKILL.md`) lands at `.co/skills/<dirname>/`; a directory of skills has its
+  contents copied into `.co/skills/`. Your working tree is untouched; on a
+  name clash, later paths win:
   ```bash
   co deploy --skills /Users/changxing/project/OnCourse/platform/social-media-management-skills
+  co deploy --skills ~/skills/linkedin-login --skills ~/skills/linkedin-post-submit
   ```
 
 > Your local `~/.claude/skills` are **not** auto-deployed. `co deploy` ships the
@@ -198,6 +212,22 @@ The landing page shows:
 - Tools and skills your agent has
 - `summary` and `examples` from `host.yaml` as suggested prompts
 - Chat input for conversation
+
+### Relay Directory Profile
+
+On its first connection to the relay, a hosted agent publishes a small display
+profile so it can appear in the public agent directory. The profile is
+deliberately limited to:
+
+- **alias** — the agent's name
+- **tools** — tool names
+- **model**
+- **skills** — **project-level skills only** (the ones under the project's `.co/skills/`)
+
+Kept **private**: the system-prompt summary, and your `~/.co/skills` (user) and
+built-in skills — the operator's personal toolbox never leaks into the public
+directory. The relay persists the profile, so the periodic ANNOUNCE heartbeats
+don't re-send it.
 
 ### Connect from Code
 
