@@ -13,21 +13,23 @@ ConnectOnion - A simple agent framework with behavior tracking.
 __version__ = "1.0.1"
 
 # Auto-load .env files for the entire framework
+import sys as _sys
 from dotenv import load_dotenv
 from pathlib import Path as _Path
 
 # Load .env with fallback: cwd .env -> global ~/.co/keys.env
+# Diagnostics go to stderr so command output on stdout stays clean (scriptable).
 # Priority 1: Current directory .env (project-specific keys)
 _env_file = _Path.cwd() / ".env"
 if _env_file.exists():
     load_dotenv(_env_file)
-    print(f"[env] {_env_file.resolve()}")
+    print(f"[env] {_env_file.resolve()}", file=_sys.stderr)
 else:
     # Priority 2: Global keys.env (shared API keys fallback)
     _global_keys = _Path.home() / ".co" / "keys.env"
     if _global_keys.exists():
         load_dotenv(_global_keys)
-        print(f"[env] {_global_keys.resolve()}")
+        print(f"[env] {_global_keys.resolve()}", file=_sys.stderr)
     # No else - if neither exists, proceed without .env (API keys might be in shell env)
 
 from .core import Agent, LLM, create_tool_from_function

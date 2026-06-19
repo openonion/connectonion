@@ -21,30 +21,38 @@ from connectonion.useful_tools.browser_tools import BrowserAutomation
 PROMPT_PATH = Path(__file__).parent / "prompts" / "agent.md"
 
 
-def execute_browser_command(command: str, headless: bool = False) -> str:
-    """Execute a browser command using natural language.
-
-    Returns the agent's natural language response directly.
-    """
+def resolve_api_key() -> str:
+    """Return the OpenOnion API key from env or ~/.co/keys.env (empty string if absent)."""
     api_key = os.getenv('OPENONION_API_KEY')
-
     if not api_key:
         global_env = Path.home() / ".co" / "keys.env"
         if global_env.exists():
             load_dotenv(global_env)
             api_key = os.getenv('OPENONION_API_KEY')
+    return api_key or ""
 
+
+def build_browser_agent(browser, api_key: str) -> Agent:
+    """Build the natural-language browser Agent driving an existing BrowserAutomation."""
+    return Agent(
+        name="browser_cli",
+        model="co/gemini-3-flash-preview",
+        api_key=api_key,
+        system_prompt=PROMPT_PATH,
+        tools=[browser],
+        plugins=[image_result_formatter, ui_stream],
+        max_iterations=200,
+    )
+
+
+def execute_browser_command(command: str, headless: bool = False) -> str:
+    """Execute a browser command using natural language.
+
+    Returns the agent's natural language response directly.
+    """
+    api_key = resolve_api_key()
     if not api_key:
         return 'Browser agent requires authentication. Run: co auth'
 
     with BrowserAutomation(headless=headless) as browser:
-        agent = Agent(
-            name="browser_cli",
-            model="co/gemini-3-flash-preview",
-            api_key=api_key,
-            system_prompt=PROMPT_PATH,
-            tools=[browser],
-            plugins=[image_result_formatter, ui_stream],
-            max_iterations=200
-        )
-        return agent.input(command)
+        return build_browser_agent(browser, api_key).input(command)

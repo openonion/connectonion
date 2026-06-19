@@ -150,14 +150,14 @@ def doctor():
     handle_doctor()
 
 
-@app.command()
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
-    command: str = typer.Argument(..., help="Browser command"),
+    args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
-    """Browser automation."""
+    """Browser automation: run a browser function directly, or `do` for the NL agent."""
     from .commands.browser_commands import handle_browser
-    handle_browser(command, headless=headless)
+    raise typer.Exit(handle_browser(args or [], headless=headless))
 
 
 @app.command()
