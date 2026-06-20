@@ -25,7 +25,7 @@ Both drive the **same live browser**, so you can mix them: script the boring par
 ```bash
 co browser go_to myapp.com/login
 co browser do "log me in and open the billing page"   # agent takes over the same window
-co browser take_screenshot billing.png                # back to a direct call
+co browser take_screenshot /tmp/billing.png           # back to a direct call
 ```
 
 ## How It Works
@@ -104,7 +104,7 @@ url=$(co browser get_current_url)
 co browser get_links_from_page | grep github | wc -l
 
 # Fail-fast in a script
-co browser go_to "$DEPLOY_URL" && co browser take_screenshot deployed.png
+co browser go_to "$DEPLOY_URL" && co browser take_screenshot /tmp/deployed.png
 ```
 
 ## Headless vs GUI
