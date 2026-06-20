@@ -61,6 +61,7 @@ def _show_help():
     console.print("  [green]trust[/green]             Manage trust lists")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
+    console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
     console.print("  [green]status[/green]            Check account balance")
     console.print("  [green]doctor[/green]            Diagnose installation")
@@ -150,14 +151,15 @@ def doctor():
     handle_doctor()
 
 
-@app.command()
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
 def browser(
     headless: bool = typer.Option(False, "--headless/--no-headless", help="Run browser headless"),
-    command: str = typer.Argument(..., help="Browser command"),
+    args: List[str] = typer.Argument(None, help="Browser function + args, or: do \"<instruction>\""),
 ):
-    """Browser automation."""
+    """Drive one persistent browser. Run a function directly (co browser go_to x.com),
+    use `do` for the AI agent (co browser do "..."), or `co browser help` to list functions."""
     from .commands.browser_commands import handle_browser
-    handle_browser(command, headless=headless)
+    raise typer.Exit(handle_browser(args or [], headless=headless))
 
 
 @app.command()
