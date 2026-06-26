@@ -3,7 +3,8 @@
 LLM-Note: Tests for io
 
 What it tests:
-- Io functionality
+- Io functionality (channel coordination, replay cursor, and the bounded
+  forwarder wait that keeps idle sessions from pinning executor threads)
 
 Components under test:
 - Module: io
@@ -265,3 +266,46 @@ class TestHighLevelAPI:
 
         thread.join(timeout=1)
         assert result is False
+
+    def test_wait_for_msgs_returns_promptly_when_idle(self):
+        """_wait_for_msgs_from_agent runs on the event loop's shared default
+        executor; on an idle io (agent blocked in receive(), no new messages)
+        it must return within ~1s instead of looping forever, or each idle
+        session pins a pool thread until the pool starves every new connection."""
+        import time
+        io = WebSocketIO()
+
+        start = time.monotonic()
+        msgs, done = io._wait_for_msgs_from_agent(0)
+        elapsed = time.monotonic() - start
+
+        assert elapsed < 3.0
+        assert msgs == []
+        assert done is False
+
+    def test_idle_forwarder_does_not_starve_other_io(self):
+        """One io stuck idle must not block another io's event delivery when
+        the executor has a single thread (worst-case pool contention)."""
+        import asyncio
+        from concurrent.futures import ThreadPoolExecutor
+
+        async def read_one(io):
+            async for event in io.read_msgs_from_agent():
+                return event
+
+        async def scenario():
+            asyncio.get_running_loop().set_default_executor(ThreadPoolExecutor(max_workers=1))
+
+            idle_io = WebSocketIO()
+            busy_io = WebSocketIO()
+            busy_io.send({"type": "thinking"})
+
+            idle_task = asyncio.create_task(read_one(idle_io))
+            await asyncio.sleep(0.1)  # let the idle forwarder grab the only thread
+
+            event = await asyncio.wait_for(read_one(busy_io), timeout=5.0)
+            idle_task.cancel()
+            return event
+
+        event = asyncio.run(scenario())
+        assert event["type"] == "thinking"

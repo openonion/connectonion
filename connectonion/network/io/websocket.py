@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: agent calls io.send(event) → auto-stamps id (UUID) and ts if missing → enqueues for async forwarder | client message → enqueued for agent | read_msgs_from_agent() async-iterates outgoing for forwarding to client | send_to_agent() pushes incoming messages to agent
   State/Effects: maintains incoming + outgoing channels (async-safe) | finished flag prevents sends after close | unblocks agent's blocking receive on close
   Integration: exposes WebSocketIO() implementing IO interface | send/receive for agent-side, read_msgs_from_agent/send_to_agent for transport-side, push_runtime_input/pop_runtime_inputs for mid-execution interjection, rewind_to(last_msg_id) for replay on reconnect, mark_agent_done() to terminate
-  Performance: queue-based coordination between sync agent thread and async transport | blocking receive() is intended for agent thread
+  Performance: queue-based coordination between sync agent thread and async transport | blocking receive() is intended for agent thread | _wait_for_msgs_from_agent waits at most ~1s so idle-session forwarders don't pin executor-pool threads
   Errors: closed IO unblocks pending receive() so agent thread doesn't hang | no exceptions raised — channel coordination handled internally
 """
 
@@ -130,11 +130,15 @@ class WebSocketIO(IO):
             self._cursor = 0
 
     def _wait_for_msgs_from_agent(self, cursor, stop_event=None):
-        """Block until new agent messages available or finished. Returns (messages, done)."""
+        """Wait up to ~1s for new agent messages. Returns (messages, done).
+
+        Must return promptly even with no news: this runs on the event loop's
+        shared default executor, and a forwarder for an idle session (agent
+        blocked in receive()) would otherwise pin a pool thread forever —
+        enough idle sessions exhaust the pool and starve every new connection.
+        """
         with self._agent_condition:
-            while len(self._msgs_from_agent) <= cursor and not self._finished:
-                if stop_event and stop_event.is_set():
-                    return [], True
+            if len(self._msgs_from_agent) <= cursor and not self._finished:
                 self._agent_condition.wait(timeout=1.0)
             if stop_event and stop_event.is_set():
                 return [], True
