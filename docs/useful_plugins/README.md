@@ -13,6 +13,7 @@ Pre-built plugins that extend agent behavior via event hooks.
 | [eval](eval.md) | Task evaluation/debugging | `from connectonion.useful_plugins import eval` |
 | [system_reminder](system_reminder.md) | Inject contextual guidance | `from connectonion.useful_plugins import system_reminder` |
 | [image_result_formatter](image_result_formatter.md) | Format images for vision | `from connectonion.useful_plugins import image_result_formatter` |
+| [human_jitter](human_jitter.md) | Human-like mouse motion before clicks | `from connectonion.useful_plugins import human_jitter` |
 | [shell_approval](shell_approval.md) | Shell command approval | `from connectonion.useful_plugins import shell_approval` |
 | [ui_stream](ui_stream.md) | Stream events to WebSocket clients | `from connectonion.useful_plugins import ui_stream` |
 | [auto_compact](auto_compact.md) | Compact conversation when context fills up | `from connectonion.useful_plugins import auto_compact` |
