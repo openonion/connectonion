@@ -61,15 +61,27 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 # (e.g. wrong invite code) keeps it so a retry on the same socket can
                 # still complete the interrupted CONNECT.
                 if identity:
-                    pending_connect = conn.pop("pending_connect", None)
-                    if pending_connect:
-                        # Finish the CONNECT the trust gate interrupted: the client
-                        # is a contact now and resumes its input once CONNECTED lands.
-                        result = await establish_connection(
-                            pending_connect, identity, send_msg, conn, storage, registry
-                        )
-                        if result:
-                            active_io, forward_task = result
+                    # The onboard verified a fresh signature and promoted the identity, but
+                    # the host blacklist is an absolute deny, not a trust LEVEL, and onboarding
+                    # must not bypass it — a blacklisted client could otherwise pass the trust
+                    # gate by submitting a valid invite/payment (handle_onboard_submit checks
+                    # trust_agent.is_blocked, a different list from the host blacklist param).
+                    # Re-apply it (the signature is already verified) before finishing CONNECT.
+                    # whitelist is an allow-bypass (auth.py grants an instant allow on a match
+                    # but never denies non-members), so it is correctly absent here: a non-
+                    # whitelisted client that onboarded to "contact" should be admitted.
+                    if blacklist and identity in blacklist:
+                        await send_msg({"type": "ERROR", "message": "forbidden: blacklisted"})
+                    else:
+                        pending_connect = conn.pop("pending_connect", None)
+                        if pending_connect:
+                            # Finish the CONNECT the trust gate interrupted: the client
+                            # is a contact now and resumes its input once CONNECTED lands.
+                            result = await establish_connection(
+                                pending_connect, identity, send_msg, conn, storage, registry
+                            )
+                            if result:
+                                active_io, forward_task = result
             elif msg_type and msg_type.startswith("ADMIN_"):
                 await handle_admin_message(data, send_msg, route_handlers)
 
