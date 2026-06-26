@@ -107,10 +107,11 @@ class TestHostRelayKeyManagement:
 class TestHostRelayConnection:
     """Test relay connection handling in host()."""
 
-    def test_profile_publishes_project_skills_only(self):
-        """Published profile carries display fields only: project-level skills,
-        no user/builtin skills (location is the discovery category, not a
-        path), no prompt summary."""
+    def test_profile_publishes_project_scoped_skills_only(self):
+        """Published profile carries display fields only. Both project-tree skill
+        categories are advertised (project = .co/skills, claude-project = .claude/skills);
+        the operator's personal toolboxes (user = ~/.co/skills, claude-user = ~/.claude/skills)
+        and builtin skills stay private. location is the discovery category, not a path."""
         profile = host_module._build_agent_profile({
             "name": "test_agent",
             "tools": ["search"],
@@ -118,7 +119,9 @@ class TestHostRelayConnection:
             "summary": "private prompt summary",
             "skills": [
                 {"name": "deploy-smoke", "description": "Smoke test", "location": "project"},
+                {"name": "repo-helper", "description": "Repo skill", "location": "claude-project"},
                 {"name": "linkedin-login", "description": "Operator skill", "location": "user"},
+                {"name": "personal-notes", "description": "Personal skill", "location": "claude-user"},
                 {"name": "commit", "description": "Built-in skill", "location": "builtin"},
             ],
         })
@@ -127,7 +130,10 @@ class TestHostRelayConnection:
             "alias": "test_agent",
             "tools": ["search"],
             "model": "co/gemini-2.5-flash",
-            "skills": [{"name": "deploy-smoke", "description": "Smoke test"}],
+            "skills": [
+                {"name": "deploy-smoke", "description": "Smoke test"},
+                {"name": "repo-helper", "description": "Repo skill"},
+            ],
         }
 
     def test_host_passes_profile_to_relay_lifespan(self, tmp_path, create_mock_agent):

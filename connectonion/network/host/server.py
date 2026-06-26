@@ -120,22 +120,30 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
 
 
 def _build_agent_profile(agent_metadata: dict) -> dict:
-    """Build the publishable profile sent with the first ANNOUNCE of a connection.
+    """Build the publishable display profile sent with the first ANNOUNCE of a connection.
 
-    Only project-level skills are published (skill.location is the discovery
-    category: project/user/builtin): discovery also picks up ~/.co/skills —
-    the operator's personal toolbox, which must not leak into the public
-    directory. The prompt summary stays private for the same reason.
+    Carries display fields only — alias, tool names, model, and the names+descriptions
+    of project-scoped skills. The operator's personal skills and builtin skills are
+    filtered out. Skill bodies are never inlined here; subscribers fetch them by name
+    from the relay.
+
+    (The agent's prompt summary is broadcast separately via the top-level ANNOUNCE
+    `summary` field — it is not part of this profile and not made private by it.)
     """
     profile = {"alias": agent_metadata["name"]}
     if agent_metadata.get("tools"):
         profile["tools"] = agent_metadata["tools"]
     if agent_metadata.get("model"):
         profile["model"] = agent_metadata["model"]
+    # skill.location (useful_plugins/skills.py) is a 5-value discovery category. Publish
+    # only the two that ship inside the project tree — project (.co/skills) and
+    # claude-project (.claude/skills). user (~/.co/skills), claude-user (~/.claude/skills)
+    # are the operator's personal toolboxes and builtin is framework noise; none may leak
+    # into the public directory. Allowlist, so an unknown future category stays private.
     profile["skills"] = [
         {"name": s["name"], "description": s.get("description", "")}
         for s in agent_metadata.get("skills", [])
-        if s.get("location") == "project"
+        if s.get("location") in ("project", "claude-project")
     ]
     return profile
 
