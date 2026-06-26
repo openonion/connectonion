@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [.connect (handle_connect), .agent_io (start_agent), .ping (ping_loop), ...trust.ws_admin (handle_admin_message, handle_onboard_submit), asyncio, uuid, rich.console] | imported by [.__init__ as the only public symbol]
   Data flow: recv_msg() → match data["type"] → dispatch | PONG → registry.update_ping | SESSION_STATUS → registry lookup + reply (inline) | CONNECT → handle_connect (auth + reattach) | INPUT → if running session: push_runtime_input + RUNTIME_INPUT_ACK (inline); else: start_agent | other types with active_io → active_io.send_to_agent | finally: cancel forward + ping tasks
   State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally
-  Integration: run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True) | enable_ping=False for relay path (ANNOUNCE heartbeat handles keepalive there)
+  Integration: run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True) | enable_ping=True on both direct and relay paths: the 30s client PING is forwarded through the relay to the client, since the relay's ANNOUNCE heartbeat only keeps the agent↔relay link alive and never reaches the client
   Performance: single-reader of recv_msg | O(1) per-message dispatch | bounded local state
   Errors: recv_msg returning None → exit loop normally | other exceptions propagate out (transport-level errors, programmer bugs)
 """
@@ -57,15 +57,19 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
 
             elif msg_type == "ONBOARD_SUBMIT":
                 identity = await handle_onboard_submit(data, send_msg, route_handlers)
-                pending_connect = conn.pop("pending_connect", None)
-                if identity and pending_connect:
-                    # Finish the CONNECT the trust gate interrupted: the client
-                    # is a contact now and resumes its input once CONNECTED lands.
-                    result = await establish_connection(
-                        pending_connect, identity, send_msg, conn, storage, registry
-                    )
-                    if result:
-                        active_io, forward_task = result
+                # Pop the stashed CONNECT only on a successful onboard: a failed one
+                # (e.g. wrong invite code) keeps it so a retry on the same socket can
+                # still complete the interrupted CONNECT.
+                if identity:
+                    pending_connect = conn.pop("pending_connect", None)
+                    if pending_connect:
+                        # Finish the CONNECT the trust gate interrupted: the client
+                        # is a contact now and resumes its input once CONNECTED lands.
+                        result = await establish_connection(
+                            pending_connect, identity, send_msg, conn, storage, registry
+                        )
+                        if result:
+                            active_io, forward_task = result
             elif msg_type and msg_type.startswith("ADMIN_"):
                 await handle_admin_message(data, send_msg, route_handlers)
 
