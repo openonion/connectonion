@@ -96,6 +96,28 @@ class TestNoProgressGuard:
         check(agent)
         assert agent.current_session.get('stop_signal') is True
 
+    def test_counter_resets_at_turn_boundary(self):
+        """The streak is per-turn. After a halt, the next user turn (after_user_input)
+        clears the counter, so the turn's first identical call does not immediately
+        re-halt and unrelated turns don't accumulate into a false stop."""
+        agent = FakeAgent()
+        check, reset = no_progress_guard(max_repeats=3)
+
+        # Turn 1: three identical calls halt the loop.
+        for _ in range(3):
+            agent.current_session['messages'].append(_assistant_call('take_screenshot', '{}'))
+            check(agent)
+        assert agent.current_session.get('stop_signal') is True
+
+        # New user turn: the loop popped stop_signal; after_user_input clears the streak.
+        agent.current_session.pop('stop_signal', None)
+        reset(agent)
+
+        # Turn 2: one more identical call must NOT immediately re-halt.
+        agent.current_session['messages'].append(_assistant_call('take_screenshot', '{}'))
+        check(agent)
+        assert not agent.current_session.get('stop_signal')
+
     def test_plugin_registers_after_iteration(self):
         from connectonion import Agent
         from tests.utils.mock_helpers import MockLLM
