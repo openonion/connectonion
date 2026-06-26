@@ -295,7 +295,9 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     if skills_paths:
         console.print("  Skills:")
         for skills_path in skills_paths:
-            console.print(f"    {skills_path} -> .co/skills/")
+            # Mirror _build_tarball: a path that is itself a skill nests under its name.
+            dest = f".co/skills/{skills_path.name}/" if (skills_path / "SKILL.md").exists() else ".co/skills/"
+            console.print(f"    {skills_path} -> {dest}")
     console.print()
 
     deploy_data = {
