@@ -493,6 +493,12 @@ Agent Thread (sync)              Async forwarder / router
 
 On reconnect, `ws_router.connect:handle_connect` calls `io.rewind_to(last_msg_id)` (also under the same lock) to reset the cursor — the new forward task replays everything after that id. If `last_msg_id` is omitted or unknown, cursor rewinds to 0 (full replay; client should dedup by id).
 
+### Bounded forwarder wait
+
+`read_msgs_from_agent` runs its blocking wait on the event loop's default executor (`run_in_executor(None, ...)`), whose pool is small: `min(32, cpu_count + 4)` threads. The wait is bounded to about 1 second: `_wait_for_msgs_from_agent` calls `condition.wait(timeout=1.0)`, returns whatever is buffered, and the caller loops.
+
+This prevents idle sessions from pinning executor threads forever. A session whose agent is blocked in `io.receive()` emits no events; without the bound, enough idle forwarders can exhaust the default executor and make new connections wait behind them. New agent events still wake the waiter immediately via `condition.notify()`; the timeout only governs the idle case.
+
 ### mark_agent_done() and close()
 
 - **`io.mark_agent_done()`** — agent done emitting messages. Sets `_finished` flag and notifies all waiters. `read_msgs_from_agent` returns once it drains remaining buffered events.
@@ -573,4 +579,3 @@ if agent.io:
 
 - **[host.md](host.md)** - Host agents over HTTP/WebSocket
 - **[connect.md](connect.md)** - Connect to remote agents
-
