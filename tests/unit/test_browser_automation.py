@@ -287,3 +287,24 @@ def test_save_state_without_browser_reports_not_open():
     browser = browser_mod.BrowserAutomation(headless=True)
 
     assert browser.save_state("/tmp/whatever.json") == "Browser not open"
+
+
+def test_wait_for_manual_login_refuses_without_tty(monkeypatch):
+    """On a host (no interactive stdin) manual login must return immediately rather than
+    block input() on the single shared browser worker thread — that thread serializes
+    every session's browser ops, so blocking it would freeze them all indefinitely."""
+    class _NoTTY:
+        def isatty(self):
+            return False
+
+    monkeypatch.setattr(browser_mod.sys, "stdin", _NoTTY())
+
+    browser = browser_mod.BrowserAutomation(headless=True)
+    browser.browser = FakeContext()
+    try:
+        result = browser.wait_for_manual_login("Example")
+    finally:
+        browser._executor.shutdown(wait=False)
+
+    assert "interactive terminal" in result
+    assert "seed_state" in result

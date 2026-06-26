@@ -67,6 +67,8 @@ browser = BrowserAutomation(seed_state="linkedin_state.json")
 
 `seed_state` injects cookies with `add_cookies()` after the persistent context opens. Unset `seed_state` keeps the current behavior.
 
+> **Treat the state file as a secret.** It holds live session cookies — anyone with it can act as the logged-in user. Add it to `.gitignore`, never commit it or bake it into a Docker image, and inject it on deploy through the secret store rather than shipping it in the project tarball.
+
 ## API
 
 ### Navigation
@@ -105,16 +107,16 @@ browser.click_element_by_selector('button', text="Sign in")
 browser.click_element_by_selector('.item', index=2)
 ```
 
-To click inside an iframe, including a cross-origin one like a reCAPTCHA checkbox that main-page selectors cannot reach, pass `frame_url_contains` or `frame_name`:
+To click inside an iframe, including a cross-origin one (an embedded widget, payment form, or editor) that main-page selectors cannot reach, pass `frame_url_contains` or `frame_name`:
 
 ```python
 browser.click_element_by_selector(
-    '.recaptcha-checkbox-border',
-    frame_url_contains="recaptcha",
+    '#subscribe',
+    frame_url_contains="checkout",
 )
 ```
 
-The click goes through Playwright's input layer, so the event is trusted. Text matching remains main-frame only.
+The click is dispatched through Playwright's input layer as a real pointer event at the element's coordinates. Text matching remains main-frame only.
 
 ### Hover and Advanced Mouse
 
@@ -269,14 +271,14 @@ links = browser.get_links_from_page("/product/")
 
 ## Proxy
 
-Set `BROWSER_PROXY` to route browser traffic through a proxy, for example when a cloud-deployed agent should exit through a residential proxy instead of a datacenter IP:
+Set `BROWSER_PROXY` to route browser traffic through an HTTP or SOCKS proxy — for example to control the egress IP, test geo-specific behavior, or comply with a corporate network policy:
 
 ```bash
 BROWSER_PROXY=http://user:pass@host:port
 BROWSER_PROXY=socks5://host:port
 ```
 
-`BROWSER_PROXY` is read when `open_browser()` launches the context. Leave it unset for direct egress.
+`BROWSER_PROXY` is read when `open_browser()` launches the context. Leave it unset for direct egress. Use a proxy only against sites whose terms permit it.
 
 ## Notes
 

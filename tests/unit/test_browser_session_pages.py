@@ -174,6 +174,21 @@ class TestTabReclaim:
             browser._ensure_page(key)
         assert set(browser._pages) == {"A", "B", "C"}
 
+    def test_close_tab_bounds_url_memory(self, browser):
+        """_page_url must stay bounded: session ids are unique per panel, so an
+        unbounded restore map leaks one url per session forever on a shared host."""
+        browser._max_url_memory = 5
+        for i in range(20):
+            key = f"s{i}"
+            page = FakePage(i)
+            page.url = f"https://example.com/{i}"
+            browser._pages[key] = page
+            browser._page_used[key] = time.monotonic()
+            browser._close_tab(key)
+        assert len(browser._page_url) == 5
+        assert "s19" in browser._page_url        # most recently closed kept
+        assert "s0" not in browser._page_url     # oldest evicted
+
 
 class TestBindSessionPlugin:
     def test_handler_binds_current_session_to_browser(self):

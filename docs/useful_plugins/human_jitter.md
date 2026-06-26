@@ -1,6 +1,6 @@
 # human_jitter
 
-Make a browser agent's clicks look human: right before any `click*` tool runs, wander the mouse through a few random points on the page, so the click is preceded by organic motion instead of an instant teleport-and-click.
+Move the cursor along an organic path before a click instead of teleporting straight to the target. Some interfaces only reveal or enable a control after real pointer movement (hover menus, lazy-loaded widgets, drag affordances), so a single teleport-click can land on nothing — a short wander first makes the interaction land. Use it on sites whose terms permit automation.
 
 ## Quick Start
 
@@ -12,7 +12,7 @@ from connectonion.useful_plugins import human_jitter
 browser = BrowserAutomation()
 agent = Agent("web", tools=[browser], plugins=[human_jitter])
 
-agent.input("log into the site and click the verify checkbox")
+agent.input("open the menu and click Settings")
 # before each click*, the cursor drifts through a few points first
 ```
 
@@ -31,4 +31,4 @@ Jitter is non-deterministic and opt-in. Forcing it on every browser user would m
 ## Notes
 
 - Only affects tools whose name starts with `click` (`click`, `click_element_by_selector`, and similar browser tools).
-- Pair with `BROWSER_PROXY` when egress IP reputation is the real bottleneck.
+- Respect each site's terms of service and `robots`/automation policy when enabling it.

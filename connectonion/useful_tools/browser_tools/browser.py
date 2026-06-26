@@ -27,6 +27,7 @@ import functools
 import inspect
 import json
 import platform
+import sys
 import threading
 import time
 import urllib.parse
@@ -108,17 +109,20 @@ def _public_methods_run_on_browser_thread(cls):
 def _browser_proxy_from_env():
     """Build Playwright's proxy config from the BROWSER_PROXY env var, or None if unset.
 
-    BROWSER_PROXY routes the browser's traffic through a proxy so the egress IP is e.g.
-    residential instead of the datacenter IP the agent runs on. Formats:
-        socks5://host:port              (no auth — e.g. a SOCKS relay; Chromium ignores SOCKS auth)
-        http://user:pass@host:port      (HTTP proxy with auth — e.g. a residential proxy service)
-    Unset => None => no proxy, current behaviour unchanged.
+    BROWSER_PROXY routes the browser's traffic through an HTTP or SOCKS proxy — e.g. to
+    control the egress IP, test geo-specific behaviour, or comply with a corporate
+    network policy. Formats:
+        socks5://host:port              (no auth; Chromium ignores SOCKS auth)
+        http://user:pass@host:port      (HTTP proxy with auth)
+    Use only against sites whose terms permit it. Unset => None => no proxy, current
+    behaviour unchanged.
     """
     url = os.environ.get("BROWSER_PROXY", "").strip()
     if not url:
         return None
     p = urllib.parse.urlparse(url)
-    proxy = {"server": f"{p.scheme}://{p.hostname}:{p.port}"}
+    server = f"{p.scheme}://{p.hostname}" + (f":{p.port}" if p.port else "")
+    proxy = {"server": server}
     if p.username:
         proxy["username"] = urllib.parse.unquote(p.username)
     if p.password:
@@ -154,7 +158,9 @@ class BrowserAutomation:
                         are injected into the context once, right after it is created and before
                         any navigation, so a deployed agent starts already signed in. Cookies are
                         applied with add_cookies because launch_persistent_context() cannot accept
-                        storage_state=. Unset => no injection, current behaviour unchanged.
+                        storage_state=. The file holds live session cookies — inject it from the
+                        deploy secret store and never commit it. Unset => no injection, current
+                        behaviour unchanged.
         """
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
@@ -166,6 +172,7 @@ class BrowserAutomation:
         self._page_url: Dict[Optional[str], str] = {}      # key -> last url (restore a reclaimed tab)
         self._tab_idle_ttl = 3600.0   # reclaim a tab after 60 min idle (a panel left untouched)
         self._max_tabs = 10           # backstop cap; a few real panels never hit it
+        self._max_url_memory = 200    # bound the restore-url map; session ids are unique per panel
         self.current_url: str = ""
         self.form_data: Dict[str, Any] = {}
         self.use_chrome_profile = use_chrome_profile
@@ -294,9 +301,17 @@ class BrowserAutomation:
         if page is None:
             return None
         try:
-            self._page_url[key] = page.url
+            url = page.url
         except Exception:
-            pass
+            url = None
+        if url:
+            # Remember where the session was so it resumes there, but bound the map:
+            # session ids are unique per panel, so without a cap it grows forever on a
+            # long-lived shared host. Re-insert (LRU) then trim the oldest keys.
+            self._page_url.pop(key, None)
+            self._page_url[key] = url
+            while len(self._page_url) > self._max_url_memory:
+                self._page_url.pop(next(iter(self._page_url)))
         try:
             page.close()
         except Exception as exc:
@@ -395,11 +410,18 @@ class BrowserAutomation:
         BrowserAutomation(seed_state=path) on the deployed agent. The JSON is plaintext and
         portable across machines/OSes; a copied Chrome profile is not (its cookies are
         encrypted per-OS).
+
+        SECURITY: the file holds live session cookies — anyone with it can act as the
+        logged-in user. Treat it as a secret: never commit it (add to .gitignore), don't
+        bake it into a Docker image, and prefer injecting it via the deploy secret store.
         """
         if not self.browser:
             return "Browser not open"
         self.browser.storage_state(path=path)
-        return f"Saved login state to {path}"
+        return (
+            f"Saved login state to {path}. This file contains live session cookies — "
+            f"keep it secret, add it to .gitignore, and never commit or bake it into an image."
+        )
 
     def go_to(self, url: str) -> str:
         """Navigate to a URL."""
@@ -443,11 +465,11 @@ class BrowserAutomation:
         considered.
 
         Set frame_url_contains or frame_name to resolve the selector inside a page
-        frame, including cross-origin iframes (e.g. a reCAPTCHA checkbox) that
-        main-page selectors can't reach. The click goes through Playwright's input
-        layer either way, so the event is trusted (isTrusted) — a JS el.click()
-        is not. Frame targeting applies to the selector path; `text` matching is
-        main-frame only.
+        frame, including cross-origin iframes (e.g. an embedded widget or payment
+        form) that main-page selectors can't reach. The click is dispatched through
+        Playwright's input layer as a real pointer event at the element's
+        coordinates. Frame targeting applies to the selector path; `text` matching
+        is main-frame only.
         """
         if not self.page:
             return "Browser not open"
@@ -496,8 +518,8 @@ class BrowserAutomation:
             return f"Clicked element {index + 1}/{count} matching selector: {selector} with text: {text}"
 
         if frame_url_contains or frame_name:
-            # Resolve inside matching page frames so cross-origin iframes (e.g. a
-            # reCAPTCHA checkbox) the main-page DOM can't reach are clickable.
+            # Resolve inside matching page frames so cross-origin iframes (e.g. an
+            # embedded widget) the main-page DOM can't reach are clickable.
             candidates = []
             for frame in self.page.frames:
                 url = getattr(frame, "url", "") or ""
@@ -1531,7 +1553,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
     def wait_for_manual_login(self, site_name: str = "the website") -> str:
         """Pause automation for user to login manually.
 
-        Useful for sites with 2FA or CAPTCHA.
+        Useful for sites with 2FA or other interactive sign-in steps.
 
         Args:
             site_name: Name of the site (e.g., "Gmail")
@@ -1541,6 +1563,17 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         """
         if not self.page:
             return "Browser not open"
+
+        # Manual login needs an interactive terminal. A hosted deploy has no stdin,
+        # and every public method runs on the one shared browser worker thread —
+        # blocking on input() there would freeze every other session's browser
+        # indefinitely. Refuse fast; hosted agents sign in via save_state/seed_state.
+        if not sys.stdin or not sys.stdin.isatty():
+            return (
+                "Manual login needs an interactive terminal, which a hosted deploy "
+                "doesn't have. Capture the login locally with save_state(path) and "
+                "start the deployed browser with seed_state=<path>."
+            )
 
         print(f"\n{'='*60}")
         print(f"  MANUAL LOGIN REQUIRED")
