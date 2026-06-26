@@ -91,6 +91,27 @@ def _trace_entry_to_item_ui(entry: dict, idx: int) -> dict | None:
     return None
 
 
+def _is_replayed_screenshot(message: dict, screenshot_urls: set) -> bool:
+    """True if this user message is a formatter-inserted screenshot — its image is one
+    the image_result_formatter recorded on a trace entry (trace_entry['image']).
+
+    Those screenshots are replayed once as a standalone agent image bubble from the
+    trace, so the user-role message the plugin inserted only to feed the model must NOT
+    also be projected (it would double-render the image). A user-uploaded image is never
+    on the trace, so this returns False for it and it still renders as a user bubble.
+    """
+    content = message.get('content')
+    if not isinstance(content, list):
+        return False
+    for part in content:
+        if isinstance(part, dict) and part.get('type') == 'image_url':
+            image_url = part.get('image_url')
+            url = image_url.get('url') if isinstance(image_url, dict) else None
+            if url in screenshot_urls:
+                return True
+    return False
+
+
 def _append_trace_items(items_ui: list[dict], entry: dict, idx: int) -> None:
     """Append a trace entry's ChatItem(s): the item itself, plus a standalone
     image bubble when the entry carries an image (mirrors the live agent_image
@@ -112,6 +133,10 @@ def session_to_chat_items(session: dict) -> list[dict]:
     """
     messages = session.get('messages', [])
     trace = session.get('trace', [])
+    # Screenshots replay once, as agent image bubbles sourced from trace_entry['image'].
+    # The formatter also injects a user-role image message to feed the model; those are
+    # skipped below so they don't double-render. User uploads aren't on the trace.
+    screenshot_urls = {e['image'] for e in trace if e.get('image')}
 
     # Group trace entries by turn boundary (user_input markers).
     # turn_entries[k] = list of (idx, entry) tuples for trace entries belonging to turn k.
@@ -133,6 +158,11 @@ def session_to_chat_items(session: dict) -> list[dict]:
     for msg_idx, msg in enumerate(messages):
         role = msg.get('role', '')
         if role == 'user':
+            # Skip the formatter's injected screenshot messages: they're agent scaffolding
+            # for the model, replayed via the trace image bubble — not a user turn, so they
+            # must not project a bubble or advance the user/turn alignment.
+            if _is_replayed_screenshot(msg, screenshot_urls):
+                continue
             content = msg.get('content', '')
             if isinstance(content, str) and content.startswith(RUNTIME_INPUT_FRAME_PREFIX):
                 content = content[len(RUNTIME_INPUT_FRAME_PREFIX):]

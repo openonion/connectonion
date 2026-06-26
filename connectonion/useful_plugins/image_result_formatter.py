@@ -55,37 +55,42 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
     return False, "", ""
 
 
-# How many recent screenshots stay fully visible to the LLM. Older ones are stale
-# page state — useless to the model but they grow the context without bound over a
-# long browser task. Anthropic computer-use keeps the last few tool_result images
-# the same way (_maybe_filter_to_n_most_recent_images).
-KEEP_LAST_N_SCREENSHOTS = 3
+def _image_urls(message: dict) -> list:
+    """The image_url URLs carried in a message's content (empty if not multimodal)."""
+    content = message.get('content')
+    if not isinstance(content, list):
+        return []
+    urls = []
+    for part in content:
+        if isinstance(part, dict) and part.get('type') == 'image_url':
+            image_url = part.get('image_url')
+            urls.append(image_url.get('url') if isinstance(image_url, dict) else None)
+    return urls
 
 
 def _is_image_message(message: dict) -> bool:
-    """True if the message carries an image_url block (a screenshot we inserted)."""
-    content = message.get('content')
-    return isinstance(content, list) and any(
-        isinstance(part, dict) and part.get('type') == 'image_url'
-        for part in content
-    )
+    """True if the message carries an image_url block."""
+    return bool(_image_urls(message))
 
 
-def _elide_old_screenshots(messages: list, keep_last: int) -> None:
-    """Keep only the last `keep_last` screenshots in the LLM context; replace the
-    image_url block of older ones with a short text placeholder.
+def _elide_old_screenshots(messages: list, screenshot_urls: set, keep_last: int) -> None:
+    """Drop all but the last `keep_last` formatter-inserted screenshot messages from
+    the LLM context, so a long browser task doesn't grow the context without bound.
 
-    Only the LLM context (agent.current_session['messages']) is touched — each
-    trace_entry['image'] keeps the full data URL, so session replay still re-emits
-    every screenshot to the frontend. Idempotent: an already-elided message no
-    longer has an image_url block, so re-running skips it.
+    Only messages whose image is one the formatter recorded on the trace
+    (trace_entry['image'], passed in as `screenshot_urls`) are touched — a user-uploaded
+    image is never one of those, so user uploads stay intact in both the model context
+    and the replay. Old screenshots are removed outright rather than left as a placeholder,
+    so they don't surface as a stray bubble when the UI replays from `messages`; each
+    trace_entry['image'] keeps the full data URL, so replay still shows every screenshot.
     """
-    image_indices = [i for i, m in enumerate(messages) if _is_image_message(m)]
-    for i in image_indices[:-keep_last]:
-        messages[i] = {
-            "role": messages[i].get("role", "user"),
-            "content": "[earlier screenshot removed to bound context]",
-        }
+    indices = [
+        i for i, m in enumerate(messages)
+        if any(u in screenshot_urls for u in _image_urls(m))
+    ]
+    drop = set(indices[:-keep_last]) if keep_last else set(indices)
+    if drop:
+        messages[:] = [m for i, m in enumerate(messages) if i not in drop]
 
 
 def _format_image_result(agent: 'Agent') -> None:
@@ -137,9 +142,13 @@ def _format_image_result(agent: 'Agent') -> None:
         trace_entry['result'] = f"Tool '{tool_name}' returned image ({mime_type})"
         agent.logger.print(f"[dim]Formatted '{tool_name}' result as image[/dim]")
 
-    # Slide the window: at most KEEP_LAST_N_SCREENSHOTS screenshots stay visible to
-    # the LLM. Runs every turn so the context stays bounded over a long browser task.
-    _elide_old_screenshots(messages, KEEP_LAST_N_SCREENSHOTS)
+    # Slide the window: keep at most the last 3 formatter-inserted screenshots visible
+    # to the LLM (older ones are stale page state — useless to the model but they grow
+    # context without bound; Anthropic computer-use bounds tool_result images the same
+    # way). Scoped to images we recorded on the trace, so a user's own uploaded image is
+    # never elided. Runs every turn to keep context bounded.
+    screenshot_urls = {t['image'] for t in trace if t.get('image')}
+    _elide_old_screenshots(messages, screenshot_urls, keep_last=3)
 
 
 def _sanitize_image_urls(agent: 'Agent') -> None:
@@ -157,7 +166,8 @@ def _sanitize_image_urls(agent: 'Agent') -> None:
             continue
         for i, part in enumerate(content):
             if isinstance(part, dict) and part.get('type') == 'image_url':
-                url = (part.get('image_url') or {}).get('url', '')
+                image_url = part.get('image_url')
+                url = image_url.get('url', '') if isinstance(image_url, dict) else ''
                 if not (isinstance(url, str) and url.startswith(('data:image/', 'http://', 'https://'))):
                     content[i] = {'type': 'text', 'text': '[image unavailable]'}
 

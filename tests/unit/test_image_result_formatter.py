@@ -22,9 +22,9 @@ from connectonion.useful_plugins.image_result_formatter import (
     _is_base64_image,
     _format_image_result,
     _is_image_message,
+    _image_urls,
     _sanitize_image_urls,
     image_result_formatter,
-    KEEP_LAST_N_SCREENSHOTS,
 )
 from tests.utils.mock_helpers import MockLLM
 
@@ -365,7 +365,7 @@ class TestScreenshotSlidingWindow:
 
     def _take_screenshot(self, agent, n):
         """Simulate one turn: a screenshot tool result that gets formatted."""
-        b64 = "A" * 150
+        b64 = "A" * 149 + str(n)   # distinct same-length data URL per screenshot
         tool_id = f"call_{n}"
         agent.current_session['messages'].append({
             'role': 'tool',
@@ -387,13 +387,34 @@ class TestScreenshotSlidingWindow:
             self._take_screenshot(agent, n)
 
         image_msgs = [m for m in agent.current_session['messages'] if _is_image_message(m)]
-        assert len(image_msgs) == KEEP_LAST_N_SCREENSHOTS
+        assert len(image_msgs) == 3   # the window keeps the last 3 screenshots
 
-        placeholders = [
-            m for m in agent.current_session['messages']
-            if m.get('content') == "[earlier screenshot removed to bound context]"
-        ]
-        assert len(placeholders) == 5 - KEEP_LAST_N_SCREENSHOTS
+        # Old screenshots are removed outright, not left as a placeholder string, so they
+        # leave no stray bubble when the UI replays from messages.
+        assert not any(
+            isinstance(m.get('content'), str) and 'removed' in m['content']
+            for m in agent.current_session['messages']
+        )
+
+    def test_user_upload_is_not_elided(self):
+        """A user-uploaded image (never recorded on the trace) must survive the window —
+        the formatter elides only its own screenshots, never the user's reference image."""
+        agent = FakeAgent()
+        upload_url = "data:image/png;base64," + "U" * 200
+        agent.current_session['messages'].append({
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': 'find this product'},
+                {'type': 'image_url', 'image_url': {'url': upload_url}},
+            ],
+        })
+        for n in range(5):
+            self._take_screenshot(agent, n)
+
+        uploads = [m for m in agent.current_session['messages']
+                   if m.get('role') == 'user' and upload_url in _image_urls(m)]
+        assert len(uploads) == 1                                       # image survived
+        assert {'type': 'text', 'text': 'find this product'} in uploads[0]['content']
 
     def test_context_payload_stays_flat_not_linear(self):
         """The byte size the LLM receives must stop growing once the window fills."""
@@ -410,8 +431,8 @@ class TestScreenshotSlidingWindow:
             self._take_screenshot(agent, n)
             sizes.append(image_bytes(agent))
 
-        # Grows while filling the window, then plateaus (never linear in turn count).
-        assert sizes[-1] == sizes[KEEP_LAST_N_SCREENSHOTS - 1]
+        # Grows while filling the window (3), then plateaus (never linear in turn count).
+        assert sizes[-1] == sizes[2]
         assert sizes[-1] == sizes[-2]
 
     def test_replay_trace_keeps_every_screenshot(self):
