@@ -425,6 +425,7 @@ class TestRelaySupervisorResilience:
         # restart. The supervisor must instead log, back off, and reconnect.
         import asyncio
         from connectonion.network import relay as relay_module
+        from connectonion.network.host import server as server_module
         from connectonion.network.host.server import _create_relay_lifespan
 
         calls = {"connect": 0}
@@ -434,6 +435,7 @@ class TestRelaySupervisorResilience:
             raise OSError("simulated network blip")
 
         monkeypatch.setattr(relay_module, "connect", boom)
+        monkeypatch.setattr(server_module.announce, "get_endpoints", lambda port: [])
 
         addr_data = {"address": "0x" + "a" * 64}
         on_startup, on_shutdown = _create_relay_lifespan(
