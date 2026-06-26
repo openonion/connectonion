@@ -26,6 +26,7 @@ don't interfere between concurrent requests.
 """
 
 import asyncio
+import random
 from functools import partial
 from pathlib import Path
 from typing import Callable, Union
@@ -262,6 +263,7 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
             # relay registration goes stale and it becomes unreachable via the relay until
             # the process is restarted.
             relay_console = Console()
+            failures = 0
             while True:
                 try:
                     ws = await relay.connect(relay_url)
@@ -270,12 +272,32 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
                         ws, announce_msg,
                         addr_data=addr_data, session_handler=relay_session_runner,
                     )
+                    failures = 0  # clean disconnect — next reconnect is immediate
                 except asyncio.CancelledError:
                     raise  # shutdown — propagate so on_shutdown can await it cleanly
                 except Exception as exc:
-                    relay_console.print(
-                        f"[magenta]\\[host][/magenta] [dim]relay connection error ({exc!r}); reconnecting in 1s[/dim]"
-                    )
+                    # Survive any transient fault, but don't HIDE a persistent one. Back off
+                    # (capped at 30s) so a dead relay isn't a 1/s reconnect+log storm, and add
+                    # jitter from the 2nd attempt on so a recovering relay doesn't get a
+                    # thundering herd. The first retry stays an exact 1s for fast single-blip
+                    # recovery. Escalate the log after several consecutive failures so a
+                    # permanent problem (revoked key, decommissioned relay, a real bug) is
+                    # surfaced loudly instead of buried in a dim 1s loop forever.
+                    failures += 1
+                    delay = min(2 ** min(failures - 1, 5), 30)
+                    if failures > 1:
+                        delay += random.uniform(0, 1.0)
+                    if failures >= 5:
+                        relay_console.print(
+                            f"[red]\\[host][/red] relay still unreachable after {failures} attempts "
+                            f"({exc!r}); retrying in {delay:.0f}s"
+                        )
+                    else:
+                        relay_console.print(
+                            f"[magenta]\\[host][/magenta] [dim]relay connection error ({exc!r}); reconnecting in {delay:.0f}s[/dim]"
+                        )
+                    await asyncio.sleep(delay)
+                    continue
                 await asyncio.sleep(1)
 
         relay_task = asyncio.create_task(relay_loop())
