@@ -332,15 +332,35 @@ class BrowserAutomation:
         if not PLAYWRIGHT_AVAILABLE:
             return "Browser tools not installed. Run: pip install playwright && playwright install chromium"
 
+        # If a shared context is already running, a brand-new session has no tab in it yet.
+        # Give this session its tab BEFORE judging usability, so a new session never reads
+        # the shared context as "unusable" (its own page is None) and tears it down — that
+        # would close the tabs other sessions are actively using. If the context is really
+        # dead, _ensure_page can't make a tab and the check below falls through to relaunch.
+        if self.browser is not None:
+            try:
+                self._ensure_page(_current_session_key())
+            except Exception:
+                pass
+
         if self._browser_is_usable():
             if not force:
                 return "<system-reminder>Browser already open and usable. Continue using the current browser page.</system-reminder>"
-            self.close()
+            # force=True: caller wants a fresh start. A bound session (hosted multi-session)
+            # recycles only its OWN tab — a full teardown would kill every other session's
+            # tabs. An unbound caller (single-session CLI) tears the whole context down.
+            key = _current_session_key()
+            if key is not None:
+                self._close_tab(key)
+                self._page_url.pop(key, None)   # fresh = a blank tab, not the old url restored
+                self._ensure_page(key)
+                return "Opened a fresh tab for this session."
+            self._teardown()
             had_previous_browser_state = True
         else:
             had_previous_browser_state = bool(self.browser or self.page or self.playwright)
             if had_previous_browser_state:
-                self.close()
+                self._teardown()   # context is dead/unusable — full cleanup before relaunch
 
         self.playwright = sync_playwright().start()
 
@@ -1650,7 +1670,20 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         self.page.wait_for_timeout(500)
 
     def close(self) -> str:
-        """Close the browser and save persistent context."""
+        """Close the browser. A bound session (hosted multi-session) closes only its OWN tab;
+        an unbound caller (single-session CLI / context-manager exit) tears the whole context
+        down. Closing the shared context for one session would kill every other session's tab,
+        so per-session callers must never reach the full teardown."""
+        key = _current_session_key()
+        if key is not None:
+            err = self._close_tab(key)
+            return f"close tab failed: {err}" if err else "Closed this session's browser tab."
+        return self._teardown()
+
+    def _teardown(self) -> str:
+        """Tear the whole shared browser/context down and clear state. Underscore-prefixed so
+        it is never exposed as a per-session LLM tool; called only from close() (unbound) and
+        open_browser, both already on the browser worker thread."""
         cleanup_errors = []
         try:
             self._save_context()

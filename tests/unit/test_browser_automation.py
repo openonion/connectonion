@@ -2,7 +2,19 @@
 
 import json
 
+import pytest
+
 import connectonion.useful_tools.browser_tools.browser as browser_mod
+
+
+@pytest.fixture(autouse=True)
+def _reset_browser_session_binding():
+    """The browser session key lives in a module-level threading.local; reset it around every
+    test so one test's bound session can't leak into the next (open_browser/close now branch on
+    whether a session is bound)."""
+    browser_mod._session_binding.key = None
+    yield
+    browser_mod._session_binding.key = None
 
 
 class FakePage:
