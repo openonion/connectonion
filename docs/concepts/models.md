@@ -79,10 +79,6 @@ agent = Agent("assistant", model="o4-mini")         # Your key
 
 #### Gemini 3 (Newest - State-of-the-Art Reasoning)
 ```python
-# Latest Gemini 3.5 Flash
-agent = Agent("assistant", model="co/gemini-3.5-flash")  # Managed
-agent = Agent("assistant", model="gemini-3.5-flash")     # Your key
-
 # Most intelligent model family with state-of-the-art reasoning
 agent = Agent("assistant", model="co/gemini-3-pro-preview")  # Managed
 agent = Agent("assistant", model="gemini-3-pro-preview")     # Your key
@@ -194,10 +190,9 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | gpt-4o | 128K tokens |
 | o4-mini | 128K tokens |
 | **Google** | |
-| gemini-3.5-flash | 1M tokens |
 | gemini-3-pro-preview | 1M tokens |
 | gemini-3-flash-preview | 1M tokens |
-| gemini-2.5-pro | 2M tokens |
+| gemini-2.5-pro | 1M tokens |
 | gemini-2.5-flash | 1M tokens |
 | **Anthropic** | |
 | claude-opus-4-5 | 200K tokens |
@@ -223,7 +218,6 @@ All prices are **per 1M tokens** and match official provider pricing:
 
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
-| gemini-3.5-flash | $1.50 | $9.00 | Latest Gemini 3.5 Flash |
 | gemini-3-pro-preview | $2.00 | $12.00 | State-of-the-art reasoning |
 | gemini-3-flash-preview | $0.50 | $3.00 | Fastest Gemini 3 |
 | gemini-3-pro-image-preview | $2.00 | $0.134 | Image generation |
@@ -440,7 +434,7 @@ agent = Agent("coder", model="claude-sonnet-4-5")
 ```python
 # Fastest options from each provider
 agent = Agent("quick", model="gpt-5-nano")       # OpenAI fastest
-agent = Agent("quick", model="gemini-1.5-flash") # Google fast
+agent = Agent("quick", model="gemini-2.5-flash") # Google fast
 agent = Agent("quick", model="claude-haiku-4-5") # Anthropic fast
 ```
 
@@ -448,14 +442,14 @@ agent = Agent("quick", model="claude-haiku-4-5") # Anthropic fast
 ```python
 # Most cost-efficient options
 agent = Agent("budget", model="gpt-5-nano")       # OpenAI cheapest
-agent = Agent("budget", model="gemini-1.5-flash-8b") # Google cheapest
+agent = Agent("budget", model="gemini-2.5-flash-lite") # Google cheapest
 ```
 
 **Long Context (>200K tokens)**
 ```python
 # Models with longest context windows
-agent = Agent("reader", model="gemini-2.5-pro")  # 2M tokens
-agent = Agent("reader", model="gemini-1.5-pro")  # 2M tokens
+agent = Agent("reader", model="gemini-2.5-pro")        # 1M tokens
+agent = Agent("reader", model="gemini-3-pro-preview")  # 1M tokens
 ```
 
 **Multimodal (Images, Audio, Video)**
@@ -515,8 +509,8 @@ def select_model(task_type: str, speed_priority: bool = False) -> str:
         return {
             "code": "gpt-5-mini",
             "chat": "gpt-5-nano",
-            "analysis": "gemini-1.5-flash",
-            "creative": "claude-3-5-haiku"
+            "analysis": "gemini-2.5-flash",
+            "creative": "claude-haiku-4-5"
         }.get(task_type, "gpt-5-nano")
     else:
         # Best quality models
@@ -632,7 +626,7 @@ def create_robust_agent(name: str, model: str, max_retries: int = 3):
                 # Try alternative model
                 alternatives = {
                     "gpt-5": "gpt-5-mini",
-                    "gemini-2.5-pro": "gemini-1.5-pro",
+                    "gemini-2.5-pro": "gemini-2.5-flash",
                     "claude-sonnet-4-5": "claude-sonnet-4"
                 }
                 alt_model = alternatives.get(model)
