@@ -66,9 +66,12 @@ def create_announce_message(
         summary: agent capability description (max 1000 chars)
         endpoints: direct connection URLs (http://host:port, ws://host:port/ws)
         relay: relay fallback URL (e.g. "wss://oo.openonion.ai")
-        profile: optional publishable profile {alias, bio, version, skills: [{name, description, body}]}.
-                 When present, the signature covers it atomically so the relay
-                 can trust the metadata + inlined SKILL.md bodies.
+        profile: optional publishable display profile. Shape varies by producer —
+                 host() sends {alias, tools, model, skills: [{name, description}]} and
+                 never inlines skill bodies; `co announce` sends {alias, bio, version,
+                 skills: [{name, description, body?}]}, inlining a SKILL.md body per skill
+                 gated by `publish: true`. When present, the signature covers it atomically
+                 so the relay can trust the metadata (and any inlined bodies).
 
     Returns:
         Signed ANNOUNCE message ready to send to /ws/announce.
