@@ -269,7 +269,7 @@ async def handle_http(
             await send_json(send, {"error": "Invalid JSON"}, 400)
             return
 
-        prompt, identity, sig_valid, err = route_handlers["auth"](
+        prompt, agent_address, sig_valid, err = route_handlers["auth"](
             data, trust, blacklist=blacklist, whitelist=whitelist
         )
         if err:

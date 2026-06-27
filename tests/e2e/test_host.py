@@ -834,7 +834,7 @@ class TestSignatureVerification:
         }
 
         prompt, identity, valid, err = extract_and_authenticate(
-            data, trust="strict", agent_address="0xcorrect"
+            data, trust="strict", recipient_address="0xcorrect"
         )
 
         assert prompt is None

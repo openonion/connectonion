@@ -104,8 +104,8 @@ async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
         await send_msg({"type": "ERROR", "message": "session already has a running agent", "session_id": session_id})
         return None
 
-    identity = conn["identity"]
-    console.print(f"[green]✓ INPUT[/green] identity={identity[:16] if identity else '?'}... session={session_id[:8] if session_id else '?'}... prompt={prompt[:50]}...")
+    agent_address = conn["agent_address"]
+    console.print(f"[green]✓ INPUT[/green] agent_address={agent_address[:16] if agent_address else '?'}... session={session_id[:8] if session_id else '?'}... prompt={prompt[:50]}...")
 
     session = conn["session"] or data.get("session") or {}
     session["session_id"] = session_id

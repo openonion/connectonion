@@ -268,7 +268,7 @@ class TestExtractAndAuthenticate:
         }
 
         prompt, identity, sig_valid, error = extract_and_authenticate(
-            data, "open", agent_address="0xcorrect"
+            data, "open", recipient_address="0xcorrect"
         )
 
         assert "wrong recipient" in error

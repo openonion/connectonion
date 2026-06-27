@@ -27,7 +27,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
     direct ASGI WebSocket path and the relay-routed path, each providing its
     own send_msg/recv_msg adapters.
     """
-    conn = {"authenticated": False, "identity": None, "session_id": None, "session": None}
+    conn = {"authenticated": False, "agent_address": None, "session_id": None, "session": None}
     active_io = None
     forward_task = None
     ping_task = asyncio.create_task(ping_loop(send_msg)) if enable_ping else None
@@ -56,12 +56,12 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 await send_msg({"type": "SESSION_STATUS", "session_id": sid, "status": status})
 
             elif msg_type == "ONBOARD_SUBMIT":
-                identity = await handle_onboard_submit(data, send_msg, route_handlers)
+                agent_address = await handle_onboard_submit(data, send_msg, route_handlers)
                 # Pop the stashed CONNECT only on a successful onboard: a failed one
                 # (e.g. wrong invite code) keeps it so a retry on the same socket can
                 # still complete the interrupted CONNECT.
-                if identity:
-                    # The onboard verified a fresh signature and promoted the identity, but
+                if agent_address:
+                    # The onboard verified a fresh signature and promoted the caller, but
                     # the host blacklist is an absolute deny, not a trust LEVEL, and onboarding
                     # must not bypass it — a blacklisted client could otherwise pass the trust
                     # gate by submitting a valid invite/payment (handle_onboard_submit checks
@@ -70,7 +70,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     # whitelist is an allow-bypass (auth.py grants an instant allow on a match
                     # but never denies non-members), so it is correctly absent here: a non-
                     # whitelisted client that onboarded to "contact" should be admitted.
-                    if blacklist and identity in blacklist:
+                    if blacklist and agent_address in blacklist:
                         await send_msg({"type": "ERROR", "message": "forbidden: blacklisted"})
                     else:
                         pending_connect = conn.pop("pending_connect", None)
@@ -78,7 +78,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                             # Finish the CONNECT the trust gate interrupted: the client
                             # is a contact now and resumes its input once CONNECTED lands.
                             result = await establish_connection(
-                                pending_connect, identity, send_msg, conn, storage, registry
+                                pending_connect, agent_address, send_msg, conn, storage, registry
                             )
                             if result:
                                 active_io, forward_task = result

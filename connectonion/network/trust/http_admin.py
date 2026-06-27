@@ -67,17 +67,17 @@ async def handle_admin_routes(method, path, scope, receive, route_handlers, *, s
                 await send_json({"error": "Invalid JSON"}, 400)
                 return True
 
-        _, identity, sig_valid, err = route_handlers["auth"](data, "open")
+        _, agent_address, sig_valid, err = route_handlers["auth"](data, "open")
         if err or not sig_valid:
             await send_json({"error": err or "unauthorized: invalid signature"}, 401)
             return True
 
         if path.startswith("/superadmin/"):
-            if not trust_agent.is_super_admin(identity):
+            if not trust_agent.is_super_admin(agent_address):
                 await send_json({"error": "forbidden: super admin only"}, 403)
                 return True
         else:
-            if not trust_agent.is_admin(identity):
+            if not trust_agent.is_admin(agent_address):
                 await send_json({"error": "forbidden: admin only"}, 403)
                 return True
 
