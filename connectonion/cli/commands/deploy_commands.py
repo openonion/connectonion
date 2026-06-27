@@ -2,9 +2,9 @@
 Purpose: Deploy agent projects to ConnectOnion Cloud with local packaging and env vars
 LLM-Note:
   Dependencies: imports from [fnmatch, json, os, re, shutil, subprocess, tarfile, tempfile, time, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
-  Data flow: handle_deploy() → optionally creates a temporary template project via co create → validates .co/host.yaml → load_api_key() loads OPENONION_API_KEY → reads host.yaml for project name, entrypoint, env file path → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
+  Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → load_api_key() loads OPENONION_API_KEY → reads host.yaml for project name, entrypoint, env file path → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
   State/Effects: creates temporary tarball file in tempdir | template deploy creates/deletes a temporary project on success | reads .co/host.yaml, .env files | makes network POST request | prints progress to stdout via rich.Console | normal deploy does not modify project files
-  Integration: exposes handle_deploy() for CLI | expects .co/host.yaml (name, entrypoint, env) unless --template is used | uses Bearer token auth | returns bool success
+  Integration: exposes handle_deploy(template, skills, name) for CLI | expects .co/host.yaml (name, entrypoint, env) unless --template is used | --name only valid with --template (otherwise the name comes from host.yaml) | uses Bearer token auth | returns bool success
   Performance: packaging is local file I/O | network timeout 600s for upload, 30s for status checks | polls every 3s up to 100 times (~5 min)
   Errors: fails if not ConnectOnion project (no host.yaml) | fails if no API key | prints backend error messages
 """
@@ -163,22 +163,26 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                     continue
                 tar.add(path, arcname=str(rel), recursive=False)
         for skills_path in skills_paths:
+            # A path is either one skill (has SKILL.md) or a directory of skills.
+            arc_prefix = Path(".co") / "skills"
+            if (skills_path / "SKILL.md").exists():
+                arc_prefix = arc_prefix / skills_path.name
             _add_directory_to_tarball(
                 tar,
                 skills_path,
-                Path(".co") / "skills",
+                arc_prefix,
                 _load_deploy_ignore_patterns(skills_path),
             )
     return tarball
 
 
-def _deploy_template_project(template: str, skills: list[str]) -> bool:
+def _deploy_template_project(template: str, skills: list[str], name: str | None = None) -> bool:
     """Create a temporary template project, deploy it, and clean up on success."""
     temp_root = Path.cwd() / ".tmp" / "connectonion-deploy"
     if temp_root.exists():
         shutil.rmtree(temp_root)
     temp_root.mkdir(parents=True)
-    project_name = f"{template}-agent"
+    project_name = name or f"{template}-agent"
     project_dir = temp_root / project_name
 
     console.print(f"[cyan]Creating temporary {template} project...[/cyan]")
@@ -291,7 +295,9 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     if skills_paths:
         console.print("  Skills:")
         for skills_path in skills_paths:
-            console.print(f"    {skills_path} -> .co/skills/")
+            # Mirror _build_tarball: a path that is itself a skill nests under its name.
+            dest = f".co/skills/{skills_path.name}/" if (skills_path / "SKILL.md").exists() else ".co/skills/"
+            console.print(f"    {skills_path} -> {dest}")
     console.print()
 
     deploy_data = {
@@ -403,10 +409,13 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     return deploy_success
 
 
-def handle_deploy(template: str | None = None, skills: list[str] | None = None):
+def handle_deploy(template: str | None = None, skills: list[str] | None = None, name: str | None = None):
     """Deploy agent to ConnectOnion Cloud."""
     skills = skills or []
     if template:
         absolute_skills = [str(Path(s).expanduser().resolve()) for s in skills]
-        return _deploy_template_project(template, absolute_skills)
+        return _deploy_template_project(template, absolute_skills, name)
+    if name:
+        console.print("[red]--name only applies to template deploys; project name comes from .co/host.yaml[/red]")
+        return False
     return _deploy_current_project(skills)
