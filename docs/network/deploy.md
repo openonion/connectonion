@@ -116,7 +116,10 @@ Variables from your `.env` file are securely passed to your agent container:
 OPENONION_API_KEY=eyJ...    # Required for co/ models
 OPENAI_API_KEY=sk-xxx       # Third-party API keys
 DATABASE_URL=postgres://...
+BROWSER_PROXY=http://user:pass@host:port  # Optional browser proxy
 ```
+
+`BROWSER_PROXY` is read by browser tools and routes browser egress through a proxy. See [Browser Tools › Proxy](../useful_tools/browser_tools.md#proxy).
 
 ---
 
