@@ -60,6 +60,8 @@ from .useful_tools import (
     pick, yes_no, autocomplete, TodoList, SlashCommand,
     # Claude Code-style file tools
     read_file, edit, multi_edit, glob, grep, write,
+    browser_use_agent,
+    BrowserUseTools,
 )
 from .network import connect, RemoteAgent, Response, host, create_app, IO
 from .network import relay, announce
@@ -110,6 +112,9 @@ __all__ = [
     "glob",
     "grep",
     "write",
+    # Browser automation
+    "browser_use_agent",
+    "BrowserUseTools",
     # Networking
     "connect",
     "RemoteAgent",
