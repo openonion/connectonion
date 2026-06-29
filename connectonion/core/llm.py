@@ -1001,10 +1001,15 @@ class OpenOnionLLM(LLM):
         else:
             self.base_url = "https://oo.openonion.ai/v1"
 
-        # Use OpenAI client with OpenOnion endpoint
+        # Use OpenAI client with OpenOnion endpoint.
+        # SDK default connect timeout is 5s with 2 retries; one transient network
+        # blip killed whole agent runs with APITimeoutError, so allow 20s connects
+        # and more retries.
         self.client = openai.OpenAI(
             base_url=self.base_url,
-            api_key=self.auth_token
+            api_key=self.auth_token,
+            timeout=openai.Timeout(600.0, connect=20.0),
+            max_retries=5,
         )
 
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
