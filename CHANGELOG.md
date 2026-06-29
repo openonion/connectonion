@@ -108,6 +108,28 @@ This refactor embodies our core philosophy by:
 
 ---
 
+## [1.0.3] - 2026-06-29
+
+Connection-stability release: agent sessions now survive transient relay and
+network blips instead of aborting.
+
+### 🔧 Connection & Network Resilience
+- **Relay reconnect**: keep agents registered across transient relay failures and forward client PING so live sessions ride through brief drops
+- **Reconnect backoff**: back off and escalate relay reconnect attempts; sync ping docs; tighten onboard pop
+- **Idle forwarder**: bound the io forwarder wait so idle sessions no longer pin executor threads
+- **LLM client**: widen the OpenOnion client connect timeout to 20s with 5 retries so a single transient blip can't kill an agent run
+
+### 🐛 Bug Fixes
+- **Onboard gating**: complete the gated CONNECT only after onboard succeeds
+- **Trust gate**: re-apply blacklist after onboard so it can't bypass the trust gate
+
+### ♻️ Internal
+- **Network rename**: caller identity → `agent_address`; host recipient → `recipient_address`
+- **Tests**: isolate relay supervisor endpoint discovery
+- **Docs**: describe connection stability behavior
+
+---
+
 ## [1.0.1] - 2026-06-08
 
 Supersedes the earlier 1.0.0 upload so unpinned `pip install connectonion`
