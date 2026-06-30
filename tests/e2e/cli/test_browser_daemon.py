@@ -112,6 +112,23 @@ def test_dispatch_coerces_bool_flag(tmp_path):
     assert payload == "shot path=None full=True"
 
 
+def test_dispatch_image_payload_shows_path_not_base64(tmp_path):
+    """A CLI verb returning a base64 image shows the saved path, not the blob."""
+    class ImageBrowser(StubBrowser):
+        def __init__(self):
+            super().__init__()
+            self.last_screenshot_path = ".tmp/screenshots/step_x.png"
+
+        def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
+            return "data:image/png;base64,iVBORw0KGgoAAAANSUhEUg=="
+
+    daemon = make_daemon(str(tmp_path / "s.sock"), stub=ImageBrowser())
+    ok, payload = daemon.dispatch("take_screenshot")
+    assert ok is True
+    assert payload == "Screenshot saved to: .tmp/screenshots/step_x.png"
+    assert "base64" not in payload
+
+
 def test_dispatch_list_result(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("get_links_from_page")

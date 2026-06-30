@@ -7,7 +7,7 @@ Drive one real browser from the shell — call browser functions directly, or ha
 ```bash
 co browser go_to news.ycombinator.com    # opens a browser, navigates
 co browser get_current_url               # → https://news.ycombinator.com/
-co browser take_screenshot /tmp/shot.png # saves a PNG
+co browser take_screenshot /tmp/shot.png # saves a PNG, prints the path
 co browser close                         # done
 ```
 
@@ -91,6 +91,26 @@ co browser close                           # close browser, stop daemon
 Arguments are plain strings; flags like `--full-page` and `--index=2` map to the function's parameters.
 
 > **Use absolute paths for files.** The daemon resolves relative paths against *its own* working directory (where it was first started), not the directory you run each command from. `take_screenshot /tmp/shot.png` is predictable; a bare `shot.png` lands in the daemon's `.tmp/` folder.
+
+## Screenshots
+
+`take_screenshot` writes a PNG and prints **where it saved** — not the image data:
+
+```bash
+$ co browser take_screenshot /tmp/shot.png
+Screenshot saved to: /tmp/shot.png
+```
+
+Omit the path and it auto-names the file under the daemon's `.tmp/` folder:
+
+```bash
+$ co browser take_screenshot
+Screenshot saved to: /Users/you/project/.tmp/step_20260630_142927.png
+```
+
+Add `--full-page` to capture the entire scrollable height instead of just the viewport.
+
+> **Why a path, not the image?** The underlying `take_screenshot()` function returns a base64 data URL — that's what the AI agent "sees" when it drives the browser with `do`. A direct CLI call deliberately prints the **file path** instead, so `co browser take_screenshot` never floods your terminal with a screenful of base64. Open or pipe the saved file when you want the actual image.
 
 ## Scripting
 

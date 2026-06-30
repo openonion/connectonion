@@ -140,7 +140,13 @@ class BrowserDaemon:
             # On wrong arguments, show the expected signature so an agent can self-correct.
             hint = f"\nusage: {verb}{signature_str(method)}" if isinstance(exc, TypeError) else ""
             return False, f"{type(exc).__name__}: {exc}{hint}"
-        return True, _stringify(result)
+
+        payload = _stringify(result)
+        if payload.startswith("data:image/"):
+            # A human at the shell doesn't want a base64 blob — the image is on disk.
+            # (The NL agent path keeps the data URL for vision; it goes through _run_nl.)
+            return True, f"Screenshot saved to: {self.browser.last_screenshot_path}"
+        return True, payload
 
     def _run_nl(self, command: str) -> tuple:
         """Hand the command to the NL agent driving the same live browser."""

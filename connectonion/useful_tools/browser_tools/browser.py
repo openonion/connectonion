@@ -80,6 +80,7 @@ class BrowserAutomation:
         self._screenshots = []
         self._headless = headless
         self.screenshots_dir = str(SCREENSHOTS_DIR)
+        self.last_screenshot_path = None  # file path of the most recent screenshot
 
     def _browser_is_usable(self) -> bool:
         """Return True when the current Playwright page can still be operated."""
@@ -1182,6 +1183,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             path = f"{self.screenshots_dir}/{path}"
 
         screenshot_bytes = self.page.screenshot(path=path, full_page=full_page)
+        self.last_screenshot_path = path
 
         # Print where screenshot was saved
         print(f"\n[browser] Screenshot saved to: {path}")
