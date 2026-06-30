@@ -55,7 +55,7 @@ async def run_ws_session(
     trust,          # TrustAgent or trust level string
     blacklist=None,
     whitelist=None,
-    enable_ping=True,  # False for relay path (it has ANNOUNCE heartbeat instead)
+    enable_ping=True,  # on for direct AND relay — the 30s PING is forwarded through the relay to the client (ANNOUNCE only keeps the agent↔relay link alive)
 )
 ```
 
@@ -247,7 +247,7 @@ Server → ONBOARD_SUCCESS  {level: "contact"}    or    ERROR
 
 `handle_onboard_submit` verifies signature with "open" trust (strangers can't pass strict verification yet), checks blocked status, then validates the invite code or payment via `trust_agent`. On success the client is promoted.
 
-The original CONNECT that the trust gate interrupted is completed server-side: `handle_connect` stashes it as `conn["pending_connect"]`, and after verified onboard the session loop calls `establish_connection()` with the onboard-verified identity, ending in `CONNECTED`. The client does not re-send CONNECT, so its pending `INPUT` can resume even if the original signature has aged while the user typed an invite code or completed payment.
+The original CONNECT that the trust gate interrupted is completed server-side: `handle_connect` stashes it as `conn["pending_connect"]`, and after verified onboard the session loop calls `establish_connection()` with the onboard-verified identity, ending in `CONNECTED`. The client does not re-send CONNECT, so its pending `INPUT` can resume even if the original signature has aged while the user typed an invite code or completed payment. The stash is popped only on a **successful** onboard — a failed submit (e.g. wrong invite code) keeps it, so a retry on the same socket can still complete the interrupted CONNECT.
 
 ---
 
