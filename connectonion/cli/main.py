@@ -61,6 +61,7 @@ def _show_help():
     console.print("  [green]trust[/green]             Manage trust lists")
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
+    console.print("  [green]email[/green]             Send and read agent email")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
     console.print("  [green]status[/green]            Check account balance")
@@ -352,6 +353,68 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
     """Remove an admin."""
     from .commands.trust_commands import handle_admin_remove
     handle_admin_remove(address)
+
+
+# Email command group. `co email` (no args) shows the inbox.
+email_app = typer.Typer(help="Send and read email from the agent's address")
+app.add_typer(email_app, name="email")
+
+
+@email_app.callback(invoke_without_command=True)
+def email_callback(ctx: typer.Context):
+    """With no subcommand, show the inbox."""
+    if ctx.invoked_subcommand is None:
+        from .commands.email_commands import handle_email_inbox
+        handle_email_inbox()
+
+
+@email_app.command("send")
+def email_send(
+    to: str = typer.Argument(..., help="Recipient email address"),
+    subject: str = typer.Argument(..., help="Subject line"),
+    message: str = typer.Argument(..., help="Body (plain text or HTML)"),
+):
+    """Send an email from the agent's address."""
+    from .commands.email_commands import handle_email_send
+    handle_email_send(to, subject, message)
+
+
+@email_app.command("inbox")
+def email_inbox(
+    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+):
+    """List recent received emails."""
+    from .commands.email_commands import handle_email_inbox
+    handle_email_inbox(last=last, unread=unread)
+
+
+@email_app.command("read")
+def email_read(email_id: str = typer.Argument(..., help="Email # from the inbox list")):
+    """Show one email's body and mark it read."""
+    from .commands.email_commands import handle_email_read
+    handle_email_read(email_id)
+
+
+@email_app.command("name")
+def email_name(
+    name: str = typer.Argument(..., help="Desired name, e.g. 'aaron' → aaron@openonion.ai"),
+    buy: bool = typer.Option(False, "--buy", help="Claim it (deducts the price from your credits)"),
+):
+    """Check a custom email name's availability, or --buy to claim it."""
+    from .commands.email_commands import handle_email_name
+    handle_email_name(name, buy=buy)
+
+
+@email_app.command("upgrade")
+def email_upgrade(
+    tier: str = typer.Argument(..., help="Tier: plus or pro"),
+    domain: Optional[str] = typer.Option(None, "--domain", "-d", help="Sending domain (plus/pro)"),
+    alias: Optional[str] = typer.Option(None, "--alias", "-a", help="Mailbox alias, e.g. 'aaron'"),
+):
+    """Upgrade email tier — deducts the monthly price from your credits."""
+    from .commands.email_commands import handle_email_upgrade
+    handle_email_upgrade(tier, domain=domain, alias=alias)
 
 
 # Subscription command group. `co sub` (no args) syncs every subscription.

@@ -113,7 +113,7 @@ def send_email(to: str, subject: str, message: str) -> Dict:
             return {
                 "success": True,
                 "message_id": data.get("message_id", "msg_unknown"),
-                "from": from_email
+                "from": data.get("from", from_email)  # actual server-side sender (reflects custom name)
             }
         elif response.status_code == 429:
             return {

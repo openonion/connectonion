@@ -199,6 +199,30 @@ $ co auth
 
 ---
 
+#### `co email` - Send & Read Agent Email
+
+Every agent gets its own address (e.g. `0x7a9f3b2c@mail.openonion.ai`),
+activated by `co auth`. Manage it from the terminal.
+
+**Basic usage:**
+```bash
+co email                                          # show inbox (default)
+co email inbox --unread                           # only unread (alias: -u)
+co email read 42                                  # read message #42, mark read
+co email send bob@example.com "Hi" "Body text"    # send (HTML auto-detected)
+```
+
+**Subcommands:**
+- `co email` / `co email inbox` - list received email (`--last/-n`, `--unread/-u`)
+- `co email read <#>` - print one message's body and mark it read
+- `co email send <to> <subject> <message>` - send from your agent address
+
+The same `send_email` / `get_emails` functions also work as agent tools, so
+your agent can do everything `co email` does. See [email.md](email.md) for
+details and current limitations.
+
+---
+
 #### `co status` - Check Account and Deployments
 
 Shows your managed keys balance, usage, and deployed agents.
