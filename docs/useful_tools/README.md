@@ -9,6 +9,7 @@ Pre-built tools for common agent tasks.
 | [bash](bash.md) | Execute bash commands (Unix/Mac) | `from connectonion import bash` |
 | [Shell](shell.md) | Execute shell commands (cross-platform) | `from connectonion import Shell` |
 | [FileTools](file_tools.md) | Read/edit files with safety tracking | `from connectonion.useful_tools import FileTools` |
+| [read_file](read_file.md) | Read any file: text, images, PDF, PPTX, DOCX, audio, video | `co copy read_file` |
 | [BrowserAutomation](browser_tools.md) | Natural language browser automation | `from connectonion.useful_tools.browser_tools import BrowserAutomation` |
 | [DiffWriter](diff_writer.md) | Edit files with diffs | `from connectonion import DiffWriter` |
 | [TodoList](todo_list.md) | Track task progress | `from connectonion import TodoList` |
@@ -69,6 +70,7 @@ See [co copy](../cli/copy.md) for full details.
 - **bash** - Run bash commands, return output (Unix/Mac)
 - **Shell** - Run commands, scripts, git (cross-platform)
 - **FileTools** - Read/edit files with safety tracking (read-before-edit, stale-read detection)
+- **read_file** (copyable) - Read any file: text, images (→ vision model), PDF, PowerPoint, Word, audio/video (→ transcript)
 - **DiffWriter** - Edit files with visual diffs (legacy)
 
 ### Browser
