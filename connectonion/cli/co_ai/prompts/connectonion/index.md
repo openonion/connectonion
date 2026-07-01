@@ -109,6 +109,7 @@ Use `load_guide(path)` to load detailed documentation.
 | `cli/copy` | Copy tools and plugins to customize |
 | `cli/auth` | Managed models authentication |
 | `cli/browser` | Quick browser screenshots |
+| `cli/email` | Send/read agent email, claim a name, upgrade quota |
 
 ### Debugging
 

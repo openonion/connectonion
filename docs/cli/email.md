@@ -77,6 +77,65 @@ co email send bob@example.com "Hi" "Just checking in."
 co email send bob@example.com "Receipt" "<h1>Paid</h1><p>Thanks!</p>"
 ```
 
+## Customizing your address (paid)
+
+The two commands below spend ConnectOnion credits. Each shows you the price or
+new quota first, then applies it — nothing is charged unless you opt in.
+
+### `co email name <name>` — Claim a readable address
+
+By default your address is derived from your agent's key
+(`0x7a9f3b2c@mail.openonion.ai`). Claim a human-readable one instead:
+
+```bash
+co email name aaron          # check if aaron@openonion.ai is free + its price
+co email name aaron --buy    # claim it (one-time charge from your credits)
+```
+
+Without `--buy` it only **checks availability** and prints the one-time price
+(returned live by the backend, so it's always current). Add `--buy` to claim
+it — the price is deducted from your credit balance and the name becomes your
+sending address.
+
+```bash
+$ co email name aaron
+✓ aaron@openonion.ai is available — $5.00 one-time, from credits
+Claim it: co email name aaron --buy
+
+$ co email name aaron --buy
+✓ Claimed aaron@openonion.ai
+  Your address: aaron@openonion.ai
+```
+
+> Prices here are illustrative — the real figure is whatever the check command
+> prints. If the name is taken you'll see why (`✗ … — unavailable`).
+
+### `co email upgrade <tier>` — Raise your sending quota
+
+Free agents can send a limited number of emails per month. Upgrade to `plus`
+or `pro` for a higher monthly quota, billed from your credits:
+
+```bash
+co email upgrade plus                        # higher monthly quota
+co email upgrade pro --alias support         # pro tier + a mailbox alias
+co email upgrade pro --domain mail.acme.com  # send from your own domain
+```
+
+**Options**
+- `--domain, -d` — send from your own domain (plus/pro)
+- `--alias, -a` — mailbox alias, e.g. `support` → `support@…`
+
+```bash
+$ co email upgrade plus
+✓ Upgraded to plus
+  Address: aaron@openonion.ai
+  Quota:   5,000/month
+  Balance: $12.50
+```
+
+> The quota and balance shown come straight from the server response, so they
+> reflect your account rather than fixed doc values.
+
 ## Setup
 
 Email requires authentication once:
