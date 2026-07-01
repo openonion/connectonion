@@ -2,6 +2,15 @@
 
 All notable changes to ConnectOnion will be documented in this file.
 
+## [1.0.5] - 2026-07-01
+
+### 🐛 Bug Fixes
+- **`co email`**: `get_emails` now reads the API's `text`/`html` body fields (falling back to legacy `text_body`/`html_body`), so `co email inbox` and `co email read` show the message body instead of an empty string.
+- **`co browser`**: `take_screenshot` prints the saved file path instead of dumping the base64 image to the terminal.
+
+### 📚 Documentation
+- Documented relay connection-stability behavior in the network layer.
+
 ## [Unreleased]
 
 ### 🎉 Major Features
