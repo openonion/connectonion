@@ -26,6 +26,7 @@ TOOLS = {
     "memory": "memory.py",
     "microsoft_calendar": "microsoft_calendar.py",
     "outlook": "outlook.py",
+    "read_file": "read_file.py",
     "send_email": "send_email.py",
     "shell": "shell.py",
     "slash_command": "slash_command.py",

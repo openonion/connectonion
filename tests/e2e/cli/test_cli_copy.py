@@ -111,6 +111,16 @@ class TestCopyCommand:
         assert result1.exit_code == 0
         assert "Copied:" in result1.output
 
+    def test_copy_read_file_tool(self):
+        """Test copying the read_file multi-format tool creates tools/read_file.py."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ['copy', 'read_file'])
+
+        assert result.exit_code == 0
+        assert "Copied:" in result.output
+        assert (Path(self.test_dir) / "tools" / "read_file.py").exists()
+
     def test_copy_multiple_items(self):
         """Test copying multiple items at once."""
         from connectonion.cli.main import cli
