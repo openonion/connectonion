@@ -78,7 +78,7 @@ def get_emails(last: int = 10, unread: bool = False) -> List[Dict]:
             "id": email.get("id", ""),
             "from": email.get("from_email", email.get("from", "")),
             "subject": email.get("subject", ""),
-            "message": email.get("text_body", email.get("html_body", "")),
+            "message": email.get("text") or email.get("html") or email.get("text_body") or email.get("html_body", ""),
             "timestamp": email.get("received_at", ""),
             "read": email.get("is_read", False)
         })
