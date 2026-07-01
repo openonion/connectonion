@@ -9,6 +9,7 @@ Tests cover:
 - Session merge logic
 - ActiveSessionRegistry for reconnection
 - Session to ChatItem conversion for UI
+- Screenshot images on trace entries re-emitted into replayed chat items
 """
 
 import json
@@ -734,6 +735,73 @@ class TestSessionToChatItems:
 
         ids = [item['id'] for item in items]
         assert len(ids) == len(set(ids))  # All unique
+
+    def test_emits_image_bubble_for_screenshot(self):
+        """A tool_result carrying an image (set by image_result_formatter) replays
+        as a tool_call item plus a standalone agent image bubble, so screenshots
+        survive a rebuild from server history instead of vanishing."""
+        data_url = "data:image/png;base64,iVBORw0KGgo="
+        session = {
+            'messages': [
+                {'role': 'user', 'content': 'screenshot'},
+                {'role': 'assistant', 'content': 'done'},
+            ],
+            'trace': [
+                {'type': 'user_input', 'turn': 1},
+                {'type': 'tool_result', 'tool_id': 't1', 'name': 'take_screenshot',
+                 'status': 'success', 'result': "Tool 'take_screenshot' returned image (image/png)",
+                 'image': data_url},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+        types = [i['type'] for i in items]
+        assert types == ['user', 'tool_call', 'agent', 'agent']
+        img_item = items[2]
+        assert img_item['images'] == [data_url]
+        assert img_item['content'] == ''
+
+    def test_skips_injected_screenshot_message_but_keeps_user_upload(self):
+        """The formatter injects a user-role screenshot message to feed the model; on
+        replay that must NOT double-render (the screenshot already replays as an agent
+        image bubble from the trace). A user-uploaded image is never on the trace, so it
+        still renders as a user bubble."""
+        shot_url = "data:image/png;base64,iVBORshot="
+        upload_url = "data:image/png;base64,iVBORupload="
+        session = {
+            'messages': [
+                {'role': 'user', 'content': [
+                    {'type': 'text', 'text': 'is this my product?'},
+                    {'type': 'image_url', 'image_url': {'url': upload_url}},
+                ]},
+                {'role': 'assistant', 'content': None, 'tool_calls': [{'id': 't1'}]},
+                {'role': 'tool', 'content': 'Tool returned an image (provided below)', 'tool_call_id': 't1'},
+                {'role': 'user', 'content': [
+                    {'type': 'text', 'text': "Here is the image from 'take_screenshot':"},
+                    {'type': 'image_url', 'image_url': {'url': shot_url}},
+                ]},
+                {'role': 'assistant', 'content': 'yes it matches'},
+            ],
+            'trace': [
+                {'type': 'user_input', 'turn': 1},
+                {'type': 'tool_result', 'tool_id': 't1', 'name': 'take_screenshot',
+                 'status': 'success', 'result': "Tool 'take_screenshot' returned image (image/png)",
+                 'image': shot_url},
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        # The user upload renders as a user bubble (with its image), exactly once.
+        user_items = [i for i in items if i['type'] == 'user']
+        assert len(user_items) == 1
+        assert user_items[0]['content'][1]['image_url']['url'] == upload_url
+
+        # The screenshot renders exactly once — the trace-sourced agent image bubble —
+        # and the injected user-role screenshot message produces no second bubble.
+        image_bubbles = [i for i in items if i.get('images')]
+        assert image_bubbles == [{'id': 'img-1', 'type': 'agent', 'content': '', 'images': [shot_url]}]
+        assert all(shot_url not in str(i.get('content')) for i in user_items)
 
 
 class TestReconnectionScenarios:

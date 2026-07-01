@@ -21,6 +21,9 @@ from unittest.mock import Mock
 from connectonion.useful_plugins.image_result_formatter import (
     _is_base64_image,
     _format_image_result,
+    _is_image_message,
+    _image_urls,
+    _sanitize_image_urls,
     image_result_formatter,
 )
 from tests.utils.mock_helpers import MockLLM
@@ -295,10 +298,13 @@ class TestFormatImageResult:
         _format_image_result(agent)
 
         # Trace result should be shortened
-        trace_result = agent.current_session['trace'][0]['result']
+        trace_entry = agent.current_session['trace'][0]
+        trace_result = trace_entry['result']
         assert 'screenshot' in trace_result
         assert 'image/png' in trace_result
         assert len(trace_result) < 100  # Much shorter than original
+        # Full data URL is retained out-of-band so session replay can re-emit it.
+        assert trace_entry['image'] == 'data:image/png;base64,' + 'A' * 1000
 
     def test_sends_image_to_io_when_available(self):
         """Image tool results are model-visible and sent to frontend IO."""
@@ -352,6 +358,134 @@ class TestFormatImageResult:
 
         # Should not raise error even without io
         _format_image_result(agent)
+
+
+class TestScreenshotSlidingWindow:
+    """The LLM context keeps only the last N screenshots; older ones are elided."""
+
+    def _take_screenshot(self, agent, n):
+        """Simulate one turn: a screenshot tool result that gets formatted."""
+        b64 = "A" * 149 + str(n)   # distinct same-length data URL per screenshot
+        tool_id = f"call_{n}"
+        agent.current_session['messages'].append({
+            'role': 'tool',
+            'content': f"data:image/png;base64,{b64}",
+            'tool_call_id': tool_id,
+        })
+        agent.current_session['trace'].append({
+            'type': 'tool_result',
+            'name': 'take_screenshot',
+            'status': 'success',
+            'result': f"data:image/png;base64,{b64}",
+            'tool_id': tool_id,
+        })
+        _format_image_result(agent)
+
+    def test_keeps_only_last_n_screenshots(self):
+        agent = FakeAgent()
+        for n in range(5):
+            self._take_screenshot(agent, n)
+
+        image_msgs = [m for m in agent.current_session['messages'] if _is_image_message(m)]
+        assert len(image_msgs) == 3   # the window keeps the last 3 screenshots
+
+        # Old screenshots are removed outright, not left as a placeholder string, so they
+        # leave no stray bubble when the UI replays from messages.
+        assert not any(
+            isinstance(m.get('content'), str) and 'removed' in m['content']
+            for m in agent.current_session['messages']
+        )
+
+    def test_user_upload_is_not_elided(self):
+        """A user-uploaded image (never recorded on the trace) must survive the window —
+        the formatter elides only its own screenshots, never the user's reference image."""
+        agent = FakeAgent()
+        upload_url = "data:image/png;base64," + "U" * 200
+        agent.current_session['messages'].append({
+            'role': 'user',
+            'content': [
+                {'type': 'text', 'text': 'find this product'},
+                {'type': 'image_url', 'image_url': {'url': upload_url}},
+            ],
+        })
+        for n in range(5):
+            self._take_screenshot(agent, n)
+
+        uploads = [m for m in agent.current_session['messages']
+                   if m.get('role') == 'user' and upload_url in _image_urls(m)]
+        assert len(uploads) == 1                                       # image survived
+        assert {'type': 'text', 'text': 'find this product'} in uploads[0]['content']
+
+    def test_context_payload_stays_flat_not_linear(self):
+        """The byte size the LLM receives must stop growing once the window fills."""
+        def image_bytes(agent):
+            return sum(
+                len(part['image_url']['url'])
+                for m in agent.current_session['messages'] if _is_image_message(m)
+                for part in m['content'] if part.get('type') == 'image_url'
+            )
+
+        agent = FakeAgent()
+        sizes = []
+        for n in range(6):
+            self._take_screenshot(agent, n)
+            sizes.append(image_bytes(agent))
+
+        # Grows while filling the window (3), then plateaus (never linear in turn count).
+        assert sizes[-1] == sizes[2]
+        assert sizes[-1] == sizes[-2]
+
+    def test_replay_trace_keeps_every_screenshot(self):
+        """Eliding the LLM context must not touch the trace the frontend replays."""
+        agent = FakeAgent()
+        for n in range(5):
+            self._take_screenshot(agent, n)
+
+        # Every screenshot is still recoverable out-of-band for session replay.
+        assert all('image' in t for t in agent.current_session['trace'])
+
+
+class TestSanitizeImageUrls:
+    """before_llm sanitizer: stale/invalid image_url parts must not reach the LLM."""
+
+    def _img_msg(self, url):
+        return {"role": "user", "content": [
+            {"type": "text", "text": "x"},
+            {"type": "image_url", "image_url": {"url": url}},
+        ]}
+
+    def test_placeholder_url_becomes_text(self):
+        agent = FakeAgent()
+        agent.current_session['messages'] = [self._img_msg("[image]")]
+        _sanitize_image_urls(agent)
+        part = agent.current_session['messages'][0]['content'][1]
+        assert part == {"type": "text", "text": "[image unavailable]"}
+
+    def test_empty_url_becomes_text(self):
+        agent = FakeAgent()
+        agent.current_session['messages'] = [self._img_msg("")]
+        _sanitize_image_urls(agent)
+        assert agent.current_session['messages'][0]['content'][1]['type'] == 'text'
+
+    def test_valid_data_url_kept(self):
+        agent = FakeAgent()
+        url = "data:image/png;base64,iVBORw0KGgo"
+        agent.current_session['messages'] = [self._img_msg(url)]
+        _sanitize_image_urls(agent)
+        part = agent.current_session['messages'][0]['content'][1]
+        assert part['type'] == 'image_url' and part['image_url']['url'] == url
+
+    def test_https_url_kept(self):
+        agent = FakeAgent()
+        agent.current_session['messages'] = [self._img_msg("https://x/y.png")]
+        _sanitize_image_urls(agent)
+        assert agent.current_session['messages'][0]['content'][1]['type'] == 'image_url'
+
+    def test_string_content_untouched(self):
+        agent = FakeAgent()
+        agent.current_session['messages'] = [{"role": "user", "content": "hello"}]
+        _sanitize_image_urls(agent)
+        assert agent.current_session['messages'][0]['content'] == "hello"
 
 
 class TestImageResultFormatterPlugin:
