@@ -112,29 +112,27 @@ $ co email name aaron --buy
 
 ### `co email upgrade <tier>` — Raise your sending quota
 
-Free agents can send a limited number of emails per month. Upgrade to `plus`
-or `pro` for a higher monthly quota, billed from your credits:
+The paid tiers (`plus`, `pro`) send from **your own domain** and lift the
+monthly quota, billed from your credits. A sending domain is **required**:
 
 ```bash
-co email upgrade plus                        # higher monthly quota
-co email upgrade pro --alias support         # pro tier + a mailbox alias
-co email upgrade pro --domain mail.acme.com  # send from your own domain
+co email upgrade plus --domain mail.acme.com                  # plus, on your domain
+co email upgrade pro  --domain mail.acme.com --alias support  # pro + a mailbox alias
 ```
 
 **Options**
-- `--domain, -d` — send from your own domain (plus/pro)
-- `--alias, -a` — mailbox alias, e.g. `support` → `support@…`
+- `--domain, -d` — sending domain (**required** for plus/pro)
+- `--alias, -a` — mailbox alias, e.g. `support` → `support@mail.acme.com`
+
+Leave out the domain and the upgrade is rejected before anything is charged:
 
 ```bash
 $ co email upgrade plus
-✓ Upgraded to plus
-  Address: aaron@openonion.ai
-  Quota:   5,000/month
-  Balance: $12.50
+✗ Domain required for plus tier
 ```
 
-> The quota and balance shown come straight from the server response, so they
-> reflect your account rather than fixed doc values.
+On success the server returns your new address, monthly quota, and remaining
+balance — values that reflect your account, not fixed doc numbers.
 
 ## Setup
 
