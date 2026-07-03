@@ -25,6 +25,18 @@ Components under test:
 import pytest
 from unittest.mock import Mock
 
+UPLOADED_URL = "https://oo.openonion.ai/img/test"
+
+
+@pytest.fixture(autouse=True)
+def fake_upload(monkeypatch):
+    """The formatter uploads every image to oo-api; stub the network call."""
+    monkeypatch.setenv("OPENONION_API_KEY", "test-token")
+    resp = Mock()
+    resp.json.return_value = {"url": UPLOADED_URL}
+    monkeypatch.setattr('requests.post', Mock(return_value=resp))
+
+
 from connectonion import Agent
 from connectonion.core.llm import LLMResponse, ToolCall
 from connectonion.core.usage import TokenUsage
@@ -105,7 +117,7 @@ class TestImageFormatterPluginE2E:
         assert response is not None
         assert "screenshot" in response.lower() or "see" in response.lower()
 
-        mock_io.send_image.assert_called_once_with(take_screenshot("https://example.com"))
+        mock_io.send_image.assert_called_once_with(UPLOADED_URL)
 
         # Verify messages were properly formatted
         messages = agent.current_session['messages']
@@ -137,8 +149,7 @@ class TestImageFormatterPluginE2E:
 
         assert 'image' in text_part['text'].lower()
         assert 'take_screenshot' in text_part['text'].lower()
-        assert 'data:image/png;base64,' in image_part['image_url']['url']
-        assert 'iVBORw0KGgo' in image_part['image_url']['url']
+        assert image_part['image_url']['url'] == UPLOADED_URL
 
     def test_image_workflow_without_io(self):
         """
@@ -199,7 +210,7 @@ class TestImageFormatterPluginE2E:
         # Verify image is in the message
         content = user_image_msg['content']
         image_part = next(item for item in content if item['type'] == 'image_url')
-        assert 'data:image/png;base64,' in image_part['image_url']['url']
+        assert image_part['image_url']['url'] == UPLOADED_URL
 
     def test_multiple_images_workflow(self):
         """

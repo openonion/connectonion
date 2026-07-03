@@ -3,21 +3,26 @@ LLM-Note: Image result formatter plugin.
 
 Purpose: Remove raw base64 image payloads from the tool message, add a
 multimodal image message so the LLM can see the image, and send image results to
-frontend IO when available.
+frontend IO when available. Image bytes are uploaded to oo-api (content-addressed
+GCS) and referenced by URL, so screenshots never bloat the replayed message
+history. Requires OPENONION_API_KEY (set up by `co init`).
 
 Data flow: after_tools event -> scan successful tool_result trace entries ->
-detect image data URL or raw base64 -> replace the matching tool message with a
-short placeholder -> insert a user message containing image_url -> shorten the
-trace result.
+detect image data URL or raw base64 -> upload to oo-api -> replace the matching
+tool message with a short placeholder -> insert a user message containing
+image_url -> shorten the trace result.
 
 State/Effects: mutates agent.current_session["messages"] and trace entries;
-optionally calls agent.io.send_image(data_url). Non-image tool results are ignored.
+optionally calls agent.io.send_image(image_url). Non-image tool results are ignored.
 
 Test coverage: tests/unit/test_image_result_formatter.py and
 tests/e2e/test_image_formatter_plugin.py.
 """
 
+import os
 import re
+import base64
+import requests
 from typing import TYPE_CHECKING
 from ..core.events import after_tools
 
@@ -71,7 +76,7 @@ def _format_image_result(agent: 'Agent') -> None:
         if not is_image:
             continue
 
-        data_url = f"data:{mime_type};base64,{base64_data}"
+        image_url = _upload_to_oo_api(base64_data, mime_type)
         tool_message_index = next(
             i for i, msg in enumerate(messages)
             if msg.get('role') == 'tool' and msg.get('tool_call_id') == tool_call_id
@@ -87,16 +92,38 @@ def _format_image_result(agent: 'Agent') -> None:
                 },
                 {
                     "type": "image_url",
-                    "image_url": {"url": data_url}
+                    "image_url": {"url": image_url}
                 }
             ]
         })
 
         if agent.io:
-            agent.io.send_image(data_url)
+            agent.io.send_image(image_url)
 
         trace_entry['result'] = f"Tool '{tool_name}' returned image ({mime_type})"
         agent.logger.print(f"[dim]Formatted '{tool_name}' result as image[/dim]")
+
+
+def _upload_to_oo_api(base64_data: str, mime_type: str) -> str:
+    """Upload image bytes to oo-api and return the stable /img URL.
+
+    oo-api stores the image in content-addressed GCS and materializes it per
+    provider at call time (e.g. inlines it for Gemini, which can't fetch URLs).
+    Keeping only a ~70-byte URL in the message history stops screenshots from
+    bloating the replayed context.
+
+    Fails loudly on upload error: silently reverting to base64 would hide a
+    broken image pipeline while re-inflating the context.
+    """
+    base = os.getenv("OPENONION_API_URL", "https://oo.openonion.ai")
+    resp = requests.post(
+        f"{base}/api/v1/images",
+        headers={"Authorization": f"Bearer {os.environ['OPENONION_API_KEY']}"},
+        files={"file": ("screenshot", base64.b64decode(base64_data), mime_type)},
+        timeout=30,
+    )
+    resp.raise_for_status()
+    return resp.json()["url"]
 
 
 # Plugin is an event list

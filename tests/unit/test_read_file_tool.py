@@ -111,11 +111,18 @@ class TestImageReachesVisionModel:
     browser screenshots. This locks that end-to-end contract.
     """
 
-    def test_image_output_becomes_image_url_message(self, tmp_path):
+    def test_image_output_becomes_image_url_message(self, tmp_path, monkeypatch):
         f = tmp_path / "shot.png"
         f.write_bytes(b"\x89PNG\r\n\x1a\nfake-image-bytes")
         data_url = read_file(str(f))
         assert data_url.startswith("data:image/png;base64,")
+
+        # The formatter uploads image bytes to oo-api; stub the network call.
+        monkeypatch.setenv("OPENONION_API_KEY", "test-token")
+        uploaded_url = "https://oo.openonion.ai/img/test"
+        resp = Mock()
+        resp.json.return_value = {"url": uploaded_url}
+        monkeypatch.setattr("requests.post", Mock(return_value=resp))
 
         # Simulate the tool result sitting in a session, then run the plugin.
         agent = Mock()
@@ -137,8 +144,8 @@ class TestImageReachesVisionModel:
         image_msg = messages[1]
         assert image_msg["role"] == "user"
         image_part = next(p for p in image_msg["content"] if p["type"] == "image_url")
-        # The whole image reaches the model — not a truncated/altered blob.
-        assert image_part["image_url"]["url"] == data_url
+        # The image reaches the model via the uploaded oo-api URL.
+        assert image_part["image_url"]["url"] == uploaded_url
 
 
 class TestPdfPptx:
