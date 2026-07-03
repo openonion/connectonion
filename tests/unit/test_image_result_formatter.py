@@ -26,6 +26,18 @@ from connectonion.useful_plugins.image_result_formatter import (
 from tests.utils.mock_helpers import MockLLM
 
 
+UPLOADED_URL = "https://oo.openonion.ai/img/test"
+
+
+@pytest.fixture(autouse=True)
+def fake_upload(monkeypatch):
+    """The formatter uploads every image to oo-api; stub the network call."""
+    monkeypatch.setenv("OPENONION_API_KEY", "test-token")
+    resp = Mock()
+    resp.json.return_value = {"url": UPLOADED_URL}
+    monkeypatch.setattr('requests.post', Mock(return_value=resp))
+
+
 class FakeAgent:
     """Fake agent for testing plugins."""
 
@@ -36,7 +48,6 @@ class FakeAgent:
         }
         self.logger = Mock()
         self.io = Mock() if with_io else None
-        self.llm = MockLLM()  # not OpenOnionLLM -> keeps the inline data URL path
 
 
 class TestIsBase64Image:
@@ -122,7 +133,7 @@ class TestFormatImageResult:
     def test_formats_image_result_correctly(self):
         """Test that image results are formatted as multimodal content."""
         agent = FakeAgent()
-        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
+        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         agent.current_session['trace'] = [
             {
                 'type': 'tool_result',
@@ -155,12 +166,12 @@ class TestFormatImageResult:
         content = image_msg['content']
         assert content[0]['type'] == 'text'
         assert content[1]['type'] == 'image_url'
-        assert 'data:image/png;base64' in content[1]['image_url']['url']
+        assert content[1]['image_url']['url'] == UPLOADED_URL
 
     def test_drops_raw_base64_from_text_context(self):
         """Raw base64 image results should not be copied into text context."""
         agent = FakeAgent()
-        base64_data = "A" * 150
+        base64_data = "A" * 152  # valid base64: length divisible by 4
         agent.current_session['trace'] = [
             {
                 'type': 'tool_result',
@@ -188,7 +199,7 @@ class TestFormatImageResult:
         assert base64_data not in image_text
         assert tool_msg == "Tool returned an image (provided below)"
         assert image_text == "Here is the image from 'take_screenshot':"
-        assert image_msg['content'][1]['image_url']['url'].endswith(base64_data)
+        assert image_msg['content'][1]['image_url']['url'] == UPLOADED_URL
 
     def test_prints_formatting_message(self):
         """Test that formatting message is printed."""
@@ -198,14 +209,14 @@ class TestFormatImageResult:
                 'type': 'tool_result',
                 'name': 'capture',
                 'status': 'success',
-                'result': 'data:image/png;base64,iVBORw0KGgo',
+                'result': 'data:image/png;base64,iVBORw0KGgo=',
                 'tool_id': 'call_456'
             }
         ]
         agent.current_session['messages'] = [
             {
                 'role': 'tool',
-                'content': 'data:image/png;base64,iVBORw0KGgo',
+                'content': 'data:image/png;base64,iVBORw0KGgo=',
                 'tool_call_id': 'call_456'
             }
         ]
@@ -304,7 +315,7 @@ class TestFormatImageResult:
     def test_sends_image_to_io_when_available(self):
         """Image tool results are model-visible and sent to frontend IO."""
         agent = FakeAgent(with_io=True)
-        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
+        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         data_url = f"data:image/png;base64,{base64_data}"
         agent.current_session['trace'] = [
             {
@@ -325,15 +336,15 @@ class TestFormatImageResult:
 
         _format_image_result(agent)
 
-        agent.io.send_image.assert_called_once_with(data_url)
+        agent.io.send_image.assert_called_once_with(UPLOADED_URL)
         image_msg = agent.current_session['messages'][1]
         image_part = next(item for item in image_msg['content'] if item['type'] == 'image_url')
-        assert image_part['image_url']['url'] == data_url
+        assert image_part['image_url']['url'] == UPLOADED_URL
 
     def test_skips_sending_to_io_when_not_available(self):
         """Test that no error occurs when io is None."""
         agent = FakeAgent(with_io=False)
-        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAE"
+        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         agent.current_session['trace'] = [
             {
                 'type': 'tool_result',
@@ -384,18 +395,11 @@ class TestImageResultFormatterPlugin:
         assert 'after_tools' in agent.events
 
 
-class OpenOnionLLM:
-    """Name matters: the plugin routes managed agents by class name."""
-    base_url = "https://oo.openonion.ai/v1"
-    auth_token = "test-token"
-
-
-class TestManagedUpload:
-    """Managed (co/) agents upload image bytes to oo-api and keep only the URL."""
+class TestUploadToOoApi:
+    """Every image is uploaded to oo-api and referenced by URL."""
 
     def test_uploads_and_uses_returned_url(self, monkeypatch):
         agent = FakeAgent(with_io=True)
-        agent.llm = OpenOnionLLM()
         base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
         data_url = f"data:image/png;base64,{base64_data}"
         agent.current_session['trace'] = [
@@ -417,10 +421,10 @@ class TestManagedUpload:
             captured['url'] = url
             captured['auth'] = headers['Authorization']
             resp = Mock()
-            resp.json.return_value = {"url": "https://oo.openonion.ai/img/abc123"}
+            resp.json.return_value = {"url": UPLOADED_URL}
             return resp
 
-        monkeypatch.setattr('requests.post', fake_post)  # plugin uses the shared requests module
+        monkeypatch.setattr('requests.post', fake_post)
 
         _format_image_result(agent)
 
@@ -428,6 +432,6 @@ class TestManagedUpload:
         assert captured['auth'] == "Bearer test-token"
         image_msg = agent.current_session['messages'][1]
         image_part = next(p for p in image_msg['content'] if p['type'] == 'image_url')
-        assert image_part['image_url']['url'] == "https://oo.openonion.ai/img/abc123"
-        agent.io.send_image.assert_called_once_with("https://oo.openonion.ai/img/abc123")
+        assert image_part['image_url']['url'] == UPLOADED_URL
+        agent.io.send_image.assert_called_once_with(UPLOADED_URL)
         assert base64_data not in str(agent.current_session['messages'])
