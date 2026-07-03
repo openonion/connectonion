@@ -20,9 +20,10 @@ agent.input("Take a screenshot and describe what you see")
 When a tool returns base64 encoded image data:
 
 1. Detects base64 image in tool result
-2. Converts to OpenAI vision format for LLM consumption
-3. Sends image to frontend via WebSocket (if hosted with `agent.io`)
-4. Allows LLM to see image visually (not as text)
+2. Managed (`co/`) agents: uploads the bytes to oo-api and keeps only a short `/img` URL in the message history, so screenshots never bloat the replayed context. Other agents keep the inline data URL
+3. Converts to OpenAI vision format for LLM consumption
+4. Sends the image URL to frontend via WebSocket (if hosted with `agent.io`)
+5. Allows LLM to see image visually (not as text)
 
 ## Supported Formats
 
@@ -77,7 +78,7 @@ def create_agent():
 host(create_agent, port=8000, trust="open")
 ```
 
-The plugin detects `agent.io` and sends images via WebSocket for real-time display.
+The plugin detects `agent.io` and sends the image via WebSocket for real-time display — a hosted `/img` URL for managed (`co/`) agents, a data URL otherwise. Frontends should handle both forms.
 
 ### Manual (Direct Send)
 

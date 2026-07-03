@@ -75,11 +75,13 @@ def _format_image_result(agent: 'Agent') -> None:
         if not is_image:
             continue
 
-        # Keep the raw bytes out of the message history (which is replayed to the LLM
-        # every turn). Managed (co/) agents upload to oo-api -> content-addressed GCS
-        # and reference the image by URL; oo-api materializes it per provider at call
-        # time. Non-managed agents have no oo-api, so keep the inline data URL.
-        image_url = _upload_image(agent, base64_data, mime_type)
+        # Managed (co/) agents offload the bytes to oo-api and keep only a short URL
+        # in the replayed history; other LLMs have no oo-api, so keep the data URL.
+        # OpenOnionLLM is checked by name to avoid importing the llm module here.
+        if type(agent.llm).__name__ == "OpenOnionLLM":
+            image_url = _upload_to_oo_api(agent.llm, base64_data, mime_type)
+        else:
+            image_url = f"data:{mime_type};base64,{base64_data}"
         tool_message_index = next(
             i for i, msg in enumerate(messages)
             if msg.get('role') == 'tool' and msg.get('tool_call_id') == tool_call_id
@@ -107,23 +109,16 @@ def _format_image_result(agent: 'Agent') -> None:
         agent.logger.print(f"[dim]Formatted '{tool_name}' result as image[/dim]")
 
 
-def _upload_image(agent: 'Agent', base64_data: str, mime_type: str) -> str:
-    """Upload the image to oo-api (managed agents) and return its stable URL.
+def _upload_to_oo_api(llm, base64_data: str, mime_type: str) -> str:
+    """Upload image bytes to oo-api and return the stable /img URL.
 
-    Only managed (co/) agents route through oo-api, which owns the /img endpoint and
-    materializes the image per provider. For any other LLM there is no oo-api to
-    offload to, so keep the inline data URL (previous behavior).
+    oo-api stores the image in content-addressed GCS and materializes it per
+    provider at call time (e.g. inlines it for Gemini, which can't fetch URLs).
 
     Fails loudly on upload error: a managed agent already depends on oo-api for its
     LLM calls, and silently reverting to base64 would hide a broken image pipeline
     while re-inflating the context.
     """
-    llm = getattr(agent, "llm", None)
-    # OpenOnionLLM == managed keys == requests go through oo-api (checked by name to
-    # avoid importing the llm module into this plugin).
-    if type(llm).__name__ != "OpenOnionLLM":
-        return f"data:{mime_type};base64,{base64_data}"
-
     base = llm.base_url.rsplit("/v1", 1)[0]  # "https://oo.openonion.ai/v1" -> base
     resp = requests.post(
         f"{base}/api/v1/images",

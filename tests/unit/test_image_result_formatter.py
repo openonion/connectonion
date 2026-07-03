@@ -36,6 +36,7 @@ class FakeAgent:
         }
         self.logger = Mock()
         self.io = Mock() if with_io else None
+        self.llm = MockLLM()  # not OpenOnionLLM -> keeps the inline data URL path
 
 
 class TestIsBase64Image:
@@ -381,3 +382,52 @@ class TestImageResultFormatterPlugin:
         )
 
         assert 'after_tools' in agent.events
+
+
+class OpenOnionLLM:
+    """Name matters: the plugin routes managed agents by class name."""
+    base_url = "https://oo.openonion.ai/v1"
+    auth_token = "test-token"
+
+
+class TestManagedUpload:
+    """Managed (co/) agents upload image bytes to oo-api and keep only the URL."""
+
+    def test_uploads_and_uses_returned_url(self, monkeypatch):
+        agent = FakeAgent(with_io=True)
+        agent.llm = OpenOnionLLM()
+        base64_data = "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg=="
+        data_url = f"data:image/png;base64,{base64_data}"
+        agent.current_session['trace'] = [
+            {
+                'type': 'tool_result',
+                'name': 'screenshot',
+                'status': 'success',
+                'result': data_url,
+                'tool_id': 'call_789'
+            }
+        ]
+        agent.current_session['messages'] = [
+            {'role': 'tool', 'content': data_url, 'tool_call_id': 'call_789'}
+        ]
+
+        captured = {}
+
+        def fake_post(url, headers=None, files=None, timeout=None):
+            captured['url'] = url
+            captured['auth'] = headers['Authorization']
+            resp = Mock()
+            resp.json.return_value = {"url": "https://oo.openonion.ai/img/abc123"}
+            return resp
+
+        monkeypatch.setattr('requests.post', fake_post)  # plugin uses the shared requests module
+
+        _format_image_result(agent)
+
+        assert captured['url'] == "https://oo.openonion.ai/api/v1/images"
+        assert captured['auth'] == "Bearer test-token"
+        image_msg = agent.current_session['messages'][1]
+        image_part = next(p for p in image_msg['content'] if p['type'] == 'image_url')
+        assert image_part['image_url']['url'] == "https://oo.openonion.ai/img/abc123"
+        agent.io.send_image.assert_called_once_with("https://oo.openonion.ai/img/abc123")
+        assert base64_data not in str(agent.current_session['messages'])
