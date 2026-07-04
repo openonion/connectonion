@@ -13,6 +13,7 @@ Components under test:
 from pathlib import Path
 
 import connectonion.core.events as events
+import connectonion
 import importlib
 
 host_server = importlib.import_module("connectonion.network.host.server")
@@ -31,6 +32,9 @@ def test_event_decorators_tag_function():
 
     events.after_user_input(fn)
     assert getattr(fn, "_event_type", None) == "after_user_input"
+    events.before_user_input(fn)
+    assert getattr(fn, "_event_type", None) == "before_user_input"
+    assert connectonion.before_user_input is events.before_user_input
 
 
 def test_parse_trust_config_inline():

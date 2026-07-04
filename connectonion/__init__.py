@@ -35,6 +35,7 @@ else:
 from .core import Agent, LLM, create_tool_from_function
 from .core import (
     on_agent_ready,
+    before_user_input,
     after_user_input,
     before_iteration,
     after_iteration,
@@ -122,6 +123,7 @@ __all__ = [
     "address",
     # Event decorators
     "on_agent_ready",
+    "before_user_input",
     "after_user_input",
     "before_iteration",
     "after_iteration",

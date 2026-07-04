@@ -77,6 +77,7 @@ class Agent:
         # before_tools/after_tools fire ONCE per batch (safe for adding messages)
         self.events = {
             'on_agent_ready': [],      # Fires once during initialization when agent is ready
+            'before_user_input': [],
             'after_user_input': [],
             'before_iteration': [],    # Start of each iteration (poll IO, mode changes)
             'after_iteration': [],     # End of each iteration (metrics, checkpoints)
@@ -292,6 +293,12 @@ class Agent:
             file_list = "\n".join(f"- {p}" for p in saved_files)
             prompt += f"\n\n<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
 
+        self.current_session['user_prompt'] = prompt  # Store user prompt for xray/debugging
+
+        # Invoke before_user_input events before appending the user message.
+        # Exceptions propagate so invalid input fails fast without mutating messages.
+        self._invoke_events('before_user_input')
+
         # Add user message to conversation (multimodal if images provided)
         if images:
             content = [{"type": "text", "text": prompt}]
@@ -303,7 +310,6 @@ class Agent:
 
         # Track this turn
         self.current_session['turn'] += 1
-        self.current_session['user_prompt'] = prompt  # Store user prompt for xray/debugging
         turn_start = time.time()
 
         # Record trace entry (also streams to io if connected)

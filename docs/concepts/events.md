@@ -63,6 +63,7 @@ agent = Agent(
 
 | Event              | When It Runs                   | Fires              | Use For                                                |
 | ------------------ | ------------------------------ | ------------------ | ------------------------------------------------------ |
+| `before_user_input` | Before user input is appended  | Once per turn      | Validate, reject, or prepare state before message add  |
 | `after_user_input` | After user provides input      | Once per turn      | Add context, timestamps, initialize turn state         |
 | `before_iteration` | Before each iteration starts   | Once per iteration | Poll IO, check mode changes, setup                     |
 | `before_llm`       | Before each LLM call           | Multiple per turn  | Modify messages for each LLM call                      |
@@ -90,6 +91,8 @@ agent = Agent(
 
 ```
 TURN START
+│
+├─ before_user_input
 │
 ├─ after_user_input
 │
@@ -236,7 +239,7 @@ agent = Agent(
 
 ### Add Context Once Per Turn
 
-Use `after_user_input` to add context that should only be set once per turn:
+Use `before_user_input` to validate or prepare state before the user message is appended. Use `after_user_input` to add context that should only be set once per turn:
 
 ```python
 from connectonion import Agent, after_user_input

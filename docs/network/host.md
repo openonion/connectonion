@@ -1061,6 +1061,7 @@ host(agent)
 ```
 
 Available events:
+- `before_user_input` - Before user input is added to the session
 - `after_user_input` - After receiving input
 - `before_llm` - Before each LLM call
 - `after_llm` - After each LLM call

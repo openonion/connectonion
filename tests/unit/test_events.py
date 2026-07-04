@@ -13,7 +13,7 @@ Components under test:
 
 import pytest
 from unittest.mock import Mock
-from connectonion import Agent, after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete, on_stop_signal
+from connectonion import Agent, before_user_input, after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete, on_stop_signal
 from connectonion.core.llm import LLMResponse, ToolCall
 from connectonion.core.usage import TokenUsage
 
@@ -73,6 +73,35 @@ def failing_tool(query: str) -> str:
 class TestEventSystem:
     """Test event system functionality"""
 
+    def test_before_user_input_fires_before_after_user_input(self):
+        """Test before_user_input fires before the user message is appended."""
+        calls = []
+
+        def track_before(agent):
+            calls.append('before_user_input')
+            assert agent.current_session['user_prompt'] == "test prompt"
+            assert [m["role"] for m in agent.current_session['messages']] == ["system"]
+
+        def track_after(agent):
+            calls.append('after_user_input')
+            assert agent.current_session['messages'][-1] == {
+                "role": "user",
+                "content": "test prompt",
+            }
+
+        agent = Agent(
+            "test",
+            model="gpt-4o-mini",
+            on_events=[
+                before_user_input(track_before),
+                after_user_input(track_after),
+            ]
+        )
+
+        agent.input("test prompt")
+
+        assert calls == ['before_user_input', 'after_user_input']
+
     def test_after_user_input_fires_once(self):
         """Test after_user_input fires once per turn"""
         calls = []
@@ -92,6 +121,27 @@ class TestEventSystem:
 
         # Should fire exactly once per turn
         assert calls == ['after_user_input']
+
+    def test_before_user_input_exception_prevents_user_message_append(self):
+        """Test before_user_input fails fast before appending user message."""
+
+        def reject_input(agent):
+            assert agent.current_session['user_prompt'] == "blocked"
+            raise RuntimeError("blocked input")
+
+        agent = Agent(
+            "test",
+            model="gpt-4o-mini",
+            on_events=[before_user_input(reject_input)]
+        )
+
+        with pytest.raises(RuntimeError, match="blocked input"):
+            agent.input("blocked")
+
+        assert agent.current_session['messages'] == [
+            {"role": "system", "content": agent.system_prompt}
+        ]
+
 
     def test_before_llm_fires_multiple_times(self):
         """Test before_llm fires before each LLM call"""
@@ -367,6 +417,7 @@ class TestEventSystem:
         def handler(agent):
             pass
 
+        assert before_user_input(handler)._event_type == 'before_user_input'
         assert after_user_input(handler)._event_type == 'after_user_input'
         assert before_llm(handler)._event_type == 'before_llm'
         assert after_llm(handler)._event_type == 'after_llm'
@@ -551,6 +602,10 @@ class TestNewEventSyntax:
     def test_decorator_syntax_all_event_types(self):
         """Test decorator syntax works for all event types"""
 
+        @before_user_input
+        def handler0(agent):
+            pass
+
         @after_user_input
         def handler1(agent):
             pass
@@ -589,6 +644,7 @@ class TestNewEventSyntax:
         assert callable(handler7)
 
         # All should have correct _event_type
+        assert handler0._event_type == 'before_user_input'
         assert handler1._event_type == 'after_user_input'
         assert handler2._event_type == 'before_llm'
         assert handler3._event_type == 'after_llm'

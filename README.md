@@ -145,7 +145,7 @@ builtin/skill-name/SKILL.md         # Built-in
 
 Automatically loads Claude Code skills from `.claude/skills/` — no conversion needed.
 
-### 12 Lifecycle Hooks + Plugin System
+### 13 Lifecycle Hooks + Plugin System
 
 Inject logic at any point in the agent execution cycle:
 
@@ -164,7 +164,7 @@ agent = Agent("researcher", tools=[search], plugins=[
 
 These plugins mirror Claude Code's internal capabilities — `auto_compact`, `subagents`, `ulw` directly correspond to Claude Code's context compression, sub-agent spawning, and autonomous work mode. ConnectOnion makes these capabilities available to any agent you build.
 
-Hooks: `after_user_input`, `before_iteration`, `before_llm`, `after_llm`, `before_tools`, `before_each_tool`, `after_each_tool`, `after_tools`, `on_error`, `after_iteration`, `on_stop_signal`, `on_complete`
+Hooks: `before_user_input`, `after_user_input`, `before_iteration`, `before_llm`, `after_llm`, `before_tools`, `before_each_tool`, `after_each_tool`, `after_tools`, `on_error`, `after_iteration`, `on_stop_signal`, `on_complete`
 
 Plugins are just lists of event handlers — visible, modifiable, `co copy`-able.
 
@@ -898,7 +898,7 @@ ConnectOnion is a simple, elegant framework for production-ready AI agents. Phil
 | Ready-to-Use Tools | Import without schema writing |
 | Approval System | Dangerous ops auto-trigger approval |
 | Skills System | Claude Code compatible, auto-discovery |
-| 12 Lifecycle Hooks | Inject logic at any point |
+| 13 Lifecycle Hooks | Inject logic at any point |
 | Plugin System | re_act, auto_compact, subagents, ulw |
 | Multi-Agent Trust | Fast rules, zero token cost |
 
@@ -933,7 +933,7 @@ Project → User → Built-in levels. Automatically loads Claude Code skills fro
 
 ### Lifecycle Hooks
 
-after_user_input, before_iteration, before_llm, after_llm, before_tools, after_tools, on_error, after_iteration, on_stop_signal, on_complete
+before_user_input, after_user_input, before_iteration, before_llm, after_llm, before_tools, before_each_tool, after_each_tool, after_tools, on_error, after_iteration, on_stop_signal, on_complete
 
 ### Trust System Presets
 

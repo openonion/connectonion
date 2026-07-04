@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: None (standalone module) | imported by [agent.py, __init__.py] | tested by [tests/test_events.py]
   Data flow: Wrapper functions tag event handlers with _event_type attribute → Agent organizes handlers by type → Agent invokes handlers at specific lifecycle points passing agent instance
   State/Effects: Event handlers receive agent instance and can modify agent.current_session (messages, trace, etc.)
-  Integration: exposes on_agent_ready(), after_user_input(), before_iteration(), after_iteration(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete(), on_stop_signal()
+  Integration: exposes on_agent_ready(), before_user_input(), after_user_input(), before_iteration(), after_iteration(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete(), on_stop_signal()
   Performance: Minimal overhead - just function attribute checking and iteration over handler lists
   Errors: Event handler exceptions propagate and stop agent execution (fail fast)
 """
@@ -16,6 +16,27 @@ if TYPE_CHECKING:
 
 # Event handler type: function that takes Agent and returns None
 EventHandler = Callable[['Agent'], None]
+
+
+def before_user_input(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
+    """
+    Mark function(s) as before_user_input event handlers.
+
+    Fires once per turn, after user_prompt is set and before user input is added to session.
+    Use for: input validation, turn setup, rejecting invalid input.
+
+    Supports both decorator and wrapper syntax:
+        # As decorator
+        @before_user_input
+        def validate_input(agent):
+            ...
+
+        # As wrapper (single or multiple)
+        on_events=[before_user_input(handler1, handler2)]
+    """
+    for fn in funcs:
+        fn._event_type = 'before_user_input'  # type: ignore
+    return funcs[0] if len(funcs) == 1 else list(funcs)
 
 
 def after_user_input(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]:
