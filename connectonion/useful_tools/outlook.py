@@ -454,12 +454,14 @@ class Outlook:
             return f"Email scheduled for {send_at} to {to}{suffix}"
         return f"Email sent successfully to {to}{suffix}"
 
-    def reply(self, email_id: str, body: str) -> str:
-        """Reply to an email.
+    def reply(self, email_id: str, body: str, send_at: str = None) -> str:
+        """Reply to an email, immediately or at a scheduled time.
 
         Args:
             email_id: Outlook message ID to reply to
             body: Reply message body (plain text)
+            send_at: Optional UTC ISO time (e.g. "2026-07-06T15:30:00Z") to
+                schedule delivery — Exchange holds the reply until then
 
         Returns:
             Confirmation message
@@ -468,9 +470,19 @@ class Outlook:
         data = {
             "comment": body
         }
+        if send_at:
+            # Same deferred-send property as send(); the reply action accepts
+            # message properties alongside the comment.
+            data["message"] = {
+                "singleValueExtendedProperties": [
+                    {"id": "SystemTime 0x3FEF", "value": send_at}
+                ]
+            }
 
         self._request("POST", endpoint, json=data)
 
+        if send_at:
+            return f"Reply scheduled for {send_at}"
         return f"Reply sent successfully"
 
     # === Actions ===

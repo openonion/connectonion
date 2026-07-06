@@ -470,10 +470,11 @@ def outlook_read(email_id: str = typer.Argument(..., help="Email # from your las
 def outlook_reply(
     email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
     message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
+    at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z)"),
 ):
-    """Reply to an email (threaded)."""
+    """Reply to an email (threaded), now or scheduled with --at."""
     from .commands.outlook_commands import handle_outlook_reply
-    handle_outlook_reply(email_id, message)
+    handle_outlook_reply(email_id, message, at=at)
 
 
 @outlook_app.command("sent")

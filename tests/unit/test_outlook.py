@@ -332,6 +332,55 @@ class TestOutlookSendOperations:
                 )
 
 
+class TestOutlookReply:
+    """Test reply operations with mocked API."""
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_scheduled(self, mock_httpx):
+        """Test scheduled reply carries the deferred-send property."""
+        mock_response = MagicMock()
+        mock_response.status_code = 202
+        mock_response.text = ""
+        mock_httpx.request.return_value = mock_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            result = outlook.reply("msg-1", "See you then", send_at="2026-07-06T15:30:00Z")
+
+            assert "scheduled" in result.lower()
+            payload = mock_httpx.request.call_args.kwargs["json"]
+            assert payload["comment"] == "See you then"
+            prop = payload["message"]["singleValueExtendedProperties"][0]
+            assert prop == {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_immediate_has_no_message_block(self, mock_httpx):
+        """Test immediate reply payload stays a bare comment."""
+        mock_response = MagicMock()
+        mock_response.status_code = 202
+        mock_response.text = ""
+        mock_httpx.request.return_value = mock_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            result = outlook.reply("msg-1", "Thanks!")
+
+            assert "sent" in result.lower()
+            assert mock_httpx.request.call_args.kwargs["json"] == {"comment": "Thanks!"}
+
+
 class TestOutlookActions:
     """Test Outlook action operations with mocked API."""
 
