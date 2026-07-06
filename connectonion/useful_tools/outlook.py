@@ -121,7 +121,8 @@ class Outlook:
 
         if response.status_code != 200:
             raise ValueError(
-                f"Failed to refresh Microsoft token via backend: {response.text}"
+                f"Microsoft session expired and refresh failed ({response.status_code}).\n"
+                "Reconnect with: co auth microsoft"
             )
 
         data = response.json()
@@ -172,26 +173,27 @@ class Outlook:
         if response.status_code not in [200, 201, 202, 204]:
             raise ValueError(f"Microsoft Graph API error: {response.status_code} - {response.text}")
 
-        if response.status_code == 204:
+        # 202 (sendMail) and 204 come back with an empty body
+        if response.status_code == 204 or not response.text:
             return {}
         return response.json()
 
-    def _format_emails(self, messages: list, max_results: int = 10) -> str:
-        """Helper to format email list."""
-        if not messages:
-            return "No emails found."
+    def _email_dicts(self, messages: list) -> list:
+        """Convert raw Graph messages into plain email dicts."""
+        return [{
+            'id': msg['id'],
+            'from': msg.get('from', {}).get('emailAddress', {}).get('address', 'Unknown'),
+            'from_name': msg.get('from', {}).get('emailAddress', {}).get('name', ''),
+            'subject': msg.get('subject', 'No Subject'),
+            'date': msg.get('receivedDateTime', 'Unknown'),
+            'snippet': msg.get('bodyPreview', '')[:100],
+            'unread': not msg.get('isRead', True)
+        } for msg in messages]
 
-        emails = []
-        for msg in messages[:max_results]:
-            emails.append({
-                'id': msg['id'],
-                'from': msg.get('from', {}).get('emailAddress', {}).get('address', 'Unknown'),
-                'from_name': msg.get('from', {}).get('emailAddress', {}).get('name', ''),
-                'subject': msg.get('subject', 'No Subject'),
-                'date': msg.get('receivedDateTime', 'Unknown'),
-                'snippet': msg.get('bodyPreview', '')[:100],
-                'unread': not msg.get('isRead', True)
-            })
+    def _format_dicts(self, emails: list) -> str:
+        """Format email dicts (from _email_dicts) into a readable list."""
+        if not emails:
+            return "No emails found."
 
         output = [f"Found {len(emails)} email(s):\n"]
         for i, email in enumerate(emails, 1):
@@ -205,7 +207,41 @@ class Outlook:
 
         return "\n".join(output)
 
+    def _format_emails(self, messages: list, max_results: int = 10) -> str:
+        """Helper to format raw Graph messages as a readable list."""
+        if not messages:
+            return "No emails found."
+        return self._format_dicts(self._email_dicts(messages[:max_results]))
+
     # === Reading ===
+
+    def list_inbox(self, last: int = 10, unread: bool = False) -> list:
+        """Fetch inbox emails as dicts (id, from, from_name, subject, date, snippet, unread).
+
+        Programmatic counterpart of read_inbox() — used by the CLI.
+
+        Args:
+            last: Number of emails to retrieve (default: 10)
+            unread: Only get unread emails (default: False)
+
+        Returns:
+            List of email dicts, newest first
+        """
+        endpoint = "/me/mailFolders/inbox/messages"
+        params = {
+            "$top": last,
+            "$orderby": "receivedDateTime desc",
+            "$select": "id,from,subject,receivedDateTime,bodyPreview,isRead"
+        }
+
+        if unread:
+            # Graph requires $orderby properties to also appear in $filter,
+            # first and in the same order (else 400 InefficientFilter on
+            # Exchange work/school tenants).
+            params["$filter"] = "receivedDateTime ge 1970-01-01T00:00:00Z and isRead eq false"
+
+        result = self._request("GET", endpoint, params=params)
+        return self._email_dicts(result.get('value', []))
 
     def read_inbox(self, last: int = 10, unread: bool = False) -> str:
         """Read emails from inbox.
@@ -217,19 +253,7 @@ class Outlook:
         Returns:
             Formatted string with email list
         """
-        endpoint = "/me/mailFolders/inbox/messages"
-        params = {
-            "$top": last,
-            "$orderby": "receivedDateTime desc",
-            "$select": "id,from,subject,receivedDateTime,bodyPreview,isRead"
-        }
-
-        if unread:
-            params["$filter"] = "isRead eq false"
-
-        result = self._request("GET", endpoint, params=params)
-        messages = result.get('value', [])
-        return self._format_emails(messages, last)
+        return self._format_dicts(self.list_inbox(last=last, unread=unread))
 
     def get_sent_emails(self, max_results: int = 10) -> str:
         """Get emails you sent.
@@ -266,6 +290,21 @@ class Outlook:
 
     # === Search ===
 
+    def list_search(self, query: str, max_results: int = 10) -> list:
+        """Search emails and return them as dicts (same shape as list_inbox).
+
+        Programmatic counterpart of search_emails() — used by the CLI.
+        """
+        endpoint = "/me/messages"
+        params = {
+            "$top": max_results,
+            "$search": f'"{query}"',
+            "$select": "id,from,subject,receivedDateTime,bodyPreview,isRead"
+        }
+
+        result = self._request("GET", endpoint, params=params)
+        return self._email_dicts(result.get('value', []))
+
     def search_emails(self, query: str, max_results: int = 10) -> str:
         """Search emails.
 
@@ -276,20 +315,10 @@ class Outlook:
         Returns:
             Formatted string with matching emails
         """
-        endpoint = "/me/messages"
-        params = {
-            "$top": max_results,
-            "$search": f'"{query}"',
-            "$select": "id,from,subject,receivedDateTime,bodyPreview,isRead"
-        }
-
-        result = self._request("GET", endpoint, params=params)
-        messages = result.get('value', [])
-
-        if not messages:
+        emails = self.list_search(query, max_results)
+        if not emails:
             return f"No emails found matching query: {query}"
-
-        return self._format_emails(messages, max_results)
+        return self._format_dicts(emails)
 
     # === Content ===
 
@@ -340,8 +369,29 @@ class Outlook:
 
     # === Sending ===
 
-    def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None) -> str:
-        """Send email via Microsoft Graph API.
+    def _file_attachment(self, file_path: str) -> dict:
+        """Read a local file into a Graph fileAttachment object (base64 contentBytes)."""
+        import base64
+        import mimetypes
+
+        path = os.path.expanduser(file_path)
+        if not os.path.isfile(path):
+            raise ValueError(f"Attachment not found: {file_path}")
+
+        content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        with open(path, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
+
+        return {
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": os.path.basename(path),
+            "contentType": content_type,
+            "contentBytes": content,
+        }
+
+    def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None,
+             attachments: list = None, send_at: str = None) -> str:
+        """Send email via Microsoft Graph API, immediately or at a scheduled time.
 
         Args:
             to: Recipient email address
@@ -349,39 +399,60 @@ class Outlook:
             body: Email body (plain text)
             cc: Optional CC recipients (comma-separated)
             bcc: Optional BCC recipients (comma-separated)
+            attachments: Optional list of local file paths to attach (images,
+                screenshots, PDFs, etc. — Graph sendMail limit is ~3MB total)
+            send_at: Optional UTC ISO time (e.g. "2026-07-06T15:30:00Z") to
+                schedule delivery — Exchange holds the email until then
 
         Returns:
             Confirmation message
         """
         message = {
-            "message": {
-                "subject": subject,
-                "body": {
-                    "contentType": "Text",
-                    "content": body
-                },
-                "toRecipients": [
-                    {"emailAddress": {"address": addr.strip()}}
-                    for addr in to.split(',')
-                ]
-            }
+            "subject": subject,
+            "body": {
+                "contentType": "Text",
+                "content": body
+            },
+            "toRecipients": [
+                {"emailAddress": {"address": addr.strip()}}
+                for addr in to.split(',')
+            ]
         }
 
         if cc:
-            message["message"]["ccRecipients"] = [
+            message["ccRecipients"] = [
                 {"emailAddress": {"address": addr.strip()}}
                 for addr in cc.split(',')
             ]
 
         if bcc:
-            message["message"]["bccRecipients"] = [
+            message["bccRecipients"] = [
                 {"emailAddress": {"address": addr.strip()}}
                 for addr in bcc.split(',')
             ]
 
-        self._request("POST", "/me/sendMail", json=message)
+        if attachments:
+            message["attachments"] = [
+                self._file_attachment(path) for path in attachments
+            ]
 
-        return f"Email sent successfully to {to}"
+        suffix = ""
+        if attachments:
+            names = ", ".join(os.path.basename(os.path.expanduser(p)) for p in attachments)
+            suffix = f" with attachment(s): {names}"
+
+        if send_at:
+            # PidTagDeferredSendTime — Exchange holds delivery until this time.
+            # Works through sendMail with only the Mail.Send scope.
+            message["singleValueExtendedProperties"] = [
+                {"id": "SystemTime 0x3FEF", "value": send_at}
+            ]
+
+        self._request("POST", "/me/sendMail", json={"message": message})
+
+        if send_at:
+            return f"Email scheduled for {send_at} to {to}{suffix}"
+        return f"Email sent successfully to {to}{suffix}"
 
     def reply(self, email_id: str, body: str) -> str:
         """Reply to an email.

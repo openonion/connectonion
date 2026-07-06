@@ -62,6 +62,7 @@ def _show_help():
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
+    console.print("  [green]outlook[/green]           Send and read Outlook email (co auth microsoft)")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
     console.print("  [green]status[/green]            Check account balance")
@@ -415,6 +416,81 @@ def email_upgrade(
     """Upgrade email tier — deducts the monthly price from your credits."""
     from .commands.email_commands import handle_email_upgrade
     handle_email_upgrade(tier, domain=domain, alias=alias)
+
+
+# Outlook command group. `co outlook` (no args) shows the Outlook inbox.
+# Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
+outlook_app = typer.Typer(help="Send and read email from your Outlook account. Bare 'co outlook' shows the inbox.")
+app.add_typer(outlook_app, name="outlook")
+
+
+@outlook_app.callback(invoke_without_command=True)
+def outlook_callback(ctx: typer.Context):
+    """With no subcommand, show the Outlook inbox."""
+    if ctx.invoked_subcommand is None:
+        from .commands.outlook_commands import handle_outlook_inbox
+        handle_outlook_inbox()
+
+
+@outlook_app.command("send", epilog="Examples:  co outlook send a@b.com \"Hi\" \"Quick note\"  |  "
+                                    "cat body.txt | co outlook send a@b.com \"Report\" -  |  "
+                                    "co outlook send a@b.com \"Invoice\" \"Attached\" --attach invoice.pdf --at +2h")
+def outlook_send(
+    to: str = typer.Argument(..., help="Recipient email address (comma-separated for multiple)"),
+    subject: str = typer.Argument(..., help="Subject line"),
+    message: str = typer.Argument(..., help="Body (plain text, or '-' to read from stdin)"),
+    cc: Optional[str] = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
+    bcc: Optional[str] = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+    attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
+    at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z)"),
+):
+    """Send an email from your Outlook account, now or scheduled with --at."""
+    from .commands.outlook_commands import handle_outlook_send
+    handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach, at=at)
+
+
+@outlook_app.command("inbox")
+def outlook_inbox(
+    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+):
+    """List recent emails in your Outlook inbox."""
+    from .commands.outlook_commands import handle_outlook_inbox
+    handle_outlook_inbox(last=last, unread=unread)
+
+
+@outlook_app.command("read")
+def outlook_read(email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing (re-run to refresh numbers)")):
+    """Show one email's body and mark it read."""
+    from .commands.outlook_commands import handle_outlook_read
+    handle_outlook_read(email_id)
+
+
+@outlook_app.command("reply")
+def outlook_reply(
+    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
+    message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
+):
+    """Reply to an email (threaded)."""
+    from .commands.outlook_commands import handle_outlook_reply
+    handle_outlook_reply(email_id, message)
+
+
+@outlook_app.command("sent")
+def outlook_sent(last: int = typer.Option(10, "--last", "-n", help="How many emails to show")):
+    """List recently sent Outlook emails."""
+    from .commands.outlook_commands import handle_outlook_sent
+    handle_outlook_sent(last=last)
+
+
+@outlook_app.command("search")
+def outlook_search(
+    query: str = typer.Argument(..., help="Search query (matches subject and body)"),
+    last: int = typer.Option(10, "--last", "-n", help="How many results to show"),
+):
+    """Search your Outlook emails."""
+    from .commands.outlook_commands import handle_outlook_search
+    handle_outlook_search(query, last=last)
 
 
 # Subscription command group. `co sub` (no args) syncs every subscription.

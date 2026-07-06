@@ -15,6 +15,14 @@ All notable changes to ConnectOnion will be documented in this file.
 
 ### 🎉 Major Features
 
+#### `co outlook` - Outlook Email from the Terminal
+- **NEW**: `co outlook` command group — send and read your Outlook account via Microsoft Graph (requires `co auth microsoft` with Mail scopes; `MICROSOFT_*` in `.env` / `~/.co/keys.env`)
+- **`co outlook` / `co outlook inbox -n 10 -u`**: numbered inbox table; numbering is cached so `co outlook read 3` works later (full Graph message IDs also accepted)
+- **`co outlook read <#>`**: prints the full body and marks the email read
+- **`co outlook send <to> <subject> <message>`**: with `--cc`, `--bcc`, repeatable `--attach FILE` (screenshots, PDFs — ~3MB Graph limit), and `--at` for scheduling (`+30m`, `+2h`, or UTC ISO like `2026-07-06T15:30:00Z`); a message of `-` reads the body from stdin (`co outlook send a@b.com "Subject" - < body.txt`)
+- **`co outlook sent`** / **`co outlook search <query>`**: list sent mail and search subject/body
+- **Outlook tool**: `send()` gains `attachments=[...]` and `send_at="..."` (deferred send — Exchange holds delivery, works with just `Mail.Send`); new `list_inbox()` returns email dicts for programmatic use
+
 #### FileTools Refactor - Claude Code-style File Operations
 - **NEW**: `FileTools` class with read-before-edit tracking and permission control
 - **Read-Before-Edit Validation**: Prevents edits without prior file reads
