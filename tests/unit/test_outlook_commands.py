@@ -22,6 +22,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import patch, MagicMock
 
 import pytest
+import typer
 
 from connectonion.cli.commands import outlook_commands
 from connectonion.cli.commands.outlook_commands import (
@@ -54,20 +55,20 @@ def sample_emails(n):
 class TestOutlookGuard:
     """_outlook() returns None with a hint when not connected."""
 
-    def test_missing_access_token_returns_none_with_hint(self, capsys):
+    def test_missing_access_token_exits_with_hint(self, capsys):
         with patch.dict(os.environ, {"MICROSOFT_ACCESS_TOKEN": "", "MICROSOFT_SCOPES": "Mail.Read"}, clear=False):
-            result = _outlook()
+            with pytest.raises(typer.Exit):
+                _outlook()
 
-        assert result is None
         output = capsys.readouterr().out
         assert "Microsoft account not connected" in output
         assert "co auth microsoft" in output
 
-    def test_scopes_without_mail_returns_none_with_hint(self, capsys):
+    def test_scopes_without_mail_exits_with_hint(self, capsys):
         with patch.dict(os.environ, {"MICROSOFT_ACCESS_TOKEN": "test-token", "MICROSOFT_SCOPES": "User.Read"}, clear=False):
-            result = _outlook()
+            with pytest.raises(typer.Exit):
+                _outlook()
 
-        assert result is None
         output = capsys.readouterr().out
         assert "Microsoft account not connected" in output
         assert "co auth microsoft" in output
@@ -104,13 +105,25 @@ class TestParseSendAt:
     def test_iso_string_passes_through(self):
         assert _parse_send_at("2026-07-06T15:30:00Z") == "2026-07-06T15:30:00Z"
 
-    def test_invalid_unit_raises(self):
-        with pytest.raises(ValueError, match=r"\+5x"):
+    def test_invalid_unit_exits(self, capsys):
+        with pytest.raises(typer.Exit):
             _parse_send_at("+5x")
+        assert "Invalid --at value" in capsys.readouterr().out
 
-    def test_missing_number_raises(self):
-        with pytest.raises(ValueError, match=r"\+m"):
+    def test_missing_number_exits(self, capsys):
+        with pytest.raises(typer.Exit):
             _parse_send_at("+m")
+        assert "Invalid --at value" in capsys.readouterr().out
+
+    def test_naive_iso_time_exits(self, capsys):
+        with pytest.raises(typer.Exit):
+            _parse_send_at("2026-07-06T15:30:00")
+        assert "Invalid --at value" in capsys.readouterr().out
+
+    def test_garbage_string_exits(self, capsys):
+        with pytest.raises(typer.Exit):
+            _parse_send_at("tomorrow")
+        assert "Invalid --at value" in capsys.readouterr().out
 
 
 class TestResolveEmailId:
@@ -221,6 +234,7 @@ class TestHandleOutlookSend:
 
         with patch.dict(os.environ, {"MICROSOFT_ACCESS_TOKEN": "", "MICROSOFT_SCOPES": ""}, clear=False):
             with patch("connectonion.useful_tools.outlook.Outlook") as mock_cls:
-                handle_outlook_send(to="bob@example.com", subject="Hi", message="hello")
+                with pytest.raises(typer.Exit):
+                    handle_outlook_send(to="bob@example.com", subject="Hi", message="hello")
 
         mock_cls.assert_not_called()

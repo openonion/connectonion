@@ -69,8 +69,19 @@ in a later shell session.
 co outlook read 3
 ```
 
-Prints the full body (sender, subject, date, content), then marks the message
-read. Accepts the `#` from the last inbox listing or a full Graph message ID.
+Prints the full body (sender, subject, date, content). Accepts the `#` from
+your last listing (inbox or search) or a full Graph message ID. If your
+Microsoft auth includes the `Mail.ReadWrite` scope, the message is also
+marked read.
+
+### `co outlook reply <#> <message>` — Reply
+
+```bash
+co outlook reply 3 "Sounds good, see you then."
+```
+
+Sends a threaded reply to an email from your last listing. Use `-` as the
+message to read the reply body from stdin.
 
 ### `co outlook send <to> <subject> <message>` — Send
 

@@ -420,7 +420,7 @@ def email_upgrade(
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
 # Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
-outlook_app = typer.Typer(help="Send and read email from your Outlook account")
+outlook_app = typer.Typer(help="Send and read email from your Outlook account. Bare 'co outlook' shows the inbox.")
 app.add_typer(outlook_app, name="outlook")
 
 
@@ -432,7 +432,9 @@ def outlook_callback(ctx: typer.Context):
         handle_outlook_inbox()
 
 
-@outlook_app.command("send")
+@outlook_app.command("send", epilog="Examples:  co outlook send a@b.com \"Hi\" \"Quick note\"  |  "
+                                    "cat body.txt | co outlook send a@b.com \"Report\" -  |  "
+                                    "co outlook send a@b.com \"Invoice\" \"Attached\" --attach invoice.pdf --at +2h")
 def outlook_send(
     to: str = typer.Argument(..., help="Recipient email address (comma-separated for multiple)"),
     subject: str = typer.Argument(..., help="Subject line"),
@@ -458,10 +460,20 @@ def outlook_inbox(
 
 
 @outlook_app.command("read")
-def outlook_read(email_id: str = typer.Argument(..., help="Email # from the inbox list (or a full message ID)")):
+def outlook_read(email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing (re-run to refresh numbers)")):
     """Show one email's body and mark it read."""
     from .commands.outlook_commands import handle_outlook_read
     handle_outlook_read(email_id)
+
+
+@outlook_app.command("reply")
+def outlook_reply(
+    email_id: str = typer.Argument(..., help="Email # from your last inbox/search listing"),
+    message: str = typer.Argument(..., help="Reply body (plain text, or '-' to read from stdin)"),
+):
+    """Reply to an email (threaded)."""
+    from .commands.outlook_commands import handle_outlook_reply
+    handle_outlook_reply(email_id, message)
 
 
 @outlook_app.command("sent")

@@ -121,7 +121,8 @@ class Outlook:
 
         if response.status_code != 200:
             raise ValueError(
-                f"Failed to refresh Microsoft token via backend: {response.text}"
+                f"Microsoft session expired and refresh failed ({response.status_code}).\n"
+                "Reconnect with: co auth microsoft"
             )
 
         data = response.json()
@@ -234,7 +235,10 @@ class Outlook:
         }
 
         if unread:
-            params["$filter"] = "isRead eq false"
+            # Graph requires $orderby properties to also appear in $filter,
+            # first and in the same order (else 400 InefficientFilter on
+            # Exchange work/school tenants).
+            params["$filter"] = "receivedDateTime ge 1970-01-01T00:00:00Z and isRead eq false"
 
         result = self._request("GET", endpoint, params=params)
         return self._email_dicts(result.get('value', []))
@@ -286,6 +290,21 @@ class Outlook:
 
     # === Search ===
 
+    def list_search(self, query: str, max_results: int = 10) -> list:
+        """Search emails and return them as dicts (same shape as list_inbox).
+
+        Programmatic counterpart of search_emails() — used by the CLI.
+        """
+        endpoint = "/me/messages"
+        params = {
+            "$top": max_results,
+            "$search": f'"{query}"',
+            "$select": "id,from,subject,receivedDateTime,bodyPreview,isRead"
+        }
+
+        result = self._request("GET", endpoint, params=params)
+        return self._email_dicts(result.get('value', []))
+
     def search_emails(self, query: str, max_results: int = 10) -> str:
         """Search emails.
 
@@ -296,20 +315,10 @@ class Outlook:
         Returns:
             Formatted string with matching emails
         """
-        endpoint = "/me/messages"
-        params = {
-            "$top": max_results,
-            "$search": f'"{query}"',
-            "$select": "id,from,subject,receivedDateTime,bodyPreview,isRead"
-        }
-
-        result = self._request("GET", endpoint, params=params)
-        messages = result.get('value', [])
-
-        if not messages:
+        emails = self.list_search(query, max_results)
+        if not emails:
             return f"No emails found matching query: {query}"
-
-        return self._format_emails(messages, max_results)
+        return self._format_dicts(emails)
 
     # === Content ===
 
