@@ -17,7 +17,7 @@ What happens:
 4. Credentials saved to `.env` (both local and global `~/.co/keys.env`)
 5. Ready to use Outlook and Microsoft Calendar tools immediately
 
-**That's it.** Your agents can now send emails via Outlook and read your Microsoft calendar.
+**That's it.** Your agents can now send emails via Outlook and read your Microsoft calendar. You can too, from the terminal — see [`co outlook`](../cli/outlook.md).
 
 **Switching accounts?** Just run `co auth microsoft` again - it will clear the old connection and let you pick a new Microsoft account.
 
@@ -130,6 +130,9 @@ outlook.get_email_body(email_id)           # Get full email content
 # Sending emails
 outlook.send(to="alice@example.com", subject="Hello", body="Hi there!")
 outlook.send(to="alice@example.com", subject="Hello", body="Hi!", cc="bob@example.com")
+outlook.send(to="alice@example.com", subject="Report", body="See attached.",
+             attachments=["report.pdf"],              # local files, ~3MB Graph limit
+             send_at="2026-07-06T15:30:00Z")           # deferred send (UTC ISO)
 outlook.reply(email_id, body="Thanks for your message")
 
 # Actions

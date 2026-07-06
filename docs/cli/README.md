@@ -225,6 +225,33 @@ details and current limitations.
 
 ---
 
+#### `co outlook` - Send & Read Outlook Email
+
+Your personal Outlook account from the terminal, via Microsoft Graph.
+Requires `co auth microsoft` once (Mail scopes; saved as `MICROSOFT_*` in
+`.env` / `~/.co/keys.env`).
+
+**Basic usage:**
+```bash
+co outlook                                            # show inbox (default)
+co outlook inbox -n 25 -u                             # last 25, unread only
+co outlook read 3                                     # read #3 from the listing, mark read
+co outlook send bob@example.com "Hi" "Body text"      # send now
+co outlook send bob@example.com "Hi" - < body.txt     # body from stdin
+```
+
+**Subcommands:**
+- `co outlook` / `co outlook inbox` - numbered inbox table (`--last/-n`, `--unread/-u`)
+- `co outlook read <#>` - print one message's body and mark it read (inbox # or full Graph ID)
+- `co outlook send <to> <subject> <message>` - send, with `--cc`, `--bcc`, repeatable `--attach FILE` (~3MB Graph limit), and `--at` to schedule (`+30m`, `+2h`, or UTC ISO time — Exchange holds delivery)
+- `co outlook sent` - list recently sent emails
+- `co outlook search <query>` - search subject and body
+
+The CLI wraps the same `Outlook` tool your agents use. See
+[outlook.md](outlook.md) for details.
+
+---
+
 #### `co status` - Check Account and Deployments
 
 Shows your managed keys balance, usage, and deployed agents.
@@ -917,6 +944,7 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 | `co reset` | Reset account | Yes | ⚠️ Destructive |
 | `co doctor` | Diagnose issues | No | ✅ Yes |
 | `co browser` | Browser command | No | ✅ Yes |
+| `co outlook` | Send/read Outlook email | No | ✅ Yes |
 
 ---
 

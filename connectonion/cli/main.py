@@ -440,10 +440,11 @@ def outlook_send(
     cc: Optional[str] = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
     bcc: Optional[str] = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
+    at: Optional[str] = typer.Option(None, "--at", help="Schedule delivery: +30m, +2h, or UTC ISO time (2026-07-06T15:30:00Z)"),
 ):
-    """Send an email from your Outlook account."""
+    """Send an email from your Outlook account, now or scheduled with --at."""
     from .commands.outlook_commands import handle_outlook_send
-    handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach)
+    handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach, at=at)
 
 
 @outlook_app.command("inbox")

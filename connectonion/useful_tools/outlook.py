@@ -381,8 +381,8 @@ class Outlook:
         }
 
     def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None,
-             attachments: list = None) -> str:
-        """Send email via Microsoft Graph API.
+             attachments: list = None, send_at: str = None) -> str:
+        """Send email via Microsoft Graph API, immediately or at a scheduled time.
 
         Args:
             to: Recipient email address
@@ -392,47 +392,58 @@ class Outlook:
             bcc: Optional BCC recipients (comma-separated)
             attachments: Optional list of local file paths to attach (images,
                 screenshots, PDFs, etc. — Graph sendMail limit is ~3MB total)
+            send_at: Optional UTC ISO time (e.g. "2026-07-06T15:30:00Z") to
+                schedule delivery — Exchange holds the email until then
 
         Returns:
             Confirmation message
         """
         message = {
-            "message": {
-                "subject": subject,
-                "body": {
-                    "contentType": "Text",
-                    "content": body
-                },
-                "toRecipients": [
-                    {"emailAddress": {"address": addr.strip()}}
-                    for addr in to.split(',')
-                ]
-            }
+            "subject": subject,
+            "body": {
+                "contentType": "Text",
+                "content": body
+            },
+            "toRecipients": [
+                {"emailAddress": {"address": addr.strip()}}
+                for addr in to.split(',')
+            ]
         }
 
         if cc:
-            message["message"]["ccRecipients"] = [
+            message["ccRecipients"] = [
                 {"emailAddress": {"address": addr.strip()}}
                 for addr in cc.split(',')
             ]
 
         if bcc:
-            message["message"]["bccRecipients"] = [
+            message["bccRecipients"] = [
                 {"emailAddress": {"address": addr.strip()}}
                 for addr in bcc.split(',')
             ]
 
         if attachments:
-            message["message"]["attachments"] = [
+            message["attachments"] = [
                 self._file_attachment(path) for path in attachments
             ]
 
-        self._request("POST", "/me/sendMail", json=message)
-
+        suffix = ""
         if attachments:
             names = ", ".join(os.path.basename(os.path.expanduser(p)) for p in attachments)
-            return f"Email sent successfully to {to} with attachment(s): {names}"
-        return f"Email sent successfully to {to}"
+            suffix = f" with attachment(s): {names}"
+
+        if send_at:
+            # PidTagDeferredSendTime — Exchange holds delivery until this time.
+            # Works through sendMail with only the Mail.Send scope.
+            message["singleValueExtendedProperties"] = [
+                {"id": "SystemTime 0x3FEF", "value": send_at}
+            ]
+
+        self._request("POST", "/me/sendMail", json={"message": message})
+
+        if send_at:
+            return f"Email scheduled for {send_at} to {to}{suffix}"
+        return f"Email sent successfully to {to}{suffix}"
 
     def reply(self, email_id: str, body: str) -> str:
         """Reply to an email.

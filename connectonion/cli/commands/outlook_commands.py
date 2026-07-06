@@ -39,18 +39,36 @@ def _outlook():
     return Outlook()
 
 
+def _parse_send_at(at: str) -> str:
+    """Turn '+30m' / '+2h' into a UTC ISO timestamp; ISO strings pass through."""
+    if not at.startswith("+"):
+        return at
+
+    from datetime import datetime, timedelta, timezone
+
+    unit = at[-1]
+    if unit not in ("m", "h") or not at[1:-1].isdigit():
+        raise ValueError(f"Invalid --at value: {at} (use +30m, +2h, or a UTC ISO time)")
+    delta = timedelta(**{{"m": "minutes", "h": "hours"}[unit]: int(at[1:-1])})
+    return (datetime.now(timezone.utc) + delta).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
 def handle_outlook_send(to: str, subject: str, message: str, cc: str = None, bcc: str = None,
-                        attachments: list = None):
+                        attachments: list = None, at: str = None):
     """Send an email from the connected Outlook account. A message of '-' reads the body from stdin."""
     if message == "-":
         message = sys.stdin.read()
+    send_at = _parse_send_at(at) if at else None
 
     outlook = _outlook()
     if not outlook:
         return
-    outlook.send(to, subject, message, cc=cc, bcc=bcc, attachments=attachments)
+    outlook.send(to, subject, message, cc=cc, bcc=bcc, attachments=attachments, send_at=send_at)
 
-    console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
+    if send_at:
+        console.print(f"\n[green]✓ Scheduled[/green] for [bold]{send_at}[/bold] to [cyan]{to}[/cyan]")
+    else:
+        console.print(f"\n[green]✓ Sent[/green] to [cyan]{to}[/cyan]")
     console.print(f"  From: {os.getenv('MICROSOFT_EMAIL', '')}")
     if attachments:
         names = ", ".join(Path(p).name for p in attachments)

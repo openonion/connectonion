@@ -44,6 +44,10 @@ Your agent can now read and manage Outlook emails.
 
 **Switch accounts?** Run `co auth microsoft` again to connect a different Microsoft account.
 
+**Prefer the terminal?** The same functions are available as
+[`co outlook`](../cli/outlook.md) commands (`inbox`, `read`, `send`, `sent`,
+`search`).
+
 ## Agent Methods
 
 ### Reading
@@ -52,6 +56,11 @@ Your agent can now read and manage Outlook emails.
 - Read emails from inbox
 - `last`: Number of emails (default: 10)
 - `unread`: Only unread emails (default: False)
+
+**`list_inbox(last=10, unread=False)`**
+- Programmatic counterpart of `read_inbox()` — returns a list of dicts
+  (`id`, `from`, `from_name`, `subject`, `date`, `snippet`, `unread`)
+  instead of a formatted string. Used by the `co outlook` CLI.
 
 **`get_sent_emails(max_results=10)`**
 - Get emails you sent
@@ -67,13 +76,26 @@ Your agent can now read and manage Outlook emails.
 
 ### Sending
 
-**`send(to, subject, body, cc=None, bcc=None)`**
-- Send email via Microsoft Graph API
+**`send(to, subject, body, cc=None, bcc=None, attachments=None, send_at=None)`**
+- Send email via Microsoft Graph API, now or scheduled
 - `to`: Recipient email (comma-separated for multiple)
 - `subject`: Email subject
 - `body`: Email body (plain text)
 - `cc`: Optional CC recipients
 - `bcc`: Optional BCC recipients
+- `attachments`: Optional list of local file paths (images, screenshots,
+  PDFs, etc. — Graph sendMail limit is ~3MB total)
+- `send_at`: Optional UTC ISO time (e.g. `"2026-07-06T15:30:00Z"`) —
+  Exchange holds delivery until then (deferred send, works with just the
+  `Mail.Send` scope)
+
+```python
+outlook.send(
+    "alice@example.com", "Report", "See attached.",
+    attachments=["report.pdf", "screenshot.png"],
+    send_at="2026-07-06T15:30:00Z",
+)
+```
 
 **`reply(email_id, body)`**
 - Reply to an existing email
