@@ -3,7 +3,7 @@
 LLM-Note: Tests for outlook
 
 What it tests:
-- Outlook functionality
+- Outlook functionality: init scope checks, token management, formatting, read/search, send (attachments, send_at scheduling), reply (plain-text→HTML paragraph conversion, scheduled), get_scheduled/cancel_scheduled, mark read, unread count
 
 Components under test:
 - Module: outlook
@@ -402,8 +402,8 @@ class TestOutlookReply:
             assert comment == "<p>Hi Tamara,</p><p>First line<br>second line</p><p>Bye</p>"
 
     @patch('connectonion.useful_tools.outlook.httpx')
-    def test_reply_html_body_passes_through(self, mock_httpx):
-        """Bodies that already contain HTML are not re-wrapped."""
+    def test_reply_escapes_html_characters(self, mock_httpx):
+        """User text is escaped so '<' and '&' can't inject markup or vanish."""
         mock_response = MagicMock()
         mock_response.status_code = 202
         mock_response.text = ""
@@ -417,9 +417,10 @@ class TestOutlookReply:
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
             outlook = Outlook()
-            outlook.reply("msg-1", "<p>Already HTML</p>")
+            outlook.reply("msg-1", "cost < $10 & rising")
 
-            assert mock_httpx.request.call_args.kwargs["json"]["comment"] == "<p>Already HTML</p>"
+            comment = mock_httpx.request.call_args.kwargs["json"]["comment"]
+            assert comment == "<p>cost &lt; $10 &amp; rising</p>"
 
 
 class TestOutlookScheduled:
@@ -534,3 +535,80 @@ class TestOutlookActions:
 
             assert "5" in result
             assert "unread" in result.lower()
+
+class TestOutlookScheduled:
+    """Test scheduled-send listing and cancellation with mocked API."""
+
+    ENV = {
+        "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send",
+        "MICROSOFT_ACCESS_TOKEN": "test-token",
+        "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+        "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z",
+    }
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_get_scheduled_filters_ordinary_drafts(self, mock_httpx):
+        """Only drafts carrying the deferred-send property count as scheduled."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.text = "ok"
+        mock_response.json.return_value = {"value": [
+            {
+                "id": "sched-1",
+                "subject": "RE: Access to the MCIC",
+                "toRecipients": [{"emailAddress": {"address": "tamara@unsw.edu.au"}}],
+                "singleValueExtendedProperties": [
+                    {"id": "SystemTime 0x3fef", "value": "2026-07-06T22:00:00Z"}
+                ],
+            },
+            {
+                "id": "plain-draft",
+                "subject": "unfinished thought",
+                "toRecipients": [],
+            },
+        ]}
+        mock_httpx.request.return_value = mock_response
+
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            scheduled = Outlook().get_scheduled()
+
+        assert scheduled == [{
+            "id": "sched-1",
+            "subject": "RE: Access to the MCIC",
+            "to": "tamara@unsw.edu.au",
+            "send_at": "2026-07-06T22:00:00Z",
+        }]
+
+        # The request must target the drafts folder and expand the
+        # deferred-send property — a broken query would silently return [].
+        url = mock_httpx.request.call_args.args[1]
+        assert "/me/mailFolders/drafts/messages" in url
+        assert "SystemTime 0x3FEF" in url
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_get_scheduled_follows_next_link(self, mock_httpx):
+        """Scheduled drafts beyond the first page are still found."""
+        def make_draft(i, scheduled):
+            d = {"id": f"d-{i}", "subject": f"draft {i}", "toRecipients": []}
+            if scheduled:
+                d["singleValueExtendedProperties"] = [
+                    {"id": "SystemTime 0x3fef", "value": "2026-07-06T22:00:00Z"}
+                ]
+            return d
+
+        page1 = MagicMock(status_code=200, text="ok")
+        page1.json.return_value = {
+            "value": [make_draft(i, scheduled=False) for i in range(3)],
+            "@odata.nextLink": "https://graph.microsoft.com/v1.0/me/mailFolders/drafts/messages?$skip=100",
+        }
+        page2 = MagicMock(status_code=200, text="ok")
+        page2.json.return_value = {"value": [make_draft(99, scheduled=True)]}
+        mock_httpx.request.side_effect = [page1, page2]
+
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            scheduled = Outlook().get_scheduled()
+
+        assert [e["id"] for e in scheduled] == ["d-99"]
+

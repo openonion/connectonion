@@ -45,8 +45,8 @@ Your agent can now read and manage Outlook emails.
 **Switch accounts?** Run `co auth microsoft` again to connect a different Microsoft account.
 
 **Prefer the terminal?** The same functions are available as
-[`co outlook`](../cli/outlook.md) commands (`inbox`, `read`, `send`, `sent`,
-`search`).
+[`co outlook`](../cli/outlook.md) commands (`inbox`, `read`, `send`, `reply`,
+`sent`, `search`, `scheduled`).
 
 ## Agent Methods
 
@@ -97,8 +97,20 @@ outlook.send(
 )
 ```
 
-**`reply(email_id, body)`**
-- Reply to an existing email
+**`reply(email_id, body, send_at=None)`**
+- Reply to an existing email (threaded), now or scheduled
+- `body` is plain text — paragraphs (blank-line separated) convert to HTML
+  `<p>` blocks and single newlines to `<br>`, with HTML characters escaped,
+  so replies keep their formatting in Outlook
+- `send_at`: Optional UTC ISO time — Exchange holds delivery until then
+
+### Scheduled sends
+
+**`get_scheduled(max_results=25)`**
+- List emails waiting for scheduled delivery (deferred-send drafts)
+- Returns dicts with `id`, `subject`, `to`, `send_at` (UTC ISO)
+- Read-only: deferred drafts can't be deleted via API (Exchange returns
+  403 once locked for delivery) — cancel with Outlook's own "Cancel Send"
 
 ### Actions
 

@@ -1,11 +1,11 @@
 """
-Purpose: CLI surface for the user's Outlook mailbox — send, list (inbox/sent), read, reply, and search email from the terminal
+Purpose: CLI surface for the user's Outlook mailbox — send, list (inbox/sent/scheduled), read, reply, and search from the terminal
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, datetime, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.outlook.Outlook] | imported by [cli/main.py via handle_outlook_*()] | hits Microsoft Graph API through the Outlook tool
-  Data flow: _outlook() loads MICROSOFT_* from .env / ~/.co/keys.env → Outlook() instance | inbox/search: list_inbox()/list_search() → numbered Rich table (plain ID-bearing text when piped) → saves {#: message_id} to ~/.co/outlook_last_inbox.json | read/reply: resolve short numbers via that cache → get_email_body()/reply() | send: '-' body reads stdin, attachments prechecked, --at validated to UTC ISO → send()
-  State/Effects: writes ~/.co/outlook_last_inbox.json (last listing's # → message id map; "numbers mean your last listing") | read marks emails read server-side | Outlook auto-refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
-  Integration: exposes handle_outlook_send(), handle_outlook_inbox(), handle_outlook_read(), handle_outlook_reply(), handle_outlook_sent(), handle_outlook_search() for cli/main.py | presentation mirrors email_commands.py (table shape, ● unread mark, ✉️ panel, '✓ Sent' wording) | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
-  Errors: every guarded failure prints a hint and exits 1 (typer.Exit) so scripts can detect it — missing auth/scopes, missing/oversized attachments, invalid --at, unresolvable email # | Graph API errors propagate from the Outlook tool
+  Data flow: _outlook() loads MICROSOFT_* from .env / ~/.co/keys.env → Outlook() instance | inbox/search: list_inbox()/list_search() → numbered Rich table (plain ID-bearing text when piped) → saves {#: message_id} to ~/.co/outlook_last_inbox.json | read/reply: resolve short numbers via that cache → get_email_body()/reply() | send: '-' body reads stdin, attachments prechecked, --at validated to UTC ISO → send() | scheduled: get_scheduled() → read-only table (To/Subject/Sends at), plain full-id lines when piped; does NOT touch the numbering cache
+  State/Effects: writes ~/.co/outlook_last_inbox.json (last listing's # → message id map; "numbers mean your last listing" — only inbox and search write it) | read marks emails read server-side | Outlook auto-refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
+  Integration: exposes handle_outlook_send(), handle_outlook_inbox(), handle_outlook_read(), handle_outlook_reply(), handle_outlook_sent(), handle_outlook_search(), handle_outlook_scheduled() for cli/main.py | presentation mirrors email_commands.py (table shape, ● unread mark, ✉️ panel, '✓ Sent' wording) | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
+  Errors: every guarded failure prints a hint and exits 1 (typer.Exit) so scripts can detect it — missing auth/scopes, missing/oversized attachments, invalid --at, unresolvable email # | Graph API errors propagate from the Outlook tool | scheduled sends can't be cancelled via API (Exchange 403) — the listing hints at Outlook's own Cancel Send
 """
 
 import json
@@ -45,9 +45,13 @@ def _outlook():
 
 def _when(iso: str) -> str:
     """Render a Graph UTC timestamp as short local time, e.g. 'Jul 06 15:23'."""
+    import re
     from datetime import datetime
 
-    return datetime.fromisoformat(str(iso).replace("Z", "+00:00")).astimezone().strftime("%b %d %H:%M")
+    # Graph sometimes returns 7-digit fractional seconds, which
+    # fromisoformat() rejects on Python 3.10 — display is minute-granular.
+    iso = re.sub(r"\.\d+", "", str(iso))
+    return datetime.fromisoformat(iso.replace("Z", "+00:00")).astimezone().strftime("%b %d %H:%M")
 
 
 def _print_listing(outlook, emails: list, title: str):
@@ -270,3 +274,31 @@ def handle_outlook_search(query: str, last: int = 10):
         console.print(f"\n[cyan]Search:[/cyan] no emails matching [bold]{query}[/bold]\n")
         return
     _print_listing(outlook, emails, f"🔎 Outlook — {query}")
+
+
+def handle_outlook_scheduled():
+    """List emails waiting for scheduled delivery. Read-only: Exchange blocks API cancellation."""
+    outlook = _outlook()
+    scheduled = outlook.get_scheduled()
+    if not scheduled:
+        console.print("\n[cyan]No scheduled emails.[/cyan]\n")
+        return
+
+    if not console.is_terminal:
+        # Scripts and agents get one plain line per email with the full id.
+        for email in scheduled:
+            console.print(f"{email['send_at']}  {email['to']}  {email['subject']}  {email['id']}",
+                          markup=False, highlight=False)
+        return
+
+    table = Table(title="⏰ Outlook — scheduled sends", show_header=True, header_style="bold cyan")
+    table.add_column("To", max_width=32, no_wrap=True)
+    table.add_column("Subject", overflow="ellipsis", no_wrap=True)
+    table.add_column("Sends at")
+
+    for email in scheduled:
+        table.add_row(email["to"], email["subject"], _when(email["send_at"]))
+
+    console.print()
+    console.print(table)
+    console.print("\n[dim]To cancel one, use Cancel Send in Outlook — Exchange blocks API cancellation.[/dim]\n")

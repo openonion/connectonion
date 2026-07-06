@@ -127,6 +127,7 @@ co outlook send bob@example.com "Launch" "We're live!" --at 2026-07-06T15:30:00Z
 ```
 
 `+30m` / `+2h` are relative to now; anything else is taken as a UTC ISO time.
+See what's queued with `co outlook scheduled`.
 
 **Long bodies** — pass `-` as the message to read the body from stdin:
 
@@ -149,6 +150,29 @@ co outlook search invoice -n 25
 ```
 
 Matches subject and body via Microsoft Graph search.
+
+### `co outlook scheduled` — List scheduled sends
+
+```bash
+co outlook scheduled
+```
+
+Shows every email waiting for scheduled delivery (deferred-send drafts),
+with recipient, subject, and local send time:
+
+```
+                     ⏰ Outlook — scheduled sends
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━┓
+┃ To                          ┃ Subject                ┃ Sends at     ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━┩
+│ tamara.berryman@unsw.edu.au │ RE: Access to the MCIC │ Jul 07 08:00 │
+└─────────────────────────────┴────────────────────────┴──────────────┘
+```
+
+The listing is read-only: Exchange locks deferred messages against API
+deletion (403), so **to cancel a scheduled send, open the message in
+Outlook and use its own "Cancel Send"** — it sits in Drafts until
+delivery time.
 
 ## Same functions, in your agent
 
@@ -184,3 +208,5 @@ outlook.send(
   `co auth microsoft`.
 - **`No email #N in your inbox`** → the number is out of range; run
   `co outlook inbox` to refresh the listing.
+- **Cancelling a scheduled send** → not possible via API (Exchange returns
+  403 once the message is locked for delivery); use Cancel Send in Outlook.

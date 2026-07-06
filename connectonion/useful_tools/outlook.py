@@ -1,12 +1,12 @@
 """
-Purpose: Outlook integration tool for reading, sending, and managing emails via Microsoft Graph API
+Purpose: Outlook integration tool for reading, sending, scheduling, and managing emails via Microsoft Graph API
 LLM-Note:
   Dependencies: imports from [os, datetime, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
-  Data flow: Agent calls Outlook methods → _get_headers() loads MICROSOFT_ACCESS_TOKEN from env → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns formatted results (email summaries, bodies, send confirmations)
-  State/Effects: reads MICROSOFT_* env vars for OAuth tokens | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails) | no local file persistence
-  Integration: exposes Outlook class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), send(), reply(), mark_read(), archive_email() | used as agent tool via Agent(tools=[Outlook()])
+  Data flow: Agent calls Outlook methods → _get_access_token() loads MICROSOFT_ACCESS_TOKEN from env (auto-refresh via oo-api) → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns formatted results (email summaries, bodies, send confirmations) | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() pages the drafts folder (Graph rejects $filter on the property) and returns dicts (id, subject, to, send_at)
+  State/Effects: reads MICROSOFT_* env vars for OAuth tokens | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails) | token refresh rewrites ~/.co/keys.env | no other local file persistence
+  Integration: exposes Outlook class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), send(), reply(), get_scheduled(), mark_read(), archive_email() | list_inbox()/list_search()/get_scheduled() return dicts for the CLI (cli/commands/outlook_commands.py) | used as agent tool via Agent(tools=[Outlook()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
-  Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | returns error strings for display to user
+  Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | deferred drafts cannot be deleted via API (Exchange 403) — cancel via Outlook's own Cancel Send | returns error strings for display to user
 
 Outlook tool for reading and managing Outlook emails via Microsoft Graph API.
 
@@ -21,8 +21,9 @@ Usage:
     # - get_sent_emails(max_results)
     # - search_emails(query, max_results)
     # - get_email_body(email_id)
-    # - send(to, subject, body, cc, bcc)
-    # - reply(email_id, body)
+    # - send(to, subject, body, cc, bcc, attachments, send_at)
+    # - reply(email_id, body, send_at)
+    # - get_scheduled(max_results)
     # - mark_read(email_id)
     # - archive_email(email_id)
 
@@ -40,6 +41,7 @@ Example:
     agent.input("Send an email to alice@example.com saying hello")
 """
 
+import html
 import os
 from datetime import datetime, timedelta
 import httpx
@@ -507,10 +509,9 @@ class Outlook:
             Confirmation message
         """
         # Graph renders the comment as HTML, so plain-text newlines collapse
-        # into one blob — convert paragraphs unless the body is already HTML.
-        if "<" not in body:
-            paragraphs = [p.strip().replace("\n", "<br>") for p in body.split("\n\n") if p.strip()]
-            body = "".join(f"<p>{p}</p>" for p in paragraphs)
+        # into one blob — escape and convert paragraphs to <p>/<br>.
+        paragraphs = [html.escape(p.strip()).replace("\n", "<br>") for p in body.split("\n\n") if p.strip()]
+        body = "".join(f"<p>{p}</p>" for p in paragraphs)
 
         endpoint = f"/me/messages/{email_id}/reply"
         data = {
@@ -530,6 +531,44 @@ class Outlook:
         if send_at:
             return f"Reply scheduled for {send_at}"
         return f"Reply sent successfully"
+
+    def get_scheduled(self, max_results: int = 25) -> list:
+        """List emails waiting for scheduled delivery (deferred-send drafts).
+
+        Cancelling via API is not possible — Exchange locks deferred
+        messages (403) — so cancel with Outlook's own "Cancel Send".
+
+        Args:
+            max_results: How many scheduled emails to return
+
+        Returns:
+            List of dicts: id, subject, to, send_at (UTC ISO)
+        """
+        # Graph rejects $filter on this extended property, so page through
+        # the drafts folder and filter client-side.
+        endpoint = (
+            "/me/mailFolders/drafts/messages"
+            "?$select=id,subject,toRecipients&$top=100"
+            "&$expand=singleValueExtendedProperties"
+            "($filter=id eq 'SystemTime 0x3FEF')"
+        )
+
+        scheduled = []
+        while endpoint and len(scheduled) < max_results:
+            result = self._request("GET", endpoint)
+            for message in result.get("value", []):
+                props = message.get("singleValueExtendedProperties")
+                if not props:
+                    continue  # ordinary draft, not scheduled
+                scheduled.append({
+                    "id": message["id"],
+                    "subject": message.get("subject", ""),
+                    "to": ", ".join(r["emailAddress"]["address"] for r in message.get("toRecipients", [])),
+                    "send_at": props[0]["value"],
+                })
+            next_link = result.get("@odata.nextLink", "")
+            endpoint = next_link.replace(self.GRAPH_API_URL, "") if next_link else None
+        return scheduled[:max_results]
 
     # === Actions ===
 

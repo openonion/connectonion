@@ -508,6 +508,14 @@ def outlook_search(
     handle_outlook_search(query, last=last)
 
 
+@outlook_app.command("scheduled")
+def outlook_scheduled():
+    """List emails waiting for scheduled delivery."""
+    from .commands.outlook_commands import handle_outlook_scheduled
+    handle_outlook_scheduled()
+
+
+
 # Subscription command group. `co sub` (no args) syncs every subscription.
 # `co sub sync <addr>` syncs one. `list` and `remove` are the secondary verbs.
 sub_app = typer.Typer(help="Subscribe to published agents — sync skills from the relay into your coding agents")
