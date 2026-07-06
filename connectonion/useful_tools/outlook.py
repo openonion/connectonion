@@ -243,6 +243,46 @@ class Outlook:
         result = self._request("GET", endpoint, params=params)
         return self._email_dicts(result.get('value', []))
 
+    def list_scheduled(self, last: int = 10) -> list:
+        """List scheduled (deferred-send) emails that haven't gone out yet.
+
+        Scheduled messages wait in Drafts carrying the deferred-send
+        property until Exchange delivers them.
+
+        Returns:
+            List of dicts: id, to, subject, send_at
+        """
+        result = self._request("GET", "/me/mailFolders/drafts/messages", params={
+            "$top": max(last * 5, 25),  # drafts folder mixes in ordinary drafts
+            "$select": "id,subject,toRecipients",
+            "$expand": "singleValueExtendedProperties($filter=id eq 'SystemTime 0x3FEF')",
+        })
+        scheduled = []
+        for msg in result.get('value', []):
+            props = msg.get('singleValueExtendedProperties')
+            if not props:
+                continue
+            to = ", ".join(r.get('emailAddress', {}).get('address', '') for r in msg.get('toRecipients', []))
+            scheduled.append({
+                'id': msg['id'],
+                'to': to,
+                'subject': msg.get('subject', 'No Subject'),
+                'send_at': props[0]['value'],
+            })
+        return scheduled[:last]
+
+    def cancel_scheduled(self, email_id: str) -> str:
+        """Cancel a scheduled email by deleting it before Exchange sends it.
+
+        Args:
+            email_id: Message ID from list_scheduled()
+
+        Returns:
+            Confirmation message
+        """
+        self._request("DELETE", f"/me/messages/{email_id}")
+        return f"Canceled scheduled email: {email_id}"
+
     def read_inbox(self, last: int = 10, unread: bool = False) -> str:
         """Read emails from inbox.
 

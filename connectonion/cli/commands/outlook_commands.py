@@ -217,6 +217,43 @@ def handle_outlook_reply(email_id: str, message: str, at: str = None):
         console.print(f"\n[green]✓ Replied[/green] to email {email_id}\n")
 
 
+def handle_outlook_scheduled(last: int = 10):
+    """List scheduled emails that haven't gone out yet, numbered for cancel."""
+    outlook = _outlook()
+    emails = outlook.list_scheduled(last=last)
+    if not emails:
+        console.print("\n[cyan]Scheduled:[/cyan] no pending scheduled emails\n")
+        return
+
+    INBOX_CACHE.parent.mkdir(exist_ok=True)
+    INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(emails, 1)}))
+
+    table = Table(title="⏰ Scheduled — waiting to send", show_header=True, header_style="bold cyan")
+    table.add_column("#", justify="right")
+    table.add_column("To", max_width=32, no_wrap=True)
+    table.add_column("Subject", overflow="ellipsis", no_wrap=True)
+    table.add_column("Sends at")
+
+    for i, email in enumerate(emails, 1):
+        table.add_row(str(i), email["to"], email["subject"], _when(email["send_at"]))
+
+    console.print()
+    console.print(table)
+    console.print("\n[dim]Cancel one with:[/dim] [bold]co outlook cancel <#>[/bold]\n")
+
+
+def handle_outlook_cancel(email_id: str):
+    """Cancel a scheduled email before Exchange sends it."""
+    outlook = _outlook()
+    resolved = _resolve_email_id(outlook, email_id)
+    if not resolved:
+        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook scheduled first.[/yellow]\n")
+        raise typer.Exit(1)
+
+    outlook.cancel_scheduled(resolved)
+    console.print(f"\n[green]✓ Canceled[/green] scheduled email {email_id}\n")
+
+
 def handle_outlook_sent(last: int = 10):
     """List recently sent Outlook emails."""
     outlook = _outlook()
