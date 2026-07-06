@@ -355,7 +355,7 @@ class TestOutlookReply:
 
             assert "scheduled" in result.lower()
             payload = mock_httpx.request.call_args.kwargs["json"]
-            assert payload["comment"] == "See you then"
+            assert payload["comment"] == "<p>See you then</p>"
             prop = payload["message"]["singleValueExtendedProperties"][0]
             assert prop == {"id": "SystemTime 0x3FEF", "value": "2026-07-06T15:30:00Z"}
 
@@ -378,7 +378,48 @@ class TestOutlookReply:
             result = outlook.reply("msg-1", "Thanks!")
 
             assert "sent" in result.lower()
-            assert mock_httpx.request.call_args.kwargs["json"] == {"comment": "Thanks!"}
+            assert mock_httpx.request.call_args.kwargs["json"] == {"comment": "<p>Thanks!</p>"}
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_plain_text_paragraphs_become_html(self, mock_httpx):
+        """Plain-text paragraphs convert to <p> blocks so Graph keeps line breaks."""
+        mock_response = MagicMock()
+        mock_response.status_code = 202
+        mock_response.text = ""
+        mock_httpx.request.return_value = mock_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            outlook.reply("msg-1", "Hi Tamara,\n\nFirst line\nsecond line\n\nBye")
+
+            comment = mock_httpx.request.call_args.kwargs["json"]["comment"]
+            assert comment == "<p>Hi Tamara,</p><p>First line<br>second line</p><p>Bye</p>"
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_reply_html_body_passes_through(self, mock_httpx):
+        """Bodies that already contain HTML are not re-wrapped."""
+        mock_response = MagicMock()
+        mock_response.status_code = 202
+        mock_response.text = ""
+        mock_httpx.request.return_value = mock_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            outlook.reply("msg-1", "<p>Already HTML</p>")
+
+            assert mock_httpx.request.call_args.kwargs["json"]["comment"] == "<p>Already HTML</p>"
 
 
 class TestOutlookActions:

@@ -466,6 +466,12 @@ class Outlook:
         Returns:
             Confirmation message
         """
+        # Graph renders the comment as HTML, so plain-text newlines collapse
+        # into one blob — convert paragraphs unless the body is already HTML.
+        if "<" not in body:
+            paragraphs = [p.strip().replace("\n", "<br>") for p in body.split("\n\n") if p.strip()]
+            body = "".join(f"<p>{p}</p>" for p in paragraphs)
+
         endpoint = f"/me/messages/{email_id}/reply"
         data = {
             "comment": body
