@@ -81,7 +81,8 @@ co outlook reply 3 "Sounds good, see you then."
 ```
 
 Sends a threaded reply to an email from your last listing. Use `-` as the
-message to read the reply body from stdin.
+message to read the reply body from stdin, and `--at +2h` (or a UTC ISO
+time) to schedule the reply like a scheduled send.
 
 ### `co outlook send <to> <subject> <message>` — Send
 

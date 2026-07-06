@@ -198,10 +198,11 @@ def handle_outlook_read(email_id: str):
     console.print(f"\n[dim]{marked}Reply with:[/dim] [bold]co outlook reply <#> <message>[/bold]\n")
 
 
-def handle_outlook_reply(email_id: str, message: str):
+def handle_outlook_reply(email_id: str, message: str, at: str = None):
     """Reply to an email from the last listing (threaded via Graph). A message of '-' reads stdin."""
     if message == "-":
         message = sys.stdin.read()
+    send_at = _parse_send_at(at) if at else None
 
     outlook = _outlook()
     resolved = _resolve_email_id(outlook, email_id)
@@ -209,8 +210,11 @@ def handle_outlook_reply(email_id: str, message: str):
         console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook to refresh.[/yellow]\n")
         raise typer.Exit(1)
 
-    outlook.reply(resolved, message)
-    console.print(f"\n[green]✓ Replied[/green] to email {email_id}\n")
+    outlook.reply(resolved, message, send_at=send_at)
+    if send_at:
+        console.print(f"\n[green]✓ Reply scheduled[/green] for [bold]{send_at}[/bold] to email {email_id}\n")
+    else:
+        console.print(f"\n[green]✓ Replied[/green] to email {email_id}\n")
 
 
 def handle_outlook_sent(last: int = 10):
