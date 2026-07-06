@@ -3,7 +3,7 @@ Purpose: `co sub` — record a subscription relationship to a published agent, m
 LLM-Note:
   Dependencies: imports from [json, re, shutil, pathlib, httpx, rich.console, rich.table, .fanout] | imported by [cli/main.py via handle_sub_sync_one/sync_all/list/remove] | tested by [tests/unit/test_sub_commands.py, tests/cli/test_cli_sub.py]
   Data flow:
-    sync_one(target, relay?) → _resolve_target() validates 0x address or matches an alias already in subscriptions.txt → _fetch_profile() GET /api/relay/agents/<addr>/profile → _mirror_bundle() writes ~/.co/subs/<alias>/agent.json + for each skill GET /api/relay/agents/<addr>/skills/<name> → unwrap body (handles both JSON {body:...} and raw text/markdown content-types) → write SKILL.md → append `<address> <alias>` to ~/.co/subscriptions.txt (deduped) → fanout.install_all() symlinks/copies into ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor, ~/.kiro
+    sync_one(target, relay?) → _resolve_target() validates 0x address or matches an alias already in subscriptions.txt → _fetch_profile() GET /api/agents/<addr>/profile → _mirror_bundle() writes ~/.co/subs/<alias>/agent.json + for each skill GET /api/agents/<addr>/skills/<name> → unwrap body (handles both JSON {body:...} and raw text/markdown content-types) → write SKILL.md → append `<address> <alias>` to ~/.co/subscriptions.txt (deduped) → fanout.install_all() symlinks/copies into ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor, ~/.kiro
     sync_all(relay?) → walks ~/.co/subscriptions.txt, calls sync_one per entry, tolerates per-publisher failures, prints summary (ok/failed counts)
     list() → reads ~/.co/subscriptions.txt + ~/.co/subs/<alias>/agent.json → Rich table with alias, full address, version, skill count
     remove(target) → match by address or alias → fanout.uninstall_all() drops every per-tool install → rmtree ~/.co/subs/<alias>/ → rewrite subscriptions.txt without the line
@@ -17,8 +17,8 @@ Subscription persistence:
   Matches ~/.co/contacts.txt / whitelist.txt / blocklist.txt shape.
 
 Relay endpoints consumed (v1):
-  GET /api/relay/agents/{address}/profile       - {profile: {alias, bio, version, skills:[{name, description}, ...]}}
-  GET /api/relay/agents/{address}/skills/{name} - JSON {body: "..."} or raw markdown depending on Content-Type
+  GET /api/agents/{address}/profile       - {profile: {alias, bio, version, skills:[{name, description}, ...]}}
+  GET /api/agents/{address}/skills/{name} - JSON {body: "..."} or raw markdown depending on Content-Type
 
 ⚠️ v1 trusts the relay — no Ed25519 signature verification (relay strips signer/signature from profile responses).
 ⚠️ No alias→address resolver on relay — aliases are dangerous (mutable), so first-time subs require 0x address.
@@ -78,7 +78,7 @@ def _write_subs(subs: list[tuple[str, str]]) -> None:
 
 
 def _fetch_profile(address: str, relay: str) -> dict:
-    r = httpx.get(f"{relay}/api/relay/agents/{address}/profile", timeout=30)
+    r = httpx.get(f"{relay}/api/agents/{address}/profile", timeout=30)
     r.raise_for_status()
     data = r.json()
     # Relay wraps in {"profile": {...}} for this endpoint
@@ -86,7 +86,7 @@ def _fetch_profile(address: str, relay: str) -> dict:
 
 
 def _fetch_skill(address: str, name: str, relay: str) -> str:
-    r = httpx.get(f"{relay}/api/relay/agents/{address}/skills/{name}", timeout=30)
+    r = httpx.get(f"{relay}/api/agents/{address}/skills/{name}", timeout=30)
     r.raise_for_status()
     return r.json()["body"]
 

@@ -502,7 +502,7 @@ co sub remove changxing      # unsubscribe (by alias or address)
 ```
 
 **What `co sub sync <addr>` does:**
-1. `GET /api/relay/agents/<addr>/profile` → write `~/.co/subs/<alias>/agent.json`
+1. `GET /api/agents/<addr>/profile` → write `~/.co/subs/<alias>/agent.json`
 2. Pull each `SKILL.md` body → `~/.co/subs/<alias>/skills/<name>/`
 3. Append `<address> <alias>` to `~/.co/subscriptions.txt` (deduped)
 4. Symlink/copy into every detected `~/.<tool>/` directory

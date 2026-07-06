@@ -150,7 +150,7 @@ The SDKs do **not** automatically probe endpoints yet; they use relay by default
 To implement smarter routing:
 1. **Lookup endpoints** for the agent via relay:
    - **WebSocket** `/ws/lookup` with `GET_AGENT`
-   - **HTTP** `/api/relay/agents/{address}`
+   - **HTTP** `/api/agents/{address}`
 2. **Try direct endpoints first** (if any):
    - Prefer `ws://`/`http://` endpoints that are reachable from your network.
    - If you are on the same LAN, a private IP (RFC1918) endpoint may be fastest.
@@ -185,7 +185,7 @@ so clients can automatically pick the best direct path.
 #### Lookup via HTTP
 
 ```bash
-curl https://oo.openonion.ai/api/relay/agents/0x3d4017c3...
+curl https://oo.openonion.ai/api/agents/0x3d4017c3...
 ```
 
 ```json
