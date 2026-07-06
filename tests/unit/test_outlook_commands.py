@@ -23,6 +23,7 @@ from unittest.mock import patch, MagicMock
 
 import pytest
 import typer
+from rich.console import Console
 
 from connectonion.cli.commands import outlook_commands
 from connectonion.cli.commands.outlook_commands import (
@@ -173,6 +174,8 @@ class TestHandleOutlookInbox:
     def test_writes_cache_mapping(self, tmp_path, monkeypatch, capsys):
         cache = tmp_path / ".co" / "outlook_last_inbox.json"
         monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+        # Pin the interactive branch — CI has no tty, dev shells may force color.
+        monkeypatch.setattr(outlook_commands, "console", Console(force_terminal=True, width=120))
 
         outlook = MagicMock()
         outlook.list_inbox.return_value = sample_emails(2)
@@ -185,6 +188,23 @@ class TestHandleOutlookInbox:
         output = capsys.readouterr().out
         assert "Subject 1" in output
         assert "co outlook read" in output
+
+    def test_piped_output_prints_plain_listing_with_cache(self, tmp_path, monkeypatch, capsys):
+        cache = tmp_path / ".co" / "outlook_last_inbox.json"
+        monkeypatch.setattr(outlook_commands, "INBOX_CACHE", cache)
+        # Pin the non-tty branch: scripts get the untruncated tool format.
+        monkeypatch.setattr(outlook_commands, "console", Console(force_terminal=False))
+
+        outlook = MagicMock()
+        outlook.list_inbox.return_value = sample_emails(2)
+        outlook._format_dicts.return_value = "Found 2 email(s) with full ids"
+
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            with patch.object(outlook_commands, "_outlook", return_value=outlook):
+                handle_outlook_inbox(last=2)
+
+        assert json.loads(cache.read_text()) == {"1": "msg-1", "2": "msg-2"}
+        assert "Found 2 email(s) with full ids" in capsys.readouterr().out
 
     def test_empty_inbox_prints_message_without_cache(self, tmp_path, monkeypatch, capsys):
         cache = tmp_path / ".co" / "outlook_last_inbox.json"
