@@ -176,22 +176,22 @@ class Outlook:
             return {}
         return response.json()
 
-    def _format_emails(self, messages: list, max_results: int = 10) -> str:
-        """Helper to format email list."""
-        if not messages:
-            return "No emails found."
+    def _email_dicts(self, messages: list) -> list:
+        """Convert raw Graph messages into plain email dicts."""
+        return [{
+            'id': msg['id'],
+            'from': msg.get('from', {}).get('emailAddress', {}).get('address', 'Unknown'),
+            'from_name': msg.get('from', {}).get('emailAddress', {}).get('name', ''),
+            'subject': msg.get('subject', 'No Subject'),
+            'date': msg.get('receivedDateTime', 'Unknown'),
+            'snippet': msg.get('bodyPreview', '')[:100],
+            'unread': not msg.get('isRead', True)
+        } for msg in messages]
 
-        emails = []
-        for msg in messages[:max_results]:
-            emails.append({
-                'id': msg['id'],
-                'from': msg.get('from', {}).get('emailAddress', {}).get('address', 'Unknown'),
-                'from_name': msg.get('from', {}).get('emailAddress', {}).get('name', ''),
-                'subject': msg.get('subject', 'No Subject'),
-                'date': msg.get('receivedDateTime', 'Unknown'),
-                'snippet': msg.get('bodyPreview', '')[:100],
-                'unread': not msg.get('isRead', True)
-            })
+    def _format_dicts(self, emails: list) -> str:
+        """Format email dicts (from _email_dicts) into a readable list."""
+        if not emails:
+            return "No emails found."
 
         output = [f"Found {len(emails)} email(s):\n"]
         for i, email in enumerate(emails, 1):
@@ -205,17 +205,25 @@ class Outlook:
 
         return "\n".join(output)
 
+    def _format_emails(self, messages: list, max_results: int = 10) -> str:
+        """Helper to format raw Graph messages as a readable list."""
+        if not messages:
+            return "No emails found."
+        return self._format_dicts(self._email_dicts(messages[:max_results]))
+
     # === Reading ===
 
-    def read_inbox(self, last: int = 10, unread: bool = False) -> str:
-        """Read emails from inbox.
+    def list_inbox(self, last: int = 10, unread: bool = False) -> list:
+        """Fetch inbox emails as dicts (id, from, from_name, subject, date, snippet, unread).
+
+        Programmatic counterpart of read_inbox() — used by the CLI.
 
         Args:
             last: Number of emails to retrieve (default: 10)
             unread: Only get unread emails (default: False)
 
         Returns:
-            Formatted string with email list
+            List of email dicts, newest first
         """
         endpoint = "/me/mailFolders/inbox/messages"
         params = {
@@ -228,8 +236,19 @@ class Outlook:
             params["$filter"] = "isRead eq false"
 
         result = self._request("GET", endpoint, params=params)
-        messages = result.get('value', [])
-        return self._format_emails(messages, last)
+        return self._email_dicts(result.get('value', []))
+
+    def read_inbox(self, last: int = 10, unread: bool = False) -> str:
+        """Read emails from inbox.
+
+        Args:
+            last: Number of emails to retrieve (default: 10)
+            unread: Only get unread emails (default: False)
+
+        Returns:
+            Formatted string with email list
+        """
+        return self._format_dicts(self.list_inbox(last=last, unread=unread))
 
     def get_sent_emails(self, max_results: int = 10) -> str:
         """Get emails you sent.

@@ -436,7 +436,7 @@ def outlook_callback(ctx: typer.Context):
 def outlook_send(
     to: str = typer.Argument(..., help="Recipient email address (comma-separated for multiple)"),
     subject: str = typer.Argument(..., help="Subject line"),
-    message: str = typer.Argument(..., help="Body (plain text)"),
+    message: str = typer.Argument(..., help="Body (plain text, or '-' to read from stdin)"),
     cc: Optional[str] = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
     bcc: Optional[str] = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
     attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
@@ -457,7 +457,7 @@ def outlook_inbox(
 
 
 @outlook_app.command("read")
-def outlook_read(email_id: str = typer.Argument(..., help="Email ID from the inbox list")):
+def outlook_read(email_id: str = typer.Argument(..., help="Email # from the inbox list (or a full message ID)")):
     """Show one email's body and mark it read."""
     from .commands.outlook_commands import handle_outlook_read
     handle_outlook_read(email_id)

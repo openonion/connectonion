@@ -168,6 +168,49 @@ class TestOutlookReadOperations:
             assert "Search Result" in result
 
 
+class TestOutlookListInbox:
+    """Test structured inbox listing (used by the CLI)."""
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_list_inbox_returns_dicts(self, mock_httpx):
+        """Test list_inbox returns plain email dicts."""
+        mock_response = MagicMock()
+        mock_response.status_code = 200
+        mock_response.json.return_value = {
+            'value': [
+                {
+                    'id': 'msg-1',
+                    'from': {'emailAddress': {'address': 'test@example.com', 'name': 'Test'}},
+                    'subject': 'Hello',
+                    'receivedDateTime': '2024-01-15T10:00:00Z',
+                    'bodyPreview': 'Preview text',
+                    'isRead': False
+                }
+            ]
+        }
+        mock_httpx.request.return_value = mock_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            emails = outlook.list_inbox(last=5)
+
+            assert emails == [{
+                'id': 'msg-1',
+                'from': 'test@example.com',
+                'from_name': 'Test',
+                'subject': 'Hello',
+                'date': '2024-01-15T10:00:00Z',
+                'snippet': 'Preview text',
+                'unread': True
+            }]
+
+
 class TestOutlookSendOperations:
     """Test Outlook send operations with mocked API."""
 
