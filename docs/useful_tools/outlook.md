@@ -109,8 +109,11 @@ outlook.send(
 **`get_scheduled(max_results=25)`**
 - List emails waiting for scheduled delivery (deferred-send drafts)
 - Returns dicts with `id`, `subject`, `to`, `send_at` (UTC ISO)
-- Read-only: deferred drafts can't be deleted via API (Exchange returns
-  403 once locked for delivery) — cancel with Outlook's own "Cancel Send"
+
+**`cancel_scheduled(email_id)`**
+- Cancel a scheduled email by deleting its deferred draft before delivery
+- Works on personal outlook.com accounts; some Exchange work/school
+  tenants reject the delete with 403 — there, use Outlook's "Cancel Send"
 
 ### Actions
 

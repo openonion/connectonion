@@ -240,12 +240,15 @@ def handle_outlook_search(query: str, last: int = 10):
 
 
 def handle_outlook_scheduled():
-    """List emails waiting for scheduled delivery. Read-only: Exchange blocks API cancellation."""
+    """List emails waiting for scheduled delivery, numbered for cancel."""
     outlook = _outlook()
     scheduled = outlook.get_scheduled()
     if not scheduled:
         console.print("\n[cyan]No scheduled emails.[/cyan]\n")
         return
+
+    INBOX_CACHE.parent.mkdir(exist_ok=True)
+    INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(scheduled, 1)}))
 
     if not console.is_terminal:
         # Scripts and agents get one plain line per email with the full id.
@@ -255,13 +258,26 @@ def handle_outlook_scheduled():
         return
 
     table = Table(title="⏰ Outlook — scheduled sends", show_header=True, header_style="bold cyan")
+    table.add_column("#", justify="right")
     table.add_column("To", max_width=32, no_wrap=True)
     table.add_column("Subject", overflow="ellipsis", no_wrap=True)
     table.add_column("Sends at")
 
-    for email in scheduled:
-        table.add_row(email["to"], email["subject"], _when(email["send_at"]))
+    for i, email in enumerate(scheduled, 1):
+        table.add_row(str(i), email["to"], email["subject"], _when(email["send_at"]))
 
     console.print()
     console.print(table)
-    console.print("\n[dim]To cancel one, use Cancel Send in Outlook — Exchange blocks API cancellation.[/dim]\n")
+    console.print("\n[dim]Cancel one with:[/dim] [bold]co outlook cancel <#>[/bold]\n")
+
+
+def handle_outlook_cancel(email_id: str):
+    """Cancel a scheduled email before Exchange sends it."""
+    outlook = _outlook()
+    resolved = _resolve_email_id(outlook, email_id)
+    if not resolved:
+        console.print(f"\n[yellow]No email #{email_id} in your last listing — run co outlook scheduled first.[/yellow]\n")
+        raise typer.Exit(1)
+
+    outlook.cancel_scheduled(resolved)
+    console.print(f"\n[green]✓ Canceled[/green] scheduled email {email_id}\n")

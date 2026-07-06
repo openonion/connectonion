@@ -495,8 +495,9 @@ class Outlook:
     def get_scheduled(self, max_results: int = 25) -> list:
         """List emails waiting for scheduled delivery (deferred-send drafts).
 
-        Cancelling via API is not possible — Exchange locks deferred
-        messages (403) — so cancel with Outlook's own "Cancel Send".
+        Cancel one with cancel_scheduled(id) — deleting the deferred draft
+        stops delivery (verified live on outlook.com; some Exchange tenants
+        reject the delete with 403 — there, use Outlook's "Cancel Send").
 
         Args:
             max_results: How many scheduled emails to return
@@ -529,6 +530,18 @@ class Outlook:
             next_link = result.get("@odata.nextLink", "")
             endpoint = next_link.replace(self.GRAPH_API_URL, "") if next_link else None
         return scheduled[:max_results]
+
+    def cancel_scheduled(self, email_id: str) -> str:
+        """Cancel a scheduled email by deleting it before Exchange sends it.
+
+        Args:
+            email_id: Message ID from get_scheduled()
+
+        Returns:
+            Confirmation message
+        """
+        self._request("DELETE", f"/me/messages/{email_id}")
+        return f"Canceled scheduled email: {email_id}"
 
     # === Actions ===
 

@@ -544,3 +544,21 @@ class TestOutlookScheduled:
 
         assert [e["id"] for e in scheduled] == ["d-99"]
 
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_cancel_scheduled_deletes_message(self, mock_httpx):
+        """cancel_scheduled issues a DELETE for the pending message."""
+        mock_response = MagicMock()
+        mock_response.status_code = 204
+        mock_response.text = ""
+        mock_httpx.request.return_value = mock_response
+
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            result = Outlook().cancel_scheduled("sched-1")
+
+        assert "Canceled" in result
+        method, url = mock_httpx.request.call_args.args[:2]
+        assert method == "DELETE"
+        assert url.endswith("/me/messages/sched-1")
+
+

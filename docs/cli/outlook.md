@@ -141,14 +141,15 @@ co outlook search invoice -n 25
 
 Matches subject and body via Microsoft Graph search.
 
-### `co outlook scheduled` — List scheduled sends
+### `co outlook scheduled` / `co outlook cancel <#>` — Manage scheduled sends
 
 ```bash
-co outlook scheduled
+co outlook scheduled      # what's queued, and when it sends
+co outlook cancel 1       # cancel it before Exchange sends it
 ```
 
 Shows every email waiting for scheduled delivery (deferred-send drafts),
-with recipient, subject, and local send time:
+numbered for cancel, with recipient, subject, and local send time:
 
 ```
                      ⏰ Outlook — scheduled sends
@@ -159,10 +160,9 @@ with recipient, subject, and local send time:
 └─────────────────────────────┴────────────────────────┴──────────────┘
 ```
 
-The listing is read-only: Exchange locks deferred messages against API
-deletion (403), so **to cancel a scheduled send, open the message in
-Outlook and use its own "Cancel Send"** — it sits in Drafts until
-delivery time.
+Scheduled emails sit in Drafts until delivery time; `cancel` deletes the
+pending message so it never goes out. (Some Exchange work/school tenants
+reject the delete with 403 — there, use Outlook's own "Cancel Send".)
 
 ## Same functions, in your agent
 
@@ -198,5 +198,6 @@ outlook.send(
   `co auth microsoft`.
 - **`No email #N in your inbox`** → the number is out of range; run
   `co outlook inbox` to refresh the listing.
-- **Cancelling a scheduled send** → not possible via API (Exchange returns
-  403 once the message is locked for delivery); use Cancel Send in Outlook.
+- **`co outlook cancel` rejected with 403** → some Exchange work/school
+  tenants lock deferred messages against API deletion; use Cancel Send in
+  Outlook instead. On personal outlook.com accounts cancel works normally.
