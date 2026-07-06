@@ -340,7 +340,28 @@ class Outlook:
 
     # === Sending ===
 
-    def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None) -> str:
+    def _file_attachment(self, file_path: str) -> dict:
+        """Read a local file into a Graph fileAttachment object (base64 contentBytes)."""
+        import base64
+        import mimetypes
+
+        path = os.path.expanduser(file_path)
+        if not os.path.isfile(path):
+            raise ValueError(f"Attachment not found: {file_path}")
+
+        content_type = mimetypes.guess_type(path)[0] or "application/octet-stream"
+        with open(path, "rb") as f:
+            content = base64.b64encode(f.read()).decode()
+
+        return {
+            "@odata.type": "#microsoft.graph.fileAttachment",
+            "name": os.path.basename(path),
+            "contentType": content_type,
+            "contentBytes": content,
+        }
+
+    def send(self, to: str, subject: str, body: str, cc: str = None, bcc: str = None,
+             attachments: list = None) -> str:
         """Send email via Microsoft Graph API.
 
         Args:
@@ -349,6 +370,8 @@ class Outlook:
             body: Email body (plain text)
             cc: Optional CC recipients (comma-separated)
             bcc: Optional BCC recipients (comma-separated)
+            attachments: Optional list of local file paths to attach (images,
+                screenshots, PDFs, etc. — Graph sendMail limit is ~3MB total)
 
         Returns:
             Confirmation message
@@ -379,8 +402,16 @@ class Outlook:
                 for addr in bcc.split(',')
             ]
 
+        if attachments:
+            message["message"]["attachments"] = [
+                self._file_attachment(path) for path in attachments
+            ]
+
         self._request("POST", "/me/sendMail", json=message)
 
+        if attachments:
+            names = ", ".join(os.path.basename(os.path.expanduser(p)) for p in attachments)
+            return f"Email sent successfully to {to} with attachment(s): {names}"
         return f"Email sent successfully to {to}"
 
     def reply(self, email_id: str, body: str) -> str:

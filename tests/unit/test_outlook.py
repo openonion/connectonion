@@ -196,6 +196,62 @@ class TestOutlookSendOperations:
             assert "sent successfully" in result
             assert "recipient@example.com" in result
 
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_send_email_with_attachment(self, mock_httpx, tmp_path):
+        """Test sending email with a file attachment."""
+        mock_response = MagicMock()
+        mock_response.status_code = 202
+        mock_response.json.return_value = {}
+        mock_httpx.request.return_value = mock_response
+
+        screenshot = tmp_path / "screenshot.png"
+        screenshot.write_bytes(b"\x89PNG fake image data")
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            result = outlook.send(
+                to="recipient@example.com",
+                subject="Test Subject",
+                body="Test Body",
+                attachments=[str(screenshot)]
+            )
+
+            assert "sent successfully" in result
+            assert "screenshot.png" in result
+
+            sent_message = mock_httpx.request.call_args.kwargs["json"]["message"]
+            attachment = sent_message["attachments"][0]
+            assert attachment["@odata.type"] == "#microsoft.graph.fileAttachment"
+            assert attachment["name"] == "screenshot.png"
+            assert attachment["contentType"] == "image/png"
+            assert attachment["contentBytes"]
+
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_send_email_missing_attachment(self, mock_httpx):
+        """Test sending with a nonexistent attachment path raises."""
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "test-token",
+            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            import pytest
+            outlook = Outlook()
+            with pytest.raises(ValueError, match="Attachment not found"):
+                outlook.send(
+                    to="recipient@example.com",
+                    subject="Test",
+                    body="Test",
+                    attachments=["/no/such/file.png"]
+                )
+
 
 class TestOutlookActions:
     """Test Outlook action operations with mocked API."""

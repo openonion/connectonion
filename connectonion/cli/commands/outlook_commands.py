@@ -34,12 +34,13 @@ def _outlook():
     return Outlook()
 
 
-def handle_outlook_send(to: str, subject: str, message: str, cc: str = None, bcc: str = None):
+def handle_outlook_send(to: str, subject: str, message: str, cc: str = None, bcc: str = None,
+                        attachments: list = None):
     """Send an email from the connected Outlook account."""
     outlook = _outlook()
     if not outlook:
         return
-    result = outlook.send(to, subject, message, cc=cc, bcc=bcc)
+    result = outlook.send(to, subject, message, cc=cc, bcc=bcc, attachments=attachments)
     console.print(f"\n[green]✓[/green] {result}")
     console.print(f"  From: {os.getenv('MICROSOFT_EMAIL', '')}\n")
 

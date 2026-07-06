@@ -439,10 +439,11 @@ def outlook_send(
     message: str = typer.Argument(..., help="Body (plain text)"),
     cc: Optional[str] = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
     bcc: Optional[str] = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+    attach: Optional[List[str]] = typer.Option(None, "--attach", "-a", help="File to attach (repeat for multiple)"),
 ):
     """Send an email from your Outlook account."""
     from .commands.outlook_commands import handle_outlook_send
-    handle_outlook_send(to, subject, message, cc=cc, bcc=bcc)
+    handle_outlook_send(to, subject, message, cc=cc, bcc=bcc, attachments=attach)
 
 
 @outlook_app.command("inbox")
