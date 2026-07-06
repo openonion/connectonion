@@ -82,6 +82,70 @@ class TestToolExecutor:
         )
         assert trace["status"] == "not_found"
 
+    def test_execute_async_tool_success(self):
+        """Async tool functions are detected and awaited correctly."""
+        async def async_double(x: int) -> int:
+            return x * 2
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(async_double))
+
+        agent = FakeAgent()
+        logger = Logger("test-agent", log=False)
+        trace = execute_single_tool(
+            tool_name="async_double",
+            tool_args={"x": 21},
+            tool_id="call_async_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+        assert trace["status"] == "success"
+        assert "42" in str(trace["result"])
+
+    def test_execute_async_tool_error(self):
+        """Errors raised inside async tools are captured in the trace."""
+        async def async_fail(msg: str) -> str:
+            raise ValueError(msg)
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(async_fail))
+
+        agent = FakeAgent()
+        logger = Logger("test-agent", log=False)
+        trace = execute_single_tool(
+            tool_name="async_fail",
+            tool_args={"msg": "boom"},
+            tool_id="call_async_2",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+        assert trace["status"] == "error"
+        assert trace["error_type"] == "ValueError"
+        assert "boom" in str(trace["result"])
+
+    def test_sync_tool_unaffected_by_async_support(self):
+        """Sync tools continue to work exactly as before."""
+        def sync_echo(text: str) -> str:
+            return text
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(sync_echo))
+
+        agent = FakeAgent()
+        logger = Logger("test-agent", log=False)
+        trace = execute_single_tool(
+            tool_name="sync_echo",
+            tool_args={"text": "hello"},
+            tool_id="call_sync_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+        assert trace["status"] == "success"
+        assert "hello" in str(trace["result"])
+
 
 class TestAddAssistantMessage:
     """Tests for _add_assistant_message null handling (Gemini compatibility)."""

@@ -11,6 +11,8 @@ LLM-Note:
 
 import time
 import json
+import asyncio
+import inspect
 from typing import List, Dict, Any, Optional, Callable
 
 from ..debug.xray import (
@@ -18,6 +20,27 @@ from ..debug.xray import (
     clear_xray_context,
     is_xray_enabled
 )
+
+
+def _run_async_tool(coro):
+    """Run a coroutine to completion, handling nested event loops.
+
+    When no event loop is running in the current thread, ``asyncio.run``
+    creates a fresh loop and drives the coroutine. When a loop is already
+    running (e.g. the agent is driven from an async context), ``asyncio.run``
+    raises ``RuntimeError``; in that case we run the coroutine in a separate
+    thread with its own loop so the calling loop is not disturbed.
+    """
+    try:
+        return asyncio.run(coro)
+    except RuntimeError:
+        # A loop is already running in this thread. Run the coroutine
+        # in a separate thread with its own event loop.
+        import concurrent.futures
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+            future = pool.submit(asyncio.run, coro)
+            return future.result()
 
 
 def execute_and_record_tools(
@@ -192,7 +215,10 @@ def execute_single_tool(
         if getattr(tool_func, '_needs_agent', False):
             tool_args['agent'] = agent
 
-        result = tool_func(**tool_args)
+        if inspect.iscoroutinefunction(tool_func):
+            result = _run_async_tool(tool_func(**tool_args))
+        else:
+            result = tool_func(**tool_args)
         tool_duration = (time.time() - tool_start) * 1000  # milliseconds
 
         trace_entry["timing_ms"] = tool_duration
