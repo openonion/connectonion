@@ -172,7 +172,8 @@ class Outlook:
         if response.status_code not in [200, 201, 202, 204]:
             raise ValueError(f"Microsoft Graph API error: {response.status_code} - {response.text}")
 
-        if response.status_code == 204:
+        # 202 (sendMail) and 204 come back with an empty body
+        if response.status_code == 204 or not response.text:
             return {}
         return response.json()
 

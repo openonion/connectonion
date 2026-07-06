@@ -219,7 +219,7 @@ class TestOutlookSendOperations:
         """Test sending email."""
         mock_response = MagicMock()
         mock_response.status_code = 202
-        mock_response.json.return_value = {}
+        mock_response.text = ""  # Graph sendMail returns 202 with an empty body
         mock_httpx.request.return_value = mock_response
 
         with patch.dict(os.environ, {
@@ -244,7 +244,7 @@ class TestOutlookSendOperations:
         """Test sending email with a file attachment."""
         mock_response = MagicMock()
         mock_response.status_code = 202
-        mock_response.json.return_value = {}
+        mock_response.text = ""  # Graph sendMail returns 202 with an empty body
         mock_httpx.request.return_value = mock_response
 
         screenshot = tmp_path / "screenshot.png"
