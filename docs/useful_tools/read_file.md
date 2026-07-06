@@ -51,11 +51,14 @@ tool result  →  a normal text tool-message in the conversation
       ▼
 image_result_formatter plugin        (runs on the `after_tools` event)
       │  1. detects the  data:image/…;base64,…  URL in the result
-      │  2. replaces the tool message with a short placeholder
-      │  3. inserts a user message: { "type": "image_url", "image_url": {...} }
+      │  2. uploads the bytes to oo-api → gets back a short /img URL
+      │  3. replaces the tool message with a short placeholder
+      │  4. inserts a user message: { "type": "image_url", "image_url": {"url": "…/img/…"} }
       ▼
 next LLM call  →  the model SEES the image (vision), not base64 text
 ```
+
+Only the ~70-byte `/img` URL enters the message history — never the base64 — so screenshots don't bloat the replayed context or session logs. The upload needs `OPENONION_API_KEY` (set up by `co init`); oo-api stores the bytes in content-addressed storage and materializes them per provider at call time (e.g. inlines them for Gemini, which can't fetch URLs).
 
 **Why a plugin, and not `read_file` itself?** A tool's return value can only become a *text* tool-message. Putting an image into the conversation means mutating the message list, which is only safe on the `after_tools` event — so a plugin does it. This is the exact path browser screenshots use. Keeping `read_file` to "return the image data" and letting the plugin handle presentation keeps each piece single-purpose.
 
