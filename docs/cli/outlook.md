@@ -84,16 +84,6 @@ Sends a threaded reply to an email from your last listing. Use `-` as the
 message to read the reply body from stdin, and `--at +2h` (or a UTC ISO
 time) to schedule the reply like a scheduled send.
 
-### `co outlook scheduled` / `co outlook cancel <#>` — Manage scheduled email
-
-```bash
-co outlook scheduled      # what's waiting to send, and when
-co outlook cancel 1       # cancel it before Exchange sends it
-```
-
-Scheduled emails wait in Drafts until their `--at` time; cancel deletes the
-pending message so it never goes out.
-
 ### `co outlook send <to> <subject> <message>` — Send
 
 ```bash
