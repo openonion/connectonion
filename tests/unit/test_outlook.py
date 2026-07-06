@@ -3,7 +3,7 @@
 LLM-Note: Tests for outlook
 
 What it tests:
-- Outlook functionality: init scope checks, token management, formatting, read/search, send (attachments, send_at scheduling), reply (plain-text→HTML paragraph conversion, scheduled), get_scheduled/cancel_scheduled, mark read, unread count
+- Outlook functionality: init scope checks, token management, formatting, read/search, send (attachments, send_at scheduling), reply (plain-text→HTML paragraph conversion, scheduled), get_scheduled (paging), mark read, unread count
 
 Components under test:
 - Module: outlook
@@ -421,74 +421,6 @@ class TestOutlookReply:
 
             comment = mock_httpx.request.call_args.kwargs["json"]["comment"]
             assert comment == "<p>cost &lt; $10 &amp; rising</p>"
-
-
-class TestOutlookScheduled:
-    """Test scheduled-email listing and cancel."""
-
-    @patch('connectonion.useful_tools.outlook.httpx')
-    def test_list_scheduled_filters_to_deferred_drafts(self, mock_httpx):
-        """Test list_scheduled keeps only drafts with the deferred-send property."""
-        mock_response = MagicMock()
-        mock_response.status_code = 200
-        mock_response.json.return_value = {
-            'value': [
-                {
-                    'id': 'draft-plain',
-                    'subject': 'Ordinary draft',
-                    'toRecipients': [],
-                },
-                {
-                    'id': 'draft-scheduled',
-                    'subject': 'Scheduled one',
-                    'toRecipients': [{'emailAddress': {'address': 'bob@example.com'}}],
-                    'singleValueExtendedProperties': [
-                        {'id': 'SystemTime 0x3FEF', 'value': '2026-07-06T15:30:00Z'}
-                    ],
-                },
-            ]
-        }
-        mock_httpx.request.return_value = mock_response
-
-        with patch.dict(os.environ, {
-            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
-            "MICROSOFT_ACCESS_TOKEN": "test-token",
-            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
-            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
-        }, clear=False):
-            from connectonion.useful_tools.outlook import Outlook
-            outlook = Outlook()
-            scheduled = outlook.list_scheduled()
-
-            assert scheduled == [{
-                'id': 'draft-scheduled',
-                'to': 'bob@example.com',
-                'subject': 'Scheduled one',
-                'send_at': '2026-07-06T15:30:00Z',
-            }]
-
-    @patch('connectonion.useful_tools.outlook.httpx')
-    def test_cancel_scheduled_deletes_message(self, mock_httpx):
-        """Test cancel_scheduled issues a DELETE for the message."""
-        mock_response = MagicMock()
-        mock_response.status_code = 204
-        mock_response.text = ""
-        mock_httpx.request.return_value = mock_response
-
-        with patch.dict(os.environ, {
-            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
-            "MICROSOFT_ACCESS_TOKEN": "test-token",
-            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
-            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
-        }, clear=False):
-            from connectonion.useful_tools.outlook import Outlook
-            outlook = Outlook()
-            result = outlook.cancel_scheduled("draft-scheduled")
-
-            assert "Canceled" in result
-            method, url = mock_httpx.request.call_args.args[:2]
-            assert method == "DELETE"
-            assert url.endswith("/me/messages/draft-scheduled")
 
 
 class TestOutlookActions:

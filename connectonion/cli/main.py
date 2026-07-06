@@ -478,17 +478,10 @@ def outlook_reply(
 
 
 @outlook_app.command("scheduled")
-def outlook_scheduled(last: int = typer.Option(10, "--last", "-n", help="How many to show")):
-    """List scheduled emails that haven't been sent yet."""
+def outlook_scheduled():
+    """List emails waiting for scheduled delivery."""
     from .commands.outlook_commands import handle_outlook_scheduled
-    handle_outlook_scheduled(last=last)
-
-
-@outlook_app.command("cancel")
-def outlook_cancel(email_id: str = typer.Argument(..., help="Email # from 'co outlook scheduled' (or a full message ID)")):
-    """Cancel a scheduled email before it goes out."""
-    from .commands.outlook_commands import handle_outlook_cancel
-    handle_outlook_cancel(email_id)
+    handle_outlook_scheduled()
 
 
 @outlook_app.command("sent")
