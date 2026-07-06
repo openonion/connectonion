@@ -11,7 +11,7 @@ All notable changes to ConnectOnion will be documented in this file.
 ### 📚 Documentation
 - Documented relay connection-stability behavior in the network layer.
 
-## [Unreleased]
+## [1.0.9] - 2026-07-06
 
 ### 🎉 Major Features
 
@@ -21,6 +21,8 @@ All notable changes to ConnectOnion will be documented in this file.
 - **`co outlook read <#>`**: prints the full body and marks the email read
 - **`co outlook send <to> <subject> <message>`**: with `--cc`, `--bcc`, repeatable `--attach FILE` (screenshots, PDFs — ~3MB Graph limit), and `--at` for scheduling (`+30m`, `+2h`, or UTC ISO like `2026-07-06T15:30:00Z`); a message of `-` reads the body from stdin (`co outlook send a@b.com "Subject" - < body.txt`)
 - **`co outlook sent`** / **`co outlook search <query>`**: list sent mail and search subject/body
+- **`co outlook scheduled`**: list emails waiting for scheduled delivery (deferred-send drafts) — read-only; Exchange blocks API cancellation (403), cancel with Outlook's own Cancel Send
+- **Outlook tool**: `reply()` gains `send_at` scheduling and converts plain-text bodies to HTML paragraphs (escaped `<p>`/`<br>`), so multi-paragraph replies keep their formatting; new `get_scheduled()` pages the drafts folder for deferred sends
 - **Outlook tool**: `send()` gains `attachments=[...]` and `send_at="..."` (deferred send — Exchange holds delivery, works with just `Mail.Send`); new `list_inbox()` returns email dicts for programmatic use
 
 #### FileTools Refactor - Claude Code-style File Operations
