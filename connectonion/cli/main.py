@@ -477,6 +477,20 @@ def outlook_reply(
     handle_outlook_reply(email_id, message, at=at)
 
 
+@outlook_app.command("scheduled")
+def outlook_scheduled(last: int = typer.Option(10, "--last", "-n", help="How many to show")):
+    """List scheduled emails that haven't been sent yet."""
+    from .commands.outlook_commands import handle_outlook_scheduled
+    handle_outlook_scheduled(last=last)
+
+
+@outlook_app.command("cancel")
+def outlook_cancel(email_id: str = typer.Argument(..., help="Email # from 'co outlook scheduled' (or a full message ID)")):
+    """Cancel a scheduled email before it goes out."""
+    from .commands.outlook_commands import handle_outlook_cancel
+    handle_outlook_cancel(email_id)
+
+
 @outlook_app.command("sent")
 def outlook_sent(last: int = typer.Option(10, "--last", "-n", help="How many emails to show")):
     """List recently sent Outlook emails."""
