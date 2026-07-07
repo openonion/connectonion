@@ -1,10 +1,10 @@
 """
 Purpose: WebSocket-based tool approval plugin with mode system and unified permissions
 LLM-Note:
-  Dependencies: imports from [./approval.py (check_approval, load_config_permissions, poll_mode_changes, handle_mode_change, get_current_mode), ./constants.py (VALID_MODES, DEFAULT_MODE)] | imported by [../.__init__.py useful_plugins package, cli/co_ai/agent.py, cli/templates/minimal/agent.py, ulw.py, skills.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py, tests/integration/test_bash_chain_permissions.py]
-  Data flow: agent loads plugin → [load_config_permissions, poll_mode_changes, check_approval] registered as event handlers → after_user_input fires → load_config_permissions() loads .co/host.yaml → before_iteration fires → poll_mode_changes() checks WebSocket → before_each_tool fires → check_approval() validates tool → if dangerous: WebSocket approval protocol → if approved: tool executes | if rejected: ValueError raised
+  Dependencies: imports from [./approval.py (check_approval, load_config_permissions, poll_mode_changes, poll_interrupt, handle_mode_change, get_current_mode), ./constants.py (VALID_MODES, DEFAULT_MODE)] | imported by [../.__init__.py useful_plugins package, cli/co_ai/agent.py, cli/templates/minimal/agent.py, ulw.py, skills.py] | tested by [tests/unit/test_tool_approval.py, tests/integration/test_config_permissions.py, tests/integration/test_bash_chain_permissions.py]
+  Data flow: agent loads plugin → [load_config_permissions, poll_mode_changes, poll_interrupt, check_approval] registered as event handlers → after_user_input fires → load_config_permissions() loads .co/host.yaml → before_iteration fires → poll_mode_changes() checks WebSocket for mode_change → before_each_tool fires → check_approval() validates tool → if dangerous: WebSocket approval protocol → if approved: tool executes | if rejected: ValueError raised → after_iteration fires → poll_interrupt() checks WebSocket for INTERRUPT (sets stop_signal so the loop's existing check halts)
   State/Effects: exports tool_approval plugin list | exports utility functions handle_mode_change, get_current_mode | no module state
-  Integration: exposes tool_approval (list of 3 event handlers), handle_mode_change(agent, mode), get_current_mode(agent), VALID_MODES, DEFAULT_MODE | used by Agent(plugins=[tool_approval]) | integrates with co ai CLI for WebSocket-based coding agent
+  Integration: exposes tool_approval (list of 4 event handlers), handle_mode_change(agent, mode), get_current_mode(agent), VALID_MODES, DEFAULT_MODE | used by Agent(plugins=[tool_approval]) | integrates with co ai CLI for WebSocket-based coding agent
   Performance: plugin registration is O(1) | event handler overhead per tool call depends on approval.py check_approval()
   Errors: no errors at import time | errors from approval.py bubble up during agent execution
 
@@ -187,6 +187,7 @@ from .approval import (
     check_approval,
     load_config_permissions,
     poll_mode_changes,
+    poll_interrupt,
     handle_mode_change,
     get_current_mode,
 )
@@ -194,7 +195,7 @@ from .constants import VALID_MODES, DEFAULT_MODE
 
 # Export as plugin (list of event handlers)
 # Usage: Agent("name", plugins=[tool_approval])
-tool_approval = [load_config_permissions, poll_mode_changes, check_approval]
+tool_approval = [load_config_permissions, poll_mode_changes, poll_interrupt, check_approval]
 
 # Export mode functions for external use
 __all__ = [
