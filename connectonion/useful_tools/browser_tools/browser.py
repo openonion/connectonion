@@ -60,10 +60,20 @@ except ImportError:
 # Path to the browser agent system prompt
 
 
-# Context-level methods that must NOT auto-create a tab before they run:
-# open_browser creates the tab itself after launching the context; close/save_state
-# operate on the whole context, and a fresh tab right before teardown is wrong.
-_NO_TAB_METHODS = {"open_browser", "close", "save_state"}
+def _no_auto_tab(method):
+    """Mark a method so the dispatch wrapper does NOT auto-create a tab for it.
+
+    Most public methods work on the current session's tab, so the wrapper makes
+    sure one exists before they run. The marked methods manage tabs themselves:
+    open_browser creates the tab after launching the context; close/save_state
+    operate on the whole context, and auto-creating a fresh tab right before
+    them is wrong (close would restore a reclaimed tab just to close it again).
+
+    A marker on the method instead of a name set: it sits next to the code it
+    exempts, and renaming the method can't silently break the match.
+    """
+    method._no_auto_tab = True
+    return method
 
 
 # Playwright's sync API binds to the thread that started it and raises
@@ -83,7 +93,7 @@ def _runs_on_browser_thread(method):
 
         def run():
             self._session_binding.key = key   # propagate onto the worker thread
-            if method.__name__ not in _NO_TAB_METHODS:
+            if not getattr(method, "_no_auto_tab", False):
                 self._ensure_page(key)        # this session gets / keeps its own tab
             return method(self, *args, **kwargs)
 
@@ -328,6 +338,7 @@ class BrowserAutomation:
             return f"close page failed: {exc}"
         return None
 
+    @_no_auto_tab
     def open_browser(self, headless: bool = None, force: bool = False) -> str:
         """Open a new browser window.
 
@@ -434,6 +445,7 @@ class BrowserAutomation:
             return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
         return f"Browser opened with persistent profile: {profile_dir}"
 
+    @_no_auto_tab
     def save_state(self, path: str) -> str:
         """Export the current login state to a portable Playwright storage_state JSON.
 
@@ -1682,6 +1694,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         # Playwright's persistent context auto-saves in background
         self.page.wait_for_timeout(500)
 
+    @_no_auto_tab
     def close(self) -> str:
         """Close the browser. A bound session (hosted multi-session) closes only its OWN tab;
         an unbound caller (single-session CLI / context-manager exit) tears the whole context
