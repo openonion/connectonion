@@ -60,17 +60,6 @@ except ImportError:
 # Path to the browser agent system prompt
 
 
-# Carries "which session is the current call for" from the agent thread (set by the
-# bind_browser_session plugin via _bind_session) to the browser worker thread. A
-# threading.local so concurrent agent threads never clobber each other's key; when
-# no plugin sets it the key is None and every call shares one tab (current behaviour).
-_session_binding = threading.local()
-
-
-def _current_session_key():
-    return getattr(_session_binding, "key", None)
-
-
 # Context-level methods that must NOT auto-create a tab before they run:
 # open_browser creates the tab itself after launching the context; close/save_state
 # operate on the whole context, and a fresh tab right before teardown is wrong.
@@ -83,18 +72,19 @@ _NO_TAB_METHODS = {"open_browser", "close", "save_state"}
 # crash the shared browser. Route every public method through the instance's
 # dedicated worker thread: playwright starts there and every call lands there.
 #
-# The wrapper also routes per session: it reads the caller thread's session key,
-# propagates it onto the worker thread, and ensures that session's own tab exists
-# before the method runs (so self.page resolves to the right tab).
+# The wrapper also routes per session: it reads the caller thread's session key
+# (set by the bind_browser_session plugin via _bind_session), propagates it onto
+# the worker thread, and ensures that session's own tab exists before the method
+# runs (so self.page resolves to the right tab).
 def _runs_on_browser_thread(method):
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
-        key = _current_session_key()  # read on the caller (agent) thread
+        key = self._bound_session_key()  # read on the caller (agent) thread
 
         def run():
-            _session_binding.key = key      # propagate onto the worker thread
+            self._session_binding.key = key   # propagate onto the worker thread
             if method.__name__ not in _NO_TAB_METHODS:
-                self._ensure_page(key)      # this session gets / keeps its own tab
+                self._ensure_page(key)        # this session gets / keeps its own tab
             return method(self, *args, **kwargs)
 
         if threading.current_thread() is self._executor_thread:
@@ -151,7 +141,8 @@ class BrowserAutomation:
     This ensures session persistence even if the process crashes.
     """
 
-    def __init__(self, use_chrome_profile: bool = True, headless: bool = False, seed_state: Optional[str] = None):
+    def __init__(self, use_chrome_profile: bool = True, headless: bool = False, seed_state: Optional[str] = None,
+                 tab_idle_ttl: float = 3600.0, max_tabs: int = 10):
         """Initialize browser automation.
 
         Args:
@@ -166,17 +157,26 @@ class BrowserAutomation:
                         storage_state=. The file holds live session cookies — inject it from the
                         deploy secret store and never commit it. Unset => no injection, current
                         behaviour unchanged.
+            tab_idle_ttl: Seconds a session's tab may sit idle before being reclaimed
+                          (the session transparently gets a fresh tab restored to its
+                          last URL on next use). Lower it on memory-tight deploy boxes.
+            max_tabs: Hard cap on concurrent session tabs; beyond it the
+                      least-recently-used tabs are reclaimed first.
         """
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
         # One tab per session (chat panel) in the shared context, so concurrent
         # sessions don't navigate over each other. Key = session_id (None = no
         # session bound = single shared tab, the original single-page behaviour).
+        # The binding is per (instance, thread): _bind_session records on the
+        # caller thread which session its calls belong to, and the dispatch
+        # wrapper carries that key onto the worker thread.
+        self._session_binding = threading.local()
         self._pages: Dict[Optional[str], "Page"] = {}
         self._page_used: Dict[Optional[str], float] = {}   # key -> last-use monotonic ts (LRU/TTL)
         self._page_url: Dict[Optional[str], str] = {}      # key -> last url (restore a reclaimed tab)
-        self._tab_idle_ttl = 3600.0   # reclaim a tab after 60 min idle (a panel left untouched)
-        self._max_tabs = 10           # backstop cap; a few real panels never hit it
+        self._tab_idle_ttl = tab_idle_ttl
+        self._max_tabs = max_tabs
         self._max_url_memory = 200    # bound the restore-url map; session ids are unique per panel
         self.current_url: str = ""
         self.form_data: Dict[str, Any] = {}
@@ -193,10 +193,10 @@ class BrowserAutomation:
 
     def _browser_is_usable(self) -> bool:
         """Return True when the current Playwright page can still be operated."""
-        key = _current_session_key()
+        key = self._bound_session_key()
 
         def run():
-            _session_binding.key = key
+            self._session_binding.key = key
             return self._browser_is_usable_on_browser_thread()
 
         if threading.current_thread() is self._executor_thread:
@@ -225,19 +225,25 @@ class BrowserAutomation:
         context, so concurrent sessions don't navigate over each other. The session
         key is set by the bind_browser_session plugin on the agent thread and
         propagated onto the worker thread by the dispatch decorator; both threads
-        read it from the same threading.local. Returns None until the tab is created
-        (so the existing `if not self.page: ...` guards still read "browser not open").
+        read it from this instance's threading.local. Returns None until the tab is
+        created (so the existing `if not self.page: ...` guards still read "browser
+        not open").
         """
-        return self._pages.get(_current_session_key())
+        return self._pages.get(self._bound_session_key())
 
     @page.setter
     def page(self, value):
         """Set the current session's tab. Internal flows create tabs via
         _ensure_page; this setter keeps `self.page = <page>` working for callers
         and tests that inject a page directly (it writes the current session's slot)."""
-        key = _current_session_key()
+        key = self._bound_session_key()
         self._pages[key] = value
         self._page_used[key] = time.monotonic()
+
+    def _bound_session_key(self):
+        """The session key bound to the current thread, or None for an unscoped
+        caller (single-session CLI, tests) — None means the single shared tab."""
+        return getattr(self._session_binding, "key", None)
 
     def _bind_session(self, session_id) -> None:
         """Record, on the CALLER (agent) thread, which session the next browser
@@ -245,7 +251,7 @@ class BrowserAutomation:
         dispatched to the worker thread nor exposed to the LLM as a tool; the
         bind_browser_session plugin calls it before each tool, and the dispatch
         decorator reads the binding to route to the right tab."""
-        _session_binding.key = session_id
+        self._session_binding.key = session_id
 
     def _ensure_page(self, key) -> None:
         """Make sure session `key` has a live tab, then reclaim abandoned ones.
@@ -343,7 +349,7 @@ class BrowserAutomation:
         # dead, _ensure_page can't make a tab and the check below falls through to relaunch.
         if self.browser is not None:
             try:
-                self._ensure_page(_current_session_key())
+                self._ensure_page(self._bound_session_key())
             except Exception:
                 pass
 
@@ -353,7 +359,7 @@ class BrowserAutomation:
             # force=True: caller wants a fresh start. A bound session (hosted multi-session)
             # recycles only its OWN tab — a full teardown would kill every other session's
             # tabs. An unbound caller (single-session CLI) tears the whole context down.
-            key = _current_session_key()
+            key = self._bound_session_key()
             if key is not None:
                 self._close_tab(key)
                 self._page_url.pop(key, None)   # fresh = a blank tab, not the old url restored
@@ -420,7 +426,7 @@ class BrowserAutomation:
         # Create this session's tab in the freshly launched context (other sessions
         # get their own tab lazily on first use). _ensure_page applies the viewport
         # and anti-detection init script when it creates the tab.
-        self._ensure_page(_current_session_key())
+        self._ensure_page(self._bound_session_key())
 
         if force and had_previous_browser_state:
             return f"Previous browser closed by force. Browser opened with persistent profile: {profile_dir}"
@@ -1681,7 +1687,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         an unbound caller (single-session CLI / context-manager exit) tears the whole context
         down. Closing the shared context for one session would kill every other session's tab,
         so per-session callers must never reach the full teardown."""
-        key = _current_session_key()
+        key = self._bound_session_key()
         if key is not None:
             err = self._close_tab(key)
             return f"close tab failed: {err}" if err else "Closed this session's browser tab."

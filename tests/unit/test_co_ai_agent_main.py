@@ -41,8 +41,8 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert agent.co_dir == Path(".co")
     # Hosted co ai serves many chat panels off one shared browser, so the
     # session-binding handler must be registered or every panel shares one tab.
-    from connectonion.useful_plugins.bind_browser_session import _bind_session
-    assert _bind_session in agent.events["before_each_tool"]
+    from connectonion.useful_plugins.bind_browser_session import _bind_browser_session
+    assert _bind_browser_session in agent.events["before_each_tool"]
 
 
 def test_start_server_hosts_provided_agent(monkeypatch):

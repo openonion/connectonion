@@ -14,16 +14,9 @@ import threading
 import pytest
 
 from connectonion.useful_tools.browser_tools.browser import BrowserAutomation
-import connectonion.useful_tools.browser_tools.browser as browser_mod
 
-
-@pytest.fixture(autouse=True)
-def _reset_browser_session_binding():
-    """The browser session key lives in a module-level threading.local; reset it around every
-    test so one test's bound session can't leak into the next (open_browser/close branch on it)."""
-    browser_mod._session_binding.key = None
-    yield
-    browser_mod._session_binding.key = None
+# No reset fixture needed: the session binding is owned by each BrowserAutomation
+# instance (per instance, per thread), so a fresh instance per test starts unbound.
 
 
 class FakePage:
@@ -82,7 +75,6 @@ class FakeContext:
 def browser():
     b = BrowserAutomation()
     b.browser = FakeContext()        # stand in for the launched persistent context
-    b._bind_session(None)            # reset this thread's binding between tests
     yield b
     b._executor.shutdown(wait=False)
 
@@ -203,7 +195,7 @@ class TestTabReclaim:
 class TestBindSessionPlugin:
     def test_handler_binds_current_session_to_browser(self):
         """The plugin reads the turn's session_id and hands it to the browser."""
-        from connectonion.useful_plugins.bind_browser_session import _bind_session
+        from connectonion.useful_plugins.bind_browser_session import _bind_browser_session
 
         class FakeBrowser:
             bound = "unset"
@@ -215,19 +207,19 @@ class TestBindSessionPlugin:
                 browserautomation = FakeBrowser()
             current_session = {"session_id": "sess-123"}
 
-        _bind_session(FakeAgent())
+        _bind_browser_session(FakeAgent())
         assert FakeAgent.tools.browserautomation.bound == "sess-123"
 
     def test_handler_noop_without_browser(self):
         """Agents with no browser tool are unaffected — the plugin does nothing."""
-        from connectonion.useful_plugins.bind_browser_session import _bind_session
+        from connectonion.useful_plugins.bind_browser_session import _bind_browser_session
 
         class FakeAgent:
             class tools:
                 pass
             current_session = {"session_id": "sess-123"}
 
-        _bind_session(FakeAgent())  # must not raise
+        _bind_browser_session(FakeAgent())  # must not raise
 
 
 class TestOpenBrowserSharedContext:
