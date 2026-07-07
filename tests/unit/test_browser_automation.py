@@ -1,6 +1,20 @@
 """Tests for BrowserAutomation lifecycle behavior."""
 
+import json
+
+import pytest
+
 import connectonion.useful_tools.browser_tools.browser as browser_mod
+
+
+@pytest.fixture(autouse=True)
+def _reset_browser_session_binding():
+    """The browser session key lives in a module-level threading.local; reset it around every
+    test so one test's bound session can't leak into the next (open_browser/close now branch on
+    whether a session is bound)."""
+    browser_mod._session_binding.key = None
+    yield
+    browser_mod._session_binding.key = None
 
 
 class FakePage:
@@ -198,3 +212,111 @@ def test_close_reports_cleanup_warnings_and_clears_state():
     assert browser.page is None
     assert browser.browser is None
     assert browser.playwright is None
+
+
+class _RecordingContext(FakeContext):
+    """A context that records add_cookies / storage_state so seeding/export can be asserted."""
+
+    def __init__(self):
+        super().__init__()
+        self.added_cookies = None
+        self.saved_state_path = None
+
+    def add_cookies(self, cookies):
+        self.added_cookies = cookies
+
+    def storage_state(self, path=None):
+        self.saved_state_path = path
+
+
+def _recording_playwright(contexts):
+    """sync_playwright() stand-in whose contexts record add_cookies / storage_state calls."""
+
+    class FakeChromium:
+        def launch_persistent_context(self, user_data_dir, **kwargs):
+            context = _RecordingContext()
+            contexts.append(context)
+            return context
+
+    class FakePlaywright:
+        def __init__(self):
+            self.chromium = FakeChromium()
+
+        def stop(self):
+            pass
+
+    class FakeSyncPlaywright:
+        def start(self):
+            return FakePlaywright()
+
+    return FakeSyncPlaywright()
+
+
+def test_seed_state_injects_exported_cookies(monkeypatch, tmp_path):
+    cookies = [{"name": "li_at", "value": "secret", "domain": ".linkedin.com", "path": "/"}]
+    state = tmp_path / "state.json"
+    state.write_text(json.dumps({"cookies": cookies}))
+
+    contexts = []
+    monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(browser_mod, "sync_playwright", lambda: _recording_playwright(contexts))
+    monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
+
+    browser = browser_mod.BrowserAutomation(headless=True, seed_state=str(state))
+    browser.open_browser()
+
+    assert contexts[0].added_cookies == cookies
+
+
+def test_no_seed_state_injects_nothing(monkeypatch, tmp_path):
+    contexts = []
+    monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(browser_mod, "sync_playwright", lambda: _recording_playwright(contexts))
+    monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
+
+    browser = browser_mod.BrowserAutomation(headless=True)
+    browser.open_browser()
+
+    assert contexts[0].added_cookies is None
+
+
+def test_save_state_exports_storage_state_to_path(monkeypatch, tmp_path):
+    contexts = []
+    monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(browser_mod, "sync_playwright", lambda: _recording_playwright(contexts))
+    monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
+
+    browser = browser_mod.BrowserAutomation(headless=True)
+    browser.open_browser()
+    out = tmp_path / "exported.json"
+    result = browser.save_state(str(out))
+
+    assert contexts[0].saved_state_path == str(out)
+    assert "Saved login state" in result
+
+
+def test_save_state_without_browser_reports_not_open():
+    browser = browser_mod.BrowserAutomation(headless=True)
+
+    assert browser.save_state("/tmp/whatever.json") == "Browser not open"
+
+
+def test_wait_for_manual_login_refuses_without_tty(monkeypatch):
+    """On a host (no interactive stdin) manual login must return immediately rather than
+    block input() on the single shared browser worker thread — that thread serializes
+    every session's browser ops, so blocking it would freeze them all indefinitely."""
+    class _NoTTY:
+        def isatty(self):
+            return False
+
+    monkeypatch.setattr(browser_mod.sys, "stdin", _NoTTY())
+
+    browser = browser_mod.BrowserAutomation(headless=True)
+    browser.browser = FakeContext()
+    try:
+        result = browser.wait_for_manual_login("Example")
+    finally:
+        browser._executor.shutdown(wait=False)
+
+    assert "interactive terminal" in result
+    assert "seed_state" in result
