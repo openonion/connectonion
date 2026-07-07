@@ -15,6 +15,17 @@ import pytest
 from unittest.mock import patch, MagicMock
 
 
+@pytest.fixture(autouse=True)
+def _stub_token_refresh(request, monkeypatch):
+    """Outlook refreshes tokens once per instance; stub that network call so
+    Graph-operation tests stay isolated. Tests of the refresh flow itself
+    opt out with @pytest.mark.real_refresh."""
+    if "real_refresh" in request.keywords:
+        return
+    from connectonion.useful_tools.outlook import Outlook
+    monkeypatch.setattr(Outlook, "_refresh_via_backend", lambda self, rt: "test-token")
+
+
 class TestOutlookInit:
     """Test Outlook initialization."""
 
@@ -63,6 +74,71 @@ class TestOutlookTokenManagement:
             outlook = Outlook()
             token = outlook._get_access_token()
             assert token == "test-token"
+
+    @pytest.mark.real_refresh
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_refresh_persists_rotated_refresh_token(self, mock_httpx, tmp_path):
+        """Every use refreshes and saves the rotated refresh token to keys.env."""
+        keys_env = tmp_path / "keys.env"
+        keys_env.write_text(
+            "MICROSOFT_ACCESS_TOKEN=old-access\n"
+            "MICROSOFT_REFRESH_TOKEN=old-refresh\n"
+            "MICROSOFT_TOKEN_EXPIRES_AT=2026-01-01T00:00:00Z\n"
+        )
+
+        refresh_response = MagicMock()
+        refresh_response.status_code = 200
+        refresh_response.json.return_value = {
+            "access_token": "new-access",
+            "expires_at": "2099-12-31T23:59:59Z",
+            "refresh_token": "rotated-refresh",
+        }
+        mock_httpx.post.return_value = refresh_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "old-access",
+            "MICROSOFT_REFRESH_TOKEN": "old-refresh",
+            "OPENONION_API_KEY": "test-key",
+            "AGENT_CONFIG_PATH": str(tmp_path),
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            token = Outlook()._get_access_token()
+
+            assert token == "new-access"
+            assert os.environ["MICROSOFT_REFRESH_TOKEN"] == "rotated-refresh"
+
+        saved = keys_env.read_text()
+        assert "MICROSOFT_REFRESH_TOKEN=rotated-refresh" in saved
+        assert "MICROSOFT_ACCESS_TOKEN=new-access" in saved
+
+    @pytest.mark.real_refresh
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_refresh_without_rotated_token_keeps_current(self, mock_httpx, tmp_path):
+        """Older backends omit refresh_token — the current one must survive."""
+        keys_env = tmp_path / "keys.env"
+        keys_env.write_text("MICROSOFT_REFRESH_TOKEN=old-refresh\n")
+
+        refresh_response = MagicMock()
+        refresh_response.status_code = 200
+        refresh_response.json.return_value = {
+            "access_token": "new-access",
+            "expires_at": "2099-12-31T23:59:59Z",
+        }
+        mock_httpx.post.return_value = refresh_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "old-access",
+            "MICROSOFT_REFRESH_TOKEN": "old-refresh",
+            "OPENONION_API_KEY": "test-key",
+            "AGENT_CONFIG_PATH": str(tmp_path),
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            assert Outlook()._get_access_token() == "new-access"
+            assert os.environ["MICROSOFT_REFRESH_TOKEN"] == "old-refresh"
+
+        assert "MICROSOFT_REFRESH_TOKEN=old-refresh" in keys_env.read_text()
 
 
 class TestOutlookEmailFormatting:

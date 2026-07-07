@@ -70,10 +70,18 @@ class Outlook:
         self._access_token = None
 
     def _get_access_token(self) -> str:
-        """Get Microsoft access token (with auto-refresh)."""
+        """Get Microsoft access token, refreshing once per Outlook instance.
+
+        Microsoft refresh tokens live 90 days and replace themselves on
+        every use — refreshing at the start of each session (and persisting
+        the rotated token) keeps that window sliding forever, so re-auth is
+        only ever needed after a password change or revocation.
+        """
+        if self._access_token:
+            return self._access_token
+
         access_token = os.getenv("MICROSOFT_ACCESS_TOKEN")
         refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN")
-        expires_at_str = os.getenv("MICROSOFT_TOKEN_EXPIRES_AT")
 
         if not access_token or not refresh_token:
             raise ValueError(
@@ -81,24 +89,11 @@ class Outlook:
                 "Run: co auth microsoft"
             )
 
-        # Check if token is expired or about to expire (within 5 minutes)
-        if expires_at_str:
-            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-            now = datetime.utcnow().replace(tzinfo=expires_at.tzinfo) if expires_at.tzinfo else datetime.utcnow()
-
-            if now >= expires_at - timedelta(minutes=5):
-                # Token expired or about to expire, refresh via backend
-                access_token = self._refresh_via_backend(refresh_token)
-                self._access_token = None
-
-        if self._access_token:
-            return self._access_token
-
-        self._access_token = access_token
+        self._access_token = self._refresh_via_backend(refresh_token)
         return self._access_token
 
     def _refresh_via_backend(self, refresh_token: str) -> str:
-        """Refresh access token via backend API.
+        """Refresh tokens via backend API and persist the rotated pair.
 
         Args:
             refresh_token: The refresh token
@@ -130,10 +125,16 @@ class Outlook:
         data = response.json()
         new_access_token = data["access_token"]
         expires_at = data["expires_at"]
+        # Microsoft rotates refresh tokens on every use — persist the new one
+        # or the connection dies when the original expires at 90 days.
+        # (Older backends don't return it; keep the current one then.)
+        new_refresh_token = data.get("refresh_token")
 
         # Update environment variables for this session
         os.environ["MICROSOFT_ACCESS_TOKEN"] = new_access_token
         os.environ["MICROSOFT_TOKEN_EXPIRES_AT"] = expires_at
+        if new_refresh_token:
+            os.environ["MICROSOFT_REFRESH_TOKEN"] = new_refresh_token
 
         # Update .env file if it exists
         env_file = os.path.join(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co")), "keys.env")
@@ -147,6 +148,8 @@ class Outlook:
                         f.write(f"MICROSOFT_ACCESS_TOKEN={new_access_token}\n")
                     elif line.startswith("MICROSOFT_TOKEN_EXPIRES_AT="):
                         f.write(f"MICROSOFT_TOKEN_EXPIRES_AT={expires_at}\n")
+                    elif line.startswith("MICROSOFT_REFRESH_TOKEN=") and new_refresh_token:
+                        f.write(f"MICROSOFT_REFRESH_TOKEN={new_refresh_token}\n")
                     else:
                         f.write(line)
 
