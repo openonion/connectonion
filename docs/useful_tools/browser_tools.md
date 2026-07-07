@@ -1,12 +1,12 @@
 # Browser Tools
 
-Natural language browser automation via Playwright. Navigate, click, type, screenshot — no CSS selectors needed.
+Natural language browser automation via [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) — a stealth-patched, API-compatible Playwright fork that hides driver-level automation tells out of the box. Navigate, click, type, screenshot — no CSS selectors needed.
 
 ## Installation
 
 ```bash
-pip install playwright
-playwright install chromium
+pip install patchright
+patchright install chrome
 ```
 
 ## Usage
