@@ -128,7 +128,7 @@ my-project/
 **browser** - Dedicated browser automation agent:
 - `BrowserAutomation` (headless, max_iterations=200)
 - Plugins: `image_result_formatter`, `ui_stream`
-- Note: requires `pip install playwright && playwright install chromium`
+- Note: requires `pip install patchright && patchright install chrome`
 
 **web-research** - Web research and data extraction:
 - `search_web`, `extract_data`, `analyze_data`, `save_research`

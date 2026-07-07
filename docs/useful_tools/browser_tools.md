@@ -1,12 +1,12 @@
 # Browser Tools
 
-Natural language browser automation via Playwright. Navigate, click, type, screenshot — no CSS selectors needed.
+Natural language browser automation via [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) — a stealth-patched, API-compatible Playwright fork that hides driver-level automation tells out of the box. Navigate, click, type, screenshot — no CSS selectors needed.
 
 ## Installation
 
 ```bash
-pip install playwright
-playwright install chromium
+pip install patchright
+patchright install chrome
 ```
 
 ## Usage
@@ -50,6 +50,25 @@ browser = BrowserAutomation()
 browser.go_to("https://x.com")           # Session restored automatically
 ```
 
+## Portable Login State
+
+The persistent profile above lives at `~/.co/browser_profile/` and cannot be moved safely across operating systems because its cookies are encrypted per machine. To reuse a login on another machine or inside a Linux deploy container, export a Playwright storage state JSON and inject it when constructing the browser:
+
+```python
+# On your machine, headed: log in by hand, then export
+browser = BrowserAutomation(headless=False)
+browser.go_to("https://www.linkedin.com/login")
+input("Log in, then press Enter...")
+browser.save_state("linkedin_state.json")
+
+# On the deployed agent: inject before the first navigation
+browser = BrowserAutomation(seed_state="linkedin_state.json")
+```
+
+`seed_state` injects cookies with `add_cookies()` after the persistent context opens. Unset `seed_state` keeps the current behavior.
+
+> **Treat the state file as a secret.** It holds live session cookies — anyone with it can act as the logged-in user. Add it to `.gitignore`, never commit it or bake it into a Docker image, and inject it on deploy through the secret store rather than shipping it in the project tarball.
+
 ## API
 
 ### Navigation
@@ -79,6 +98,25 @@ browser.click("email input field")       # Uses AI to find by description
 ```
 
 Element finding uses a vision LLM — describe what you see, not a CSS selector.
+
+When you have a stable CSS selector, click it directly:
+
+```python
+browser.click_element_by_selector('button[type="submit"]')
+browser.click_element_by_selector('button', text="Sign in")
+browser.click_element_by_selector('.item', index=2)
+```
+
+To click inside an iframe, including a cross-origin one (an embedded widget, payment form, or editor) that main-page selectors cannot reach, pass `frame_url_contains` or `frame_name`:
+
+```python
+browser.click_element_by_selector(
+    '#subscribe',
+    frame_url_contains="checkout",
+)
+```
+
+The click is dispatched through Playwright's input layer as a real pointer event at the element's coordinates. Text matching remains main-frame only.
 
 ### Hover and Advanced Mouse
 
@@ -195,6 +233,8 @@ agent.input("Navigate to github.com/trending and screenshot the page")
 agent.input("Fill in the contact form on example.com with test data")
 ```
 
+One `BrowserAutomation` instance is safe to reuse across turns and concurrent hosted sessions. Public methods are serialized onto one internal browser worker thread, so Playwright's sync API is always called from the thread that owns it. When `bind_browser_session` is enabled, each hosted session gets its own tab in the shared browser context.
+
 ## Common Patterns
 
 ### Login once, reuse session
@@ -228,6 +268,17 @@ browser.go_to("https://example.com/products")
 text = browser.get_text()
 links = browser.get_links_from_page("/product/")
 ```
+
+## Proxy
+
+Set `BROWSER_PROXY` to route browser traffic through an HTTP or SOCKS proxy — for example to control the egress IP, test geo-specific behavior, or comply with a corporate network policy:
+
+```bash
+BROWSER_PROXY=http://user:pass@host:port
+BROWSER_PROXY=socks5://host:port
+```
+
+`BROWSER_PROXY` is read when `open_browser()` launches the context. Leave it unset for direct egress. Use a proxy only against sites whose terms permit it.
 
 ## Notes
 

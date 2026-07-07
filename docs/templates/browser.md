@@ -7,8 +7,8 @@ Browser automation agent with full web control capabilities.
 ```bash
 co create browser-bot --template browser
 cd browser-bot
-pip install playwright
-playwright install chromium
+pip install patchright
+patchright install chrome
 python agent.py
 ```
 
@@ -19,7 +19,7 @@ browser-bot/
 ├── agent.py            # BrowserAutomation agent with all tools
 ├── prompts/
 │   └── agent.md        # Browser automation system prompt
-├── requirements.txt    # playwright, connectonion, python-dotenv
+├── requirements.txt    # patchright, connectonion, python-dotenv
 ├── .env                # API keys
 ├── .co/
 │   └── docs/           # ConnectOnion documentation
@@ -94,13 +94,13 @@ Agent: I'll navigate to Hacker News and extract the top stories...
 
 ```
 connectonion
-playwright
+patchright
 python-dotenv
 ```
 
 After installing, run:
 ```bash
-playwright install chromium
+patchright install chrome
 ```
 
 ## Customization

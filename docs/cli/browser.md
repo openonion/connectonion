@@ -150,11 +150,11 @@ This path uses managed keys — run `co auth` once if you see an authentication 
 
 ## Installation
 
-The browser needs Playwright:
+The browser needs Patchright (a stealth-patched, API-compatible Playwright fork):
 
 ```bash
-pip install playwright
-playwright install chromium
+pip install patchright
+patchright install chrome
 ```
 
 ## Sessions & Profile
@@ -189,9 +189,9 @@ Browser agent requires authentication. Run: co auth
 ```
 The natural-language agent uses managed keys. Run `co auth` once. Direct function calls don't need this.
 
-**Playwright not installed**
+**Patchright not installed**
 ```bash
-Browser tools not installed. Run: pip install playwright && playwright install chromium
+Browser tools not installed. Run: pip install patchright && patchright install chrome
 ```
 
 ## Troubleshooting

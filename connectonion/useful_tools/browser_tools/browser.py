@@ -1,9 +1,9 @@
 """
-Purpose: Natural language browser automation via Playwright with persistent profile and auto-save
+Purpose: Natural language browser automation via Patchright (a stealth-patched, API-compatible Playwright fork) with persistent profile and auto-save
 LLM-Note:
-  Dependencies: imports from [playwright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_agent.py]
+  Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_agent.py]
   Data flow: BrowserAutomation() initializes Playwright → opens browser with persistent context → provides tools (navigate, find_element, click, type_text, screenshot, scroll, wait_for_login) → auto-saves cookies after each critical action → Agent uses these tools via natural language → element_finder.py uses vision LLM to locate elements | screenshots saved to .tmp/ directory
-  State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup
+  State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup | all public methods dispatch to one dedicated browser thread (Playwright sync API is thread-bound), so a shared instance is safe to call from any thread
   Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), keyboard_type(text), keyboard_press(key), wait_for_login(seconds) | used by `co browser` CLI command
   Performance: headless by default (faster) | persistent context (instant profile load) | vision model for element finding (slower but accurate) | screenshots base64-encoded for LLM analysis | auto-save adds 500ms delay after critical actions
   Errors: returns error string if Playwright not installed | returns "Browser already open" if live browser exists | element not found returns descriptive error
@@ -23,8 +23,15 @@ Features:
 
 import os
 import base64
+import functools
+import inspect
 import json
 import platform
+import sys
+import threading
+import time
+import urllib.parse
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -38,16 +45,97 @@ from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
 
-# Check Playwright availability
+# Patchright is a stealth-patched, API-compatible drop-in for Playwright. It removes
+# driver-level automation tells (the Runtime.enable / Console.enable CDP leaks and the
+# navigator.webdriver flag) that Chrome launch flags and page init scripts cannot reach,
+# so it fixes anti-detection below where our old flag stack operated. The sync API is
+# identical, so only the import line changes; sync_playwright keeps its name because that
+# is exactly what patchright.sync_api exports.
 try:
-    from playwright.sync_api import sync_playwright, Page, Browser, Playwright
-    PLAYWRIGHT_AVAILABLE = True
+    from patchright.sync_api import sync_playwright, Page, Browser, Playwright
+    BROWSER_AVAILABLE = True
 except ImportError:
-    PLAYWRIGHT_AVAILABLE = False
+    BROWSER_AVAILABLE = False
 
 # Path to the browser agent system prompt
 
 
+def _no_auto_tab(method):
+    """Mark a method so the dispatch wrapper does NOT auto-create a tab for it.
+
+    Most public methods work on the current session's tab, so the wrapper makes
+    sure one exists before they run. The marked methods manage tabs themselves:
+    open_browser creates the tab after launching the context; close/save_state
+    operate on the whole context, and auto-creating a fresh tab right before
+    them is wrong (close would restore a reclaimed tab just to close it again).
+
+    A marker on the method instead of a name set: it sits next to the code it
+    exempts, and renaming the method can't silently break the match.
+    """
+    method._no_auto_tab = True
+    return method
+
+
+# Playwright's sync API binds to the thread that started it and raises
+# "Cannot switch to a different thread" from any other. Servers like host()
+# run each agent turn on an arbitrary threadpool thread, so consecutive turns
+# crash the shared browser. Route every public method through the instance's
+# dedicated worker thread: playwright starts there and every call lands there.
+#
+# The wrapper also routes per session: it reads the caller thread's session key
+# (set by the bind_browser_session plugin via _bind_session), propagates it onto
+# the worker thread, and ensures that session's own tab exists before the method
+# runs (so self.page resolves to the right tab).
+def _runs_on_browser_thread(method):
+    @functools.wraps(method)
+    def wrapper(self, *args, **kwargs):
+        key = self._bound_session_key()  # read on the caller (agent) thread
+
+        def run():
+            self._session_binding.key = key   # propagate onto the worker thread
+            if not getattr(method, "_no_auto_tab", False):
+                self._ensure_page(key)        # this session gets / keeps its own tab
+            return method(self, *args, **kwargs)
+
+        if threading.current_thread() is self._executor_thread:
+            return run()
+        return self._executor.submit(run).result()
+
+    return wrapper
+
+
+def _public_methods_run_on_browser_thread(cls):
+    for name, method in vars(cls).copy().items():
+        if not name.startswith("_") and inspect.isfunction(method):
+            setattr(cls, name, _runs_on_browser_thread(method))
+    return cls
+
+
+def _browser_proxy_from_env():
+    """Build Playwright's proxy config from the BROWSER_PROXY env var, or None if unset.
+
+    BROWSER_PROXY routes the browser's traffic through an HTTP or SOCKS proxy — e.g. to
+    control the egress IP, test geo-specific behaviour, or comply with a corporate
+    network policy. Formats:
+        socks5://host:port              (no auth; Chromium ignores SOCKS auth)
+        http://user:pass@host:port      (HTTP proxy with auth)
+    Use only against sites whose terms permit it. Unset => None => no proxy, current
+    behaviour unchanged.
+    """
+    url = os.environ.get("BROWSER_PROXY", "").strip()
+    if not url:
+        return None
+    p = urllib.parse.urlparse(url)
+    server = f"{p.scheme}://{p.hostname}" + (f":{p.port}" if p.port else "")
+    proxy = {"server": server}
+    if p.username:
+        proxy["username"] = urllib.parse.unquote(p.username)
+    if p.password:
+        proxy["password"] = urllib.parse.unquote(p.password)
+    return proxy
+
+
+@_public_methods_run_on_browser_thread
 class BrowserAutomation:
     """Browser automation with natural language support.
 
@@ -63,27 +151,70 @@ class BrowserAutomation:
     This ensures session persistence even if the process crashes.
     """
 
-    def __init__(self, use_chrome_profile: bool = True, headless: bool = False):
+    def __init__(self, use_chrome_profile: bool = True, headless: bool = False, seed_state: Optional[str] = None,
+                 tab_idle_ttl: float = 3600.0, max_tabs: int = 10):
         """Initialize browser automation.
 
         Args:
             use_chrome_profile: If True, uses your Chrome cookies/sessions.
                                Chrome must be closed before running.
             headless: If True, browser runs without visible window (default True).
+            seed_state: Optional path to a Playwright storage_state JSON (a {"cookies": [...]}
+                        file produced by save_state on another machine). When set, those cookies
+                        are injected into the context once, right after it is created and before
+                        any navigation, so a deployed agent starts already signed in. Cookies are
+                        applied with add_cookies because launch_persistent_context() cannot accept
+                        storage_state=. The file holds live session cookies — inject it from the
+                        deploy secret store and never commit it. Unset => no injection, current
+                        behaviour unchanged.
+            tab_idle_ttl: Seconds a session's tab may sit idle before being reclaimed
+                          (the session transparently gets a fresh tab restored to its
+                          last URL on next use). Lower it on memory-tight deploy boxes.
+            max_tabs: Hard cap on concurrent session tabs; beyond it the
+                      least-recently-used tabs are reclaimed first.
         """
         self.playwright: Optional[Playwright] = None
         self.browser: Optional[Browser] = None
-        self.page: Optional[Page] = None
+        # One tab per session (chat panel) in the shared context, so concurrent
+        # sessions don't navigate over each other. Key = session_id (None = no
+        # session bound = single shared tab, the original single-page behaviour).
+        # The binding is per (instance, thread): _bind_session records on the
+        # caller thread which session its calls belong to, and the dispatch
+        # wrapper carries that key onto the worker thread.
+        self._session_binding = threading.local()
+        self._pages: Dict[Optional[str], "Page"] = {}
+        self._page_used: Dict[Optional[str], float] = {}   # key -> last-use monotonic ts (LRU/TTL)
+        self._page_url: Dict[Optional[str], str] = {}      # key -> last url (restore a reclaimed tab)
+        self._tab_idle_ttl = tab_idle_ttl
+        self._max_tabs = max_tabs
+        self._max_url_memory = 200    # bound the restore-url map; session ids are unique per panel
         self.current_url: str = ""
         self.form_data: Dict[str, Any] = {}
         self.use_chrome_profile = use_chrome_profile
         self._screenshots = []
         self._headless = headless
+        self._seed_state = seed_state
+        self._seeded = False
         self.screenshots_dir = str(SCREENSHOTS_DIR)
         self.last_screenshot_path = None  # file path of the most recent screenshot
+        # All public methods run on this one thread (see _public_methods_run_on_browser_thread).
+        self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="browser")
+        self._executor_thread = self._executor.submit(threading.current_thread).result()
 
     def _browser_is_usable(self) -> bool:
         """Return True when the current Playwright page can still be operated."""
+        key = self._bound_session_key()
+
+        def run():
+            self._session_binding.key = key
+            return self._browser_is_usable_on_browser_thread()
+
+        if threading.current_thread() is self._executor_thread:
+            return run()
+        return self._executor.submit(run).result()
+
+    def _browser_is_usable_on_browser_thread(self) -> bool:
+        """Check browser usability on Playwright's owning thread."""
         if not self.browser or not self.page:
             return False
 
@@ -96,6 +227,118 @@ class BrowserAutomation:
         except Exception:
             return False
 
+    @property
+    def page(self):
+        """The Playwright tab for the session this call belongs to.
+
+        Each session (chat panel) gets its own tab in the shared, single-login
+        context, so concurrent sessions don't navigate over each other. The session
+        key is set by the bind_browser_session plugin on the agent thread and
+        propagated onto the worker thread by the dispatch decorator; both threads
+        read it from this instance's threading.local. Returns None until the tab is
+        created (so the existing `if not self.page: ...` guards still read "browser
+        not open").
+        """
+        return self._pages.get(self._bound_session_key())
+
+    @page.setter
+    def page(self, value):
+        """Set the current session's tab. Internal flows create tabs via
+        _ensure_page; this setter keeps `self.page = <page>` working for callers
+        and tests that inject a page directly (it writes the current session's slot)."""
+        key = self._bound_session_key()
+        self._pages[key] = value
+        self._page_used[key] = time.monotonic()
+
+    def _bound_session_key(self):
+        """The session key bound to the current thread, or None for an unscoped
+        caller (single-session CLI, tests) — None means the single shared tab."""
+        return getattr(self._session_binding, "key", None)
+
+    def _bind_session(self, session_id) -> None:
+        """Record, on the CALLER (agent) thread, which session the next browser
+        calls on this thread belong to. Underscore-prefixed so it is neither
+        dispatched to the worker thread nor exposed to the LLM as a tool; the
+        bind_browser_session plugin calls it before each tool, and the dispatch
+        decorator reads the binding to route to the right tab."""
+        self._session_binding.key = session_id
+
+    def _ensure_page(self, key) -> None:
+        """Make sure session `key` has a live tab, then reclaim abandoned ones.
+
+        Reused by two callers, always on the worker thread: the dispatch decorator
+        (before every tab-using tool, so self.page resolves to this session's tab)
+        and open_browser (to create the first tab after launching the context).
+
+        Creates the tab in the shared context (restored to its last URL), stamps its
+        last-use time, then reclaims. No-op until the context is open; harmless if the
+        tab already exists.
+
+        Reclaim bounds memory but never closes the active `key`: first tabs idle past
+        _tab_idle_ttl (a panel untouched for an hour), then — only if still over
+        _max_tabs — the least-recently-used ones as a runaway backstop. A reclaimed
+        session transparently gets a fresh restored tab next call (no "target closed").
+        """
+        if not self.browser:
+            return
+
+        page = self._pages.get(key)
+        if page is None or (callable(getattr(page, "is_closed", None)) and page.is_closed()):
+            page = self.browser.new_page()
+            page.set_default_navigation_timeout(60000)
+            page.set_viewport_size({"width": 1920, "height": 1200})
+            # No navigator.webdriver init script: Patchright hides it at the driver level,
+            # and add_init_script injection is itself a timing-detectable tell.
+            restore_url = self._page_url.get(key)
+            if restore_url:  # a reclaimed session comes back to where it was
+                try:
+                    page.goto(restore_url, wait_until="domcontentloaded", timeout=30000)
+                except Exception:
+                    pass
+            self._pages[key] = page
+        self._page_used[key] = time.monotonic()
+
+        now = time.monotonic()
+        for k in [k for k, t in list(self._page_used.items())
+                  if k != key and now - t > self._tab_idle_ttl]:
+            self._close_tab(k)
+        if len(self._pages) > self._max_tabs:
+            lru_first = sorted(
+                (k for k in self._pages if k != key),
+                key=lambda k: self._page_used.get(k, 0.0),
+            )
+            for k in lru_first[: len(self._pages) - self._max_tabs]:
+                self._close_tab(k)
+
+    def _close_tab(self, key) -> Optional[str]:
+        """Close one session's tab, remembering its URL so the session can resume.
+
+        Reused by two callers: _ensure_page's reclaim (best-effort, ignores the
+        return) and close() (surfaces the return as a cleanup warning). Returns an
+        error string if the page would not close, else None."""
+        page = self._pages.pop(key, None)
+        self._page_used.pop(key, None)
+        if page is None:
+            return None
+        try:
+            url = page.url
+        except Exception:
+            url = None
+        if url:
+            # Remember where the session was so it resumes there, but bound the map:
+            # session ids are unique per panel, so without a cap it grows forever on a
+            # long-lived shared host. Re-insert (LRU) then trim the oldest keys.
+            self._page_url.pop(key, None)
+            self._page_url[key] = url
+            while len(self._page_url) > self._max_url_memory:
+                self._page_url.pop(next(iter(self._page_url)))
+        try:
+            page.close()
+        except Exception as exc:
+            return f"close page failed: {exc}"
+        return None
+
+    @_no_auto_tab
     def open_browser(self, headless: bool = None, force: bool = False) -> str:
         """Open a new browser window.
 
@@ -107,18 +350,38 @@ class BrowserAutomation:
         """
         if headless is None:
             headless = self._headless
-        if not PLAYWRIGHT_AVAILABLE:
-            return "Browser tools not installed. Run: pip install playwright && playwright install chromium"
+        if not BROWSER_AVAILABLE:
+            return "Browser tools not installed. Run: pip install patchright && patchright install chrome"
+
+        # If a shared context is already running, a brand-new session has no tab in it yet.
+        # Give this session its tab BEFORE judging usability, so a new session never reads
+        # the shared context as "unusable" (its own page is None) and tears it down — that
+        # would close the tabs other sessions are actively using. If the context is really
+        # dead, _ensure_page can't make a tab and the check below falls through to relaunch.
+        if self.browser is not None:
+            try:
+                self._ensure_page(self._bound_session_key())
+            except Exception:
+                pass
 
         if self._browser_is_usable():
             if not force:
                 return "<system-reminder>Browser already open and usable. Continue using the current browser page.</system-reminder>"
-            self.close()
+            # force=True: caller wants a fresh start. A bound session (hosted multi-session)
+            # recycles only its OWN tab — a full teardown would kill every other session's
+            # tabs. An unbound caller (single-session CLI) tears the whole context down.
+            key = self._bound_session_key()
+            if key is not None:
+                self._close_tab(key)
+                self._page_url.pop(key, None)   # fresh = a blank tab, not the old url restored
+                self._ensure_page(key)
+                return "Opened a fresh tab for this session."
+            self._teardown()
             had_previous_browser_state = True
         else:
             had_previous_browser_state = bool(self.browser or self.page or self.playwright)
             if had_previous_browser_state:
-                self.close()
+                self._teardown()   # context is dead/unusable — full cleanup before relaunch
 
         self.playwright = sync_playwright().start()
 
@@ -148,37 +411,61 @@ class BrowserAutomation:
         # - Survives browser restarts automatically
         # - No need for storage_state.json complexity (browser-use uses that for portability)
 
-        # Launch browser with browser-use anti-detection config (see browser_config.py)
+        # Patchright supplies the anti-detection defaults; we pass only run-environment
+        # flags (see browser_config.py). executable_path pins real Chrome, which Patchright
+        # recommends over bundled Chromium.
         self.browser = self.playwright.chromium.launch_persistent_context(
             str(profile_dir),  # Persistent profile at ~/.co/browser_profile/
             headless=headless,
             executable_path=chrome_path,
-            args=CHROME_DEFAULT_ARGS,  # 53 args + 30 disabled features from browser-use
-            ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # + macOS cookie fix
+            args=CHROME_DEFAULT_ARGS,  # environment-stability flags only
+            ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # macOS cookie fix
+            proxy=_browser_proxy_from_env(),  # route egress through BROWSER_PROXY if set, else None
             timeout=120000,
         )
 
-        self.page = self.browser.new_page()
-        self.page.set_default_navigation_timeout(60000)
+        # Seed a portable login state into the fresh context once, before any navigation, so a
+        # deployed agent starts already signed in. launch_persistent_context() can't take
+        # storage_state=, so the exported cookies are applied with add_cookies. A missing file
+        # raises (fail loud): if a deploy declared a seed it must be packaged.
+        if self._seed_state and not self._seeded:
+            cookies = json.loads(Path(self._seed_state).read_text()).get("cookies", [])
+            if cookies:
+                self.browser.add_cookies(cookies)
+            self._seeded = True
 
-        # Set large viewport to show more content without scrolling
-        self.page.set_viewport_size({"width": 1920, "height": 1200})
-
-        # Hide automation indicators (defense in depth)
-        # Already handled by --disable-blink-features=AutomationControlled in args above
-        self.page.add_init_script(
-            """
-            Object.defineProperty(navigator, 'webdriver', {
-                get: () => undefined
-            });
-        """
-        )
+        # Create this session's tab in the freshly launched context (other sessions
+        # get their own tab lazily on first use). _ensure_page applies the viewport
+        # and anti-detection init script when it creates the tab.
+        self._ensure_page(self._bound_session_key())
 
         if force and had_previous_browser_state:
             return f"Previous browser closed by force. Browser opened with persistent profile: {profile_dir}"
         if had_previous_browser_state:
             return f"Previous stale browser state closed. Browser opened with persistent profile: {profile_dir}"
         return f"Browser opened with persistent profile: {profile_dir}"
+
+    @_no_auto_tab
+    def save_state(self, path: str) -> str:
+        """Export the current login state to a portable Playwright storage_state JSON.
+
+        Writes {"cookies": [...], "origins": [...]} to `path`. Run this locally after logging
+        in by hand (headed) to capture a session, then ship the file and pass it back as
+        BrowserAutomation(seed_state=path) on the deployed agent. The JSON is plaintext and
+        portable across machines/OSes; a copied Chrome profile is not (its cookies are
+        encrypted per-OS).
+
+        SECURITY: the file holds live session cookies — anyone with it can act as the
+        logged-in user. Treat it as a secret: never commit it (add to .gitignore), don't
+        bake it into a Docker image, and prefer injecting it via the deploy secret store.
+        """
+        if not self.browser:
+            return "Browser not open"
+        self.browser.storage_state(path=path)
+        return (
+            f"Saved login state to {path}. This file contains live session cookies — "
+            f"keep it secret, add it to .gitignore, and never commit or bake it into an image."
+        )
 
     def go_to(self, url: str) -> str:
         """Navigate to a URL."""
@@ -213,13 +500,20 @@ class BrowserAutomation:
             return element.locator
         return f"Could not find element matching: {description}"
 
-    def click_element_by_selector(self, selector: str, index: int = 0, text: str = "") -> str:
+    def click_element_by_selector(self, selector: str, index: int = 0, text: str = "", frame_url_contains: str = "", frame_name: str = "") -> str:
         """Click an element using a CSS selector via Playwright locator().
 
         Use when a workflow has a stable selector such as an aria-label,
         role-compatible attribute, or data-testid. `index` is zero-based.
         If `text` is provided, only visible elements with exactly that text are
         considered.
+
+        Set frame_url_contains or frame_name to resolve the selector inside a page
+        frame, including cross-origin iframes (e.g. an embedded widget or payment
+        form) that main-page selectors can't reach. The click is dispatched through
+        Playwright's input layer as a real pointer event at the element's
+        coordinates. Frame targeting applies to the selector path; `text` matching
+        is main-frame only.
         """
         if not self.page:
             return "Browser not open"
@@ -267,14 +561,32 @@ class BrowserAutomation:
             self.page.wait_for_timeout(1000)
             return f"Clicked element {index + 1}/{count} matching selector: {selector} with text: {text}"
 
-        locator = self.page.locator(selector)
-        count = locator.count()
-        if count == 0:
-            return f"No element found for selector: {selector}"
-        if index < 0 or index >= count:
-            return f"Selector matched {count} elements; index {index} is out of range"
+        if frame_url_contains or frame_name:
+            # Resolve inside matching page frames so cross-origin iframes (e.g. an
+            # embedded widget) the main-page DOM can't reach are clickable.
+            candidates = []
+            for frame in self.page.frames:
+                url = getattr(frame, "url", "") or ""
+                name = getattr(frame, "name", "") or ""
+                if frame_url_contains and frame_url_contains not in url:
+                    continue
+                if frame_name and frame_name != name:
+                    continue
+                loc = frame.locator(selector)
+                candidates.extend(loc.nth(i) for i in range(loc.count()))
+            where = f" in frames matching {(frame_url_contains or frame_name)!r}"
+        else:
+            loc = self.page.locator(selector)
+            candidates = [loc.nth(i) for i in range(loc.count())]
+            where = ""
 
-        target = locator.nth(index)
+        count = len(candidates)
+        if count == 0:
+            return f"No element found for selector: {selector}{where}"
+        if index < 0 or index >= count:
+            return f"Selector matched {count} elements{where}; index {index} is out of range"
+
+        target = candidates[index]
         box = target.bounding_box()
         if box:
             self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
@@ -283,7 +595,7 @@ class BrowserAutomation:
 
         self._save_context()
         self.page.wait_for_timeout(1000)
-        return f"Clicked element {index + 1}/{count} matching selector: {selector}"
+        return f"Clicked element {index + 1}/{count} matching selector: {selector}{where}"
 
     def count_elements_by_selector(self, selector: str) -> str:
         """Count elements matching a CSS selector via Playwright locator()."""
@@ -1167,8 +1479,8 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         Returns:
             Base64 encoded image data
         """
-        if not PLAYWRIGHT_AVAILABLE:
-            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
+        if not BROWSER_AVAILABLE:
+            return 'Browser tools not installed. Run: pip install patchright && patchright install chrome'
 
         if not self.page:
             return "Browser not open"
@@ -1189,13 +1501,25 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         print(f"\n[browser] Screenshot saved to: {path}")
         print(f"[browser] Full page: {full_page}, Size: {len(screenshot_bytes)} bytes\n")
 
+        # Bound the payload. The screenshot is sent to the frontend as a base64 data URL
+        # in ONE relay WebSocket frame; base64 inflates bytes ~33% and the relay's default
+        # cap is 1 MB (websockets max_size), so a frame over it drops the relay connection
+        # (and reconnect replays it, so the agent flaps offline). A dense 1920-wide page is
+        # a ~800 KB PNG = >1 MB base64. Re-encode only oversized captures as JPEG
+        # (Playwright-native, no Pillow); keep PNG for the common case so text stays sharp.
+        mime = "image/png"
+        if len(screenshot_bytes) > 600_000:   # ~800 KB base64 + JSON, safely under 1 MB
+            screenshot_bytes = self.page.screenshot(full_page=full_page, type="jpeg", quality=85)
+            mime = "image/jpeg"
+            print(f"[browser] oversized PNG re-encoded as JPEG q85: {len(screenshot_bytes)} bytes\n")
+
         # Wait for page to stabilize after screenshot (especially for full_page which scrolls/resizes)
         # This prevents focus loss when typing after taking a screenshot
         self.page.wait_for_timeout(1000)
 
         screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
 
-        return f"data:image/png;base64,{screenshot_base64}"
+        return f"data:{mime};base64,{screenshot_base64}"
 
     def set_viewport(self, width: int, height: int) -> str:
         """Set the browser viewport size."""
@@ -1274,7 +1598,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
     def wait_for_manual_login(self, site_name: str = "the website") -> str:
         """Pause automation for user to login manually.
 
-        Useful for sites with 2FA or CAPTCHA.
+        Useful for sites with 2FA or other interactive sign-in steps.
 
         Args:
             site_name: Name of the site (e.g., "Gmail")
@@ -1284,6 +1608,17 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         """
         if not self.page:
             return "Browser not open"
+
+        # Manual login needs an interactive terminal. A hosted deploy has no stdin,
+        # and every public method runs on the one shared browser worker thread —
+        # blocking on input() there would freeze every other session's browser
+        # indefinitely. Refuse fast; hosted agents sign in via save_state/seed_state.
+        if not sys.stdin or not sys.stdin.isatty():
+            return (
+                "Manual login needs an interactive terminal, which a hosted deploy "
+                "doesn't have. Capture the login locally with save_state(path) and "
+                "start the deployed browser with seed_state=<path>."
+            )
 
         print(f"\n{'='*60}")
         print(f"  MANUAL LOGIN REQUIRED")
@@ -1359,19 +1694,32 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         # Playwright's persistent context auto-saves in background
         self.page.wait_for_timeout(500)
 
+    @_no_auto_tab
     def close(self) -> str:
-        """Close the browser and save persistent context."""
+        """Close the browser. A bound session (hosted multi-session) closes only its OWN tab;
+        an unbound caller (single-session CLI / context-manager exit) tears the whole context
+        down. Closing the shared context for one session would kill every other session's tab,
+        so per-session callers must never reach the full teardown."""
+        key = self._bound_session_key()
+        if key is not None:
+            err = self._close_tab(key)
+            return f"close tab failed: {err}" if err else "Closed this session's browser tab."
+        return self._teardown()
+
+    def _teardown(self) -> str:
+        """Tear the whole shared browser/context down and clear state. Underscore-prefixed so
+        it is never exposed as a per-session LLM tool; called only from close() (unbound) and
+        open_browser, both already on the browser worker thread."""
         cleanup_errors = []
         try:
             self._save_context()
         except Exception as exc:
             cleanup_errors.append(f"save context failed: {exc}")
 
-        try:
-            if self.page:
-                self.page.close()
-        except Exception as exc:
-            cleanup_errors.append(f"close page failed: {exc}")
+        for key in list(self._pages):     # close every session's tab
+            err = self._close_tab(key)
+            if err:
+                cleanup_errors.append(err)
         try:
             if self.browser:
                 self.browser.close()
@@ -1383,7 +1731,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         except Exception as exc:
             cleanup_errors.append(f"stop playwright failed: {exc}")
 
-        self.page = None
+        self._pages.clear()
+        self._page_used.clear()
+        self._page_url.clear()
         self.browser = None
         self.playwright = None
         if cleanup_errors:

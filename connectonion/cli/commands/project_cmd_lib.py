@@ -116,7 +116,8 @@ def get_template_info() -> list:
     """Get template information for display."""
     return [
         ('minimal', '📦 Minimal', 'Basic agent structure'),
-        ('playwright', '🎭 Playwright', 'Browser automation agent'),
+        ('browser', '🌐 Browser', 'Browser automation agent'),
+        ('hosted-browser', '🕸️ Hosted Browser', 'Multi-session site-automation agent (skills, stealth browser)'),
         ('coder', '💻 Coder', 'Coding agent with bash/read/edit/grep/write'),
         ('co-ai', '🚀 Co-AI', 'Hosted co ai coding agent with browser runtime'),
         ('web-research', '🔍 Web Research', 'Web research and data extraction agent'),
@@ -128,7 +129,8 @@ def get_template_suggested_name(template: str) -> str:
     """Get suggested project name for a template."""
     suggestions = {
         'minimal': 'my-agent',
-        'playwright': 'browser-agent',
+        'browser': 'browser-agent',
+        'hosted-browser': 'site-agent',
         'coder': 'coder-agent',
         'co-ai': 'co-ai-agent',
         'web-research': 'research-agent',
@@ -476,12 +478,18 @@ def get_template_preview(template: str) -> str:
     ├── README.md - Comprehensive guide
     └── .co/ - Agent identity & metadata""",
 
-        'playwright': """  🎭 Playwright - Browser automation
+        'browser': """  🌐 Browser - Browser automation
     ├── agent.py - Browser control agent
-    ├── prompt.md - System prompt
+    ├── prompts/ - System prompts
     ├── .env - API key configuration
-    ├── README.md - Setup instructions
-    └── .co/ - Agent identity & metadata"""
+    └── .co/ - Agent identity & metadata""",
+
+        'hosted-browser': """  🕸️ Hosted Browser - Multi-session site automation
+    ├── agent.py - Shared stealth browser + host() factory
+    ├── prompts/ - Site-agnostic operating rules
+    ├── Dockerfile - Headed Chrome under Xvfb
+    ├── README.md - Skill format & deploy guide
+    └── .co/ - Agent identity & metadata (skills live in .co/skills)"""
     }
 
     return previews.get(template, f"  📄 {template.title()} template")

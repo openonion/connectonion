@@ -90,9 +90,34 @@ class TestCliInit:
             assert "browser_channel" not in agent_code        # use BrowserAutomation's default Chrome detection
 
             dockerfile = Path("Dockerfile").read_text()
-            assert "playwright install --with-deps chrome" in dockerfile   # real Chrome + deps
+            assert "patchright install --with-deps chrome" in dockerfile   # real Chrome + deps, stealth-patched driver
             assert "xvfb" in dockerfile                        # headful under virtual display
             assert Path("requirements.txt").read_text().strip() != ""
+
+    def test_init_hosted_browser_template_scaffolds_multi_session_project(self):
+        """co init --template hosted-browser creates a skills-driven multi-session browser agent."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            result = self.runner.invoke(cli, ['init', '--template', 'hosted-browser'])
+            assert result.exit_code == 0
+
+            agent_code = Path("agent.py").read_text()
+            compile(agent_code, "agent.py", "exec")
+            assert "def create_agent" in agent_code            # factory: fresh agent per request
+            assert "host(" in agent_code                       # hostable entrypoint
+            assert "BrowserAutomation(" in agent_code          # one shared browser outside the factory
+            assert "bind_browser_session" in agent_code        # per-session tabs on the shared browser
+            assert "skills_plugin" in agent_code               # site workflows come from .co/skills
+            assert "wait_for_manual_login" in agent_code       # removed on the hosted path (stdin never answers)
+            assert "ask_user" in agent_code                    # hosted credential/2FA handoff
+
+            dockerfile = Path("Dockerfile").read_text()
+            assert "patchright install --with-deps chrome" in dockerfile
+            assert "xvfb" in dockerfile.lower()                # headed browser under virtual display
+
+            assert Path("prompts/agent.md").exists()
+            assert ".co/skills" in Path("README.md").read_text()   # the skill how-to ships with the project
 
     def test_init_creates_config_file(self):
         """Test that init creates proper host.yaml."""
