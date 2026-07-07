@@ -268,7 +268,7 @@ class TestOpenBrowserSharedContext:
             def stop(self):
                 pass
 
-        monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+        monkeypatch.setattr(browser_mod, "BROWSER_AVAILABLE", True)
         monkeypatch.setattr(browser_mod, "sync_playwright",
                             lambda: type("S", (), {"start": lambda self: _Playwright()})())
         monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)

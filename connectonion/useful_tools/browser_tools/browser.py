@@ -1,7 +1,7 @@
 """
-Purpose: Natural language browser automation via Playwright with persistent profile and auto-save
+Purpose: Natural language browser automation via Patchright (a stealth-patched, API-compatible Playwright fork) with persistent profile and auto-save
 LLM-Note:
-  Dependencies: imports from [playwright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_agent.py]
+  Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_agent.py]
   Data flow: BrowserAutomation() initializes Playwright → opens browser with persistent context → provides tools (navigate, find_element, click, type_text, screenshot, scroll, wait_for_login) → auto-saves cookies after each critical action → Agent uses these tools via natural language → element_finder.py uses vision LLM to locate elements | screenshots saved to .tmp/ directory
   State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup | all public methods dispatch to one dedicated browser thread (Playwright sync API is thread-bound), so a shared instance is safe to call from any thread
   Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), keyboard_type(text), keyboard_press(key), wait_for_login(seconds) | used by `co browser` CLI command
@@ -45,12 +45,17 @@ from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 # Default screenshots directory
 SCREENSHOTS_DIR = Path.cwd() / ".tmp"
 
-# Check Playwright availability
+# Patchright is a stealth-patched, API-compatible drop-in for Playwright. It removes
+# driver-level automation tells (the Runtime.enable / Console.enable CDP leaks and the
+# navigator.webdriver flag) that Chrome launch flags and page init scripts cannot reach,
+# so it fixes anti-detection below where our old flag stack operated. The sync API is
+# identical, so only the import line changes; sync_playwright keeps its name because that
+# is exactly what patchright.sync_api exports.
 try:
-    from playwright.sync_api import sync_playwright, Page, Browser, Playwright
-    PLAYWRIGHT_AVAILABLE = True
+    from patchright.sync_api import sync_playwright, Page, Browser, Playwright
+    BROWSER_AVAILABLE = True
 except ImportError:
-    PLAYWRIGHT_AVAILABLE = False
+    BROWSER_AVAILABLE = False
 
 # Path to the browser agent system prompt
 
@@ -266,10 +271,8 @@ class BrowserAutomation:
             page = self.browser.new_page()
             page.set_default_navigation_timeout(60000)
             page.set_viewport_size({"width": 1920, "height": 1200})
-            # Hide automation indicators (defense in depth; also set via launch args).
-            page.add_init_script(
-                "Object.defineProperty(navigator, 'webdriver', {get: () => undefined});"
-            )
+            # No navigator.webdriver init script: Patchright hides it at the driver level,
+            # and add_init_script injection is itself a timing-detectable tell.
             restore_url = self._page_url.get(key)
             if restore_url:  # a reclaimed session comes back to where it was
                 try:
@@ -330,8 +333,8 @@ class BrowserAutomation:
         """
         if headless is None:
             headless = self._headless
-        if not PLAYWRIGHT_AVAILABLE:
-            return "Browser tools not installed. Run: pip install playwright && playwright install chromium"
+        if not BROWSER_AVAILABLE:
+            return "Browser tools not installed. Run: pip install patchright && patchright install chrome"
 
         # If a shared context is already running, a brand-new session has no tab in it yet.
         # Give this session its tab BEFORE judging usability, so a new session never reads
@@ -391,13 +394,15 @@ class BrowserAutomation:
         # - Survives browser restarts automatically
         # - No need for storage_state.json complexity (browser-use uses that for portability)
 
-        # Launch browser with browser-use anti-detection config (see browser_config.py)
+        # Patchright supplies the anti-detection defaults; we pass only run-environment
+        # flags (see browser_config.py). executable_path pins real Chrome, which Patchright
+        # recommends over bundled Chromium.
         self.browser = self.playwright.chromium.launch_persistent_context(
             str(profile_dir),  # Persistent profile at ~/.co/browser_profile/
             headless=headless,
             executable_path=chrome_path,
-            args=CHROME_DEFAULT_ARGS,  # 53 args + 30 disabled features from browser-use
-            ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # + macOS cookie fix
+            args=CHROME_DEFAULT_ARGS,  # environment-stability flags only
+            ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # macOS cookie fix
             proxy=_browser_proxy_from_env(),  # route egress through BROWSER_PROXY if set, else None
             timeout=120000,
         )
@@ -1456,8 +1461,8 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         Returns:
             Base64 encoded image data
         """
-        if not PLAYWRIGHT_AVAILABLE:
-            return 'Browser tools not installed. Run: pip install playwright && playwright install chromium'
+        if not BROWSER_AVAILABLE:
+            return 'Browser tools not installed. Run: pip install patchright && patchright install chrome'
 
         if not self.page:
             return "Browser not open"

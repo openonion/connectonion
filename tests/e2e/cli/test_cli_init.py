@@ -90,7 +90,7 @@ class TestCliInit:
             assert "browser_channel" not in agent_code        # use BrowserAutomation's default Chrome detection
 
             dockerfile = Path("Dockerfile").read_text()
-            assert "playwright install --with-deps chrome" in dockerfile   # real Chrome + deps
+            assert "patchright install --with-deps chrome" in dockerfile   # real Chrome + deps, stealth-patched driver
             assert "xvfb" in dockerfile                        # headful under virtual display
             assert Path("requirements.txt").read_text().strip() != ""
 

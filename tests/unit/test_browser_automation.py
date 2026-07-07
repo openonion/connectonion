@@ -81,7 +81,7 @@ def test_open_browser_is_noop_when_context_is_already_open(monkeypatch, tmp_path
             playwrights.append(playwright)
             return playwright
 
-    monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(browser_mod, "BROWSER_AVAILABLE", True)
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: FakeSyncPlaywright())
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
@@ -128,7 +128,7 @@ def test_open_browser_force_reopens_existing_context(monkeypatch, tmp_path):
             playwrights.append(playwright)
             return playwright
 
-    monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(browser_mod, "BROWSER_AVAILABLE", True)
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: FakeSyncPlaywright())
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
@@ -173,7 +173,7 @@ def test_open_browser_reopens_stale_context(monkeypatch, tmp_path):
             playwrights.append(playwright)
             return playwright
 
-    monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(browser_mod, "BROWSER_AVAILABLE", True)
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: FakeSyncPlaywright())
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
@@ -258,7 +258,7 @@ def test_seed_state_injects_exported_cookies(monkeypatch, tmp_path):
     state.write_text(json.dumps({"cookies": cookies}))
 
     contexts = []
-    monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(browser_mod, "BROWSER_AVAILABLE", True)
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: _recording_playwright(contexts))
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
@@ -270,7 +270,7 @@ def test_seed_state_injects_exported_cookies(monkeypatch, tmp_path):
 
 def test_no_seed_state_injects_nothing(monkeypatch, tmp_path):
     contexts = []
-    monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(browser_mod, "BROWSER_AVAILABLE", True)
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: _recording_playwright(contexts))
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 
@@ -282,7 +282,7 @@ def test_no_seed_state_injects_nothing(monkeypatch, tmp_path):
 
 def test_save_state_exports_storage_state_to_path(monkeypatch, tmp_path):
     contexts = []
-    monkeypatch.setattr(browser_mod, "PLAYWRIGHT_AVAILABLE", True)
+    monkeypatch.setattr(browser_mod, "BROWSER_AVAILABLE", True)
     monkeypatch.setattr(browser_mod, "sync_playwright", lambda: _recording_playwright(contexts))
     monkeypatch.setattr(browser_mod.Path, "home", lambda: tmp_path)
 

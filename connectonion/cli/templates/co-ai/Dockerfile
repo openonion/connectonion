@@ -5,7 +5,7 @@ ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN apt-get update && apt-get install -y --no-install-recommends git xvfb xauth nodejs && rm -rf /var/lib/apt/lists/*
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-RUN python -m playwright install --with-deps chrome
+RUN python -m patchright install --with-deps chrome
 COPY . .
 ENV PORT=8000
 ENV DISPLAY=:99
