@@ -75,7 +75,7 @@ def _show_help():
 
 @app.command()
 def init(
-    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: minimal, playwright, co-ai, custom"),
+    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: minimal, browser, hosted-browser, coder, co-ai, web-research, custom"),
     yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
@@ -89,7 +89,7 @@ def init(
 @app.command()
 def create(
     name: Optional[str] = typer.Argument(None, help="Project name"),
-    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: minimal, playwright, co-ai, custom"),
+    template: Optional[str] = typer.Option(None, "-t", "--template", help="Template: minimal, browser, hosted-browser, coder, co-ai, web-research, custom"),
     yes: bool = typer.Option(False, "-y", "--yes", help="Skip prompts"),
     key: Optional[str] = typer.Option(None, "--key", help="API key"),
     description: Optional[str] = typer.Option(None, "--description", help="Description for custom template"),
