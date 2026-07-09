@@ -135,6 +135,38 @@ def _browser_proxy_from_env():
     return proxy
 
 
+def _occupancy_help(verb: str, url: str) -> str:
+    """Message shown to the AI AGENT (not a human) when it uses a tab with no purpose.
+    It must generate the values from the user's request and re-run."""
+    return (
+        "This tab has no purpose yet — say why you're using it. "
+        "(This message is for the AI agent, not the user.)\n"
+        "\n"
+        "Re-run and fill these in from what the user asked you to do:\n"
+        f'  co browser {verb} {url} --purpose="<why you\'re opening this tab>" '
+        '--who="<the user this is for>" --hours=<how long you\'ll need it>\n'
+        "\n"
+        "- --purpose: generate it from the user's request — the reason you're on this page.\n"
+        "- --who: tag the user you're doing this for.\n"
+        "- --hours: estimate how long you'll hold this tab (e.g. 2, 3, 10). Informational only —\n"
+        "  after it elapses, `co browser status` flags the tab \"may be closed\"; it is NOT closed for you.\n"
+        "- When the task is done, close it yourself:  co browser closetab <id>\n"
+        "- First run `co browser status` — reuse an open tab instead of opening a new one."
+    )
+
+
+def _age(seconds: float) -> str:
+    """Compact age string for how long a tab has been open: Xs / Xm / Xh / Xd."""
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        return f"{seconds // 3600}h"
+    return f"{seconds // 86400}d"
+
+
 @_public_methods_run_on_browser_thread
 class BrowserAutomation:
     """Browser automation with natural language support.
@@ -185,6 +217,7 @@ class BrowserAutomation:
         self._pages: Dict[Optional[str], "Page"] = {}
         self._page_used: Dict[Optional[str], float] = {}   # key -> last-use monotonic ts (LRU/TTL)
         self._page_url: Dict[Optional[str], str] = {}      # key -> last url (restore a reclaimed tab)
+        self._tab_meta: Dict[Optional[str], Dict[str, Any]] = {}  # key -> {who, purpose, hours, opened_at}
         self._tab_idle_ttl = tab_idle_ttl
         self._max_tabs = max_tabs
         self._max_url_memory = 200    # bound the restore-url map; session ids are unique per panel
@@ -318,6 +351,7 @@ class BrowserAutomation:
         error string if the page would not close, else None."""
         page = self._pages.pop(key, None)
         self._page_used.pop(key, None)
+        self._tab_meta.pop(key, None)
         if page is None:
             return None
         try:
@@ -467,8 +501,20 @@ class BrowserAutomation:
             f"keep it secret, add it to .gitignore, and never commit or bake it into an image."
         )
 
-    def go_to(self, url: str) -> str:
-        """Navigate to a URL."""
+    def go_to(self, url: str, purpose: str = "", who: str = "", hours: float = 0.0) -> str:
+        """Navigate to a URL.
+
+        The FIRST navigation on an unoccupied tab must say who it's for and why:
+        pass --purpose and --who (and optional --hours). Once a tab is occupied,
+        later go_to calls navigate freely without repeating the flags, so multi-step
+        flows keep working; pass the flags again only to re-label the active tab.
+        """
+        key = self._bound_session_key()
+        existing = self._tab_meta.get(key, {})
+        occupied = bool(existing.get("purpose") and existing.get("who"))
+        if not occupied and not (purpose and who):
+            raise ValueError(_occupancy_help("go_to", url))
+
         if not self.page:
             self.open_browser()
 
@@ -478,8 +524,76 @@ class BrowserAutomation:
         self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
         self.page.wait_for_timeout(2000)
         self.current_url = self.page.url
+
+        meta = self._tab_meta.setdefault(key, {"who": "", "purpose": "", "hours": 0.0, "opened_at": datetime.now()})
+        if purpose:
+            meta["purpose"] = purpose
+        if who:
+            meta["who"] = who
+        if hours:
+            meta["hours"] = hours
+
         self._save_context()
         return f"Navigated to {self.current_url}"
+
+    @_no_auto_tab
+    def newtab(self, url: str = "", purpose: str = "", who: str = "", hours: float = 0.0) -> str:
+        """Open a new tab, record who occupies it and why, make it active. purpose+who required."""
+        if not purpose or not who:
+            raise ValueError(_occupancy_help("newtab", url or "<url>"))
+        if not self.browser:
+            self.open_browser()
+        key = self._bound_session_key()
+        self._ensure_page(key)                     # create THIS (new) session's tab
+        self._tab_meta[key] = {"who": who, "purpose": purpose, "hours": hours, "opened_at": datetime.now()}
+        if url:
+            return self.go_to(url, purpose=purpose, who=who, hours=hours)
+        return f"Opened new tab · who={who} · purpose={purpose!r}"
+
+    @_no_auto_tab
+    def tab_status(self) -> str:
+        """Formatted list of open tabs with owner, purpose, and how long each has been open.
+
+        Marks the active tab '*'. A tab opened with --hours also shows its flag, and once
+        that many hours elapse it's marked "may be closed" — informational only, the tab is
+        never auto-closed; close it yourself with `co browser closetab <id>`.
+        """
+        if not self.browser:
+            return "Tabs: none (browser not open)"
+        active = self._bound_session_key()
+        lines = [f"Tabs ({len(self._pages)}):"]
+        for key, page in list(self._pages.items()):
+            if callable(getattr(page, "is_closed", None)) and page.is_closed():
+                continue
+            url = page.url
+            meta = self._tab_meta.get(key, {})
+            marker = "*" if key == active else " "
+            name = "default" if key is None else key
+            who = meta.get("who") or "-"
+            purpose = meta.get("purpose") or "-"
+            line = f"  {marker}[{name}] {url}  who={who}  purpose={purpose!r}"
+            opened_at = meta.get("opened_at")
+            if opened_at:
+                elapsed = (datetime.now() - opened_at).total_seconds()
+                line += f"  open {_age(elapsed)}"
+                hours = meta.get("hours") or 0
+                if hours > 0:
+                    line += f" · flagged {hours:g}h"
+                    if elapsed > hours * 3600:
+                        line += " — may be closed"
+            lines.append(line)
+        return "\n".join(lines)
+
+    @_no_auto_tab
+    def close_tab(self, key: Optional[str] = None) -> str:
+        """Close ONE session's tab (default = the current session's). The rest of the
+        browser stays open — use close() to shut the whole browser down."""
+        if not self.browser:
+            return "Browser not open"
+        if key not in self._pages:
+            return f"No open tab for {key!r}"
+        error = self._close_tab(key)
+        return error or "Tab closed"
 
     def find_element_by_description(self, description: str) -> str:
         """Find element using natural language description.

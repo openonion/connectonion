@@ -34,14 +34,56 @@ def short_sock():
 
 
 class StubBrowser:
-    """Stand-in for BrowserAutomation: same method shapes, no real browser."""
+    """Stand-in for BrowserAutomation: same method shapes, no real browser.
+
+    Mirrors the session-per-tab model: tabs live in `_pages` keyed by a session
+    key (None = default/base tab); `_bind_session` records the active key.
+    """
 
     def __init__(self):
         self.calls = []
+        self._headless = True
+        self._pages = {None: object()}   # default/base tab always exists
+        self._tab_meta = {}
+        self._session = None
 
-    def go_to(self, url: str) -> str:
+    def _bind_session(self, key):
+        self._session = key
+
+    def _bound_session_key(self):
+        return self._session
+
+    def go_to(self, url: str, purpose: str = "", who: str = "", hours: float = 0.0) -> str:
         self.calls.append(("go_to", url))
+        if purpose or who:
+            self._tab_meta[self._session] = {"who": who, "purpose": purpose}
         return f"Navigated to {url}"
+
+    def newtab(self, url: str = "", purpose: str = "", who: str = "") -> str:
+        if not purpose or not who:
+            raise ValueError("newtab requires --purpose and --who")
+        key = self._session
+        self._pages[key] = object()
+        self._tab_meta[key] = {"who": who, "purpose": purpose}
+        self.calls.append(("newtab", url, purpose, who))
+        if url:
+            return self.go_to(url, purpose=purpose, who=who)
+        return f"Opened new tab · who={who} · purpose={purpose!r}"
+
+    def tab_status(self) -> str:
+        lines = [f"Tabs ({len(self._pages)}):"]
+        for key, meta in self._tab_meta.items():
+            name = "default" if key is None else key
+            marker = "*" if key == self._session else " "
+            lines.append(f"  {marker}[{name}] who={meta.get('who', '-')}  purpose={meta.get('purpose', '-')!r}")
+        return "\n".join(lines)
+
+    def close_tab(self, key) -> str:
+        if key not in self._pages:
+            return f"No open tab for {key!r}"
+        self._pages.pop(key, None)
+        self._tab_meta.pop(key, None)
+        return "Tab closed"
 
     def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
         return f"shot path={path} full={full_page}"
@@ -152,7 +194,7 @@ def test_dispatch_wrong_args_shows_signature(tmp_path):
     ok, payload = daemon.dispatch("go_to")  # missing required `url`
     assert ok is False
     assert "TypeError" in payload
-    assert "usage: go_to(url)" in payload
+    assert "usage: go_to(url" in payload
 
 
 def test_dispatch_empty(tmp_path):
@@ -180,17 +222,153 @@ def test_dispatch_do_routes_to_nl(tmp_path, monkeypatch):
     assert captured["command"] == "find the cheapest flight"
 
 
+# ---- status + tab accountability ----------------------------------------
+
+def test_ago_formats_durations():
+    assert d._ago(5) == "5s ago"
+    assert d._ago(90) == "1m ago"
+    assert d._ago(7200) == "2h ago"
+    assert d._ago(200000) == "2d ago"
+
+
+def test_status_reports_last_command_and_tabs(tmp_path):
+    """`status` shows browser state, the active tab, the last command, and tabs (with who/purpose)."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch('go_to x.com --purpose=launch --who=aaron')
+
+    ok, payload = daemon.dispatch("status")
+    assert ok is True
+    assert "Browser: open" in payload
+    assert "active tab=default" in payload
+    assert "go_to x.com" in payload
+    assert "who=aaron" in payload
+    assert "launch" in payload
+    assert "Tabs (1):" in payload
+
+
+def test_use_switches_active_tab(tmp_path):
+    """`use`/`switch` change which tab subsequent commands target; `default` returns to base."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch('newtab a.com --purpose=work --who=aaron')  # allocates tab "1", makes it active
+    assert daemon.current_session == "1"
+
+    ok, payload = daemon.dispatch("use default")
+    assert ok is True
+    assert daemon.current_session is None
+    assert "Switched to tab default" in payload
+
+    ok, payload = daemon.dispatch("switch 1")
+    assert ok is True
+    assert daemon.current_session == "1"
+
+
+def test_use_unknown_tab_is_error(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch("use 99")
+    assert ok is False
+    assert "unknown tab: 99" in payload
+
+
+def test_use_without_arg_shows_usage(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch("use")
+    assert ok is False
+    assert "usage: use <tab>" in payload
+
+
+def test_newtab_allocates_incrementing_tab_ids(tmp_path):
+    """Each `newtab` occupies a fresh tab id and makes it active."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+
+    ok, payload = daemon.dispatch('newtab a.com --purpose=work --who=aaron')
+    assert ok is True
+    assert payload.startswith("[tab 1]")
+    assert daemon.current_session == "1"
+
+    ok, payload = daemon.dispatch('newtab b.com --purpose=inbox --who=tamara')
+    assert ok is True
+    assert payload.startswith("[tab 2]")
+    assert daemon.current_session == "2"
+    assert set(daemon.browser._pages) == {None, "1", "2"}
+
+
+def test_newtab_missing_who_rolls_back(tmp_path):
+    """A refused newtab (missing who/purpose) must not leave a half-created active tab."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch('newtab a.com --purpose=work')  # who missing
+    assert ok is False
+    assert "requires --purpose and --who" in payload
+    assert daemon.current_session is None
+
+
+# ---- closetab: close ONE tab, leave the rest open -----------------------
+
+def test_closetab_closes_a_tab(tmp_path):
+    """`closetab <id>` closes just that tab; the others stay in _pages."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    p0, p1 = object(), object()
+    daemon.browser._pages = {None: p0, "1": p1}
+
+    ok, payload = daemon.dispatch("closetab 1")
+    assert ok is True
+    assert "1" not in daemon.browser._pages
+    assert None in daemon.browser._pages   # the rest of the browser stays open
+    assert "Closed tab 1" in payload
+
+
+def test_closetab_unknown_tab_is_error(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch("closetab 9")
+    assert ok is False
+    assert "unknown tab" in payload
+
+
+def test_closetab_without_arg_shows_usage(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch("closetab")
+    assert ok is False
+    assert "usage: closetab" in payload
+
+
+def test_closetab_active_tab_repoints_current(tmp_path):
+    """Closing the active tab re-points current_session to a still-open tab."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    p0, p1 = object(), object()
+    daemon.browser._pages = {None: p0, "1": p1}
+    daemon.current_session = "1"
+
+    ok, payload = daemon.dispatch("closetab 1")
+    assert ok is True
+    assert daemon.current_session != "1"        # no longer pointing at the closed tab
+    assert daemon.current_session is None        # re-pointed at the remaining (default) tab
+
+
+def test_status_does_not_become_the_last_command(tmp_path):
+    """Running `status` must not overwrite the recorded last command."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch("go_to x.com")
+    daemon.dispatch("status")
+    assert daemon.last_command["line"] == "go_to x.com"
+
+
+def test_status_before_any_command(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch("status")
+    assert ok is True
+    assert "Last command: (none yet)" in payload
+
+
 # ---- self-describing help (no browser launched) -------------------------
 
 def test_signature_str():
-    assert d.signature_str(StubBrowser.go_to) == "(url)"
+    assert d.signature_str(StubBrowser.go_to) == "(url, purpose='', who='', hours=0.0)"
     assert d.signature_str(StubBrowser.take_screenshot) == "(path=None, full_page=False)"
 
 
 def test_list_functions_describes_real_methods():
     """`co browser help` introspects BrowserAutomation: name + signature + summary."""
     text = d.list_functions()
-    assert "go_to(url)" in text
+    assert "go_to(url" in text
     assert "— Navigate to a URL." in text
     # private methods are hidden
     assert "_browser_is_usable" not in text
@@ -203,7 +381,49 @@ def test_handle_browser_help_needs_no_browser(capsys):
     out = capsys.readouterr().out
     assert code == 0
     assert "Functions:" in out
-    assert "go_to(url)" in out
+    assert "go_to(url" in out
+
+
+def test_next_tip_rotates(tmp_path, monkeypatch):
+    """Each run surfaces the next tip; the index wraps around and persists in ~/.co."""
+    import pathlib
+    from connectonion.cli.commands import browser_commands as bc
+
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+
+    seen = [bc._next_tip() for _ in range(len(bc.TIPS) + 1)]
+    assert seen[0] == bc.TIPS[0]
+    assert seen[1] == bc.TIPS[1]
+    assert seen[len(bc.TIPS)] == bc.TIPS[0]          # wrapped back to the start
+    assert (tmp_path / ".co" / ".browser_tip").exists()
+
+
+def test_tip_hidden_when_not_a_tty(monkeypatch, capsys):
+    """Piped/scripted output (and the NL agent) must not get a decorative tip."""
+    from connectonion.cli.commands import browser_commands as bc
+
+    monkeypatch.setattr(bc, "send", lambda *a, **k: 0)
+    monkeypatch.setattr(bc.sys.stdout, "isatty", lambda: False)
+
+    code = bc.handle_browser(["go_to", "x.com"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "💡" not in out
+
+
+def test_tip_shown_on_success_tty(tmp_path, monkeypatch, capsys):
+    """On an interactive terminal a successful command appends a rotating tip."""
+    import pathlib
+    from connectonion.cli.commands import browser_commands as bc
+
+    monkeypatch.setattr(pathlib.Path, "home", lambda: tmp_path)
+    monkeypatch.setattr(bc, "send", lambda *a, **k: 0)
+    monkeypatch.setattr(bc.sys.stdout, "isatty", lambda: True)
+
+    code = bc.handle_browser(["go_to", "x.com"])
+    out = capsys.readouterr().out
+    assert code == 0
+    assert "💡" in out
 
 
 def test_handle_browser_no_args_is_usage_error(capsys):

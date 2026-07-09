@@ -2,8 +2,8 @@
 Purpose: Persistent browser daemon — owns one BrowserAutomation and dispatches CLI verbs to it over a Unix socket.
 LLM-Note:
   Dependencies: imports from [socket, os, sys, shlex, inspect, signal, atexit, pathlib, useful_tools.browser_tools.BrowserAutomation, browser_agent.agent (resolve_api_key, build_browser_agent)] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (indirectly)] | tested by [tests/e2e/cli/test_cli_browser.py]
-  Data flow: client sends one request line over AF_UNIX socket → shlex.split → first token compared against BrowserAutomation method names → match: coerce args via signature type hints + getattr(browser, verb)(*args) → no match: whole line handed to NL Agent on the same live browser → response "OK\n<payload>" or "ERR\n<message>" written back, connection closed
-  State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | binds AF_UNIX socket at default_sock_path() | daemon exits once an opened browser becomes unusable (close / crash / window shut) | unlinks socket on exit
+  Data flow: client sends one request line over AF_UNIX socket → shlex.split → `status` returns a read-only report (browser state + last command + tabs); otherwise the line is recorded as last_command → first token compared against BrowserAutomation method names → match: coerce args via signature type hints + getattr(browser, verb)(*args) → no match: whole line handed to NL Agent on the same live browser → response "OK\n<payload>" or "ERR\n<message>" written back, connection closed
+  State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | tracks last_command (line + timestamp) for `status` | binds AF_UNIX socket at default_sock_path() | daemon exits once an opened browser becomes unusable (close / crash / window shut) | unlinks socket on exit
   Integration: exposes default_sock_path(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]`
   Performance: one request at a time | browser launch overhead on first verb (1-3s) | NL verb builds a fresh Agent per call
   Errors: method exceptions are caught at the dispatch boundary and returned as "ERR\n<message>" (the protocol's purpose) | bind race with a second daemon → loser exits
@@ -11,6 +11,7 @@ LLM-Note:
 
 import os
 import sys
+import time
 import socket
 import shlex
 import inspect
@@ -101,6 +102,9 @@ class BrowserDaemon:
         self.browser = BrowserAutomation(headless=headless)
         self._srv = None
         self._had_browser = False
+        self.last_command = None  # {"line": str, "at": float} of the last real command
+        self.current_session = None  # active tab (session key); None = default/base tab
+        self._next_tab = 1           # id allocator for newtab
 
     def dispatch(self, line: str) -> tuple:
         """Run one request. Returns (ok: bool, payload: str)."""
@@ -108,7 +112,19 @@ class BrowserDaemon:
         if not tokens:
             return False, "empty request"
 
+        self.browser._bind_session(self.current_session)  # every command targets the active tab
+
         verb = tokens[0]
+        if verb == "status":  # read-only report; does not count as the last command
+            return self._status()
+        if verb in ("use", "switch"):  # change the active tab
+            return self._use(tokens[1:])
+        if verb == "newtab":  # allocate a fresh tab id, then occupy it
+            return self._newtab(line, tokens)
+        if verb == "closetab":  # close ONE tab, leave the rest of the browser open
+            return self._closetab(tokens[1:])
+
+        self.last_command = {"line": line, "at": time.time()}
         if verb == "do":  # explicit natural-language agent
             command = line.split(None, 1)[1] if len(tokens) > 1 else ""
             return self._run_nl(command)
@@ -147,6 +163,63 @@ class BrowserDaemon:
             # (The NL agent path keeps the data URL for vision; it goes through _run_nl.)
             return True, f"Screenshot saved to: {self.browser.last_screenshot_path}"
         return True, payload
+
+    def _status(self) -> tuple:
+        """Report browser state, the active tab, the last command, and open tabs."""
+        open_state = "open" if self.browser._browser_is_usable() else "not open"
+        headless = str(getattr(self.browser, "_headless", False)).lower()
+        cur = "default" if self.current_session is None else self.current_session
+        lines = [f"Browser: {open_state} · headless={headless} · active tab={cur}"]
+        if self.last_command:
+            lines.append(f'Last command: "{self.last_command["line"]}" · {_ago(time.time() - self.last_command["at"])}')
+        else:
+            lines.append("Last command: (none yet)")
+        lines.append("")
+        lines.append(self.browser.tab_status())
+        return True, "\n".join(lines)
+
+    def _use(self, args) -> tuple:
+        """Switch the active tab that subsequent commands operate on."""
+        if not args:
+            return False, "usage: use <tab>   (a tab id from `co browser status`, or 'default')"
+        target = args[0]
+        key = None if target in ("default", "none") else target
+        if key is not None and key not in self.browser._pages:
+            return False, f"unknown tab: {target}. Run 'co browser status' to list tabs."
+        self.current_session = key
+        self.browser._bind_session(key)
+        return True, f"Switched to tab {target}."
+
+    def _newtab(self, line, tokens) -> tuple:
+        """Bind a fresh session key, then occupy a new tab via BrowserAutomation.newtab."""
+        prev = self.current_session
+        key = str(self._next_tab)
+        self._next_tab += 1
+        self.current_session = key
+        self.browser._bind_session(key)
+        self.last_command = {"line": line, "at": time.time()}
+        ok, payload = self._call_verb("newtab", tokens[1:])
+        if not ok:                      # creation refused (missing who/purpose) → roll back
+            self.current_session = prev
+            self.browser._bind_session(prev)
+            return False, payload
+        return True, f"[tab {key}] {payload}"
+
+    def _closetab(self, args) -> tuple:
+        """Close ONE tab, leaving the rest of the browser open."""
+        if not args:
+            return False, "usage: closetab <tab>   (a tab id from `co browser status`)"
+        target = args[0]
+        key = None if target in ("default", "none") else target
+        if key not in self.browser._pages:
+            return False, f"unknown tab: {target}. Run 'co browser status' to list tabs."
+        self.last_command = {"line": "closetab " + target, "at": time.time()}
+        message = self.browser.close_tab(key)
+        if self.current_session == key:                       # closed the active tab
+            remaining = list(self.browser._pages)             # live tabs after the close
+            self.current_session = remaining[0] if remaining else None
+            self.browser._bind_session(self.current_session)
+        return True, f"Closed tab {target}. {message}"
 
     def _run_nl(self, command: str) -> tuple:
         """Hand the command to the NL agent driving the same live browser."""
@@ -196,6 +269,18 @@ class BrowserDaemon:
             self._srv.close()
         if os.path.exists(self.sock_path):
             os.unlink(self.sock_path)
+
+
+def _ago(seconds: float) -> str:
+    """Render an elapsed duration as a compact 'Xs/Xm/Xh/Xd ago' string."""
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s ago"
+    if seconds < 3600:
+        return f"{seconds // 60}m ago"
+    if seconds < 86400:
+        return f"{seconds // 3600}h ago"
+    return f"{seconds // 86400}d ago"
 
 
 def _recv_all(conn) -> bytes:
