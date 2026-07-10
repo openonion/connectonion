@@ -434,7 +434,7 @@ def test_handle_browser_no_args_is_usage_error(capsys):
     code = handle_browser([])
     err = capsys.readouterr().err
     assert code == 1
-    assert "co browser <function>" in err
+    assert "co browser [-t TAB] <function>" in err
 
 
 # ---- full socket round-trip: client.send() ↔ daemon ----------------------
@@ -518,3 +518,77 @@ def test_launch_failure_message_is_actionable(short_sock, monkeypatch, capsys):
     assert "Chrome failed to start" in err
     assert "~/.co/browser.log" in err
     assert "<launching> chrome" not in err  # the giant Call log is not dumped
+
+
+# --- the -t / tab noun grammar (one task = one tab) ---
+
+def test_tab_open_prints_only_the_name(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch('tab open pr-142 --who claude-a --for "review PR"')
+    assert ok is True
+    assert payload == "pr-142"
+    assert daemon.browser._tab_meta["pr-142"]["who"] == "claude-a"
+    assert daemon.browser._tab_meta["pr-142"]["purpose"] == "review PR"
+
+
+def test_tab_open_autogenerates_name_and_defaults_who_to_caller(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, name = daemon.dispatch("%codex-b tab open")
+    assert ok is True
+    assert daemon.browser._tab_meta[name]["who"] == "codex-b"
+
+
+def test_targeting_unknown_tab_is_exit_3_and_teaches_lifecycle(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch("@nope go_to x.com")
+    assert ok == 3
+    assert "no tab named 'nope'" in payload
+    assert "tab open nope" in payload
+    assert "-t nope" in payload
+    assert "tab close nope" in payload
+
+
+def test_targeting_registered_tab_binds_its_session(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch("tab open mytask --who me --for work")
+    ok, _ = daemon.dispatch("@mytask go_to x.com")
+    assert ok is True
+    assert daemon.browser._session == "mytask"
+
+
+def test_main_alias_needs_no_registration(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, _ = daemon.dispatch("@main go_to x.com")
+    assert ok is True
+    assert daemon.browser._session is None
+
+
+def test_second_agent_on_main_is_exit_4_and_taught_to_open_a_tab(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, _ = daemon.dispatch("%agent-a go_to x.com")
+    assert ok is True
+    ok, payload = daemon.dispatch("%agent-b go_to y.com")
+    assert ok == 4
+    assert "in use by agent-a" in payload
+    assert "tab open" in payload
+    ok, _ = daemon.dispatch("%agent-a go_to z.com")  # the owner keeps working
+    assert ok is True
+
+
+def test_same_agent_keeps_main_and_status_is_never_blocked(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch("%agent-a go_to x.com")
+    ok, _ = daemon.dispatch("%agent-a take_screenshot")
+    assert ok is True
+    ok, _ = daemon.dispatch("%agent-b status")  # read-only: always allowed
+    assert ok is True
+
+
+def test_tab_ls_json(tmp_path):
+    import json as _json
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch("tab open jobx --who codex --for publish")
+    ok, payload = daemon.dispatch("tab ls --json")
+    assert ok is True
+    board = _json.loads(payload)
+    assert {"tab": "jobx", "who": "codex", "purpose": "publish", "last_line": None, "last_at": None} == board[0]

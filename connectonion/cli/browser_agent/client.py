@@ -51,14 +51,25 @@ def _spawn_daemon(sock_path: str, headless: bool):
     raise RuntimeError(f"browser daemon did not start (see {log_path})")
 
 
+def _caller() -> str:
+    """Stable-per-agent identity so the daemon can say WHO occupies a tab.
+
+    CO_WHO wins (set it to name yourself); a Claude Code session is identified by
+    its job dir; otherwise anonymous — anonymous callers get no contention guard,
+    so concurrent agents should set CO_WHO or use named tabs.
+    """
+    who = os.environ.get("CO_WHO")
+    if not who:
+        job = os.environ.get("CLAUDE_JOB_DIR")
+        who = f"claude-{Path(job).name}" if job else ""
+    return "-".join(who.split())
+
+
 def send(line: str, headless: bool = False) -> int:
     """Send one request line; print the reply; return the process exit code."""
-    # CO_BROWSER_TAB names this client's own tab: one task = one tab. Concurrent
-    # runs (main session, subagents) each export a different name and coexist
-    # instead of stomping one shared page. Close it with `co browser closetab`.
-    tab = os.environ.get("CO_BROWSER_TAB")
-    if tab and not line.startswith("@"):
-        line = f"@{tab} {line}"
+    caller = _caller()
+    if caller:
+        line = f"%{caller} {line}"
     sock_path = default_sock_path()
     conn = _connect(sock_path) or _spawn_daemon(sock_path, headless)
 
@@ -79,4 +90,7 @@ def send(line: str, headless: bool = False) -> int:
             print(payload)
         return 0
     print(payload, file=sys.stderr)
-    return 1
+    # "ERR" = generic failure (1); "ERR <n>" carries a distinct code so callers can
+    # branch without parsing prose (3 = unknown tab, 4 = tab busy).
+    parts = header.split()
+    return int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1

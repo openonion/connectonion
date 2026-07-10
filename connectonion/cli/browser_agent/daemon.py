@@ -13,6 +13,7 @@ import os
 import sys
 import time
 import socket
+import json
 import shlex
 import inspect
 import signal
@@ -107,6 +108,7 @@ class BrowserDaemon:
         self.last_command = None  # {"line": str, "at": float} of the last real command
         self.current_session = None  # active tab (session key); None = default/base tab
         self._next_tab = 1           # id allocator for newtab
+        self._main_claim = None      # {"caller", "at", "line"}: who is mid-task on the shared main tab
 
     def dispatch(self, line: str) -> tuple:
         """Run one request. Returns (ok: bool, payload: str)."""
@@ -114,26 +116,49 @@ class BrowserDaemon:
         if not tokens:
             return False, "empty request"
 
-        # `@<tab> <command>`: this request drives its OWN tab (one task = one tab),
-        # without touching the shared active-tab pointer — concurrent clients coexist
-        # instead of stomping one page. The tab is created on first use and registered
-        # under its name (the name IS the occupant), so `status` shows who runs where.
-        session = self.current_session
-        named = tokens[0].startswith("@") and len(tokens[0]) > 1
-        if named:
-            session = tokens[0][1:]
+        # `%<caller>` (added by the client): who is asking — lets the board show real
+        # occupants and lets us detect two agents unknowingly sharing the main tab.
+        caller = ""
+        if tokens[0].startswith("%") and len(tokens[0]) > 1:
+            caller = tokens[0][1:]
             tokens = tokens[1:]
             if not tokens:
                 return False, "empty request"
             line = line.split(None, 1)[1]
-            # Naming the tab IS the occupancy registration: the name says who/why,
-            # so go_to's who/purpose guard is already satisfied for this tab.
-            self.browser._tab_meta.setdefault(
-                session, {"who": session, "purpose": session, "opened_at": datetime.now()}
-            )
+
+        # `@<tab> <command>` (the wire form of `co browser -t <tab> ...`): this request
+        # drives its OWN tab, without touching the shared active-tab pointer — concurrent
+        # clients coexist instead of stomping one page. 'main' is the bare-command
+        # default tab; any other name must be registered first via `tab open`.
+        session = self.current_session
+        if tokens[0].startswith("@") and len(tokens[0]) > 1:
+            name = tokens[0][1:]
+            tokens = tokens[1:]
+            if not tokens:
+                return False, "empty request"
+            line = line.split(None, 1)[1]
+            session = None if name in ("main", "default") else name
+            if session is not None and session not in self.browser._tab_meta:
+                return 3, self._unknown_tab(name)
         self.browser._bind_session(session)
 
         verb = tokens[0]
+        # Contention guard for the shared main tab: a bare command from a DIFFERENT
+        # agent while someone else is mid-task here fails loudly (exit 4) and teaches
+        # the tab lifecycle — never silent interleaving on one page.
+        if session is None and verb not in ("status", "tab", "close", "help"):
+            if caller:
+                claim = self._main_claim
+                if claim and claim["caller"] != caller and time.time() - claim["at"] < 120:
+                    return 4, self._main_busy(claim)
+                self._main_claim = {"caller": caller, "at": time.time(), "line": line}
+            # main is the zero-ceremony tab: register it implicitly (the claim guard
+            # above is its protection) so go_to's who/purpose gate never blocks it.
+            self.browser._tab_meta.setdefault(
+                None, {"who": caller or "main", "purpose": "shared main tab", "opened_at": datetime.now()}
+            )
+        if verb == "tab":  # tab lifecycle: open / ls / close
+            return self._tab(tokens[1:], caller)
         if verb == "status":  # read-only report; does not count as the last command
             return self._status()
         if verb in ("use", "switch"):  # change the active tab
@@ -215,6 +240,86 @@ class BrowserDaemon:
         lines.append(self.browser.tab_status())
         return True, "\n".join(lines)
 
+    def _tab(self, args, caller: str = "") -> tuple:
+        """Tab lifecycle: `tab open [NAME] [--who X] [--for "..."]` · `tab ls [--json]` · `tab close NAME`."""
+        if not args:
+            return False, self._tab_usage()
+        action, rest = args[0], args[1:]
+        if action == "open":
+            return self._tab_open(rest, caller)
+        if action in ("ls", "list"):
+            if "--json" in rest:
+                board = [
+                    {"tab": "main" if k is None else k, **{f: m.get(f) for f in ("who", "purpose", "last_line", "last_at")}}
+                    for k, m in self.browser._tab_meta.items()
+                ]
+                return True, json.dumps(board)
+            return self._status()
+        if action == "close":
+            return self._closetab(rest)
+        return False, self._tab_usage()
+
+    def _tab_open(self, rest, caller: str = "") -> tuple:
+        """Register a named tab (page is created lazily on its first command). Prints ONLY the name."""
+        name, who, purpose = "", "", ""
+        i = 0
+        while i < len(rest):
+            tok = rest[i]
+            if tok in ("--who", "--for") and i + 1 < len(rest):
+                i += 1
+                if tok == "--who":
+                    who = rest[i]
+                else:
+                    purpose = rest[i]
+            elif tok.startswith("--who="):
+                who = tok.split("=", 1)[1]
+            elif tok.startswith("--for="):
+                purpose = tok.split("=", 1)[1]
+            elif not tok.startswith("-") and not name:
+                name = tok
+            i += 1
+        name = name or f"t-{self._next_tab}"
+        self._next_tab += 1
+        if name in ("main", "default"):
+            return False, "'main' is the shared default tab — it always exists; just run commands without -t."
+        self.browser._tab_meta.setdefault(
+            name, {"who": who or caller or name, "purpose": purpose or name, "opened_at": datetime.now()}
+        )
+        return True, name
+
+    def _tab_usage(self) -> str:
+        return (
+            "usage: co browser tab open [NAME] [--who <agent>] [--for \"<purpose>\"]   # register; prints the name\n"
+            "       co browser tab ls [--json]                                        # who runs where\n"
+            "       co browser tab close <NAME>                                       # release when done\n"
+            "then target your tab on EVERY command, including do:\n"
+            "       co browser -t <NAME> <verb> [args]"
+        )
+
+    def _main_busy(self, claim) -> str:
+        """Error-as-documentation: another agent owns main right now — get your own tab."""
+        ago = _ago(time.time() - claim["at"])
+        return (
+            f"tab 'main' is in use by {claim['caller']} — last: \"{claim['line'][:60]}\" · {ago}\n\n"
+            f"You are a second agent on this browser. Two agents cannot share one tab.\n"
+            f"Run your task in your own tab — three commands:\n"
+            f"  1. co browser tab open <name> --who <your-name> --for \"<what you are doing>\"\n"
+            f"  2. co browser -t <name> <verb> [args]      # add -t <name> to EVERY command, including do\n"
+            f"  3. co browser tab close <name>             # when your task is done\n\n"
+            f"see who owns what:  co browser tab ls"
+        )
+
+    def _unknown_tab(self, name: str) -> str:
+        """Error-as-documentation: list what exists and teach the full tab lifecycle."""
+        return (
+            f"no tab named '{name}'\n\n"
+            f"{self.browser.tab_status()}\n\n"
+            f"create it first:  co browser tab open {name} --who <your-name> --for \"<one-line purpose>\"\n"
+            f"then target it on every command, including do:\n"
+            f"                  co browser -t {name} <verb> [args]\n"
+            f"when finished:    co browser tab close {name}"
+        )
+
     def _use(self, args) -> tuple:
         """Switch the active tab that subsequent commands operate on."""
         if not args:
@@ -247,11 +352,14 @@ class BrowserDaemon:
         if not args:
             return False, "usage: closetab <tab>   (a tab id from `co browser status`)"
         target = args[0]
-        key = None if target in ("default", "none") else target
-        if key not in self.browser._pages:
-            return False, f"unknown tab: {target}. Run 'co browser status' to list tabs."
+        key = None if target in ("default", "none", "main") else target
+        if key not in self.browser._pages and key not in self.browser._tab_meta:
+            return False, f"unknown tab: {target}. Run 'co browser tab ls' to list tabs."
         self.last_command = {"line": "closetab " + target, "at": time.time()}
-        message = self.browser.close_tab(key)
+        # A tab registered via `tab open` but never navigated has meta and no page —
+        # releasing it is just dropping the registration.
+        message = self.browser.close_tab(key) if key in self.browser._pages else "Tab released"
+        self.browser._tab_meta.pop(key, None)
         if self.current_session == key:                       # closed the active tab
             remaining = list(self.browser._pages)             # live tabs after the close
             self.current_session = remaining[0] if remaining else None
@@ -280,7 +388,10 @@ class BrowserDaemon:
             try:
                 request = _recv_all(conn).decode().strip()
                 ok, payload = self.dispatch(request)
-                conn.sendall((("OK" if ok else "ERR") + "\n" + payload).encode())
+                # ok is True, False, or an int error code (3 = unknown tab, 4 = tab busy)
+                # so orchestrating agents can branch on the exit code without parsing prose.
+                header = "OK" if ok is True else ("ERR" if ok is False else f"ERR {ok}")
+                conn.sendall((header + "\n" + payload).encode())
             except (BrokenPipeError, ConnectionResetError):
                 # The client died mid-request (bash timeout, Ctrl-C). Its death must not
                 # kill the daemon: before this catch, sendall() raised, serve() unwound,

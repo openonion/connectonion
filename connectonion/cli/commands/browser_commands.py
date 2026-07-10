@@ -19,27 +19,31 @@ from ..browser_agent.daemon import list_functions
 USAGE = (
     "co browser — drive one persistent browser from the shell\n"
     "\n"
-    "  co browser <function> [args]     run a browser function directly (deterministic)\n"
-    '  co browser do "<instruction>"    let the AI agent do it (natural language)\n'
-    '  co browser newtab <url> --purpose="..." --who=<name> [--hours=2]   open + occupy a new tab\n'
-    "  co browser use <tab>             switch the active tab (alias: switch; 'default' = base tab)\n"
-    "  co browser status                show open tabs, the last command, who and why\n"
-    "  co browser closetab <tab>        close ONE tab (id from status); 'close' stops everything\n"
-    "  co browser close                 close the browser and stop the daemon\n"
-    "  co browser help                  list every browser function\n"
+    "  co browser [-t TAB] <function> [args]    run a browser function (bare = the shared 'main' tab)\n"
+    '  co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeting grammar\n'
+    '  co browser tab open [NAME] [--who <agent>] [--for "<purpose>"]   register a tab; prints its name\n'
+    "  co browser tab ls [--json]               the board: every tab, who runs it, last command\n"
+    "  co browser tab close <NAME>              release your tab when the task is done\n"
+    "  co browser close                         close the browser and stop the daemon\n"
+    "  co browser help                          list every browser function\n"
     "\n"
-    "The browser stays open between commands (one shared session) until `close`.\n"
-    "`newtab` opens a new occupied tab and makes it active; `use` switches between tabs.\n"
-    "A new tab needs --purpose and --who (and optional --hours); reusing an occupied tab does not.\n"
+    "One task = one tab. Solo use needs no -t at all. Running several agents on this\n"
+    "browser? Each opens its own tab once, adds -t <name> to EVERY command (including\n"
+    "do), and closes it when finished. The browser stays open until `close`.\n"
+    "\n"
+    "Contention: if another agent is mid-task on the shared main tab, your bare command\n"
+    "fails with exit 4 and tells you who has it and what to run instead — agents discover\n"
+    "each other through this error and through `tab ls`. Set CO_WHO=<name> so the board\n"
+    "shows a real name for you (Claude Code sessions are identified automatically).\n"
     "Add --headless before the function to run without a visible window.\n"
-    "Output goes to stdout, errors to stderr; exit code is 0 on success, 1 on failure."
+    "stdout = data, stderr = errors; exit 0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy."
 )
 
 TIPS = [
-    "See every open tab, its owner and purpose:  co browser status",
-    'Open a dedicated tab:  co browser newtab <url> --purpose="..." --who=<name> --hours=2',
-    "Switch between tabs:  co browser use <id>   (default = the first tab)",
-    "Close just one tab:  co browser closetab <id>   (close stops the whole browser)",
+    "See every tab, its owner and last command:  co browser tab ls",
+    'Your own tab for a task:  co browser tab open mytask --who me --for "posting"',
+    "Target your tab on every command:  co browser -t mytask go_to <url>",
+    "Done with a task? Release its tab:  co browser tab close mytask",
     'Let the AI do it:  co browser do "log in and download my invoices"',
     "List every function you can call directly:  co browser help",
     "Run without a visible window:  co browser --headless <function>",
@@ -56,6 +60,28 @@ def _next_tip():
     return TIPS[idx % len(TIPS)]
 
 
+def _extract_tab(args):
+    """Pull -t/--tab NAME out of args (accepted before or after the verb).
+
+    Returns (tab_or_None, remaining_args) — or (None, None) on a dangling flag,
+    which the caller reports as a usage error (exit 2).
+    """
+    tab, rest, i = None, [], 0
+    while i < len(args):
+        tok = args[i]
+        if tok in ("-t", "--tab"):
+            if i + 1 >= len(args):
+                return None, None
+            i += 1
+            tab = args[i]
+        elif tok.startswith("--tab="):
+            tab = tok.split("=", 1)[1]
+        else:
+            rest.append(tok)
+        i += 1
+    return tab, rest
+
+
 def handle_browser(args, headless: bool = False) -> int:
     """Forward a browser command to the daemon, or print help. Returns the process exit code."""
     if not args:
@@ -64,7 +90,17 @@ def handle_browser(args, headless: bool = False) -> int:
     if args[0] in ("help", "--list", "list"):
         print(USAGE + "\n\nFunctions:\n" + list_functions())
         return 0
-    code = send(shlex.join(args), headless=headless)
+    tab, args = _extract_tab(args)
+    if args is None:
+        print("usage: -t needs a tab name, e.g.  co browser -t mytask go_to <url>", file=sys.stderr)
+        return 2
+    if not args:
+        print("usage: -t targets a command, e.g.  co browser -t mytask go_to <url>", file=sys.stderr)
+        return 2
+    line = shlex.join(args)
+    if tab:
+        line = f"@{tab} {line}"
+    code = send(line, headless=headless)
     if code == 0 and sys.stdout.isatty():
         print(f"\n\033[2m💡 {_next_tip()}\033[0m")
     return code
