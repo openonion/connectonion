@@ -135,6 +135,36 @@ def _browser_proxy_from_env():
     return proxy
 
 
+def driver_stealth_status():
+    """Report whether the installed Patchright driver still has its stealth patches.
+
+    Patchright ships its anti-detection patches in a separately-downloaded driver that has
+    silently regressed to the unpatched vanilla Playwright build across releases — leaving
+    navigator.webdriver=true and the "controlled by automated test software" infobar. The
+    patched driver always injects `--disable-blink-features=AutomationControlled`; the vanilla
+    one never does, so scanning the driver for that literal is a fast integrity check that
+    needs no browser launch. Surfaced by `co doctor`.
+
+    Returns (status, version, detail) where status is 'ok' | 'broken' | 'missing'.
+    """
+    import importlib.util
+    import importlib.metadata
+
+    if importlib.util.find_spec("patchright") is None:
+        return "missing", "", "patchright not installed — pip install patchright && patchright install chrome"
+
+    import patchright
+    version = importlib.metadata.version("patchright")
+    lib = Path(patchright.__file__).parent / "driver" / "package" / "lib"
+    marker = "disable-blink-features=AutomationControlled"
+    patched = any(marker in p.read_text(errors="ignore") for p in lib.rglob("*.js"))
+    if patched:
+        return "ok", version, "stealth patches present"
+    return ("broken", version,
+            "UNPATCHED driver — navigator.webdriver leaks. "
+            "Fix: pip install --force-reinstall --no-cache-dir patchright")
+
+
 @_public_methods_run_on_browser_thread
 class BrowserAutomation:
     """Browser automation with natural language support.
