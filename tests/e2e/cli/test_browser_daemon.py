@@ -94,6 +94,9 @@ class StubBrowser:
     def _browser_is_usable(self) -> bool:
         return True
 
+    def _launch_failed(self) -> bool:
+        return False
+
     def close(self) -> str:
         return "Browser closed"
 
@@ -465,3 +468,53 @@ def test_socket_round_trip_error_to_stderr(short_sock, monkeypatch, capsys):
     err = capsys.readouterr().err.strip()
     assert code == 1
     assert "unknown command: frobnicate" in err
+
+
+class LaunchFailBrowser(StubBrowser):
+    """A browser whose launch aborts (e.g. Chrome SIGABRT): commands raise a huge
+    patchright-style Call log, the context never comes up, and _launch_failed is True."""
+
+    def go_to(self, url: str, purpose: str = "", who: str = "", hours: float = 0.0) -> str:
+        raise RuntimeError("Target page, context or browser has been closed\n" +
+                           "Call log:\n" + "  - <launching> chrome ...\n" * 20)
+
+    def _browser_is_usable(self) -> bool:
+        return False
+
+    def _launch_failed(self) -> bool:
+        return True
+
+
+def test_launch_failure_makes_daemon_exit(short_sock, monkeypatch, capsys):
+    """A daemon that can never open a browser must exit (release the socket), not linger
+    as a zombie that every later `co browser` reuses."""
+    sock_path = short_sock
+    monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
+
+    daemon = make_daemon(sock_path, stub=LaunchFailBrowser())
+    t = threading.Thread(target=daemon.serve, daemon=True)
+    t.start()
+    _wait_until_listening(sock_path)
+
+    code = c.send("go_to example.com", headless=True)
+    assert code == 1
+    t.join(timeout=2)
+    assert not t.is_alive()  # serve loop broke out → daemon is exiting
+
+
+def test_launch_failure_message_is_actionable(short_sock, monkeypatch, capsys):
+    """The ERR payload for a failed launch is a short, actionable hint — not the raw
+    multi-line patchright Call log dumped to the shell."""
+    sock_path = short_sock
+    monkeypatch.setenv("CO_BROWSER_SOCK", sock_path)
+
+    daemon = make_daemon(sock_path, stub=LaunchFailBrowser())
+    threading.Thread(target=daemon.serve, daemon=True).start()
+    _wait_until_listening(sock_path)
+
+    code = c.send("go_to example.com", headless=True)
+    err = capsys.readouterr().err
+    assert code == 1
+    assert "Chrome failed to start" in err
+    assert "~/.co/browser.log" in err
+    assert "<launching> chrome" not in err  # the giant Call log is not dumped

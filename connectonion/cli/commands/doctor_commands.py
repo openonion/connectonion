@@ -128,6 +128,25 @@ def handle_doctor():
     console.print(Panel(config_table, title="[bold]Configuration[/bold]", border_style="green"))
     console.print()
 
+    # Browser checks (stealth driver integrity)
+    browser_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
+    browser_table.add_column("Check", style="cyan")
+    browser_table.add_column("Status")
+
+    from ...useful_tools.browser_tools.browser import driver_stealth_status
+    status, browser_version, detail = driver_stealth_status()
+    if status == "ok":
+        browser_table.add_row("Patchright", f"[green]✓[/green] {browser_version}")
+        browser_table.add_row("Stealth driver", f"[green]✓[/green] {detail}")
+    elif status == "broken":
+        browser_table.add_row("Patchright", f"[yellow]○[/yellow] {browser_version}")
+        browser_table.add_row("Stealth driver", f"[red]✗[/red] {detail}")
+    else:  # missing
+        browser_table.add_row("Patchright", f"[yellow]○[/yellow] {detail}")
+
+    console.print(Panel(browser_table, title="[bold]Browser[/bold]", border_style="cyan"))
+    console.print()
+
     # Connectivity checks (only if API key exists)
     if api_key:
         connectivity_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))

@@ -135,6 +135,73 @@ def _browser_proxy_from_env():
     return proxy
 
 
+def _pid_alive(pid: int) -> bool:
+    """True if a process with this pid exists (signal 0 probes it without touching it)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists but owned by another user
+    return True
+
+
+def _clear_stale_singleton_lock(profile_dir: Path) -> None:
+    """Remove Chrome's Singleton* lock artifacts if the process that held them is gone.
+
+    An uncleanly-killed Chrome (daemon SIGKILL, crash, OOM) leaves a SingletonLock symlink
+    pointing at "<host>-<pid>" in the profile. On the next launch Chrome sees it and refuses
+    to start ("profile appears to be in use"), bricking the persistent login profile until it
+    is cleared by hand — which is why ~/.co accumulates *.recover_quarantine backups. Chrome
+    self-heals this only sometimes (same host, dead pid) and fails across hostname changes or
+    pid reuse, so we clear it ourselves.
+
+    Only clear when the owning pid is dead: a live Chrome legitimately owns the lock. These are
+    lock artifacts, not login data (cookies live elsewhere in the profile), so removing a dead
+    lock is safe.
+    """
+    lock = profile_dir / "SingletonLock"
+    if not lock.is_symlink():
+        return
+    tail = os.readlink(lock).rsplit("-", 1)[-1]
+    if not tail.isdigit():
+        return  # unrecognized lock format — don't guess, leave it alone
+    if _pid_alive(int(tail)):
+        return  # a live Chrome owns it
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        (profile_dir / name).unlink(missing_ok=True)
+
+
+def driver_stealth_status():
+    """Report whether the installed Patchright driver still has its stealth patches.
+
+    Patchright ships its anti-detection patches in a separately-downloaded driver that has
+    silently regressed to the unpatched vanilla Playwright build across releases — leaving
+    navigator.webdriver=true and the "controlled by automated test software" infobar. The
+    patched driver always injects `--disable-blink-features=AutomationControlled`; the vanilla
+    one never does, so scanning the driver for that literal is a fast integrity check that
+    needs no browser launch. Surfaced by `co browser status` and `co doctor`.
+
+    Returns (status, version, detail) where status is 'ok' | 'broken' | 'missing'.
+    """
+    import importlib.util
+    import importlib.metadata
+
+    if importlib.util.find_spec("patchright") is None:
+        return "missing", "", "patchright not installed — pip install patchright && patchright install chrome"
+
+    import patchright
+    version = importlib.metadata.version("patchright")
+    lib = Path(patchright.__file__).parent / "driver" / "package" / "lib"
+    marker = "disable-blink-features=AutomationControlled"
+    patched = any(marker in p.read_text(errors="ignore") for p in lib.rglob("*.js"))
+    if patched:
+        return "ok", version, "stealth patches present"
+    return ("broken", version,
+            "UNPATCHED driver — navigator.webdriver leaks. "
+            "Fix: pip install --force-reinstall --no-cache-dir patchright")
+
+
 def _occupancy_help(verb: str, url: str) -> str:
     """Message shown to the AI AGENT (not a human) when it uses a tab with no purpose.
     It must generate the values from the user's request and re-run."""
@@ -259,6 +326,16 @@ class BrowserAutomation:
             return True
         except Exception:
             return False
+
+    def _launch_failed(self) -> bool:
+        """True when a launch started Playwright but no browser context came up.
+
+        open_browser() starts Playwright, then opens the persistent context; if that
+        launch raises (e.g. Chrome aborts at startup), self.playwright stays set while
+        self.browser is None. The daemon reads this to exit instead of lingering as a
+        permanently-broken zombie that still owns the socket. Plain attribute reads, so
+        it is safe to call from any thread without routing to the browser worker."""
+        return self.playwright is not None and self.browser is None
 
     @property
     def page(self):
@@ -423,6 +500,10 @@ class BrowserAutomation:
         # First run: fresh profile, user logs in once. All later runs reuse saved cookies.
         profile_dir = Path.home() / ".co" / "browser_profile"
         profile_dir.mkdir(parents=True, exist_ok=True)
+
+        # A previous Chrome that died uncleanly can leave a SingletonLock that blocks this
+        # launch. Clear it if its owner is dead, so the persistent profile can't get bricked.
+        _clear_stale_singleton_lock(profile_dir)
 
         # Remove --no-sandbox from args since Playwright adds it by default
         # Just keep the flags we actually need

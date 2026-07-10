@@ -22,6 +22,7 @@ import threading
 from pathlib import Path
 
 from connectonion.useful_tools.browser_tools import BrowserAutomation
+from connectonion.useful_tools.browser_tools.browser import driver_stealth_status
 from .agent import resolve_api_key, build_browser_agent
 
 
@@ -153,6 +154,16 @@ class BrowserDaemon:
         try:
             result = method(*args, **kw)
         except Exception as exc:  # dispatch boundary: report to client as ERR
+            if self.browser._launch_failed():
+                # Chrome aborted at startup: str(exc) is a huge patchright "Call log".
+                # Keep the first line and point at the full log instead of dumping it.
+                first = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
+                return False, (
+                    f"{type(exc).__name__}: {first}\n"
+                    f"Chrome failed to start — full log at ~/.co/browser.log.\n"
+                    f"On macOS, run `co browser` from a desktop Terminal (a logged-in "
+                    f"window session), not over ssh/cron/detached."
+                )
             # On wrong arguments, show the expected signature so an agent can self-correct.
             hint = f"\nusage: {verb}{signature_str(method)}" if isinstance(exc, TypeError) else ""
             return False, f"{type(exc).__name__}: {exc}{hint}"
@@ -170,6 +181,11 @@ class BrowserDaemon:
         headless = str(getattr(self.browser, "_headless", False)).lower()
         cur = "default" if self.current_session is None else self.current_session
         lines = [f"Browser: {open_state} · headless={headless} · active tab={cur}"]
+        # Surface stealth-driver health here so a misconfigured driver (webdriver leak) is
+        # visible where users look for browser state, not only in `co doctor`.
+        stealth, version, detail = driver_stealth_status()
+        mark = {"ok": "✓", "broken": "✗", "missing": "○"}[stealth]
+        lines.append(f"Stealth driver: {mark} patchright {version} — {detail}".rstrip(" —"))
         if self.last_command:
             lines.append(f'Last command: "{self.last_command["line"]}" · {_ago(time.time() - self.last_command["at"])}')
         else:
@@ -245,9 +261,15 @@ class BrowserDaemon:
             conn.sendall((("OK" if ok else "ERR") + "\n" + payload).encode())
             conn.close()
 
-            self._had_browser = self._had_browser or self.browser._browser_is_usable()
-            if self._had_browser and not self.browser._browser_is_usable():
-                break  # browser closed / crashed → daemon's job is done
+            usable = self.browser._browser_is_usable()
+            self._had_browser = self._had_browser or usable
+            # Exit (releasing the socket) when the browser can no longer be driven, so the
+            # next command spawns a fresh daemon instead of reusing a dead one. Two cases:
+            #   - a launch that never produced a context (Chrome aborted at startup) — a
+            #     daemon that can't open a browser must not linger as a socket-holding zombie;
+            #   - a browser that was usable and has since closed/crashed.
+            if self.browser._launch_failed() or (self._had_browser and not usable):
+                break
 
     def _bind(self):
         """Bind the socket, yielding to any daemon that already owns it."""
