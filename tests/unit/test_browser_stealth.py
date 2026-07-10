@@ -1,10 +1,9 @@
-"""Tests for the Patchright stealth-driver integrity check (driver_stealth_status).
+"""Unit tests for the Patchright stealth-driver integrity check (driver_stealth_status).
 
-Patchright ships its anti-detection patches in a separately-downloaded driver that has
-silently regressed to the unpatched vanilla Playwright build across releases. These tests
-lock the detection logic (patched vs vanilla vs not-installed) and guard that the pinned
-patchright actually IS the patched driver — so a bad bump fails CI instead of shipping a
-browser that leaks navigator.webdriver.
+Pure/isolated: the driver install is faked with a temp tree and monkeypatch, so these lock
+the detection logic (patched vs vanilla vs not-installed) with no dependency on the real
+install. The guard that the *real* pinned driver is patched is an e2e test (it touches the
+actual install): tests/e2e/cli/test_browser_stealth_e2e.py.
 """
 
 import importlib.util
@@ -52,12 +51,3 @@ def test_status_missing_when_not_installed(monkeypatch):
     assert status == "missing"
     assert version == ""
     assert "not installed" in detail
-
-
-def test_real_installed_driver_is_patched():
-    """Guard: the pinned patchright must actually be the patched stealth driver.
-
-    This is the check that would have caught the silent regression — if a future bump
-    lands an unpatched driver, this fails instead of shipping a webdriver leak."""
-    status, version, detail = browser_mod.driver_stealth_status()
-    assert status == "ok", f"installed patchright {version} is not the patched driver: {detail}"
