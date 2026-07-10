@@ -19,6 +19,7 @@ import signal
 import atexit
 import tempfile
 import threading
+from datetime import datetime
 from pathlib import Path
 
 from connectonion.useful_tools.browser_tools import BrowserAutomation
@@ -113,7 +114,24 @@ class BrowserDaemon:
         if not tokens:
             return False, "empty request"
 
-        self.browser._bind_session(self.current_session)  # every command targets the active tab
+        # `@<tab> <command>`: this request drives its OWN tab (one task = one tab),
+        # without touching the shared active-tab pointer — concurrent clients coexist
+        # instead of stomping one page. The tab is created on first use and registered
+        # under its name (the name IS the occupant), so `status` shows who runs where.
+        session = self.current_session
+        named = tokens[0].startswith("@") and len(tokens[0]) > 1
+        if named:
+            session = tokens[0][1:]
+            tokens = tokens[1:]
+            if not tokens:
+                return False, "empty request"
+            line = line.split(None, 1)[1]
+            # Naming the tab IS the occupancy registration: the name says who/why,
+            # so go_to's who/purpose guard is already satisfied for this tab.
+            self.browser._tab_meta.setdefault(
+                session, {"who": session, "purpose": session, "opened_at": datetime.now()}
+            )
+        self.browser._bind_session(session)
 
         verb = tokens[0]
         if verb == "status":  # read-only report; does not count as the last command
@@ -126,6 +144,9 @@ class BrowserDaemon:
             return self._closetab(tokens[1:])
 
         self.last_command = {"line": line, "at": time.time()}
+        meta = self.browser._tab_meta.get(session)
+        if meta is not None:  # stamp the board: what this tab last ran, and when
+            meta["last_line"], meta["last_at"] = line, time.time()
         if verb == "do":  # explicit natural-language agent
             command = line.split(None, 1)[1] if len(tokens) > 1 else ""
             return self._run_nl(command)
@@ -256,10 +277,18 @@ class BrowserDaemon:
 
         while True:
             conn, _ = self._srv.accept()
-            request = _recv_all(conn).decode().strip()
-            ok, payload = self.dispatch(request)
-            conn.sendall((("OK" if ok else "ERR") + "\n" + payload).encode())
-            conn.close()
+            try:
+                request = _recv_all(conn).decode().strip()
+                ok, payload = self.dispatch(request)
+                conn.sendall((("OK" if ok else "ERR") + "\n" + payload).encode())
+            except (BrokenPipeError, ConnectionResetError):
+                # The client died mid-request (bash timeout, Ctrl-C). Its death must not
+                # kill the daemon: before this catch, sendall() raised, serve() unwound,
+                # and atexit closed the whole browser — one impatient client destroyed
+                # every other client's session.
+                pass
+            finally:
+                conn.close()
 
             usable = self.browser._browser_is_usable()
             self._had_browser = self._had_browser or usable

@@ -53,6 +53,12 @@ def _spawn_daemon(sock_path: str, headless: bool):
 
 def send(line: str, headless: bool = False) -> int:
     """Send one request line; print the reply; return the process exit code."""
+    # CO_BROWSER_TAB names this client's own tab: one task = one tab. Concurrent
+    # runs (main session, subagents) each export a different name and coexist
+    # instead of stomping one shared page. Close it with `co browser closetab`.
+    tab = os.environ.get("CO_BROWSER_TAB")
+    if tab and not line.startswith("@"):
+        line = f"@{tab} {line}"
     sock_path = default_sock_path()
     conn = _connect(sock_path) or _spawn_daemon(sock_path, headless)
 

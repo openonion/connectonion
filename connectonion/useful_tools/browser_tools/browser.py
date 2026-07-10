@@ -662,6 +662,10 @@ class BrowserAutomation:
                     line += f" · flagged {hours:g}h"
                     if elapsed > hours * 3600:
                         line += " — may be closed"
+            last_at = meta.get("last_at")
+            if last_at:
+                last_line = (meta.get("last_line") or "")[:60]
+                line += f'\n      last: "{last_line}" · {_age(time.time() - last_at)} ago'
             lines.append(line)
         return "\n".join(lines)
 
