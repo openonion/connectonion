@@ -276,3 +276,39 @@ class TestHandleDoctorVirtualEnv:
             handle_doctor()
 
         assert mock_console.print.called
+
+
+class TestHandleDoctorBrowserChecks:
+    """The Browser panel surfaces Patchright stealth-driver integrity."""
+
+    def _run(self, monkeypatch, tmp_path, stealth):
+        import connectonion.cli.commands.doctor_commands as dc
+        monkeypatch.chdir(tmp_path)          # empty cwd → no local .env
+        monkeypatch.setenv("COLUMNS", "200")  # wide, so the detail isn't wrapped mid-word
+        monkeypatch.setattr(dc.shutil, "which", lambda x: "/usr/local/bin/co")
+        monkeypatch.setattr(dc.requests, "get", lambda *a, **k: Mock(status_code=200))
+        monkeypatch.setattr(dc.requests, "post", lambda *a, **k: Mock(status_code=200))
+        monkeypatch.setattr(
+            "connectonion.useful_tools.browser_tools.browser.driver_stealth_status",
+            lambda: stealth,
+        )
+        with patch.dict(os.environ, {"OPENONION_API_KEY": ""}):
+            dc.handle_doctor()
+
+    def test_doctor_shows_ok_stealth_driver(self, monkeypatch, tmp_path, capsys):
+        self._run(monkeypatch, tmp_path, ("ok", "1.61.2", "stealth patches present"))
+        out = capsys.readouterr().out
+        assert "Browser" in out
+        assert "1.61.2" in out
+        assert "stealth patches present" in out
+
+    def test_doctor_flags_broken_stealth_driver(self, monkeypatch, tmp_path, capsys):
+        self._run(monkeypatch, tmp_path,
+                  ("broken", "1.58.0", "UNPATCHED driver — navigator.webdriver leaks."))
+        out = capsys.readouterr().out
+        assert "UNPATCHED" in out
+
+    def test_doctor_notes_missing_patchright(self, monkeypatch, tmp_path, capsys):
+        self._run(monkeypatch, tmp_path, ("missing", "", "patchright not installed — pip install patchright"))
+        out = capsys.readouterr().out
+        assert "not installed" in out
