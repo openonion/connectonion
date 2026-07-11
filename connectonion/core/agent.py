@@ -250,7 +250,11 @@ class Agent:
                 'session_id': session.get('session_id'),
                 'messages': list(session.get('messages', [])),
                 'trace': list(session.get('trace', [])),
-                'turn': session.get('turn', 0)
+                'turn': session.get('turn', 0),
+                'mode': session.get('mode'),
+                'skip_tool_approval': session.get('skip_tool_approval'),
+                'ulw_turns': session.get('ulw_turns'),
+                'ulw_turns_used': session.get('ulw_turns_used'),
             }
             # Start YAML session logging with session_id for thread safety
             self.logger.start_session(self.system_prompt, session_id=session.get('session_id'))
