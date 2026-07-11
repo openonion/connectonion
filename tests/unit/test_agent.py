@@ -720,3 +720,47 @@ def test_agent_input_file_path_traversal(tmp_path):
     uploads_dir = tmp_path / ".co" / "uploads"
     assert len(list(uploads_dir.glob("*_passwd"))) == 1
     assert not (tmp_path / "etc").exists()
+
+
+def test_input_preserves_plugin_session_fields():
+    """Agent.input(session=…) should preserve plugin-owned fields (mode, ulw_turns, etc.)."""
+    agent = Agent(name="test", llm=MockLLM(), log=False)
+
+    session = {
+        "session_id": "test-123",
+        "mode": "ulw",
+        "skip_tool_approval": True,
+        "ulw_turns": 100,
+        "ulw_turns_used": 5,
+        "messages": [],
+        "trace": [],
+        "turn": 0,
+    }
+
+    agent.input("hello", session=session)
+
+    assert agent.current_session.get("mode") == "ulw"
+    assert agent.current_session.get("skip_tool_approval") is True
+    assert agent.current_session.get("ulw_turns") == 100
+    assert agent.current_session.get("ulw_turns_used") == 5
+
+
+def test_input_does_not_leak_transient_keys():
+    """Agent.input(session=…) should not blindly restore server-internal keys."""
+    agent = Agent(name="test", llm=MockLLM(), log=False)
+
+    session = {
+        "session_id": "test-456",
+        "messages": [],
+        "trace": [],
+        "turn": 0,
+        "permissions": {"admin": True},
+        "stop_signal": True,
+        "pending_tool": "bash",
+    }
+
+    agent.input("hello", session=session)
+
+    assert "permissions" not in agent.current_session
+    assert "stop_signal" not in agent.current_session
+    assert "pending_tool" not in agent.current_session
