@@ -251,10 +251,14 @@ Ready for more?
 ## Troubleshooting
 
 ### "API key not found"
-Make sure you:
-1. Copied `.env.example` to `.env`
-2. Added your actual API key
-3. Are running from the project directory
+Use the CLI flow first:
+
+```bash
+co auth
+co status
+```
+
+If the key still is not found, run `co keys` to see which `.env` or `~/.co/keys.env` file is being loaded. For manual setup, set `OPENONION_API_KEY` for `co/` models or the provider-specific key such as `OPENAI_API_KEY` for direct provider models.
 
 ### "Permission denied"
 Ensure you have write permissions in the current directory.

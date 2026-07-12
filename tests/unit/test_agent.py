@@ -720,3 +720,73 @@ def test_agent_input_file_path_traversal(tmp_path):
     uploads_dir = tmp_path / ".co" / "uploads"
     assert len(list(uploads_dir.glob("*_passwd"))) == 1
     assert not (tmp_path / "etc").exists()
+
+
+class TestGracefulInterrupt:
+    """A client INTERRUPT stops the loop at the iteration boundary with a closing message."""
+
+    def test_interrupt_stops_after_current_step_with_message(self):
+        """The current step finishes, then poll_interrupt (after_iteration) halts the
+        loop via the existing stop_signal check — no silent cutoff, no extra LLM call."""
+        from connectonion.useful_plugins.tool_approval import poll_interrupt
+
+        def note(text: str) -> str:
+            """Record a note."""
+            return "noted"
+
+        # INTERRUPT is queued; poll_interrupt drains it at iteration 1's after_iteration
+        # (after the LLM call + tools), and the loop's existing bottom check stops there.
+        class InterruptIO:
+            def __init__(self):
+                self.sent = []
+
+            def receive_all(self, msg_type=None):
+                return [{'type': 'INTERRUPT'}] if msg_type == 'INTERRUPT' else []
+
+            def send(self, event):
+                self.sent.append(event)
+
+            def poll(self):
+                return None
+
+        mock_llm = MockLLM(responses=[
+            LLMResponse(
+                content="",
+                tool_calls=[ToolCall(name="note", arguments={"text": "x"}, id="c1")],
+                raw_response={},
+                usage=TokenUsage(),
+            ),
+            # Must never be reached — the run stops after the first iteration.
+            LLMResponse(content="should not be reached", tool_calls=[], raw_response={}, usage=TokenUsage()),
+        ])
+        agent = Agent(name="stoppable", llm=mock_llm, tools=[note], on_events=[poll_interrupt], log=False, quiet=True)
+        agent.io = InterruptIO()
+
+        result = agent.input("do work")
+
+        assert result == "What would you like me to do?"  # existing stop_signal message
+        assert mock_llm.call_count == 1  # one step ran; stopped before a 2nd LLM call
+
+    def test_no_interrupt_runs_to_completion(self):
+        """Without an INTERRUPT the loop is unaffected and finishes normally."""
+        from connectonion.useful_plugins.tool_approval import poll_interrupt
+
+        class NeverInterruptIO:
+            def receive_all(self, msg_type=None):
+                return []
+
+            def send(self, event):
+                pass
+
+            def poll(self):
+                return None
+
+        mock_llm = MockLLM(responses=[
+            LLMResponse(content="all done", tool_calls=[], raw_response={}, usage=TokenUsage()),
+        ])
+        agent = Agent(name="normal", llm=mock_llm, on_events=[poll_interrupt], log=False, quiet=True)
+        agent.io = NeverInterruptIO()
+
+        result = agent.input("do work")
+
+        assert result == "all done"
