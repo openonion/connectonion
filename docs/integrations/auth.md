@@ -10,10 +10,13 @@ Get started with managed keys in three simple steps:
 
 ```bash
 $ co auth
-Opening browser for authentication...
-✅ Authenticated successfully! Token saved to ~/.co/auth.json
-📧 Your email: 0x1234abcd@mail.openonion.ai (activated)
+📂 Using global ConnectOnion keys (~/.co)
+✓ Saved to ~/.co/keys.env
+✓ Saved to .env
+✓ Authenticated (Balance: $0.10)
 ```
+
+`co auth` signs in with your local ConnectOnion identity. If you do not have keys yet, the CLI creates `~/.co/keys/` automatically, authenticates with OpenOnion, then stores `OPENONION_API_KEY` where the runtime can load it.
 
 ### 2. Use Any Model with `co/` Prefix
 
@@ -56,44 +59,53 @@ The `co/` prefix tells ConnectOnion to use managed keys from the platform instea
 
 ### Behind the Scenes
 
-1. **Authentication**: `co auth` gets a secure token from OpenOnion.ai
-2. **Token Storage**: Token saved to `~/.co/auth.json` (encrypted)
-3. **Email Activation**: Your agent's email address is activated for sending/receiving
-4. **Request Flow**: When you use `co/` prefix, requests go through OpenOnion's proxy
-5. **Automatic Refresh**: Tokens refresh automatically when needed
+1. **Identity**: `co auth` loads or creates an Ed25519 agent keypair in `.co/keys/` or `~/.co/keys/`.
+2. **Signed auth**: the CLI signs a timestamped authentication message with that keypair.
+3. **Token storage**: the backend returns an API token, saved as `OPENONION_API_KEY` in `~/.co/keys.env` and, for projects, `.env`.
+4. **Email activation**: the response includes the agent email (`AGENT_EMAIL`) used by supported integrations.
+5. **Request flow**: when you use the `co/` model prefix, ConnectOnion reads `OPENONION_API_KEY` and routes the request through OpenOnion's proxy.
 
 ## Available Commands
 
-### Currently Available
-
-#### `co auth` - Authenticate with OpenOnion
-```bash
-$ co auth
-
-# What happens:
-# 1. Opens browser to https://openonion.ai/auth
-# 2. You log in with GitHub/Google/Email
-# 3. Token is saved locally
-# 4. You're ready to use co/ models
-```
-
-### Coming Soon
+### `co auth` — get or refresh managed-key access
 
 ```bash
-# Check authentication status and usage
-$ co status
-✅ Authenticated as: user@example.com
-📊 Usage today: 15,234 tokens ($0.31)
-💳 Plan: Free tier (84,766 tokens remaining)
-
-# Log out and clear credentials
-$ co logout
-✅ Logged out successfully
-
-# Configure settings
-$ co config set default_model co/claude-sonnet-4-5
-✅ Default model updated
+co auth
 ```
+
+What it does:
+
+1. Loads your local project identity from `.co/keys/`, or falls back to `~/.co/keys/`.
+2. Creates a keypair automatically if neither exists.
+3. Signs a short authentication message with that identity.
+4. Calls the OpenOnion auth API.
+5. Saves `OPENONION_API_KEY`, `AGENT_EMAIL`, and `AGENT_ADDRESS` to the appropriate env files.
+
+### `co status` — check account and deployment status
+
+```bash
+co status
+```
+
+Use this after `co auth` to confirm the CLI can load your API key and reach the backend.
+
+### `co keys` — inspect local credentials
+
+```bash
+co keys
+co keys --reveal  # only when you intentionally need full values
+```
+
+`co keys` shows where identity files and env files are being loaded from, without exposing secrets by default.
+
+### OAuth integrations
+
+```bash
+co auth google
+co auth microsoft
+```
+
+These commands connect Gmail/Calendar or Microsoft integrations. They require OpenOnion auth first because the OAuth tokens are stored through the authenticated account flow.
 
 ## Supported Models
 
@@ -316,10 +328,11 @@ except Exception as e:
 
 ### Token Storage
 
-- **Location**: `~/.co/auth.json`
-- **Encryption**: Tokens are encrypted at rest
-- **Permissions**: File is readable only by you (600)
-- **Expiration**: Tokens expire after 30 days
+- **Global location**: `~/.co/keys.env`
+- **Project location**: `.env` when authenticating inside a project
+- **Variable name**: `OPENONION_API_KEY`
+- **Companion values**: `AGENT_ADDRESS`, `AGENT_EMAIL`, and `IS_EMAIL_ACTIVE` when available
+- **Permissions**: keep these env files private and never commit them
 
 ### Data Handling
 
@@ -332,29 +345,36 @@ except Exception as e:
 
 1. **Don't commit tokens**: Add `~/.co/` to `.gitignore`
 2. **Use environment-specific models**: Different models for dev/prod
-3. **Monitor usage**: Check usage regularly with `co status` (coming soon)
-4. **Rotate tokens**: Re-authenticate monthly for security
+3. **Monitor usage**: Check account status with `co status`
+4. **Inspect safely**: Use `co keys` before `co keys --reveal`; avoid exposing tokens in logs or screenshots
 
 ## Troubleshooting
 
 ### Authentication Issues
 
-**Browser doesn't open:**
+**No agent keys found:**
 ```bash
-# Manually open the URL
-$ co auth --no-browser
-Visit: https://openonion.ai/auth?token=abc123...
+# Create global identity and authenticate
+co auth
+
+# Or initialize a project first, then authenticate with project keys
+co init
+co auth
 ```
 
-**Token not saving:**
+**Token not loading:**
 ```bash
-# Check permissions
-$ ls -la ~/.co/
-# Should show drwx------ (700) permissions
+# Show which files are being read without revealing secrets
+co keys
 
-# Fix permissions if needed
-$ chmod 700 ~/.co
-$ chmod 600 ~/.co/auth.json
+# Confirm account access
+co status
+```
+
+**Need the exact env var for deployment or CI:**
+```bash
+co keys --reveal
+# Copy OPENONION_API_KEY only into your secret manager. Do not commit it.
 ```
 
 ### Connection Issues
@@ -381,7 +401,7 @@ $ co auth
 ### Authentication Endpoint
 
 ```
-POST https://api.openonion.ai/v1/auth
+POST https://oo.openonion.ai/api/v1/auth
 ```
 
 ### Request Format
@@ -420,10 +440,10 @@ A: Yes! Use `model="gpt-4o"` for your keys, `model="co/gpt-4o"` for managed keys
 A: Prompts are proxied through OpenOnion servers but not stored by default. You can enable logging for debugging.
 
 **Q: Can I use this in production?**
-A: Yes! The platform is designed for production use with 99.9% uptime SLA for paid plans.
+A: Yes, but keep a fallback path for critical workloads by supporting your own provider keys and removing the `co/` prefix if needed.
 
 **Q: How do I monitor costs?**
-A: Use `co status` (coming soon) or visit dashboard.openonion.ai
+A: Use `co status` to check the account information available to the CLI.
 
 **Q: Can my team share access?**
 A: Team features are coming soon. For now, each developer needs their own account.
@@ -434,17 +454,13 @@ A: You can always fall back to your own API keys by removing the `co/` prefix.
 ## Getting Help
 
 - **Documentation**: https://docs.connectonion.com/auth
-- **Issues**: https://github.com/connectonion/connectonion/issues
-- **Discord**: https://discord.gg/connectonion
+- **Issues**: https://github.com/openonion/connectonion/issues
+- **Discord**: https://discord.gg/4xfD9k8AUF
 - **Email**: support@openonion.ai
 
 ## Next Steps
 
-1. Run `co auth` to get started
-2. Try the [Quick Start examples](#quick-start-2-minutes)
-3. Explore [all available models](#supported-models)
-4. Join our [Discord community](https://discord.gg/connectonion)
-
----
-
-*Note: This feature is currently in beta. Additional commands (`co status`, `co logout`, `co config`) are coming soon.*
+1. Run `co auth` to get managed-key access
+2. Run `co status` to confirm account access
+3. Use `co keys` to verify which env files are active
+4. Try the [Quick Start examples](#quick-start-2-minutes)
