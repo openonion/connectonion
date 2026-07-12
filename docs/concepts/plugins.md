@@ -92,6 +92,27 @@ agent = Agent("assistant", tools=[search], plugins=[logger])
 
 For more complex plugins, see [Events](events.md) for available event hooks.
 
+## Persisting Plugin State
+
+Handlers can read and write `agent.current_session` freely. But in a **stateless deployment** (hosted `/input`, WebSocket reconnect) the client sends the session back on every turn, and the server restores only a fixed whitelist of keys — `messages`, `trace`, `turn`, and `plugin_state`. Anything a plugin stashes elsewhere on the session is dropped on the next turn.
+
+So if your plugin needs state to survive a restore, store it under its own namespace inside `plugin_state`:
+
+```python
+from connectonion import Agent, after_each_tool
+
+def count_tools(agent):
+    state = agent.current_session.setdefault('plugin_state', {}).setdefault('tool_counter', {})
+    state['count'] = state.get('count', 0) + 1
+
+tool_counter = [after_each_tool(count_tools)]
+agent = Agent("assistant", tools=[search], plugins=[tool_counter])
+```
+
+`plugin_state['tool_counter']` survives the round-trip. `plugin_state` is the one generic slot plugins own, so the core never needs to know your plugin's keys — no plugin should add its own keys to the session's restore whitelist.
+
+**Don't store capability flags here.** `plugin_state` comes back from the (untrusted) client, so a security-sensitive flag — "skip approvals", "is admin", "permissions granted" — stored on the session would be forgeable by the client. Derive those server-side from validated state instead; keep only benign data (counters, cursors, progress) in `plugin_state`.
+
 ## Reusing Plugins
 
 ```python

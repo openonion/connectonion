@@ -76,6 +76,12 @@ This is **NOT** for conversation state. It's only for:
 └─────────────────────────────────┘
 ```
 
+### Server-Side Restore (Whitelist)
+
+When the server receives the client's session, it rebuilds `agent.current_session` from an explicit **key whitelist** — not `dict(session)` — because the incoming session is untrusted client input. The restored keys are `session_id`, `messages`, `trace`, `turn`, and `plugin_state`. Sensitive top-level keys a client might inject (`permissions`, `stop_signal`, capability/bypass flags) are deliberately **not** restored.
+
+`plugin_state` is the one generic slot plugins use to persist their own state across the round-trip: a plugin stores under `plugin_state['<name>']`, so the core never hardcodes any plugin's keys. See [Plugins → Persisting Plugin State](concepts/plugins.md#persisting-plugin-state).
+
 ---
 
 ## Implementation
