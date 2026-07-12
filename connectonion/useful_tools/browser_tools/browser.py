@@ -225,7 +225,10 @@ def _occupancy_help(verb: str, url: str) -> str:
 
 
 def _close_page(page) -> Optional[str]:
-    """Close a Playwright page; return an error string if it would not close."""
+    """Close a Playwright page; return an error string if it would not close.
+    No page (a reserved or already-reclaimed tab) is a clean no-op, not an error."""
+    if page is None:
+        return None
     try:
         page.close()
     except Exception as exc:
@@ -463,7 +466,7 @@ class BrowserAutomation:
         page = self._pages.pop(key, None)
         self._page_used.pop(key, None)
         if page is None:
-            return None
+            return None  # nothing to remember or close
         try:
             url = page.url
         except Exception:

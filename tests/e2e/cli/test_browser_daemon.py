@@ -878,8 +878,18 @@ def test_close_reserved_tab_before_browser_launch_forgets_it(tmp_path):
 
     ok, payload = daemon.dispatch(_env("tab close research", caller="agent-a"))
     assert ok is True
+    assert "failed" not in payload                          # a page-less close is a clean no-op
     assert "research" not in daemon.browser._tab_meta      # no ghost registration
 
     ok, _ = daemon.dispatch(_env("tab open research", caller="agent-b"))
     assert ok is True                                       # name free immediately
     daemon.browser._executor.shutdown(wait=False)
+
+
+def test_newtab_with_tab_target_is_rejected(tmp_path):
+    """Legacy newtab allocates its own tab; silently ignoring a -t target would lie."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.browser._tab_meta["x"] = {"who": "a", "purpose": "x"}
+    ok, payload = daemon.dispatch(_env("newtab a.com --purpose=w --who=b", tab="x"))
+    assert ok == 2
+    assert "tab open" in payload

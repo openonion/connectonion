@@ -56,7 +56,10 @@ def _spawn_daemon(sock_path: str, headless: bool):
         cmd.append("--headless")
     subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
 
-    for _ in range(100):  # up to ~10s for the browser to launch
+    # Wall-clock deadline, not an attempt count: against a busy daemon each _connect
+    # can itself take ~2s of refused-retries, so counting attempts multiplies silently.
+    deadline = time.time() + 15
+    while time.time() < deadline:
         conn = _connect(sock_path)
         if conn:
             return conn

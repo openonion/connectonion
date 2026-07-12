@@ -186,6 +186,8 @@ class BrowserDaemon:
         if verb in ("use", "switch"):  # removed: no server-side cursor, targeting is per-command
             return False, "use/switch removed — target a tab per command instead:  co browser -t <tab> <verb>"
         if verb == "newtab":  # legacy spelling of `tab open` + go_to
+            if session is not None:  # it allocates its OWN tab — a -t target would be ignored
+                return 2, "newtab allocates its own tab and ignores -t — use:  co browser tab open <name>, then  co browser -t <name> go_to <url>"
             return self._newtab(line, tokens, caller)
         if verb == "closetab":  # legacy spelling of `tab close`
             return self._closetab(tokens[1:], caller)
