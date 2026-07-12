@@ -171,6 +171,11 @@ co create my-coder --template coder
 # Create with browser template (dedicated browser automation)
 co create my-browser-bot --template browser
 
+# Or drive one persistent, logged-in browser straight from the shell — no project:
+#   co browser go_to example.com
+#   co browser do "log in and download my invoices"
+# See co-browser.md for the full command reference and multi-agent tabs.
+
 # Create with web-research template
 co create my-researcher --template web-research
 
