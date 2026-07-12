@@ -313,3 +313,43 @@ def test_wait_for_manual_login_refuses_without_tty(monkeypatch):
 
     assert "interactive terminal" in result
     assert "seed_state" in result
+
+
+# ---- stale SingletonLock cleanup ----------------------------------------
+
+def _make_locked_profile(tmp_path, pid_target):
+    (tmp_path / "SingletonLock").symlink_to(f"myhost.local-{pid_target}")
+    (tmp_path / "SingletonSocket").symlink_to("myhost.local-9999")
+    (tmp_path / "SingletonCookie").symlink_to("1234")
+    return tmp_path
+
+
+def test_stale_lock_cleared_when_owner_dead(tmp_path):
+    _make_locked_profile(tmp_path, 999999)  # a pid that is not alive
+    browser_mod._clear_stale_singleton_lock(tmp_path)
+    assert not (tmp_path / "SingletonLock").exists()
+    assert not (tmp_path / "SingletonSocket").exists()
+    assert not (tmp_path / "SingletonCookie").exists()
+
+
+def test_live_lock_preserved(tmp_path):
+    import os
+    _make_locked_profile(tmp_path, os.getpid())  # a live pid legitimately owns it
+    browser_mod._clear_stale_singleton_lock(tmp_path)
+    assert (tmp_path / "SingletonLock").is_symlink()
+
+
+def test_missing_lock_is_noop(tmp_path):
+    browser_mod._clear_stale_singleton_lock(tmp_path)  # must not raise
+
+
+def test_malformed_lock_left_alone(tmp_path):
+    (tmp_path / "SingletonLock").symlink_to("weirdformat-no-pid-x")
+    browser_mod._clear_stale_singleton_lock(tmp_path)  # can't parse pid → don't guess
+    assert (tmp_path / "SingletonLock").is_symlink()
+
+
+def test_pid_alive():
+    import os
+    assert browser_mod._pid_alive(os.getpid()) is True
+    assert browser_mod._pid_alive(999999) is False

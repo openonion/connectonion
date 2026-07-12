@@ -62,8 +62,9 @@ dependencies = [
     # Pinned exact: Patchright ships its stealth patches inside a separately-downloaded
     # driver, and that driver has silently regressed to the unpatched vanilla Playwright
     # build across releases (1.57.x, 1.61.1 → navigator.webdriver leaks / automation infobar).
-    # 1.61.2 is verified-good. When bumping, re-verify with `co doctor`: the Browser panel
-    # must show the stealth patches present (navigator.webdriver false, no --enable-automation).
+    # 1.61.2 is verified-good. When bumping, re-verify stealth with `co doctor`: the driver's
+    # chromiumSwitches must drop `--enable-automation` and add
+    # `--disable-blink-features=AutomationControlled`, and navigator.webdriver must be false.
     "patchright==1.61.2",
     "charset-normalizer>=3.0.0",
     "pypdf>=4.0.0",
