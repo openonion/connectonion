@@ -97,6 +97,18 @@ def list_functions() -> str:
     return "\n".join(lines)
 
 
+GUARD_WINDOW = 120  # seconds a tab's last claim keeps excluding other callers
+
+
+def _key(name):
+    """Canonical session key — the shared main tab is stored as None."""
+    return None if name in (None, "main", "default", "none") else name
+
+
+def _tab_label(key) -> str:
+    return "main" if key is None else key
+
+
 class BrowserDaemon:
     """Single-threaded server owning one BrowserAutomation, dispatching verbs to it."""
 
@@ -106,72 +118,55 @@ class BrowserDaemon:
         self._srv = None
         self._had_browser = False
         self.last_command = None  # {"line": str, "at": float} of the last real command
-        self.current_session = None  # active tab (session key); None = default/base tab
-        self._next_tab = 1           # id allocator for newtab
-        self._main_claim = None      # {"caller", "at", "line"}: who is mid-task on the shared main tab
+        self._next_tab = 1        # id allocator for auto-named tabs
 
-    def dispatch(self, line: str) -> tuple:
-        """Run one request. Returns (ok: bool, payload: str)."""
-        tokens = shlex.split(line)
+    def _parse_envelope(self, raw: str) -> tuple:
+        """Wire v1: one JSON object {"caller","tab","line"} — quote-safe by construction
+        (a caller or tab name can hold any character without breaking shlex). A plain
+        line (old client) is accepted as an anonymous request for the main tab."""
+        if not raw.startswith("{"):
+            return "", None, raw
+        req = json.loads(raw)
+        return req.get("caller") or "", req.get("tab"), req.get("line") or ""
+
+    def dispatch(self, raw: str) -> tuple:
+        """Run one request. Returns (ok, payload); ok is True, False, or an int error
+        code the client mirrors into its exit (2 usage · 3 unknown tab · 4 tab busy)."""
+        try:
+            caller, tab, line = self._parse_envelope(raw)
+            tokens = shlex.split(line)
+        except ValueError as exc:  # malformed envelope/quoting is the CLIENT's error
+            return 2, f"unparseable request: {exc}"
         if not tokens:
             return False, "empty request"
 
-        # `%<caller>` (added by the client): who is asking — lets the board show real
-        # occupants and lets us detect two agents unknowingly sharing the main tab.
-        caller = ""
-        if tokens[0].startswith("%") and len(tokens[0]) > 1:
-            caller = tokens[0][1:]
-            tokens = tokens[1:]
-            if not tokens:
-                return False, "empty request"
-            line = line.split(None, 1)[1]
-
-        # `@<tab> <command>` (the wire form of `co browser -t <tab> ...`): this request
-        # drives its OWN tab, without touching the shared active-tab pointer — concurrent
-        # clients coexist instead of stomping one page. 'main' is the bare-command
-        # default tab; any other name must be registered first via `tab open`.
-        session = self.current_session
-        if tokens[0].startswith("@") and len(tokens[0]) > 1:
-            name = tokens[0][1:]
-            tokens = tokens[1:]
-            if not tokens:
-                return False, "empty request"
-            line = line.split(None, 1)[1]
-            session = None if name in ("main", "default") else name
-            if session is not None and session not in self.browser._tab_meta:
-                return 3, self._unknown_tab(name)
+        # -t targeting: each task drives its OWN tab; 'main' is the zero-ceremony
+        # shared tab, any other name must be registered first via `tab open`.
+        session = _key(tab)
+        if session is not None and session not in self.browser._tab_meta:
+            return 3, self._unknown_tab(session)
         self.browser._bind_session(session)
 
         verb = tokens[0]
-        # Contention guard for the shared main tab: a bare command from a DIFFERENT
-        # agent while someone else is mid-task here fails loudly (exit 4) and teaches
-        # the tab lifecycle — never silent interleaving on one page.
-        if session is None and verb not in ("status", "tab", "close", "help"):
-            if caller:
-                claim = self._main_claim
-                if claim and claim["caller"] != caller and time.time() - claim["at"] < 120:
-                    return 4, self._main_busy(claim)
-                self._main_claim = {"caller": caller, "at": time.time(), "line": line}
-            # main is the zero-ceremony tab: register it implicitly (the claim guard
-            # above is its protection) so go_to's who/purpose gate never blocks it.
-            self.browser._tab_meta.setdefault(
-                None, {"who": caller or "main", "purpose": "shared main tab", "opened_at": datetime.now()}
-            )
         if verb == "tab":  # tab lifecycle: open / ls / close
             return self._tab(tokens[1:], caller)
         if verb == "status":  # read-only report; does not count as the last command
             return self._status()
-        if verb in ("use", "switch"):  # change the active tab
-            return self._use(tokens[1:])
-        if verb == "newtab":  # allocate a fresh tab id, then occupy it
-            return self._newtab(line, tokens)
-        if verb == "closetab":  # close ONE tab, leave the rest of the browser open
-            return self._closetab(tokens[1:])
+        if verb in ("use", "switch"):  # removed: no server-side cursor, targeting is per-command
+            return False, "use/switch removed — target a tab per command instead:  co browser -t <tab> <verb>"
+        if verb == "newtab":  # legacy spelling of `tab open` + go_to
+            return self._newtab(line, tokens, caller)
+        if verb == "closetab":  # legacy spelling of `tab close`
+            return self._closetab(tokens[1:], caller)
 
+        # Every page-driving command claims its tab: a DIFFERENT agent mid-task there
+        # fails loudly (exit 4) and is taught the tab lifecycle — never silent
+        # interleaving on one page. `close` (whole browser) is a deliberate shutdown.
+        if verb != "close":
+            busy = self._claim(session, caller, line)
+            if busy:
+                return 4, busy
         self.last_command = {"line": line, "at": time.time()}
-        meta = self.browser._tab_meta.get(session)
-        if meta is not None:  # stamp the board: what this tab last ran, and when
-            meta["last_line"], meta["last_at"] = line, time.time()
         if verb == "do":  # explicit natural-language agent
             command = line.split(None, 1)[1] if len(tokens) > 1 else ""
             return self._run_nl(command)
@@ -182,6 +177,23 @@ class BrowserDaemon:
             f"Run 'co browser help' to list functions, or "
             f"'co browser do \"<instruction>\"' for natural language."
         )
+
+    def _claim(self, key, caller: str, line: str):
+        """Stamp `caller` as the tab's active user; return a busy error if a DIFFERENT
+        caller used it within GUARD_WINDOW. The claim lives on the tab's board entry —
+        one record per tab, so releasing the tab releases the claim with it."""
+        meta = self.browser._tab_meta.setdefault(
+            key, {"who": caller or "main", "purpose": "shared main tab", "opened_at": datetime.now()}
+        )
+        holder = meta.get("caller")
+        if caller and holder and holder != caller and time.time() - meta.get("claim_at", 0) < GUARD_WINDOW:
+            return self._tab_busy(key, meta)
+        if caller:
+            if holder != caller:
+                meta["who"] = caller  # takeover after expiry: the board shows the current occupant
+            meta["caller"], meta["claim_at"] = caller, time.time()
+        meta["last_line"], meta["last_at"] = line, time.time()
+        return None
 
     def _call_verb(self, verb: str, raw_args) -> tuple:
         """Match the verb to a browser method and execute it with coerced args."""
@@ -222,11 +234,10 @@ class BrowserDaemon:
         return True, payload
 
     def _status(self) -> tuple:
-        """Report browser state, the active tab, the last command, and open tabs."""
+        """Report browser state, the last command, and the tab board."""
         open_state = "open" if self.browser._browser_is_usable() else "not open"
         headless = str(getattr(self.browser, "_headless", False)).lower()
-        cur = "default" if self.current_session is None else self.current_session
-        lines = [f"Browser: {open_state} · headless={headless} · active tab={cur}"]
+        lines = [f"Browser: {open_state} · headless={headless} · targeting is per-command (-t <tab>; bare = main)"]
         # Surface stealth-driver health here so a misconfigured driver (webdriver leak) is
         # visible where users look for browser state, not only in `co doctor`.
         stealth, version, detail = driver_stealth_status()
@@ -250,13 +261,13 @@ class BrowserDaemon:
         if action in ("ls", "list"):
             if "--json" in rest:
                 board = [
-                    {"tab": "main" if k is None else k, **{f: m.get(f) for f in ("who", "purpose", "last_line", "last_at")}}
+                    {"tab": _tab_label(k), **{f: m.get(f) for f in ("who", "purpose", "last_line", "last_at")}}
                     for k, m in self.browser._tab_meta.items()
                 ]
                 return True, json.dumps(board)
             return self._status()
         if action == "close":
-            return self._closetab(rest)
+            return self._closetab(rest, caller)
         return False, self._tab_usage()
 
     def _tab_open(self, rest, caller: str = "") -> tuple:
@@ -280,11 +291,18 @@ class BrowserDaemon:
             i += 1
         name = name or f"t-{self._next_tab}"
         self._next_tab += 1
-        if name in ("main", "default"):
+        if _key(name) is None:
             return False, "'main' is the shared default tab — it always exists; just run commands without -t."
-        self.browser._tab_meta.setdefault(
-            name, {"who": who or caller or name, "purpose": purpose or name, "opened_at": datetime.now()}
-        )
+        existing = self.browser._tab_meta.get(name)
+        if existing is not None:
+            if caller and existing.get("caller") == caller:
+                return True, name  # re-opening your own tab is idempotent
+            # The name is taken: succeeding silently would put two agents on one page.
+            return 4, self._tab_busy(name, existing) + "\n\nor pick a different name for your own tab."
+        self.browser._tab_meta[name] = {
+            "who": who or caller or name, "purpose": purpose or name,
+            "opened_at": datetime.now(), "caller": caller, "claim_at": time.time() if caller else 0,
+        }
         return True, name
 
     def _tab_usage(self) -> str:
@@ -296,11 +314,13 @@ class BrowserDaemon:
             "       co browser -t <NAME> <verb> [args]"
         )
 
-    def _main_busy(self, claim) -> str:
-        """Error-as-documentation: another agent owns main right now — get your own tab."""
-        ago = _ago(time.time() - claim["at"])
+    def _tab_busy(self, key, meta) -> str:
+        """Error-as-documentation: another agent owns this tab right now — get your own."""
+        who = meta.get("who") or meta.get("caller") or "someone"
+        last = (meta.get("last_line") or "")[:60]
+        ago = _ago(time.time() - (meta.get("claim_at") or meta.get("last_at") or time.time()))
         return (
-            f"tab 'main' is in use by {claim['caller']} — last: \"{claim['line'][:60]}\" · {ago}\n\n"
+            f"tab '{_tab_label(key)}' is in use by {who} — last: \"{last}\" · {ago}\n\n"
             f"You are a second agent on this browser. Two agents cannot share one tab.\n"
             f"Run your task in your own tab — three commands:\n"
             f"  1. co browser tab open <name> --who <your-name> --for \"<what you are doing>\"\n"
@@ -320,51 +340,41 @@ class BrowserDaemon:
             f"when finished:    co browser tab close {name}"
         )
 
-    def _use(self, args) -> tuple:
-        """Switch the active tab that subsequent commands operate on."""
-        if not args:
-            return False, "usage: use <tab>   (a tab id from `co browser status`, or 'default')"
-        target = args[0]
-        key = None if target in ("default", "none") else target
-        if key is not None and key not in self.browser._pages:
-            return False, f"unknown tab: {target}. Run 'co browser status' to list tabs."
-        self.current_session = key
-        self.browser._bind_session(key)
-        return True, f"Switched to tab {target}."
-
-    def _newtab(self, line, tokens) -> tuple:
-        """Bind a fresh session key, then occupy a new tab via BrowserAutomation.newtab."""
-        prev = self.current_session
+    def _newtab(self, line, tokens, caller: str = "") -> tuple:
+        """Legacy `newtab <url> --purpose=.. --who=..`: register + occupy a fresh tab.
+        Unlike the old behavior it does NOT repoint what bare commands target."""
         key = str(self._next_tab)
         self._next_tab += 1
-        self.current_session = key
         self.browser._bind_session(key)
         self.last_command = {"line": line, "at": time.time()}
         ok, payload = self._call_verb("newtab", tokens[1:])
-        if not ok:                      # creation refused (missing who/purpose) → roll back
-            self.current_session = prev
-            self.browser._bind_session(prev)
+        if not ok:
             return False, payload
+        meta = self.browser._tab_meta.get(key)
+        if meta is not None and caller:
+            meta["caller"], meta["claim_at"] = caller, time.time()
         return True, f"[tab {key}] {payload}"
 
-    def _closetab(self, args) -> tuple:
+    def _closetab(self, args, caller: str = "") -> tuple:
         """Close ONE tab, leaving the rest of the browser open."""
         if not args:
-            return False, "usage: closetab <tab>   (a tab id from `co browser status`)"
+            return False, "usage: co browser tab close <tab>   (a name from `co browser tab ls`)"
         target = args[0]
-        key = None if target in ("default", "none", "main") else target
-        if key not in self.browser._pages and key not in self.browser._tab_meta:
-            return False, f"unknown tab: {target}. Run 'co browser tab ls' to list tabs."
+        key = _key(target)
+        meta = self.browser._tab_meta.get(key)
+        if key not in self.browser._pages and meta is None:
+            return 3, self._unknown_tab(target)
+        # Closing someone's mid-task tab is the most destructive write there is —
+        # it gets the same guard as driving the page.
+        holder = (meta or {}).get("caller")
+        if caller and holder and holder != caller and time.time() - (meta.get("claim_at") or 0) < GUARD_WINDOW:
+            return 4, self._tab_busy(key, meta)
         self.last_command = {"line": "closetab " + target, "at": time.time()}
         # A tab registered via `tab open` but never navigated has meta and no page —
-        # releasing it is just dropping the registration.
+        # releasing it is just dropping the registration (and its claim with it).
         message = self.browser.close_tab(key) if key in self.browser._pages else "Tab released"
         self.browser._tab_meta.pop(key, None)
-        if self.current_session == key:                       # closed the active tab
-            remaining = list(self.browser._pages)             # live tabs after the close
-            self.current_session = remaining[0] if remaining else None
-            self.browser._bind_session(self.current_session)
-        return True, f"Closed tab {target}. {message}"
+        return True, f"Closed tab {_tab_label(key)}. {message}"
 
     def _run_nl(self, command: str) -> tuple:
         """Hand the command to the NL agent driving the same live browser."""
@@ -385,19 +395,25 @@ class BrowserDaemon:
 
         while True:
             conn, _ = self._srv.accept()
+            request = ""
             try:
                 request = _recv_all(conn).decode().strip()
                 ok, payload = self.dispatch(request)
-                # ok is True, False, or an int error code (3 = unknown tab, 4 = tab busy)
-                # so orchestrating agents can branch on the exit code without parsing prose.
+            except Exception as exc:
+                # Request boundary: one bad request (malformed envelope, encoding, an
+                # unexpected dispatch bug) is reported to ITS client — it must never
+                # unwind serve() and take the shared browser down with it.
+                ok, payload = False, f"{type(exc).__name__}: {exc}"
+            try:
+                # ok is True, False, or an int error code (2/3/4) so orchestrating
+                # agents can branch on the exit code without parsing prose.
                 header = "OK" if ok is True else ("ERR" if ok is False else f"ERR {ok}")
                 conn.sendall((header + "\n" + payload).encode())
             except (BrokenPipeError, ConnectionResetError):
                 # The client died mid-request (bash timeout, Ctrl-C). Its death must not
-                # kill the daemon: before this catch, sendall() raised, serve() unwound,
-                # and atexit closed the whole browser — one impatient client destroyed
-                # every other client's session.
-                pass
+                # kill the daemon — log the drop (stderr goes to ~/.co/browser.log) so
+                # "my command printed nothing" stays diagnosable.
+                print(f"client vanished before reply: {request[:80]!r}", file=sys.stderr)
             finally:
                 conn.close()
 

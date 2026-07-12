@@ -242,41 +242,20 @@ def test_status_reports_last_command_and_tabs(tmp_path):
     ok, payload = daemon.dispatch("status")
     assert ok is True
     assert "Browser: open" in payload
-    assert "active tab=default" in payload
+    assert "targeting is per-command" in payload
     assert "go_to x.com" in payload
     assert "who=aaron" in payload
     assert "launch" in payload
     assert "Tabs (1):" in payload
 
 
-def test_use_switches_active_tab(tmp_path):
-    """`use`/`switch` change which tab subsequent commands target; `default` returns to base."""
+def test_use_and_switch_are_removed(tmp_path):
+    """No server-side cursor: use/switch answer with the per-command targeting hint."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon.dispatch('newtab a.com --purpose=work --who=aaron')  # allocates tab "1", makes it active
-    assert daemon.current_session == "1"
-
-    ok, payload = daemon.dispatch("use default")
-    assert ok is True
-    assert daemon.current_session is None
-    assert "Switched to tab default" in payload
-
-    ok, payload = daemon.dispatch("switch 1")
-    assert ok is True
-    assert daemon.current_session == "1"
-
-
-def test_use_unknown_tab_is_error(tmp_path):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    ok, payload = daemon.dispatch("use 99")
-    assert ok is False
-    assert "unknown tab: 99" in payload
-
-
-def test_use_without_arg_shows_usage(tmp_path):
-    daemon = make_daemon(str(tmp_path / "s.sock"))
-    ok, payload = daemon.dispatch("use")
-    assert ok is False
-    assert "usage: use <tab>" in payload
+    for verb in ("use default", "switch 1", "use"):
+        ok, payload = daemon.dispatch(verb)
+        assert ok is False
+        assert "-t <tab>" in payload
 
 
 def test_newtab_allocates_incrementing_tab_ids(tmp_path):
@@ -286,13 +265,11 @@ def test_newtab_allocates_incrementing_tab_ids(tmp_path):
     ok, payload = daemon.dispatch('newtab a.com --purpose=work --who=aaron')
     assert ok is True
     assert payload.startswith("[tab 1]")
-    assert daemon.current_session == "1"
 
     ok, payload = daemon.dispatch('newtab b.com --purpose=inbox --who=tamara')
     assert ok is True
     assert payload.startswith("[tab 2]")
-    assert daemon.current_session == "2"
-    assert set(daemon.browser._pages) == {None, "1", "2"}
+    assert {"1", "2"} <= set(daemon.browser._pages)
 
 
 def test_newtab_missing_who_rolls_back(tmp_path):
@@ -301,7 +278,6 @@ def test_newtab_missing_who_rolls_back(tmp_path):
     ok, payload = daemon.dispatch('newtab a.com --purpose=work')  # who missing
     assert ok is False
     assert "requires --purpose and --who" in payload
-    assert daemon.current_session is None
 
 
 # ---- closetab: close ONE tab, leave the rest open -----------------------
@@ -322,28 +298,28 @@ def test_closetab_closes_a_tab(tmp_path):
 def test_closetab_unknown_tab_is_error(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("closetab 9")
-    assert ok is False
-    assert "unknown tab" in payload
+    assert ok == 3
+    assert "no tab named '9'" in payload
 
 
 def test_closetab_without_arg_shows_usage(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("closetab")
     assert ok is False
-    assert "usage: closetab" in payload
+    assert "usage: co browser tab close" in payload
 
 
-def test_closetab_active_tab_repoints_current(tmp_path):
-    """Closing the active tab re-points current_session to a still-open tab."""
+def test_closetab_releases_page_and_registration(tmp_path):
+    """Closing a tab drops both its page and its board entry (claim included)."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
     p0, p1 = object(), object()
     daemon.browser._pages = {None: p0, "1": p1}
-    daemon.current_session = "1"
+    daemon.browser._tab_meta["1"] = {"who": "a", "purpose": "x"}
 
     ok, payload = daemon.dispatch("closetab 1")
     assert ok is True
-    assert daemon.current_session != "1"        # no longer pointing at the closed tab
-    assert daemon.current_session is None        # re-pointed at the remaining (default) tab
+    assert "1" not in daemon.browser._pages
+    assert "1" not in daemon.browser._tab_meta
 
 
 def test_status_does_not_become_the_last_command(tmp_path):
@@ -522,6 +498,14 @@ def test_launch_failure_message_is_actionable(short_sock, monkeypatch, capsys):
 
 # --- the -t / tab noun grammar (one task = one tab) ---
 
+import json as _json
+
+
+def _env(line, caller="", tab=None):
+    """Build the v1 wire envelope the way client.send does."""
+    return _json.dumps({"v": 1, "caller": caller, "tab": tab, "line": line})
+
+
 def test_tab_open_prints_only_the_name(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch('tab open pr-142 --who claude-a --for "review PR"')
@@ -533,14 +517,27 @@ def test_tab_open_prints_only_the_name(tmp_path):
 
 def test_tab_open_autogenerates_name_and_defaults_who_to_caller(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    ok, name = daemon.dispatch("%codex-b tab open")
+    ok, name = daemon.dispatch(_env("tab open", caller="codex-b"))
     assert ok is True
     assert daemon.browser._tab_meta[name]["who"] == "codex-b"
 
 
+def test_tab_open_collision_is_exit_4_naming_the_owner(tmp_path):
+    """A second agent taking an existing name must NOT silently share the page."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch(_env("tab open task --who claude-a", caller="claude-a"))
+    ok, payload = daemon.dispatch(_env("tab open task --who codex-b", caller="codex-b"))
+    assert ok == 4
+    assert "in use by claude-a" in payload
+    assert "different name" in payload
+    # re-opening your OWN tab is idempotent
+    ok, payload = daemon.dispatch(_env("tab open task", caller="claude-a"))
+    assert (ok, payload) == (True, "task")
+
+
 def test_targeting_unknown_tab_is_exit_3_and_teaches_lifecycle(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    ok, payload = daemon.dispatch("@nope go_to x.com")
+    ok, payload = daemon.dispatch(_env("go_to x.com", tab="nope"))
     assert ok == 3
     assert "no tab named 'nope'" in payload
     assert "tab open nope" in payload
@@ -551,44 +548,97 @@ def test_targeting_unknown_tab_is_exit_3_and_teaches_lifecycle(tmp_path):
 def test_targeting_registered_tab_binds_its_session(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
     daemon.dispatch("tab open mytask --who me --for work")
-    ok, _ = daemon.dispatch("@mytask go_to x.com")
+    ok, _ = daemon.dispatch(_env("go_to x.com", tab="mytask"))
     assert ok is True
     assert daemon.browser._session == "mytask"
 
 
 def test_main_alias_needs_no_registration(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    ok, _ = daemon.dispatch("@main go_to x.com")
+    ok, _ = daemon.dispatch(_env("go_to x.com", tab="main"))
     assert ok is True
     assert daemon.browser._session is None
 
 
 def test_second_agent_on_main_is_exit_4_and_taught_to_open_a_tab(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    ok, _ = daemon.dispatch("%agent-a go_to x.com")
+    ok, _ = daemon.dispatch(_env("go_to x.com", caller="agent-a"))
     assert ok is True
-    ok, payload = daemon.dispatch("%agent-b go_to y.com")
+    ok, payload = daemon.dispatch(_env("go_to y.com", caller="agent-b"))
     assert ok == 4
     assert "in use by agent-a" in payload
     assert "tab open" in payload
-    ok, _ = daemon.dispatch("%agent-a go_to z.com")  # the owner keeps working
+    ok, _ = daemon.dispatch(_env("go_to z.com", caller="agent-a"))  # the owner keeps working
     assert ok is True
+
+
+def test_named_tabs_are_guarded_too(tmp_path):
+    """The claim guard covers EVERY tab, not just main."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch(_env("tab open jobx", caller="agent-a"))
+    daemon.dispatch(_env("go_to x.com", caller="agent-a", tab="jobx"))
+    ok, payload = daemon.dispatch(_env("go_to y.com", caller="agent-b", tab="jobx"))
+    assert ok == 4
+    assert "in use by agent-a" in payload
+
+
+def test_tab_close_by_other_agent_is_refused(tmp_path):
+    """Destroying someone's mid-task tab gets the same guard as driving it."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch(_env("go_to x.com", caller="agent-a"))          # agent-a mid-task on main
+    ok, payload = daemon.dispatch(_env("tab close main", caller="agent-b"))
+    assert ok == 4
+    assert "in use by agent-a" in payload
+    ok, _ = daemon.dispatch(_env("tab close main", caller="agent-a"))  # the owner may release
+    assert ok is True
+
+
+def test_close_released_tab_clears_the_claim(tmp_path):
+    """After the owner releases main, another agent takes it immediately — no stale busy."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch(_env("go_to x.com", caller="agent-a"))
+    daemon.dispatch(_env("tab close main", caller="agent-a"))
+    ok, _ = daemon.dispatch(_env("go_to y.com", caller="agent-b"))
+    assert ok is True
+    assert daemon.browser._tab_meta[None]["who"] == "agent-b"  # board shows the new occupant
+
+
+def test_quotes_in_caller_and_tab_are_harmless(tmp_path):
+    """The JSON envelope means names with quotes/spaces can never break shlex."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, _ = daemon.dispatch(_env("go_to x.com", caller="O'Brien's mac"))
+    assert ok is True
+    import shlex as _shlex
+    line = _shlex.join(["tab", "open", "my task", "--who", "O'Brien"])  # what client.send builds
+    ok, name = daemon.dispatch(_env(line, caller="O'Brien"))
+    assert ok is True
+
+
+def test_unparseable_line_is_a_usage_error_not_a_crash(tmp_path):
+    """Broken quoting in the command line ERRs that one request (exit 2)."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch(_env('go_to "unclosed'))
+    assert ok == 2
+    assert "unparseable" in payload
 
 
 def test_same_agent_keeps_main_and_status_is_never_blocked(tmp_path):
     daemon = make_daemon(str(tmp_path / "s.sock"))
-    daemon.dispatch("%agent-a go_to x.com")
-    ok, _ = daemon.dispatch("%agent-a take_screenshot")
+    daemon.dispatch(_env("go_to x.com", caller="agent-a"))
+    ok, _ = daemon.dispatch(_env("take_screenshot", caller="agent-a"))
     assert ok is True
-    ok, _ = daemon.dispatch("%agent-b status")  # read-only: always allowed
+    ok, _ = daemon.dispatch(_env("status", caller="agent-b"))  # read-only: always allowed
+    assert ok is True
+    ok, _ = daemon.dispatch(_env("tab ls", caller="agent-b"))
     assert ok is True
 
 
 def test_tab_ls_json(tmp_path):
-    import json as _json
     daemon = make_daemon(str(tmp_path / "s.sock"))
     daemon.dispatch("tab open jobx --who codex --for publish")
     ok, payload = daemon.dispatch("tab ls --json")
     assert ok is True
     board = _json.loads(payload)
-    assert {"tab": "jobx", "who": "codex", "purpose": "publish", "last_line": None, "last_at": None} == board[0]
+    entry = [e for e in board if e["tab"] == "jobx"][0]
+    assert entry["who"] == "codex"
+    assert entry["purpose"] == "publish"

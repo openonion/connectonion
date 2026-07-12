@@ -492,18 +492,23 @@ def test_tab_status_marks_active_and_prunes_closed_tabs():
 
     out = browser.tab_status()
     assert "Tabs (2):" in out
-    assert " [default] https://x.com/home  who=aaron" in out
+    assert " [main] https://x.com/home  who=aaron" in out
     assert "*[1] https://mail.google.com  who=tamara" in out
 
-    # A closed tab is skipped in the listing.
+    # A tab whose page has closed still shows (from the registry) but as reserved.
     p1.is_closed = lambda: True
     out = browser.tab_status()
     assert "mail.google.com" not in out
+    assert "[1] (reserved — no page yet)" in out
+
+    # A tab reserved via `tab open` (registry entry, no page) is visible immediately.
+    browser._tab_meta["scraper"] = {"who": "codex", "purpose": "scrape"}
+    out = browser.tab_status()
+    assert "[scraper] (reserved — no page yet)  who=codex" in out
 
     # _close_tab drops the tab and its metadata together.
     browser._close_tab("1")
     assert "1" not in browser._tab_meta
-    assert len(browser._tab_meta) == 1
 
 
 def test_go_to_unoccupied_tab_demands_purpose():

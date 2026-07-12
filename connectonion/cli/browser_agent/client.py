@@ -10,6 +10,7 @@ LLM-Note:
 """
 
 import os
+import json
 import sys
 import time
 import socket
@@ -65,15 +66,17 @@ def _caller() -> str:
     return "-".join(who.split())
 
 
-def send(line: str, headless: bool = False) -> int:
-    """Send one request line; print the reply; return the process exit code."""
-    caller = _caller()
-    if caller:
-        line = f"%{caller} {line}"
+def send(line: str, headless: bool = False, tab: str = None) -> int:
+    """Send one request; print the reply; return the process exit code.
+
+    Wire v1 is a JSON envelope {caller, tab, line} — caller identity and tab
+    targeting are structured fields, so any character in a name is safe (nothing
+    is spliced into the shlex-parsed command line)."""
+    request = json.dumps({"v": 1, "caller": _caller(), "tab": tab, "line": line})
     sock_path = default_sock_path()
     conn = _connect(sock_path) or _spawn_daemon(sock_path, headless)
 
-    conn.sendall(line.encode())
+    conn.sendall(request.encode())
     conn.shutdown(socket.SHUT_WR)
 
     chunks = []
@@ -89,8 +92,13 @@ def send(line: str, headless: bool = False) -> int:
         if payload:
             print(payload)
         return 0
+    if payload.startswith('unknown command: {"v"'):
+        payload = (
+            "an old browser daemon (pre-upgrade) is still running and does not speak "
+            "this client's protocol.\nrestart it:  pkill -f connectonion.cli.browser_agent.daemon"
+        )
     print(payload, file=sys.stderr)
     # "ERR" = generic failure (1); "ERR <n>" carries a distinct code so callers can
-    # branch without parsing prose (3 = unknown tab, 4 = tab busy).
+    # branch without parsing prose (2 = usage, 3 = unknown tab, 4 = tab busy).
     parts = header.split()
     return int(parts[1]) if len(parts) == 2 and parts[1].isdigit() else 1

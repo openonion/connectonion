@@ -63,12 +63,17 @@ def _next_tip():
 def _extract_tab(args):
     """Pull -t/--tab NAME out of args (accepted before or after the verb).
 
-    Returns (tab_or_None, remaining_args) — or (None, None) on a dangling flag,
-    which the caller reports as a usage error (exit 2).
+    Scanning stops at the `do` verb — everything after it is instruction text
+    for the NL agent, so a literal "-t" inside an unquoted instruction is never
+    eaten. Returns (tab_or_None, remaining_args) — or (None, None) on a dangling
+    or empty flag, which the caller reports as a usage error (exit 2).
     """
     tab, rest, i = None, [], 0
     while i < len(args):
         tok = args[i]
+        if tok == "do":
+            rest.extend(args[i:])
+            break
         if tok in ("-t", "--tab"):
             if i + 1 >= len(args):
                 return None, None
@@ -79,6 +84,8 @@ def _extract_tab(args):
         else:
             rest.append(tok)
         i += 1
+    if tab == "":  # --tab=$EMPTY must fail loudly, not silently fall back to main
+        return None, None
     return tab, rest
 
 
@@ -97,10 +104,7 @@ def handle_browser(args, headless: bool = False) -> int:
     if not args:
         print("usage: -t targets a command, e.g.  co browser -t mytask go_to <url>", file=sys.stderr)
         return 2
-    line = shlex.join(args)
-    if tab:
-        line = f"@{tab} {line}"
-    code = send(line, headless=headless)
+    code = send(shlex.join(args), headless=headless, tab=tab)
     if code == 0 and sys.stdout.isatty():
         print(f"\n\033[2m💡 {_next_tip()}\033[0m")
     return code

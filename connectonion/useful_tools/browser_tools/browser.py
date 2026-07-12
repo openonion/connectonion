@@ -411,24 +411,29 @@ class BrowserAutomation:
         now = time.monotonic()
         for k in [k for k, t in list(self._page_used.items())
                   if k != key and now - t > self._tab_idle_ttl]:
-            self._close_tab(k)
+            self._close_tab(k, forget=False)
         if len(self._pages) > self._max_tabs:
             lru_first = sorted(
                 (k for k in self._pages if k != key),
                 key=lambda k: self._page_used.get(k, 0.0),
             )
             for k in lru_first[: len(self._pages) - self._max_tabs]:
-                self._close_tab(k)
+                self._close_tab(k, forget=False)
 
-    def _close_tab(self, key) -> Optional[str]:
+    def _close_tab(self, key, forget: bool = True) -> Optional[str]:
         """Close one session's tab, remembering its URL so the session can resume.
 
         Reused by two callers: _ensure_page's reclaim (best-effort, ignores the
         return) and close() (surfaces the return as a cleanup warning). Returns an
-        error string if the page would not close, else None."""
+        error string if the page would not close, else None.
+
+        forget=False (the reclaim path) keeps the tab's _tab_meta registration:
+        a reclaimed tab must transparently resume — same owner, same purpose —
+        when its next command recreates the page."""
         page = self._pages.pop(key, None)
         self._page_used.pop(key, None)
-        self._tab_meta.pop(key, None)
+        if forget:
+            self._tab_meta.pop(key, None)
         if page is None:
             return None
         try:
@@ -483,7 +488,7 @@ class BrowserAutomation:
             # tabs. An unbound caller (single-session CLI) tears the whole context down.
             key = self._bound_session_key()
             if key is not None:
-                self._close_tab(key)
+                self._close_tab(key, forget=False)   # same session continues — keep its registration
                 self._page_url.pop(key, None)   # fresh = a blank tab, not the old url restored
                 self._ensure_page(key)
                 return "Opened a fresh tab for this session."
@@ -633,26 +638,27 @@ class BrowserAutomation:
 
     @_no_auto_tab
     def tab_status(self) -> str:
-        """Formatted list of open tabs with owner, purpose, and how long each has been open.
+        """Formatted list of registered tabs with owner, purpose, and how long each has been open.
 
-        Marks the active tab '*'. A tab opened with --hours also shows its flag, and once
-        that many hours elapse it's marked "may be closed" — informational only, the tab is
-        never auto-closed; close it yourself with `co browser closetab <id>`.
+        Renders from the tab REGISTRY (_tab_meta), so a tab reserved via `tab open`
+        shows up immediately — before it has ever navigated — which is exactly when
+        another agent needs to see it. A tab with no live page yet is marked
+        'reserved'. Marks the active tab '*'.
         """
-        if not self.browser:
-            return "Tabs: none (browser not open)"
+        if not self._tab_meta:
+            return "Tabs: none"
         active = self._bound_session_key()
-        lines = [f"Tabs ({len(self._pages)}):"]
-        for key, page in list(self._pages.items()):
-            if callable(getattr(page, "is_closed", None)) and page.is_closed():
-                continue
-            url = page.url
-            meta = self._tab_meta.get(key, {})
+        lines = [f"Tabs ({len(self._tab_meta)}):"]
+        for key, meta in list(self._tab_meta.items()):
+            page = self._pages.get(key)
+            if page is not None and callable(getattr(page, "is_closed", None)) and page.is_closed():
+                page = None
+            where = page.url if page is not None else "(reserved — no page yet)"
             marker = "*" if key == active else " "
-            name = "default" if key is None else key
+            name = "main" if key is None else key
             who = meta.get("who") or "-"
             purpose = meta.get("purpose") or "-"
-            line = f"  {marker}[{name}] {url}  who={who}  purpose={purpose!r}"
+            line = f"  {marker}[{name}] {where}  who={who}  purpose={purpose!r}"
             opened_at = meta.get("opened_at")
             if opened_at:
                 elapsed = (datetime.now() - opened_at).total_seconds()
