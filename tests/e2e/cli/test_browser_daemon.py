@@ -94,6 +94,9 @@ class StubBrowser:
     def _browser_is_usable(self) -> bool:
         return True
 
+    def _context_is_alive(self) -> bool:
+        return True
+
     def _launch_failed(self) -> bool:
         return False
 
@@ -400,16 +403,17 @@ def test_tip_shown_on_success_tty(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(bc.sys.stdout, "isatty", lambda: True)
 
     code = bc.handle_browser(["go_to", "x.com"])
-    out = capsys.readouterr().out
+    captured = capsys.readouterr()
     assert code == 0
-    assert "💡" in out
+    assert "💡" in captured.err          # advisory text on stderr, keeping stdout pure data
+    assert "💡" not in captured.out
 
 
 def test_handle_browser_no_args_is_usage_error(capsys):
     from connectonion.cli.commands.browser_commands import handle_browser
     code = handle_browser([])
     err = capsys.readouterr().err
-    assert code == 1
+    assert code == 2                     # usage error, matching the documented exit-code contract
     assert "co browser [-t TAB] <function>" in err
 
 
@@ -455,6 +459,9 @@ class LaunchFailBrowser(StubBrowser):
                            "Call log:\n" + "  - <launching> chrome ...\n" * 20)
 
     def _browser_is_usable(self) -> bool:
+        return False
+
+    def _context_is_alive(self) -> bool:
         return False
 
     def _launch_failed(self) -> bool:
@@ -642,3 +649,117 @@ def test_tab_ls_json(tmp_path):
     entry = [e for e in board if e["tab"] == "jobx"][0]
     assert entry["who"] == "codex"
     assert entry["purpose"] == "publish"
+
+
+# ============ regression tests for the deep-review fixes ============
+
+def test_anonymous_caller_cannot_stomp_a_named_claim(tmp_path):
+    """Fix: the guard predicate dropped its leading `caller and`, so an anonymous
+    request (caller="") can no longer take over a tab a NAMED agent is mid-task on."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch(_env("go_to x.com", caller="agent-a"))            # agent-a claims main
+    ok, payload = daemon.dispatch(_env("go_to y.com", caller=""))     # anonymous bare command
+    assert ok == 4
+    assert "in use by agent-a" in payload
+
+
+def test_anonymous_caller_cannot_close_a_named_claim(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch(_env("go_to x.com", caller="agent-a"))
+    ok, payload = daemon.dispatch(_env("tab close main", caller=""))
+    assert ok == 4
+    assert "in use by agent-a" in payload
+
+
+def test_two_anonymous_callers_share_main(tmp_path):
+    """Anonymous requests are indistinguishable, so they are NOT guarded against each
+    other — a solo human with no CO_WHO keeps working across commands."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    assert daemon.dispatch(_env("go_to x.com", caller=""))[0] is True
+    assert daemon.dispatch(_env("go_to y.com", caller=""))[0] is True
+
+
+def test_named_takeover_after_claim_expiry(tmp_path):
+    """Fix coverage: once agent-a's claim ages past GUARD_WINDOW, agent-b takes the tab
+    and the board shows the new occupant."""
+    import connectonion.cli.browser_agent.daemon as d
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch(_env("go_to x.com", caller="agent-a"))
+    daemon.browser._tab_meta[None]["claim_at"] = time.time() - d.GUARD_WINDOW - 1  # expire it
+    ok, _ = daemon.dispatch(_env("go_to y.com", caller="agent-b"))
+    assert ok is True
+    assert daemon.browser._tab_meta[None]["who"] == "agent-b"
+    assert daemon.browser._tab_meta[None]["caller"] == "agent-b"
+
+
+def test_tab_open_reclaims_name_after_owner_claim_expires(tmp_path):
+    import connectonion.cli.browser_agent.daemon as d
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch(_env("tab open scan --who a", caller="agent-a"))
+    daemon.browser._tab_meta["scan"]["claim_at"] = time.time() - d.GUARD_WINDOW - 1
+    ok, name = daemon.dispatch(_env("tab open scan --who b", caller="agent-b"))
+    assert ok is True and name == "scan"
+    assert daemon.browser._tab_meta["scan"]["caller"] == "agent-b"
+
+
+def test_targeted_close_of_own_tab_is_allowed_bare_close_is_whole_browser(tmp_path):
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.dispatch(_env("tab open jobx", caller="agent-a"))
+    daemon.dispatch(_env("go_to x.com", caller="agent-a", tab="jobx"))
+    ok, _ = daemon.dispatch(_env("tab close jobx", caller="agent-a"))   # owner closes own tab
+    assert ok is True
+    ok, payload = daemon.dispatch(_env("close", caller="agent-a"))      # bare close = whole browser
+    assert ok is True
+    assert "closed" in payload.lower()
+
+
+def test_do_instruction_is_not_quote_mangled(tmp_path):
+    """Fix: the NL instruction was re-derived from the shlex-joined line, leaking quotes.
+    A multi-word instruction must reach the agent as clean text."""
+    import shlex as _shlex
+    captured = {}
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon._run_nl = lambda cmd: captured.setdefault("cmd", cmd) or (True, "ok")
+    line = _shlex.join(["do", "log in and download my invoices"])   # what client.send builds
+    daemon.dispatch(_env(line, caller="a"))
+    assert captured["cmd"] == "log in and download my invoices"
+
+
+def test_readonly_verb_on_unregistered_tab_is_not_exit_3(tmp_path):
+    """status/tab on a not-yet-registered -t target should inspect, not error 3."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, _ = daemon.dispatch(_env("status", tab="ghost"))
+    assert ok is True
+
+
+def test_extract_tab_does_not_eat_a_verb_argument():
+    from connectonion.cli.commands.browser_commands import _extract_tab
+    # -t as a VALUE to a browser function must pass through, not be consumed as targeting
+    tab, rest = _extract_tab(["type_text", "#q", "-t"])
+    assert tab is None
+    assert rest == ["type_text", "#q", "-t"]
+    # leading -t IS targeting
+    tab, rest = _extract_tab(["-t", "jobx", "go_to", "x.com"])
+    assert tab == "jobx" and rest == ["go_to", "x.com"]
+    # empty tab value is a usage error
+    assert _extract_tab(["--tab=", "go_to", "x"]) == (None, None)
+
+
+def test_socket_round_trip_structured_exit_codes(short_sock, monkeypatch, capsys):
+    """client.send() mirrors the daemon's int codes: 4 busy, 3 unknown tab, 2 usage."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    monkeypatch.setenv("CO_WHO", "agent-a")
+    daemon = make_daemon(short_sock)
+    t = threading.Thread(target=daemon.serve, daemon=True)
+    t.start()
+    _wait_until_listening(short_sock)
+
+    assert c.send("go_to example.com", headless=True) == 0      # agent-a claims main
+    capsys.readouterr()
+    monkeypatch.setenv("CO_WHO", "agent-b")
+    assert c.send("go_to other.com", headless=True) == 4        # busy → exit 4
+    capsys.readouterr()
+    assert c.send("go_to x.com", headless=True, tab="nope") == 3  # unknown tab → exit 3
+    capsys.readouterr()
+    # an unparseable command line → exit 2
+    assert c.send('go_to "unclosed', headless=True) == 2

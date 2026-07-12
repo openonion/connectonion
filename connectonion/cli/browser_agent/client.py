@@ -21,17 +21,28 @@ from .daemon import default_sock_path
 
 
 def _connect(sock_path: str):
-    """Connect to the daemon socket, or None if nothing is listening."""
+    """Connect to the daemon socket. Returns a live connection, or None if the daemon
+    is genuinely gone. A busy single-threaded daemon (mid `do` task) can momentarily
+    refuse with ECONNREFUSED while its accept backlog is full — that is NOT a dead
+    daemon, so retry briefly before giving up; only a truly stale socket is unlinked."""
     if not os.path.exists(sock_path):
         return None
-    conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-    try:
-        conn.connect(sock_path)
-        return conn
-    except OSError:
-        conn.close()
-        os.unlink(sock_path)  # stale socket
-        return None
+    for attempt in range(20):  # ~2s of ECONNREFUSED tolerance for a busy daemon
+        conn = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        try:
+            conn.connect(sock_path)
+            return conn
+        except ConnectionRefusedError:
+            conn.close()
+            if not os.path.exists(sock_path):
+                return None  # daemon exited and cleaned up while we waited
+            time.sleep(0.1)
+        except OSError:
+            conn.close()
+            if os.path.exists(sock_path):
+                os.unlink(sock_path)  # stale socket: nothing is listening on it
+            return None
+    return None  # still refusing after the window — let the caller spawn a fresh daemon
 
 
 def _spawn_daemon(sock_path: str, headless: bool):
@@ -63,7 +74,9 @@ def _caller() -> str:
     if not who:
         job = os.environ.get("CLAUDE_JOB_DIR")
         who = f"claude-{Path(job).name}" if job else ""
-    return "-".join(who.split())
+    # Only trim surrounding whitespace — the JSON envelope carries any inner character
+    # safely, so distinct names like "agent 1"/"agent-1" must stay distinct.
+    return who.strip()
 
 
 def send(line: str, headless: bool = False, tab: str = None) -> int:
@@ -92,7 +105,9 @@ def send(line: str, headless: bool = False, tab: str = None) -> int:
         if payload:
             print(payload)
         return 0
-    if payload.startswith('unknown command: {"v"'):
+    # An old (pre-upgrade) daemon shlex-splits the JSON envelope and rejects its first
+    # token — which, after shlex strips the quotes, is 'unknown command: {v:1,...'.
+    if payload.startswith("unknown command: {"):
         payload = (
             "an old browser daemon (pre-upgrade) is still running and does not speak "
             "this client's protocol.\nrestart it:  pkill -f connectonion.cli.browser_agent.daemon"

@@ -109,6 +109,14 @@ def _tab_label(key) -> str:
     return "main" if key is None else key
 
 
+def _held_by_other(meta, caller: str) -> bool:
+    """True when this tab carries a live claim (within GUARD_WINDOW) by a DIFFERENT
+    identity than `caller`. An anonymous request (caller="") is still held OUT of a
+    named claim; two anonymous requests cannot be told apart, so they are not guarded."""
+    holder = meta.get("caller")
+    return bool(holder and holder != caller and time.time() - (meta.get("claim_at") or 0) < GUARD_WINDOW)
+
+
 class BrowserDaemon:
     """Single-threaded server owning one BrowserAutomation, dispatching verbs to it."""
 
@@ -127,7 +135,12 @@ class BrowserDaemon:
         if not raw.startswith("{"):
             return "", None, raw
         req = json.loads(raw)
-        return req.get("caller") or "", req.get("tab"), req.get("line") or ""
+        tab = req.get("tab")
+        return str(req.get("caller") or ""), (str(tab) if tab is not None else None), str(req.get("line") or "")
+
+    # Verbs that neither drive nor destroy a page: never guarded, and a not-yet-registered
+    # -t target is fine (you may inspect or create it).
+    READONLY = ("tab", "status", "use", "switch", "help")
 
     def dispatch(self, raw: str) -> tuple:
         """Run one request. Returns (ok, payload); ok is True, False, or an int error
@@ -135,19 +148,20 @@ class BrowserDaemon:
         try:
             caller, tab, line = self._parse_envelope(raw)
             tokens = shlex.split(line)
-        except ValueError as exc:  # malformed envelope/quoting is the CLIENT's error
+        except (ValueError, TypeError) as exc:  # malformed envelope/quoting is the CLIENT's error
             return 2, f"unparseable request: {exc}"
         if not tokens:
             return False, "empty request"
+        verb = tokens[0]
 
-        # -t targeting: each task drives its OWN tab; 'main' is the zero-ceremony
-        # shared tab, any other name must be registered first via `tab open`.
+        # -t targeting: each task drives its OWN tab. Unknown-tab is only an error for a
+        # command that would DRIVE the tab — read-only/lifecycle verbs may name a tab that
+        # is not registered yet (to inspect it, or `tab open` it).
         session = _key(tab)
-        if session is not None and session not in self.browser._tab_meta:
+        if session is not None and session not in self.browser._tab_meta and verb not in self.READONLY:
             return 3, self._unknown_tab(session)
         self.browser._bind_session(session)
 
-        verb = tokens[0]
         if verb == "tab":  # tab lifecycle: open / ls / close
             return self._tab(tokens[1:], caller)
         if verb == "status":  # read-only report; does not count as the last command
@@ -159,16 +173,20 @@ class BrowserDaemon:
         if verb == "closetab":  # legacy spelling of `tab close`
             return self._closetab(tokens[1:], caller)
 
-        # Every page-driving command claims its tab: a DIFFERENT agent mid-task there
-        # fails loudly (exit 4) and is taught the tab lifecycle — never silent
-        # interleaving on one page. `close` (whole browser) is a deliberate shutdown.
-        if verb != "close":
-            busy = self._claim(session, caller, line)
-            if busy:
-                return 4, busy
+        # `close` with no -t is a deliberate whole-browser shutdown (unguarded). `-t X close`
+        # closes ONE tab and so must pass the same ownership guard as any destructive write.
+        if verb == "close" and session is None:
+            return self._call_verb("close", tokens[1:])
+
+        # Every page-driving command (and a targeted close) claims its tab: a DIFFERENT
+        # agent mid-task there fails loudly (exit 4) and is taught the tab lifecycle —
+        # never silent interleaving on one page.
+        busy = self._claim(session, caller, line)
+        if busy:
+            return 4, busy
         self.last_command = {"line": line, "at": time.time()}
-        if verb == "do":  # explicit natural-language agent
-            command = line.split(None, 1)[1] if len(tokens) > 1 else ""
+        if verb == "do":  # explicit natural-language agent — use the PARSED remainder,
+            command = " ".join(tokens[1:])  # not the still-quoted raw line
             return self._run_nl(command)
         if _is_verb(self.browser, verb):
             return self._call_verb(verb, tokens[1:])
@@ -179,17 +197,18 @@ class BrowserDaemon:
         )
 
     def _claim(self, key, caller: str, line: str):
-        """Stamp `caller` as the tab's active user; return a busy error if a DIFFERENT
-        caller used it within GUARD_WINDOW. The claim lives on the tab's board entry —
-        one record per tab, so releasing the tab releases the claim with it."""
+        """Stamp `caller` as the tab's active user; return a busy error if the tab is
+        held by a DIFFERENT identity within GUARD_WINDOW. The claim lives on the tab's
+        board entry — one record per tab, so releasing the tab releases the claim."""
         meta = self.browser._tab_meta.setdefault(
-            key, {"who": caller or "main", "purpose": "shared main tab", "opened_at": datetime.now()}
+            key, {"who": caller or "main",
+                  "purpose": "shared main tab" if key is None else key,
+                  "opened_at": datetime.now()}
         )
-        holder = meta.get("caller")
-        if caller and holder and holder != caller and time.time() - meta.get("claim_at", 0) < GUARD_WINDOW:
+        if _held_by_other(meta, caller):  # guards even an anonymous caller OUT of a named claim
             return self._tab_busy(key, meta)
-        if caller:
-            if holder != caller:
+        if caller:  # only a named caller can hold a claim of its own
+            if meta.get("caller") != caller:
                 meta["who"] = caller  # takeover after expiry: the board shows the current occupant
             meta["caller"], meta["claim_at"] = caller, time.time()
         meta["last_line"], meta["last_at"] = line, time.time()
@@ -235,7 +254,7 @@ class BrowserDaemon:
 
     def _status(self) -> tuple:
         """Report browser state, the last command, and the tab board."""
-        open_state = "open" if self.browser._browser_is_usable() else "not open"
+        open_state = "open" if self.browser._context_is_alive() else "not open"
         headless = str(getattr(self.browser, "_headless", False)).lower()
         lines = [f"Browser: {open_state} · headless={headless} · targeting is per-command (-t <tab>; bare = main)"]
         # Surface stealth-driver health here so a misconfigured driver (webdriver leak) is
@@ -289,15 +308,21 @@ class BrowserDaemon:
             elif not tok.startswith("-") and not name:
                 name = tok
             i += 1
-        name = name or f"t-{self._next_tab}"
-        self._next_tab += 1
+        if not name:  # auto-name only when none given; guarantee it is fresh
+            while f"t-{self._next_tab}" in self.browser._tab_meta:
+                self._next_tab += 1
+            name = f"t-{self._next_tab}"
+            self._next_tab += 1
         if _key(name) is None:
             return False, "'main' is the shared default tab — it always exists; just run commands without -t."
         existing = self.browser._tab_meta.get(name)
         if existing is not None:
-            if caller and existing.get("caller") == caller:
-                return True, name  # re-opening your own tab is idempotent
-            # The name is taken: succeeding silently would put two agents on one page.
+            if not _held_by_other(existing, caller):
+                # yours, or the previous owner's claim has expired → (re)claim the name
+                existing.update(who=who or caller or name, purpose=purpose or existing.get("purpose") or name,
+                                caller=caller, claim_at=time.time() if caller else 0)
+                return True, name
+            # A DIFFERENT agent is mid-task under this name: sharing would collide.
             return 4, self._tab_busy(name, existing) + "\n\nor pick a different name for your own tab."
         self.browser._tab_meta[name] = {
             "who": who or caller or name, "purpose": purpose or name,
@@ -365,9 +390,8 @@ class BrowserDaemon:
         if key not in self.browser._pages and meta is None:
             return 3, self._unknown_tab(target)
         # Closing someone's mid-task tab is the most destructive write there is —
-        # it gets the same guard as driving the page.
-        holder = (meta or {}).get("caller")
-        if caller and holder and holder != caller and time.time() - (meta.get("claim_at") or 0) < GUARD_WINDOW:
+        # it gets the same guard as driving the page (and blocks anonymous callers too).
+        if meta and _held_by_other(meta, caller):
             return 4, self._tab_busy(key, meta)
         self.last_command = {"line": "closetab " + target, "at": time.time()}
         # A tab registered via `tab open` but never navigated has meta and no page —
@@ -397,8 +421,12 @@ class BrowserDaemon:
             conn, _ = self._srv.accept()
             request = ""
             try:
-                request = _recv_all(conn).decode().strip()
-                ok, payload = self.dispatch(request)
+                conn.settimeout(120)  # a client that connects then stalls without
+                request = _recv_all(conn).decode().strip()  # sending must not wedge the
+                ok, payload = self.dispatch(request)         # whole single-threaded daemon
+            except socket.timeout:
+                conn.close()
+                continue
             except Exception as exc:
                 # Request boundary: one bad request (malformed envelope, encoding, an
                 # unexpected dispatch bug) is reported to ITS client — it must never
@@ -409,7 +437,7 @@ class BrowserDaemon:
                 # agents can branch on the exit code without parsing prose.
                 header = "OK" if ok is True else ("ERR" if ok is False else f"ERR {ok}")
                 conn.sendall((header + "\n" + payload).encode())
-            except (BrokenPipeError, ConnectionResetError):
+            except (BrokenPipeError, ConnectionResetError, socket.timeout):
                 # The client died mid-request (bash timeout, Ctrl-C). Its death must not
                 # kill the daemon — log the drop (stderr goes to ~/.co/browser.log) so
                 # "my command printed nothing" stays diagnosable.
@@ -417,14 +445,16 @@ class BrowserDaemon:
             finally:
                 conn.close()
 
-            usable = self.browser._browser_is_usable()
-            self._had_browser = self._had_browser or usable
             # Exit (releasing the socket) when the browser can no longer be driven, so the
-            # next command spawns a fresh daemon instead of reusing a dead one. Two cases:
+            # next command spawns a fresh daemon instead of reusing a dead one. This is a
+            # SHARED-context decision, not a per-session one: a command on a page-less tab
+            # must not be read as "browser dead" and tear down every other session's tabs.
+            alive = self.browser._context_is_alive()
+            self._had_browser = self._had_browser or alive
             #   - a launch that never produced a context (Chrome aborted at startup) — a
             #     daemon that can't open a browser must not linger as a socket-holding zombie;
-            #   - a browser that was usable and has since closed/crashed.
-            if self.browser._launch_failed() or (self._had_browser and not usable):
+            #   - a context that was alive and has since closed/crashed.
+            if self.browser._launch_failed() or (self._had_browser and not alive):
                 break
 
     def _bind(self):
@@ -442,11 +472,14 @@ class BrowserDaemon:
         self._srv.listen(8)
 
     def _cleanup(self):
-        self.browser.close()
+        # Stop accepting FIRST: closing/unlinking the socket before the (slow) browser
+        # teardown means a client connecting during shutdown fails immediately and spawns
+        # a fresh daemon, instead of reaching a daemon that will never accept its request.
         if self._srv:
             self._srv.close()
         if os.path.exists(self.sock_path):
             os.unlink(self.sock_path)
+        self.browser.close()
 
 
 def _ago(seconds: float) -> str:

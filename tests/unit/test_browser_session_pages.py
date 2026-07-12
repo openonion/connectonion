@@ -143,6 +143,23 @@ class TestTabReclaim:
         assert "B" in browser._pages              # active tab kept
         assert browser._page_url["A"]             # url remembered for restore
 
+    def test_reclaim_keeps_registration_but_close_drops_it(self, browser):
+        """Reclaim (forget=False) frees the page but KEEPS the tab's registry entry so
+        the tab transparently resumes with the same owner; an explicit close drops both."""
+        browser._bind_session("A"); browser._ensure_page("A")
+        browser._tab_meta["A"] = {"who": "codex", "purpose": "scrape", "caller": "codex"}
+        browser._bind_session("B"); browser._ensure_page("B")
+
+        browser._tab_idle_ttl = 0
+        browser._page_used["A"] = time.monotonic() - 1
+        browser._bind_session("B"); browser._ensure_page("B")  # reclaim A
+
+        assert "A" not in browser._pages                        # page gone
+        assert browser._tab_meta.get("A", {}).get("who") == "codex"   # registration survives
+
+        browser._close_tab("A")                                 # explicit close (forget=True)
+        assert "A" not in browser._tab_meta                     # now the registry entry is dropped
+
     def test_reclaimed_session_recreates_and_restores_url(self, browser):
         browser._bind_session("A"); browser._ensure_page("A")
         browser._pages["A"].goto("https://example.com/feed")

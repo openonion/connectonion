@@ -52,48 +52,55 @@ TIPS = [
 
 
 def _next_tip():
-    """Rotate through TIPS so each run teaches something new; index persists in ~/.co."""
+    """Rotate through TIPS so each run teaches something new; index persists in ~/.co.
+    Best-effort and crash-proof — a corrupt/racing state file must never change the
+    command's exit status, so parse defensively and write atomically."""
     state = Path.home() / ".co" / ".browser_tip"
-    idx = int(state.read_text()) if state.exists() else 0
-    state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_text(str((idx + 1) % len(TIPS)))
+    try:
+        idx = int(state.read_text().strip())
+    except (OSError, ValueError):
+        idx = 0
+    try:
+        state.parent.mkdir(parents=True, exist_ok=True)
+        tmp = state.with_suffix(".tmp")
+        tmp.write_text(str((idx + 1) % len(TIPS)))
+        tmp.replace(state)
+    except OSError:
+        pass
     return TIPS[idx % len(TIPS)]
 
 
 def _extract_tab(args):
-    """Pull -t/--tab NAME out of args (accepted before or after the verb).
+    """Pull the leading -t/--tab NAME out of args, then stop.
 
-    Scanning stops at the `do` verb — everything after it is instruction text
-    for the NL agent, so a literal "-t" inside an unquoted instruction is never
-    eaten. Returns (tab_or_None, remaining_args) — or (None, None) on a dangling
-    or empty flag, which the caller reports as a usage error (exit 2).
+    Only the run of flags BEFORE the verb is scanned, so a value equal to '-t' or
+    '--tab=' that belongs to a browser function (e.g. `type_text '#q' -t`) is passed
+    through untouched. Returns (tab_or_None, remaining_args) — or (None, None) on a
+    dangling or empty flag, which the caller reports as a usage error (exit 2).
     """
-    tab, rest, i = None, [], 0
+    tab, i = None, 0
     while i < len(args):
         tok = args[i]
-        if tok == "do":
-            rest.extend(args[i:])
-            break
         if tok in ("-t", "--tab"):
             if i + 1 >= len(args):
                 return None, None
-            i += 1
-            tab = args[i]
+            tab = args[i + 1]
+            i += 2
         elif tok.startswith("--tab="):
             tab = tok.split("=", 1)[1]
+            i += 1
         else:
-            rest.append(tok)
-        i += 1
-    if tab == "":  # --tab=$EMPTY must fail loudly, not silently fall back to main
+            break  # first non-tab token is the verb; everything from here is the command
+    if tab == "":  # --tab= / -t "" must fail loudly, not silently fall back to main
         return None, None
-    return tab, rest
+    return tab, args[i:]
 
 
 def handle_browser(args, headless: bool = False) -> int:
     """Forward a browser command to the daemon, or print help. Returns the process exit code."""
     if not args:
         print(USAGE, file=sys.stderr)
-        return 1
+        return 2
     if args[0] in ("help", "--list", "list"):
         print(USAGE + "\n\nFunctions:\n" + list_functions())
         return 0
@@ -106,5 +113,5 @@ def handle_browser(args, headless: bool = False) -> int:
         return 2
     code = send(shlex.join(args), headless=headless, tab=tab)
     if code == 0 and sys.stdout.isatty():
-        print(f"\n\033[2m💡 {_next_tip()}\033[0m")
+        print(f"\n\033[2m💡 {_next_tip()}\033[0m", file=sys.stderr)
     return code

@@ -327,6 +327,31 @@ class BrowserAutomation:
         except Exception:
             return False
 
+    def _context_is_alive(self) -> bool:
+        """True when the shared browser CONTEXT is up — independent of which session
+        is currently bound. The daemon's serve-loop liveness check must use this, not
+        _browser_is_usable(): the latter reads the bound session's page, so a command
+        on a registered-but-page-less tab would read False and wrongly tear the whole
+        browser down for every other session."""
+        if not self.browser:
+            return False
+
+        def run():
+            try:
+                pages = list(self.browser.pages)
+            except Exception:
+                return False
+            for pg in pages:
+                is_closed = getattr(pg, "is_closed", None)
+                if not (callable(is_closed) and is_closed()):
+                    return True
+            # A live context with zero open pages is still usable (a page opens on demand).
+            return True
+
+        if threading.current_thread() is self._executor_thread:
+            return run()
+        return self._executor.submit(run).result()
+
     def _launch_failed(self) -> bool:
         """True when a launch started Playwright but no browser context came up.
 
@@ -681,9 +706,11 @@ class BrowserAutomation:
         browser stays open — use close() to shut the whole browser down."""
         if not self.browser:
             return "Browser not open"
-        if key not in self._pages:
+        # A tab reclaimed for idle/LRU keeps its registry entry with no live page; it is
+        # still a real tab the caller may release, so accept a key known to EITHER store.
+        if key not in self._pages and key not in self._tab_meta:
             return f"No open tab for {key!r}"
-        error = self._close_tab(key)
+        error = self._close_tab(key)  # forget=True: drops both the page and the registry entry
         return error or "Tab closed"
 
     def find_element_by_description(self, description: str) -> str:
