@@ -93,9 +93,6 @@ def handle_browser(args, headless: bool = False) -> int:
     if not args:
         print(USAGE, file=sys.stderr)
         return 2
-    if args[0] in ("help", "--list", "list"):
-        print(USAGE + "\n\nFunctions:\n" + list_functions())
-        return 0
     tab, args = _extract_tab(args)
     if args is None:
         print("usage: -t needs a tab name, e.g.  co browser -t mytask go_to <url>", file=sys.stderr)
@@ -103,6 +100,9 @@ def handle_browser(args, headless: bool = False) -> int:
     if not args:
         print("usage: -t targets a command, e.g.  co browser -t mytask go_to <url>", file=sys.stderr)
         return 2
+    if args[0] in ("help", "--list", "list"):  # after -t extraction: `-t x help` is still help
+        print(USAGE + "\n\nFunctions:\n" + list_functions())
+        return 0
     code = send(shlex.join(args), headless=headless, tab=tab)
     if code == 0 and sys.stdout.isatty():
         print(f"\n\033[2m💡 {_next_tip()}\033[0m", file=sys.stderr)

@@ -84,9 +84,12 @@ class StubBrowser:
 
     def close_tab(self, key=None) -> str:
         # Mirrors the real method: no argument means the bound session's own tab,
-        # and a reserved/reclaimed tab (meta, no page) is still releasable.
+        # "main" is the shared tab's printed name (stored as None), and a
+        # reserved/reclaimed tab (meta, no page) is still releasable.
         if key is None:
             key = self._session
+        elif key == "main":
+            key = None
         if key not in self._pages and key not in self._tab_meta:
             return f"No open tab for {key!r}"
         self._pages.pop(key, None)
@@ -863,3 +866,20 @@ def test_tab_usage_errors_exit_2(tmp_path):
     assert daemon.dispatch("tab")[0] == 2
     assert daemon.dispatch("tab frobnicate")[0] == 2
     assert daemon.dispatch("tab open main")[0] == 2
+
+
+def test_close_reserved_tab_before_browser_launch_forgets_it(tmp_path):
+    """Closing a tab that was registered but never navigated (browser not launched)
+    must drop the registration and its claim — 'closed' must never leave a phantom
+    on the board locking the name for GUARD_WINDOW."""
+    daemon = d.BrowserDaemon(str(tmp_path / "s.sock"), headless=True)  # REAL browser, never launched
+    ok, _ = daemon.dispatch(_env("tab open research", caller="agent-a"))
+    assert ok is True
+
+    ok, payload = daemon.dispatch(_env("tab close research", caller="agent-a"))
+    assert ok is True
+    assert "research" not in daemon.browser._tab_meta      # no ghost registration
+
+    ok, _ = daemon.dispatch(_env("tab open research", caller="agent-b"))
+    assert ok is True                                       # name free immediately
+    daemon.browser._executor.shutdown(wait=False)

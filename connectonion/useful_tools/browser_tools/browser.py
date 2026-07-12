@@ -1,12 +1,12 @@
 """
-Purpose: Natural language browser automation via Patchright (a stealth-patched, API-compatible Playwright fork) with persistent profile and auto-save
+Purpose: Natural language browser automation via Patchright (a stealth-patched, API-compatible Playwright fork) — one shared persistent context, one TAB PER SESSION, so concurrent agents never drive each other's page
 LLM-Note:
-  Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_agent.py]
-  Data flow: BrowserAutomation() initializes Playwright → opens browser with persistent context → provides tools (navigate, find_element, click, type_text, screenshot, scroll, wait_for_login) → auto-saves cookies after each critical action → Agent uses these tools via natural language → element_finder.py uses vision LLM to locate elements | screenshots saved to .tmp/ directory
-  State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup | all public methods dispatch to one dedicated browser thread (Playwright sync API is thread-bound), so a shared instance is safe to call from any thread
-  Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), keyboard_type(text), keyboard_press(key), wait_for_login(seconds) | used by `co browser` CLI command
-  Performance: headless by default (faster) | persistent context (instant profile load) | vision model for element finding (slower but accurate) | screenshots base64-encoded for LLM analysis | auto-save adds 500ms delay after critical actions
-  Errors: returns error string if Playwright not installed | returns "Browser already open" if live browser exists | element not found returns descriptive error
+  Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py, cli/browser_agent/daemon.py] | tested by [tests/unit/test_browser_tools.py, tests/unit/test_browser_session_pages.py, tests/unit/test_browser_automation.py]
+  Data flow: a caller binds its session via _bind_session(key) (key None = shared 'main') → every public method hops to ONE dedicated browser worker thread (_runs_on_browser_thread propagates the binding; Playwright's sync API is thread-bound) → _ensure_page gives the session its own tab in the shared context (restored to its remembered URL), then _reclaim_idle_tabs bounds memory (idle-TTL first, then max-tabs LRU — never the active tab) → go_to/newtab record who/purpose/hours on the tab REGISTRY _tab_meta (the first navigation on an unoccupied tab demands purpose+who — direct API/tool callers only; the co browser daemon registers tabs before dispatching) → tab_status renders the board → close_tab releases ONE tab, close() releases the bound tab or tears the whole context down
+  State/Effects: persistent profile at ~/.co/browser_profile/ (Chrome's SingletonLock is cleared only when its owning pid is dead) | per-tab state in four maps: _pages (live pages), _page_used (last-use clock), _page_url (remembered URL — written ONLY by _reclaim_tab for transparent resume; _release_tab forgets page+registration+URL together), _tab_meta (registry/board: who/purpose/hours/opened_at + the daemon's claim fields) | _teardown clears all four | auto-saves storage state after critical actions | screenshots to .tmp/
+  Integration: exposes BrowserAutomation(headless, ...) — its public methods ARE the `co browser` verbs and the NL agent's tools (go_to, newtab, tab_status, close_tab, take_screenshot, click/type/scroll family, save_state, close, ...) | driver_stealth_status() feeds `co doctor` and daemon `status`
+  Performance: browser launch is lazy (first page verb, 1-3s) | persistent context loads the profile instantly | element finding uses a vision LLM (slower but accurate) | auto-save adds ~500ms after critical actions
+  Errors: an unoccupied tab's first go_to/newtab raises ValueError coaching the AGENT to re-call with purpose/who (_occupancy_help) | launch failure returns the first error line + a pointer to ~/.co/browser.log | context liveness is judged at the CONTEXT level (_context_is_alive), so one dead page never tears down other sessions' tabs
 Browser Agent for CLI - Natural language browser automation.
 
 This module provides a browser automation agent that understands natural language
@@ -204,21 +204,23 @@ def driver_stealth_status():
 
 def _occupancy_help(verb: str, url: str) -> str:
     """Message shown to the AI AGENT (not a human) when it uses a tab with no purpose.
-    It must generate the values from the user's request and re-run."""
+    Only direct API / tool callers ever see it — the `co browser` daemon registers
+    tabs before dispatching — so it coaches in tool vocabulary, not CLI flags. The
+    agent must generate the values from the user's request and call again."""
     return (
         "This tab has no purpose yet — say why you're using it. "
         "(This message is for the AI agent, not the user.)\n"
         "\n"
-        "Re-run and fill these in from what the user asked you to do:\n"
-        f'  co browser {verb} {url} --purpose="<why you\'re opening this tab>" '
-        '--who="<the user this is for>" --hours=<how long you\'ll need it>\n'
+        "Call again with these filled in from what the user asked you to do:\n"
+        f'  {verb}("{url}", purpose="<why you\'re opening this tab>", '
+        'who="<the user this is for>", hours=<how long you\'ll need it>)\n'
         "\n"
-        "- --purpose: generate it from the user's request — the reason you're on this page.\n"
-        "- --who: tag the user you're doing this for.\n"
-        "- --hours: estimate how long you'll hold this tab (e.g. 2, 3, 10). Informational only —\n"
-        "  after it elapses, `co browser status` flags the tab \"may be closed\"; it is NOT closed for you.\n"
-        "- When the task is done, close it yourself:  co browser closetab <id>\n"
-        "- First run `co browser status` — reuse an open tab instead of opening a new one."
+        "- purpose: generate it from the user's request — the reason you're on this page.\n"
+        "- who: tag the user you're doing this for.\n"
+        "- hours: estimate how long you'll hold this tab (e.g. 2, 3, 10). Informational only —\n"
+        "  after it elapses, tab_status() flags the tab \"may be closed\"; it is NOT closed for you.\n"
+        "- When the task is done, close it yourself:  close_tab()\n"
+        "- First check tab_status() — reuse an open tab instead of opening a new one."
     )
 
 
@@ -722,16 +724,18 @@ class BrowserAutomation:
     def close_tab(self, key: Optional[str] = None) -> str:
         """Close ONE session's tab (default = the current session's). The rest of the
         browser stays open — use close() to shut the whole browser down."""
-        if not self.browser:
-            return "Browser not open"
         if key is None:
             # Default means MY tab: a bound session must never close the shared
             # main tab (someone else's) just by omitting the argument.
             key = self._bound_session_key()
-        # A tab reclaimed for idle/LRU keeps its registry entry with no live page; it is
-        # still a real tab the caller may release, so accept a key known to EITHER store.
+        elif key == "main":
+            key = None  # accept the name tab_status() prints for the shared tab
+        # A tab registered but never navigated (or reclaimed for idle/LRU) has a
+        # registry entry and no live page; it is still a real tab the caller may
+        # release — even before the browser has ever launched — so accept a key
+        # known to EITHER store.
         if key not in self._pages and key not in self._tab_meta:
-            return f"No open tab for {key!r}"
+            return f"No open tab for {key!r}" if self.browser else "Browser not open"
         error = self._release_tab(key)
         return error or "Tab closed"
 

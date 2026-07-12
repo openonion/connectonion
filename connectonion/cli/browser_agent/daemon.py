@@ -155,8 +155,9 @@ class BrowserDaemon:
         return str(req.get("caller") or ""), (str(tab) if tab is not None else None), str(req.get("line") or "")
 
     # Verbs that neither drive nor destroy a page: never guarded, and a not-yet-registered
-    # -t target is fine (you may inspect or create it).
-    READONLY = ("tab", "status", "use", "switch", "help")
+    # -t target is fine (you may inspect or create it). `help` never reaches the daemon —
+    # the CLI answers it locally.
+    READONLY = ("tab", "status", "use", "switch")
 
     def dispatch(self, raw: str) -> tuple:
         """Run one request. Returns (ok, payload); ok is True, False, or an int error
@@ -425,11 +426,10 @@ class BrowserDaemon:
         if meta and _held_by_other(meta, caller):
             return 4, self._tab_busy(key, meta)
         self.last_command = {"line": "closetab " + target, "at": time.time()}
-        # Bind to the TARGET, then close the bound tab. close_tab releases the page,
-        # the registration (claim included), AND the remembered URL — a later tab
-        # reusing this name must start blank, never on the previous owner's page.
-        self.browser._bind_session(key)
-        message = self.browser.close_tab()
+        # close_tab releases the page, the registration (claim included), AND the
+        # remembered URL — a later tab reusing this name must start blank, never
+        # on the previous owner's page.
+        message = self.browser.close_tab(_tab_label(key))
         return True, f"Closed tab {_tab_label(key)}. {message}"
 
     def _run_nl(self, command: str) -> tuple:

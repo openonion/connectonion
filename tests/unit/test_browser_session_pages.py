@@ -144,7 +144,7 @@ class TestTabReclaim:
         assert browser._page_url["A"]             # url remembered for restore
 
     def test_reclaim_keeps_registration_but_close_drops_it(self, browser):
-        """Reclaim (forget=False) frees the page but KEEPS the tab's registry entry so
+        """Reclaim frees the page but KEEPS the tab's registry entry so
         the tab transparently resumes with the same owner; an explicit close drops both."""
         browser._bind_session("A"); browser._ensure_page("A")
         browser._tab_meta["A"] = {"who": "codex", "purpose": "scrape", "caller": "codex"}
