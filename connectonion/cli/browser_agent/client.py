@@ -1,12 +1,12 @@
 """
-Purpose: Thin client for the browser daemon — sends one request line over the Unix socket and maps the reply to stdout/stderr/exit code.
+Purpose: Thin client for the browser daemon — wraps one command as a JSON envelope, sends it over the Unix socket, and maps the reply to stdout/stderr/exit code.
 LLM-Note:
-  Dependencies: imports from [socket, os, sys, time, subprocess, pathlib, browser_agent.daemon.default_sock_path] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_cli_browser.py]
-  Data flow: send(line, headless) → connect to default_sock_path() (spawning the daemon detached if absent / unlinking a stale socket) → send line, half-close → read reply to EOF → first line "OK"/"ERR" sets exit code, rest is payload → OK prints to stdout, ERR prints to stderr → returns exit code int
+  Dependencies: imports from [socket, os, json, sys, time, subprocess, pathlib, browser_agent.daemon.default_sock_path] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Data flow: send(line, headless, tab) → _caller() derives identity (CO_WHO, else claude-<CLAUDE_JOB_DIR>, else "") → build wire-v1 envelope json{v:1, caller, tab, line} (structured caller/tab means any character in a name is safe — nothing is spliced into the shlex-parsed command line) → _connect(default_sock_path()) or _spawn_daemon() → send, half-close, read reply to EOF → header "OK" prints payload to stdout & returns 0 | header "ERR"/"ERR <n>" prints payload to stderr & returns the int (1 default, else 2/3/4) → a pre-upgrade daemon's "unknown command: {…" reply is rewritten to a restart hint
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` with start_new_session=True, logging to ~/.co/browser.log | writes to stdout/stderr
-  Integration: exposes send(line, headless=False) -> int
+  Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int
   Performance: one connect + request/response | daemon spawn adds browser launch latency on first call
-  Errors: connection refused / missing socket → spawn daemon and retry until ready or timeout
+  Errors: _connect() retries ~2s on a transient ECONNREFUSED from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale socket (other OSError) is unlinked | missing socket → spawn daemon and wait until ready or timeout
 """
 
 import os

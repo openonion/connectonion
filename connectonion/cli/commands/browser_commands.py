@@ -1,12 +1,12 @@
 """
-Purpose: Thin CLI handler for `co browser` — forwards verbs to the persistent browser daemon, and serves self-describing help.
+Purpose: Thin CLI handler for `co browser` — parses -t/--tab targeting, forwards one command to the persistent browser daemon, and serves self-describing help.
 LLM-Note:
-  Dependencies: imports from [sys, shlex, browser_agent.client.send, browser_agent.daemon.list_functions] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_cli_browser.py, tests/e2e/cli/test_browser_daemon.py]
-  Data flow: receives args: list[str] (+ headless: bool) from CLI → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → otherwise shlex.join → client.send() → daemon matches the first word to a BrowserAutomation method and executes it (or runs the NL agent for the `do` verb) → result printed to stdout/stderr by client, exit code returned
-  State/Effects: no local state | `help` introspects the class only | other verbs delegate browser/process lifecycle to the daemon | prints usage to stderr when called with no args
-  Integration: exposes handle_browser(args, headless=False) -> int (exit code) | called from main.py browser command
+  Dependencies: imports from [sys, shlex, pathlib, browser_agent.client.send, browser_agent.daemon.list_functions] | imported by [cli/main.py via browser()] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Data flow: receives args: list[str] (+ headless: bool) from CLI → `help`/`--list` printed locally by introspecting BrowserAutomation (no browser launched) → else _extract_tab() pulls the LEADING -t/--tab NAME run (stops at the verb, so a -t that is a function's own arg passes through; empty --tab= is a usage error) → shlex.join(remaining args) + tab → client.send(line, headless, tab=NAME) → daemon runs it → payload/exit code surfaced by the client
+  State/Effects: no local state except a best-effort rotating-tip index at ~/.co/.browser_tip (parsed defensively, written atomically, never affects the command's exit code) | the success tip is printed to STDERR (stdout stays pure data) | `help` introspects the class only | other verbs delegate browser/process lifecycle to the daemon
+  Integration: exposes _extract_tab(args) -> (tab|None, remaining|None), _next_tip(), handle_browser(args, headless=False) -> int | called from main.py browser command | USAGE/TIPS document the tab lifecycle and the exit-code contract
   Performance: `help` is import-only (no socket, no Chrome) | other verbs: one socket round-trip, first call spawns the daemon
-  Errors: daemon-side errors come back as ERR → stderr + exit 1; unknown verbs and wrong-argument errors include a next-step hint
+  Errors: no-args / bad -t → prints usage to stderr, exit 2 | daemon errors come back as ERR[ <code>] → stderr + the mirrored exit code (0 ok · 1 failure · 2 usage · 3 unknown tab · 4 tab busy)
 """
 
 import sys
