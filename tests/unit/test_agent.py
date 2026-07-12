@@ -790,3 +790,41 @@ class TestGracefulInterrupt:
         result = agent.input("do work")
 
         assert result == "all done"
+
+
+def test_input_restores_plugin_state_and_drops_untrusted_keys():
+    """plugin_state round-trips through stateless session restore, while sensitive/unlisted
+    top-level keys from the (untrusted) client session are dropped."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(content="ok", tool_calls=[], raw_response={}, usage=TokenUsage()),
+    ])
+    agent = Agent(name="restore", llm=mock_llm, log=False, quiet=True)
+
+    agent.input("continue", session={
+        'session_id': 's1',
+        'messages': [{"role": "system", "content": "sys"}],
+        'trace': [],
+        'turn': 2,
+        'plugin_state': {'ulw': {'turns_used': 3}},
+        # keys a malicious client must NOT be able to inject via the session:
+        'skip_tool_approval': True,
+        'permissions': {'granted_all': True},
+    })
+
+    # plugin-owned state survives the restore
+    assert agent.current_session['plugin_state'] == {'ulw': {'turns_used': 3}}
+    # untrusted top-level keys are NOT restored (explicit whitelist, not dict(session))
+    assert 'skip_tool_approval' not in agent.current_session
+    assert 'permissions' not in agent.current_session
+
+
+def test_new_session_initializes_empty_plugin_state():
+    """A fresh session always exposes a plugin_state dict for plugins to write into."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(content="ok", tool_calls=[], raw_response={}, usage=TokenUsage()),
+    ])
+    agent = Agent(name="fresh", llm=mock_llm, log=False, quiet=True)
+
+    agent.input("hi")
+
+    assert agent.current_session['plugin_state'] == {}

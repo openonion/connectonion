@@ -245,12 +245,20 @@ class Agent:
             self.logger.console.print_task(prompt)
 
         # Session restoration: if session passed, restore it (stateless API continuation)
+        # The restored keys are an explicit whitelist because `session` is untrusted client
+        # input — restoring `dict(session)` would let a client inject sensitive top-level keys
+        # (permissions, stop_signal, pending_tool). `plugin_state` is the one generic slot
+        # plugins own: a plugin persists its state under session['plugin_state']['<name>'] and
+        # core stays generic, so no plugin ever has to add its own keys to this whitelist.
+        # Note: capability flags (e.g. tool-approval skip) must NOT live here — they'd become
+        # client-forgeable across a stateless round-trip; derive those server-side from mode.
         if session is not None:
             self.current_session = {
                 'session_id': session.get('session_id'),
                 'messages': list(session.get('messages', [])),
                 'trace': list(session.get('trace', [])),
-                'turn': session.get('turn', 0)
+                'turn': session.get('turn', 0),
+                'plugin_state': dict(session.get('plugin_state', {}))
             }
             # Start YAML session logging with session_id for thread safety
             self.logger.start_session(self.system_prompt, session_id=session.get('session_id'))
@@ -259,7 +267,8 @@ class Agent:
             self.current_session = {
                 'messages': [{"role": "system", "content": self.system_prompt}],
                 'trace': [],
-                'turn': 0  # Track conversation turns
+                'turn': 0,  # Track conversation turns
+                'plugin_state': {}
             }
             # Start YAML session logging
             self.logger.start_session(self.system_prompt)
@@ -371,7 +380,8 @@ class Agent:
                 'trace': [],
                 'turn': 0,
                 'iteration': 1,
-                'user_prompt': 'Manual tool execution'
+                'user_prompt': 'Manual tool execution',
+                'plugin_state': {}
             }
 
         # Execute using the tool_executor
