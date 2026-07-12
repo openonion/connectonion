@@ -202,7 +202,7 @@ File Relationships:
 from typing import TYPE_CHECKING
 from pathlib import Path
 
-from ...core.events import before_each_tool, before_iteration, after_user_input
+from ...core.events import before_each_tool, before_iteration, after_iteration, after_user_input
 from .constants import VALID_MODES, DEFAULT_MODE, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS
 from .bash_parser import extract_commands_from_bash, check_bash_chain_permitted
 
@@ -716,6 +716,23 @@ def poll_mode_changes(agent: 'Agent') -> None:
         elif new_mode == 'ulw':
             from ..ulw import handle_ulw_mode_change
             handle_ulw_mode_change(agent, msg.get('turns'))
+
+
+@after_iteration
+def poll_interrupt(agent: 'Agent') -> None:
+    """Stop the run at the iteration boundary when the client sent an INTERRUPT.
+
+    Graceful stop: drains an INTERRUPT frame and sets the existing stop_signal,
+    which the iteration loop already honors right after after_iteration (halts and
+    returns a closing message). Runs after_iteration so the current step (LLM call
+    + tools) finishes first — not a mid-flight abort. Same primitive and placement
+    as no_progress_guard; no core changes.
+    """
+    if not agent.io:
+        return
+
+    if agent.io.receive_all('INTERRUPT'):
+        agent.current_session['stop_signal'] = 'user_interrupt'
 
 
 # =============================================================================

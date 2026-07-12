@@ -26,6 +26,7 @@ from unittest.mock import Mock
 from connectonion.useful_plugins.tool_approval import (
     check_approval,
     poll_mode_changes,
+    poll_interrupt,
     handle_mode_change,
     tool_approval,
     VALID_MODES,
@@ -765,3 +766,33 @@ class TestPluginExport:
 
         assert 'before_each_tool' in agent.events
         assert 'before_iteration' in agent.events
+
+
+class TestPollInterrupt:
+    """Test poll_interrupt before_iteration handler (stop button)."""
+
+    def test_poll_interrupt_no_io_skips(self):
+        """poll_interrupt should skip when no IO (local execution)."""
+        agent = FakeAgent(io=None)
+
+        poll_interrupt(agent)  # should not raise
+
+        assert 'stop_signal' not in agent.current_session
+
+    def test_poll_interrupt_sets_stop_signal(self):
+        """An INTERRUPT message sets stop_signal so the loop exits at the boundary."""
+        io = FakeIO(pending_signals=[{'type': 'INTERRUPT'}])
+        agent = FakeAgent(io=io)
+
+        poll_interrupt(agent)
+
+        assert agent.current_session['stop_signal'] == 'user_interrupt'
+
+    def test_poll_interrupt_no_message_leaves_signal_unset(self):
+        """Without an INTERRUPT, poll_interrupt must not stop the loop."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'safe'}])
+        agent = FakeAgent(io=io)
+
+        poll_interrupt(agent)
+
+        assert 'stop_signal' not in agent.current_session
