@@ -459,20 +459,24 @@ class BrowserAutomation:
         self._page_used.pop(key, None)
         if forget:
             self._tab_meta.pop(key, None)
+            # A permanently closed name must not resurrect its URL: a future tab that
+            # reuses the name would silently auto-navigate to the previous owner's page.
+            self._page_url.pop(key, None)
         if page is None:
             return None
-        try:
-            url = page.url
-        except Exception:
-            url = None
-        if url:
-            # Remember where the session was so it resumes there, but bound the map:
-            # session ids are unique per panel, so without a cap it grows forever on a
-            # long-lived shared host. Re-insert (LRU) then trim the oldest keys.
-            self._page_url.pop(key, None)
-            self._page_url[key] = url
-            while len(self._page_url) > self._max_url_memory:
-                self._page_url.pop(next(iter(self._page_url)))
+        if not forget:
+            try:
+                url = page.url
+            except Exception:
+                url = None
+            if url:
+                # Remember where the session was so it resumes there, but bound the map:
+                # session ids are unique per panel, so without a cap it grows forever on a
+                # long-lived shared host. Re-insert (LRU) then trim the oldest keys.
+                self._page_url.pop(key, None)
+                self._page_url[key] = url
+                while len(self._page_url) > self._max_url_memory:
+                    self._page_url.pop(next(iter(self._page_url)))
         try:
             page.close()
         except Exception as exc:
@@ -619,6 +623,11 @@ class BrowserAutomation:
         pass --purpose and --who (and optional --hours). Once a tab is occupied,
         later go_to calls navigate freely without repeating the flags, so multi-step
         flows keep working; pass the flags again only to re-label the active tab.
+
+        This check bites only DIRECT API callers. Through the `co browser` daemon
+        the declaration happens at the tab layer instead (`tab open --who/--for`,
+        and the shared main tab is pre-registered by the daemon's claim), so tabs
+        arrive here already occupied.
         """
         key = self._bound_session_key()
         existing = self._tab_meta.get(key, {})
@@ -656,7 +665,10 @@ class BrowserAutomation:
             self.open_browser()
         key = self._bound_session_key()
         self._ensure_page(key)                     # create THIS (new) session's tab
-        self._tab_meta[key] = {"who": who, "purpose": purpose, "hours": hours, "opened_at": datetime.now()}
+        # Merge, never replace: the daemon stamps its claim (caller/claim_at) on this
+        # record — wiping it would let another agent hijack the tab mid-task.
+        meta = self._tab_meta.setdefault(key, {"opened_at": datetime.now()})
+        meta.update({"who": who, "purpose": purpose, "hours": hours})
         if url:
             return self.go_to(url, purpose=purpose, who=who, hours=hours)
         return f"Opened new tab · who={who} · purpose={purpose!r}"

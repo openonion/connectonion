@@ -109,6 +109,22 @@ def _tab_label(key) -> str:
     return "main" if key is None else key
 
 
+def _owner_alive(sock_path: str) -> bool:
+    """True when the daemon that bound `sock_path` is still a running process.
+    No pid file (pre-pidfile daemon, or already cleaned up) reads as dead."""
+    pid_path = Path(sock_path + ".pid")
+    if not pid_path.exists():
+        return False
+    raw = pid_path.read_text().strip()
+    if not raw.isdigit():
+        return False
+    try:
+        os.kill(int(raw), 0)
+    except OSError:
+        return False
+    return True
+
+
 def _held_by_other(meta, caller: str) -> bool:
     """True when this tab carries a live claim (within GUARD_WINDOW) by a DIFFERENT
     identity than `caller`. An anonymous request (caller="") is still held OUT of a
@@ -199,7 +215,12 @@ class BrowserDaemon:
     def _claim(self, key, caller: str, line: str):
         """Stamp `caller` as the tab's active user; return a busy error if the tab is
         held by a DIFFERENT identity within GUARD_WINDOW. The claim lives on the tab's
-        board entry — one record per tab, so releasing the tab releases the claim."""
+        board entry — one record per tab, so releasing the tab releases the claim.
+
+        The setdefault registers the shared main tab with a default who/purpose —
+        deliberately satisfying go_to's occupancy ceremony, which is the DIRECT-API
+        declaration layer. Through the daemon, declaring happens at the tab layer
+        instead (`tab open --who/--for`; bare main needs no ceremony, per docs)."""
         meta = self.browser._tab_meta.setdefault(
             key, {"who": caller or "main",
                   "purpose": "shared main tab" if key is None else key,
@@ -368,6 +389,10 @@ class BrowserDaemon:
     def _newtab(self, line, tokens, caller: str = "") -> tuple:
         """Legacy `newtab <url> --purpose=.. --who=..`: register + occupy a fresh tab.
         Unlike the old behavior it does NOT repoint what bare commands target."""
+        # A numeric id can collide with a NAME someone registered via `tab open` —
+        # skip taken keys or this would occupy another agent's live tab.
+        while str(self._next_tab) in self.browser._tab_meta:
+            self._next_tab += 1
         key = str(self._next_tab)
         self._next_tab += 1
         self.browser._bind_session(key)
@@ -458,7 +483,14 @@ class BrowserDaemon:
                 break
 
     def _bind(self):
-        """Bind the socket, yielding to any daemon that already owns it."""
+        """Bind the socket, yielding to any daemon that already owns it.
+
+        A refused probe is ambiguous: the owner died leaving a stale socket, OR the
+        owner is alive with a full backlog (a long `do` while clients hammer it — the
+        exact situation that spawns us). Unlinking a BUSY daemon's socket forks the
+        world: two daemons, two Chromes fighting over one profile, and the original
+        becomes an unreachable zombie. The pid file the owner wrote at bind time
+        tells the two apart."""
         if os.path.exists(self.sock_path):
             probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
@@ -466,9 +498,12 @@ class BrowserDaemon:
                 probe.close()
                 sys.exit(0)  # another daemon already serving
             except OSError:
+                if _owner_alive(self.sock_path):
+                    sys.exit(0)  # owner alive, backlog full — busy, not stale
                 os.unlink(self.sock_path)  # stale socket
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.sock_path)
+        Path(self.sock_path + ".pid").write_text(str(os.getpid()))
         self._srv.listen(8)
 
     def _cleanup(self):
@@ -479,6 +514,12 @@ class BrowserDaemon:
             self._srv.close()
         if os.path.exists(self.sock_path):
             os.unlink(self.sock_path)
+        # Only remove OUR pid file: a successor daemon may already have bound the
+        # same path and written its own — deleting that would mark it dead and
+        # re-arm the very unlink-a-busy-daemon bug the pid file exists to prevent.
+        pid_path = Path(self.sock_path + ".pid")
+        if pid_path.exists() and pid_path.read_text().strip() == str(os.getpid()):
+            pid_path.unlink()
         self.browser.close()
 
 

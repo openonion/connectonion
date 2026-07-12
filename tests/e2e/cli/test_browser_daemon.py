@@ -15,8 +15,11 @@ or network is needed. The daemon's lazy BrowserAutomation is swapped for the stu
 """
 
 import os
+import socket
+import subprocess
 import threading
 import time
+from pathlib import Path
 
 import pytest
 
@@ -29,8 +32,9 @@ def short_sock():
     """A short AF_UNIX path (macOS caps socket paths at 104 chars; tmp_path is too long)."""
     path = f"/tmp/co_test_{os.getpid()}_{time.time_ns()}.sock"
     yield path
-    if os.path.exists(path):
-        os.unlink(path)
+    for leftover in (path, path + ".pid"):
+        if os.path.exists(leftover):
+            os.unlink(leftover)
 
 
 class StubBrowser:
@@ -763,3 +767,64 @@ def test_socket_round_trip_structured_exit_codes(short_sock, monkeypatch, capsys
     capsys.readouterr()
     # an unparseable command line → exit 2
     assert c.send('go_to "unclosed', headless=True) == 2
+
+
+# ---- _bind: busy daemon vs stale socket ----------------------------------
+
+def test_bind_yields_to_a_live_busy_daemon(short_sock):
+    """A refused probe against a socket whose owner is STILL RUNNING means busy
+    (backlog full during a long command), not stale. The newcomer must exit —
+    unlinking a live daemon's socket forks the world into two daemons."""
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(short_sock)
+    Path(short_sock + ".pid").write_text(str(os.getpid()))  # owner: this live process
+    srv.close()  # file left behind; connect now refuses — same signal as a full backlog
+
+    with pytest.raises(SystemExit):
+        make_daemon(short_sock)._bind()
+    assert os.path.exists(short_sock)  # the busy owner's socket was NOT unlinked
+
+
+def test_bind_replaces_a_stale_socket_of_a_dead_daemon(short_sock):
+    """A refused probe whose recorded owner is DEAD is a stale socket: unlink,
+    bind fresh, and record our own pid as the new owner."""
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(short_sock)
+    srv.close()
+    proc = subprocess.Popen(["true"])
+    proc.wait()
+    Path(short_sock + ".pid").write_text(str(proc.pid))  # owner exited
+
+    daemon = make_daemon(short_sock)
+    daemon._bind()
+    assert daemon._srv is not None
+    assert Path(short_sock + ".pid").read_text() == str(os.getpid())
+    daemon._srv.close()
+
+
+def test_bind_replaces_a_stale_socket_without_pidfile(short_sock):
+    """No pid file (pre-pidfile daemon, or cleanup already ran) reads as dead:
+    the refused socket is stale and gets replaced."""
+    srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    srv.bind(short_sock)
+    srv.close()
+
+    daemon = make_daemon(short_sock)
+    daemon._bind()
+    assert daemon._srv is not None
+    daemon._srv.close()
+
+
+# ---- newtab id allocation vs named tabs -----------------------------------
+
+def test_newtab_skips_ids_taken_by_named_tabs(tmp_path):
+    """A numeric id that collides with a `tab open` NAME is skipped — newtab must
+    never occupy (and overwrite the claim of) another agent's registered tab."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, name = daemon.dispatch("tab open 1 --who alice --for scraping")
+    assert ok is True and name == "1"
+
+    ok, payload = daemon.dispatch("newtab a.com --purpose=work --who=bob")
+    assert ok is True
+    assert payload.startswith("[tab 2]")
+    assert daemon.browser._tab_meta["1"]["who"] == "alice"  # untouched

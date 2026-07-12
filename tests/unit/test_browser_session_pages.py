@@ -195,7 +195,8 @@ class TestTabReclaim:
 
     def test_close_tab_bounds_url_memory(self, browser):
         """_page_url must stay bounded: session ids are unique per panel, so an
-        unbounded restore map leaks one url per session forever on a shared host."""
+        unbounded restore map leaks one url per session forever on a shared host.
+        Only reclaim (forget=False) records the url — that's the resume path."""
         browser._max_url_memory = 5
         for i in range(20):
             key = f"s{i}"
@@ -203,10 +204,36 @@ class TestTabReclaim:
             page.url = f"https://example.com/{i}"
             browser._pages[key] = page
             browser._page_used[key] = time.monotonic()
-            browser._close_tab(key)
+            browser._close_tab(key, forget=False)
         assert len(browser._page_url) == 5
         assert "s19" in browser._page_url        # most recently closed kept
         assert "s0" not in browser._page_url     # oldest evicted
+
+    def test_permanent_close_drops_url_memory(self, browser):
+        """An explicit close (forget=True) must NOT remember the url: a future tab
+        reusing the name would silently resurrect the previous owner's page."""
+        browser._bind_session("A"); browser._ensure_page("A")
+        browser._pages["A"].goto("https://example.com/private-inbox")
+        browser._page_url["A"] = "https://example.com/private-inbox"  # e.g. from an earlier reclaim
+
+        browser._close_tab("A")                  # forget=True: permanent release
+
+        assert "A" not in browser._page_url
+        browser._bind_session("A"); browser._ensure_page("A")   # a NEW tab reuses the name
+        assert browser._pages["A"].goto_calls == []              # blank tab, nothing restored
+
+    def test_newtab_merges_meta_and_keeps_daemon_claim(self, browser):
+        """newtab must merge into _tab_meta, never replace it: the daemon stamps its
+        claim (caller/claim_at) on the record, and wiping it would let another agent
+        hijack the tab mid-task."""
+        browser._bind_session("X")
+        browser._tab_meta["X"] = {"caller": "alice", "claim_at": 123.0, "who": "alice", "purpose": "old"}
+
+        browser.newtab(purpose="scrape pricing", who="alice")
+
+        meta = browser._tab_meta["X"]
+        assert meta["caller"] == "alice" and meta["claim_at"] == 123.0   # claim survives
+        assert meta["purpose"] == "scrape pricing"                        # labels updated
 
 
 class TestBindSessionPlugin:

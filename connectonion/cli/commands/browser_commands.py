@@ -53,20 +53,12 @@ TIPS = [
 
 def _next_tip():
     """Rotate through TIPS so each run teaches something new; index persists in ~/.co.
-    Best-effort and crash-proof — a corrupt/racing state file must never change the
-    command's exit status, so parse defensively and write atomically."""
+    A garbled state file (e.g. two commands racing the write) resets to the first tip."""
     state = Path.home() / ".co" / ".browser_tip"
-    try:
-        idx = int(state.read_text().strip())
-    except (OSError, ValueError):
-        idx = 0
-    try:
-        state.parent.mkdir(parents=True, exist_ok=True)
-        tmp = state.with_suffix(".tmp")
-        tmp.write_text(str((idx + 1) % len(TIPS)))
-        tmp.replace(state)
-    except OSError:
-        pass
+    raw = state.read_text().strip() if state.exists() else ""
+    idx = int(raw) if raw.isdigit() else 0
+    state.parent.mkdir(parents=True, exist_ok=True)
+    state.write_text(str((idx + 1) % len(TIPS)))
     return TIPS[idx % len(TIPS)]
 
 
