@@ -82,8 +82,12 @@ class StubBrowser:
             lines.append(f"  {marker}[{name}] who={meta.get('who', '-')}  purpose={meta.get('purpose', '-')!r}")
         return "\n".join(lines)
 
-    def close_tab(self, key) -> str:
-        if key not in self._pages:
+    def close_tab(self, key=None) -> str:
+        # Mirrors the real method: no argument means the bound session's own tab,
+        # and a reserved/reclaimed tab (meta, no page) is still releasable.
+        if key is None:
+            key = self._session
+        if key not in self._pages and key not in self._tab_meta:
             return f"No open tab for {key!r}"
         self._pages.pop(key, None)
         self._tab_meta.pop(key, None)
@@ -208,9 +212,10 @@ def test_dispatch_wrong_args_shows_signature(tmp_path):
 
 
 def test_dispatch_empty(tmp_path):
+    """An empty request is a usage error (exit 2), per the exit-code contract."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("")
-    assert ok is False
+    assert ok == 2
 
 
 def test_dispatch_do_routes_to_nl(tmp_path, monkeypatch):
@@ -310,9 +315,10 @@ def test_closetab_unknown_tab_is_error(tmp_path):
 
 
 def test_closetab_without_arg_shows_usage(tmp_path):
+    """Missing argument is a usage error (exit 2), per the exit-code contract."""
     daemon = make_daemon(str(tmp_path / "s.sock"))
     ok, payload = daemon.dispatch("closetab")
-    assert ok is False
+    assert ok == 2
     assert "usage: co browser tab close" in payload
 
 
@@ -828,3 +834,32 @@ def test_newtab_skips_ids_taken_by_named_tabs(tmp_path):
     assert ok is True
     assert payload.startswith("[tab 2]")
     assert daemon.browser._tab_meta["1"]["who"] == "alice"  # untouched
+
+
+def test_unknown_verb_does_not_claim_the_tab(tmp_path):
+    """A typo executes nothing, so it must acquire nothing: agent-b works on main
+    immediately — agent-a's failed 'clck' never held a claim."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    ok, payload = daemon.dispatch(_env("clck #btn", caller="agent-a"))
+    assert ok is False and "unknown command" in payload
+    ok, _ = daemon.dispatch(_env("go_to x.com", caller="agent-b"))
+    assert ok is True
+    assert daemon.browser._tab_meta[None]["who"] == "agent-b"
+
+
+def test_close_main_before_any_command_is_a_clean_noop(tmp_path):
+    """`tab close main` on a fresh daemon must not say "no tab named 'main'" —
+    main always exists; with nothing to release it succeeds as a no-op."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    daemon.browser._pages = {}  # truly fresh: no page, no meta
+    ok, payload = daemon.dispatch("tab close main")
+    assert ok is True
+    assert "already free" in payload
+
+
+def test_tab_usage_errors_exit_2(tmp_path):
+    """The advertised exit-code contract: usage errors are 2, not generic 1."""
+    daemon = make_daemon(str(tmp_path / "s.sock"))
+    assert daemon.dispatch("tab")[0] == 2
+    assert daemon.dispatch("tab frobnicate")[0] == 2
+    assert daemon.dispatch("tab open main")[0] == 2

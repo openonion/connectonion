@@ -222,6 +222,15 @@ def _occupancy_help(verb: str, url: str) -> str:
     )
 
 
+def _close_page(page) -> Optional[str]:
+    """Close a Playwright page; return an error string if it would not close."""
+    try:
+        page.close()
+    except Exception as exc:
+        return f"close page failed: {exc}"
+    return None
+
+
 def _age(seconds: float) -> str:
     """Compact age string for how long a tab has been open: Xs / Xm / Xh / Xd."""
     seconds = int(seconds)
@@ -337,15 +346,12 @@ class BrowserAutomation:
             return False
 
         def run():
+            # Alive = the context still answers protocol calls. Zero open pages is
+            # still alive (a page opens on demand), so listing pages IS the check.
             try:
-                pages = list(self.browser.pages)
+                list(self.browser.pages)
             except Exception:
                 return False
-            for pg in pages:
-                is_closed = getattr(pg, "is_closed", None)
-                if not (callable(is_closed) and is_closed()):
-                    return True
-            # A live context with zero open pages is still usable (a page opens on demand).
             return True
 
         if threading.current_thread() is self._executor_thread:
@@ -406,13 +412,8 @@ class BrowserAutomation:
         and open_browser (to create the first tab after launching the context).
 
         Creates the tab in the shared context (restored to its last URL), stamps its
-        last-use time, then reclaims. No-op until the context is open; harmless if the
-        tab already exists.
-
-        Reclaim bounds memory but never closes the active `key`: first tabs idle past
-        _tab_idle_ttl (a panel untouched for an hour), then — only if still over
-        _max_tabs — the least-recently-used ones as a runaway backstop. A reclaimed
-        session transparently gets a fresh restored tab next call (no "target closed").
+        last-use time, then runs _reclaim_idle_tabs. No-op until the context is open;
+        harmless if the tab already exists.
         """
         if not self.browser:
             return
@@ -432,56 +433,59 @@ class BrowserAutomation:
                     pass
             self._pages[key] = page
         self._page_used[key] = time.monotonic()
+        self._reclaim_idle_tabs(key)
 
+    def _reclaim_idle_tabs(self, active_key) -> None:
+        """Bound memory by reclaiming OTHER sessions' abandoned tabs — never the
+        active one. First tabs idle past _tab_idle_ttl (a panel untouched for an
+        hour), then — only if still over _max_tabs — the least-recently-used ones
+        as a runaway backstop. A reclaimed session transparently gets a fresh
+        restored tab on its next call (no "target closed")."""
         now = time.monotonic()
         for k in [k for k, t in list(self._page_used.items())
-                  if k != key and now - t > self._tab_idle_ttl]:
-            self._close_tab(k, forget=False)
+                  if k != active_key and now - t > self._tab_idle_ttl]:
+            self._reclaim_tab(k)
         if len(self._pages) > self._max_tabs:
             lru_first = sorted(
-                (k for k in self._pages if k != key),
+                (k for k in self._pages if k != active_key),
                 key=lambda k: self._page_used.get(k, 0.0),
             )
             for k in lru_first[: len(self._pages) - self._max_tabs]:
-                self._close_tab(k, forget=False)
+                self._reclaim_tab(k)
 
-    def _close_tab(self, key, forget: bool = True) -> Optional[str]:
-        """Close one session's tab, remembering its URL so the session can resume.
-
-        Reused by two callers: _ensure_page's reclaim (best-effort, ignores the
-        return) and close() (surfaces the return as a cleanup warning). Returns an
-        error string if the page would not close, else None.
-
-        forget=False (the reclaim path) keeps the tab's _tab_meta registration:
-        a reclaimed tab must transparently resume — same owner, same purpose —
-        when its next command recreates the page."""
+    def _reclaim_tab(self, key) -> Optional[str]:
+        """Free an idle tab's PAGE but keep its registration and remembered URL:
+        the session transparently resumes — same owner, same purpose, same page —
+        the next time a command recreates the tab. Returns an error string if the
+        page would not close, else None."""
         page = self._pages.pop(key, None)
         self._page_used.pop(key, None)
-        if forget:
-            self._tab_meta.pop(key, None)
-            # A permanently closed name must not resurrect its URL: a future tab that
-            # reuses the name would silently auto-navigate to the previous owner's page.
-            self._page_url.pop(key, None)
         if page is None:
             return None
-        if not forget:
-            try:
-                url = page.url
-            except Exception:
-                url = None
-            if url:
-                # Remember where the session was so it resumes there, but bound the map:
-                # session ids are unique per panel, so without a cap it grows forever on a
-                # long-lived shared host. Re-insert (LRU) then trim the oldest keys.
-                self._page_url.pop(key, None)
-                self._page_url[key] = url
-                while len(self._page_url) > self._max_url_memory:
-                    self._page_url.pop(next(iter(self._page_url)))
         try:
-            page.close()
-        except Exception as exc:
-            return f"close page failed: {exc}"
-        return None
+            url = page.url
+        except Exception:
+            url = None
+        if url:
+            # Remember where the session was so it resumes there, but bound the map:
+            # session ids are unique per panel, so without a cap it grows forever on a
+            # long-lived shared host. Re-insert (LRU) then trim the oldest keys.
+            self._page_url.pop(key, None)
+            self._page_url[key] = url
+            while len(self._page_url) > self._max_url_memory:
+                self._page_url.pop(next(iter(self._page_url)))
+        return _close_page(page)
+
+    def _release_tab(self, key) -> Optional[str]:
+        """Permanently close one session's tab: page, registration (claim included),
+        and remembered URL all go. A future tab reusing this name starts blank —
+        never on the previous owner's page. Returns an error string if the page
+        would not close, else None."""
+        page = self._pages.pop(key, None)
+        self._page_used.pop(key, None)
+        self._tab_meta.pop(key, None)
+        self._page_url.pop(key, None)
+        return _close_page(page)
 
     @_no_auto_tab
     def open_browser(self, headless: bool = None, force: bool = False) -> str:
@@ -517,7 +521,7 @@ class BrowserAutomation:
             # tabs. An unbound caller (single-session CLI) tears the whole context down.
             key = self._bound_session_key()
             if key is not None:
-                self._close_tab(key, forget=False)   # same session continues — keep its registration
+                self._reclaim_tab(key)          # same session continues — keep its registration
                 self._page_url.pop(key, None)   # fresh = a blank tab, not the old url restored
                 self._ensure_page(key)
                 return "Opened a fresh tab for this session."
@@ -668,7 +672,9 @@ class BrowserAutomation:
         # Merge, never replace: the daemon stamps its claim (caller/claim_at) on this
         # record — wiping it would let another agent hijack the tab mid-task.
         meta = self._tab_meta.setdefault(key, {"opened_at": datetime.now()})
-        meta.update({"who": who, "purpose": purpose, "hours": hours})
+        meta.update({"who": who, "purpose": purpose})
+        if hours:  # like go_to: a relabel without --hours keeps the existing flag
+            meta["hours"] = hours
         if url:
             return self.go_to(url, purpose=purpose, who=who, hours=hours)
         return f"Opened new tab · who={who} · purpose={purpose!r}"
@@ -718,11 +724,15 @@ class BrowserAutomation:
         browser stays open — use close() to shut the whole browser down."""
         if not self.browser:
             return "Browser not open"
+        if key is None:
+            # Default means MY tab: a bound session must never close the shared
+            # main tab (someone else's) just by omitting the argument.
+            key = self._bound_session_key()
         # A tab reclaimed for idle/LRU keeps its registry entry with no live page; it is
         # still a real tab the caller may release, so accept a key known to EITHER store.
         if key not in self._pages and key not in self._tab_meta:
             return f"No open tab for {key!r}"
-        error = self._close_tab(key)  # forget=True: drops both the page and the registry entry
+        error = self._release_tab(key)
         return error or "Tab closed"
 
     def find_element_by_description(self, description: str) -> str:
@@ -1946,7 +1956,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         so per-session callers must never reach the full teardown."""
         key = self._bound_session_key()
         if key is not None:
-            err = self._close_tab(key)
+            err = self._release_tab(key)
             return f"close tab failed: {err}" if err else "Closed this session's browser tab."
         return self._teardown()
 
@@ -1961,7 +1971,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             cleanup_errors.append(f"save context failed: {exc}")
 
         for key in list(self._pages):     # close every session's tab
-            err = self._close_tab(key)
+            err = self._release_tab(key)
             if err:
                 cleanup_errors.append(err)
         try:
@@ -1978,6 +1988,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         self._pages.clear()
         self._page_used.clear()
         self._page_url.clear()
+        self._tab_meta.clear()   # reserved (page-less) tabs too — no ghost registry entries
         self.browser = None
         self.playwright = None
         if cleanup_errors:

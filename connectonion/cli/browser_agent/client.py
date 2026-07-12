@@ -17,14 +17,15 @@ import socket
 import subprocess
 from pathlib import Path
 
-from .daemon import default_sock_path
+from .daemon import default_sock_path, _owner_alive
 
 
 def _connect(sock_path: str):
     """Connect to the daemon socket. Returns a live connection, or None if the daemon
     is genuinely gone. A busy single-threaded daemon (mid `do` task) can momentarily
     refuse with ECONNREFUSED while its accept backlog is full — that is NOT a dead
-    daemon, so retry briefly before giving up; only a truly stale socket is unlinked."""
+    daemon, so retry while its recorded owner is alive; a dead owner's stale socket
+    fails fast (the spawned daemon's _bind replaces it)."""
     if not os.path.exists(sock_path):
         return None
     for attempt in range(20):  # ~2s of ECONNREFUSED tolerance for a busy daemon
@@ -34,8 +35,8 @@ def _connect(sock_path: str):
             return conn
         except ConnectionRefusedError:
             conn.close()
-            if not os.path.exists(sock_path):
-                return None  # daemon exited and cleaned up while we waited
+            if not _owner_alive(sock_path):
+                return None  # stale socket, nobody home — don't burn the retry window
             time.sleep(0.1)
         except OSError:
             conn.close()
@@ -60,6 +61,10 @@ def _spawn_daemon(sock_path: str, headless: bool):
         if conn:
             return conn
         time.sleep(0.1)
+    if _owner_alive(sock_path):
+        # A daemon IS running — it just can't take our connection right now (its
+        # backlog is full behind a long-running command). "Did not start" would lie.
+        raise RuntimeError("browser daemon is busy (a long command is holding it) — try again")
     raise RuntimeError(f"browser daemon did not start (see {log_path})")
 
 

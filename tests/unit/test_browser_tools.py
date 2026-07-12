@@ -506,8 +506,8 @@ def test_tab_status_marks_active_and_prunes_closed_tabs():
     out = browser.tab_status()
     assert "[scraper] (reserved — no page yet)  who=codex" in out
 
-    # _close_tab drops the tab and its metadata together.
-    browser._close_tab("1")
+    # _release_tab drops the tab and its metadata together.
+    browser._release_tab("1")
     assert "1" not in browser._tab_meta
 
 

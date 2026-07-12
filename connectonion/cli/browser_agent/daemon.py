@@ -2,9 +2,9 @@
 Purpose: Persistent browser daemon — owns one BrowserAutomation and dispatches CLI requests to it over a Unix socket, arbitrating concurrent agents through per-tab ownership.
 LLM-Note:
   Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, tempfile, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, browser_agent.agent (resolve_api_key, build_browser_agent)] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: client sends ONE request = wire-v1 JSON envelope {v, caller, tab, line} (a bare string is accepted as an anonymous main-tab request) → _parse_envelope → shlex.split(line) → dispatch: `tab`/`status`/`use`/`newtab`/`closetab` route first; a -t target that is not `main`/registered is exit 3 unless the verb is READONLY → page-driving verbs and a targeted `close` pass _claim(session, caller) which returns exit-4-busy if a DIFFERENT identity holds the tab within GUARD_WINDOW (120s) → `do` hands the parsed instruction to the NL Agent on the same live browser; a matched method is called via getattr(browser, verb)(*coerced args); an unmatched verb returns "unknown command" (it is NOT auto-run as NL — only `do` is) → reply "OK\n<payload>" | "ERR\n<msg>" | "ERR <code>\n<msg>" (code ∈ {2 usage,3 unknown tab,4 busy}) written back, connection closed
-  State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds AF_UNIX socket at default_sock_path() with a 120s per-connection recv timeout | _cleanup closes+unlinks the socket BEFORE the (slow) browser teardown so a shutting-down daemon stops accepting immediately | serve() exits (releasing the socket) when browser._context_is_alive() goes false or _launch_failed()
-  Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]` | module helpers _key()/_tab_label()/_held_by_other() define the None↔main aliasing and the shared claim-expiry predicate used by _claim, _tab_open and _closetab
+  Data flow: client sends ONE request = wire-v1 JSON envelope {v, caller, tab, line} (a bare string is accepted as an anonymous main-tab request) → _parse_envelope → shlex.split(line) → dispatch: `tab`/`status`/`use`/`newtab`/`closetab` route first; a -t target that is not `main`/registered is exit 3 unless the verb is READONLY → an unknown verb is rejected BEFORE any claim → page-driving verbs and a targeted `close` pass _register_tab + _held_by_other (exit-4-busy if a DIFFERENT identity holds the tab within GUARD_WINDOW, 120s) then _stamp_claim → `do` hands the parsed instruction to the NL Agent on the same live browser; a matched method is called via getattr(browser, verb)(*coerced args); an unmatched verb returns "unknown command" (it is NOT auto-run as NL — only `do` is) → reply "OK\n<payload>" | "ERR\n<msg>" | "ERR <code>\n<msg>" (code ∈ {2 usage,3 unknown tab,4 busy}) written back, connection closed
+  State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds AF_UNIX socket at default_sock_path() (recording its owner pid in <sock>.pid so a refused probe can tell busy from stale) with a 120s per-connection recv timeout | _cleanup closes+unlinks the socket BEFORE the (slow) browser teardown so a shutting-down daemon stops accepting immediately | serve() exits (releasing the socket) when browser._context_is_alive() goes false or _launch_failed()
+  Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]` | module helpers _key()/_tab_label()/_held_by_other()/_owner_alive() define the None↔main aliasing, the shared claim-expiry predicate (dispatch, _tab_open, _closetab), and the socket-owner liveness check (client + _bind)
   Performance: one request at a time | browser launch overhead on first page verb (1-3s) | `do` builds a fresh Agent per call | tab lifecycle/status verbs never launch Chrome
   Errors: dispatch/handler exceptions are caught at the request boundary in serve() and returned to THAT client (never unwind the loop and kill the shared browser) | a client that vanishes mid-reply is logged to ~/.co/browser.log, not fatal | bind race with a second daemon → loser exits
 """
@@ -167,7 +167,7 @@ class BrowserDaemon:
         except (ValueError, TypeError) as exc:  # malformed envelope/quoting is the CLIENT's error
             return 2, f"unparseable request: {exc}"
         if not tokens:
-            return False, "empty request"
+            return 2, "empty request"
         verb = tokens[0]
 
         # -t targeting: each task drives its OWN tab. Unknown-tab is only an error for a
@@ -194,46 +194,50 @@ class BrowserDaemon:
         if verb == "close" and session is None:
             return self._call_verb("close", tokens[1:])
 
+        # A command that would execute nothing must not acquire anything: reject an
+        # unknown verb BEFORE the claim, or a typo would hold the tab for GUARD_WINDOW.
+        if verb != "do" and not _is_verb(self.browser, verb):
+            return False, (
+                f"unknown command: {verb}\n"
+                f"Run 'co browser help' to list functions, or "
+                f"'co browser do \"<instruction>\"' for natural language."
+            )
+
         # Every page-driving command (and a targeted close) claims its tab: a DIFFERENT
         # agent mid-task there fails loudly (exit 4) and is taught the tab lifecycle —
         # never silent interleaving on one page.
-        busy = self._claim(session, caller, line)
-        if busy:
-            return 4, busy
+        meta = self._register_tab(session, caller)
+        if _held_by_other(meta, caller):
+            return 4, self._tab_busy(session, meta)
+        self._stamp_claim(meta, caller, line)
         self.last_command = {"line": line, "at": time.time()}
         if verb == "do":  # explicit natural-language agent — use the PARSED remainder,
             command = " ".join(tokens[1:])  # not the still-quoted raw line
             return self._run_nl(command)
-        if _is_verb(self.browser, verb):
-            return self._call_verb(verb, tokens[1:])
-        return False, (
-            f"unknown command: {verb}\n"
-            f"Run 'co browser help' to list functions, or "
-            f"'co browser do \"<instruction>\"' for natural language."
-        )
+        return self._call_verb(verb, tokens[1:])
 
-    def _claim(self, key, caller: str, line: str):
-        """Stamp `caller` as the tab's active user; return a busy error if the tab is
-        held by a DIFFERENT identity within GUARD_WINDOW. The claim lives on the tab's
-        board entry — one record per tab, so releasing the tab releases the claim.
+    def _register_tab(self, key, caller: str) -> dict:
+        """Return the tab's board entry, creating the shared main tab's on first use.
 
-        The setdefault registers the shared main tab with a default who/purpose —
-        deliberately satisfying go_to's occupancy ceremony, which is the DIRECT-API
-        declaration layer. Through the daemon, declaring happens at the tab layer
-        instead (`tab open --who/--for`; bare main needs no ceremony, per docs)."""
-        meta = self.browser._tab_meta.setdefault(
+        The default who/purpose deliberately satisfies go_to's occupancy ceremony,
+        which is the DIRECT-API declaration layer. Through the daemon, declaring
+        happens at the tab layer instead (`tab open --who/--for`; bare main needs
+        no ceremony, per docs). A named -t target was validated before this point."""
+        return self.browser._tab_meta.setdefault(
             key, {"who": caller or "main",
                   "purpose": "shared main tab" if key is None else key,
                   "opened_at": datetime.now()}
         )
-        if _held_by_other(meta, caller):  # guards even an anonymous caller OUT of a named claim
-            return self._tab_busy(key, meta)
-        if caller:  # only a named caller can hold a claim of its own
+
+    def _stamp_claim(self, meta: dict, caller: str, line: str) -> None:
+        """Record who is driving the tab right now. Only a NAMED caller holds a claim
+        (two anonymous callers can't be told apart); each successful command refreshes
+        it, so an active owner is never expired out from under a running task."""
+        if caller:
             if meta.get("caller") != caller:
                 meta["who"] = caller  # takeover after expiry: the board shows the current occupant
             meta["caller"], meta["claim_at"] = caller, time.time()
         meta["last_line"], meta["last_at"] = line, time.time()
-        return None
 
     def _call_verb(self, verb: str, raw_args) -> tuple:
         """Match the verb to a browser method and execute it with coerced args."""
@@ -294,7 +298,7 @@ class BrowserDaemon:
     def _tab(self, args, caller: str = "") -> tuple:
         """Tab lifecycle: `tab open [NAME] [--who X] [--for "..."]` · `tab ls [--json]` · `tab close NAME`."""
         if not args:
-            return False, self._tab_usage()
+            return 2, self._tab_usage()
         action, rest = args[0], args[1:]
         if action == "open":
             return self._tab_open(rest, caller)
@@ -308,7 +312,7 @@ class BrowserDaemon:
             return self._status()
         if action == "close":
             return self._closetab(rest, caller)
-        return False, self._tab_usage()
+        return 2, self._tab_usage()
 
     def _tab_open(self, rest, caller: str = "") -> tuple:
         """Register a named tab (page is created lazily on its first command). Prints ONLY the name."""
@@ -335,7 +339,7 @@ class BrowserDaemon:
             name = f"t-{self._next_tab}"
             self._next_tab += 1
         if _key(name) is None:
-            return False, "'main' is the shared default tab — it always exists; just run commands without -t."
+            return 2, "'main' is the shared default tab — it always exists; just run commands without -t."
         existing = self.browser._tab_meta.get(name)
         if existing is not None:
             if not _held_by_other(existing, caller):
@@ -408,21 +412,24 @@ class BrowserDaemon:
     def _closetab(self, args, caller: str = "") -> tuple:
         """Close ONE tab, leaving the rest of the browser open."""
         if not args:
-            return False, "usage: co browser tab close <tab>   (a name from `co browser tab ls`)"
+            return 2, "usage: co browser tab close <tab>   (a name from `co browser tab ls`)"
         target = args[0]
         key = _key(target)
         meta = self.browser._tab_meta.get(key)
         if key not in self.browser._pages and meta is None:
+            if key is None:  # main always exists conceptually; nothing to release is fine
+                return True, "main is already free — nothing to close."
             return 3, self._unknown_tab(target)
         # Closing someone's mid-task tab is the most destructive write there is —
         # it gets the same guard as driving the page (and blocks anonymous callers too).
         if meta and _held_by_other(meta, caller):
             return 4, self._tab_busy(key, meta)
         self.last_command = {"line": "closetab " + target, "at": time.time()}
-        # A tab registered via `tab open` but never navigated has meta and no page —
-        # releasing it is just dropping the registration (and its claim with it).
-        message = self.browser.close_tab(key) if key in self.browser._pages else "Tab released"
-        self.browser._tab_meta.pop(key, None)
+        # Bind to the TARGET, then close the bound tab. close_tab releases the page,
+        # the registration (claim included), AND the remembered URL — a later tab
+        # reusing this name must start blank, never on the previous owner's page.
+        self.browser._bind_session(key)
+        message = self.browser.close_tab()
         return True, f"Closed tab {_tab_label(key)}. {message}"
 
     def _run_nl(self, command: str) -> tuple:
@@ -512,13 +519,13 @@ class BrowserDaemon:
         # a fresh daemon, instead of reaching a daemon that will never accept its request.
         if self._srv:
             self._srv.close()
-        if os.path.exists(self.sock_path):
-            os.unlink(self.sock_path)
-        # Only remove OUR pid file: a successor daemon may already have bound the
-        # same path and written its own — deleting that would mark it dead and
-        # re-arm the very unlink-a-busy-daemon bug the pid file exists to prevent.
+        # Only remove what is still OURS (pid file names this process): a successor
+        # daemon may already own the path — a late-exiting zombie deleting the live
+        # socket or pid file would re-arm the very bug the pid file exists to prevent.
         pid_path = Path(self.sock_path + ".pid")
         if pid_path.exists() and pid_path.read_text().strip() == str(os.getpid()):
+            if os.path.exists(self.sock_path):
+                os.unlink(self.sock_path)
             pid_path.unlink()
         self.browser.close()
 

@@ -157,7 +157,7 @@ class TestTabReclaim:
         assert "A" not in browser._pages                        # page gone
         assert browser._tab_meta.get("A", {}).get("who") == "codex"   # registration survives
 
-        browser._close_tab("A")                                 # explicit close (forget=True)
+        browser._release_tab("A")                               # explicit permanent close
         assert "A" not in browser._tab_meta                     # now the registry entry is dropped
 
     def test_reclaimed_session_recreates_and_restores_url(self, browser):
@@ -196,7 +196,7 @@ class TestTabReclaim:
     def test_close_tab_bounds_url_memory(self, browser):
         """_page_url must stay bounded: session ids are unique per panel, so an
         unbounded restore map leaks one url per session forever on a shared host.
-        Only reclaim (forget=False) records the url — that's the resume path."""
+        Only _reclaim_tab records the url — that's the resume path."""
         browser._max_url_memory = 5
         for i in range(20):
             key = f"s{i}"
@@ -204,19 +204,19 @@ class TestTabReclaim:
             page.url = f"https://example.com/{i}"
             browser._pages[key] = page
             browser._page_used[key] = time.monotonic()
-            browser._close_tab(key, forget=False)
+            browser._reclaim_tab(key)
         assert len(browser._page_url) == 5
         assert "s19" in browser._page_url        # most recently closed kept
         assert "s0" not in browser._page_url     # oldest evicted
 
     def test_permanent_close_drops_url_memory(self, browser):
-        """An explicit close (forget=True) must NOT remember the url: a future tab
-        reusing the name would silently resurrect the previous owner's page."""
+        """An explicit release must NOT remember the url: a future tab reusing
+        the name would silently resurrect the previous owner's page."""
         browser._bind_session("A"); browser._ensure_page("A")
         browser._pages["A"].goto("https://example.com/private-inbox")
         browser._page_url["A"] = "https://example.com/private-inbox"  # e.g. from an earlier reclaim
 
-        browser._close_tab("A")                  # forget=True: permanent release
+        browser._release_tab("A")                # permanent release
 
         assert "A" not in browser._page_url
         browser._bind_session("A"); browser._ensure_page("A")   # a NEW tab reuses the name
@@ -360,3 +360,38 @@ class TestOpenBrowserSharedContext:
         assert page_a.closed is False
         assert browser.browser is context          # shared context NOT torn down
         assert "tab" in result.lower()
+
+
+class TestTabRelease:
+    def test_close_tab_without_arg_closes_own_tab_not_main(self, browser):
+        """A bound session omitting the key must close ITS tab — never the shared
+        main tab (key None), which belongs to everyone."""
+        browser._bind_session(None); browser._ensure_page(None)      # main exists
+        browser._bind_session("mine"); browser._ensure_page("mine")
+
+        result = browser.close_tab()
+
+        assert result == "Tab closed"
+        assert "mine" not in browser._pages
+        assert None in browser._pages            # main untouched
+
+    def test_release_after_reclaim_drops_the_remembered_url(self, browser):
+        """Reclaim remembers the URL (resume path); a later permanent release of the
+        same tab must forget it — reusing the name starts blank."""
+        browser._bind_session("A"); browser._ensure_page("A")
+        browser._pages["A"].goto("https://example.com/inbox")
+
+        browser._reclaim_tab("A")                # page freed, url remembered
+        assert browser._page_url["A"]
+        browser._release_tab("A")                # permanent close of the reclaimed tab
+        assert "A" not in browser._page_url
+
+    def test_teardown_forgets_reserved_tabs_too(self, browser):
+        """A full teardown clears the registry including page-less (reserved) tabs —
+        no ghost 'reserved' rows on the board after a relaunch."""
+        browser._bind_session("A"); browser._ensure_page("A")
+        browser._tab_meta["reserved-only"] = {"who": "codex", "purpose": "later"}
+
+        browser._teardown()
+
+        assert browser._tab_meta == {}
