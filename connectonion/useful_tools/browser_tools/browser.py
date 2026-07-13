@@ -31,7 +31,7 @@ import sys
 import threading
 import time
 import urllib.parse
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from datetime import datetime
 from typing import Optional, List, Dict, Any
@@ -86,6 +86,16 @@ def _no_auto_tab(method):
 # (set by the bind_browser_session plugin via _bind_session), propagates it onto
 # the worker thread, and ensures that session's own tab exists before the method
 # runs (so self.page resolves to the right tab).
+# A single browser operation must not wedge the one worker thread forever: if a
+# Playwright call or `do` agent hangs (frozen Chrome, a page that never settles), the
+# whole single-threaded daemon would block behind it and every later command sees
+# "busy" with no recovery. OP_TIMEOUT is generous enough for legit long `do` tasks but
+# turns a genuine wedge into a loud error; LIVENESS_TIMEOUT lets the daemon notice the
+# wedge fast and exit so the next command spawns a fresh browser.
+_BROWSER_OP_TIMEOUT = 240   # seconds
+_LIVENESS_TIMEOUT = 15      # seconds
+
+
 def _runs_on_browser_thread(method):
     @functools.wraps(method)
     def wrapper(self, *args, **kwargs):
@@ -99,7 +109,13 @@ def _runs_on_browser_thread(method):
 
         if threading.current_thread() is self._executor_thread:
             return run()
-        return self._executor.submit(run).result()
+        try:
+            return self._executor.submit(run).result(timeout=_BROWSER_OP_TIMEOUT)
+        except FuturesTimeout:
+            raise TimeoutError(
+                f"browser operation '{method.__name__}' exceeded {_BROWSER_OP_TIMEOUT}s "
+                "— the browser is wedged; the daemon will restart on the next command"
+            )
 
     return wrapper
 
@@ -325,7 +341,10 @@ class BrowserAutomation:
 
         if threading.current_thread() is self._executor_thread:
             return run()
-        return self._executor.submit(run).result()
+        try:
+            return self._executor.submit(run).result(timeout=_LIVENESS_TIMEOUT)
+        except FuturesTimeout:
+            return False
 
     def _browser_is_usable_on_browser_thread(self) -> bool:
         """Check browser usability on Playwright's owning thread."""
@@ -361,7 +380,11 @@ class BrowserAutomation:
 
         if threading.current_thread() is self._executor_thread:
             return run()
-        return self._executor.submit(run).result()
+        try:
+            return self._executor.submit(run).result(timeout=_LIVENESS_TIMEOUT)
+        except FuturesTimeout:
+            return False  # worker thread wedged on a prior op → treat as dead so
+                          # serve() exits and the next command spawns a fresh daemon
 
     def _launch_failed(self) -> bool:
         """True when a launch started Playwright but no browser context came up.
