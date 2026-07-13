@@ -13,6 +13,7 @@ import time
 import json
 import asyncio
 import inspect
+import threading
 from typing import List, Dict, Any, Optional, Callable
 
 from ..debug.xray import (
@@ -22,25 +23,37 @@ from ..debug.xray import (
 )
 
 
+_async_loop: Optional[asyncio.AbstractEventLoop] = None
+_async_loop_lock = threading.Lock()
+
+
+def _get_async_tool_loop():
+    """Return the long-lived event loop used by asynchronous tools."""
+    global _async_loop
+
+    with _async_loop_lock:
+        if _async_loop is None or _async_loop.is_closed():
+            ready = threading.Event()
+
+            def run_loop():
+                global _async_loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                _async_loop = loop
+                ready.set()
+                loop.run_forever()
+
+            threading.Thread(target=run_loop, name="connectonion-async-tools", daemon=True).start()
+            ready.wait()
+
+    assert _async_loop is not None
+    return _async_loop
+
+
 def _run_async_tool(coro):
-    """Run a coroutine to completion, handling nested event loops.
-
-    When no event loop is running in the current thread, ``asyncio.run``
-    creates a fresh loop and drives the coroutine. When a loop is already
-    running (e.g. the agent is driven from an async context), ``asyncio.run``
-    raises ``RuntimeError``; in that case we run the coroutine in a separate
-    thread with its own loop so the calling loop is not disturbed.
-    """
-    try:
-        return asyncio.run(coro)
-    except RuntimeError:
-        # A loop is already running in this thread. Run the coroutine
-        # in a separate thread with its own event loop.
-        import concurrent.futures
-
-        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-            future = pool.submit(asyncio.run, coro)
-            return future.result()
+    """Run a coroutine on the shared asynchronous-tool event loop."""
+    future = asyncio.run_coroutine_threadsafe(coro, _get_async_tool_loop())
+    return future.result()
 
 
 def execute_and_record_tools(
