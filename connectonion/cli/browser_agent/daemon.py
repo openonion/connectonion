@@ -3,7 +3,7 @@ Purpose: Persistent browser daemon — owns one BrowserAutomation and dispatches
 LLM-Note:
   Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, tempfile, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, browser_agent.agent (resolve_api_key, build_browser_agent)] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: client sends ONE request = wire-v1 JSON envelope {v, caller, tab, line} (a bare string is accepted as an anonymous main-tab request) → _parse_envelope → shlex.split(line) → dispatch: `tab`/`status`/`use`/`newtab`/`closetab` route first; a -t target that is not `main`/registered is exit 3 unless the verb is READONLY → an unknown verb is rejected BEFORE any claim → page-driving verbs and a targeted `close` pass _register_tab + _held_by_other (exit-4-busy if a DIFFERENT identity holds the tab within GUARD_WINDOW, 120s) then _stamp_claim → `do` hands the parsed instruction to the NL Agent on the same live browser; a matched method is called via getattr(browser, verb)(*coerced args); an unmatched verb returns "unknown command" (it is NOT auto-run as NL — only `do` is) → reply "OK\n<payload>" | "ERR\n<msg>" | "ERR <code>\n<msg>" (code ∈ {2 usage,3 unknown tab,4 busy}) written back, connection closed
-  State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds AF_UNIX socket at default_sock_path() (recording its owner pid in <sock>.pid so a refused probe can tell busy from stale) with a 120s per-connection recv timeout | _cleanup closes+unlinks the socket BEFORE the (slow) browser teardown so a shutting-down daemon stops accepting immediately | serve() exits (releasing the socket) when browser._context_is_alive() goes false or _launch_failed()
+  State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds AF_UNIX socket at default_sock_path() under a lifetime flock on <sock>.lock (kernel-released on any death, so simultaneous cold-starts can't both bind) and records its owner pid in <sock>.pid so a refused probe can tell busy from stale; 120s per-connection recv timeout | _cleanup closes+unlinks socket/pidfile only while the pidfile still names this process (browser teardown is the driver pipe closing on process death — the executor is already gone when atexit runs) | serve() exits (releasing the socket) when browser._context_is_alive() goes false or _launch_failed()
   Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]` | module helpers _key()/_tab_label()/_held_by_other()/_owner_alive() define the None↔main aliasing, the shared claim-expiry predicate (dispatch, _tab_open, _closetab), and the socket-owner liveness check (client + _bind)
   Performance: one request at a time | browser launch overhead on first page verb (1-3s) | `do` builds a fresh Agent per call | tab lifecycle/status verbs never launch Chrome
   Errors: dispatch/handler exceptions are caught at the request boundary in serve() and returned to THAT client (never unwind the loop and kill the shared browser) | a client that vanishes mid-reply is logged to ~/.co/browser.log, not fatal | bind race with a second daemon → loser exits
@@ -15,6 +15,7 @@ import time
 import socket
 import json
 import shlex
+import fcntl
 import inspect
 import signal
 import atexit
@@ -494,12 +495,25 @@ class BrowserDaemon:
     def _bind(self):
         """Bind the socket, yielding to any daemon that already owns it.
 
+        The whole probe-and-bind sequence runs under an exclusive flock on
+        <sock>.lock, held for the daemon's LIFETIME and released by the kernel on
+        any exit (SIGKILL included). Two daemons cold-starting together — two
+        terminals' first commands — otherwise both pass the stale check and the
+        loser unlinks the winner's live socket (reproduced in practice). The lock
+        file itself is never unlinked: removing it would let a third daemon lock a
+        fresh inode while a second still holds the old one.
+
         A refused probe is ambiguous: the owner died leaving a stale socket, OR the
         owner is alive with a full backlog (a long `do` while clients hammer it — the
         exact situation that spawns us). Unlinking a BUSY daemon's socket forks the
         world: two daemons, two Chromes fighting over one profile, and the original
         becomes an unreachable zombie. The pid file the owner wrote at bind time
         tells the two apart."""
+        self._bind_lock = open(self.sock_path + ".lock", "w")  # fd kept open for life
+        try:
+            fcntl.flock(self._bind_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            sys.exit(0)  # another daemon is binding or already serving
         if os.path.exists(self.sock_path):
             probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
@@ -516,8 +530,8 @@ class BrowserDaemon:
         self._srv.listen(8)
 
     def _cleanup(self):
-        # Stop accepting FIRST: closing/unlinking the socket before the (slow) browser
-        # teardown means a client connecting during shutdown fails immediately and spawns
+        # Stop accepting FIRST: closing/unlinking the socket before anything slow
+        # means a client connecting during shutdown fails immediately and spawns
         # a fresh daemon, instead of reaching a daemon that will never accept its request.
         if self._srv:
             self._srv.close()
@@ -529,7 +543,10 @@ class BrowserDaemon:
             if os.path.exists(self.sock_path):
                 os.unlink(self.sock_path)
             pid_path.unlink()
-        self.browser.close()
+        # No browser.close() here: by the time atexit runs, the interpreter has
+        # already shut the worker thread's executor down, so an in-process close
+        # can only raise ("cannot schedule new futures after shutdown"). Chrome
+        # exits with us anyway — the Playwright driver pipe closes on our death.
 
 
 def _ago(seconds: float) -> str:

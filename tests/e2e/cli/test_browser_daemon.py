@@ -32,7 +32,7 @@ def short_sock():
     """A short AF_UNIX path (macOS caps socket paths at 104 chars; tmp_path is too long)."""
     path = f"/tmp/co_test_{os.getpid()}_{time.time_ns()}.sock"
     yield path
-    for leftover in (path, path + ".pid"):
+    for leftover in (path, path + ".pid", path + ".lock"):
         if os.path.exists(leftover):
             os.unlink(leftover)
 
@@ -893,3 +893,23 @@ def test_newtab_with_tab_target_is_rejected(tmp_path):
     ok, payload = daemon.dispatch(_env("newtab a.com --purpose=w --who=b", tab="x"))
     assert ok == 2
     assert "tab open" in payload
+
+
+def test_bind_holds_an_exclusive_lock_for_life(short_sock):
+    """The whole probe-and-bind sequence runs under a lifetime flock: a rival
+    daemon starting at the same instant must lose at the lock, never reach the
+    stale check, and never unlink the winner's live socket. (Two terminals'
+    first commands racing produced two daemons in practice.)"""
+    import fcntl
+
+    daemon = make_daemon(short_sock)
+    daemon._bind()
+    rival_lock = open(short_sock + ".lock", "w")
+    with pytest.raises(OSError):
+        fcntl.flock(rival_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)   # winner holds it
+    rival_lock.close()
+    daemon._srv.close()
+    daemon._bind_lock.close()                                    # release → lockable again
+    fresh_lock = open(short_sock + ".lock", "w")
+    fcntl.flock(fresh_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    fresh_lock.close()
