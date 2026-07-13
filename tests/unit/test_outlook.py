@@ -11,19 +11,23 @@ Components under test:
 
 
 import os
+from hashlib import sha256
+import httpx
 import pytest
 from unittest.mock import patch, MagicMock
 
 
 @pytest.fixture(autouse=True)
-def _stub_token_refresh(request, monkeypatch):
-    """Outlook refreshes tokens once per instance; stub that network call so
-    Graph-operation tests stay isolated. Tests of the refresh flow itself
-    opt out with @pytest.mark.real_refresh."""
-    if "real_refresh" in request.keywords:
+def _stub_token_fetch(request, monkeypatch):
+    """Keep Graph-operation tests isolated from the oo-api token endpoint."""
+    if "token_fetch" in request.keywords:
         return
     from connectonion.useful_tools.outlook import Outlook
-    monkeypatch.setattr(Outlook, "_refresh_via_backend", lambda self, rt: "test-token")
+    monkeypatch.setattr(
+        Outlook,
+        "_fetch_access_token",
+        lambda self, rejected_access_token=None: "test-token",
+    )
 
 
 class TestOutlookInit:
@@ -49,96 +53,189 @@ class TestOutlookInit:
 class TestOutlookTokenManagement:
     """Test Outlook token management."""
 
-    def test_get_access_token_requires_credentials(self):
-        """Test that getting token requires credentials."""
+    @pytest.mark.token_fetch
+    def test_get_access_token_requires_openonion_auth(self):
+        """The client needs only an OpenOnion API key, not Microsoft tokens."""
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
-            "MICROSOFT_ACCESS_TOKEN": "",
-            "MICROSOFT_REFRESH_TOKEN": ""
+            "OPENONION_API_KEY": "",
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
             outlook = Outlook()
             with pytest.raises(ValueError) as exc_info:
                 outlook._get_access_token()
-            assert "credentials not found" in str(exc_info.value)
+            assert "co auth" in str(exc_info.value)
 
-    def test_get_access_token_returns_valid_token(self):
-        """Test that valid token is returned."""
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_first_use_fetches_once_without_a_request_body(self, mock_httpx):
+        """First use asks oo-api once; later uses reuse only instance memory."""
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "access_token": "server-access",
+            "expires_in": 3600,
+        }
+        mock_httpx.post.return_value = response
+
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
-            "MICROSOFT_ACCESS_TOKEN": "test-token",
-            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
-            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+            "OPENONION_API_KEY": "api-key",
+            "OPENONION_API_URL": "https://oo.example",
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
             outlook = Outlook()
-            token = outlook._get_access_token()
-            assert token == "test-token"
+            assert outlook._get_access_token() == "server-access"
+            assert outlook._get_access_token() == "server-access"
 
-    @pytest.mark.real_refresh
-    @patch('connectonion.useful_tools.outlook.httpx')
-    def test_refresh_persists_rotated_refresh_token(self, mock_httpx, tmp_path):
-        """Every use refreshes and saves the rotated refresh token to keys.env."""
-        keys_env = tmp_path / "keys.env"
-        keys_env.write_text(
-            "MICROSOFT_ACCESS_TOKEN=old-access\n"
-            "MICROSOFT_REFRESH_TOKEN=old-refresh\n"
-            "MICROSOFT_TOKEN_EXPIRES_AT=2026-01-01T00:00:00Z\n"
+        mock_httpx.post.assert_called_once_with(
+            "https://oo.example/api/v1/oauth/microsoft/refresh",
+            headers={"Authorization": "Bearer api-key"},
         )
 
-        refresh_response = MagicMock()
-        refresh_response.status_code = 200
-        refresh_response.json.return_value = {
-            "access_token": "new-access",
-            "expires_at": "2099-12-31T23:59:59Z",
-            "refresh_token": "rotated-refresh",
-        }
-        mock_httpx.post.return_value = refresh_response
-
-        with patch.dict(os.environ, {
-            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
-            "MICROSOFT_ACCESS_TOKEN": "old-access",
-            "MICROSOFT_REFRESH_TOKEN": "old-refresh",
-            "OPENONION_API_KEY": "test-key",
-            "AGENT_CONFIG_PATH": str(tmp_path),
-        }, clear=False):
-            from connectonion.useful_tools.outlook import Outlook
-            token = Outlook()._get_access_token()
-
-            assert token == "new-access"
-            assert os.environ["MICROSOFT_REFRESH_TOKEN"] == "rotated-refresh"
-
-        saved = keys_env.read_text()
-        assert "MICROSOFT_REFRESH_TOKEN=rotated-refresh" in saved
-        assert "MICROSOFT_ACCESS_TOKEN=new-access" in saved
-
-    @pytest.mark.real_refresh
+    @pytest.mark.token_fetch
     @patch('connectonion.useful_tools.outlook.httpx')
-    def test_refresh_without_rotated_token_keeps_current(self, mock_httpx, tmp_path):
-        """Older backends omit refresh_token — the current one must survive."""
-        keys_env = tmp_path / "keys.env"
-        keys_env.write_text("MICROSOFT_REFRESH_TOKEN=old-refresh\n")
-
-        refresh_response = MagicMock()
-        refresh_response.status_code = 200
-        refresh_response.json.return_value = {
-            "access_token": "new-access",
-            "expires_at": "2099-12-31T23:59:59Z",
+    def test_access_token_is_refetched_five_minutes_before_expiry(self, mock_httpx):
+        first = MagicMock(status_code=200)
+        first.json.return_value = {
+            "access_token": "first-access",
+            "expires_in": 3600,
         }
-        mock_httpx.post.return_value = refresh_response
+        second = MagicMock(status_code=200)
+        second.json.return_value = {
+            "access_token": "second-access",
+            "expires_in": 3600,
+        }
+        mock_httpx.post.side_effect = [first, second]
 
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
-            "MICROSOFT_ACCESS_TOKEN": "old-access",
-            "MICROSOFT_REFRESH_TOKEN": "old-refresh",
-            "OPENONION_API_KEY": "test-key",
-            "AGENT_CONFIG_PATH": str(tmp_path),
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False), patch(
+            "connectonion.useful_tools.outlook.time.monotonic",
+            side_effect=[1000, 4299, 4300, 4300],
+        ):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            assert outlook._get_access_token() == "first-access"
+            assert outlook._get_access_token() == "first-access"
+            assert outlook._get_access_token() == "second-access"
+
+        assert mock_httpx.post.call_count == 2
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_graph_401_reports_rejected_token_and_retries_once(self, mock_httpx):
+        """A Graph 401 triggers one server refresh tied to the rejected token."""
+        first_graph = MagicMock(status_code=401, text="expired")
+        second_graph = MagicMock(status_code=200, text='{"value": []}')
+        second_graph.json.return_value = {"value": []}
+        mock_httpx.request.side_effect = [first_graph, second_graph]
+
+        token_response = MagicMock(status_code=200)
+        token_response.json.return_value = {
+            "access_token": "fresh-access",
+            "expires_in": 3600,
+        }
+        mock_httpx.post.return_value = token_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "OPENONION_API_KEY": "api-key",
         }, clear=False):
             from connectonion.useful_tools.outlook import Outlook
-            assert Outlook()._get_access_token() == "new-access"
-            assert os.environ["MICROSOFT_REFRESH_TOKEN"] == "old-refresh"
+            outlook = Outlook()
+            outlook._access_token = "rejected-access"
+            assert outlook._request("GET", "/me/messages") == {"value": []}
 
-        assert "MICROSOFT_REFRESH_TOKEN=old-refresh" in keys_env.read_text()
+        assert mock_httpx.request.call_count == 2
+        mock_httpx.post.assert_called_once_with(
+            "https://oo.openonion.ai/api/v1/oauth/microsoft/refresh",
+            headers={"Authorization": "Bearer api-key"},
+            json={
+                "rejected_access_token_hash": sha256(
+                    b"rejected-access"
+                ).hexdigest()
+            },
+        )
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_second_graph_401_is_not_retried(self, mock_httpx):
+        """The retry budget is exactly one Graph request."""
+        graph_401 = MagicMock(status_code=401, text="expired")
+        mock_httpx.request.side_effect = [graph_401, graph_401]
+        token_response = MagicMock(status_code=200)
+        token_response.json.return_value = {
+            "access_token": "fresh-access",
+            "expires_in": 3600,
+        }
+        mock_httpx.post.return_value = token_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            outlook._access_token = "rejected-access"
+            with pytest.raises(ValueError, match="Microsoft Graph API error: 401"):
+                outlook._request("GET", "/me/messages")
+
+        assert mock_httpx.request.call_count == 2
+        assert mock_httpx.post.call_count == 1
+
+    @pytest.mark.token_fetch
+    @pytest.mark.parametrize(
+        ("status_code", "message"),
+        [
+            (404, "Reconnect with: co auth microsoft"),
+            (409, "Reconnect with: co auth microsoft"),
+            (401, "Run: co auth"),
+            (403, "Run: co auth"),
+            (503, "token service unavailable"),
+        ],
+    )
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_token_service_error_mapping(self, mock_httpx, status_code, message):
+        response = MagicMock(status_code=status_code)
+        mock_httpx.post.return_value = response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError, match=message):
+                Outlook()._get_access_token()
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.outlook.httpx.post')
+    def test_token_service_network_failure_is_sanitized(self, post):
+        request = httpx.Request("POST", "https://oo.example/refresh")
+        post.side_effect = httpx.ConnectError("offline", request=request)
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError, match="token service unavailable"):
+                Outlook()._get_access_token()
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_malformed_token_response_is_rejected(self, mock_httpx):
+        response = MagicMock(status_code=200)
+        response.json.return_value = {"expires_in": 3600}
+        mock_httpx.post.return_value = response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            with pytest.raises(ValueError, match="invalid Microsoft token response"):
+                Outlook()._get_access_token()
 
 
 class TestOutlookEmailFormatting:
@@ -636,5 +733,3 @@ class TestOutlookScheduled:
         method, url = mock_httpx.request.call_args.args[:2]
         assert method == "DELETE"
         assert url.endswith("/me/messages/sched-1")
-
-

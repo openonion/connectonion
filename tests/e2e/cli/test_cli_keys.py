@@ -198,6 +198,22 @@ class TestLoadEnvVars:
             finally:
                 os.chdir(original_cwd)
 
+    def test_never_loads_legacy_microsoft_tokens(self):
+        """Even --reveal has no code path to read Microsoft bearer tokens."""
+        from connectonion.cli.commands.keys_commands import _load_env_vars
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_CONNECTED": "true",
+            "MICROSOFT_EMAIL": "user@outlook.com",
+            "MICROSOFT_ACCESS_TOKEN": "legacy-access",
+            "MICROSOFT_REFRESH_TOKEN": "legacy-refresh",
+        }, clear=True):
+            result = _load_env_vars()
+
+        assert result["MICROSOFT_CONNECTED"] == "true"
+        assert "MICROSOFT_ACCESS_TOKEN" not in result
+        assert "MICROSOFT_REFRESH_TOKEN" not in result
+
 
 class TestHandleKeysNoKeys:
     """Tests for handle_keys when no keys exist."""
@@ -353,7 +369,7 @@ class TestHandleKeysOAuth:
     def test_shows_microsoft_oauth(self, mock_load, mock_env, mock_find, mock_console):
         mock_find.return_value = Path(".co")
         mock_load.return_value = self.MOCK_ADDR
-        mock_env.return_value = {"OPENONION_API_KEY": "key", "AGENT_ADDRESS": None, "AGENT_EMAIL": None, "GOOGLE_EMAIL": None, "GOOGLE_ACCESS_TOKEN": None, "GOOGLE_REFRESH_TOKEN": None, "MICROSOFT_EMAIL": "user@outlook.com", "MICROSOFT_ACCESS_TOKEN": "ms_token", "MICROSOFT_REFRESH_TOKEN": "ms_refresh"}
+        mock_env.return_value = {"OPENONION_API_KEY": "key", "AGENT_ADDRESS": None, "AGENT_EMAIL": None, "GOOGLE_EMAIL": None, "GOOGLE_ACCESS_TOKEN": None, "GOOGLE_REFRESH_TOKEN": None, "MICROSOFT_CONNECTED": "true", "MICROSOFT_EMAIL": "user@outlook.com"}
 
         from connectonion.cli.commands.keys_commands import handle_keys
         handle_keys()

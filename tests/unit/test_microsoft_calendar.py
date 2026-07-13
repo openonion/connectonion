@@ -11,8 +11,23 @@ Components under test:
 
 
 import os
+from hashlib import sha256
+import httpx
 import pytest
 from unittest.mock import patch, MagicMock
+
+
+@pytest.fixture(autouse=True)
+def _stub_token_fetch(request, monkeypatch):
+    """Keep Graph-operation tests isolated from the oo-api token endpoint."""
+    if "token_fetch" in request.keywords:
+        return
+    from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+    monkeypatch.setattr(
+        MicrosoftCalendar,
+        "_fetch_access_token",
+        lambda self, rejected_access_token=None: "test-token",
+    )
 
 
 class TestMicrosoftCalendarInit:
@@ -38,31 +53,149 @@ class TestMicrosoftCalendarInit:
 class TestMicrosoftCalendarTokenManagement:
     """Test MicrosoftCalendar token management."""
 
-    def test_get_access_token_requires_credentials(self):
-        """Test that getting token requires credentials."""
+    @pytest.mark.token_fetch
+    def test_get_access_token_requires_openonion_auth(self):
+        """The client needs only an OpenOnion API key, not Microsoft tokens."""
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Calendars.Read,Calendars.ReadWrite",
-            "MICROSOFT_ACCESS_TOKEN": "",
-            "MICROSOFT_REFRESH_TOKEN": ""
+            "OPENONION_API_KEY": "",
         }, clear=False):
             from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
             calendar = MicrosoftCalendar()
             with pytest.raises(ValueError) as exc_info:
                 calendar._get_access_token()
-            assert "credentials not found" in str(exc_info.value)
+            assert "co auth" in str(exc_info.value)
 
-    def test_get_access_token_returns_valid_token(self):
-        """Test that valid token is returned."""
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.microsoft_calendar.httpx')
+    def test_first_use_fetches_once_without_a_request_body(self, mock_httpx):
+        """First use asks oo-api once; later uses reuse only instance memory."""
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "access_token": "server-access",
+            "expires_in": 3600,
+        }
+        mock_httpx.post.return_value = response
+
         with patch.dict(os.environ, {
             "MICROSOFT_SCOPES": "Calendars.Read,Calendars.ReadWrite",
-            "MICROSOFT_ACCESS_TOKEN": "test-token",
-            "MICROSOFT_REFRESH_TOKEN": "test-refresh",
-            "MICROSOFT_TOKEN_EXPIRES_AT": "2099-12-31T23:59:59Z"
+            "OPENONION_API_KEY": "api-key",
+            "OPENONION_API_URL": "https://oo.example",
         }, clear=False):
             from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
             calendar = MicrosoftCalendar()
-            token = calendar._get_access_token()
-            assert token == "test-token"
+            assert calendar._get_access_token() == "server-access"
+            assert calendar._get_access_token() == "server-access"
+
+        mock_httpx.post.assert_called_once_with(
+            "https://oo.example/api/v1/oauth/microsoft/refresh",
+            headers={"Authorization": "Bearer api-key"},
+        )
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.microsoft_calendar.httpx')
+    def test_access_token_is_refetched_five_minutes_before_expiry(self, mock_httpx):
+        first = MagicMock(status_code=200)
+        first.json.return_value = {
+            "access_token": "first-access",
+            "expires_in": 3600,
+        }
+        second = MagicMock(status_code=200)
+        second.json.return_value = {
+            "access_token": "second-access",
+            "expires_in": 3600,
+        }
+        mock_httpx.post.side_effect = [first, second]
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Calendars.Read,Calendars.ReadWrite",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False), patch(
+            "connectonion.useful_tools.microsoft_calendar.time.monotonic",
+            side_effect=[1000, 4299, 4300, 4300],
+        ):
+            from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+            calendar = MicrosoftCalendar()
+            assert calendar._get_access_token() == "first-access"
+            assert calendar._get_access_token() == "first-access"
+            assert calendar._get_access_token() == "second-access"
+
+        assert mock_httpx.post.call_count == 2
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.microsoft_calendar.httpx')
+    def test_graph_401_reports_rejected_token_and_retries_once(self, mock_httpx):
+        """A Graph 401 triggers one server refresh tied to the rejected token."""
+        first_graph = MagicMock(status_code=401, text="expired")
+        second_graph = MagicMock(status_code=200, text='{"value": []}')
+        second_graph.json.return_value = {"value": []}
+        mock_httpx.request.side_effect = [first_graph, second_graph]
+        token_response = MagicMock(status_code=200)
+        token_response.json.return_value = {
+            "access_token": "fresh-access",
+            "expires_in": 3600,
+        }
+        mock_httpx.post.return_value = token_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Calendars.Read,Calendars.ReadWrite",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False):
+            from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+            calendar = MicrosoftCalendar()
+            calendar._access_token = "rejected-access"
+            assert calendar._request("GET", "/me/events") == {"value": []}
+
+        assert mock_httpx.request.call_count == 2
+        mock_httpx.post.assert_called_once_with(
+            "https://oo.openonion.ai/api/v1/oauth/microsoft/refresh",
+            headers={"Authorization": "Bearer api-key"},
+            json={
+                "rejected_access_token_hash": sha256(
+                    b"rejected-access"
+                ).hexdigest()
+            },
+        )
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.microsoft_calendar.httpx')
+    def test_second_graph_401_is_not_retried(self, mock_httpx):
+        """The retry budget is exactly one Graph request."""
+        graph_401 = MagicMock(status_code=401, text="expired")
+        mock_httpx.request.side_effect = [graph_401, graph_401]
+        token_response = MagicMock(status_code=200)
+        token_response.json.return_value = {
+            "access_token": "fresh-access",
+            "expires_in": 3600,
+        }
+        mock_httpx.post.return_value = token_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Calendars.Read,Calendars.ReadWrite",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False):
+            from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+            calendar = MicrosoftCalendar()
+            calendar._access_token = "rejected-access"
+            with pytest.raises(ValueError, match="Microsoft Graph API error: 401"):
+                calendar._request("GET", "/me/events")
+
+        assert mock_httpx.request.call_count == 2
+        assert mock_httpx.post.call_count == 1
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.microsoft_calendar.httpx.post')
+    def test_token_service_network_failure_is_sanitized(self, post):
+        request = httpx.Request("POST", "https://oo.example/refresh")
+        post.side_effect = httpx.ConnectError("offline", request=request)
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Calendars.Read",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False):
+            from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+            with pytest.raises(ValueError, match="token service unavailable"):
+                MicrosoftCalendar()._get_access_token()
 
 
 class TestMicrosoftCalendarDateTimeParsing:

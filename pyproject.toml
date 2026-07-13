@@ -125,6 +125,7 @@ markers = [
     "real_api: Tests requiring real API keys",
     "slow: Tests that take >10 seconds",
     "network: Tests requiring network/relay",
+    "token_fetch: Tests of the real oo-api token-fetch handshake",
 ]
 filterwarnings = [
     "ignore::DeprecationWarning",

@@ -8,8 +8,8 @@ What it tests:
   - test_auth_help_shows_microsoft_option: Verify microsoft appears in help
   - test_auth_microsoft_requires_openonion_auth: Verify OpenOnion auth required first
 - TestSaveMicrosoftToEnv: Credential persistence
-  - test_save_microsoft_credentials_to_new_env: Create new .env with credentials
-  - test_save_microsoft_credentials_updates_existing_env: Update existing .env preserving other vars
+  - test_save_microsoft_connection_to_new_env: Save non-secret metadata only
+  - test_save_microsoft_connection_removes_legacy_tokens: Purge old local tokens
   - test_save_microsoft_credentials_file_permissions: Verify 0600 permissions on Unix
 - TestAuthMicrosoftFlow: OAuth flow with mocked backend
   - test_auth_microsoft_success_flow: Complete successful OAuth flow
@@ -29,6 +29,17 @@ import pytest
 from unittest.mock import Mock, patch, MagicMock
 
 from .argparse_runner import ArgparseCliRunner
+
+
+@pytest.fixture(autouse=True)
+def isolated_home(tmp_path):
+    """Never let CLI auth tests read or modify the developer's real config."""
+    home = tmp_path / "home"
+    config_dir = home / ".co"
+    config_dir.mkdir(parents=True)
+    (config_dir / "keys.env").write_text("OPENONION_API_KEY=global-key\n")
+    with patch.object(Path, "home", return_value=home):
+        yield home
 
 
 class TestAuthMicrosoftHelp:
@@ -61,34 +72,30 @@ class TestAuthMicrosoftHelp:
 class TestSaveMicrosoftToEnv:
     """Test the _save_microsoft_to_env helper function."""
 
-    def test_save_microsoft_credentials_to_new_env(self):
-        """Test saving Microsoft credentials to a new .env file."""
+    def test_save_microsoft_connection_to_new_env(self):
+        """Save only connection metadata, never Microsoft bearer tokens."""
         from connectonion.cli.commands.auth_commands import _save_microsoft_to_env
 
         with tempfile.TemporaryDirectory() as tmpdir:
             env_file = Path(tmpdir) / '.env'
 
-            credentials = {
-                'access_token': 'eyJ0eXAi.test123',
-                'refresh_token': '0.ATcA.test456',
-                'expires_at': '2025-12-31T23:59:59',
+            connection = {
                 'scopes': 'Mail.Read,Mail.Send,Calendars.Read',
-                'microsoft_email': 'test@outlook.com'
+                'email': 'test@outlook.com',
             }
 
-            _save_microsoft_to_env(env_file, credentials)
+            _save_microsoft_to_env(env_file, connection)
 
             assert env_file.exists()
 
             content = env_file.read_text()
-            assert 'MICROSOFT_ACCESS_TOKEN=eyJ0eXAi.test123' in content
-            assert 'MICROSOFT_REFRESH_TOKEN=0.ATcA.test456' in content
-            assert 'MICROSOFT_TOKEN_EXPIRES_AT=2025-12-31T23:59:59' in content
+            assert 'MICROSOFT_CONNECTED=true' in content
             assert 'MICROSOFT_SCOPES=Mail.Read,Mail.Send,Calendars.Read' in content
             assert 'MICROSOFT_EMAIL=test@outlook.com' in content
+            assert 'TOKEN' not in content
 
-    def test_save_microsoft_credentials_updates_existing_env(self):
-        """Test that saving Microsoft credentials updates existing .env."""
+    def test_save_microsoft_connection_removes_legacy_tokens(self):
+        """A new authorization removes tokens left by older SDK releases."""
         from connectonion.cli.commands.auth_commands import _save_microsoft_to_env
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -97,31 +104,28 @@ class TestSaveMicrosoftToEnv:
             env_file.write_text('''OPENONION_API_KEY=existing-key
 MICROSOFT_ACCESS_TOKEN=old-token
 MICROSOFT_REFRESH_TOKEN=old-refresh
+MICROSOFT_TOKEN_EXPIRES_AT=old-expiry
 MICROSOFT_EMAIL=old@outlook.com
 OTHER_VAR=keep-this
 ''')
 
-            credentials = {
-                'access_token': 'new-token',
-                'refresh_token': 'new-refresh',
-                'expires_at': '2025-12-31T23:59:59',
+            connection = {
                 'scopes': 'Mail.Read',
-                'microsoft_email': 'new@outlook.com'
+                'email': 'new@outlook.com',
             }
 
-            _save_microsoft_to_env(env_file, credentials)
+            _save_microsoft_to_env(env_file, connection)
 
             content = env_file.read_text()
 
             assert 'OPENONION_API_KEY=existing-key' in content
             assert 'OTHER_VAR=keep-this' in content
 
-            assert 'MICROSOFT_ACCESS_TOKEN=new-token' in content
-            assert 'MICROSOFT_REFRESH_TOKEN=new-refresh' in content
+            assert 'MICROSOFT_CONNECTED=true' in content
             assert 'MICROSOFT_EMAIL=new@outlook.com' in content
-
-            assert 'old-token' not in content
-            assert 'old-refresh' not in content
+            assert 'MICROSOFT_ACCESS_TOKEN' not in content
+            assert 'MICROSOFT_REFRESH_TOKEN' not in content
+            assert 'MICROSOFT_TOKEN_EXPIRES_AT' not in content
 
     def test_save_microsoft_credentials_file_permissions(self):
         """Test that .env file has restrictive permissions on Unix."""
@@ -134,15 +138,12 @@ OTHER_VAR=keep-this
         with tempfile.TemporaryDirectory() as tmpdir:
             env_file = Path(tmpdir) / '.env'
 
-            credentials = {
-                'access_token': 'test',
-                'refresh_token': 'test',
-                'expires_at': '2025-12-31T23:59:59',
+            connection = {
                 'scopes': 'Mail.Read',
-                'microsoft_email': 'test@outlook.com'
+                'email': 'test@outlook.com',
             }
 
-            _save_microsoft_to_env(env_file, credentials)
+            _save_microsoft_to_env(env_file, connection)
 
             stat = env_file.stat()
             assert oct(stat.st_mode)[-3:] == '600'
@@ -157,39 +158,31 @@ class TestAuthMicrosoftFlow:
 
     @patch('connectonion.cli.commands.auth_commands.webbrowser')
     @patch('connectonion.cli.commands.auth_commands.requests')
-    def test_auth_microsoft_success_flow(self, mock_requests, mock_webbrowser):
+    def test_auth_microsoft_success_flow(
+        self, mock_requests, mock_webbrowser, isolated_home
+    ):
         """Test successful Microsoft OAuth flow."""
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
 
-            mock_revoke_response = Mock()
-            mock_revoke_response.status_code = 404
-
             mock_init_response = Mock()
             mock_init_response.status_code = 200
             mock_init_response.json.return_value = {
-                'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?...'
+                'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?...',
+                'authorization_id': 'authorization-id',
             }
 
             mock_status_response = Mock()
             mock_status_response.status_code = 200
-            mock_status_response.json.return_value = {'connected': True}
-
-            mock_creds_response = Mock()
-            mock_creds_response.status_code = 200
-            mock_creds_response.json.return_value = {
-                'access_token': 'eyJ0eXAi.test',
-                'refresh_token': '0.ATcA.test',
-                'expires_at': '2025-12-31T23:59:59',
+            mock_status_response.json.return_value = {
+                'connected': True,
                 'scopes': 'Mail.Read,Mail.Send,Calendars.Read,Calendars.ReadWrite',
-                'microsoft_email': 'test@outlook.com'
+                'email': 'test@outlook.com',
             }
 
-            mock_requests.delete.return_value = mock_revoke_response
             mock_requests.get.side_effect = [
                 mock_init_response,
                 mock_status_response,
-                mock_creds_response
             ]
 
             mock_webbrowser.open.return_value = True
@@ -198,23 +191,30 @@ class TestAuthMicrosoftFlow:
                 from connectonion.cli.main import cli
                 result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
-            mock_requests.delete.assert_called_once()
+            mock_requests.delete.assert_not_called()
             mock_webbrowser.open.assert_called_once()
+            status_call = mock_requests.get.call_args_list[1]
+            assert status_call.kwargs["params"] == {
+                "authorization_id": "authorization-id"
+            }
 
             env_content = Path('.env').read_text()
-            assert 'MICROSOFT_ACCESS_TOKEN=eyJ0eXAi.test' in env_content
-            assert 'MICROSOFT_REFRESH_TOKEN=0.ATcA.test' in env_content
+            assert 'MICROSOFT_CONNECTED=true' in env_content
             assert 'MICROSOFT_EMAIL=test@outlook.com' in env_content
+            assert 'MICROSOFT_ACCESS_TOKEN' not in env_content
+            assert 'MICROSOFT_REFRESH_TOKEN' not in env_content
+            assert all('/credentials' not in call.args[0] for call in mock_requests.get.call_args_list)
+
+            global_content = (isolated_home / '.co' / 'keys.env').read_text()
+            assert 'MICROSOFT_CONNECTED=true' in global_content
+            assert 'MICROSOFT_ACCESS_TOKEN' not in global_content
+            assert 'MICROSOFT_REFRESH_TOKEN' not in global_content
 
     @patch('connectonion.cli.commands.auth_commands.requests')
     def test_auth_microsoft_init_failure(self, mock_requests):
         """Test handling of OAuth init failure."""
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
-
-            mock_revoke_response = Mock()
-            mock_revoke_response.status_code = 404
-            mock_requests.delete.return_value = mock_revoke_response
 
             mock_response = Mock()
             mock_response.status_code = 500
@@ -234,14 +234,11 @@ class TestAuthMicrosoftFlow:
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
 
-            mock_revoke_response = Mock()
-            mock_revoke_response.status_code = 404
-            mock_requests.delete.return_value = mock_revoke_response
-
             mock_init_response = Mock()
             mock_init_response.status_code = 200
             mock_init_response.json.return_value = {
-                'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?...'
+                'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?...',
+                'authorization_id': 'authorization-id',
             }
 
             mock_status_response = Mock()
@@ -257,5 +254,3 @@ class TestAuthMicrosoftFlow:
             result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
             assert 'timed out' in result.output.lower() or result.exit_code != 0
-
-

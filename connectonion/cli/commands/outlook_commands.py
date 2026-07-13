@@ -2,8 +2,8 @@
 Purpose: CLI surface for the user's Outlook mailbox — send, list (inbox/sent/scheduled), read, reply, and search from the terminal
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, datetime, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.outlook.Outlook] | imported by [cli/main.py via handle_outlook_*()] | hits Microsoft Graph API through the Outlook tool
-  Data flow: _outlook() loads MICROSOFT_* from .env / ~/.co/keys.env → Outlook() instance | inbox/search: list_inbox()/list_search() → numbered Rich table (plain ID-bearing text when piped) → saves {#: message_id} to ~/.co/outlook_last_inbox.json | read/reply: resolve short numbers via that cache → get_email_body()/reply() | send: '-' body reads stdin, attachments prechecked, --at validated to UTC ISO → send() | scheduled: get_scheduled() → read-only table (To/Subject/Sends at), plain full-id lines when piped; does NOT touch the numbering cache
-  State/Effects: writes ~/.co/outlook_last_inbox.json (last listing's # → message id map; "numbers mean your last listing" — only inbox and search write it) | read marks emails read server-side | Outlook auto-refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
+  Data flow: _outlook() loads Microsoft connection metadata + OpenOnion API key from .env / ~/.co/keys.env → Outlook() instance | Outlook asks oo-api for short-lived access tokens | inbox/search: list_inbox()/list_search() → numbered Rich table (plain ID-bearing text when piped) → saves {#: message_id} to ~/.co/outlook_last_inbox.json | read/reply: resolve short numbers via that cache → get_email_body()/reply() | send: '-' body reads stdin, attachments prechecked, --at validated to UTC ISO → send() | scheduled: get_scheduled() → read-only table (To/Subject/Sends at), plain full-id lines when piped; does NOT touch the numbering cache
+  State/Effects: writes ~/.co/outlook_last_inbox.json (last listing's # → message id map; "numbers mean your last listing" — only inbox and search write it) | read marks emails read server-side | no Microsoft tokens are persisted locally
   Integration: exposes handle_outlook_send(), handle_outlook_inbox(), handle_outlook_read(), handle_outlook_reply(), handle_outlook_sent(), handle_outlook_search(), handle_outlook_scheduled() for cli/main.py | presentation mirrors email_commands.py (table shape, ● unread mark, ✉️ panel, '✓ Sent' wording) | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
   Errors: every guarded failure prints a hint and exits 1 (typer.Exit) so scripts can detect it — missing auth/scopes, missing/oversized attachments, invalid --at, unresolvable email # | Graph API errors propagate from the Outlook tool | scheduled sends can't be cancelled via API (Exchange 403) — the listing hints at Outlook's own Cancel Send
 """
@@ -26,14 +26,18 @@ ATTACHMENT_LIMIT = 3_000_000  # Graph sendMail rejects larger payloads
 
 
 def _outlook():
-    """Load MICROSOFT_* credentials from .env files and return an Outlook instance. Exits 1 with a hint if not connected."""
+    """Load connection metadata and return Outlook, or exit with a hint."""
     from dotenv import load_dotenv
 
     for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
         if env_path.exists():
             load_dotenv(env_path)
 
-    if not os.getenv("MICROSOFT_ACCESS_TOKEN") or "Mail" not in os.getenv("MICROSOFT_SCOPES", ""):
+    if (
+        not os.getenv("OPENONION_API_KEY")
+        or os.getenv("MICROSOFT_CONNECTED", "").lower() != "true"
+        or "Mail" not in os.getenv("MICROSOFT_SCOPES", "")
+    ):
         console.print("\n❌ [bold red]Microsoft account not connected[/bold red]")
         console.print("\n[cyan]Connect Outlook first:[/cyan]")
         console.print("  [bold]co auth microsoft[/bold]     Authorize Outlook access\n")

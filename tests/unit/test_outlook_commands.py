@@ -35,7 +35,8 @@ from connectonion.cli.commands.outlook_commands import (
 )
 
 CONNECTED_ENV = {
-    "MICROSOFT_ACCESS_TOKEN": "test-token",
+    "OPENONION_API_KEY": "api-key",
+    "MICROSOFT_CONNECTED": "true",
     "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
     "MICROSOFT_EMAIL": "aaron@example.com",
 }
@@ -56,8 +57,8 @@ def sample_emails(n):
 class TestOutlookGuard:
     """_outlook() returns None with a hint when not connected."""
 
-    def test_missing_access_token_exits_with_hint(self, capsys):
-        with patch.dict(os.environ, {"MICROSOFT_ACCESS_TOKEN": "", "MICROSOFT_SCOPES": "Mail.Read"}, clear=False):
+    def test_missing_connection_metadata_exits_with_hint(self, capsys):
+        with patch.dict(os.environ, {"MICROSOFT_CONNECTED": "", "MICROSOFT_SCOPES": "Mail.Read"}, clear=False):
             with pytest.raises(typer.Exit):
                 _outlook()
 
@@ -66,7 +67,7 @@ class TestOutlookGuard:
         assert "co auth microsoft" in output
 
     def test_scopes_without_mail_exits_with_hint(self, capsys):
-        with patch.dict(os.environ, {"MICROSOFT_ACCESS_TOKEN": "test-token", "MICROSOFT_SCOPES": "User.Read"}, clear=False):
+        with patch.dict(os.environ, {"MICROSOFT_CONNECTED": "true", "MICROSOFT_SCOPES": "User.Read"}, clear=False):
             with pytest.raises(typer.Exit):
                 _outlook()
 

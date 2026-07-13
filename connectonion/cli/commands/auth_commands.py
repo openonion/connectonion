@@ -12,6 +12,7 @@ LLM-Note:
 import sys
 import time
 import requests
+from requests import RequestException
 import json
 import webbrowser
 import os
@@ -197,7 +198,8 @@ def handle_google_auth():
         console.print("  [bold]co auth[/bold]     Get your OpenOnion API key\n")
         return
 
-    api_url = "https://oo.openonion.ai/api/v1/oauth"
+    backend_url = os.getenv("OPENONION_API_URL", "https://oo.openonion.ai")
+    api_url = f"{backend_url.rstrip('/')}/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
 
     # Clear any existing connection first - this ensures we wait for NEW OAuth to complete
@@ -269,15 +271,15 @@ def handle_google_auth():
     console.print(f"   [dim]agent = Agent('assistant', tools=[gmail_send])[/dim]\n")
 
 
-def _save_microsoft_to_env(env_file: Path, credentials: dict) -> None:
-    """Save Microsoft OAuth credentials to .env file."""
-    upsert_env(env_file, {
-        "MICROSOFT_ACCESS_TOKEN": credentials['access_token'],
-        "MICROSOFT_REFRESH_TOKEN": credentials['refresh_token'],
-        "MICROSOFT_TOKEN_EXPIRES_AT": credentials['expires_at'],
-        "MICROSOFT_SCOPES": credentials['scopes'],
-        "MICROSOFT_EMAIL": credentials['microsoft_email'],
-    }, strip_prefix="MICROSOFT_")
+def _save_microsoft_to_env(env_file: Path, connection: dict) -> None:
+    """Save non-secret Microsoft connection metadata to an env file."""
+    values = {
+        "MICROSOFT_CONNECTED": "true",
+        "MICROSOFT_SCOPES": connection['scopes'],
+    }
+    if connection.get("email"):
+        values["MICROSOFT_EMAIL"] = connection["email"]
+    upsert_env(env_file, values, strip_prefix="MICROSOFT_")
 
 
 def handle_microsoft_auth():
@@ -291,24 +293,36 @@ def handle_microsoft_auth():
         console.print("  [bold]co auth[/bold]     Get your OpenOnion API key\n")
         return
 
-    api_url = "https://oo.openonion.ai/api/v1/oauth"
+    backend_url = os.getenv("OPENONION_API_URL", "https://oo.openonion.ai")
+    api_url = f"{backend_url.rstrip('/')}/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
-
-    # Clear any existing connection first
-    requests.delete(f"{api_url}/microsoft/revoke", headers=headers)
 
     # Get OAuth URL
     console.print("🔑 Initializing Microsoft OAuth...", style="cyan")
 
-    response = requests.get(f"{api_url}/microsoft/init", headers=headers)
+    try:
+        response = requests.get(
+            f"{api_url}/microsoft/init", headers=headers, timeout=15
+        )
+    except RequestException:
+        console.print("\n❌ Microsoft OAuth service is unavailable", style="red")
+        return
     if response.status_code != 200:
         console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
         return
 
-    auth_url = response.json()['auth_url']
+    try:
+        init = response.json()
+    except ValueError:
+        init = {}
+    auth_url = init.get('auth_url')
+    authorization_id = init.get('authorization_id')
+    if not auth_url or not authorization_id:
+        console.print("\n❌ Microsoft OAuth initialization response is invalid", style="red")
+        return
 
     # Open browser
-    console.print(f"\n🌐 Opening browser for Microsoft authentication...")
+    console.print("\n🌐 Opening browser for Microsoft authentication...")
     console.print(f"    URL: {auth_url}\n", style="dim")
 
     webbrowser.open(auth_url)
@@ -318,13 +332,26 @@ def handle_microsoft_auth():
     console.print("   (Complete the authorization in your browser)\n", style="dim")
 
     max_attempts = 60  # 5 minutes (5 second intervals)
-    for attempt in range(max_attempts):
+    connection = None
+    for _ in range(max_attempts):
         time.sleep(5)
 
-        status_response = requests.get(f"{api_url}/microsoft/status", headers=headers)
+        try:
+            status_response = requests.get(
+                f"{api_url}/microsoft/status",
+                headers=headers,
+                params={"authorization_id": authorization_id},
+                timeout=15,
+            )
+        except RequestException:
+            continue
         if status_response.status_code == 200:
-            status = status_response.json()
+            try:
+                status = status_response.json()
+            except ValueError:
+                continue
             if status.get('connected'):
+                connection = status
                 console.print("✓ Authorization successful!", style="green")
                 break
     else:
@@ -332,32 +359,38 @@ def handle_microsoft_auth():
         console.print("Please try again with: [bold]co auth microsoft[/bold]\n")
         return
 
-    # Get credentials
-    creds_response = requests.get(f"{api_url}/microsoft/credentials", headers=headers)
-    if creds_response.status_code != 200:
-        console.print(f"\n❌ Failed to get credentials: {creds_response.text}", style="red")
+    if not connection.get("scopes"):
+        console.print("\n❌ Microsoft connection metadata is incomplete", style="red")
         return
 
-    credentials = creds_response.json()
-
-    # Save credentials
-    console.print("\n💾 Saving credentials...", style="cyan")
-
-    # Save to global ~/.co/keys.env
-    global_keys_env = Path.home() / ".co" / "keys.env"
-    if global_keys_env.exists():
-        _save_microsoft_to_env(global_keys_env, credentials)
-        console.print(f"   ✓ Saved to {global_keys_env}", style="green")
+    console.print("\n💾 Saving connection...", style="cyan")
 
     # Save to local .env
     local_env = Path(".env")
-    _save_microsoft_to_env(local_env, credentials)
+    try:
+        _save_microsoft_to_env(local_env, connection)
+    except OSError:
+        console.print("\n❌ Could not save Microsoft connection metadata", style="red")
+        return
     console.print(f"   ✓ Saved to {local_env.absolute()}", style="green")
+
+    # Global metadata is useful across projects, but a read-only home config
+    # should not discard the successful connection or local save.
+    global_keys_env = Path.home() / ".co" / "keys.env"
+    if global_keys_env.exists():
+        try:
+            _save_microsoft_to_env(global_keys_env, connection)
+        except OSError:
+            console.print(
+                f"   ⚠ Could not update {global_keys_env}", style="yellow"
+            )
+        else:
+            console.print(f"   ✓ Saved to {global_keys_env}", style="green")
 
     # Success message
     console.print(f"\n✅ [bold green]Microsoft account connected![/bold green]")
-    console.print(f"   Email: {credentials['microsoft_email']}", style="green")
+    if connection.get("email"):
+        console.print(f"   Email: {connection['email']}", style="green")
     console.print(f"\n📧 You can now use Microsoft tools in your agents:")
     console.print(f"   [dim]from connectonion import Outlook, MicrosoftCalendar[/dim]")
     console.print(f"   [dim]agent = Agent('assistant', tools=[Outlook()])[/dim]\n")
-
