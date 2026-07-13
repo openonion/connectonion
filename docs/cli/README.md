@@ -228,8 +228,8 @@ details and current limitations.
 #### `co outlook` - Send & Read Outlook Email
 
 Your personal Outlook account from the terminal, via Microsoft Graph.
-Requires `co auth microsoft` once (Mail scopes; saved as `MICROSOFT_*` in
-`.env` / `~/.co/keys.env`).
+Requires `co auth microsoft` once. Microsoft refresh tokens stay encrypted in
+oo-api; `.env` / `~/.co/keys.env` contain only connection metadata.
 
 **Basic usage:**
 ```bash

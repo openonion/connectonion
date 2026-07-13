@@ -1,9 +1,9 @@
 """
 Purpose: Microsoft Calendar integration tool for managing events via Microsoft Graph API
 LLM-Note:
-  Dependencies: imports from [os, datetime, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_microsoft_calendar.py]
-  Data flow: Agent calls MicrosoftCalendar methods → _get_headers() loads MICROSOFT_ACCESS_TOKEN from env → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns formatted results (event lists, confirmations, free slots)
-  State/Effects: reads MICROSOFT_* env vars for OAuth tokens | makes HTTP calls to Microsoft Graph API | can create/update/delete events, create Teams meetings | no local file persistence
+  Dependencies: imports from [os, datetime, httpx] | imported by [useful_tools/__init__.py] | requires 'co auth' + 'co auth microsoft' | tested by [tests/unit/test_microsoft_calendar.py]
+  Data flow: Agent calls MicrosoftCalendar methods → _get_access_token() asks oo-api for a usable short-lived token → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns formatted results (event lists, confirmations, free slots)
+  State/Effects: keeps one access token in instance memory | makes HTTP calls to oo-api and Microsoft Graph API | can create/update/delete events, create Teams meetings | no local token persistence
   Integration: exposes MicrosoftCalendar class with list_events(), get_today_events(), get_event(), create_event(), update_event(), delete_event(), create_teams_meeting(), get_upcoming_meetings(), find_free_slots(), check_availability() | used as agent tool via Agent(tools=[MicrosoftCalendar()])
   Performance: network I/O per API call | batch fetching for list operations | date parsing for queries
   Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | returns error strings for display
@@ -44,13 +44,20 @@ Example:
 
 import os
 from datetime import datetime, timedelta
+from hashlib import sha256
+import time
+from typing import Optional
 import httpx
+from httpx import RequestError
 
 
 class MicrosoftCalendar:
     """Microsoft Calendar tool for managing events via Microsoft Graph API."""
 
     GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
+    ACCESS_TOKEN_REFRESH_BUFFER_SECONDS = 5 * 60
+    # Microsoft CAE access tokens can legitimately last 20-28 hours.
+    MAX_ACCESS_TOKEN_LIFETIME_SECONDS = 48 * 60 * 60
 
     def __init__(self):
         """Initialize Microsoft Calendar tool.
@@ -68,78 +75,87 @@ class MicrosoftCalendar:
             )
 
         self._access_token = None
+        self._access_token_refresh_at = None
 
     def _get_access_token(self) -> str:
-        """Get Microsoft access token (with auto-refresh)."""
-        access_token = os.getenv("MICROSOFT_ACCESS_TOKEN")
-        refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN")
-        expires_at_str = os.getenv("MICROSOFT_TOKEN_EXPIRES_AT")
-
-        if not access_token or not refresh_token:
-            raise ValueError(
-                "Microsoft OAuth credentials not found.\n"
-                "Run: co auth microsoft"
+        """Return the instance token, asking oo-api on first use."""
+        if (
+            not self._access_token
+            or (
+                self._access_token_refresh_at is not None
+                and time.monotonic() >= self._access_token_refresh_at
             )
-
-        # Check if token is expired or about to expire (within 5 minutes)
-        if expires_at_str:
-            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-            now = datetime.utcnow().replace(tzinfo=expires_at.tzinfo) if expires_at.tzinfo else datetime.utcnow()
-
-            if now >= expires_at - timedelta(minutes=5):
-                access_token = self._refresh_via_backend(refresh_token)
-                self._access_token = None
-
-        if self._access_token:
-            return self._access_token
-
-        self._access_token = access_token
+        ):
+            self._access_token = self._fetch_access_token()
         return self._access_token
 
-    def _refresh_via_backend(self, refresh_token: str) -> str:
-        """Refresh access token via backend API."""
-        backend_url = os.getenv("OPENONION_API_URL", "https://oo.openonion.ai")
+    def _fetch_access_token(
+        self,
+        rejected_access_token: Optional[str] = None,
+    ) -> str:
+        """Ask oo-api for a usable access token; refresh tokens stay server-side."""
+        backend_url = os.getenv(
+            "OPENONION_API_URL", "https://oo.openonion.ai"
+        ).rstrip("/")
         api_key = os.getenv("OPENONION_API_KEY")
 
         if not api_key:
             raise ValueError(
                 "OPENONION_API_KEY not found.\n"
-                "This is needed to refresh tokens via backend."
+                "Authenticate with OpenOnion first: co auth"
             )
 
-        response = httpx.post(
-            f"{backend_url}/api/v1/oauth/microsoft/refresh",
-            headers={"Authorization": f"Bearer {api_key}"},
-            json={"refresh_token": refresh_token}
-        )
+        request = {
+            "headers": {"Authorization": f"Bearer {api_key}"},
+        }
+        if rejected_access_token:
+            request["json"] = {
+                "rejected_access_token_hash": sha256(
+                    rejected_access_token.encode()
+                ).hexdigest()
+            }
+        try:
+            response = httpx.post(
+                f"{backend_url}/api/v1/oauth/microsoft/refresh", **request
+            )
+        except RequestError as exc:
+            raise ValueError(
+                "Microsoft token service unavailable. Please try again."
+            ) from exc
 
+        if response.status_code in {404, 409}:
+            raise ValueError(
+                "Microsoft authorization expired.\n"
+                "Reconnect with: co auth microsoft"
+            )
+        if response.status_code in {401, 403}:
+            raise ValueError("OpenOnion authentication expired.\nRun: co auth")
         if response.status_code != 200:
             raise ValueError(
-                f"Failed to refresh Microsoft token via backend: {response.text}"
+                f"Microsoft token service unavailable ({response.status_code}). "
+                "Please try again."
             )
 
-        data = response.json()
-        new_access_token = data["access_token"]
-        expires_at = data["expires_at"]
-
-        os.environ["MICROSOFT_ACCESS_TOKEN"] = new_access_token
-        os.environ["MICROSOFT_TOKEN_EXPIRES_AT"] = expires_at
-
-        env_file = os.path.join(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co")), "keys.env")
-        if os.path.exists(env_file):
-            with open(env_file, 'r') as f:
-                lines = f.readlines()
-
-            with open(env_file, 'w') as f:
-                for line in lines:
-                    if line.startswith("MICROSOFT_ACCESS_TOKEN="):
-                        f.write(f"MICROSOFT_ACCESS_TOKEN={new_access_token}\n")
-                    elif line.startswith("MICROSOFT_TOKEN_EXPIRES_AT="):
-                        f.write(f"MICROSOFT_TOKEN_EXPIRES_AT={expires_at}\n")
-                    else:
-                        f.write(line)
-
-        return new_access_token
+        try:
+            payload = response.json()
+            access_token = payload["access_token"]
+            expires_in = payload["expires_in"]
+        except (ValueError, KeyError, TypeError) as exc:
+            raise ValueError("oo-api returned an invalid Microsoft token response") from exc
+        if (
+            not isinstance(access_token, str)
+            or not access_token
+            or isinstance(expires_in, bool)
+            or not isinstance(expires_in, int)
+            or expires_in <= 0
+            or expires_in > self.MAX_ACCESS_TOKEN_LIFETIME_SECONDS
+        ):
+            raise ValueError("oo-api returned an invalid Microsoft token response")
+        self._access_token_refresh_at = time.monotonic() + max(
+            0,
+            expires_in - self.ACCESS_TOKEN_REFRESH_BUFFER_SECONDS,
+        )
+        return access_token
 
     def _request(self, method: str, endpoint: str, **kwargs) -> dict:
         """Make authenticated request to Microsoft Graph API."""
@@ -153,12 +169,12 @@ class MicrosoftCalendar:
         response = httpx.request(method, url, headers=headers, **kwargs)
 
         if response.status_code == 401:
-            refresh_token = os.getenv("MICROSOFT_REFRESH_TOKEN")
-            if refresh_token:
-                self._access_token = None
-                token = self._refresh_via_backend(refresh_token)
-                headers["Authorization"] = f"Bearer {token}"
-                response = httpx.request(method, url, headers=headers, **kwargs)
+            self._access_token = None
+            self._access_token_refresh_at = None
+            token = self._fetch_access_token(rejected_access_token=token)
+            self._access_token = token
+            headers["Authorization"] = f"Bearer {token}"
+            response = httpx.request(method, url, headers=headers, **kwargs)
 
         if response.status_code not in [200, 201, 202, 204]:
             raise ValueError(f"Microsoft Graph API error: {response.status_code} - {response.text}")

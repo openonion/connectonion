@@ -40,6 +40,9 @@ agent.input("Send an email to alice@example.com saying hello")
 co auth microsoft
 ```
 
+Microsoft refresh tokens stay encrypted in oo-api; the local client keeps only
+connection metadata and obtains short-lived access tokens on demand.
+
 Your agent can now read and manage Outlook emails.
 
 **Switch accounts?** Run `co auth microsoft` again to connect a different Microsoft account.
@@ -172,6 +175,7 @@ from tools.outlook import Outlook    # After - customize freely!
 
 **Missing Microsoft Mail scopes**: Run `co auth microsoft`
 
-**Credentials not found**: Run `co auth microsoft`
+**Connection not found**: Run `co auth microsoft`
 
-**Token expired**: Tokens auto-refresh. If issues persist, run `co auth microsoft` again.
+**Authorization expired**: oo-api refreshes access tokens automatically. If it
+asks for interaction, run `co auth microsoft` again.

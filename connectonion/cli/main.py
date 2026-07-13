@@ -419,7 +419,7 @@ def email_upgrade(
 
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
-# Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
+# Microsoft tokens stay in oo-api; the client stores only email and scopes.
 outlook_app = typer.Typer(help="Send and read email from your Outlook account. Bare 'co outlook' shows the inbox.")
 app.add_typer(outlook_app, name="outlook")
 

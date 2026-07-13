@@ -30,9 +30,10 @@ That's the whole surface. Everything below is detail.
 co auth microsoft
 ```
 
-This opens the Microsoft OAuth flow and saves `MICROSOFT_*` credentials
-(access token, refresh token, scopes, email) to your project `.env` and
-`~/.co/keys.env`. Tokens auto-refresh. If credentials or Mail scopes are
+This opens the Microsoft OAuth flow. Refresh tokens stay encrypted in oo-api;
+the client saves only connection metadata (`MICROSOFT_CONNECTED`, scopes, and
+optional email) in the project `.env` and `~/.co/keys.env`. oo-api renews the
+short-lived access token on demand. If the connection or Mail scopes are
 missing, any `co outlook` command tells you to run `co auth microsoft` first.
 See [Microsoft Integration](../integrations/microsoft.md) for scope details.
 

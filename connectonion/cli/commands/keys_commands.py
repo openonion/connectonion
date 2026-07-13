@@ -2,9 +2,9 @@
 Purpose: Display and manage agent keys, credentials, and OAuth connections with masked/revealed output
 LLM-Note:
   Dependencies: imports from [os, pathlib, rich.console, rich.panel, rich.table, dotenv.load_dotenv, address] | imported by [cli/main.py via handle_keys()] | tested by [tests/e2e/cli/test_cli_keys.py]
-  Data flow: receives reveal flag (bool) → _find_co_dir() searches for .co/keys/ (local first, then ~/.co) → address.load() reads Ed25519 keypair → _load_env_vars() loads from local .env and global ~/.co/keys.env → _mask() obscures secrets unless --reveal → displays Identity table (address, short ID, email, source, key file) → displays Secrets table (recovery phrase, API key) → displays OAuth table (Google/Microsoft email and tokens if connected) → displays Env Files table (global and local paths with ✓/✗ status)
+  Data flow: receives reveal flag (bool) → _find_co_dir() searches for .co/keys/ (local first, then ~/.co) → address.load() reads Ed25519 keypair → _load_env_vars() loads from local .env and global ~/.co/keys.env → _mask() obscures secrets unless --reveal → displays Identity table (address, short ID, email, source, key file) → displays Secrets table (recovery phrase, API key) → displays OAuth table (Google credentials when revealed; Microsoft email only because its tokens stay server-side) → displays Env Files table (global and local paths with ✓/✗ status)
   State/Effects: no state modifications | reads from .co/keys/agent.key, recovery.txt, .env, ~/.co/keys.env | writes to stdout via rich.Console | does NOT modify any files
-  Integration: exposes handle_keys() for CLI | similar to status command but focuses on credentials | relies on address module for keypair loading | uses Rich for formatted panel output | checks env vars in priority order: OPENONION_API_KEY, GOOGLE_EMAIL/tokens, MICROSOFT_EMAIL/tokens | recovery phrase shown if recovery.txt exists
+  Integration: exposes handle_keys() for CLI | similar to status command but focuses on credentials | relies on address module for keypair loading | uses Rich for formatted panel output | checks env vars in priority order: OPENONION_API_KEY, GOOGLE_EMAIL/tokens, MICROSOFT_EMAIL | recovery phrase shown if recovery.txt exists
   Performance: file I/O for key loading and env vars (<50ms) | Rich table rendering is fast | no network calls
   Errors: prints message if no .co directory found (run 'co init' or 'co create') | prints message if keys fail to load | gracefully handles missing recovery.txt (shows "missing" message) | gracefully handles missing OAuth tokens (not shown in table) | gracefully handles missing env files (shows red ✗)
 """
@@ -50,9 +50,8 @@ def _load_env_vars() -> dict:
         "GOOGLE_EMAIL": os.getenv("GOOGLE_EMAIL"),
         "GOOGLE_ACCESS_TOKEN": os.getenv("GOOGLE_ACCESS_TOKEN"),
         "GOOGLE_REFRESH_TOKEN": os.getenv("GOOGLE_REFRESH_TOKEN"),
+        "MICROSOFT_CONNECTED": os.getenv("MICROSOFT_CONNECTED"),
         "MICROSOFT_EMAIL": os.getenv("MICROSOFT_EMAIL"),
-        "MICROSOFT_ACCESS_TOKEN": os.getenv("MICROSOFT_ACCESS_TOKEN"),
-        "MICROSOFT_REFRESH_TOKEN": os.getenv("MICROSOFT_REFRESH_TOKEN"),
     }
 
 
@@ -139,9 +138,10 @@ def handle_keys(reveal: bool = False):
 
     # --- OAuth Connections ---
     google_email = env_vars.get("GOOGLE_EMAIL")
+    microsoft_connected = env_vars.get("MICROSOFT_CONNECTED") == "true"
     microsoft_email = env_vars.get("MICROSOFT_EMAIL")
 
-    if google_email or microsoft_email:
+    if google_email or microsoft_connected:
         oauth_table = Table(show_header=False, box=None, padding=(0, 2))
         oauth_table.add_column("key", style="cyan", min_width=14)
         oauth_table.add_column("value", overflow="fold", no_wrap=False)
@@ -156,15 +156,11 @@ def handle_keys(reveal: bool = False):
                 if refresh:
                     oauth_table.add_row("  Refresh Token", refresh)
 
-        if microsoft_email:
-            oauth_table.add_row("Microsoft", f"[green]✓[/green] {microsoft_email}")
-            if reveal:
-                token = env_vars.get("MICROSOFT_ACCESS_TOKEN")
-                if token:
-                    oauth_table.add_row("  Access Token", token)
-                refresh = env_vars.get("MICROSOFT_REFRESH_TOKEN")
-                if refresh:
-                    oauth_table.add_row("  Refresh Token", refresh)
+        if microsoft_connected:
+            oauth_table.add_row(
+                "Microsoft",
+                f"[green]✓[/green] {microsoft_email or 'connected'}",
+            )
 
         console.print(Panel(oauth_table, title="[bold]OAuth[/bold]", border_style="green"))
 

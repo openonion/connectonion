@@ -41,6 +41,9 @@ Requires Microsoft OAuth authorization:
 co auth microsoft
 ```
 
+Microsoft refresh tokens stay encrypted in oo-api; the local client keeps only
+connection metadata and obtains short-lived access tokens on demand.
+
 ## Methods
 
 ### Reading Events
