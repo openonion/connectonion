@@ -260,6 +260,8 @@ Skills are copied to `.co/skills/<name>/` and auto-discovered by the skills plug
 
 | Name | Description |
 |------|-------------|
+| co-browser | Drive one persistent, logged-in browser from the shell — solo or multi-agent |
+| install-connectonion | Install ConnectOnion and configure everything — package, project, keys, verified end to end |
 | ship-feature | Ship a feature end-to-end — update tests, docs, docs-site, then release to PyPI |
 
 ```bash

@@ -192,28 +192,18 @@ class TestCopyCommand:
         assert len(list((cc_dir / "prompts" / "agents").glob("*.md"))) > 0
 
     def test_copy_skill_creates_co_skills_dir(self):
-        """Test copying a skill creates .co/skills/<name>/ directory."""
+        """Test copying every registered skill creates .co/skills/<name>/ with a SKILL.md."""
         from connectonion.cli.main import cli
+        from connectonion.cli.commands.copy_commands import SKILLS
 
-        result = self.runner.invoke(cli, ['copy', 'ship-feature'])
+        for skill_name in SKILLS:
+            result = self.runner.invoke(cli, ['copy', skill_name])
 
-        assert result.exit_code == 0
-        assert "Copied:" in result.output
-        skill_dir = Path(self.test_dir) / ".co" / "skills" / "ship-feature"
-        assert skill_dir.exists()
-        assert (skill_dir / "SKILL.md").exists()
-
-    def test_copy_co_browser_skill(self):
-        """Test copying the co-browser skill creates .co/skills/co-browser/."""
-        from connectonion.cli.main import cli
-
-        result = self.runner.invoke(cli, ['copy', 'co-browser'])
-
-        assert result.exit_code == 0
-        assert "Copied:" in result.output
-        skill_dir = Path(self.test_dir) / ".co" / "skills" / "co-browser"
-        assert skill_dir.exists()
-        assert (skill_dir / "SKILL.md").exists()
+            assert result.exit_code == 0
+            assert "Copied:" in result.output, f"Skill {skill_name} should copy"
+            skill_dir = Path(self.test_dir) / ".co" / "skills" / skill_name
+            assert skill_dir.exists()
+            assert (skill_dir / "SKILL.md").exists()
 
     def test_copy_unknown_item(self):
         """Test copy shows error for unknown item."""
@@ -266,13 +256,14 @@ class TestCopyListOutput:
         assert "prompt" in result.output
 
     def test_list_shows_skills(self):
-        """Test list shows available skills."""
+        """Test list shows every registered skill."""
         from connectonion.cli.main import cli
+        from connectonion.cli.commands.copy_commands import SKILLS
 
         result = self.runner.invoke(cli, ['copy', '--list'])
 
-        assert "ship-feature" in result.output
-        assert "co-browser" in result.output
+        for skill_name in SKILLS:
+            assert skill_name in result.output, f"Skill {skill_name} should be in list"
         assert "skill" in result.output
 
     def test_list_shows_usage_hint(self):

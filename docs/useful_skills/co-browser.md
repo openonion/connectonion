@@ -15,38 +15,23 @@ co copy co-browser
 /co-browser open github and screenshot my notifications
 ```
 
-The skill teaches the agent the full `co browser` lifecycle:
+## What the Skill Teaches
 
-1. **Identity** — set `CO_WHO` so the daemon can attribute tabs
-2. **Solo vs concurrent** — bare commands on `main`, or `tab open` + `-t <name>` when a second agent exists
-3. **Direct functions vs `do`** — deterministic steps are free; natural language costs LLM calls
-4. **Evidence** — screenshot/`get_text` verification, one-shot rule for irreversible actions
-5. **Exit codes** — branch on `0/1/2/3/4` instead of parsing prose
+`co browser`'s errors are self-documenting (an exit-4 tells the agent exactly how
+to open its own tab), but a skill front-loads the lifecycle so the agent gets it
+right on the first command instead of learning from collisions:
 
-## Why a Skill
+1. **Identity** — attach `CO_WHO` to every command (shell state doesn't survive between tool calls)
+2. **The board** — check `status` / `tab ls` before claiming; one task = one tab; `-t <name>` on every command when concurrent
+3. **Right verb** — direct functions for deterministic steps (free, instant), `do "<end state>"` only for judgment, text probes before screenshot probes
+4. **Evidence** — read output text (soft failures return exit 0 with the error on stdout), screenshots at irreversible-action gates only, one-shot submits
+5. **Login** — human logs in in the visible window; the agent polls with short bounded waits and never touches credentials
 
-`co browser` errors are self-documenting (an exit-4 tells the agent exactly how to
-open its own tab), but a skill front-loads the lifecycle so the agent gets it right
-on the first command instead of learning from collisions:
-
-- Sets identity before touching the browser
-- Opens its own tab when the board shows another agent
-- Uses direct functions for deterministic steps, saving `do` for judgment
-- Screenshots before/after irreversible actions and never double-clicks submit
-
-## Key Commands
-
-```bash
-co browser go_to example.com          # navigate (daemon auto-starts, window visible)
-co browser get_text                   # page text
-co browser do "extract the pricing"   # AI agent drives the same live browser
-co browser tab ls                     # who is running what
-co browser status                     # daemon health, headless flag, the board
-co browser close                      # shut everything down
-```
+For the full command reference — tabs, contention, daemon lifecycle, exit codes —
+see [co browser](../co-browser.md); `co browser help` prints the live function list.
 
 ## See Also
 
-- [co browser](../co-browser.md) — full CLI reference (tabs, contention, daemon)
+- [co browser](../co-browser.md) — canonical CLI reference
 - [CLI Browser](../cli/browser.md) — dispatch rules and function discovery
 - [Built-in Skills](README.md) — all copyable skills
