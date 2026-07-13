@@ -203,6 +203,18 @@ class TestCopyCommand:
         assert skill_dir.exists()
         assert (skill_dir / "SKILL.md").exists()
 
+    def test_copy_co_browser_skill(self):
+        """Test copying the co-browser skill creates .co/skills/co-browser/."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ['copy', 'co-browser'])
+
+        assert result.exit_code == 0
+        assert "Copied:" in result.output
+        skill_dir = Path(self.test_dir) / ".co" / "skills" / "co-browser"
+        assert skill_dir.exists()
+        assert (skill_dir / "SKILL.md").exists()
+
     def test_copy_unknown_item(self):
         """Test copy shows error for unknown item."""
         from connectonion.cli.main import cli
@@ -260,6 +272,7 @@ class TestCopyListOutput:
         result = self.runner.invoke(cli, ['copy', '--list'])
 
         assert "ship-feature" in result.output
+        assert "co-browser" in result.output
         assert "skill" in result.output
 
     def test_list_shows_usage_hint(self):

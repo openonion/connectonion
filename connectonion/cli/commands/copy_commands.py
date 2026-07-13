@@ -97,6 +97,7 @@ TRUST = {
 
 # Registry of copyable skills (directories with SKILL.md, copied to .co/skills/)
 SKILLS = {
+    "co-browser": "co-browser",
     "ship-feature": "ship-feature",
 }
 
