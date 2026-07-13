@@ -129,7 +129,7 @@ llm_do("Hello", model="co/claude-haiku-4-5")
 ### Google Models
 ```python
 llm_do("Hello", model="co/gemini-3-pro-preview")
-llm_do("Hello", model="co/gemini-3-flash-preview")
+llm_do("Hello", model="co/gemini-3.5-flash")
 llm_do("Hello", model="co/gemini-2.5-pro")
 ```
 

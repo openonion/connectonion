@@ -87,7 +87,7 @@ def _get_api_key(model: str) -> str:
 def transcribe(
     audio: str,
     prompt: Optional[str] = None,
-    model: str = "co/gemini-3-flash-preview",
+    model: str = "co/gemini-3.5-flash",
     timestamps: bool = False,
 ) -> str:
     """
@@ -97,7 +97,7 @@ def transcribe(
         audio: Path to audio file (WAV, MP3, AIFF, AAC, OGG, FLAC)
         prompt: Optional context hints for better accuracy
                 (e.g., "Technical AI discussion, speakers: Aaron, Lisa")
-        model: Model to use (default: co/gemini-3-flash-preview)
+        model: Model to use (default: co/gemini-3.5-flash)
         timestamps: If True, include timestamps in output
 
     Returns:
