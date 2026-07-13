@@ -120,7 +120,7 @@ parsing prose:
 |------|---------|
 | `0`  | success |
 | `1`  | the action failed (e.g. selector not found) |
-| `2`  | usage error (bad flags, empty `-t`) |
+| `2`  | usage error (bad flags, empty `-t`, `tab` misuse) |
 | `3`  | unknown tab (`-t` names a tab that was never `tab open`ed) |
 | `4`  | tab busy (another agent is mid-task on that tab) |
 
@@ -136,7 +136,20 @@ co browser close                         close the browser and stop the daemon
 co browser help                          list every browser function
 ```
 
-Add `--headless` before the function to run without a visible window.
+## Visible or Headless
+
+**The default is a visible window** — `co browser go_to example.com` opens real
+Chrome on your screen, which is what you want for logging in once or watching an
+agent work. Add `--headless` to run without a window:
+
+```bash
+co browser --headless go_to example.com
+```
+
+The choice is made by whichever command **starts the daemon** and sticks for the
+daemon's lifetime — every later command reuses the same browser regardless of its
+own flags (`co browser status` shows `headless=true/false`). To switch modes,
+`co browser close` and let the next command relaunch.
 
 ## Best Practices
 
@@ -156,9 +169,16 @@ Add `--headless` before the function to run without a visible window.
 
 A small **daemon** owns the one browser and listens on a Unix socket; each
 `co browser …` invocation is a short-lived client that sends one request and prints
-the reply. The daemon serializes commands, tracks per-tab ownership, and keeps the
-browser alive between commands. It starts automatically on first use and exits when
-you `close` it (or when the browser is no longer usable).
+the reply. Every terminal on the machine talks to the **same** daemon — there is
+one browser, one board, no matter where you type. The daemon serializes commands,
+tracks per-tab ownership, and keeps the browser alive between commands. It starts
+automatically on first use and exits when you `close` it (or when the browser is
+no longer usable).
+
+The daemon records its pid next to the socket, so a daemon that is merely **busy**
+(a long `do` holding the single-threaded loop) is never mistaken for a dead one:
+clients wait up to ~15s for it to come free and then say so ("daemon is busy"),
+instead of spawning a rival daemon over a live browser.
 
 ## See Also
 
