@@ -1,28 +1,35 @@
 """
 Purpose: Authenticate with OpenOnion backend using Ed25519 signature-based authentication to obtain JWT for managed keys
 LLM-Note:
-  Dependencies: imports from [sys, time, yaml, requests, pathlib, rich.console, rich.progress, rich.panel, address] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | calls backend at [https://api.openonion.ai/api/auth/login] | tested by [tests/e2e/cli/test_cli_auth.py]
-  Data flow: receives co_dir: Path from caller → address.load(co_dir) reads Ed25519 keypair from .co/keys/ → creates auth message with timestamp → address.sign() creates signature → POST to /api/auth/login with {public_key, message, signature, timestamp} → backend verifies signature → receives JWT token → saves to ~/.co/keys.env as OPENONION_API_KEY → optionally saves to project .env if save_to_project=True → displays balance and email status → returns success bool
+  Dependencies: imports from [sys, time, requests, webbrowser, pathlib, rich, address, cli.oauth_loopback] | imported by [cli/main.py via handle_auth(), cli/commands/init.py, cli/commands/create.py] | tested by [tests/e2e/cli/test_cli_auth.py, tests/e2e/cli/test_cli_auth_microsoft.py, tests/unit/test_oauth_loopback.py]
+  Data flow: OpenOnion auth signs a challenge and stores its API key | Microsoft auth binds 127.0.0.1 before POST /microsoft/init → browser code returns through the local listener → authenticated POST /microsoft/complete → only connected/scopes/email metadata is persisted
   State/Effects: modifies ~/.co/keys.env (adds/updates OPENONION_API_KEY and AGENT_EMAIL) | optionally modifies project .env if save_to_project=True | makes network POST request to api.openonion.ai | chmod 0o600 on .env files (Unix/Mac) | writes to stdout via rich.Console with progress spinner | updates ~/.co/keys.env with IS_EMAIL_ACTIVE
   Integration: exposes handle_auth() for CLI and authenticate(co_dir, save_to_project) for programmatic use | called by init.py and create.py during project setup | relies on address module for Ed25519 keypair operations | uses requests for HTTP calls | displays Rich progress spinner during network call | backend creates account on first auth (no separate registration)
-  Performance: network call to backend (2-5s) | signature generation is fast (<10ms) | file I/O for .env and keys.env | retries on network errors (up to 3 attempts with exponential backoff)
+  Performance: network calls to backend (2-5s) | Microsoft listener waits up to five minutes and uses correlated status only to recover a lost completion response | signature generation and local file I/O are small
   Errors: fails if ~/.co/keys/ missing (no keypair) | fails if backend unreachable (network error) | fails if signature invalid (backend 401) | fails if timestamp expired (5min window) | prints error messages to console and returns False | backend 500 errors bubble up with error details
 """
 
+import json
+import os
 import sys
 import time
-import requests
-from requests import RequestException
-import json
 import webbrowser
-import os
 from pathlib import Path
-from rich.console import Console
-from rich.progress import Progress, SpinnerColumn, TextColumn
-from rich.panel import Panel
+from urllib.parse import urlsplit
+
+import requests
 from dotenv import load_dotenv
+from requests import RequestException
+from rich.console import Console
+from rich.panel import Panel
+from rich.progress import Progress, SpinnerColumn, TextColumn
 
 from ... import address
+from ..oauth_loopback import (
+    MicrosoftOAuthLoopback,
+    OAuthLoopbackTimeout,
+    is_valid_microsoft_authorization_id,
+)
 from .project_cmd_lib import load_api_key, upsert_env
 
 console = Console()
@@ -282,6 +289,48 @@ def _save_microsoft_to_env(env_file: Path, connection: dict) -> None:
     upsert_env(env_file, values, strip_prefix="MICROSOFT_")
 
 
+def _is_valid_microsoft_connection(value: object) -> bool:
+    """Validate metadata returned after a Microsoft authorization."""
+    if not isinstance(value, dict):
+        return False
+    scopes = value.get("scopes")
+    email = value.get("email")
+    return (
+        value.get("connected") is True
+        and isinstance(scopes, str)
+        and bool(scopes.strip())
+        and (email is None or isinstance(email, str))
+    )
+
+
+def _recover_microsoft_connection(
+    api_url: str,
+    headers: dict,
+    authorization_id: str,
+) -> dict | None:
+    """Recover a completion whose HTTP response may have been lost."""
+    for attempt in range(5):
+        try:
+            response = requests.get(
+                f"{api_url}/microsoft/status",
+                headers=headers,
+                params={"authorization_id": authorization_id},
+                timeout=5,
+            )
+        except RequestException:
+            response = None
+        if response is not None and response.status_code == 200:
+            try:
+                status = response.json()
+            except ValueError:
+                status = None
+            if _is_valid_microsoft_connection(status):
+                return status
+        if attempt < 4:
+            time.sleep(0.5)
+    return None
+
+
 def handle_microsoft_auth():
     """Authenticate with Microsoft OAuth for Outlook/Calendar access."""
 
@@ -297,71 +346,139 @@ def handle_microsoft_auth():
     api_url = f"{backend_url.rstrip('/')}/api/v1/oauth"
     headers = {"Authorization": f"Bearer {api_key}"}
 
-    # Get OAuth URL
     console.print("🔑 Initializing Microsoft OAuth...", style="cyan")
 
     try:
-        response = requests.get(
-            f"{api_url}/microsoft/init", headers=headers, timeout=15
-        )
-    except RequestException:
-        console.print("\n❌ Microsoft OAuth service is unavailable", style="red")
-        return
-    if response.status_code != 200:
-        console.print(f"\n❌ Failed to initialize OAuth: {response.text}", style="red")
-        return
-
-    try:
-        init = response.json()
-    except ValueError:
-        init = {}
-    auth_url = init.get('auth_url')
-    authorization_id = init.get('authorization_id')
-    if not auth_url or not authorization_id:
-        console.print("\n❌ Microsoft OAuth initialization response is invalid", style="red")
-        return
-
-    # Open browser
-    console.print("\n🌐 Opening browser for Microsoft authentication...")
-    console.print(f"    URL: {auth_url}\n", style="dim")
-
-    webbrowser.open(auth_url)
-
-    # Poll for completion
-    console.print("⏳ Waiting for authorization...", style="yellow")
-    console.print("   (Complete the authorization in your browser)\n", style="dim")
-
-    max_attempts = 60  # 5 minutes (5 second intervals)
-    connection = None
-    for _ in range(max_attempts):
-        time.sleep(5)
-
-        try:
-            status_response = requests.get(
-                f"{api_url}/microsoft/status",
-                headers=headers,
-                params={"authorization_id": authorization_id},
-                timeout=15,
-            )
-        except RequestException:
-            continue
-        if status_response.status_code == 200:
+        with MicrosoftOAuthLoopback() as loopback:
             try:
-                status = status_response.json()
+                response = requests.post(
+                    f"{api_url}/microsoft/init",
+                    headers=headers,
+                    json={"completion_redirect_uri": loopback.callback_uri},
+                    timeout=15,
+                )
+            except RequestException:
+                console.print(
+                    "\n❌ Microsoft OAuth service is unavailable",
+                    style="red",
+                )
+                return
+            if response.status_code != 200:
+                console.print(
+                    f"\n❌ Failed to initialize OAuth: {response.text}",
+                    style="red",
+                )
+                return
+
+            try:
+                init = response.json()
             except ValueError:
-                continue
-            if status.get('connected'):
-                connection = status
-                console.print("✓ Authorization successful!", style="green")
-                break
-    else:
+                init = {}
+            auth_url = init.get("auth_url")
+            authorization_id = init.get("authorization_id")
+            try:
+                parsed_auth_url = (
+                    urlsplit(auth_url) if isinstance(auth_url, str) else None
+                )
+            except ValueError:
+                parsed_auth_url = None
+            if (
+                parsed_auth_url is None
+                or parsed_auth_url.scheme != "https"
+                or parsed_auth_url.netloc != "login.microsoftonline.com"
+                or not parsed_auth_url.path.endswith("/oauth2/v2.0/authorize")
+                or not is_valid_microsoft_authorization_id(authorization_id)
+            ):
+                console.print(
+                    "\n❌ Microsoft OAuth initialization response is invalid",
+                    style="red",
+                )
+                return
+
+            console.print("\n🌐 Opening browser for Microsoft authentication...")
+            try:
+                browser_opened = webbrowser.open(auth_url)
+            except (webbrowser.Error, OSError):
+                browser_opened = False
+            if not browser_opened:
+                console.print(
+                    "   Open this URL in a browser on this same computer:",
+                    style="yellow",
+                )
+                console.print(f"   {auth_url}\n", style="dim")
+
+            console.print("⏳ Waiting for authorization...", style="yellow")
+            console.print(
+                "   (Complete the authorization in your browser)\n",
+                style="dim",
+            )
+            result = loopback.wait_for_result(authorization_id)
+            if result.error or not result.code:
+                console.print(
+                    "\n❌ Microsoft authorization was cancelled or denied",
+                    style="red",
+                )
+                return
+
+            completion_response = None
+            try:
+                completion_response = requests.post(
+                    f"{api_url}/microsoft/complete",
+                    headers=headers,
+                    json={
+                        "authorization_id": authorization_id,
+                        "code": result.code,
+                    },
+                    timeout=15,
+                )
+            except RequestException:
+                # The API may have committed the connection before the response
+                # was lost. The correlated status endpoint is safe recovery.
+                pass
+
+            connection = None
+            should_recover = completion_response is None
+            if (
+                completion_response is not None
+                and completion_response.status_code == 200
+            ):
+                try:
+                    candidate = completion_response.json()
+                except ValueError:
+                    candidate = None
+                if _is_valid_microsoft_connection(candidate):
+                    connection = candidate
+                else:
+                    should_recover = True
+
+            if connection is None and should_recover:
+                connection = _recover_microsoft_connection(
+                    api_url,
+                    headers,
+                    authorization_id,
+                )
+            if connection is None:
+                console.print(
+                    "\n❌ Microsoft authorization could not be completed",
+                    style="red",
+                )
+                console.print(
+                    "Your existing connection was not changed. "
+                    "Please try again with: [bold]co auth microsoft[/bold]\n"
+                )
+                return
+    except OAuthLoopbackTimeout:
         console.print("\n❌ Authorization timed out", style="red")
         console.print("Please try again with: [bold]co auth microsoft[/bold]\n")
         return
-
-    if not connection.get("scopes"):
-        console.print("\n❌ Microsoft connection metadata is incomplete", style="red")
+    except OSError:
+        console.print(
+            "\n❌ Could not start the local Microsoft authorization listener",
+            style="red",
+        )
         return
+
+    console.print("✓ Authorization successful!", style="green")
 
     console.print("\n💾 Saving connection...", style="cyan")
 

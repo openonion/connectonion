@@ -55,7 +55,8 @@ class Outlook:
 
     GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
     ACCESS_TOKEN_REFRESH_BUFFER_SECONDS = 5 * 60
-    MAX_ACCESS_TOKEN_LIFETIME_SECONDS = 24 * 60 * 60
+    # Microsoft CAE access tokens can legitimately last 20-28 hours.
+    MAX_ACCESS_TOKEN_LIFETIME_SECONDS = 48 * 60 * 60
 
     def __init__(self):
         """Initialize Outlook tool.

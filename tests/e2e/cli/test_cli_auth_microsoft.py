@@ -22,12 +22,14 @@ Components under test:
 - connectonion.cli.commands.auth_commands._save_microsoft_to_env
 """
 
-import os
 import tempfile
 from pathlib import Path
-import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
+import pytest
+from requests import RequestException
+
+from connectonion.cli.oauth_loopback import OAuthLoopbackTimeout
 from .argparse_runner import ArgparseCliRunner
 
 
@@ -72,6 +74,28 @@ class TestAuthMicrosoftHelp:
 class TestSaveMicrosoftToEnv:
     """Test the _save_microsoft_to_env helper function."""
 
+    def test_connection_metadata_requires_strict_contract(self):
+        from connectonion.cli.commands.auth_commands import (
+            _is_valid_microsoft_connection,
+        )
+
+        assert _is_valid_microsoft_connection(
+            {
+                'connected': True,
+                'scopes': 'Mail.ReadWrite,Mail.Send,Calendars.ReadWrite',
+                'email': 'test@outlook.com',
+            }
+        )
+        assert not _is_valid_microsoft_connection(
+            {'connected': 'true', 'scopes': 'Mail.ReadWrite'}
+        )
+        assert not _is_valid_microsoft_connection(
+            {'connected': True, 'scopes': ''}
+        )
+        assert not _is_valid_microsoft_connection(
+            {'connected': True, 'scopes': ['Mail.ReadWrite']}
+        )
+
     def test_save_microsoft_connection_to_new_env(self):
         """Save only connection metadata, never Microsoft bearer tokens."""
         from connectonion.cli.commands.auth_commands import _save_microsoft_to_env
@@ -80,7 +104,7 @@ class TestSaveMicrosoftToEnv:
             env_file = Path(tmpdir) / '.env'
 
             connection = {
-                'scopes': 'Mail.Read,Mail.Send,Calendars.Read',
+                'scopes': 'Mail.ReadWrite,Mail.Send,Calendars.ReadWrite',
                 'email': 'test@outlook.com',
             }
 
@@ -90,7 +114,10 @@ class TestSaveMicrosoftToEnv:
 
             content = env_file.read_text()
             assert 'MICROSOFT_CONNECTED=true' in content
-            assert 'MICROSOFT_SCOPES=Mail.Read,Mail.Send,Calendars.Read' in content
+            assert (
+                'MICROSOFT_SCOPES=Mail.ReadWrite,Mail.Send,Calendars.ReadWrite'
+                in content
+            )
             assert 'MICROSOFT_EMAIL=test@outlook.com' in content
             assert 'TOKEN' not in content
 
@@ -156,101 +183,297 @@ class TestAuthMicrosoftFlow:
         """Setup test environment."""
         self.runner = ArgparseCliRunner()
 
+    @patch('connectonion.cli.commands.auth_commands.MicrosoftOAuthLoopback')
     @patch('connectonion.cli.commands.auth_commands.webbrowser')
     @patch('connectonion.cli.commands.auth_commands.requests')
     def test_auth_microsoft_success_flow(
-        self, mock_requests, mock_webbrowser, isolated_home
+        self, mock_requests, mock_webbrowser, mock_loopback, isolated_home
     ):
-        """Test successful Microsoft OAuth flow."""
+        """Bind loopback, initialize, complete, and persist metadata only."""
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
+
+            listener = mock_loopback.return_value.__enter__.return_value
+            listener.callback_uri = (
+                'http://127.0.0.1:49152/oauth/microsoft/callback'
+            )
+            listener.wait_for_result.return_value = Mock(
+                code='one-use-code',
+                error=None,
+            )
 
             mock_init_response = Mock()
             mock_init_response.status_code = 200
             mock_init_response.json.return_value = {
                 'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?...',
-                'authorization_id': 'authorization-id',
+                'authorization_id': 'a' * 43,
             }
 
-            mock_status_response = Mock()
-            mock_status_response.status_code = 200
-            mock_status_response.json.return_value = {
+            mock_complete_response = Mock()
+            mock_complete_response.status_code = 200
+            mock_complete_response.json.return_value = {
                 'connected': True,
-                'scopes': 'Mail.Read,Mail.Send,Calendars.Read,Calendars.ReadWrite',
+                'scopes': 'Mail.ReadWrite,Mail.Send,Calendars.ReadWrite',
                 'email': 'test@outlook.com',
             }
-
-            mock_requests.get.side_effect = [
+            mock_requests.post.side_effect = [
                 mock_init_response,
-                mock_status_response,
+                mock_complete_response,
             ]
-
             mock_webbrowser.open.return_value = True
 
-            with patch('time.sleep', return_value=None):
-                from connectonion.cli.main import cli
-                result = self.runner.invoke(cli, ['auth', 'microsoft'])
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
             mock_requests.delete.assert_not_called()
             mock_webbrowser.open.assert_called_once()
-            status_call = mock_requests.get.call_args_list[1]
-            assert status_call.kwargs["params"] == {
-                "authorization_id": "authorization-id"
+            listener.wait_for_result.assert_called_once_with('a' * 43)
+            init_call, complete_call = mock_requests.post.call_args_list
+            assert init_call.args[0].endswith('/microsoft/init')
+            assert init_call.kwargs['json'] == {
+                'completion_redirect_uri': listener.callback_uri
             }
+            assert complete_call.args[0].endswith('/microsoft/complete')
+            assert complete_call.kwargs['json'] == {
+                'authorization_id': 'a' * 43,
+                'code': 'one-use-code',
+            }
+            mock_requests.get.assert_not_called()
 
             env_content = Path('.env').read_text()
             assert 'MICROSOFT_CONNECTED=true' in env_content
             assert 'MICROSOFT_EMAIL=test@outlook.com' in env_content
             assert 'MICROSOFT_ACCESS_TOKEN' not in env_content
             assert 'MICROSOFT_REFRESH_TOKEN' not in env_content
-            assert all('/credentials' not in call.args[0] for call in mock_requests.get.call_args_list)
+            assert '/credentials' not in str(mock_requests.mock_calls)
+            assert 'one-use-code' not in result.output
 
             global_content = (isolated_home / '.co' / 'keys.env').read_text()
             assert 'MICROSOFT_CONNECTED=true' in global_content
             assert 'MICROSOFT_ACCESS_TOKEN' not in global_content
             assert 'MICROSOFT_REFRESH_TOKEN' not in global_content
 
+    @patch('connectonion.cli.commands.auth_commands.MicrosoftOAuthLoopback')
     @patch('connectonion.cli.commands.auth_commands.requests')
-    def test_auth_microsoft_init_failure(self, mock_requests):
+    def test_auth_microsoft_init_failure(self, mock_requests, mock_loopback):
         """Test handling of OAuth init failure."""
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
 
+            listener = mock_loopback.return_value.__enter__.return_value
+            listener.callback_uri = (
+                'http://127.0.0.1:49152/oauth/microsoft/callback'
+            )
+
             mock_response = Mock()
             mock_response.status_code = 500
             mock_response.text = 'Internal Server Error'
-            mock_requests.get.return_value = mock_response
+            mock_requests.post.return_value = mock_response
 
             from connectonion.cli.main import cli
             result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
             assert 'Failed to initialize OAuth' in result.output or result.exit_code != 0
+            mock_requests.get.assert_not_called()
 
+    @patch('connectonion.cli.commands.auth_commands.MicrosoftOAuthLoopback')
     @patch('connectonion.cli.commands.auth_commands.webbrowser')
     @patch('connectonion.cli.commands.auth_commands.requests')
-    @patch('time.sleep')
-    def test_auth_microsoft_timeout(self, mock_sleep, mock_requests, mock_webbrowser):
+    def test_auth_microsoft_rejects_non_microsoft_authorization_url(
+        self,
+        mock_requests,
+        mock_webbrowser,
+        mock_loopback,
+    ):
+        with self.runner.isolated_filesystem():
+            Path('.env').write_text('OPENONION_API_KEY=test-key\n')
+            listener = mock_loopback.return_value.__enter__.return_value
+            listener.callback_uri = (
+                'http://127.0.0.1:49152/oauth/microsoft/callback'
+            )
+            response = Mock(status_code=200)
+            response.json.return_value = {
+                'auth_url': 'https://login.microsoftonline.com.evil/authorize',
+                'authorization_id': 'a' * 43,
+            }
+            mock_requests.post.return_value = response
+
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['auth', 'microsoft'])
+
+            assert 'initialization response is invalid' in result.output
+            mock_webbrowser.open.assert_not_called()
+            listener.wait_for_result.assert_not_called()
+
+    @patch('connectonion.cli.commands.auth_commands.MicrosoftOAuthLoopback')
+    @patch('connectonion.cli.commands.auth_commands.webbrowser')
+    @patch('connectonion.cli.commands.auth_commands.requests')
+    def test_auth_microsoft_timeout(
+        self,
+        mock_requests,
+        mock_webbrowser,
+        mock_loopback,
+    ):
         """Test handling of authorization timeout."""
         with self.runner.isolated_filesystem():
             Path('.env').write_text('OPENONION_API_KEY=test-key\n')
+
+            listener = mock_loopback.return_value.__enter__.return_value
+            listener.callback_uri = (
+                'http://127.0.0.1:49152/oauth/microsoft/callback'
+            )
+            listener.wait_for_result.side_effect = OAuthLoopbackTimeout()
 
             mock_init_response = Mock()
             mock_init_response.status_code = 200
             mock_init_response.json.return_value = {
                 'auth_url': 'https://login.microsoftonline.com/common/oauth2/v2.0/authorize?...',
-                'authorization_id': 'authorization-id',
+                'authorization_id': 'a' * 43,
             }
-
-            mock_status_response = Mock()
-            mock_status_response.status_code = 200
-            mock_status_response.json.return_value = {'connected': False}
-
-            mock_requests.get.side_effect = [
-                mock_init_response,
-                *[mock_status_response] * 60
-            ]
+            mock_requests.post.return_value = mock_init_response
+            mock_webbrowser.open.return_value = True
 
             from connectonion.cli.main import cli
             result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
             assert 'timed out' in result.output.lower() or result.exit_code != 0
+            assert mock_requests.post.call_count == 1
+            mock_requests.get.assert_not_called()
+
+    @patch('connectonion.cli.commands.auth_commands.MicrosoftOAuthLoopback')
+    @patch('connectonion.cli.commands.auth_commands.webbrowser')
+    @patch('connectonion.cli.commands.auth_commands.requests')
+    def test_auth_microsoft_definitive_completion_failure_does_not_poll(
+        self,
+        mock_requests,
+        mock_webbrowser,
+        mock_loopback,
+    ):
+        """A definitive API failure is not treated as a lost response."""
+        with self.runner.isolated_filesystem():
+            Path('.env').write_text(
+                'OPENONION_API_KEY=test-key\n'
+                'MICROSOFT_CONNECTED=true\n'
+                'MICROSOFT_EMAIL=existing@outlook.com\n'
+            )
+            listener = mock_loopback.return_value.__enter__.return_value
+            listener.callback_uri = (
+                'http://127.0.0.1:49152/oauth/microsoft/callback'
+            )
+            listener.wait_for_result.return_value = Mock(
+                code='one-use-code',
+                error=None,
+            )
+
+            init_response = Mock(status_code=200)
+            init_response.json.return_value = {
+                'auth_url': (
+                    'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
+                ),
+                'authorization_id': 'a' * 43,
+            }
+            completion_response = Mock(status_code=409)
+            mock_requests.post.side_effect = [
+                init_response,
+                completion_response,
+            ]
+            mock_webbrowser.open.return_value = True
+
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['auth', 'microsoft'])
+
+            assert 'could not be completed' in result.output
+            mock_requests.get.assert_not_called()
+            assert 'MICROSOFT_EMAIL=existing@outlook.com' in Path('.env').read_text()
+
+    @patch('connectonion.cli.commands.auth_commands.MicrosoftOAuthLoopback')
+    @patch('connectonion.cli.commands.auth_commands.webbrowser')
+    @patch('connectonion.cli.commands.auth_commands.requests')
+    def test_auth_microsoft_recovers_lost_completion_response(
+        self,
+        mock_requests,
+        mock_webbrowser,
+        mock_loopback,
+    ):
+        """A correlated status read recovers a committed but lost response."""
+        with self.runner.isolated_filesystem():
+            Path('.env').write_text('OPENONION_API_KEY=test-key\n')
+            listener = mock_loopback.return_value.__enter__.return_value
+            listener.callback_uri = (
+                'http://127.0.0.1:49152/oauth/microsoft/callback'
+            )
+            listener.wait_for_result.return_value = Mock(
+                code='one-use-code',
+                error=None,
+            )
+
+            init_response = Mock(status_code=200)
+            init_response.json.return_value = {
+                'auth_url': (
+                    'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
+                ),
+                'authorization_id': 'a' * 43,
+            }
+            mock_requests.post.side_effect = [
+                init_response,
+                RequestException('response lost'),
+            ]
+            status_response = Mock(status_code=200)
+            status_response.json.return_value = {
+                'connected': True,
+                'scopes': 'Mail.ReadWrite,Mail.Send,Calendars.ReadWrite',
+                'email': 'recovered@outlook.com',
+            }
+            mock_requests.get.return_value = status_response
+            mock_webbrowser.open.return_value = True
+
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['auth', 'microsoft'])
+
+            assert 'Microsoft account connected' in result.output
+            status_call = mock_requests.get.call_args
+            assert status_call.kwargs['params'] == {
+                'authorization_id': 'a' * 43
+            }
+            assert 'MICROSOFT_EMAIL=recovered@outlook.com' in Path('.env').read_text()
+
+    @patch('connectonion.cli.commands.auth_commands.MicrosoftOAuthLoopback')
+    @patch('connectonion.cli.commands.auth_commands.webbrowser')
+    @patch('connectonion.cli.commands.auth_commands.requests')
+    def test_auth_microsoft_cancel_keeps_existing_metadata(
+        self,
+        mock_requests,
+        mock_webbrowser,
+        mock_loopback,
+    ):
+        """A denied consent never completes or erases the working connection."""
+        with self.runner.isolated_filesystem():
+            Path('.env').write_text(
+                'OPENONION_API_KEY=test-key\n'
+                'MICROSOFT_CONNECTED=true\n'
+                'MICROSOFT_EMAIL=existing@outlook.com\n'
+            )
+            listener = mock_loopback.return_value.__enter__.return_value
+            listener.callback_uri = (
+                'http://127.0.0.1:49152/oauth/microsoft/callback'
+            )
+            listener.wait_for_result.return_value = Mock(
+                code=None,
+                error='authorization_failed',
+            )
+            init_response = Mock(status_code=200)
+            init_response.json.return_value = {
+                'auth_url': (
+                    'https://login.microsoftonline.com/common/oauth2/v2.0/authorize'
+                ),
+                'authorization_id': 'a' * 43,
+            }
+            mock_requests.post.return_value = init_response
+            mock_webbrowser.open.return_value = True
+
+            from connectonion.cli.main import cli
+            result = self.runner.invoke(cli, ['auth', 'microsoft'])
+
+            assert 'cancelled or denied' in result.output
+            assert mock_requests.post.call_count == 1
+            assert 'MICROSOFT_EMAIL=existing@outlook.com' in Path('.env').read_text()

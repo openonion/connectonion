@@ -94,6 +94,47 @@ class TestMicrosoftCalendarTokenManagement:
 
     @pytest.mark.token_fetch
     @patch('connectonion.useful_tools.microsoft_calendar.httpx')
+    def test_cae_28_hour_access_token_is_accepted(self, mock_httpx):
+        """Microsoft documents 20-28 hour CAE access-token lifetimes."""
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "access_token": "cae-access",
+            "expires_in": 28 * 60 * 60,
+        }
+        mock_httpx.post.return_value = response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Calendars.ReadWrite",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False), patch(
+            "connectonion.useful_tools.microsoft_calendar.time.monotonic",
+            return_value=1000,
+        ):
+            from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+            calendar = MicrosoftCalendar()
+            assert calendar._get_access_token() == "cae-access"
+            assert calendar._access_token_refresh_at == 1000 + 28 * 60 * 60 - 300
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.microsoft_calendar.httpx')
+    def test_implausible_access_token_lifetime_is_rejected(self, mock_httpx):
+        response = MagicMock(status_code=200)
+        response.json.return_value = {
+            "access_token": "bad-access",
+            "expires_in": 48 * 60 * 60 + 1,
+        }
+        mock_httpx.post.return_value = response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Calendars.ReadWrite",
+            "OPENONION_API_KEY": "api-key",
+        }, clear=False):
+            from connectonion.useful_tools.microsoft_calendar import MicrosoftCalendar
+            with pytest.raises(ValueError, match="invalid Microsoft token response"):
+                MicrosoftCalendar()._get_access_token()
+
+    @pytest.mark.token_fetch
+    @patch('connectonion.useful_tools.microsoft_calendar.httpx')
     def test_access_token_is_refetched_five_minutes_before_expiry(self, mock_httpx):
         first = MagicMock(status_code=200)
         first.json.return_value = {

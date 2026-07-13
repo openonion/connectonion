@@ -18,7 +18,7 @@ The project `.env` contains metadata, not Microsoft bearer tokens:
 
 ```bash
 MICROSOFT_CONNECTED=true
-MICROSOFT_SCOPES=Mail.ReadWrite,Mail.Send,Calendars.Read,Calendars.ReadWrite
+MICROSOFT_SCOPES=Mail.ReadWrite,Mail.Send,Calendars.ReadWrite
 MICROSOFT_EMAIL=you@example.com
 ```
 
@@ -32,8 +32,8 @@ long-lived credential and is managed by oo-api.
 ## Token refresh behavior
 
 - Microsoft controls the access-token lifetime and reports it in the token
-  response. It is commonly around 60–90 minutes, but the client does not assume
-  a fixed one-hour lifetime.
+  response. It is commonly around 60–90 minutes; CAE tokens can last 20–28
+  hours. The client does not assume a fixed lifetime.
 - oo-api returns the cached access token while it has more than five minutes
   remaining.
 - At five minutes or less, oo-api uses its encrypted refresh token and stores
@@ -46,6 +46,11 @@ long-lived credential and is managed by oo-api.
 There is no periodic “refresh the refresh token” timer. The refresh token is
 used only when a new access token is required.
 
+Microsoft documents a 90-day default refresh-token lifetime for this web flow,
+but the token can be revoked earlier. Active use normally rotates it whenever a
+new access token is needed; after extended inactivity or a policy/revocation
+event, run `co auth microsoft` again.
+
 ## Permissions
 
 The integration requests delegated Microsoft Graph permissions:
@@ -54,8 +59,7 @@ The integration requests delegated Microsoft Graph permissions:
 | --- | --- |
 | `Mail.ReadWrite` | Read, update, move, and archive mailbox messages |
 | `Mail.Send` | Send messages |
-| `Calendars.Read` | Read calendar events |
-| `Calendars.ReadWrite` | Create, update, and delete events |
+| `Calendars.ReadWrite` | Read, create, update, and delete events |
 | `User.Read` | Show which Microsoft account is connected |
 | `offline_access` | Let oo-api renew access without repeated sign-in |
 
@@ -98,17 +102,26 @@ Useful methods include `list_events`, `get_today_events`, `get_event`,
 
 ## How the authorization flow works
 
-1. The CLI authenticates to oo-api with `OPENONION_API_KEY` and requests a new
-   authorization transaction.
-2. oo-api creates a random, short-lived state value and PKCE verifier.
-3. The CLI opens Microsoft's authorization page and polls the matching status
-   endpoint.
-4. Microsoft's callback is exchanged by oo-api. The access and refresh tokens
-   are encrypted and associated with the OpenOnion account.
-5. The CLI saves only `MICROSOFT_CONNECTED`, scopes, and optional email.
+1. The CLI first binds a random local port on `127.0.0.1`, then authenticates to
+   oo-api and starts a short-lived authorization transaction.
+2. oo-api creates random state and PKCE values. Microsoft still returns to the
+   registered HTTPS oo-api callback; the local URI is never registered with
+   Microsoft and never receives a token.
+3. After consent, the HTTPS callback validates state, stores only a hash of the
+   one-use authorization code, and redirects that code to the initiating CLI's
+   loopback listener. It does not exchange or activate Microsoft tokens.
+4. The CLI constant-time checks the returned authorization ID and submits the
+   code to oo-api with `OPENONION_API_KEY`.
+5. oo-api exchanges the code, encrypts the access/refresh pair, and replaces the
+   existing connection atomically. The CLI saves only connected status, scopes,
+   and optional email.
 
 Starting another flow does not delete a working connection. The connection is
 replaced only after a new authorization succeeds.
+
+The browser must run on the same computer as the CLI. A browser on another
+machine cannot reach the CLI's `127.0.0.1` listener; this is intentional account
+binding, not a network configuration to bypass.
 
 ## Troubleshooting
 
@@ -145,6 +158,12 @@ yet available.
 - Reauthenticate only when prompted; periodic manual refresh-token rotation is
   unnecessary.
 - Revoke the Microsoft grant when the integration is no longer needed.
+
+Microsoft references:
+
+- [Access-token lifetime](https://learn.microsoft.com/en-us/entra/identity-platform/access-tokens#token-lifetime)
+- [Refresh-token lifetime and rotation](https://learn.microsoft.com/en-us/entra/identity-platform/refresh-tokens)
+- [Cache-first token acquisition](https://learn.microsoft.com/en-us/entra/identity-platform/msal-acquire-cache-tokens)
 
 ## Related
 
