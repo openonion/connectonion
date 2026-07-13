@@ -57,7 +57,7 @@ class TestTranscribeUnit:
         # Clear all relevant env vars
         with patch.dict("os.environ", {}, clear=True):
             with pytest.raises(ValueError, match="Gemini API key required"):
-                transcribe(str(TEST_AUDIO), model="gemini-3-flash-preview")
+                transcribe(str(TEST_AUDIO), model="gemini-3.5-flash")
 
     def test_transcribe_calls_gemini(self):
         """Test that transcribe calls Gemini API for non-co models."""
@@ -82,7 +82,7 @@ class TestTranscribeUnit:
             mock_openai.return_value = mock_client
 
             with patch.dict("os.environ", {"GEMINI_API_KEY": "test-key"}):
-                result = transcribe_mod.transcribe(str(TEST_AUDIO), model="gemini-3-flash-preview")
+                result = transcribe_mod.transcribe(str(TEST_AUDIO), model="gemini-3.5-flash")
 
             assert result == "Test transcription"
             mock_client.chat.completions.create.assert_called_once()
@@ -109,7 +109,7 @@ class TestTranscribeUnit:
             mock_post.return_value = mock_response
 
             with patch.dict("os.environ", {"OPENONION_API_KEY": "test-jwt"}):
-                result = transcribe_mod.transcribe(str(TEST_AUDIO), model="co/gemini-3-flash-preview")
+                result = transcribe_mod.transcribe(str(TEST_AUDIO), model="co/gemini-3.5-flash")
 
             assert result == "Test transcription via proxy"
             mock_post.assert_called_once()
@@ -123,7 +123,7 @@ class TestGetApiKey:
         monkeypatch.setenv("OPENONION_API_KEY", "env-token")
 
         from connectonion.transcribe import _get_api_key
-        assert _get_api_key("co/gemini-3-flash-preview") == "env-token"
+        assert _get_api_key("co/gemini-3.5-flash") == "env-token"
 
     def test_co_model_no_env_raises(self, monkeypatch):
         """Test that missing OPENONION_API_KEY raises ValueError."""
@@ -131,4 +131,4 @@ class TestGetApiKey:
 
         from connectonion.transcribe import _get_api_key
         with pytest.raises(ValueError, match="OpenOnion API key required"):
-            _get_api_key("co/gemini-3-flash-preview")
+            _get_api_key("co/gemini-3.5-flash")

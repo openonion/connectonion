@@ -27,7 +27,7 @@ web = WebAutomation(use_chrome_profile=True)
 # ui_stream sends real-time activity events to connected UI clients via WebSocket
 agent = Agent(
     name="browser_agent",
-    model="co/gemini-3-flash-preview",
+    model="co/gemini-3.5-flash",
     system_prompt=Path(__file__).parent / "prompts" / "agent.md",
     tools=web,
     plugins=[image_result_formatter, ui_stream],  # Vision + real-time streaming

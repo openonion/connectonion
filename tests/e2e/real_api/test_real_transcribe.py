@@ -43,7 +43,7 @@ def test_transcribe_gemini_direct(audio_file):
     """Test transcription using Gemini API directly."""
     from connectonion import transcribe
 
-    result = transcribe(audio_file, model="gemini-3-flash-preview")
+    result = transcribe(audio_file, model="gemini-3.5-flash")
 
     assert result is not None
     assert len(result) > 0
@@ -61,7 +61,7 @@ def test_transcribe_openonion_proxy(audio_file):
 
     from connectonion import transcribe
 
-    result = transcribe(audio_file, model="co/gemini-3-flash-preview")
+    result = transcribe(audio_file, model="co/gemini-3.5-flash")
 
     assert result is not None
     assert len(result) > 0
@@ -76,7 +76,7 @@ def test_transcribe_with_prompt(audio_file):
     result = transcribe(
         audio_file,
         prompt="A person at a zoo talking about animals",
-        model="gemini-3-flash-preview"
+        model="gemini-3.5-flash"
     )
 
     assert result is not None
@@ -91,7 +91,7 @@ def test_transcribe_with_timestamps(audio_file):
     result = transcribe(
         audio_file,
         timestamps=True,
-        model="gemini-3-flash-preview"
+        model="gemini-3.5-flash"
     )
 
     assert result is not None

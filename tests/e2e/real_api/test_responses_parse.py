@@ -50,7 +50,7 @@ GEMINI_MODELS = [
     "co/gemini-2.5-pro",
     "co/gemini-2.0-flash",
     "co/gemini-2.0-flash-lite",
-    "co/gemini-3-flash-preview",
+    "co/gemini-3.5-flash",
     "co/gemini-3-pro-preview",
 ]
 

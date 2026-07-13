@@ -56,7 +56,7 @@ GLOBAL_CO_DIR = Path.home() / ".co"
 
 
 def create_coding_agent(
-    model: str = "co/gemini-3-flash-preview",
+    model: str = "co/gemini-3.5-flash",
     max_iterations: int = 100,
     co_dir: Path = Path(".co"),
 ) -> Agent:

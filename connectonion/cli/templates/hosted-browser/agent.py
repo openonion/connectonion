@@ -89,7 +89,7 @@ def create_agent():
             bind_browser_session,     # each session gets its own tab in the shared browser
             reaper.stamp,             # any tool call resets the browser idle clock
         ],
-        model="co/gemini-3-flash-preview",
+        model="co/gemini-3.5-flash",
         max_iterations=200,           # a normal site flow is ~15-20 steps; backstop
     )
 
