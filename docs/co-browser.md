@@ -111,6 +111,14 @@ The daemon needs to know **who** you are to attribute tabs and enforce the guard
   contention protection — so concurrent agents should always set `CO_WHO` or use
   named tabs.
 
+```bash
+export CO_WHO=alice        # once per shell/script — every command now carries it
+co browser go_to example.com
+```
+
+Names may contain any character (spaces, quotes) — identity travels in a
+structured envelope, never spliced into the command line.
+
 ## Exit Codes
 
 `co browser` returns structured exit codes so an orchestrator can branch without
@@ -132,9 +140,45 @@ co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeti
 co browser tab open [NAME] [--who <agent>] [--for "<purpose>"]   register a tab; prints its name
 co browser tab ls [--json]               the board: every tab, who runs it, last command
 co browser tab close <NAME>              release your tab when the task is done
+co browser status                        browser state, stealth-driver health, last command, the board
 co browser close                         close the browser and stop the daemon
 co browser help                          list every browser function
+co browser --headless <function>         run without a visible window (first command decides — see below)
 ```
+
+### Everyday functions
+
+`co browser help` prints the live list; these cover most sessions:
+
+```bash
+co browser go_to https://example.com/login       # navigate (https:// is assumed if omitted)
+co browser get_text                              # the page's visible text
+co browser get_links_from_page                   # every link, one per line
+co browser take_screenshot                       # saves a PNG, prints its path
+co browser click_element_by_selector "#submit"   # deterministic click by CSS selector
+co browser type_text_by_selector "#email" "aaron@example.com"
+co browser save_state auth.json                  # export cookies/localStorage (keep it secret!)
+```
+
+Function arguments follow the shell: positional args in order, options as
+`--flag=value` (e.g. `take_screenshot --full-page=true`). Calling a function with
+the wrong arguments returns its usage line so a script (or agent) can self-correct.
+
+### `do` — natural language
+
+`do` hands the same live browser to an AI agent that sees the page and works out
+the steps itself — clicking, typing, scrolling, reading — until your instruction
+is done:
+
+```bash
+co browser do "log into github with the saved credentials and open my notifications"
+co browser -t scrape do "collect every plan name and monthly price into a list"
+```
+
+Describe the **end state** you want ("download the June invoice PDF"), not the
+steps. `do` costs LLM calls and is slower than direct functions — use functions
+for anything deterministic, `do` for judgment. While a `do` runs, the daemon is
+busy: other commands queue behind it (or exit 4 if they target its tab).
 
 ## Visible or Headless
 
@@ -178,7 +222,33 @@ no longer usable).
 The daemon records its pid next to the socket, so a daemon that is merely **busy**
 (a long `do` holding the single-threaded loop) is never mistaken for a dead one:
 clients wait up to ~15s for it to come free and then say so ("daemon is busy"),
-instead of spawning a rival daemon over a live browser.
+instead of spawning a rival daemon over a live browser. Startup itself is
+race-proof: a kernel lock makes two terminals' simultaneous first commands elect
+exactly one daemon — the loser exits and its command is served by the winner.
+
+## Troubleshooting
+
+- **"Where is my browser window?"** The default is a **visible** window; if
+  `co browser status` says `headless=true`, some earlier command started the
+  daemon with `--headless`. Run `co browser close`, then rerun without the flag.
+- **"tab 'X' is in use by …" (exit 4)** — another agent is mid-task there. Open
+  your own tab (the error shows the three commands). A crashed agent's claim
+  expires on its own in ~2 minutes.
+- **"Chrome failed to start"** — usually running over ssh/cron without a desktop
+  session (start from a logged-in Terminal, or use `--headless`), or a leftover
+  Chrome still holds the profile. The full launch log is in `~/.co/browser.log`.
+- **"daemon is busy" after ~15s** — a long `do` is holding the single-threaded
+  daemon. Wait for it, or find the culprit with `co browser status` once it frees up.
+- **Nuclear option** — kill the daemon and let the next command start fresh
+  (logins survive: they live in the profile, not the daemon):
+
+  ```bash
+  pkill -f connectonion.cli.browser_agent.daemon
+  ```
+
+- **State locations** — profile (cookies/logins): `~/.co/browser_profile/` ·
+  daemon log: `~/.co/browser.log` · socket: `$TMPDIR/co/browser.sock` (plus
+  `.pid`/`.lock` beside it).
 
 ## See Also
 
