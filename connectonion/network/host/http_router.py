@@ -2,7 +2,7 @@
 Purpose: HTTP route handlers for agent hosting endpoints (POST /input, session/admin/health/info)
 LLM-Note:
   Dependencies: imports from [network/host/session/ (Session, SessionStorage, merge_sessions, session_to_chat_items), network/asgi/http (read_body, send_json, send_html, send_text, CORS_HEADERS), network/trust/http_admin] | imported by [network/host/server.py, network/asgi/http.py] | tested by [tests/unit/test_host_routes.py]
-  Data flow: input_handler() receives prompt+session → calls create_agent() factory → merges client+server session via merge_sessions() if stored exists → calls agent.input(prompt, session) → records 'running' shell + final 'done' to SessionStorage → returns {session_id, status, result, duration_ms, session, chat_items, server_newer}
+  Data flow: input_handler() receives prompt+session → calls create_agent() factory → exposes an isolated trusted server-session snapshot to plugins → merges client+server session via merge_sessions() if stored exists → calls agent.input(prompt, session) → records 'running' shell + final 'done' to SessionStorage → returns {session_id, status, result, duration_ms, session, chat_items, server_newer}
   State/Effects: reads/writes SessionStorage via storage.save()/get() | factory creates fresh agent per request (prevents state bleeding) | session records carry TTL expiry
   Integration: exposes input_handler, session_handler, sessions_handler, health_handler, info_handler, admin_logs/sessions/trust/admins handlers | used by server.py and ASGI adapters
   Performance: factory creates fresh agent per request (thread-safe) | SessionStorage TTL auto-cleanup | session continuation via session_id provided by client
@@ -17,6 +17,7 @@ Session ID ownership:
 import json
 import time
 import uuid
+from copy import deepcopy
 from functools import partial
 from pathlib import Path
 from typing import Callable
@@ -46,11 +47,18 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     server_newer = False
 
     stored = storage.get(session_id)
+    trusted_server_session = None
     if stored and stored.session:
+        # Expose an isolated server-owned snapshot to plugins. Plugins decide
+        # which state they own; core never needs plugin-specific restore logic.
+        trusted_server_session = deepcopy(stored.session)
+
         session, server_newer = merge_sessions(
             client_session=session,
             server_session=stored.session
         )
+
+    agent._trusted_server_session = trusted_server_session
 
     record = Session(
         session_id=session_id,

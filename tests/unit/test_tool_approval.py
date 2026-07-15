@@ -25,6 +25,7 @@ from unittest.mock import Mock
 
 from connectonion.useful_plugins.tool_approval import (
     check_approval,
+    load_config_permissions,
     poll_mode_changes,
     poll_interrupt,
     handle_mode_change,
@@ -642,6 +643,25 @@ class TestSessionState:
         # User approvals are tool-level (no 'when' field)
         assert 'when' not in session['permissions']['bash']
         assert session['permissions']['bash']['expires'] == {'type': 'session_end'}
+
+    def test_restores_permissions_from_trusted_server_session(self):
+        """The plugin owns restoring its server-side approval state."""
+        agent = FakeAgent()
+        permission = {
+            'allowed': True,
+            'source': 'user',
+            'reason': 'approved for session',
+            'expires': {'type': 'session_end'},
+        }
+        agent._trusted_server_session = {
+            'permissions': {'bash': permission},
+            'permissions_source': 'template',
+        }
+
+        load_config_permissions(agent)
+
+        assert agent.current_session['permissions']['bash'] == permission
+        assert agent.current_session['permissions_source'] == 'template'
 
 
 class TestPollModeChanges:
