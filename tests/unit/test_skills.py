@@ -25,6 +25,7 @@ skills = skills_module.skills
 # Import pattern matching from tool_approval
 approval_module = importlib.import_module('connectonion.useful_plugins.tool_approval.approval')
 matches_permission_pattern = approval_module.matches_permission_pattern
+_save_session_approval = approval_module._save_session_approval
 
 
 class FakeAgent:
@@ -137,6 +138,37 @@ class TestPermissionGranting:
         assert 'Bash(git status)' not in agent.current_session['permissions']
         # Snapshot should be removed
         assert '_permission_snapshot' not in agent.current_session
+
+    def test_restore_preserves_user_approval_granted_during_skill(self):
+        """Approvals granted after the skill starts must survive cleanup."""
+        agent = FakeAgent()
+
+        _grant_skill_permissions(agent, 'commit', ['Bash(git status)'])
+        _save_session_approval(agent.current_session, 'write')
+
+        _restore_permissions(agent)
+
+        assert agent.current_session['permissions']['write']['source'] == 'user'
+        assert 'Bash(git status)' not in agent.current_session['permissions']
+
+    def test_restore_preserves_newer_approval_for_overwritten_permission(self):
+        """A later user approval wins if a skill overwrote that key."""
+        agent = FakeAgent()
+        agent.current_session['permissions'] = {
+            'bash': {
+                'allowed': True,
+                'source': 'config',
+                'reason': 'configured command access',
+                'expires': {'type': 'never'},
+            }
+        }
+
+        _grant_skill_permissions(agent, 'commit', ['bash'])
+        _save_session_approval(agent.current_session, 'bash')
+
+        _restore_permissions(agent)
+
+        assert agent.current_session['permissions']['bash']['source'] == 'user'
 
 
 class TestPatternMatching:

@@ -277,12 +277,30 @@ def _grant_skill_permissions(agent: 'Agent', skill_name: str, patterns: List[str
 
 
 def _restore_permissions(agent: 'Agent') -> None:
-    """Restore permissions snapshot after skill completes.
+    """Remove skill permissions while preserving changes made during the skill.
 
-    This ensures user approvals are preserved and skill permissions are cleared.
+    The live permissions dictionary can change while a skill is running. In
+    particular, a user can grant a session-scoped approval after the skill has
+    started. Restoring the whole snapshot would erase that approval, so only
+    entries that are still marked as skill permissions are cleaned up.
     """
-    if '_permission_snapshot' in agent.current_session:
-        agent.current_session['permissions'] = agent.current_session.pop('_permission_snapshot')
+    session = agent.current_session
+    snapshot = session.pop('_permission_snapshot', None)
+    if snapshot is None:
+        return
+
+    permissions = session.setdefault('permissions', {})
+    for key in list(permissions):
+        permission = permissions[key]
+        if not isinstance(permission, dict) or permission.get('source') != 'skill':
+            continue
+
+        if key in snapshot:
+            # The skill overwrote a permission that existed before it ran.
+            permissions[key] = snapshot[key]
+        else:
+            # The skill introduced this permission.
+            del permissions[key]
 
 
 # =============================================================================
@@ -347,7 +365,7 @@ def handle_skill_invocation(agent: 'Agent') -> None:
 
 @on_complete
 def cleanup_scope(agent: 'Agent') -> None:
-    """Restore permissions snapshot after turn completes."""
+    """Clean up skill permissions after the turn completes."""
     _restore_permissions(agent)
 
 
