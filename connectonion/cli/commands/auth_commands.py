@@ -250,11 +250,11 @@ def handle_google_auth():
     # Save credentials
     console.print("\n💾 Saving credentials...", style="cyan")
 
-    # Save to global ~/.co/keys.env
+    # Save to global ~/.co/keys.env (always, so every project can use the tokens)
     global_keys_env = Path.home() / ".co" / "keys.env"
-    if global_keys_env.exists():
-        _save_google_to_env(global_keys_env, credentials)
-        console.print(f"   ✓ Saved to {global_keys_env}", style="green")
+    global_keys_env.parent.mkdir(parents=True, exist_ok=True)
+    _save_google_to_env(global_keys_env, credentials)
+    console.print(f"   ✓ Saved to {global_keys_env}", style="green")
 
     # Save to local .env
     local_env = Path(".env")
@@ -343,11 +343,11 @@ def handle_microsoft_auth():
     # Save credentials
     console.print("\n💾 Saving credentials...", style="cyan")
 
-    # Save to global ~/.co/keys.env
+    # Save to global ~/.co/keys.env (always, so every project can use the tokens)
     global_keys_env = Path.home() / ".co" / "keys.env"
-    if global_keys_env.exists():
-        _save_microsoft_to_env(global_keys_env, credentials)
-        console.print(f"   ✓ Saved to {global_keys_env}", style="green")
+    global_keys_env.parent.mkdir(parents=True, exist_ok=True)
+    _save_microsoft_to_env(global_keys_env, credentials)
+    console.print(f"   ✓ Saved to {global_keys_env}", style="green")
 
     # Save to local .env
     local_env = Path(".env")
