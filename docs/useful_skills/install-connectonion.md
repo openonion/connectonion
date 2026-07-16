@@ -33,7 +33,7 @@ The skill walks these steps, each verified before the next, and self-corrects on
    if that authentication didn't land (e.g. offline)
 4. **Confirm** — `co status` / `co doctor` prove the account and keys are wired up
 5. **Browser** (only if needed) — `pip` doesn't bring a browser; `patchright install chrome`
-   (or system Chrome). `co browser` is macOS/Linux only (WSL on Windows)
+   (or system Chrome). `co browser` runs natively on Windows/macOS/Linux (1.2.1+)
 6. **Integrations** (optional) — `co auth google` / `co auth microsoft` for personal Gmail/Outlook
 7. **Verify the commands run** — `co status`, `co email`, a real agent run, a real browser nav
 8. **Summary** — a friendly account report + the list of commands they can now use
@@ -55,7 +55,8 @@ grounded in the actual CLI code:
   until you run `patchright install chrome` or have desktop Chrome. And `co doctor` does
   **not** catch this — it only checks the patchright library, so the skill proves the
   browser with a real `co browser go_to example.com`.
-- **`co browser` is POSIX-only** (Unix-socket daemon) — macOS/Linux, or WSL on Windows.
+- **`co browser` runs natively on all three OSes from 1.2.1** — Unix-socket daemon on
+  macOS/Linux, native named pipes on Windows. Versions before 1.2.1 need WSL on Windows.
 
 ## Built for non-technical users, on any OS
 

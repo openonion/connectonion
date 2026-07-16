@@ -156,17 +156,16 @@ template). Two things to know first:
 - **`pip install connectonion` installs the browser *library* (`patchright`) but NOT a
   browser to drive** — without one, `co browser` fails at launch with *"Chrome failed to
   start — full log at ~/.co/browser.log"*.
-- **`co browser` runs a Unix-socket daemon, so it works on macOS/Linux but NOT on native
-  Windows.** On Windows, do the browser work inside **WSL** (a Linux environment) and run
-  these steps there. If the person is on native Windows and wants browser automation, tell
-  them plainly: "browser control runs under WSL — want me to set that up?" and don't pretend
-  `co browser` works in plain PowerShell.
+- **`co browser` works natively on Windows from connectonion 1.2.1** (named-pipe daemon —
+  plain PowerShell/cmd is fine, no WSL). On an OLDER version (`co --version` < 1.2.1),
+  native Windows isn't supported: upgrade first (`PY -m pip install -U connectonion`), or
+  do the browser work inside WSL.
 
 Get a browser. The agent uses desktop **Google Chrome** if it's installed at the standard
 OS path; otherwise install Patchright's browser (the deterministic option that always works):
 
 ```bash
-PY -m patchright install chrome          # macOS / Linux (or WSL)
+PY -m patchright install chrome          # all platforms (Windows/macOS/Linux)
 # Linux/CI without desktop libraries may need system deps (asks for sudo):
 PY -m patchright install --with-deps chrome
 ```
@@ -238,7 +237,7 @@ The payoff. Run `co status`, then translate it — **don't paste the raw panel**
   💰  Money available to use now:          $X.XX
   📧  Your agent's email address:          you@mail.openonion.ai
   🤖  Model access:                        managed (co/* models) — nothing else needed
-  🌐  Browser (co browser):                ready   (or "not set up"; on Windows: "runs under WSL")
+  🌐  Browser (co browser):                ready   (or "not set up — tell me if you want it")
   📦  Installed:                           connectonion vX.Y.Z  (Python 3.12 on Windows)
   📁  Your project:                        ./my-agent  (minimal template)
 
@@ -265,7 +264,8 @@ say it's not set up and offer. Keep it to the lines that matter to *this* person
   authentication (Step 3). It needs only `OPENONION_API_KEY` — *not* `co auth google`.
 - **Cross-platform gotchas:** the `bash` *tool* is Unix-only (use `shell` on Windows);
   `python3` may be `python`/`py -3`; the browser binary is never auto-installed; and
-  **`co browser` needs macOS/Linux (or WSL on Windows)** — its daemon uses Unix sockets.
+  **`co browser` runs natively on Windows/macOS/Linux from 1.2.1** (Unix sockets on
+  POSIX, named pipes on Windows); older versions need WSL on Windows.
 - **`co doctor` does not confirm the browser can launch** — it only checks the patchright
   library/stealth driver. The real proof is `co browser go_to example.com`.
 - `--yes` on `co init`/`co create` is mandatory for unattended runs.
