@@ -25,7 +25,6 @@ from unittest.mock import Mock
 
 from connectonion.useful_plugins.tool_approval import (
     check_approval,
-    load_config_permissions,
     poll_mode_changes,
     poll_interrupt,
     handle_mode_change,
@@ -170,6 +169,52 @@ class TestDangerousTools:
         assert io.sent[0]['tool'] == 'bash'  # Changed: no more :npm suffix
         assert io.sent[0]['arguments'] == {'command': 'npm install', 'description': 'Install dependencies'}
         assert io.sent[0]['description'] == 'Install dependencies'
+
+    def test_expired_skill_permission_does_not_bypass_approval(self):
+        """A turn-scoped grant is unusable after the granting turn."""
+        io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
+        agent = FakeAgent(io=io)
+        agent.current_session.update({
+            'turn': 6,
+            'permissions': {
+                'bash': {
+                    'allowed': True,
+                    'source': 'skill',
+                    'expires': {'type': 'turn_end', 'turn': 5},
+                },
+            },
+            'pending_tool': {
+                'name': 'bash',
+                'arguments': {'command': 'git commit -am stale'},
+            },
+        })
+
+        check_approval(agent)
+
+        assert [event['type'] for event in io.sent] == ['approval_needed']
+
+    def test_current_skill_permission_skips_approval(self):
+        """A turn-scoped grant remains active during its granting turn."""
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session.update({
+            'turn': 5,
+            'permissions': {
+                'bash': {
+                    'allowed': True,
+                    'source': 'skill',
+                    'expires': {'type': 'turn_end', 'turn': 5},
+                },
+            },
+            'pending_tool': {
+                'name': 'bash',
+                'arguments': {'command': 'git status'},
+            },
+        })
+
+        check_approval(agent)
+
+        assert io.sent == []
 
     def test_approved_once_continues(self):
         """Approved with scope=once should continue without saving."""
@@ -643,25 +688,6 @@ class TestSessionState:
         # User approvals are tool-level (no 'when' field)
         assert 'when' not in session['permissions']['bash']
         assert session['permissions']['bash']['expires'] == {'type': 'session_end'}
-
-    def test_restores_permissions_from_trusted_server_session(self):
-        """The plugin owns restoring its server-side approval state."""
-        agent = FakeAgent()
-        permission = {
-            'allowed': True,
-            'source': 'user',
-            'reason': 'approved for session',
-            'expires': {'type': 'session_end'},
-        }
-        agent._trusted_server_session = {
-            'permissions': {'bash': permission},
-            'permissions_source': 'template',
-        }
-
-        load_config_permissions(agent)
-
-        assert agent.current_session['permissions']['bash'] == permission
-        assert agent.current_session['permissions_source'] == 'template'
 
 
 class TestPollModeChanges:

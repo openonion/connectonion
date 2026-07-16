@@ -96,7 +96,6 @@ Architecture - Unified Permission System Lifecycle:
     │                                                                         │
     │ 1. SESSION START (@after_user_input)                                    │
     │    load_config_permissions()                                            │
-    │    ├─ Restore permissions from trusted host session storage             │
     │    ├─ Read .co/host.yaml                                                │
     │    ├─ Convert Bash(git status) → unified format:                        │
     │    │  {'bash': {when: {command: 'git status'}, source: 'config'}}      │

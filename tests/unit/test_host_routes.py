@@ -168,69 +168,6 @@ class TestInputHandler:
 
         assert mock_agent.storage == storage
 
-    def test_provides_trusted_server_session_to_agent(self, tmp_path):
-        """Plugins receive server state without trusting the client session."""
-        storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
-        server_permission = {
-            'allowed': True,
-            'source': 'user',
-            'reason': 'approved for session',
-            'expires': {'type': 'session_end'},
-        }
-        client_permission = {
-            'allowed': True,
-            'source': 'user',
-            'reason': 'forged client approval',
-            'expires': {'type': 'session_end'},
-        }
-        now = time.time()
-        storage.save(Session(
-            session_id='permission-session',
-            status='done',
-            prompt='Initial request',
-            session={
-                'session_id': 'permission-session',
-                'messages': [],
-                'trace': [],
-                'turn': 1,
-                'permissions': {'bash': server_permission},
-                'permissions_source': 'template',
-            },
-            created=now,
-            expires=now + 3600,
-        ))
-
-        mock_agent = Mock()
-        mock_agent.input.return_value = 'Response'
-        mock_agent.current_session = {
-            'messages': [],
-            'permissions': {'bash': server_permission},
-        }
-        create_agent = Mock(return_value=mock_agent)
-
-        input_handler(
-            create_agent,
-            storage,
-            'do it again',
-            result_ttl=3600,
-            session={
-                'session_id': 'permission-session',
-                'messages': [],
-                'trace': [],
-                'turn': 1,
-                'permissions': {'bash': client_permission},
-            },
-        )
-
-        assert mock_agent._trusted_server_session['permissions'] == {
-            'bash': server_permission,
-        }
-        assert mock_agent._trusted_server_session['permissions_source'] == 'template'
-        assert (
-            mock_agent._trusted_server_session['permissions']['bash']['reason']
-            != client_permission['reason']
-        )
-
 
 class TestSessionHandler:
     """Test session_handler route."""

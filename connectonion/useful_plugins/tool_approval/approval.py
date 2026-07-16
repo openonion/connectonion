@@ -170,7 +170,6 @@ Helper Functions:
     _init_approval_state(session) → creates session['approval'] structure
     _is_approved_for_session(session, tool_name) → bool
     _save_session_approval(session, tool_name) → saves to session['permissions']
-    _restore_server_permissions(agent) → restores host-owned approval state
     _resolve_display_name(tool_name, args_str) → "bash" or "write" for UI
     _get_batch_remaining(agent, current_tool_id) → List[tool calls after current]
     _log(agent, message, style) → logs via agent.logger
@@ -200,7 +199,6 @@ File Relationships:
                                     → raise ValueError or return
 """
 
-from copy import deepcopy
 from typing import TYPE_CHECKING
 from pathlib import Path
 
@@ -269,19 +267,6 @@ def _save_session_approval(session: dict, tool_name: str, tool_args: dict = None
     session['permissions'][tool_name] = permission
 
 
-def _restore_server_permissions(agent: 'Agent') -> None:
-    """Restore approval state from the host's trusted server session."""
-    server_session = getattr(agent, '_trusted_server_session', None)
-    if not isinstance(server_session, dict):
-        return
-
-    permissions = server_session.get('permissions')
-    if isinstance(permissions, dict):
-        agent.current_session['permissions'] = deepcopy(permissions)
-    if 'permissions_source' in server_session:
-        agent.current_session['permissions_source'] = server_session['permissions_source']
-
-
 def _resolve_display_name(tool_name: str, args_str: str) -> str:
     """Resolve display name from tool name and JSON arguments string.
 
@@ -343,6 +328,14 @@ def _get_mode(agent: 'Agent') -> str:
         'accept_edits': No approvals, agent runs freely
     """
     return agent.current_session.get('mode', DEFAULT_MODE)
+
+
+def _permission_is_active(permission: dict, turn: int | None) -> bool:
+    """Return whether a permission is structurally valid and unexpired."""
+    if not isinstance(permission, dict):
+        return False
+    expires = permission.get('expires', {})
+    return expires.get('type') != 'turn_end' or expires.get('turn') == turn
 
 
 def _set_mode(agent: 'Agent', mode: str) -> None:
@@ -428,7 +421,11 @@ def check_approval(agent: 'Agent') -> None:
         tool_args = pending['arguments']
 
         # Get permissions from session (includes safe tools from template)
-        permissions = agent.current_session.get('permissions', {})
+        permissions = {
+            pattern: permission
+            for pattern, permission in agent.current_session.get('permissions', {}).items()
+            if _permission_is_active(permission, agent.current_session.get('turn'))
+        }
 
         if permissions:
             # matches_permission_pattern is from skills plugin - handles pattern matching
@@ -452,7 +449,7 @@ def check_approval(agent: 'Agent') -> None:
 
             # Check each permission in the dict
             for pattern, perm in permissions.items():
-                if not perm.get('allowed'):
+                if not isinstance(perm, dict) or not perm.get('allowed'):
                     continue
 
                 # First check basic pattern match (tool name or Bash command)
@@ -650,8 +647,6 @@ def load_config_permissions(agent: 'Agent') -> None:
     Only loads once per session (first input).
     """
     import yaml
-
-    _restore_server_permissions(agent)
 
     # Only load once per session
     if 'permissions' in agent.current_session and 'permissions_source' in agent.current_session:

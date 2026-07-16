@@ -82,7 +82,7 @@ class TestPermissionGranting:
         assert bash_perm['source'] == 'skill'
         assert bash_perm['reason'] == 'commit skill (turn 5)'
         assert bash_perm['when'] == {'command': 'git status'}
-        assert bash_perm['expires'] == {'type': 'turn_end'}
+        assert bash_perm['expires'] == {'type': 'turn_end', 'turn': 5}
 
     def test_grant_preserves_user_approvals(self):
         """Test that user approvals are preserved when skill grants permissions."""
@@ -169,6 +169,77 @@ class TestPermissionGranting:
         _restore_permissions(agent)
 
         assert agent.current_session['permissions']['bash']['source'] == 'user'
+
+    def test_multiple_skill_grants_share_the_original_snapshot(self):
+        """A later skill must not make an earlier skill grant permanent."""
+        agent = FakeAgent()
+        agent.current_session['permissions'] = {
+            'read_file': {
+                'allowed': True,
+                'source': 'config',
+                'expires': {'type': 'never'},
+            }
+        }
+
+        _grant_skill_permissions(agent, 'commit', ['Bash(git commit *)'])
+        _grant_skill_permissions(agent, 'release', ['Bash(python *)'])
+
+        _restore_permissions(agent)
+
+        assert set(agent.current_session['permissions']) == {'read_file'}
+        assert agent.current_session['permissions']['read_file']['source'] == 'config'
+
+    def test_repeated_overlapping_grants_restore_the_pre_skill_value(self):
+        """Overlapping skills restore the value from before the first grant."""
+        agent = FakeAgent()
+        original = {
+            'allowed': True,
+            'source': 'config',
+            'reason': 'configured shell access',
+            'expires': {'type': 'never'},
+        }
+        agent.current_session['permissions'] = {'bash': original.copy()}
+
+        _grant_skill_permissions(agent, 'first', ['bash'])
+        _grant_skill_permissions(agent, 'second', ['bash'])
+
+        _restore_permissions(agent)
+
+        assert agent.current_session['permissions'] == {'bash': original}
+
+    def test_user_approval_after_multiple_grants_wins(self):
+        """A user decision made after nested skill grants survives cleanup."""
+        agent = FakeAgent()
+
+        _grant_skill_permissions(agent, 'first', ['write'])
+        _grant_skill_permissions(agent, 'second', ['bash'])
+        _save_session_approval(agent.current_session, 'write')
+
+        _restore_permissions(agent)
+
+        assert set(agent.current_session['permissions']) == {'write'}
+        assert agent.current_session['permissions']['write']['source'] == 'user'
+
+    def test_cleanup_removes_stale_skill_permission_without_snapshot(self):
+        """Temporary grants from an older interrupted scope cannot linger."""
+        agent = FakeAgent()
+        agent.current_session['permissions'] = {
+            'bash': {
+                'allowed': True,
+                'source': 'skill',
+                'reason': 'stale skill grant',
+                'expires': {'type': 'turn_end'},
+            },
+            'write': {
+                'allowed': True,
+                'source': 'user',
+                'expires': {'type': 'session_end'},
+            },
+        }
+
+        _restore_permissions(agent)
+
+        assert set(agent.current_session['permissions']) == {'write'}
 
 
 class TestPatternMatching:
