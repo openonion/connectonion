@@ -21,24 +21,33 @@ then walk a fresh environment through the whole setup.)
 /install-connectonion
 ```
 
-The skill walks 6 steps, each verified before the next, and self-corrects on failure:
+The skill walks these steps on **Windows, macOS, or Linux**, each verified before the
+next, and self-corrects on failure:
 
-1. **Check Python** — requires 3.10+; sets up a virtualenv when it helps
+0. **Know the machine** — detect the OS and resolve the right Python command (`python3` /
+   `python` / `py -3`) and shell (the `bash` tool is Unix-only; use `shell` on Windows)
+1. **Virtualenv** — isolate the install (also dodges "externally-managed-environment")
 2. **Install** — `pip install connectonion`, verify with `co --version` + `co doctor`
 3. **Project** — `co create --yes` (minimal/coder/browser/web-research/...) or `co init --yes`
 4. **Model access** — managed keys via `co auth` (co/* models, comes with free credit) OR own provider keys in `.env`
 5. **Verify** — run a real 2-line agent and read the reply
-6. **Summary** — a friendly, plain-language account report: free credit, balance, agent email, what's installed
+6. **Browser (only if needed)** — `pip install` does NOT bring a browser; install one with `patchright install chrome` (or use system Chrome)
+7. **Summary** — a friendly, plain-language account report: free credit, balance, agent email, what's installed
 
-## Built for non-technical users
+## Built for non-technical users, on any OS
 
-Two things make this skill different from a plain command list:
+Three things make this skill different from a plain command list:
+
+- **Cross-platform.** Step 0 detects the OS and resolves the right Python command
+  (`python3` on macOS/Linux, `python` or `py -3` on Windows) and the right shell (the
+  `bash` tool is Unix-only, so it uses `shell` on Windows and avoids `grep`/`cat`/`ls`).
+  Verification leans on `co doctor` / `co status`, which behave identically everywhere.
 
 - **Auto-correction.** Every step has a *Recovery* block. When something fails — `co` not
-  on PATH, a hung interactive prompt, a wrong virtualenv, an out-of-credit account — the
-  agent diagnoses it, applies the known fix, and retries (up to 2 attempts) instead of
-  stopping and pasting a stack trace. It only asks the human for things only a human can
-  do (browser login, adding credit).
+  on PATH, a hung interactive prompt, a wrong virtualenv, a missing browser binary, an
+  out-of-credit account — the agent diagnoses it, applies the known fix, and retries (up
+  to 2 attempts) instead of stopping and pasting a stack trace. It only asks the human for
+  things only a human can do (browser login, adding credit, installing Python).
 
 - **A real end-of-run UI.** Step 6 turns `co status` into a warm summary the person
   actually understands:
