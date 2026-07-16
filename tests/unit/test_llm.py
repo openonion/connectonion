@@ -57,6 +57,7 @@ class TestMultiLLMSupport:
         # Test Google models
         assert MODEL_REGISTRY["gemini-3-pro-preview"] == "google"
         assert MODEL_REGISTRY["gemini-3-pro-image-preview"] == "google"
+        assert MODEL_REGISTRY["gemini-3.5-flash"] == "google"
         assert MODEL_REGISTRY["gemini-2.5-flash"] == "google"
 
     def test_create_llm_factory(self):

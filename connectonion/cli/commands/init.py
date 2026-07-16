@@ -213,7 +213,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     if not env_existed:
         if keys_to_add or global_keys:
             env_content = f"AGENT_CONFIG_PATH={Path.home() / '.co'}\n"
-            env_content += "# Default model: co/gemini-2.5-pro (managed keys with free credits)\n\n"
+            env_content += "# Default model: co/gemini-3.5-flash (managed keys with free credits)\n\n"
             # Add all global keys + detected keys
             all_keys = list(global_keys.values()) + [k for k in keys_to_add if k not in global_keys.values()]
             env_content += '\n'.join(all_keys) + '\n'

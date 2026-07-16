@@ -347,7 +347,7 @@ class TestCliInit:
             assert os.path.exists(".env")
             with open(".env") as f:
                 content = f.read()
-                assert "# Default model: co/gemini-2.5-pro" in content
+                assert "# Default model: co/gemini-3.5-flash" in content
                 assert "managed keys with free credits" in content
 
     def test_init_creates_agent_address_explanation_in_global_keys(self, tmp_path, monkeypatch):

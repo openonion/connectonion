@@ -312,7 +312,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         if "AGENT_CONFIG_PATH=" not in env_content:
             lines_to_add.append(f"AGENT_CONFIG_PATH={Path.home() / '.co'}\n")
         if "# Default model:" not in env_content:
-            lines_to_add.append("# Default model: co/gemini-2.5-pro (managed keys with free credits)\n")
+            lines_to_add.append("# Default model: co/gemini-3.5-flash (managed keys with free credits)\n")
 
         if lines_to_add:
             # Add blank line after comments if we're adding any
@@ -322,7 +322,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         # Fallback - create minimal .env with detected keys
         env_lines = [
             f"AGENT_CONFIG_PATH={Path.home() / '.co'}",
-            "# Default model: co/gemini-2.5-pro (managed keys with free credits)",
+            "# Default model: co/gemini-3.5-flash (managed keys with free credits)",
             "",
         ]
 

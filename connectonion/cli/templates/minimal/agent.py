@@ -20,7 +20,7 @@ agent = Agent(
     system_prompt="prompt.md",
     tools=[bash, read_file, edit, glob, grep, write, browser],
     plugins=[image_result_formatter, tool_approval],
-    model="co/gemini-2.5-pro",
+    model="co/gemini-3.5-flash",
 )
 
 result = agent.input("what is your task?")
