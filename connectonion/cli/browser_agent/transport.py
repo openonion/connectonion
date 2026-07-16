@@ -1,4 +1,4 @@
-"""
+r"""
 Purpose: Cross-platform IPC primitives for the browser daemon/client so `co browser` runs natively on Windows (named pipes) as well as macOS/Linux (Unix sockets) — no WSL.
 LLM-Note:
   Dependencies: imports from [os, time, getpass, subprocess, tempfile, hashlib, binascii, threading, multiprocessing.connection, pathlib | lazy: fcntl/msvcrt, ctypes] | imported by [browser_agent/daemon.py, browser_agent/client.py] | tested by [tests/unit/test_transport.py, tests/e2e/cli/test_browser_daemon.py]
@@ -39,7 +39,7 @@ def _current_user() -> str:
 
 
 def _sidecar_dir() -> Path:
-    """A real filesystem directory for .pid/.lock/authkey sidecars.
+    r"""A real filesystem directory for .pid/.lock/authkey sidecars.
 
     A Windows named-pipe address (\\.\pipe\...) is not a filesystem path, so the
     sidecars cannot sit next to it — they live in a per-user runtime dir instead.

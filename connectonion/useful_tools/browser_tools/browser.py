@@ -647,7 +647,10 @@ class BrowserAutomation:
         if not self.page:
             self.open_browser()
 
-        if not url.startswith(('http://', 'https://')):
+        # Auto-prefix bare inputs like "x.com" / "localhost:8080" — but never rewrite a
+        # URL that already carries a scheme (file:///page.html was becoming
+        # https://file///page.html; caught by the windows-e2e CI job).
+        if not url.startswith(('http://', 'https://', 'file://', 'about:', 'data:', 'chrome://')):
             url = f'https://{url}' if '.' in url else f'http://{url}'
 
         self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
