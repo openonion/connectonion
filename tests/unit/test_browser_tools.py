@@ -442,3 +442,116 @@ def test_click_element_near_selector_reports_missing_anchor():
 
     assert result == "No visible anchor found for selector: div.editor"
     assert page.mouse.clicks == []
+
+
+# ---- tab accountability: newtab / go_to metadata / tab_status ----------
+
+def test_newtab_requires_purpose_and_who():
+    """A shared browser stays accountable: newtab refuses an unowned/unlabeled tab,
+    returning the agent-facing help instead of prompting a human."""
+    import pytest
+
+    browser = BrowserAutomation(headless=True)
+    with pytest.raises(ValueError, match="for the AI agent"):
+        browser.newtab("example.com")
+    with pytest.raises(ValueError):
+        browser.newtab("example.com", purpose="read")  # who still missing
+
+
+def test_go_to_records_owner_and_purpose_on_active_tab():
+    """go_to with purpose/who stamps the active (session) tab's metadata, keyed by session key."""
+    page = FakePage()
+    page.goto = lambda url, **kw: None
+    page.wait_for_timeout = lambda ms: None
+    page.url = "https://x.com/home"
+
+    browser = BrowserAutomation(headless=True)
+    browser.browser = SimpleNamespace()
+    browser.page = page                 # writes _pages[None] (unbound = default tab)
+    browser._save_context = lambda: None
+
+    browser.go_to("https://x.com", purpose="post launch", who="aaron")
+    meta = browser._tab_meta[None]
+    assert meta["who"] == "aaron"
+    assert meta["purpose"] == "post launch"
+    assert "opened_at" in meta
+
+
+def test_tab_status_marks_active_and_prunes_closed_tabs():
+    p0 = FakePage(); p0.url = "https://x.com/home"
+    p1 = FakePage(); p1.url = "https://mail.google.com"
+
+    browser = BrowserAutomation(headless=True)
+    browser.browser = SimpleNamespace()          # truthy: context open
+    browser._pages = {None: p0, "1": p1}
+    browser._tab_meta = {
+        None: {"who": "aaron", "purpose": "post"},
+        "1": {"who": "tamara", "purpose": "inbox"},
+    }
+    browser._bind_session("1")                    # active tab = session "1"
+
+    out = browser.tab_status()
+    assert "Tabs (2):" in out
+    assert " [main] https://x.com/home  who=aaron" in out
+    assert "*[1] https://mail.google.com  who=tamara" in out
+
+    # A tab whose page has closed still shows (from the registry) but as reserved.
+    p1.is_closed = lambda: True
+    out = browser.tab_status()
+    assert "mail.google.com" not in out
+    assert "[1] (reserved — no page yet)" in out
+
+    # A tab reserved via `tab open` (registry entry, no page) is visible immediately.
+    browser._tab_meta["scraper"] = {"who": "codex", "purpose": "scrape"}
+    out = browser.tab_status()
+    assert "[scraper] (reserved — no page yet)  who=codex" in out
+
+    # _release_tab drops the tab and its metadata together.
+    browser._release_tab("1")
+    assert "1" not in browser._tab_meta
+
+
+def test_go_to_unoccupied_tab_demands_purpose():
+    """The first go_to on an unoccupied tab errors with an AGENT-facing message
+    (not a human prompt), telling the agent to supply --purpose/--who and re-run."""
+    import pytest
+
+    browser = BrowserAutomation(headless=True)   # browser None -> no navigation attempted
+    with pytest.raises(ValueError, match="for the AI agent"):
+        browser.go_to("https://x.com")
+
+
+def test_go_to_occupied_tab_navigates_without_flags():
+    """A go_to on an already-occupied tab (who+purpose set) navigates without repeating
+    the flags — this keeps multi-step flows working."""
+    page = FakePage()
+    page.goto = lambda url, **kw: None
+    page.wait_for_timeout = lambda ms: None
+    page.url = "https://x.com/home"
+
+    browser = BrowserAutomation(headless=True)
+    browser.browser = SimpleNamespace()
+    browser.page = page                                  # writes _pages[None]
+    browser._save_context = lambda: None
+    browser._tab_meta[None] = {"who": "aaron", "purpose": "post"}  # tab already occupied
+
+    result = browser.go_to("https://x.com/explore")      # no flags — must not raise
+    assert "Navigated to" in result
+
+
+def test_tab_status_flags_may_be_closed():
+    """A tab past its --hours estimate is flagged 'may be closed' (informational only)."""
+    from datetime import datetime, timedelta
+
+    p0 = FakePage(); p0.url = "https://x.com/home"
+    browser = BrowserAutomation(headless=True)
+    browser.browser = SimpleNamespace()                  # truthy: context open
+    browser._pages = {None: p0}
+    browser._tab_meta = {
+        None: {"who": "aaron", "purpose": "post", "hours": 2,
+               "opened_at": datetime.now() - timedelta(hours=3)},
+    }
+
+    out = browser.tab_status()
+    assert "flagged 2h" in out
+    assert "may be closed" in out

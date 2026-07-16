@@ -1,12 +1,12 @@
 """
-Purpose: Natural language browser automation via Patchright (a stealth-patched, API-compatible Playwright fork) with persistent profile and auto-save
+Purpose: Natural language browser automation via Patchright (a stealth-patched, API-compatible Playwright fork) — one shared persistent context, one TAB PER SESSION, so concurrent agents never drive each other's page
 LLM-Note:
-  Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_agent.py]
-  Data flow: BrowserAutomation() initializes Playwright → opens browser with persistent context → provides tools (navigate, find_element, click, type_text, screenshot, scroll, wait_for_login) → auto-saves cookies after each critical action → Agent uses these tools via natural language → element_finder.py uses vision LLM to locate elements | screenshots saved to .tmp/ directory
-  State/Effects: maintains browser/page/context state | persistent profile at ~/.co/browser_profile/ | auto-saves cookies after navigation and manual login | writes screenshots to .tmp/{timestamp}.png | modifies form_data dict for form fills | context manager ensures cleanup | all public methods dispatch to one dedicated browser thread (Playwright sync API is thread-bound), so a shared instance is safe to call from any thread
-  Integration: exposes BrowserAutomation(use_chrome_profile, headless) with methods: navigate(url), find_element(description), screenshot(viewport), scroll(direction, description), click(description), keyboard_type(text), keyboard_press(key), wait_for_login(seconds) | used by `co browser` CLI command
-  Performance: headless by default (faster) | persistent context (instant profile load) | vision model for element finding (slower but accurate) | screenshots base64-encoded for LLM analysis | auto-save adds 500ms delay after critical actions
-  Errors: returns error string if Playwright not installed | returns "Browser already open" if live browser exists | element not found returns descriptive error
+  Dependencies: imports from [patchright.sync_api, connectonion Agent/llm_do, cli/browser_agent/element_finder, pydantic, pathlib, dotenv] | imported by [cli/commands/browser_commands.py, cli/browser_agent/daemon.py] | tested by [tests/unit/test_browser_tools.py, tests/unit/test_browser_session_pages.py, tests/unit/test_browser_automation.py]
+  Data flow: a caller binds its session via _bind_session(key) (key None = shared 'main') → every public method hops to ONE dedicated browser worker thread (_runs_on_browser_thread propagates the binding; Playwright's sync API is thread-bound) → _ensure_page gives the session its own tab in the shared context (restored to its remembered URL), then _reclaim_idle_tabs bounds memory (idle-TTL first, then max-tabs LRU — never the active tab) → go_to/newtab record who/purpose/hours on the tab REGISTRY _tab_meta (the first navigation on an unoccupied tab demands purpose+who — direct API/tool callers only; the co browser daemon registers tabs before dispatching) → tab_status renders the board → close_tab releases ONE tab, close() releases the bound tab or tears the whole context down
+  State/Effects: persistent profile at ~/.co/browser_profile/ (Chrome's SingletonLock is cleared only when its owning pid is dead) | per-tab state in four maps: _pages (live pages), _page_used (last-use clock), _page_url (remembered URL — written ONLY by _reclaim_tab for transparent resume; _release_tab forgets page+registration+URL together), _tab_meta (registry/board: who/purpose/hours/opened_at + the daemon's claim fields) | _teardown clears all four | auto-saves storage state after critical actions | screenshots to .tmp/
+  Integration: exposes BrowserAutomation(headless, ...) — its public methods ARE the `co browser` verbs and the NL agent's tools (go_to, newtab, tab_status, close_tab, take_screenshot, click/type/scroll family, save_state, close, ...) | driver_stealth_status() feeds `co doctor` and daemon `status`
+  Performance: browser launch is lazy (first page verb, 1-3s) | persistent context loads the profile instantly | element finding uses a vision LLM (slower but accurate) | auto-save adds ~500ms after critical actions
+  Errors: an unoccupied tab's first go_to/newtab raises ValueError coaching the AGENT to re-call with purpose/who (_occupancy_help) | launch failure returns the first error line + a pointer to ~/.co/browser.log | context liveness is judged at the CONTEXT level (_context_is_alive), so one dead page never tears down other sessions' tabs
 Browser Agent for CLI - Natural language browser automation.
 
 This module provides a browser automation agent that understands natural language
@@ -135,6 +135,43 @@ def _browser_proxy_from_env():
     return proxy
 
 
+def _pid_alive(pid: int) -> bool:
+    """True if a process with this pid exists (signal 0 probes it without touching it)."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True  # exists but owned by another user
+    return True
+
+
+def _clear_stale_singleton_lock(profile_dir: Path) -> None:
+    """Remove Chrome's Singleton* lock artifacts if the process that held them is gone.
+
+    An uncleanly-killed Chrome (daemon SIGKILL, crash, OOM) leaves a SingletonLock symlink
+    pointing at "<host>-<pid>" in the profile. On the next launch Chrome sees it and refuses
+    to start ("profile appears to be in use"), bricking the persistent login profile until it
+    is cleared by hand — which is why ~/.co accumulates *.recover_quarantine backups. Chrome
+    self-heals this only sometimes (same host, dead pid) and fails across hostname changes or
+    pid reuse, so we clear it ourselves.
+
+    Only clear when the owning pid is dead: a live Chrome legitimately owns the lock. These are
+    lock artifacts, not login data (cookies live elsewhere in the profile), so removing a dead
+    lock is safe.
+    """
+    lock = profile_dir / "SingletonLock"
+    if not lock.is_symlink():
+        return
+    tail = os.readlink(lock).rsplit("-", 1)[-1]
+    if not tail.isdigit():
+        return  # unrecognized lock format — don't guess, leave it alone
+    if _pid_alive(int(tail)):
+        return  # a live Chrome owns it
+    for name in ("SingletonLock", "SingletonSocket", "SingletonCookie"):
+        (profile_dir / name).unlink(missing_ok=True)
+
+
 def driver_stealth_status():
     """Report whether the installed Patchright driver still has its stealth patches.
 
@@ -143,7 +180,7 @@ def driver_stealth_status():
     navigator.webdriver=true and the "controlled by automated test software" infobar. The
     patched driver always injects `--disable-blink-features=AutomationControlled`; the vanilla
     one never does, so scanning the driver for that literal is a fast integrity check that
-    needs no browser launch. Surfaced by `co doctor`.
+    needs no browser launch. Surfaced by `co browser status` and `co doctor`.
 
     Returns (status, version, detail) where status is 'ok' | 'broken' | 'missing'.
     """
@@ -163,6 +200,52 @@ def driver_stealth_status():
     return ("broken", version,
             "UNPATCHED driver — navigator.webdriver leaks. "
             "Fix: pip install --force-reinstall --no-cache-dir patchright")
+
+
+def _occupancy_help(verb: str, url: str) -> str:
+    """Message shown to the AI AGENT (not a human) when it uses a tab with no purpose.
+    Only direct API / tool callers ever see it — the `co browser` daemon registers
+    tabs before dispatching — so it coaches in tool vocabulary, not CLI flags. The
+    agent must generate the values from the user's request and call again."""
+    return (
+        "This tab has no purpose yet — say why you're using it. "
+        "(This message is for the AI agent, not the user.)\n"
+        "\n"
+        "Call again with these filled in from what the user asked you to do:\n"
+        f'  {verb}("{url}", purpose="<why you\'re opening this tab>", '
+        'who="<the user this is for>", hours=<how long you\'ll need it>)\n'
+        "\n"
+        "- purpose: generate it from the user's request — the reason you're on this page.\n"
+        "- who: tag the user you're doing this for.\n"
+        "- hours: estimate how long you'll hold this tab (e.g. 2, 3, 10). Informational only —\n"
+        "  after it elapses, tab_status() flags the tab \"may be closed\"; it is NOT closed for you.\n"
+        "- When the task is done, close it yourself:  close_tab()\n"
+        "- First check tab_status() — reuse an open tab instead of opening a new one."
+    )
+
+
+def _close_page(page) -> Optional[str]:
+    """Close a Playwright page; return an error string if it would not close.
+    No page (a reserved or already-reclaimed tab) is a clean no-op, not an error."""
+    if page is None:
+        return None
+    try:
+        page.close()
+    except Exception as exc:
+        return f"close page failed: {exc}"
+    return None
+
+
+def _age(seconds: float) -> str:
+    """Compact age string for how long a tab has been open: Xs / Xm / Xh / Xd."""
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    if seconds < 86400:
+        return f"{seconds // 3600}h"
+    return f"{seconds // 86400}d"
 
 
 @_public_methods_run_on_browser_thread
@@ -215,6 +298,7 @@ class BrowserAutomation:
         self._pages: Dict[Optional[str], "Page"] = {}
         self._page_used: Dict[Optional[str], float] = {}   # key -> last-use monotonic ts (LRU/TTL)
         self._page_url: Dict[Optional[str], str] = {}      # key -> last url (restore a reclaimed tab)
+        self._tab_meta: Dict[Optional[str], Dict[str, Any]] = {}  # key -> {who, purpose, hours, opened_at}
         self._tab_idle_ttl = tab_idle_ttl
         self._max_tabs = max_tabs
         self._max_url_memory = 200    # bound the restore-url map; session ids are unique per panel
@@ -256,6 +340,38 @@ class BrowserAutomation:
             return True
         except Exception:
             return False
+
+    def _context_is_alive(self) -> bool:
+        """True when the shared browser CONTEXT is up — independent of which session
+        is currently bound. The daemon's serve-loop liveness check must use this, not
+        _browser_is_usable(): the latter reads the bound session's page, so a command
+        on a registered-but-page-less tab would read False and wrongly tear the whole
+        browser down for every other session."""
+        if not self.browser:
+            return False
+
+        def run():
+            # Alive = the context still answers protocol calls. Zero open pages is
+            # still alive (a page opens on demand), so listing pages IS the check.
+            try:
+                list(self.browser.pages)
+            except Exception:
+                return False
+            return True
+
+        if threading.current_thread() is self._executor_thread:
+            return run()
+        return self._executor.submit(run).result()
+
+    def _launch_failed(self) -> bool:
+        """True when a launch started Playwright but no browser context came up.
+
+        open_browser() starts Playwright, then opens the persistent context; if that
+        launch raises (e.g. Chrome aborts at startup), self.playwright stays set while
+        self.browser is None. The daemon reads this to exit instead of lingering as a
+        permanently-broken zombie that still owns the socket. Plain attribute reads, so
+        it is safe to call from any thread without routing to the browser worker."""
+        return self.playwright is not None and self.browser is None
 
     @property
     def page(self):
@@ -301,13 +417,8 @@ class BrowserAutomation:
         and open_browser (to create the first tab after launching the context).
 
         Creates the tab in the shared context (restored to its last URL), stamps its
-        last-use time, then reclaims. No-op until the context is open; harmless if the
-        tab already exists.
-
-        Reclaim bounds memory but never closes the active `key`: first tabs idle past
-        _tab_idle_ttl (a panel untouched for an hour), then — only if still over
-        _max_tabs — the least-recently-used ones as a runaway backstop. A reclaimed
-        session transparently gets a fresh restored tab next call (no "target closed").
+        last-use time, then runs _reclaim_idle_tabs. No-op until the context is open;
+        harmless if the tab already exists.
         """
         if not self.browser:
             return
@@ -327,29 +438,35 @@ class BrowserAutomation:
                     pass
             self._pages[key] = page
         self._page_used[key] = time.monotonic()
+        self._reclaim_idle_tabs(key)
 
+    def _reclaim_idle_tabs(self, active_key) -> None:
+        """Bound memory by reclaiming OTHER sessions' abandoned tabs — never the
+        active one. First tabs idle past _tab_idle_ttl (a panel untouched for an
+        hour), then — only if still over _max_tabs — the least-recently-used ones
+        as a runaway backstop. A reclaimed session transparently gets a fresh
+        restored tab on its next call (no "target closed")."""
         now = time.monotonic()
         for k in [k for k, t in list(self._page_used.items())
-                  if k != key and now - t > self._tab_idle_ttl]:
-            self._close_tab(k)
+                  if k != active_key and now - t > self._tab_idle_ttl]:
+            self._reclaim_tab(k)
         if len(self._pages) > self._max_tabs:
             lru_first = sorted(
-                (k for k in self._pages if k != key),
+                (k for k in self._pages if k != active_key),
                 key=lambda k: self._page_used.get(k, 0.0),
             )
             for k in lru_first[: len(self._pages) - self._max_tabs]:
-                self._close_tab(k)
+                self._reclaim_tab(k)
 
-    def _close_tab(self, key) -> Optional[str]:
-        """Close one session's tab, remembering its URL so the session can resume.
-
-        Reused by two callers: _ensure_page's reclaim (best-effort, ignores the
-        return) and close() (surfaces the return as a cleanup warning). Returns an
-        error string if the page would not close, else None."""
+    def _reclaim_tab(self, key) -> Optional[str]:
+        """Free an idle tab's PAGE but keep its registration and remembered URL:
+        the session transparently resumes — same owner, same purpose, same page —
+        the next time a command recreates the tab. Returns an error string if the
+        page would not close, else None."""
         page = self._pages.pop(key, None)
         self._page_used.pop(key, None)
         if page is None:
-            return None
+            return None  # nothing to remember or close
         try:
             url = page.url
         except Exception:
@@ -362,11 +479,18 @@ class BrowserAutomation:
             self._page_url[key] = url
             while len(self._page_url) > self._max_url_memory:
                 self._page_url.pop(next(iter(self._page_url)))
-        try:
-            page.close()
-        except Exception as exc:
-            return f"close page failed: {exc}"
-        return None
+        return _close_page(page)
+
+    def _release_tab(self, key) -> Optional[str]:
+        """Permanently close one session's tab: page, registration (claim included),
+        and remembered URL all go. A future tab reusing this name starts blank —
+        never on the previous owner's page. Returns an error string if the page
+        would not close, else None."""
+        page = self._pages.pop(key, None)
+        self._page_used.pop(key, None)
+        self._tab_meta.pop(key, None)
+        self._page_url.pop(key, None)
+        return _close_page(page)
 
     @_no_auto_tab
     def open_browser(self, headless: bool = None, force: bool = False) -> str:
@@ -402,7 +526,7 @@ class BrowserAutomation:
             # tabs. An unbound caller (single-session CLI) tears the whole context down.
             key = self._bound_session_key()
             if key is not None:
-                self._close_tab(key)
+                self._reclaim_tab(key)          # same session continues — keep its registration
                 self._page_url.pop(key, None)   # fresh = a blank tab, not the old url restored
                 self._ensure_page(key)
                 return "Opened a fresh tab for this session."
@@ -419,6 +543,10 @@ class BrowserAutomation:
         # First run: fresh profile, user logs in once. All later runs reuse saved cookies.
         profile_dir = Path.home() / ".co" / "browser_profile"
         profile_dir.mkdir(parents=True, exist_ok=True)
+
+        # A previous Chrome that died uncleanly can leave a SingletonLock that blocks this
+        # launch. Clear it if its owner is dead, so the persistent profile can't get bricked.
+        _clear_stale_singleton_lock(profile_dir)
 
         # Remove --no-sandbox from args since Playwright adds it by default
         # Just keep the flags we actually need
@@ -497,8 +625,25 @@ class BrowserAutomation:
             f"keep it secret, add it to .gitignore, and never commit or bake it into an image."
         )
 
-    def go_to(self, url: str) -> str:
-        """Navigate to a URL."""
+    def go_to(self, url: str, purpose: str = "", who: str = "", hours: float = 0.0) -> str:
+        """Navigate to a URL.
+
+        The FIRST navigation on an unoccupied tab must say who it's for and why:
+        pass --purpose and --who (and optional --hours). Once a tab is occupied,
+        later go_to calls navigate freely without repeating the flags, so multi-step
+        flows keep working; pass the flags again only to re-label the active tab.
+
+        This check bites only DIRECT API callers. Through the `co browser` daemon
+        the declaration happens at the tab layer instead (`tab open --who/--for`,
+        and the shared main tab is pre-registered by the daemon's claim), so tabs
+        arrive here already occupied.
+        """
+        key = self._bound_session_key()
+        existing = self._tab_meta.get(key, {})
+        occupied = bool(existing.get("purpose") and existing.get("who"))
+        if not occupied and not (purpose and who):
+            raise ValueError(_occupancy_help("go_to", url))
+
         if not self.page:
             self.open_browser()
 
@@ -508,8 +653,94 @@ class BrowserAutomation:
         self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
         self.page.wait_for_timeout(2000)
         self.current_url = self.page.url
+
+        meta = self._tab_meta.setdefault(key, {"who": "", "purpose": "", "hours": 0.0, "opened_at": datetime.now()})
+        if purpose:
+            meta["purpose"] = purpose
+        if who:
+            meta["who"] = who
+        if hours:
+            meta["hours"] = hours
+
         self._save_context()
         return f"Navigated to {self.current_url}"
+
+    @_no_auto_tab
+    def newtab(self, url: str = "", purpose: str = "", who: str = "", hours: float = 0.0) -> str:
+        """Open a new tab, record who occupies it and why, make it active. purpose+who required."""
+        if not purpose or not who:
+            raise ValueError(_occupancy_help("newtab", url or "<url>"))
+        if not self.browser:
+            self.open_browser()
+        key = self._bound_session_key()
+        self._ensure_page(key)                     # create THIS (new) session's tab
+        # Merge, never replace: the daemon stamps its claim (caller/claim_at) on this
+        # record — wiping it would let another agent hijack the tab mid-task.
+        meta = self._tab_meta.setdefault(key, {"opened_at": datetime.now()})
+        meta.update({"who": who, "purpose": purpose})
+        if hours:  # like go_to: a relabel without --hours keeps the existing flag
+            meta["hours"] = hours
+        if url:
+            return self.go_to(url, purpose=purpose, who=who, hours=hours)
+        return f"Opened new tab · who={who} · purpose={purpose!r}"
+
+    @_no_auto_tab
+    def tab_status(self) -> str:
+        """Formatted list of registered tabs with owner, purpose, and how long each has been open.
+
+        Renders from the tab REGISTRY (_tab_meta), so a tab reserved via `tab open`
+        shows up immediately — before it has ever navigated — which is exactly when
+        another agent needs to see it. A tab with no live page yet is marked
+        'reserved'. Marks the active tab '*'.
+        """
+        if not self._tab_meta:
+            return "Tabs: none"
+        active = self._bound_session_key()
+        lines = [f"Tabs ({len(self._tab_meta)}):"]
+        for key, meta in list(self._tab_meta.items()):
+            page = self._pages.get(key)
+            if page is not None and callable(getattr(page, "is_closed", None)) and page.is_closed():
+                page = None
+            where = page.url if page is not None else "(reserved — no page yet)"
+            marker = "*" if key == active else " "
+            name = "main" if key is None else key
+            who = meta.get("who") or "-"
+            purpose = meta.get("purpose") or "-"
+            line = f"  {marker}[{name}] {where}  who={who}  purpose={purpose!r}"
+            opened_at = meta.get("opened_at")
+            if opened_at:
+                elapsed = (datetime.now() - opened_at).total_seconds()
+                line += f"  open {_age(elapsed)}"
+                hours = meta.get("hours") or 0
+                if hours > 0:
+                    line += f" · flagged {hours:g}h"
+                    if elapsed > hours * 3600:
+                        line += " — may be closed"
+            last_at = meta.get("last_at")
+            if last_at:
+                last_line = (meta.get("last_line") or "")[:60]
+                line += f'\n      last: "{last_line}" · {_age(time.time() - last_at)} ago'
+            lines.append(line)
+        return "\n".join(lines)
+
+    @_no_auto_tab
+    def close_tab(self, key: Optional[str] = None) -> str:
+        """Close ONE session's tab (default = the current session's). The rest of the
+        browser stays open — use close() to shut the whole browser down."""
+        if key is None:
+            # Default means MY tab: a bound session must never close the shared
+            # main tab (someone else's) just by omitting the argument.
+            key = self._bound_session_key()
+        elif key == "main":
+            key = None  # accept the name tab_status() prints for the shared tab
+        # A tab registered but never navigated (or reclaimed for idle/LRU) has a
+        # registry entry and no live page; it is still a real tab the caller may
+        # release — even before the browser has ever launched — so accept a key
+        # known to EITHER store.
+        if key not in self._pages and key not in self._tab_meta:
+            return f"No open tab for {key!r}" if self.browser else "Browser not open"
+        error = self._release_tab(key)
+        return error or "Tab closed"
 
     def find_element_by_description(self, description: str) -> str:
         """Find element using natural language description.
@@ -1732,7 +1963,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         so per-session callers must never reach the full teardown."""
         key = self._bound_session_key()
         if key is not None:
-            err = self._close_tab(key)
+            err = self._release_tab(key)
             return f"close tab failed: {err}" if err else "Closed this session's browser tab."
         return self._teardown()
 
@@ -1747,7 +1978,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
             cleanup_errors.append(f"save context failed: {exc}")
 
         for key in list(self._pages):     # close every session's tab
-            err = self._close_tab(key)
+            err = self._release_tab(key)
             if err:
                 cleanup_errors.append(err)
         try:
@@ -1764,6 +1995,7 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         self._pages.clear()
         self._page_used.clear()
         self._page_url.clear()
+        self._tab_meta.clear()   # reserved (page-less) tabs too — no ghost registry entries
         self.browser = None
         self.playwright = None
         if cleanup_errors:

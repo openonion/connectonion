@@ -237,7 +237,7 @@ ConnectOnion now supports ALL Unicode characters in usernames and file paths:
 
 ### Q: What if I'm using Python 2.7?
 
-**A:** Python 2.7 is not supported. ConnectOnion requires Python 3.7+.
+**A:** Python 2.7 is not supported. ConnectOnion requires Python 3.10+.
 
 ### Q: Does this work on Windows 7?
 

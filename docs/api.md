@@ -265,7 +265,7 @@ agent = Agent(name="bot", model="co/gemini-2.5-flash")
 
 **Available co/ models:**
 - `co/gpt-4o-mini`, `co/gpt-4o`, `co/gpt-5`, `co/gpt-5-mini`, `co/gpt-5-nano`, `co/o4-mini`
-- `co/gemini-3-pro-preview`, `co/gemini-3-flash-preview`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`, `co/gemini-2.5-flash-lite`, `co/gemini-2.0-flash`
+- `co/gemini-3-pro-preview`, `co/gemini-3.5-flash`, `co/gemini-2.5-pro`, `co/gemini-2.5-flash`, `co/gemini-2.5-flash-lite`, `co/gemini-2.0-flash`
 - `co/claude-opus-4-5`, `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
 
 **Environment variable:** `OPENONION_API_KEY` (auto-loaded from `.env`)

@@ -26,7 +26,7 @@ Example: `0.0.2`
 - Reset MINOR and PATCH to 0
 - Reserved for major breaking changes or stable releases
 
-## Current Version: 1.1.0
+## Current Version: 1.2.0
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
@@ -35,6 +35,8 @@ Example: `0.0.2`
 - 0.2.0 → 0.2.9 (Documentation improvements, LLM refactoring, test coverage, CLI enhancements and fixes)
 - 0.3.0 → 0.3.8 (Enhanced debugger, CLI status/reset, Windows support, email refactoring, network features, pytest migration)
 - 0.4.0 → 0.4.1 (Automatic .env loading, event system, email API fixes, comprehensive CLI help)
+- 1.0.0 → 1.1.0 (Stable release; cancelable scheduled email, scheduled replies)
+- 1.2.0 (co browser multi-agent tab CLI: -t targeting, tab lifecycle, contention guard, exit-code contract, daemon race hardening; graceful interrupt; Patchright stealth pin)
 
 ## Files to Update When Versioning
 

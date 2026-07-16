@@ -6,6 +6,7 @@
 .co/docs/
 ├── README.md              # This file - complete reference for vibe coding
 ├── quickstart.md          # 60-second getting started guide
+├── co-browser.md          # Drive one persistent browser from the shell (multi-agent tabs)
 ├── api.md                 # Full API reference
 ├── connectonion.md        # Framework architecture deep dive
 ├── examples.md            # Code examples and patterns

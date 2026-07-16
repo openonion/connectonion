@@ -6,6 +6,8 @@ Pre-built skills you can copy into your project and invoke with `/skill-name`.
 
 | Skill | Purpose | Invoke |
 |-------|---------|--------|
+| [co-browser](co-browser.md) | Drive one persistent, logged-in browser from the shell — solo or multi-agent | `/co-browser` |
+| [install-connectonion](install-connectonion.md) | Install & configure ConnectOnion for a (possibly non-technical) user — auto-corrects failures, ends with a plain-language account summary | `/install-connectonion` |
 | [ship-feature](ship-feature.md) | Ship a feature end-to-end: tests → docs → docs-site → release | `/ship-feature` |
 
 ## How to Use

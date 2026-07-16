@@ -84,8 +84,8 @@ agent = Agent("assistant", model="co/gemini-3-pro-preview")  # Managed
 agent = Agent("assistant", model="gemini-3-pro-preview")     # Your key
 
 # Fastest Gemini 3 model
-agent = Agent("assistant", model="co/gemini-3-flash-preview")  # Managed
-agent = Agent("assistant", model="gemini-3-flash-preview")     # Your key
+agent = Agent("assistant", model="co/gemini-3.5-flash")  # Managed
+agent = Agent("assistant", model="gemini-3.5-flash")     # Your key
 
 # Image generation model with grounded generation
 agent = Agent("assistant", model="co/gemini-3-pro-image-preview")  # Managed
@@ -191,7 +191,7 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | o4-mini | 128K tokens |
 | **Google** | |
 | gemini-3-pro-preview | 1M tokens |
-| gemini-3-flash-preview | 1M tokens |
+| gemini-3.5-flash | 1M tokens |
 | gemini-2.5-pro | 1M tokens |
 | gemini-2.5-flash | 1M tokens |
 | **Anthropic** | |
@@ -219,7 +219,7 @@ All prices are **per 1M tokens** and match official provider pricing:
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
 | gemini-3-pro-preview | $2.00 | $12.00 | State-of-the-art reasoning |
-| gemini-3-flash-preview | $0.50 | $3.00 | Fastest Gemini 3 |
+| gemini-3.5-flash | $1.50 | $9.00 | Latest fast Gemini |
 | gemini-3-pro-image-preview | $2.00 | $0.134 | Image generation |
 | gemini-2.5-pro | $1.25 | $10.00 | **Default model** - best for agents |
 | gemini-2.5-flash | $0.30 | $2.50 | Best price-performance |
