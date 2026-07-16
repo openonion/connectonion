@@ -217,7 +217,7 @@
         </details>
 
         <details style="margin-bottom:16px;">
-          <summary style="cursor:pointer;font-size:12px;color:var(--muted);">▶ Signed Request (optional)</summary>
+          <summary style="cursor:pointer;font-size:12px;color:var(--muted);">▶ Signed Request</summary>
           <div style="padding-top:12px;">
             <div class="schema">
               <div class="schema-title">Payload Preview</div>
@@ -231,6 +231,15 @@
             <input type="text" id="from" placeholder="0xPublicKey" style="margin-bottom:8px;" />
             <label for="signature">signature <span style="color:var(--muted)">string</span></label>
             <input type="text" id="signature" placeholder="0xSignature" />
+            <p style="font-size:12px;color:var(--muted);margin-bottom:0;">
+              The preview is the legacy first-Safe-request envelope used before
+              a server session ID exists. Modern continuations sign
+              <code>action: "session.input"</code>, host <code>to</code>,
+              <code>session_id</code>, a unique <code>request_id</code>, prompt,
+              <code>session_sha256</code>, and <code>attachments_sha256</code>.
+              WebSocket CONNECT signs the session digest separately.
+              Replayed request IDs are rejected.
+            </p>
           </div>
         </details>
 
@@ -260,10 +269,18 @@
       <summary class="endpoint-header">
         <span class="method get">GET</span>
         <span class="endpoint-path">/sessions</span>
-        <span class="endpoint-desc">List all sessions</span>
+        <span class="endpoint-desc">List caller sessions (signed) or all sessions (admin)</span>
         <span class="endpoint-expand">▾</span>
       </summary>
       <div class="endpoint-body">
+        <p style="font-size:12px;color:var(--muted);margin-top:0;">
+          Authentication required. Owners sign canonical JSON
+          <code>{"action":"session.list","timestamp":&lt;number&gt;,"to":"&lt;host-address&gt;"}</code>
+          and send
+          <code>X-From</code>, <code>X-Signature</code>, and <code>X-Timestamp</code>.
+          The server derives <code>to</code> from this host; no X-To header is used.
+          The Execute button uses the admin API key entered below.
+        </p>
         <div class="row between" style="margin-bottom:12px;">
           <button class="btn execute" onclick="refreshSessions()">Execute</button>
           <label class="row" style="gap:6px;margin:0;">
@@ -273,7 +290,8 @@
         <div class="endpoint-section">
           <h4>Curl</h4>
           <div class="curl-box">
-            <pre id="sessions-curl">curl -X GET "http://localhost:8000/sessions"</pre>
+            <pre id="sessions-curl">curl -X GET "http://localhost:8000/sessions" \
+  -H "Authorization: Bearer YOUR_API_KEY"</pre>
             <button class="copy-btn" onclick="copyCurl('sessions-curl')">Copy</button>
           </div>
         </div>
@@ -289,10 +307,19 @@
       <summary class="endpoint-header">
         <span class="method get">GET</span>
         <span class="endpoint-path">/sessions/{session_id}</span>
-        <span class="endpoint-desc">Get single session by ID</span>
+        <span class="endpoint-desc">Get an owned session (signed) or any session (admin)</span>
         <span class="endpoint-expand">▾</span>
       </summary>
       <div class="endpoint-body">
+        <p style="font-size:12px;color:var(--muted);margin-top:0;">
+          Owners sign canonical JSON
+          <code>{"action":"session.get","session_id":"&lt;id&gt;","timestamp":&lt;number&gt;,"to":"&lt;host-address&gt;"}</code>
+          and send <code>X-From</code>, <code>X-Signature</code>, and
+          <code>X-Timestamp</code>. The server derives <code>to</code>; no X-To
+          header is used. Cross-owner records are returned as not found.
+          Legacy ownerless sessions must be replaced with a new session ID.
+          The Execute button uses the admin API key entered below.
+        </p>
         <div class="endpoint-section">
           <h4>Parameters</h4>
           <label for="session-id">session_id <span style="color:var(--muted)">string (path)</span></label>
@@ -302,7 +329,8 @@
         <div class="endpoint-section" style="margin-top:12px;">
           <h4>Curl</h4>
           <div class="curl-box">
-            <pre id="session-curl">curl -X GET "http://localhost:8000/sessions/{session_id}"</pre>
+            <pre id="session-curl">curl -X GET "http://localhost:8000/sessions/{session_id}" \
+  -H "Authorization: Bearer YOUR_API_KEY"</pre>
             <button class="copy-btn" onclick="copyCurl('session-curl')">Copy</button>
           </div>
         </div>
@@ -454,6 +482,18 @@
         <span class="endpoint-expand">▾</span>
       </summary>
       <div class="endpoint-body">
+        <p style="font-size:12px;color:var(--muted);margin-top:0;">
+          Protocol order is signed <code>CONNECT</code> with
+          <code>action: "session.connect"</code> and
+          <code>session_sha256</code>, then independently signed
+          <code>INPUT</code> frames with <code>action: "session.input"</code>,
+          host <code>to</code>, server session ID, unique <code>input_id</code>,
+          prompt, and <code>attachments_sha256</code>. Use the SDK or send the
+          complete JSON frames with a WebSocket client. The prompt-only control
+          below is not an authentication flow: it is rejected until a separate
+          signed CONNECT succeeds, and afterward it is only a legacy Safe-mode
+          frame for an idle session. It is rejected while an agent is active.
+        </p>
         <div class="row between" style="margin-bottom:12px;">
           <div class="row">
             <button class="btn connect" onclick="openWs()" id="ws-open">Connect</button>
@@ -492,12 +532,18 @@
     <div class="notes">
       <h3>Trust Levels</h3>
       <ul>
-        <li><code>open</code> - Unsigned requests accepted (development)</li>
-        <li><code>careful</code> - If signature present, must be valid</li>
-        <li><code>strict</code> - Signature required (production)</li>
+        <li><code>open</code> - Allows any identity after signature verification</li>
+        <li><code>careful</code> - Applies careful policy to the verified identity</li>
+        <li><code>strict</code> - Applies strict allow rules to the verified identity</li>
       </ul>
       <p style="margin:12px 0 0;font-size:12px;color:var(--muted);">
-        For signed requests: <code>payload.to</code> should match agent address, <code>payload.timestamp</code> should be within 5 minutes.
+        Modern CONNECT signs <code>session.connect</code> +
+        <code>session_sha256</code>. Modern INPUT signs
+        <code>session.input</code>, host <code>to</code>, session ID, request ID,
+        prompt, and <code>attachments_sha256</code>. Legacy INPUT is Safe-only.
+        Every INPUT received while a session is running gets a retryable error
+        without consuming its request ID. Hosted session state requires exactly
+        one worker.
       </p>
     </div>
   </main>
@@ -552,7 +598,14 @@
         $('session-result').textContent = '{"error": "Please enter a session ID"}';
         return;
       }
-      const res = await fetch(buildUrl('/sessions/' + sessionId));
+      const apiKey = $('api-key').value.trim();
+      if (!apiKey) {
+        $('session-result').textContent = '{"error": "Enter the admin API key below, or call this endpoint with signed X-From/X-Signature/X-Timestamp headers."}';
+        return;
+      }
+      const res = await fetch(buildUrl('/sessions/' + sessionId), {
+        headers: { 'Authorization': 'Bearer ' + apiKey }
+      });
       const data = await res.json();
       $('session-result').textContent = JSON.stringify(data, null, 2);
     }
@@ -593,11 +646,13 @@
   -d '${inputBody}'`;
 
       // GET /sessions curl
-      $('sessions-curl').textContent = `curl -X GET "${base}/sessions"`;
+      $('sessions-curl').textContent = `curl -X GET "${base}/sessions" \\
+  -H "Authorization: Bearer YOUR_API_KEY"`;
 
       // GET /sessions/{session_id} curl
       const sessionId = $('session-id').value.trim() || '{session_id}';
-      $('session-curl').textContent = `curl -X GET "${base}/sessions/${sessionId}"`;
+      $('session-curl').textContent = `curl -X GET "${base}/sessions/${sessionId}" \\
+  -H "Authorization: Bearer YOUR_API_KEY"`;
 
       // GET /info curl
       $('info-curl').textContent = `curl -X GET "${base}/info"`;
@@ -671,7 +726,14 @@
     async function sendWs(){ if(!ws) return; const { images, files } = await getAttachments(); const msg = { type:'INPUT', prompt: $('ws-prompt').value }; if(images) msg.images=images; if(files) msg.files=files; ws.send(JSON.stringify(msg)); log('→ ' + JSON.stringify(msg)); }
 
     async function refreshSessions(){
-      const res = await fetch(buildUrl('/sessions'));
+      const apiKey = $('api-key').value.trim();
+      if (!apiKey) {
+        $('sessions').textContent = '{"error": "Enter the admin API key below, or call this endpoint with signed X-From/X-Signature/X-Timestamp headers."}';
+        return;
+      }
+      const res = await fetch(buildUrl('/sessions'), {
+        headers: { 'Authorization': 'Bearer ' + apiKey }
+      });
       const data = await res.json();
       $('sessions').textContent = JSON.stringify(data, null, 2);
     }

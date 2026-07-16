@@ -11,9 +11,12 @@ Two client message types, two intents:
 | Message | Intent | When |
 |---------|--------|------|
 | `CONNECT` | "Authenticate me, restore my session" | First message on every WebSocket |
-| `INPUT` | "Run this prompt" or runtime input mid-execution | After CONNECT |
+| `INPUT` | "Run this prompt" | After CONNECT, while the session is idle |
 
-If `INPUT` arrives while the session's agent is already running, the server treats it as **runtime input** (mid-execution user input) instead of starting a second agent. The new prompt is appended to the agent's message history at the next iteration, and the server replies with `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle.
+If `INPUT` arrives while the session's agent is already running, the server
+returns a retryable `ERROR`. It does not claim the request ID or queue the
+prompt, so the client can retry the same signed INPUT after the current
+`OUTPUT` without risking a second agent thread.
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -21,8 +24,8 @@ If `INPUT` arrives while the session's agent is already running, the server trea
 │                                                                │
 │   Every connection:  WS open → CONNECT → CONNECTED → ...      │
 │                                                                │
-│   CONNECT carries:   auth + session (conversation history)     │
-│   INPUT carries:     just the prompt (session already set)     │
+│   CONNECT carries:   signed action + session digest            │
+│   INPUT carries:     signed action + prompt/id/attachment hash │
 │                                                                │
 │   Server decides:    new / connected / running                 │
 │                                                                │
@@ -35,8 +38,8 @@ If `INPUT` arrives while the session's agent is already running, the server trea
 
 ```
 ════════════════════════════════════════════════════════════════════
-  SESSION = connection.  EXECUTION = one INPUT → OUTPUT cycle.
-  Session outlives executions. Multiple INPUTs per session.
+  SESSION persists across connections. EXECUTION = one INPUT → OUTPUT cycle.
+  Session outlives executions and transport reconnects.
 ════════════════════════════════════════════════════════════════════
 
     ╭──────────╮
@@ -64,7 +67,8 @@ If `INPUT` arrives while the session's agent is already running, the server trea
     WS disconnect does NOT change session.status — IO queues survive the WS,
     a reconnecting client just re-subscribes via CONNECT { last_msg_id }.
 
-    Cleanup: 'connected' after 10min idle, 'running' after 1h (stuck-agent cap).
+    Cleanup: 'connected' after 10min idle. A live running thread is never
+    evicted; a dead/stale running registry entry is eligible after 1h.
 ```
 
 ---
@@ -87,8 +91,8 @@ Client                                    Server
   │◄── PING ───────────────────────────────│  keep-alive starts (every 30s)
   │── PONG ────────────────────────────────►│
   │                                         │
-  │── INPUT ───────────────────────────────►│  run agent with prompt
-  │   { prompt: "hello" }                   │  (no session in INPUT)
+  │── INPUT ───────────────────────────────►│  verify session.input signature
+  │   { input_id, prompt, session_id, ... }  │  claim one-time input_id
   │                                         │
   │◄── thinking ───────────────────────────│  stream events
   │◄── tool_call ──────────────────────────│
@@ -96,7 +100,7 @@ Client                                    Server
   │                                         │  session → "connected" (not dead)
   │                                         │
   │── INPUT ───────────────────────────────►│  same WS, same session
-  │   { prompt: "tell me more" }            │
+  │   { signed session.input, new input_id } │
   │◄── ... ────────────────────────────────│
   │◄── OUTPUT ─────────────────────────────│
 ```
@@ -112,7 +116,7 @@ Client                                    Server
   │                                         │
   │── CONNECT ─────────────────────────────►│  verify signature
   │   { session_id: "abc", session: {...} } │  registry.get("abc") → running
-  │                                         │  merge sessions if server newer
+  │                                         │  retain owner-bound server transcript
   │                                         │
   │◄── CONNECTED ──────────────────────────│  { session_id: "abc", status: "running" }
   │◄── buffered events ───────────────────│  drain queued events
@@ -133,7 +137,7 @@ Client                                    Server
   │                                         │
   │── CONNECT ─────────────────────────────►│  verify signature
   │   { session_id: "abc", session: {...} } │  registry.get("abc") → connected
-  │                                         │  merge: server has newer data
+  │                                         │  restore owner-bound server data
   │                                         │
   │◄── CONNECTED ──────────────────────────│  { session_id: "abc",
   │                                         │    status: "connected",
@@ -143,8 +147,8 @@ Client                                    Server
   │                                         │
   │    (client updates UI with server data) │
   │                                         │
-  │── INPUT ───────────────────────────────►│  ready for next prompt
-  │   { prompt: "what else?" }              │
+  │── INPUT ───────────────────────────────►│  ready for next signed prompt
+  │   { signed session.input, new input_id } │
   │◄── ... ────────────────────────────────│
   │◄── OUTPUT ─────────────────────────────│
 ```
@@ -161,6 +165,10 @@ Client                                    Server
   │── INPUT ───────────────────────────────►│  fresh session, full history from CONNECT
 ```
 
+A stored legacy record with no `owner_address` is different from "not found": it
+cannot be claimed or resumed. The server returns an error instructing the client
+to reconnect without that old `session_id` and start a new owned session.
+
 ---
 
 ## Message Reference
@@ -174,10 +182,18 @@ Authenticate, restore session, and sync conversation. **Always the first message
 ```json
 {
   "type": "CONNECT",
+  "to": "0x3d4017c3e843...",
+  "timestamp": 1702234567,
   "session_id": "550e8400-...",
-  "session": { "messages": [...], "mode": "safe" },
+  "session": { "session_id": "550e8400-...", "messages": [...] },
   "last_msg_id": "ev-9f12...",
-  "payload": { "to": "0x3d4017c3e843...", "timestamp": 1702234567 },
+  "payload": {
+    "action": "session.connect",
+    "to": "0x3d4017c3e843...",
+    "timestamp": 1702234567,
+    "session_id": "550e8400-...",
+    "session_sha256": "<sha256-of-canonical-session-json>"
+  },
   "from": "0xClientPublicKey",
   "signature": "0x..."
 }
@@ -186,11 +202,18 @@ Authenticate, restore session, and sync conversation. **Always the first message
 | Field | Required | Description |
 |-------|----------|-------------|
 | `session_id` | No | Session to resume. Omit for new session. |
-| `session` | No | Conversation history (messages, mode, etc.) |
+| `session` | No | Client-visible conversation snapshot. It cannot carry authority. |
 | `last_msg_id` | No | ID of the last agent event the client fully rendered. On resume of a `running` session, server rewinds its event cursor to right after this id and replays anything the client missed. Omit (or pass `null`) to replay all in-flight events of the current execution. |
 | `payload` | Yes | Signed payload for authentication |
 | `from` | Yes | Client's public address |
 | `signature` | Yes | Ed25519 signature of payload |
+
+Modern CONNECT uses `action: "session.connect"`. `session_sha256` is the
+SHA-256 of canonical JSON for the top-level `session` (or `{}` when absent).
+On resume, `session_id` must match at top level, inside `session`, and in the
+signed payload. A stored owner-bound transcript remains authoritative even if a
+client snapshot claims larger counters; an empty stored transcript is still
+authoritative.
 
 Server response based on state:
 
@@ -198,23 +221,51 @@ Server response based on state:
 |------------|-------------|-----------------|---------------|
 | Not provided | — | `"new"` | Allocate new session |
 | Provided | In registry, running | `"running"` | Reattach IO, pipe buffered events |
-| Provided | In registry, connected | `"connected"` | Merge sessions, reset idle timer |
+| Provided | In registry, connected | `"connected"` | Restore server recovery data, reset idle timer |
 | Provided | Not found | `"new"` | Allocate new session (same id) |
 
 #### INPUT
 
-Send a prompt. Only valid after CONNECTED. **No session data — just the prompt.**
+Send a prompt after CONNECTED. Each modern INPUT is independently signed and
+bound to the server-issued session ID.
 
 ```json
 {
   "type": "INPUT",
+  "to": "0x3d4017c3e843...",
+  "timestamp": 1702234567,
+  "session_id": "550e8400-...",
+  "input_id": "input-7c2a...",
   "prompt": "Translate hello to Spanish",
   "images": ["data:image/png;base64,..."],
-  "files": [{ "name": "doc.pdf", "data": "data:application/pdf;base64,..." }]
+  "files": [{ "name": "doc.pdf", "data": "data:application/pdf;base64,..." }],
+  "payload": {
+    "action": "session.input",
+    "to": "0x3d4017c3e843...",
+    "timestamp": 1702234567,
+    "session_id": "550e8400-...",
+    "input_id": "input-7c2a...",
+    "prompt": "Translate hello to Spanish",
+    "attachments_sha256": "<sha256-of-canonical-images-and-files>"
+  },
+  "from": "0xClientPublicKey",
+  "signature": "0x..."
 }
 ```
 
-If sent while the session's agent is already running, this message is routed as runtime input: the prompt is appended to the running agent's message history (with framing telling the LLM to treat it as additional context, not a replacement) and the server replies `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle. No new `thinking` chat item is created — the existing one keeps streaming.
+`attachments_sha256` hashes canonical JSON
+`{"images":[...],"files":[...]}` with empty arrays for omitted fields. An HTTP
+client uses the equivalent `request_id`; do not mix both aliases. The ID is
+single-use within the signature window, so a replay returns `duplicate request`.
+
+If sent while the session's agent is already running, even a fully bound INPUT
+receives a retryable `ERROR`. The host does not claim its request ID or deliver
+the prompt/mode through the generic interaction mailbox. Retry that exact
+signed frame after the current `OUTPUT` to start the next execution.
+
+Legacy or signature-stripped INPUT remains compatible only for an idle Safe-mode
+turn. It cannot restore capabilities or select a privileged mode, and it is
+rejected while the session is running.
 
 #### PONG
 
@@ -257,7 +308,10 @@ Response to CONNECT.
 | `"connected"` | Session alive, idle | Send INPUT when ready |
 | `"running"` | Agent still running | Wait for events/OUTPUT |
 
-`server_newer`, `session`, and `chat_items` are only included when the server's session data is newer than the client's (e.g., agent completed while client was away).
+`server_newer`, `session`, and `chat_items` indicate that the host has
+owner-bound recovery data the client should adopt (for example, the agent
+completed while the client was away). They do not imply that a client with a
+larger counter may overwrite the server transcript.
 
 #### OUTPUT
 
@@ -293,15 +347,18 @@ Keep-alive. Sent every 30 seconds.
 | `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
 
-#### RUNTIME_INPUT_ACK
+#### Running INPUT error
 
-Acknowledges an INPUT that arrived while the agent was running. The prompt has been queued and will be picked up at the agent's next iteration.
+Rejects an INPUT that arrived while the agent was running. The request remains
+unclaimed and may be retried after the current execution completes.
 
 ```json
 {
-  "type": "RUNTIME_INPUT_ACK",
+  "type": "ERROR",
+  "message": "session is running; retry INPUT after current turn",
+  "retryable": true,
   "session_id": "550e8400-...",
-  "id": "runtime-input-7c2a..."
+  "request_id": "input-7c2a..."
 }
 ```
 
@@ -342,10 +399,9 @@ Acknowledges an INPUT that arrived while the agent was running. The prompt has b
 
   Data Ownership:
   ┌────────────────────────────────────────────────────────────────┐
-  │ Client owns: conversation history (localStorage)              │
-  │ Server owns: execution state (registry), results (storage)    │
-  │ CONNECT syncs: client → server (session), server → client     │
-  │                (if server_newer)                               │
+  │ Client keeps: latest UI/session copy (localStorage)           │
+  │ Server owns: recovery transcript, capabilities, replay state │
+  │ CONNECT binds the client snapshot; stored server history wins │
   └────────────────────────────────────────────────────────────────┘
 
 ════════════════════════════════════════════════════════════════════
@@ -360,9 +416,9 @@ Acknowledges an INPUT that arrived while the agent was running. The prompt has b
 │   Connection    │  │  Conversation   │  │   Execution     │
 │                 │  │                 │  │                 │
 │ WebSocket + auth│  │ Message history │  │ One INPUT→OUTPUT│
-│ PING/PONG       │  │ Owned by client │  │ Agent thread    │
+│ PING/PONG       │  │ Client UI copy  │  │ Agent thread    │
 │ Persistent      │  │ Sent via CONNECT│  │ Temporary       │
-│                 │  │ Merged on server│  │                 │
+│                 │  │ Server recovery │  │                 │
 │ Dies: WS close  │  │ Dies: never     │  │ Dies: OUTPUT    │
 │ + 10min grace   │  │ (localStorage)  │  │                 │
 └─────────────────┘  └─────────────────┘  └─────────────────┘
@@ -370,25 +426,26 @@ Acknowledges an INPUT that arrived while the agent was running. The prompt has b
 
 ---
 
-## Authentication
+## Authentication and Replay Binding
 
-Authentication happens once, on CONNECT.
+CONNECT authenticates the socket, and every modern INPUT authenticates its own
+action and content.
 
 ```
-CONNECT (signed)          INPUT (not signed)
+CONNECT (signed)          INPUT (signed)
   │                          │
   ▼                          ▼
-Server verifies            Server trusts
-signature → OK             (same WS, already authenticated)
+session.connect +          session.input + recipient,
+session_sha256             sid, id, prompt, attachment hash
 ```
 
-Trust levels:
+Both payloads include the recipient `to`, preventing cross-host replay.
+`input_id` is atomically claimed and duplicates are rejected. Trust levels run
+after protocol signature verification; they decide whether the verified caller
+is allowed, not whether routing fields may be unsigned.
 
-| Trust Level | CONNECT Behavior |
-|-------------|-----------------|
-| `open` | Accept without signature |
-| `careful` | Accept unsigned, recommend signature |
-| `strict` | Require valid signature |
+Legacy incomplete INPUT can perform only idle Safe-mode work and is rejected
+during a running execution.
 
 ---
 
@@ -397,7 +454,7 @@ Trust levels:
 ```
 Page loads → Zustand hydrates → session_id exists?
   │
-  ├── Yes → CONNECT { session_id, session: {messages} }
+  ├── Yes → CONNECT { session_id, session, signed session_sha256 }
   │           │
   │           ├── "new"       → session expired, start fresh (client has history)
   │           ├── "connected" → session alive, ready for INPUT
@@ -431,9 +488,9 @@ WS open → CONNECT { auth, session_id? } → CONNECTED { status }
 WS open → CONNECT { auth, session_id?, session }
            → CONNECTED { status: new/connected/running }
 
-           INPUT { prompt }   → events → OUTPUT  (session stays alive)
-           INPUT { prompt }   → events → OUTPUT  (again, same session)
-           INPUT { prompt }   → events → OUTPUT  (and again)
+           INPUT { signed session.input, input_id } → events → OUTPUT
+           INPUT { signed session.input, new id }   → events → OUTPUT
+           INPUT { signed session.input, new id }   → events → OUTPUT
 
 WS close → 10min grace → session cleaned up
 ```
@@ -460,7 +517,7 @@ When client data is accepted, merged, or reattached, indented sub-lines show wha
 ```
 ✓ CONNECT identity=0x2f3d... session=aad5... status=connected
   ↑ client session: 4 messages       # client sent conversation history
-  ↕ merged sessions (server newer)   # server had newer data, merged
+  ↕ server recovery selected          # owner-bound server history restored
 ```
 
 ```
@@ -505,3 +562,10 @@ Non-routine types still print:
 | `network/io/websocket.py` | WebSocketIO — queue bridge between async/sync |
 | `network/host/session/storage.py` | SessionStorage — JSONL persistence |
 | `network/host/session/merge.py` | Session merge conflict resolution |
+
+## Worker Limit
+
+The active registry, replay claims, per-session locks, and capability leases are
+process-local. Run exactly one worker per host identity. `host(workers=N)` fails
+for `N != 1`, and external uvicorn/gunicorn deployments must also use one worker
+unless they provide shared transactional state and sticky WebSocket routing.

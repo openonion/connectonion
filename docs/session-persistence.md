@@ -1,32 +1,39 @@
 # Session Persistence
 
-## Philosophy: Client-Side as Source of Truth
+## Philosophy: Client Copy, Server-Authoritative Recovery
 
 ### Core Principle
 
-**The UI is everything.** What you see is what actually is. We don't want unexpected state mismatches between client and server.
+The client keeps the latest returned session for rendering, browser refreshes,
+and continuation requests. The host also keeps owner-bound recovery snapshots
+and server-only capability state. Once a session has a stored owner-bound
+snapshot, that server transcript is authoritative; a client-provided higher
+iteration or newer timestamp cannot replace it. This also applies when the
+stored transcript is empty—an empty server snapshot is state, not a signal to
+fall back to client history.
 
 ### Design Decision
 
-- **Session State (conversation)**: Client-side is source of truth
-- **Final Results (completed tasks)**: Server-side for polling recovery
+- **Client session copy**: Browser-side continuity and UI rendering
+- **Recovery transcript and final results**: Server-authoritative and bound to the signed owner
+- **Capability state**: Server-only and bound to both owner and signed session ID
 
-### Why Client-Side for Session State?
+### Why Keep a Client Session Copy?
 
-1. **No State Synchronization Problems**
-   - Server storing session = two sources of truth
-   - Client localStorage + Server disk = potential conflicts
-   - Solution: Only one source of truth (client)
+1. **Browser Continuity**
+   - The latest returned session survives refreshes in localStorage
+   - New sessions can be seeded from a signature-bound client snapshot
+   - Existing stored sessions resume from the owner-bound server transcript
 
 2. **The UI is Everything**
    - User sees the conversation in their browser
    - That's the reality of the session
-   - Server doesn't need to "remember" conversations
+   - The client can render without fetching after every UI action
 
-3. **Simplicity and Elegance**
-   - Server stays stateless
-   - No disk I/O on every request
-   - Scales infinitely
+3. **Clear State Boundaries**
+   - A client copy round-trips for continuity
+   - Recovery transcripts and capability state stay server-side
+   - Client-visible plugin state never grants authority
 
 4. **Client Control**
    - User controls their conversation data
@@ -35,19 +42,67 @@
 
 ### Why Server-Side for Results?
 
-The **only** reason server saves anything is for **long-running tasks**:
+The server saves recovery records for **long-running tasks** and checkpoints
+security-sensitive capability progress before privileged work continues:
 
 ```
 User sends request → Disconnects (browser closed, network issue)
 Server continues processing (10 minutes)
 Server finishes → Saves result to .co/session_results.jsonl
-User comes back → Polls /sessions/{id} → Gets result
+User comes back → Signs session.get for that ID → Gets result
 ```
 
-This is **NOT** for conversation state. It's only for:
+This does not make arbitrary client session fields authoritative. Storage is for:
 - Completed task results
 - Long-running operations
 - Polling recovery when client disconnected
+- Owner-bound capability checkpoints (for example, consumed ULW turns)
+
+### Authenticated Recovery Reads
+
+`GET /sessions/{id}` and `GET /sessions` are not anonymous endpoints. An owner
+signs a short, action-bound payload and sends the signature in headers:
+
+- `X-From`: the caller's public address
+- `X-Signature`: Ed25519 signature over canonical JSON
+- `X-Timestamp`: the same numeric timestamp used in the signed payload
+
+For one session, sign
+`{"action":"session.get","session_id":"<id>","timestamp":<number>,"to":"<host-address>"}`.
+For the owner-scoped list, sign
+`{"action":"session.list","timestamp":<number>,"to":"<host-address>"}`.
+Canonical JSON uses sorted keys with no extra whitespace. The server reconstructs
+`to` from the current host identity, so the request still sends only the three
+`X-From`, `X-Signature`, and `X-Timestamp` headers—there is no `X-To` header. A
+valid owner signature can only read records whose `owner_address` matches.
+Cross-owner and legacy ownerless records return `404`.
+
+An operator may instead send `Authorization: Bearer <OPENONION_API_KEY>` to
+read all sessions, including legacy ownerless records. Treat this as an admin
+credential, not a client polling mechanism.
+
+### Modern Signed Session Actions
+
+Modern clients bind every session action to the intended host and exact data:
+
+- `session.connect`: signs `to`, `timestamp`, optional `session_id`, and
+  `session_sha256`, the SHA-256 of canonical JSON for the supplied session (or
+  `{}` when absent).
+- `session.input`: signs `to`, `timestamp`, `session_id`, prompt, a unique
+  `input_id` (WebSocket) or `request_id` (HTTP), optional mode, and
+  `attachments_sha256`.
+- `attachments_sha256` hashes canonical JSON shaped as
+  `{"images":[...],"files":[...]}`; omitted attachments are empty arrays.
+
+The top-level routing fields must match the signed values. Request IDs are
+single-use within the signature window: replaying the same signed INPUT returns
+HTTP `409` or a WebSocket `ERROR` with `duplicate request`.
+
+Older INPUT frames without the complete binding can run only as Safe-mode work
+for an idle session. They cannot restore capabilities or request a privileged
+mode. All INPUT frames received during a running turn are rejected without
+claiming their request ID; retry after the current OUTPUT. Resume/migrate a
+legacy ownerless record by starting a new session without its old `session_id`.
 
 ### Architecture
 
@@ -57,22 +112,24 @@ This is **NOT** for conversation state. It's only for:
 │ - Session state (messages)      │
 │ - Conversation context          │
 │ - Turn count                    │
-│ ✓ SOURCE OF TRUTH               │
+│ - Latest client-visible copy    │
 └─────────────────────────────────┘
          ↓ sends with request
 ┌─────────────────────────────────┐
-│ Server (stateless)              │
+│ Server                          │
 │ - Receives session from client  │
 │ - Processes with agent          │
 │ - Returns updated session       │
-│ - Does NOT save to disk         │
+│ - Saves owner-bound checkpoints │
+│ - Keeps capabilities server-only│
 └─────────────────────────────────┘
-         ↓ only on completion
+         ↓ checkpoints + completion
 ┌─────────────────────────────────┐
 │ .co/session_results.jsonl       │
-│ - Final results only            │
+│ - Recovery snapshots/results    │
+│ - Server-only capability state  │
 │ - For polling recovery          │
-│ - NOT for conversation state    │
+│ - Never trusts client authority │
 └─────────────────────────────────┘
 ```
 
@@ -80,7 +137,26 @@ This is **NOT** for conversation state. It's only for:
 
 When the server receives the client's session, it rebuilds `agent.current_session` from an explicit **key whitelist** — not `dict(session)` — because the incoming session is untrusted client input. The restored keys are `session_id`, `messages`, `trace`, `turn`, and `plugin_state`. Sensitive top-level keys a client might inject (`permissions`, `stop_signal`, capability/bypass flags) are deliberately **not** restored.
 
-`plugin_state` is the one generic slot plugins use to persist their own state across the round-trip: a plugin stores under `plugin_state['<name>']`, so the core never hardcodes any plugin's keys. See [Plugins → Persisting Plugin State](concepts/plugins.md#persisting-plugin-state).
+For an existing owner-bound session, the persisted server transcript is selected
+before this whitelist restore. A client snapshot with a larger `iteration`,
+`turn`, or `updated` value does not overwrite stored history. An empty persisted
+transcript remains authoritative as well.
+
+`plugin_state` is the generic client-round-tripped slot for non-authoritative
+plugin data. A plugin stores under `plugin_state['<name>']`, so core never
+hardcodes plugin keys. Because the client can edit this data, it cannot authorize
+an action or control a capability lease. Hosted capabilities use separate
+server-only state bound to the authenticated caller and session ID; a plugin may
+mirror progress into `plugin_state` for display only. See
+[Plugins → Persisting Plugin State](concepts/plugins.md#persisting-plugin-state).
+
+### Process Model
+
+The built-in JSONL storage, replay cache, session locks, and active WebSocket
+registry are process-local. Run one worker per host identity. `host(...,
+workers=N)` rejects `N != 1`; external uvicorn or gunicorn deployments must also
+use exactly one worker unless they replace these components with shared,
+transactional equivalents and sticky WebSocket routing.
 
 ---
 
@@ -214,7 +290,7 @@ Connection lost → Retry
 ## Design Principles
 
 1. **SDK is simple** - Just save/load/clear, no policy decisions
-2. **Client is source of truth** - Session in localStorage, not server disk
+2. **Client keeps the UI copy** - Existing recovery transcripts remain server-authoritative
 3. **Session ID is the flag** - Different conversations = different IDs
 4. **Keep sessions alive** - Only clear on explicit user action
 5. **Application decides cleanup** - SDK doesn't enforce limits or TTL
@@ -231,7 +307,12 @@ A: Conversation resets. Expected behavior - they cleared their data.
 A: New conversation. Session is local to that browser.
 
 **Q: What if server has a different session state?**
-A: Impossible - server doesn't store session state, only final results.
+A: The owner-bound server recovery transcript wins. The client should replace
+its local copy with session/chat data returned by `CONNECTED` or `OUTPUT`.
+
+**Q: What if I have a legacy ownerless session?**
+A: It cannot be claimed by a new identity. Start a new session without the old
+`session_id`; an operator can still inspect the old record with admin bearer auth.
 
 ---
 
@@ -248,5 +329,5 @@ A: Impossible - server doesn't store session state, only final results.
 
 - Simple API - sessions handled automatically
 - Flexible - application chooses cleanup policy
-- Stateless server - no server-side session storage needed
+- Explicit recovery model - browser copy plus owner-bound server checkpoints
 - Type-safe - full TypeScript support
