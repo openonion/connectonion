@@ -37,3 +37,33 @@ jobs:
           OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
         run: |
           pytest tests/ -v --tb=short -m "not slow and not real_api and not network"
+
+  # Validate the native Windows browser IPC (named-pipe daemon transport) — the
+  # `co browser` daemon uses Unix sockets on POSIX and Windows named pipes here.
+  # These tests use a StubBrowser, so no Chrome/network is needed; they exercise the
+  # real cross-platform transport (multiprocessing.connection + HMAC authkey).
+  windows-browser:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -e .
+          pip install pytest pytest-mock pytest-asyncio
+
+      - name: Run browser transport + daemon tests (native Windows named pipes)
+        run: |
+          pytest tests/e2e/cli/test_transport.py tests/e2e/cli/test_browser_daemon.py -v --tb=short

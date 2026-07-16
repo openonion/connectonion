@@ -14,18 +14,25 @@ import json
 import sys
 import time
 import socket
-import subprocess
 from pathlib import Path
 
 from .daemon import default_sock_path, _owner_alive
+from . import transport
 
 
-def _connect(sock_path: str):
-    """Connect to the daemon socket. Returns a live connection, or None if the daemon
-    is genuinely gone. A busy single-threaded daemon (mid `do` task) can momentarily
-    refuse with ECONNREFUSED while its accept backlog is full — that is NOT a dead
-    daemon, so retry while its recorded owner is alive; a dead owner's stale socket
-    fails fast (the spawned daemon's _bind replaces it)."""
+def _connect(sock_path: str, authkey=None):
+    """Connect to the daemon. Returns a live connection, or None if the daemon is
+    genuinely gone. A busy single-threaded daemon (mid `do` task) can momentarily
+    refuse while its accept backlog is full — that is NOT a dead daemon, so retry
+    while its recorded owner is alive; a dead owner fails fast (the spawned daemon
+    replaces it). POSIX uses a raw AF_UNIX socket (unchanged); Windows uses the
+    authenticated named-pipe client from `transport`."""
+    if transport.IS_WINDOWS:
+        return _connect_windows(sock_path, authkey)
+    return _connect_posix(sock_path)
+
+
+def _connect_posix(sock_path: str):
     if not os.path.exists(sock_path):
         return None
     for attempt in range(20):  # ~2s of ECONNREFUSED tolerance for a busy daemon
@@ -46,6 +53,20 @@ def _connect(sock_path: str):
     return None  # still refusing after the window — let the caller spawn a fresh daemon
 
 
+def _connect_windows(sock_path: str, authkey):
+    auth_error = transport.AuthenticationError()
+    for attempt in range(20):  # ~2s tolerance for a busy daemon (pipe not yet re-armed)
+        try:
+            return transport.win_connect(sock_path, authkey)
+        except auth_error:
+            return None  # key mismatch — unreachable; caller spawns a fresh daemon
+        except (FileNotFoundError, ConnectionError, OSError):
+            if not _owner_alive(sock_path):
+                return None  # nobody home — don't burn the retry window
+            time.sleep(0.1)
+    return None  # still unavailable after the window — let the caller spawn a fresh daemon
+
+
 def _spawn_daemon(sock_path: str, headless: bool):
     """Launch the daemon detached and wait until its socket accepts connections."""
     log_path = Path.home() / ".co" / "browser.log"
@@ -54,13 +75,14 @@ def _spawn_daemon(sock_path: str, headless: bool):
     cmd = [sys.executable, "-m", "connectonion.cli.browser_agent.daemon", sock_path]
     if headless:
         cmd.append("--headless")
-    subprocess.Popen(cmd, stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+    transport.spawn_detached(cmd, log)  # POSIX: new session · Windows: DETACHED_PROCESS
 
+    authkey = transport.load_or_create_authkey() if transport.IS_WINDOWS else None
     # Wall-clock deadline, not an attempt count: against a busy daemon each _connect
     # can itself take ~2s of refused-retries, so counting attempts multiplies silently.
     deadline = time.time() + 15
     while time.time() < deadline:
-        conn = _connect(sock_path)
+        conn = _connect(sock_path, authkey)
         if conn:
             return conn
         time.sleep(0.1)
@@ -95,20 +117,27 @@ def send(line: str, headless: bool = False, tab: str = None) -> int:
     is spliced into the shlex-parsed command line)."""
     request = json.dumps({"v": 1, "caller": _caller(), "tab": tab, "line": line})
     sock_path = default_sock_path()
-    conn = _connect(sock_path) or _spawn_daemon(sock_path, headless)
+    authkey = transport.load_or_create_authkey() if transport.IS_WINDOWS else None
+    conn = _connect(sock_path, authkey) or _spawn_daemon(sock_path, headless)
 
-    conn.sendall(request.encode())
-    conn.shutdown(socket.SHUT_WR)
+    if transport.IS_WINDOWS:
+        # Named-pipe wire: one framed message each way (no half-close needed).
+        conn.send_bytes(request.encode())
+        reply = conn.recv_bytes()
+        conn.close()
+    else:
+        conn.sendall(request.encode())
+        conn.shutdown(socket.SHUT_WR)  # half-close signals end-of-request to the daemon
+        chunks = []
+        while True:
+            chunk = conn.recv(65536)
+            if not chunk:
+                break
+            chunks.append(chunk)
+        conn.close()
+        reply = b"".join(chunks)
 
-    chunks = []
-    while True:
-        chunk = conn.recv(65536)
-        if not chunk:
-            break
-        chunks.append(chunk)
-    conn.close()
-
-    header, _, payload = b"".join(chunks).decode().partition("\n")
+    header, _, payload = reply.decode().partition("\n")
     if header == "OK":
         if payload:
             print(payload)

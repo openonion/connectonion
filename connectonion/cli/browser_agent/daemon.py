@@ -3,7 +3,7 @@ Purpose: Persistent browser daemon — owns one BrowserAutomation and dispatches
 LLM-Note:
   Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, tempfile, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, browser_agent.agent (resolve_api_key, build_browser_agent)] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: client sends ONE request = wire-v1 JSON envelope {v, caller, tab, line} (a bare string is accepted as an anonymous main-tab request) → _parse_envelope → shlex.split(line) → dispatch: `tab`/`status`/`use`/`newtab`/`closetab` route first; a -t target that is not `main`/registered is exit 3 unless the verb is READONLY → an unknown verb is rejected BEFORE any claim → page-driving verbs and a targeted `close` pass _register_tab + _held_by_other (exit-4-busy if a DIFFERENT identity holds the tab within GUARD_WINDOW, 120s) then _stamp_claim → `do` hands the parsed instruction to the NL Agent on the same live browser; a matched method is called via getattr(browser, verb)(*coerced args); an unmatched verb returns "unknown command" (it is NOT auto-run as NL — only `do` is) → reply "OK\n<payload>" | "ERR\n<msg>" | "ERR <code>\n<msg>" (code ∈ {2 usage,3 unknown tab,4 busy}) written back, connection closed
-  State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds AF_UNIX socket at default_sock_path() under a lifetime flock on <sock>.lock (kernel-released on any death, so simultaneous cold-starts can't both bind) and records its owner pid in <sock>.pid so a refused probe can tell busy from stale; 120s per-connection recv timeout | _cleanup closes+unlinks socket/pidfile only while the pidfile still names this process (browser teardown is the driver pipe closing on process death — the executor is already gone when atexit runs) | serve() exits (releasing the socket) when browser._context_is_alive() goes false or _launch_failed()
+  State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds the endpoint at default_sock_path() via `transport` — POSIX: a raw AF_UNIX socket (unchanged); Windows: a native named pipe (multiprocessing.connection) with an HMAC authkey — under a lifetime OS lock (transport.lock_path: fcntl.flock POSIX / msvcrt Windows, released by the OS on any death, so simultaneous cold-starts can't both bind) and records its owner pid in transport.pid_path so a refused probe can tell busy from stale; 120s per-connection recv timeout | _cleanup closes the listener (POSIX also unlinks the socket) + pidfile only while the pidfile still names this process (browser teardown is the driver pipe closing on process death — the executor is already gone when atexit runs) | serve() exits (releasing the endpoint) when browser._context_is_alive() goes false or _launch_failed()
   Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]` | module helpers _key()/_tab_label()/_held_by_other()/_owner_alive() define the None↔main aliasing, the shared claim-expiry predicate (dispatch, _tab_open, _closetab), and the socket-owner liveness check (client + _bind)
   Performance: one request at a time | browser launch overhead on first page verb (1-3s) | `do` builds a fresh Agent per call | tab lifecycle/status verbs never launch Chrome
   Errors: dispatch/handler exceptions are caught at the request boundary in serve() and returned to THAT client (never unwind the loop and kill the shared browser) | a client that vanishes mid-reply is logged to ~/.co/browser.log, not fatal | bind race with a second daemon → loser exits
@@ -15,11 +15,9 @@ import time
 import socket
 import json
 import shlex
-import fcntl
 import inspect
 import signal
 import atexit
-import tempfile
 import threading
 from datetime import datetime
 from pathlib import Path
@@ -27,18 +25,16 @@ from pathlib import Path
 from connectonion.useful_tools.browser_tools import BrowserAutomation
 from connectonion.useful_tools.browser_tools.browser import driver_stealth_status
 from .agent import resolve_api_key, build_browser_agent
+from . import transport
 
 
 def default_sock_path() -> str:
-    """Runtime socket path: $CO_BROWSER_SOCK, else $XDG_RUNTIME_DIR/co, else $TMPDIR/co."""
-    override = os.environ.get("CO_BROWSER_SOCK")
-    if override:
-        return override
-    runtime = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    base = Path(runtime) / "co"
-    base.mkdir(parents=True, exist_ok=True)
-    os.chmod(base, 0o700)
-    return str(base / "browser.sock")
+    """The daemon endpoint address (cross-platform).
+
+    POSIX: a Unix-socket path ($CO_BROWSER_SOCK, else $XDG_RUNTIME_DIR/co, else $TMPDIR/co).
+    Windows: a per-user named pipe. See transport.default_address().
+    """
+    return transport.default_address()
 
 
 def _coerce(value: str, annotation):
@@ -113,17 +109,13 @@ def _tab_label(key) -> str:
 def _owner_alive(sock_path: str) -> bool:
     """True when the daemon that bound `sock_path` is still a running process.
     No pid file (pre-pidfile daemon, or already cleaned up) reads as dead."""
-    pid_path = Path(sock_path + ".pid")
-    if not pid_path.exists():
+    pid_file = Path(transport.pid_path(sock_path))
+    if not pid_file.exists():
         return False
-    raw = pid_path.read_text().strip()
+    raw = pid_file.read_text().strip()
     if not raw.isdigit():
         return False
-    try:
-        os.kill(int(raw), 0)
-    except OSError:
-        return False
-    return True
+    return transport.pid_alive(int(raw))
 
 
 def _held_by_other(meta, caller: str) -> bool:
@@ -453,15 +445,16 @@ class BrowserDaemon:
             signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
         while True:
-            conn, _ = self._srv.accept()
+            conn = self._accept()
+            if conn is None:
+                continue  # a client that failed the auth handshake (Windows) — keep serving
             request = ""
             try:
-                conn.settimeout(120)  # a client that connects then stalls without
-                request = _recv_all(conn).decode().strip()  # sending must not wedge the
-                ok, payload = self.dispatch(request)         # whole single-threaded daemon
-            except socket.timeout:
-                conn.close()
-                continue
+                request = self._read_request(conn)  # a client that connects then stalls
+                if request is None:                  # must not wedge the single-threaded daemon
+                    self._close(conn)
+                    continue
+                ok, payload = self.dispatch(request)
             except Exception as exc:
                 # Request boundary: one bad request (malformed envelope, encoding, an
                 # unexpected dispatch bug) is reported to ITS client — it must never
@@ -471,14 +464,14 @@ class BrowserDaemon:
                 # ok is True, False, or an int error code (2/3/4) so orchestrating
                 # agents can branch on the exit code without parsing prose.
                 header = "OK" if ok is True else ("ERR" if ok is False else f"ERR {ok}")
-                conn.sendall((header + "\n" + payload).encode())
-            except (BrokenPipeError, ConnectionResetError, socket.timeout):
+                self._send_reply(conn, (header + "\n" + payload).encode())
+            except (BrokenPipeError, ConnectionResetError, socket.timeout, OSError, EOFError):
                 # The client died mid-request (bash timeout, Ctrl-C). Its death must not
                 # kill the daemon — log the drop (stderr goes to ~/.co/browser.log) so
                 # "my command printed nothing" stays diagnosable.
                 print(f"client vanished before reply: {request[:80]!r}", file=sys.stderr)
             finally:
-                conn.close()
+                self._close(conn)
 
             # Exit (releasing the socket) when the browser can no longer be driven, so the
             # next command spawns a fresh daemon instead of reusing a dead one. This is a
@@ -508,12 +501,22 @@ class BrowserDaemon:
         exact situation that spawns us). Unlinking a BUSY daemon's socket forks the
         world: two daemons, two Chromes fighting over one profile, and the original
         becomes an unreachable zombie. The pid file the owner wrote at bind time
-        tells the two apart."""
-        self._bind_lock = open(self.sock_path + ".lock", "w")  # fd kept open for life
-        try:
-            fcntl.flock(self._bind_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
+        tells the two apart.
+
+        The lifetime lock, pid-file location, and (on Windows) the named-pipe wire live
+        behind `transport` so POSIX behavior is byte-identical while Windows gets native
+        named pipes with an HMAC-authenticated handshake."""
+        self._authkey = transport.load_or_create_authkey()  # used by the Windows pipe wire
+        self._bind_lock = transport.acquire_singleton_lock(transport.lock_path(self.sock_path))
+        if self._bind_lock is None:
             sys.exit(0)  # another daemon is binding or already serving
+        if transport.IS_WINDOWS:
+            self._bind_windows()
+        else:
+            self._bind_posix()
+
+    def _bind_posix(self):
+        """Raw AF_UNIX bind with the original stale-vs-busy probe (unchanged)."""
         if os.path.exists(self.sock_path):
             probe = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
             try:
@@ -526,23 +529,76 @@ class BrowserDaemon:
                 os.unlink(self.sock_path)  # stale socket
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.sock_path)
-        Path(self.sock_path + ".pid").write_text(str(os.getpid()))
+        Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()))
         self._srv.listen(8)
+
+    def _bind_windows(self):
+        """Named-pipe bind. A pipe instance vanishes with its owning process, so there is
+        no stale file to unlink — a refused/absent probe is busy (owner alive) or dead."""
+        auth_error = transport.AuthenticationError()
+        try:
+            probe = transport.win_connect(self.sock_path, self._authkey)
+            probe.close()
+            sys.exit(0)  # another daemon already serving
+        except auth_error:
+            sys.exit(0)  # a daemon is there (key mismatch) — never double-bind
+        except (FileNotFoundError, ConnectionError, OSError):
+            if _owner_alive(self.sock_path):
+                sys.exit(0)  # owner alive, pipe busy — not stale
+        self._srv = transport.win_listener(self.sock_path, self._authkey)
+        Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()))
+
+    # ---- transport seam: POSIX raw AF_UNIX socket vs Windows named-pipe Connection ----
+
+    def _accept(self):
+        """Accept one client. Returns a connection object, or None if the client failed
+        the Windows auth handshake (a bad handshake must not kill the single-threaded loop)."""
+        if transport.IS_WINDOWS:
+            try:
+                return self._srv.accept()  # mpc performs the HMAC handshake here
+            except (transport.AuthenticationError(), OSError):
+                return None
+        conn, _ = self._srv.accept()
+        return conn
+
+    def _read_request(self, conn) -> str:
+        """Read one request, bounded at 120s. Returns the text, or None on a stall."""
+        if transport.IS_WINDOWS:
+            if not conn.poll(120):
+                return None
+            return conn.recv_bytes().decode().strip()
+        conn.settimeout(120)
+        try:
+            return _recv_all(conn).decode().strip()
+        except socket.timeout:
+            return None
+
+    def _send_reply(self, conn, data: bytes):
+        if transport.IS_WINDOWS:
+            conn.send_bytes(data)
+        else:
+            conn.sendall(data)
+
+    def _close(self, conn):
+        try:
+            conn.close()
+        except OSError:
+            pass
 
     def _cleanup(self):
         # Stop accepting FIRST: closing/unlinking the socket before anything slow
         # means a client connecting during shutdown fails immediately and spawns
         # a fresh daemon, instead of reaching a daemon that will never accept its request.
         if self._srv:
-            self._srv.close()
+            self._srv.close()  # on Windows, mpc.Listener.close() removes the pipe itself
         # Only remove what is still OURS (pid file names this process): a successor
         # daemon may already own the path — a late-exiting zombie deleting the live
         # socket or pid file would re-arm the very bug the pid file exists to prevent.
-        pid_path = Path(self.sock_path + ".pid")
-        if pid_path.exists() and pid_path.read_text().strip() == str(os.getpid()):
-            if os.path.exists(self.sock_path):
-                os.unlink(self.sock_path)
-            pid_path.unlink()
+        pid_file = Path(transport.pid_path(self.sock_path))
+        if pid_file.exists() and pid_file.read_text().strip() == str(os.getpid()):
+            if not transport.IS_WINDOWS and os.path.exists(self.sock_path):
+                os.unlink(self.sock_path)  # POSIX: remove our socket file (mpc did it on Win)
+            pid_file.unlink()
         # No browser.close() here: by the time atexit runs, the interpreter has
         # already shut the worker thread's executor down, so an in-process close
         # can only raise ("cannot schedule new futures after shutdown"). Chrome

@@ -25,16 +25,27 @@ import pytest
 
 from connectonion.cli.browser_agent import daemon as d
 from connectonion.cli.browser_agent import client as c
+from connectonion.cli.browser_agent import transport as tp
+
+IS_WINDOWS = tp.IS_WINDOWS
+posix_only = pytest.mark.skipif(IS_WINDOWS, reason="exercises the raw AF_UNIX socket mechanism (POSIX)")
 
 
 @pytest.fixture
 def short_sock():
-    """A short AF_UNIX path (macOS caps socket paths at 104 chars; tmp_path is too long)."""
-    path = f"/tmp/co_test_{os.getpid()}_{time.time_ns()}.sock"
-    yield path
-    for leftover in (path, path + ".pid", path + ".lock"):
-        if os.path.exists(leftover):
-            os.unlink(leftover)
+    """A unique daemon endpoint. POSIX: a short AF_UNIX path (macOS caps paths at 104 chars,
+    so tmp_path is too long). Windows: a unique named pipe."""
+    if IS_WINDOWS:
+        address = rf"\\.\pipe\co_test_{os.getpid()}_{time.time_ns()}"
+    else:
+        address = f"/tmp/co_test_{os.getpid()}_{time.time_ns()}.sock"
+    yield address
+    for leftover in (address, tp.pid_path(address), tp.lock_path(address)):
+        try:
+            if os.path.exists(leftover):
+                os.unlink(leftover)
+        except OSError:
+            pass
 
 
 class StubBrowser:
@@ -116,13 +127,16 @@ class StubBrowser:
 
 
 def _wait_until_listening(sock_path, timeout=5.0):
-    """Wait until the daemon has bound its socket (file appears), without leaking a connection."""
+    """Wait until the daemon has bound (its pid file appears), without leaking a connection.
+    The pid file is written at bind time on both platforms, so this is transport-agnostic
+    (a Windows named pipe is not a filesystem path, so os.path.exists on it wouldn't work)."""
+    pid_file = tp.pid_path(sock_path)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if os.path.exists(sock_path):
+        if os.path.exists(pid_file):
             return
         time.sleep(0.02)
-    raise RuntimeError("daemon did not bind socket in time")
+    raise RuntimeError("daemon did not bind in time")
 
 
 def make_daemon(sock_path, stub=None):
@@ -780,6 +794,7 @@ def test_socket_round_trip_structured_exit_codes(short_sock, monkeypatch, capsys
 
 # ---- _bind: busy daemon vs stale socket ----------------------------------
 
+@posix_only
 def test_bind_yields_to_a_live_busy_daemon(short_sock):
     """A refused probe against a socket whose owner is STILL RUNNING means busy
     (backlog full during a long command), not stale. The newcomer must exit —
@@ -794,6 +809,7 @@ def test_bind_yields_to_a_live_busy_daemon(short_sock):
     assert os.path.exists(short_sock)  # the busy owner's socket was NOT unlinked
 
 
+@posix_only
 def test_bind_replaces_a_stale_socket_of_a_dead_daemon(short_sock):
     """A refused probe whose recorded owner is DEAD is a stale socket: unlink,
     bind fresh, and record our own pid as the new owner."""
@@ -811,6 +827,7 @@ def test_bind_replaces_a_stale_socket_of_a_dead_daemon(short_sock):
     daemon._srv.close()
 
 
+@posix_only
 def test_bind_replaces_a_stale_socket_without_pidfile(short_sock):
     """No pid file (pre-pidfile daemon, or cleanup already ran) reads as dead:
     the refused socket is stale and gets replaced."""
@@ -895,6 +912,7 @@ def test_newtab_with_tab_target_is_rejected(tmp_path):
     assert "tab open" in payload
 
 
+@posix_only
 def test_bind_holds_an_exclusive_lock_for_life(short_sock):
     """The whole probe-and-bind sequence runs under a lifetime flock: a rival
     daemon starting at the same instant must lose at the lock, never reach the
