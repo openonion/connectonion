@@ -19,18 +19,18 @@ The core pattern is: **save context -> analyze DOM/CSS -> write skill-local JS e
 
 Do not add site-specific Python to the core browser tool.
 
-Use generic browser primitives:
+Use generic browser primitives — run each as `co browser <function>`, positional args in order, options as `--flag=value`:
 
-```text
-save_page_context(name)
-take_screenshot(path)
-run_page_script(script_path, args_json)
-run_frame_script(script_path, args_json, frame_url_contains, frame_name)
-click_element_by_selector(selector, index, text)
-type_text_by_selector(selector, text, index)
-click_element_near_selector(anchor_selector, target_selector, target_text, ...)
-upload_file_by_selector(selector, file_path, index, frame_url_contains, frame_name)
-upload_file_after_click_by_selector(click_selector, file_path, index, text, frame_url_contains, frame_name)
+```bash
+co browser save_page_context <name>
+co browser take_screenshot
+co browser run_page_script <script_path> '<args_json>'
+co browser run_frame_script <script_path> '<args_json>' --frame_url_contains=<substring> --frame_name=<name>
+co browser click_element_by_selector <selector> --index=<n> --text='<visible text>'
+co browser type_text_by_selector <selector> '<text>' --index=<n>
+co browser click_element_near_selector <anchor_selector> <target_selector> --target_text='<text>' --container_selector=<selector>
+co browser upload_file_by_selector <selector> <file_path> --frame_name=<name>
+co browser upload_file_after_click_by_selector <click_selector> <file_path> --text='<button text>' --frame_name=<name>
 ```
 
 Put site-specific selectors and DOM logic in the target skill:
@@ -53,7 +53,7 @@ Put site-specific selectors and DOM logic in the target skill:
 2. Start with safe read-only browser analysis:
    - navigate to the target page
    - take a screenshot
-   - call `save_page_context("<target>_before")`
+   - run `co browser save_page_context <target>_before`
    - inspect saved `page.html`, `styles.css`, and `elements.json`
 3. Identify stable selectors:
    - Prefer semantic selectors: `aria-label`, `role`, `contenteditable`, `placeholder`, `data-testid`, stable text.
@@ -81,8 +81,8 @@ Before writing automation, gather evidence from the real page:
 2. Take a normal viewport screenshot, not only a full-page screenshot.
 3. Save context:
 
-   ```text
-   save_page_context("<site>_<workflow>_before")
+   ```bash
+   co browser save_page_context <site>_<workflow>_before
    ```
 
 4. Inspect `elements.json` first for clickable actions, aria labels, positions, text, button order, and the `frame` field.
@@ -112,7 +112,7 @@ Prefer selectors in this order:
 2. `role` plus text or nested semantic structure.
 3. `contenteditable`, `placeholder`, `name`, `type`, `data-testid`.
 4. Stable link URL patterns or form attributes.
-5. Text filter passed separately to `click_element_by_selector(..., text='...')`.
+5. Text filter passed separately: `co browser click_element_by_selector <selector> --text='...'`.
 6. Generated classes only as a last resort and only after screenshot/context evidence shows no semantic alternative.
 
 Do not use CSS classes that look generated as the primary selector for social feeds. They usually change between sessions.
@@ -123,20 +123,17 @@ Do not hardcode temporary context locators such as `[data-browser-agent-id="318"
 
 When there are many matching buttons, prefer one of these patterns:
 
-```text
-extract JS returns action_index among all visible matching action buttons
-click_element_by_selector('button', index=<action_index>, text='<Action>')
+```bash
+# extract JS returns action_index among all visible matching action buttons
+co browser click_element_by_selector button --index=<action_index> --text='<Action>'
 ```
 
 or:
 
-```text
-click_element_near_selector(
-  anchor_selector='<editor/input selector>',
-  target_selector='button',
-  target_text='<Submit/Post/Comment>',
-  container_selector='<item/form container selector>'
-)
+```bash
+co browser click_element_near_selector '<editor/input selector>' button \
+  --target_text='<Submit/Post/Comment>' \
+  --container_selector='<item/form container selector>'
 ```
 
 The first pattern is for opening the item editor/action. The second pattern is for final submit near an already active editor.
@@ -238,54 +235,38 @@ For generated replies/comments, the prompt to the writer skill must receive exac
 
 After JS verification, use generic browser tools:
 
-```text
-click_element_by_selector('button', index=<matched_item.action_index>, text='Comment')
-type_text_by_selector('<editor selector>', '<generated_content>')
-click_element_near_selector(
-  anchor_selector='<editor selector>',
-  target_selector='button',
-  target_text='<submit text>',
-  anchor_index=-1,
-  container_selector='<item container selector>',
-  require_anchor_text=True,
-  wait_ms=2500,
-  verify_anchor_text_cleared=True
-)
+```bash
+co browser click_element_by_selector button --index=<matched_item.action_index> --text=Comment
+co browser type_text_by_selector '<editor selector>' '<generated_content>'
+co browser click_element_near_selector '<editor selector>' button \
+  --target_text='<submit text>' --anchor_index=-1 \
+  --container_selector='<item container selector>' \
+  --require_anchor_text=true --wait_ms=2500 --verify_anchor_text_cleared=true
 ```
 
 For uploads, use the equivalent stable input/button selectors and keep the same extraction/verification gates around the item or form being acted on.
 
 Local file uploads cannot be completed by browser JavaScript alone. Browser-side JS cannot set a real local path on `<input type="file">`. Use generic browser upload primitives:
 
-```text
-upload_file_after_click_by_selector(
-  click_selector='<upload button selector>',
-  text='<Upload/Add file/Upload from computer>',
-  file_path='<absolute local file path>',
-  frame_name='<optional frame name>'
-)
+```bash
+co browser upload_file_after_click_by_selector '<upload button selector>' '<absolute local file path>' \
+  --text='<Upload/Add file/Upload from computer>' --frame_name='<optional frame name>'
 ```
 
 or, when a file input is directly available:
 
-```text
-upload_file_by_selector(
-  selector='input[type="file"]',
-  file_path='<absolute local file path>',
-  frame_name='<optional frame name>'
-)
+```bash
+co browser upload_file_by_selector 'input[type="file"]' '<absolute local file path>' \
+  --frame_name='<optional frame name>'
 ```
 
 Wrap uploads with skill-local JS scanners such as `verify-upload-controls.js` and `verify-upload-complete.js` that report visible upload triggers, `input[type=file]` metadata, media previews, and upload completion state. Save screenshot/context immediately after upload. If upload verification fails, stop before submit/publish.
 
 For final side-effect actions in frame/shadow UIs, prefer a skill-local JS click script over generic CSS clicking:
 
-```text
-run_frame_script(
-  script_path='.co/skills/<target-skill>/scripts/click-<action>.js',
-  args_json='{"expected_text":"...","expected_text_hash":"..."}',
-  frame_name='<optional frame name>'
-)
+```bash
+co browser run_frame_script .co/skills/<target-skill>/scripts/click-<action>.js \
+  '{"expected_text":"...","expected_text_hash":"..."}' --frame_name='<optional frame name>'
 ```
 
 The click script must verify the exact editor/composer content or item identity, find the enabled visible submit button near that verified context, click exactly once, and return `ok: true` only when it actually clicked. The workflow must require both `matched_frame.result.ok === true` and `matched_frame.result.clicked === true` before reporting success.
@@ -338,22 +319,15 @@ The scripts must be page functions:
 
 They are run with:
 
-```text
-run_page_script(
-  script_path='.co/skills/<target-skill>/scripts/extract-items.js',
-  args_json='{"maxItems":3}'
-)
+```bash
+co browser run_page_script .co/skills/<target-skill>/scripts/extract-items.js '{"maxItems":3}'
 ```
 
 For frame-aware workflows, run the same script with:
 
-```text
-run_frame_script(
-  script_path='.co/skills/<target-skill>/scripts/verify-item.js',
-  args_json='{"expected_text_hash":"..."}',
-  frame_url_contains='',
-  frame_name=''
-)
+```bash
+co browser run_frame_script .co/skills/<target-skill>/scripts/verify-item.js \
+  '{"expected_text_hash":"..."}' --frame_url_contains='' --frame_name=''
 ```
 
 Extraction and verification scripts should be deterministic and small. Avoid network requests, timers, mutation, clicks, typing, or localStorage writes. They should read DOM only and return JSON.
@@ -394,7 +368,7 @@ verify-editor.js(args: title, body_text) -> { ok, text_hash, formatting }
 
 If formatting matters, the workflow must report `formatting` counts and use a screenshot to confirm rendered appearance. If visible text matches but formatting counts are zero for a Markdown-rich source, treat it as a draft-quality failure and stop before publishing.
 
-When a screenshot, script result, or human report shows a Markdown render problem, always call `save_page_context("<workflow>_markdown_render_problem")` while the bad rendering is still visible, then call `take_screenshot("<workflow>_markdown_render_problem.png")`. Do not rely on screenshots alone. The saved context provides `page.html`, `styles.css`, and `elements.json` for frame/shadow/selector analysis before changing fill or verification logic.
+When a screenshot, script result, or human report shows a Markdown render problem, always run `co browser save_page_context <workflow>_markdown_render_problem` while the bad rendering is still visible, then `co browser take_screenshot <workflow>_markdown_render_problem.png`. Do not rely on screenshots alone. The saved context provides `page.html`, `styles.css`, and `elements.json` for frame/shadow/selector analysis before changing fill or verification logic.
 
 ## Run Efficiency
 
@@ -457,8 +431,8 @@ Never skip the safe extraction test. It catches almost all wrong-container and w
 
 Always save context during skill creation or debugging:
 
-```text
-save_page_context("<site>_<workflow>_before")
+```bash
+co browser save_page_context <site>_<workflow>_before
 ```
 
 Use saved files this way:
