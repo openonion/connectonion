@@ -164,9 +164,8 @@ co create [name] [options]
 
 Options:
   [name]                    Project name (optional, will prompt)
-  --template, -t            Template to use (minimal/coder/browser/web-research/custom)
-  --description, -d         Description for custom template
-  --no-ai                   Disable AI features (not recommended)
+  --template, -t            Template to use (minimal/coder/browser/hosted-browser/co-ai/web-research/custom)
+  --description             Description for custom template
   --key                     API key to use (overrides global)
   --yes, -y                 Accept all defaults
 ```
@@ -189,12 +188,6 @@ The CLI automatically detects API key providers:
 - `gsk_...` → Groq
 
 ## Special Features
-
-### AI Enabled by Default
-
-AI features are always enabled because agents need LLMs. To disable (not recommended):
-1. Edit `.co/host.yaml` after creation
-2. Use `--no-ai` flag (limits functionality)
 
 ### Global Identity Reuse
 
