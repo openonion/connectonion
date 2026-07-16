@@ -14,6 +14,7 @@ Strategy: a StubBrowser stands in for BrowserAutomation so no real Chrome/Playwr
 or network is needed. The daemon's lazy BrowserAutomation is swapped for the stub.
 """
 
+import contextlib
 import os
 import socket
 import subprocess
@@ -41,11 +42,12 @@ def short_sock():
         address = f"/tmp/co_test_{os.getpid()}_{time.time_ns()}.sock"
     yield address
     for leftover in (address, tp.pid_path(address), tp.lock_path(address)):
-        try:
+        # Windows cannot unlink the .lock file while a daemon thread in this same
+        # process still holds its byte-range lock — the OS frees it at process exit,
+        # so a failed cleanup here is expected, not a bug being hidden.
+        with contextlib.suppress(OSError):
             if os.path.exists(leftover):
                 os.unlink(leftover)
-        except OSError:
-            pass
 
 
 class StubBrowser:

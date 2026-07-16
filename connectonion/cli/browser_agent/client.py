@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int
   Performance: one connect + request/response | daemon spawn adds browser launch latency on first call
-  Errors: _connect() retries ~2s on a transient connection refusal from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale POSIX socket is unlinked | missing endpoint → spawn daemon and wait until ready or timeout | Windows authkey mismatch against a live daemon → actionable RuntimeError (spawning another daemon would just yield) | daemon dying mid-request → clean stderr line + exit 1, never a traceback
+  Errors: _connect() retries ~2s on a transient connection refusal from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale POSIX socket is unlinked | missing endpoint → spawn daemon and wait until ready or timeout | ALL setup RuntimeErrors (Windows authkey mismatch/corruption, daemon didn't start) are caught in send() → one clean stderr line + exit 1, NEVER a traceback (typer's pretty exceptions would print frame locals, which hold the HMAC secret on the connect path) | daemon dying mid-request → clean stderr line + exit 1
 """
 
 import os
@@ -20,15 +20,16 @@ from .daemon import default_sock_path, _owner_alive
 from . import transport
 
 
-def _connect(sock_path: str, authkey=None):
+def _connect(sock_path: str):
     """Connect to the daemon. Returns a live connection, or None if the daemon is
     genuinely gone. A busy single-threaded daemon (mid `do` task) can momentarily
     refuse while its accept backlog is full — that is NOT a dead daemon, so retry
     while its recorded owner is alive; a dead owner fails fast (the spawned daemon
     replaces it). POSIX uses a raw AF_UNIX socket (unchanged); Windows uses the
-    authenticated named-pipe client from `transport`."""
+    authenticated named-pipe client from `transport`. Raises RuntimeError only for
+    an authkey mismatch against a live daemon (send() turns it into a clean line)."""
     if transport.IS_WINDOWS:
-        return _connect_windows(sock_path, authkey)
+        return _connect_windows(sock_path)
     return _connect_posix(sock_path)
 
 
@@ -53,8 +54,12 @@ def _connect_posix(sock_path: str):
     return None  # still refusing after the window — let the caller spawn a fresh daemon
 
 
-def _connect_windows(sock_path: str, authkey):
-    for attempt in range(20):  # ~2s tolerance for a busy daemon (pipe not yet re-armed)
+def _connect_windows(sock_path: str):
+    authkey = transport.load_or_create_authkey()  # one 64-byte read, hoisted off the loop
+    # Retry window for a briefly-unavailable pipe. (mpc's Client additionally waits out
+    # PIPE_BUSY internally, so a genuinely busy daemon behaves like the POSIX backlog:
+    # the client waits rather than erroring.)
+    for attempt in range(20):
         try:
             return transport.win_connect(sock_path, authkey)
         except transport.AuthenticationError:
@@ -65,7 +70,11 @@ def _connect_windows(sock_path: str, authkey):
                 "browser daemon rejected this client's auth key — stop the old daemon "
                 "and retry (it will restart with the current key)"
             )
-        except (FileNotFoundError, ConnectionError, OSError):
+        except FileNotFoundError:
+            return None  # no pipe = no daemon (pipes die with their process) — spawn one
+        except EOFError:
+            return None  # daemon died mid-handshake — treat as gone; caller respawns
+        except (ConnectionError, OSError):
             if not _owner_alive(sock_path):
                 return None  # nobody home — don't burn the retry window
             time.sleep(0.1)
@@ -76,18 +85,17 @@ def _spawn_daemon(sock_path: str, headless: bool):
     """Launch the daemon detached and wait until its socket accepts connections."""
     log_path = Path.home() / ".co" / "browser.log"
     log_path.parent.mkdir(parents=True, exist_ok=True)
-    log = open(log_path, "a")
     cmd = [sys.executable, "-m", "connectonion.cli.browser_agent.daemon", sock_path]
     if headless:
         cmd.append("--headless")
-    transport.spawn_detached(cmd, log)  # POSIX: new session · Windows: DETACHED_PROCESS
+    with open(log_path, "a") as log:  # the child dups the handle; ours closes right away
+        transport.spawn_detached(cmd, log)  # POSIX: new session · Windows: DETACHED_PROCESS
 
-    authkey = transport.load_or_create_authkey() if transport.IS_WINDOWS else None
     # Wall-clock deadline, not an attempt count: against a busy daemon each _connect
     # can itself take ~2s of refused-retries, so counting attempts multiplies silently.
     deadline = time.time() + 15
     while time.time() < deadline:
-        conn = _connect(sock_path, authkey)
+        conn = _connect(sock_path)
         if conn:
             return conn
         time.sleep(0.1)
@@ -122,8 +130,14 @@ def send(line: str, headless: bool = False, tab: str = None) -> int:
     is spliced into the shlex-parsed command line)."""
     request = json.dumps({"v": 1, "caller": _caller(), "tab": tab, "line": line})
     sock_path = default_sock_path()
-    authkey = transport.load_or_create_authkey() if transport.IS_WINDOWS else None
-    conn = _connect(sock_path, authkey) or _spawn_daemon(sock_path, headless)
+    try:
+        conn = _connect(sock_path) or _spawn_daemon(sock_path, headless)
+    except RuntimeError as exc:
+        # Setup failures (authkey mismatch/corruption, daemon didn't start) must exit
+        # with a clean one-line error, NEVER a traceback: typer's pretty exceptions
+        # print frame locals, and connect-path frames hold the HMAC secret.
+        print(str(exc), file=sys.stderr)
+        return 1
 
     if transport.IS_WINDOWS:
         # Named-pipe wire: one framed message each way (no half-close needed).

@@ -66,4 +66,4 @@ jobs:
 
       - name: Run browser transport + daemon tests (native Windows named pipes)
         run: |
-          pytest tests/e2e/cli/test_transport.py tests/e2e/cli/test_browser_daemon.py -v --tb=short
+          pytest tests/unit/test_transport.py tests/e2e/cli/test_browser_daemon.py -v --tb=short
