@@ -187,7 +187,7 @@ class TestSessionHandler:
         )
         storage.save(session)
 
-        result = session_handler(storage, "test-123")
+        result = session_handler(storage, "test-123", is_admin=True)
 
         assert result is not None
         assert result["session_id"] == "test-123"
@@ -213,7 +213,7 @@ class TestSessionsHandler:
         storage.save(Session(session_id="a", status="done", prompt="A", created=now))
         storage.save(Session(session_id="b", status="done", prompt="B", created=now + 1))
 
-        result = sessions_handler(storage)
+        result = sessions_handler(storage, is_admin=True)
 
         assert "sessions" in result
         assert len(result["sessions"]) == 2

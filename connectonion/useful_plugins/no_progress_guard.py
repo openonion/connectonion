@@ -42,13 +42,17 @@ def _last_tool_signature(messages):
     tool_executor), which makes a repeated identical call serialize byte-for-byte.
     """
     for message in reversed(messages):
-        if message.get('role') == 'assistant' and message.get('tool_calls'):
-            return json.dumps(
-                [
-                    [tc['function']['name'], tc['function'].get('arguments', '')]
-                    for tc in message['tool_calls']
-                ]
-            )
+        if message.get('role') != 'assistant':
+            continue
+        tool_calls = message.get('tool_calls')
+        if not tool_calls:
+            return None
+        return json.dumps(
+            [
+                [tc['function']['name'], tc['function'].get('arguments', '')]
+                for tc in tool_calls
+            ]
+        )
     return None
 
 

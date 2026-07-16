@@ -149,7 +149,13 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
     return profile
 
 
-def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict):
+def _create_route_handlers(
+    create_agent: Callable,
+    agent_metadata: dict,
+    result_ttl: int,
+    trust_agent,
+    config: dict,
+):
     """Create route handler dict for ASGI app.
 
     Args:
@@ -162,14 +168,76 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         config: Host config dict (includes file upload limits)
     """
     agent_name = agent_metadata["name"]
+    host_address = agent_metadata["address"]
 
-    def handle_input(storage, prompt, session=None, connection=None, images=None, files=None):
-        validate_files(files, config)
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
+    def authenticate(
+        data,
+        trust,
+        *,
+        blacklist=None,
+        whitelist=None,
+        recipient_address=None,
+    ):
+        """Authenticate a signed request for this specific host identity."""
+        return extract_and_authenticate(
+            data,
+            trust,
+            blacklist=blacklist,
+            whitelist=whitelist,
+            recipient_address=host_address,
+        )
 
-    def handle_ws_input(storage, prompt, connection, session=None, images=None, files=None):
+    def handle_input(
+        storage,
+        prompt,
+        session=None,
+        connection=None,
+        images=None,
+        files=None,
+        agent_address=None,
+        mode=None,
+        session_id_authenticated=False,
+    ):
         validate_files(files, config)
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
+        return input_handler(
+            create_agent,
+            storage,
+            prompt,
+            result_ttl,
+            session,
+            connection,
+            images,
+            files,
+            agent_address,
+            mode,
+            session_id_authenticated,
+        )
+
+    def handle_ws_input(
+        storage,
+        prompt,
+        connection,
+        session=None,
+        images=None,
+        files=None,
+        agent_address=None,
+        mode=None,
+        session_id_authenticated=False,
+    ):
+        validate_files(files, config)
+        return input_handler(
+            create_agent,
+            storage,
+            prompt,
+            result_ttl,
+            session,
+            connection,
+            images,
+            files,
+            agent_address,
+            mode,
+            session_id_authenticated,
+        )
 
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
@@ -186,7 +254,8 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         "sessions": sessions_handler,
         "health": handle_health,
         "info": handle_info,
-        "auth": extract_and_authenticate,
+        "auth": authenticate,
+        "recipient_address": host_address,
         "ws_input": handle_ws_input,
         "admin_logs": handle_admin_logs,
         "admin_sessions": admin_sessions_handler,
@@ -395,7 +464,8 @@ def host(
             - Policy: Natural language or file path
             - Agent: Custom trust agent
         result_ttl: How long to keep results in seconds (default: 86400 or from config)
-        workers: Number of worker processes (default: 1 or from config)
+        workers: Must be 1. Session leases, replay claims, and active WebSocket
+                 reconnection state are process-local.
         reload: Auto-reload on code changes (default: False or from config)
         relay_url: P2P relay URL (default: wss://oo.openonion.ai)
             - Set to None or "" to disable relay and run local-only
@@ -448,6 +518,12 @@ def host(
     summary = config.get('summary')
     examples = config.get('examples')
 
+    if workers != 1:
+        raise ValueError(
+            "host() requires workers=1 because session leases, replay claims, "
+            "and active WebSocket sessions are process-local"
+        )
+
     # Extract metadata once at startup
     agent_metadata, sample = _extract_agent_metadata(create_agent)
 
@@ -487,7 +563,9 @@ def host(
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, config)
+    route_handlers = _create_route_handlers(
+        create_agent, agent_metadata, result_ttl, trust_agent, config
+    )
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -555,7 +633,11 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
             return Agent("assistant", tools=[search])
 
         app = create_app(create_agent)
-        # uvicorn myagent:app --workers 4
+        # uvicorn myagent:app --workers 1
+
+    The local session backend is intentionally single-process. External ASGI
+    servers must also use one worker unless a shared transactional session and
+    active-connection backend is provided.
     """
     from .auth import get_agent_address
 
@@ -576,7 +658,9 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS)
+    route_handlers = _create_route_handlers(
+        create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS
+    )
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,

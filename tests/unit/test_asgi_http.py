@@ -308,9 +308,14 @@ class TestHandleHttpRouting:
         assert body["name"] == "test"
         assert body["trust"] == "careful"
 
-    async def test_sessions_list_endpoint(self):
+    async def test_sessions_list_endpoint(self, monkeypatch):
         """GET /sessions returns session list."""
-        scope = {"method": "GET", "path": "/sessions", "headers": []}
+        monkeypatch.setenv("OPENONION_API_KEY", "admin-key")
+        scope = {
+            "method": "GET",
+            "path": "/sessions",
+            "headers": [(b"authorization", b"Bearer admin-key")],
+        }
         sent = []
 
         async def receive():
@@ -320,7 +325,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "sessions": lambda storage: {"sessions": [{"id": "1"}, {"id": "2"}]},
+            "sessions": lambda storage, owner, **kwargs: {"sessions": [{"id": "1"}, {"id": "2"}]},
         }
 
         await handle_http(
@@ -334,9 +339,14 @@ class TestHandleHttpRouting:
         body = json.loads(sent[1]["body"])
         assert len(body["sessions"]) == 2
 
-    async def test_session_by_id_found(self):
+    async def test_session_by_id_found(self, monkeypatch):
         """GET /sessions/{id} returns session when found."""
-        scope = {"method": "GET", "path": "/sessions/abc123", "headers": []}
+        monkeypatch.setenv("OPENONION_API_KEY", "admin-key")
+        scope = {
+            "method": "GET",
+            "path": "/sessions/abc123",
+            "headers": [(b"authorization", b"Bearer admin-key")],
+        }
         sent = []
 
         async def receive():
@@ -346,7 +356,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "session": lambda storage, id: {"session_id": id, "status": "done"},
+            "session": lambda storage, id, owner, **kwargs: {"session_id": id, "status": "done"},
         }
 
         await handle_http(
@@ -361,9 +371,14 @@ class TestHandleHttpRouting:
         body = json.loads(sent[1]["body"])
         assert body["session_id"] == "abc123"
 
-    async def test_session_by_id_not_found(self):
+    async def test_session_by_id_not_found(self, monkeypatch):
         """GET /sessions/{id} returns 404 when not found."""
-        scope = {"method": "GET", "path": "/sessions/unknown", "headers": []}
+        monkeypatch.setenv("OPENONION_API_KEY", "admin-key")
+        scope = {
+            "method": "GET",
+            "path": "/sessions/unknown",
+            "headers": [(b"authorization", b"Bearer admin-key")],
+        }
         sent = []
 
         async def receive():
@@ -373,7 +388,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "session": lambda storage, id: None,
+            "session": lambda storage, id, owner, **kwargs: None,
         }
 
         await handle_http(
@@ -385,6 +400,39 @@ class TestHandleHttpRouting:
         )
 
         assert sent[0]["status"] == 404
+
+    async def test_admin_session_get_rejects_oversized_id(self, monkeypatch):
+        monkeypatch.setenv("OPENONION_API_KEY", "admin-key")
+        sent = []
+        called = False
+
+        async def receive():
+            return {"body": b"", "more_body": False}
+
+        async def send(msg):
+            sent.append(msg)
+
+        def get_session(*args, **kwargs):
+            nonlocal called
+            called = True
+
+        await handle_http(
+            {
+                "method": "GET",
+                "path": f"/sessions/{'s' * 257}",
+                "headers": [(b"authorization", b"Bearer admin-key")],
+            },
+            receive,
+            send,
+            route_handlers={"session": get_session},
+            storage=Mock(),
+            trust="open",
+            start_time=0,
+        )
+
+        assert sent[0]["status"] == 400
+        assert json.loads(sent[1]["body"])["error"] == "invalid session_id: too long"
+        assert called is False
 
     async def test_input_endpoint_success(self):
         """POST /input processes authenticated request."""

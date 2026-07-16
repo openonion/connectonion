@@ -13,6 +13,7 @@ import os
 import sys
 import time
 import base64
+from copy import deepcopy
 from typing import List, Optional, Dict, Any, Callable, Union
 from pathlib import Path
 from .llm import LLM, create_llm, TokenUsage
@@ -26,6 +27,9 @@ from ..debug.decorators import (
 from ..logger import Logger
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .events import EventHandler
+
+
+INPUT_MODES = frozenset({'safe', 'plan', 'accept_edits', 'ulw'})
 
 
 class Agent:
@@ -59,6 +63,20 @@ class Agent:
 
         # Session storage (None locally, injected by host() for persistence)
         self.storage = None
+
+        # Server-owned control state. Hosted transports replace this only after
+        # binding it to the authenticated caller + session; clients never round-trip it.
+        self._trusted_server_state = {}
+        self._trusted_server_state_binding = None
+
+        # Present only while after_user_input handlers process an explicit mode request.
+        self._input_mode = None
+
+        # Trampoline for plugins that schedule another full turn (for example ULW).
+        # Keeping this in core avoids recursive Agent.input() calls at large turn counts.
+        self._input_driver_active = False
+        self._scheduled_input = None
+        self._turn_stopped = False
 
         # Token usage tracking
         self.total_cost: float = 0.0  # Cumulative cost in USD
@@ -225,7 +243,55 @@ class Agent:
 
     def input(self, prompt: str, max_iterations: Optional[int] = None,
               session: Optional[Dict] = None, images: list[str] | None = None,
-              files: list[dict] | None = None) -> str:
+              files: list[dict] | None = None, mode: str | None = None) -> str:
+        """Run one or more plugin-scheduled turns without recursive stack growth."""
+        if self._input_driver_active:
+            return self._input_once(prompt, max_iterations, session, images, files, mode)
+
+        self._input_driver_active = True
+        try:
+            result = self._input_once(prompt, max_iterations, session, images, files, mode)
+            while self._scheduled_input is not None:
+                next_prompt = self._scheduled_input
+                self._scheduled_input = None
+                self._input_once(next_prompt)
+            return result
+        finally:
+            self._scheduled_input = None
+            self._input_driver_active = False
+
+    def _schedule_input(self, prompt: str) -> None:
+        """Schedule a follow-up turn for the current iterative input driver."""
+        if not self._input_driver_active:
+            raise RuntimeError("follow-up input can only be scheduled during Agent.input()")
+        if self._scheduled_input is not None:
+            raise RuntimeError("only one follow-up input may be scheduled per turn")
+        self._scheduled_input = prompt
+
+    def _trusted_binding_for(self, session: Optional[Dict] = None):
+        """Return the owner/session binding for a persistent session, if any."""
+        session = self.current_session if session is None else session
+        if not isinstance(session, dict):
+            return None
+        session_id = session.get('session_id')
+        if not isinstance(session_id, str) or not session_id:
+            return None
+        return (getattr(self, '_session_owner_address', None), session_id)
+
+    def _bind_trusted_server_state(self) -> None:
+        """Bind the current capability state to the active persistent session."""
+        self._trusted_server_state_binding = self._trusted_binding_for()
+
+    def _drop_trusted_state_for_unbound_session(self, session: Dict) -> None:
+        """Fail closed when an explicit session does not match capability ownership."""
+        expected = self._trusted_binding_for(session)
+        if expected is None or self._trusted_server_state_binding != expected:
+            self._trusted_server_state = {}
+            self._trusted_server_state_binding = None
+
+    def _input_once(self, prompt: str, max_iterations: Optional[int] = None,
+                    session: Optional[Dict] = None, images: list[str] | None = None,
+                    files: list[dict] | None = None, mode: str | None = None) -> str:
         """Provide input to the agent and get response.
 
         Args:
@@ -236,6 +302,8 @@ class Agent:
             files: Optional list of file dicts with keys:
                 - name: filename (e.g. "report.pdf")
                 - data: base64-encoded data URL (e.g. "data:application/pdf;base64,...")
+            mode: Explicit trusted/local approval mode control. Hosted callers must
+                populate this only from authenticated control input, never session data.
 
         Returns:
             The agent's response after processing the input
@@ -244,21 +312,31 @@ class Agent:
         if self.logger.console:
             self.logger.console.print_task(prompt)
 
+        if mode is not None and (type(mode) is not str or mode not in INPUT_MODES):
+            choices = ', '.join(sorted(INPUT_MODES))
+            raise ValueError(f"mode must be one of: {choices}")
+
+        self._turn_stopped = False
+
         # Session restoration: if session passed, restore it (stateless API continuation)
         # The restored keys are an explicit whitelist because `session` is untrusted client
         # input — restoring `dict(session)` would let a client inject sensitive top-level keys
         # (permissions, stop_signal, pending_tool). `plugin_state` is the one generic slot
-        # plugins own: a plugin persists its state under session['plugin_state']['<name>'] and
-        # core stays generic, so no plugin ever has to add its own keys to this whitelist.
-        # Note: capability flags (e.g. tool-approval skip) must NOT live here — they'd become
-        # client-forgeable across a stateless round-trip; derive those server-side from mode.
+        # plugins own for non-authoritative/UI state. Core stays generic, so plugins never add
+        # their own keys to this whitelist. Capability flags and leases (mode, approval skip,
+        # permission/budget counters) must not live here: hosted transports restore those only
+        # from owner-bound server state or pass explicit authenticated control via `mode`.
         if session is not None:
+            self._drop_trusted_state_for_unbound_session(session)
+            raw_plugin_state = session.get('plugin_state', {})
+            if not isinstance(raw_plugin_state, dict):
+                raw_plugin_state = {}
             self.current_session = {
                 'session_id': session.get('session_id'),
                 'messages': list(session.get('messages', [])),
                 'trace': list(session.get('trace', [])),
                 'turn': session.get('turn', 0),
-                'plugin_state': dict(session.get('plugin_state', {}))
+                'plugin_state': deepcopy(raw_plugin_state)
             }
             # Start YAML session logging with session_id for thread safety
             self.logger.start_session(self.system_prompt, session_id=session.get('session_id'))
@@ -272,6 +350,30 @@ class Agent:
             }
             # Start YAML session logging
             self.logger.start_session(self.system_prompt)
+
+        # Ordinary approval modes may resume only from capability state whose
+        # owner/session binding survived the explicit-session check above.
+        # ULW remains plugin-owned because it also requires a consumed lease.
+        trusted_mode = (
+            self._trusted_server_state.get('mode')
+            if isinstance(self._trusted_server_state, dict)
+            else None
+        )
+        if mode is None and trusted_mode in {'safe', 'plan', 'accept_edits'}:
+            self.current_session['mode'] = trusted_mode
+
+        # `session` is untrusted and never restores mode. This dedicated argument is
+        # the only per-call mode control path, and hosted transports authenticate it.
+        self._input_mode = mode
+        if mode == 'ulw':
+            # ULW is a capability with a bounded lease. Only the ULW plugin can
+            # activate it after creating server-owned state; core merely exposes
+            # the trusted request marker to after_user_input handlers.
+            self.current_session.pop('mode', None)
+        elif mode is not None:
+            self.current_session['mode'] = mode
+            self._trusted_server_state = {'mode': mode}
+            self._bind_trusted_server_state()
 
         # Save uploaded files to .co/uploads/ and build file path references
         saved_files = []
@@ -331,35 +433,48 @@ class Agent:
                 'ts': time.time(),
             })
 
-        # Invoke after_user_input events
-        self._invoke_events('after_user_input')
+        # Invoke after_user_input events while the explicit-mode marker is visible.
+        try:
+            self._invoke_events('after_user_input')
+        finally:
+            self._input_mode = None
 
-        # Process
-        self.current_session['iteration'] = 0  # Reset iteration for this turn
-        result = self._run_iteration_loop(
-            max_iterations or self.max_iterations
-        )
+        try:
+            # Process
+            self.current_session['iteration'] = 0  # Reset iteration for this turn
+            result = self._run_iteration_loop(
+                max_iterations or self.max_iterations
+            )
 
-        # Calculate duration
-        duration = time.time() - turn_start
+            # Calculate duration
+            duration = time.time() - turn_start
 
-        self.current_session['result'] = result
+            self.current_session['result'] = result
 
-        self._invoke_events('on_complete')
+            # `_turn_stopped` deliberately remains visible to every completion
+            # handler so autonomous plugins cannot schedule work after an interrupt.
+            self._invoke_events('on_complete')
 
-        # Log turn to YAML eval (after on_complete so handlers can modify state)
-        self.logger.log_turn(prompt, result, duration * 1000, self.current_session, self.llm.model)
+            # Log turn to YAML eval (after on_complete so handlers can modify state)
+            self.logger.log_turn(prompt, result, duration * 1000, self.current_session, self.llm.model)
 
-        # Print completion summary (after log_turn so we have the eval path)
-        if self.logger.console:
-            eval_path = self.logger.get_eval_path()
-            self.logger.console.print_completion(duration, self.current_session, eval_path)
+            # Print completion summary (after log_turn so we have the eval path)
+            if self.logger.console:
+                eval_path = self.logger.get_eval_path()
+                self.logger.console.print_completion(duration, self.current_session, eval_path)
 
-        return result
+            return result
+        finally:
+            self._turn_stopped = False
 
     def reset_conversation(self):
         """Reset the conversation session. Start fresh."""
         self.current_session = None
+        self._trusted_server_state = {}
+        self._trusted_server_state_binding = None
+        self._input_mode = None
+        self._scheduled_input = None
+        self._turn_stopped = False
 
     def execute_tool(self, tool_name: str, arguments: Optional[Dict] = None) -> Dict[str, Any]:
         """Execute a single tool by name. Useful for testing and debugging.
@@ -434,21 +549,25 @@ class Agent:
             # Get LLM response
             response = self._get_llm_decision()
 
-            if not response.tool_calls:
+            if response.tool_calls:
+                # Process tool calls
+                self._execute_and_record_tools(response.tool_calls)
+            else:
                 content = response.content or ""
                 self.current_session['messages'].append({"role": "assistant", "content": content})
-                return content
 
-            # Process tool calls
-            self._execute_and_record_tools(response.tool_calls)
-
-            # Fire after_iteration
+            # Fire after_iteration after every LLM step, including a final text-only
+            # response, so interrupts and other boundary hooks cannot be skipped.
             self._invoke_events('after_iteration')
 
             # Check if plugin set stop_signal (stop loop, wait for user input)
             if self.current_session.pop('stop_signal', None):
+                self._turn_stopped = True
                 self._invoke_events('on_stop_signal')
                 return "What would you like me to do?"
+
+            if not response.tool_calls:
+                return content
 
         # Hit max iterations
         return f"Task incomplete: Maximum iterations ({max_iterations}) reached."

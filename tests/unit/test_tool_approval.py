@@ -23,6 +23,9 @@ Components under test:
 import pytest
 from unittest.mock import Mock
 
+from connectonion import Agent
+from connectonion.core.llm import LLMResponse, ToolCall
+from connectonion.core.usage import TokenUsage
 from connectonion.useful_plugins.tool_approval import (
     check_approval,
     poll_mode_changes,
@@ -43,6 +46,7 @@ from connectonion.useful_plugins.tool_approval.approval import (
     _get_approval_key,
     _resolve_display_name,
 )
+from tests.utils.mock_helpers import MockLLM
 
 
 class FakeIO:
@@ -81,8 +85,8 @@ class FakeStorage:
     def __init__(self):
         self.checkpoints = []
 
-    def checkpoint(self, session):
-        self.checkpoints.append(session.copy())
+    def checkpoint(self, session, **kwargs):
+        self.checkpoints.append({**session.copy(), "_checkpoint_kwargs": kwargs})
 
 
 class FakeAgent:
@@ -128,6 +132,209 @@ class TestNoIO:
 
         # Should not raise (skips approval)
         check_approval(agent)
+
+
+class TestCapabilityInjection:
+    """Client/session flags never grant approval bypass capability."""
+
+    def test_skip_tool_approval_flag_is_ignored(self):
+        io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['skip_tool_approval'] = True
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'rm -rf /tmp/example'},
+        }
+
+        check_approval(agent)
+
+        assert io.sent[0]['type'] == 'approval_needed'
+
+    def test_explicit_ulw_mode_requires_ulw_plugin(self):
+        """Core must not activate an unbounded ULW bypass without its lease plugin."""
+        calls = []
+
+        def bash(command: str) -> str:
+            calls.append(command)
+            return "ok"
+
+        llm = MockLLM(responses=[
+            LLMResponse(
+                content="",
+                tool_calls=[ToolCall(
+                    name="bash",
+                    arguments={'command': 'rm -rf /tmp/example'},
+                    id="call-1",
+                )],
+                raw_response={},
+                usage=TokenUsage(),
+            ),
+            LLMResponse(content="done", tool_calls=[], raw_response={}, usage=TokenUsage()),
+        ])
+        io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
+        agent = Agent(
+            name="no-ulw-plugin",
+            llm=llm,
+            tools=[bash],
+            plugins=[tool_approval],
+            log=False,
+            quiet=True,
+        )
+        agent.io = io
+
+        assert agent.input("work", mode="ulw") == "done"
+
+        assert calls == ['rm -rf /tmp/example']
+        assert any(event.get('type') == 'approval_needed' for event in io.sent)
+        assert agent.current_session.get('mode') != 'ulw'
+
+    def test_ulw_bypass_requires_consumed_authoritative_lease(self):
+        io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
+        agent = FakeAgent(io=io)
+        agent._ulw_plugin_enabled = True
+        agent.current_session.update({
+            'mode': 'ulw',
+            'pending_tool': {
+                'name': 'bash',
+                'arguments': {'command': 'rm -rf /tmp/example'},
+            },
+        })
+        agent._trusted_server_state = {
+            'mode': 'ulw',
+            'ulw': {'turns': 3, 'turns_used': 1},
+        }
+
+        check_approval(agent)
+
+        assert io.sent == []
+
+    def test_unconsumed_ulw_lease_fails_safe_and_requests_approval(self):
+        io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
+        agent = FakeAgent(io=io)
+        agent._ulw_plugin_enabled = True
+        agent.current_session.update({
+            'mode': 'ulw',
+            'pending_tool': {
+                'name': 'bash',
+                'arguments': {'command': 'rm -rf /tmp/example'},
+            },
+        })
+        agent._trusted_server_state = {
+            'mode': 'ulw',
+            'ulw': {'turns': 3, 'turns_used': 0},
+        }
+
+        check_approval(agent)
+
+        assert agent.current_session['mode'] == 'safe'
+        assert io.sent[0]['type'] == 'approval_needed'
+
+    def test_safe_change_between_batch_tools_revokes_ulw_before_second_tool(self):
+        io = FakeIO(responses=[{'approved': True, 'scope': 'once'}])
+        calls = []
+
+        def bash(command: str) -> str:
+            calls.append(command)
+            if len(calls) == 1:
+                io.pending_signals.append({'type': 'mode_change', 'mode': 'safe'})
+            return 'ok'
+
+        llm = MockLLM(responses=[
+            LLMResponse(
+                content='',
+                tool_calls=[
+                    ToolCall(
+                        name='bash',
+                        arguments={'command': 'rm -rf /tmp/ulw-first'},
+                        id='call-1',
+                    ),
+                    ToolCall(
+                        name='bash',
+                        arguments={'command': 'rm -rf /tmp/ulw-second'},
+                        id='call-2',
+                    ),
+                ],
+                raw_response={},
+                usage=TokenUsage(),
+            ),
+            LLMResponse(content='done', tool_calls=[], raw_response={}, usage=TokenUsage()),
+        ])
+        from connectonion.useful_plugins.ulw import ulw
+
+        agent = Agent(
+            name='batch-ulw-downgrade',
+            llm=llm,
+            tools=[bash],
+            plugins=[tool_approval, ulw],
+            log=False,
+            quiet=True,
+        )
+        agent.io = io
+
+        assert agent.input('work', mode='ulw') == 'done'
+
+        approvals = [event for event in io.sent if event.get('type') == 'approval_needed']
+        assert len(approvals) == 1
+        assert approvals[0]['arguments']['command'] == 'rm -rf /tmp/ulw-second'
+        assert calls == [
+            'rm -rf /tmp/ulw-first',
+            'rm -rf /tmp/ulw-second',
+        ]
+        assert agent.current_session['mode'] == 'safe'
+        assert agent._trusted_server_state == {'mode': 'safe'}
+
+    def test_plan_change_between_batch_tools_blocks_preapproved_second_tool(self):
+        io = FakeIO()
+        calls = []
+
+        def bash(command: str) -> str:
+            calls.append(command)
+            if len(calls) == 1:
+                io.pending_signals.append({'type': 'mode_change', 'mode': 'plan'})
+            return 'ok'
+
+        llm = MockLLM(responses=[
+            LLMResponse(
+                content='',
+                tool_calls=[
+                    ToolCall(
+                        name='bash',
+                        arguments={'command': 'rm -rf /tmp/ulw-first'},
+                        id='call-1',
+                    ),
+                    # `pwd` is normally pre-approved by host.yaml; Plan must
+                    # still block the dangerous tool classification first.
+                    ToolCall(name='bash', arguments={'command': 'pwd'}, id='call-2'),
+                ],
+                raw_response={},
+                usage=TokenUsage(),
+            ),
+            LLMResponse(content='done', tool_calls=[], raw_response={}, usage=TokenUsage()),
+        ])
+        from connectonion.useful_plugins.ulw import ulw
+
+        agent = Agent(
+            name='batch-ulw-plan-downgrade',
+            llm=llm,
+            tools=[bash],
+            plugins=[tool_approval, ulw],
+            log=False,
+            quiet=True,
+        )
+        agent.io = io
+
+        assert agent.input('work', mode='ulw') == 'done'
+
+        assert calls == ['rm -rf /tmp/ulw-first']
+        assert not any(event.get('type') == 'approval_needed' for event in io.sent)
+        second_result = next(
+            entry for entry in agent.current_session['trace']
+            if entry.get('type') == 'tool_result' and entry.get('tool_id') == 'call-2'
+        )
+        assert second_result['status'] == 'error'
+        assert 'blocked in Plan Mode' in second_result['result']
+        assert agent.current_session['mode'] == 'plan'
+        assert agent._trusted_server_state == {'mode': 'plan'}
 
 
 class TestSafeTools:
@@ -293,6 +500,24 @@ class TestCheckpoint:
 
         # Should not raise
         check_approval(agent)
+
+    def test_checkpoint_carries_server_owned_context(self):
+        storage = FakeStorage()
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, storage=storage)
+        agent.current_session.update({
+            'session_id': 'owned-session',
+            'pending_tool': {'name': 'bash', 'arguments': {'command': 'pwd'}},
+        })
+        agent._session_owner_address = '0xowner'
+        agent._session_id_authenticated = True
+        agent._trusted_server_state = {'mode': 'safe'}
+
+        check_approval(agent)
+
+        kwargs = storage.checkpoints[0]['_checkpoint_kwargs']
+        assert kwargs['owner_address'] == '0xowner'
+        assert kwargs['server_state'] == {'mode': 'safe'}
 
     def test_no_checkpoint_for_safe_tools(self):
         """checkpoint() not called for safe tools."""
@@ -664,6 +889,21 @@ class TestPollModeChanges:
 
         assert agent.current_session['mode'] == 'safe'
 
+    def test_poll_mode_change_updates_owner_bound_server_state(self):
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'safe'}])
+        agent = FakeAgent(io=io)
+        agent.current_session.update({
+            'session_id': 'sid-a',
+            'mode': 'accept_edits',
+        })
+        agent._session_owner_address = '0xowner'
+        agent._trusted_server_state = {'mode': 'accept_edits'}
+
+        poll_mode_changes(agent)
+
+        assert agent._trusted_server_state == {'mode': 'safe'}
+        assert agent._trusted_server_state_binding == ('0xowner', 'sid-a')
+
     def test_poll_mode_changes_handles_plan_mode(self):
         """poll_mode_changes should handle mode_change to plan."""
         io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'plan'}])
@@ -688,13 +928,34 @@ class TestPollModeChanges:
         """poll_mode_changes should handle mode_change to ulw."""
         io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'ulw', 'turns': 50}])
         agent = FakeAgent(io=io)
+        agent._ulw_plugin_enabled = True
         agent.current_session['mode'] = 'safe'
 
         poll_mode_changes(agent)
 
         assert agent.current_session['mode'] == 'ulw'
-        assert agent.current_session['ulw_turns'] == 50
-        assert agent.current_session['skip_tool_approval'] is True
+        assert agent._trusted_server_state['ulw']['turns'] == 50
+        assert agent._trusted_server_state['ulw']['turns_used'] == 1
+        assert agent.current_session['plugin_state']['ulw']['turns'] == 50
+        assert 'skip_tool_approval' not in agent.current_session
+
+    def test_poll_mode_changes_rejects_ulw_without_lifecycle_plugin(self):
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'ulw', 'turns': 50}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'ulw'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'safe'
+        assert agent._trusted_server_state == {'mode': 'safe'}
+
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'rm -rf /tmp/example'},
+        }
+        io.responses = [{'approved': True, 'scope': 'once'}]
+        check_approval(agent)
+        assert any(event.get('type') == 'approval_needed' for event in io.sent)
 
     def test_poll_mode_changes_handles_multiple_signals(self):
         """poll_mode_changes should process multiple mode_change signals."""

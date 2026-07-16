@@ -17,6 +17,7 @@ Trust evaluation (via TrustAgent.should_allow()):
 
 import hashlib
 import json
+import math
 import time
 
 from ..trust import TrustAgent, TRUST_LEVELS
@@ -24,6 +25,25 @@ from ..trust import TrustAgent, TRUST_LEVELS
 
 # Signature expiry window (5 minutes)
 SIGNATURE_EXPIRY_SECONDS = 300
+MAX_REQUEST_ID_LENGTH = 128
+MAX_SESSION_ID_LENGTH = 256
+VALID_INPUT_MODES = frozenset({"safe", "plan", "accept_edits", "ulw"})
+
+
+def _canonical_sha256(value) -> str:
+    """Return a deterministic SHA-256 digest for JSON-compatible data."""
+    canonical = json.dumps(value, sort_keys=True, separators=(",", ":"))
+    return hashlib.sha256(canonical.encode()).hexdigest()
+
+
+def canonical_attachments_sha256(images=None, files=None) -> str:
+    """Bind relay-visible attachments to a signed INPUT payload."""
+    return _canonical_sha256({"images": images or [], "files": files or []})
+
+
+def canonical_session_sha256(session=None) -> str:
+    """Bind a client-provided conversation snapshot to CONNECT/HTTP auth."""
+    return _canonical_sha256({} if session is None else session)
 
 
 def verify_signature(payload: dict, signature: str, public_key: str) -> bool:
@@ -146,12 +166,48 @@ def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
     Returns: (prompt, agent_address, error) - error is None on success
     """
     payload = data.get("payload", {})
+    if not isinstance(payload, dict):
+        return None, None, "unauthorized: payload must be an object"
     agent_address = data.get("from")
     signature = data.get("signature")
 
     prompt = payload.get("prompt", "")
     timestamp = payload.get("timestamp")
     to_address = payload.get("to")
+
+    # CONNECT carries its routing session_id at the top level.  New clients
+    # bind that value into the signed payload as well; reject any disagreement
+    # so a valid signature cannot be replayed against a different session.
+    # A top-level id with no payload id is accepted for legacy clients, but the
+    # WS layer marks that id as unbound and will not restore capabilities from it.
+    if data.get("type") == "CONNECT" and "session_id" in payload:
+        signed_session_id = payload.get("session_id")
+        if not isinstance(signed_session_id, str) or not signed_session_id:
+            return None, agent_address, "unauthorized: invalid session_id in payload"
+        if len(signed_session_id) > MAX_SESSION_ID_LENGTH:
+            return None, agent_address, "unauthorized: session_id is too long"
+        if data.get("session_id") != signed_session_id:
+            return None, agent_address, "unauthorized: session_id mismatch"
+
+    # Explicit WS INPUT mode is a capability control, so it must be bound to
+    # the per-frame signature rather than trusted from the relay-visible top
+    # level.  The WS router verifies mode-bearing INPUT frames with this helper.
+    if data.get("type") == "INPUT" and "mode" in data:
+        if "mode" not in payload:
+            return None, agent_address, "unauthorized: signed mode required"
+        if data.get("mode") != payload.get("mode"):
+            return None, agent_address, "unauthorized: mode mismatch"
+    if data.get("type") == "INPUT" and (
+        "session_id" in data or "session_id" in payload
+    ):
+        signed_session_id = payload.get("session_id")
+        if not isinstance(signed_session_id, str) or not signed_session_id:
+            return None, agent_address, "unauthorized: signed session_id required"
+        if data.get("session_id") != signed_session_id:
+            return None, agent_address, "unauthorized: session_id mismatch"
+    if (data.get("type") == "INPUT" and "prompt" in data
+            and payload.get("prompt") != data.get("prompt")):
+        return None, agent_address, "unauthorized: prompt mismatch"
 
     # Check blacklist first (security: even before signature check)
     if blacklist and agent_address in blacklist:
@@ -164,7 +220,8 @@ def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
         return None, agent_address, "unauthorized: signature required"
     if not timestamp:
         return None, agent_address, "unauthorized: timestamp required in payload"
-    if not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool):
+    if (not isinstance(timestamp, (int, float)) or isinstance(timestamp, bool)
+            or not math.isfinite(timestamp)):
         return None, agent_address, "unauthorized: timestamp must be numeric"
 
     # Check timestamp expiry (5 minute window)
@@ -172,7 +229,10 @@ def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
     if abs(now - timestamp) > SIGNATURE_EXPIRY_SECONDS:
         return None, agent_address, "unauthorized: signature expired"
 
-    # Optionally verify 'to' matches agent address
+    # Reject an explicitly different audience.  Modern CONNECT/INPUT/GET
+    # validators separately require `to`; keeping missing `to` compatible here
+    # avoids breaking legacy admin and onboarding frames, which never carried
+    # an audience and cannot restore modern session capabilities.
     if recipient_address and to_address and to_address != recipient_address:
         return None, agent_address, "unauthorized: wrong recipient"
 
@@ -181,6 +241,126 @@ def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
         return None, agent_address, "unauthorized: invalid signature"
 
     return prompt, agent_address, None
+
+
+def authenticate_bound_input(
+    data: dict,
+    *,
+    recipient_address: str | None,
+    expected_session_id: str,
+):
+    """Validate a modern INPUT whose routing data is fully signature-bound.
+
+    Returns ``(binding, error)``.  ``(None, None)`` means an older or
+    signature-stripped frame: callers may execute it only as an unprivileged
+    safe turn.  A non-None error means a frame claimed to be modern but one of
+    its signed/top-level values disagreed, so it must be rejected rather than
+    silently downgraded.
+    """
+    payload = data.get("payload")
+    if not isinstance(payload, dict):
+        return None, None
+
+    request_field = _request_id_field(data, payload)
+    required_payload = {
+        "action", "prompt", "to", "timestamp", "session_id",
+        "attachments_sha256",
+    }
+    required_top = {"prompt", "to", "session_id"}
+    complete = (
+        required_payload.issubset(payload)
+        and required_top.issubset(data)
+        and request_field is not None
+        and request_field in payload
+        and request_field in data
+        and bool(data.get("from"))
+        and bool(data.get("signature"))
+    )
+    if not complete:
+        return None, None
+
+    if data.get("type") not in (None, "INPUT"):
+        return None, "unauthorized: wrong message type"
+
+    prompt, agent_address, error = _authenticate_signed(
+        data, recipient_address=recipient_address
+    )
+    if error:
+        return None, error
+
+    if payload.get("action") != "session.input":
+        return None, "unauthorized: wrong signed action"
+
+    if data.get("to") != payload.get("to"):
+        return None, "unauthorized: recipient mismatch"
+    if recipient_address and data.get("to") != recipient_address:
+        return None, "unauthorized: wrong recipient"
+    if data.get("prompt") != prompt:
+        return None, "unauthorized: prompt mismatch"
+    if not isinstance(prompt, str) or not prompt:
+        return None, "prompt must be a non-empty string"
+
+    signed_session_id = payload.get("session_id")
+    if (
+        not isinstance(signed_session_id, str)
+        or not signed_session_id
+        or len(signed_session_id) > MAX_SESSION_ID_LENGTH
+        or data.get("session_id") != signed_session_id
+        or expected_session_id != signed_session_id
+    ):
+        return None, "unauthorized: INPUT session_id mismatch"
+
+    request_id = payload.get(request_field)
+    if (
+        not isinstance(request_id, str)
+        or not request_id
+        or len(request_id) > MAX_REQUEST_ID_LENGTH
+        or data.get(request_field) != request_id
+    ):
+        return None, f"unauthorized: {request_field} mismatch"
+
+    if "input_id" in data and "request_id" in data:
+        if data["input_id"] != data["request_id"]:
+            return None, "unauthorized: request id mismatch"
+    if "input_id" in payload and "request_id" in payload:
+        if payload["input_id"] != payload["request_id"]:
+            return None, "unauthorized: request id mismatch"
+
+    expected_attachments = canonical_attachments_sha256(
+        data.get("images"), data.get("files")
+    )
+    if payload.get("attachments_sha256") != expected_attachments:
+        return None, "unauthorized: attachments mismatch"
+
+    top_has_mode = "mode" in data
+    payload_has_mode = "mode" in payload
+    if top_has_mode != payload_has_mode or (
+        top_has_mode and data.get("mode") != payload.get("mode")
+    ):
+        return None, "unauthorized: mode mismatch"
+    mode = payload.get("mode") if payload_has_mode else None
+    if mode is not None and not isinstance(mode, str):
+        return None, "mode must be a string"
+    if mode is not None and mode not in VALID_INPUT_MODES:
+        return None, "unsupported mode"
+
+    return {
+        "agent_address": agent_address,
+        "prompt": prompt,
+        "session_id": signed_session_id,
+        "request_id": request_id,
+        "timestamp": payload["timestamp"],
+        "mode": mode,
+    }, None
+
+
+def _request_id_field(data: dict, payload: dict) -> str | None:
+    """Choose the protocol request-id key without accepting aliases loosely."""
+    if "input_id" in data or "input_id" in payload:
+        return "input_id"
+    if "request_id" in data or "request_id" in payload:
+        return "request_id"
+    return None
 
 
 def get_agent_address(agent) -> str:

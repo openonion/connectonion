@@ -61,11 +61,11 @@ def test_get_returns_none_for_expired_completed_session(storage):
     assert storage.get("old") is None
 
 
-def test_get_returns_running_session_even_if_expired(storage):
-    """Running sessions don't expire — they're in-flight."""
+def test_get_expires_stale_running_session(storage):
+    """A crashed process cannot leave a running record immortal."""
     past = time.time() - 100
     storage.save(_make_session(sid="r", status="running", expires=past))
-    assert storage.get("r") is not None
+    assert storage.get("r") is None
 
 
 def test_get_returns_session_with_no_expires(storage):
