@@ -506,11 +506,11 @@ class BrowserDaemon:
         The lifetime lock, pid-file location, and (on Windows) the named-pipe wire live
         behind `transport` so POSIX behavior is byte-identical while Windows gets native
         named pipes with an HMAC-authenticated handshake."""
-        self._authkey = transport.load_or_create_authkey()  # used by the Windows pipe wire
         self._bind_lock = transport.acquire_singleton_lock(transport.lock_path(self.sock_path))
         if self._bind_lock is None:
             sys.exit(0)  # another daemon is binding or already serving
         if transport.IS_WINDOWS:
+            self._authkey = transport.load_or_create_authkey()  # the pipe wire's HMAC secret
             self._bind_windows()
         else:
             self._bind_posix()
@@ -535,17 +535,21 @@ class BrowserDaemon:
     def _bind_windows(self):
         """Named-pipe bind. A pipe instance vanishes with its owning process, so there is
         no stale file to unlink — a refused/absent probe is busy (owner alive) or dead."""
-        auth_error = transport.AuthenticationError()
         try:
             probe = transport.win_connect(self.sock_path, self._authkey)
             probe.close()
             sys.exit(0)  # another daemon already serving
-        except auth_error:
+        except transport.AuthenticationError:
             sys.exit(0)  # a daemon is there (key mismatch) — never double-bind
         except (FileNotFoundError, ConnectionError, OSError):
             if _owner_alive(self.sock_path):
                 sys.exit(0)  # owner alive, pipe busy — not stale
-        self._srv = transport.win_listener(self.sock_path, self._authkey)
+        try:
+            self._srv = transport.win_listener(self.sock_path, self._authkey)
+        except PermissionError:
+            # First-instance pipe creation refused: another daemon owns the name after
+            # all (probe raced its accept loop). Yield, exactly like the POSIX loser.
+            sys.exit(0)
         Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()))
 
     # ---- transport seam: POSIX raw AF_UNIX socket vs Windows named-pipe Connection ----
@@ -556,17 +560,21 @@ class BrowserDaemon:
         if transport.IS_WINDOWS:
             try:
                 return self._srv.accept()  # mpc performs the HMAC handshake here
-            except (transport.AuthenticationError(), OSError):
+            except (transport.AuthenticationError, OSError):
                 return None
         conn, _ = self._srv.accept()
         return conn
 
     def _read_request(self, conn) -> str:
-        """Read one request, bounded at 120s. Returns the text, or None on a stall."""
+        """Read one request, bounded at 120s. Returns the text, or None on a stall or a
+        client that vanished right after connecting."""
         if transport.IS_WINDOWS:
-            if not conn.poll(120):
-                return None
-            return conn.recv_bytes().decode().strip()
+            try:
+                if not conn.poll(120):
+                    return None
+                return conn.recv_bytes().decode().strip()
+            except EOFError:
+                return None  # client connected, then died before sending
         conn.settimeout(120)
         try:
             return _recv_all(conn).decode().strip()

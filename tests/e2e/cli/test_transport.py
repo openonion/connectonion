@@ -138,8 +138,7 @@ def test_wire_rejects_wrong_authkey():
     server = threading.Thread(target=_listen_once, args=(address, b"K" * 32, hold), daemon=True)
     server.start()
     _wait_for(lambda: "listener" in hold)
-    auth_error = tp.AuthenticationError()
-    with pytest.raises(auth_error):
+    with pytest.raises(tp.AuthenticationError):
         conn = _client_connect(address, b"WRONG" * 7)
         conn.recv_bytes()
     server.join(timeout=5)

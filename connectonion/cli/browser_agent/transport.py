@@ -3,14 +3,15 @@ Purpose: Cross-platform IPC primitives for the browser daemon/client so `co brow
 LLM-Note:
   Dependencies: imports from [os, sys, subprocess, tempfile, hashlib, binascii, pathlib | lazy: fcntl/msvcrt, ctypes, multiprocessing.connection] | imported by [browser_agent/daemon.py, browser_agent/client.py] | tested by [tests/e2e/cli/test_browser_daemon.py, tests/e2e/cli/test_transport.py]
   Data flow: daemon/client call default_address() → POSIX returns a Unix-socket filesystem path (unchanged from before), Windows returns a per-user named pipe \\.\pipe\co-browser-<hash> | pid_path()/lock_path() resolve real filesystem sidecars (POSIX: <addr>.pid/.lock exactly as before; Windows: hashed files under %LOCALAPPDATA%/co since a pipe name is not a path) | on Windows the wire uses multiprocessing.connection Listener/Client with an HMAC authkey (win_listener/win_connect); POSIX keeps its raw AF_UNIX socket in daemon.py/client.py untouched
-  State/Effects: default_address()/_sidecar_dir() may mkdir + chmod 0700 the runtime dir | load_or_create_authkey() writes ~/.co-scoped 0600 key file (Windows path only) | acquire_singleton_lock() holds an OS lock (fcntl.flock POSIX / msvcrt.locking Windows) for the daemon's lifetime, released by the OS on death | spawn_detached() launches the daemon fully detached
-  Integration: exposes IS_WINDOWS, default_address(), pid_path(), lock_path(), load_or_create_authkey(), pid_alive(), acquire_singleton_lock(), spawn_detached(), win_listener(), win_connect(), AuthenticationError | POSIX behavior is intentionally identical to the pre-existing raw-socket code so existing tests pass unchanged; only the Windows branch is new
+  State/Effects: default_address()/_sidecar_dir() may mkdir + chmod 0700 the runtime dir | load_or_create_authkey() writes a 0600 key file in the sidecar dir (only called on Windows) | acquire_singleton_lock() holds an OS lock (fcntl.flock POSIX / msvcrt.locking Windows) for the daemon's lifetime, released by the OS on death | spawn_detached() launches the daemon fully detached
+  Integration: exposes IS_WINDOWS, default_address(), pid_path(), lock_path(), load_or_create_authkey(), pid_alive(), acquire_singleton_lock(), spawn_detached(), win_listener(), win_connect(), AuthenticationError (lazy module attr = mpc's class) | POSIX behavior is intentionally identical to the pre-existing raw-socket code so existing tests pass unchanged; only the Windows branch is new
   Performance: all helpers are cheap local ops | authkey/liveness are single file/syscall
-  Errors: acquire_singleton_lock returns None when the lock is held (caller exits 0) | pid_alive False on any probe failure | load_or_create_authkey resolves a single shared key even under a create race (O_EXCL)
+  Errors: acquire_singleton_lock returns None when the lock is held (caller exits 0) | pid_alive False on any probe failure | load_or_create_authkey converges on ONE key under a create race (O_EXCL + brief reader retry) and RAISES if no key can be created/read — it never falls back to a fixed key, which would silently disable authentication
 """
 
 import os
 import sys
+import time
 import subprocess
 import tempfile
 import hashlib
@@ -62,11 +63,7 @@ def default_address() -> str:
     if IS_WINDOWS:
         who = hashlib.sha1(_current_user().encode()).hexdigest()[:12]
         return r"\\.\pipe\co-browser-" + who
-    runtime = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-    base = Path(runtime) / "co"
-    base.mkdir(parents=True, exist_ok=True)
-    os.chmod(base, 0o700)
-    return str(base / "browser.sock")
+    return str(_sidecar_dir() / "browser.sock")
 
 
 def _addr_key(address: str) -> str:
@@ -95,25 +92,28 @@ def load_or_create_authkey() -> bytes:
     write different ones.
     """
     key_file = _sidecar_dir() / "authkey"
-    for _ in range(6):
-        if key_file.exists():
+    for _ in range(50):
+        try:
             data = key_file.read_bytes().strip()
             if len(data) >= 16:
                 return data
+        except OSError:
+            pass
         try:
             fd = os.open(str(key_file), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
         except FileExistsError:
-            continue  # someone else just created it — loop back and read it
-        except OSError:
-            break
+            # Another process won the O_EXCL race and is writing the key right now —
+            # wait out its (microsecond) create→write window, then read it back.
+            time.sleep(0.02)
+            continue
         try:
-            os.write(fd, binascii.hexlify(os.urandom(32)))
+            key = binascii.hexlify(os.urandom(32))
+            os.write(fd, key)
+            return key
         finally:
             os.close(fd)
-    try:
-        return key_file.read_bytes().strip()
-    except OSError:
-        return b"co-browser-local"
+    # Never fall back to a fixed key — that would silently disable authentication.
+    raise RuntimeError(f"could not create or read the browser IPC auth key at {key_file}")
 
 
 def pid_alive(pid: int) -> bool:
@@ -202,6 +202,10 @@ def win_connect(address: str, authkey: bytes):
     return _mpc().Client(address, family="AF_PIPE", authkey=authkey)
 
 
-def AuthenticationError():
-    """The exception class raised on a failed authkey handshake (for except clauses)."""
-    return _mpc().AuthenticationError
+def __getattr__(name: str):
+    """Lazy module attribute: `transport.AuthenticationError` is the mpc handshake-failure
+    class, importable in an `except` clause without paying the multiprocessing import at
+    module load (the daemon hot path never touches it on POSIX)."""
+    if name == "AuthenticationError":
+        return _mpc().AuthenticationError
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

@@ -1,12 +1,12 @@
 """
-Purpose: Thin client for the browser daemon — wraps one command as a JSON envelope, sends it over the Unix socket, and maps the reply to stdout/stderr/exit code.
+Purpose: Thin client for the browser daemon — wraps one command as a JSON envelope, sends it over the platform transport (POSIX Unix socket / Windows named pipe), and maps the reply to stdout/stderr/exit code.
 LLM-Note:
-  Dependencies: imports from [socket, os, json, sys, time, subprocess, pathlib, browser_agent.daemon.default_sock_path] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
-  Data flow: send(line, headless, tab) → _caller() derives identity (CO_WHO, else claude-<CLAUDE_JOB_DIR>, else "") → build wire-v1 envelope json{v:1, caller, tab, line} (structured caller/tab means any character in a name is safe — nothing is spliced into the shlex-parsed command line) → _connect(default_sock_path()) or _spawn_daemon() → send, half-close, read reply to EOF → header "OK" prints payload to stdout & returns 0 | header "ERR"/"ERR <n>" prints payload to stderr & returns the int (1 default, else 2/3/4) → a pre-upgrade daemon's "unknown command: {…" reply is rewritten to a restart hint
-  State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` with start_new_session=True, logging to ~/.co/browser.log | writes to stdout/stderr
+  Dependencies: imports from [socket, os, json, sys, time, pathlib, browser_agent.daemon (default_sock_path, _owner_alive), browser_agent.transport] | imported by [cli/commands/browser_commands.py] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Data flow: send(line, headless, tab) → _caller() derives identity (CO_WHO, else claude-<CLAUDE_JOB_DIR>, else "") → build wire-v1 envelope json{v:1, caller, tab, line} (structured caller/tab means any character in a name is safe — nothing is spliced into the shlex-parsed command line) → _connect(default_sock_path()) or _spawn_daemon() → POSIX: send, half-close, read reply to EOF over raw AF_UNIX | Windows: send_bytes/recv_bytes one framed message each way over an HMAC-authenticated named pipe (transport.win_connect + load_or_create_authkey) → header "OK" prints payload to stdout & returns 0 | header "ERR"/"ERR <n>" prints payload to stderr & returns the int (1 default, else 2/3/4) → a pre-upgrade daemon's "unknown command: {…" reply is rewritten to a restart hint
+  State/Effects: may spawn the daemon via `python -m connectonion.cli.browser_agent.daemon <sock> [--headless]` detached (transport.spawn_detached: start_new_session POSIX / DETACHED_PROCESS Windows), logging to ~/.co/browser.log | writes to stdout/stderr
   Integration: exposes _caller() -> str, send(line, headless=False, tab=None) -> int
   Performance: one connect + request/response | daemon spawn adds browser launch latency on first call
-  Errors: _connect() retries ~2s on a transient ECONNREFUSED from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale socket (other OSError) is unlinked | missing socket → spawn daemon and wait until ready or timeout
+  Errors: _connect() retries ~2s on a transient connection refusal from a busy single-threaded daemon (does NOT unlink a live-but-busy socket); only a truly stale POSIX socket is unlinked | missing endpoint → spawn daemon and wait until ready or timeout | Windows authkey mismatch against a live daemon → actionable RuntimeError (spawning another daemon would just yield) | daemon dying mid-request → clean stderr line + exit 1, never a traceback
 """
 
 import os
@@ -54,12 +54,17 @@ def _connect_posix(sock_path: str):
 
 
 def _connect_windows(sock_path: str, authkey):
-    auth_error = transport.AuthenticationError()
     for attempt in range(20):  # ~2s tolerance for a busy daemon (pipe not yet re-armed)
         try:
             return transport.win_connect(sock_path, authkey)
-        except auth_error:
-            return None  # key mismatch — unreachable; caller spawns a fresh daemon
+        except transport.AuthenticationError:
+            # A daemon is listening but rejects our key (the authkey file was recreated
+            # under a live daemon). Spawning another daemon can't help — it would yield
+            # to the live one — so fail fast with the actual fix.
+            raise RuntimeError(
+                "browser daemon rejected this client's auth key — stop the old daemon "
+                "and retry (it will restart with the current key)"
+            )
         except (FileNotFoundError, ConnectionError, OSError):
             if not _owner_alive(sock_path):
                 return None  # nobody home — don't burn the retry window
@@ -122,8 +127,15 @@ def send(line: str, headless: bool = False, tab: str = None) -> int:
 
     if transport.IS_WINDOWS:
         # Named-pipe wire: one framed message each way (no half-close needed).
-        conn.send_bytes(request.encode())
-        reply = conn.recv_bytes()
+        try:
+            conn.send_bytes(request.encode())
+            reply = conn.recv_bytes()
+        except (EOFError, OSError):
+            # The daemon died mid-request (browser crash mid-command). Mirror the POSIX
+            # empty-reply degradation: a clean error and exit 1, never a traceback.
+            print("browser daemon closed the connection mid-request — try again", file=sys.stderr)
+            conn.close()
+            return 1
         conn.close()
     else:
         conn.sendall(request.encode())
