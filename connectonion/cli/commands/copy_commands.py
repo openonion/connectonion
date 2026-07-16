@@ -97,6 +97,7 @@ TRUST = {
 
 # Registry of copyable skills (directories with SKILL.md, copied to .co/skills/)
 SKILLS = {
+    "browser-workflow-skill-builder": "browser-workflow-skill-builder",
     "co-browser": "co-browser",
     "install-connectonion": "install-connectonion",
     "ship-feature": "ship-feature",
@@ -236,9 +237,9 @@ def copy_directory(source: Path, dest_dir: Path, force: bool):
 def show_available_items():
     """Display available tools, plugins, prompts, and TUI components."""
     table = Table(title="Available Items to Copy")
-    table.add_column("Name", style="cyan")
+    table.add_column("Name", style="cyan", no_wrap=True)
     table.add_column("Type", style="green")
-    table.add_column("Path")
+    table.add_column("Path", overflow="fold")
 
     for name, file in sorted(TOOLS.items()):
         table.add_row(name, "tool", file)
