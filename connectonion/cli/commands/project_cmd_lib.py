@@ -1003,6 +1003,11 @@ def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> No
                     continue
             lines.append(line)
 
+    # A file whose last line has no newline would otherwise get the first
+    # appended key glued onto it (FOO=barBAZ=qux).
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+
     for key, value in updates.items():
         if key not in found:
             lines.append(f"{key}={value}\n")

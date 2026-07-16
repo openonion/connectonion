@@ -46,6 +46,7 @@ Example:
 
 import html
 import os
+from pathlib import Path
 
 import httpx
 
@@ -154,22 +155,22 @@ class Outlook:
         if new_refresh_token:
             os.environ["MICROSOFT_REFRESH_TOKEN"] = new_refresh_token
 
-        # Update .env file if it exists
-        env_file = os.path.join(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co")), "keys.env")
-        if os.path.exists(env_file):
-            with open(env_file, 'r', encoding="utf-8") as f:
-                lines = f.readlines()
+        # Persist so the rotated tokens survive this process. Both env files
+        # matter: load_dotenv reads .env first and does not override, so a
+        # stale project .env would shadow the fresh keys.env copy forever.
+        from ..cli.commands.project_cmd_lib import upsert_env
+        rotated = {
+            "MICROSOFT_ACCESS_TOKEN": new_access_token,
+            "MICROSOFT_TOKEN_EXPIRES_AT": expires_at,
+            "MICROSOFT_REFRESH_TOKEN": new_refresh_token,
+        }
+        keys_env = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
+        keys_env.parent.mkdir(parents=True, exist_ok=True)
+        upsert_env(keys_env, rotated)
 
-            with open(env_file, 'w', encoding="utf-8") as f:
-                for line in lines:
-                    if line.startswith("MICROSOFT_ACCESS_TOKEN="):
-                        f.write(f"MICROSOFT_ACCESS_TOKEN={new_access_token}\n")
-                    elif line.startswith("MICROSOFT_TOKEN_EXPIRES_AT="):
-                        f.write(f"MICROSOFT_TOKEN_EXPIRES_AT={expires_at}\n")
-                    elif line.startswith("MICROSOFT_REFRESH_TOKEN=") and new_refresh_token:
-                        f.write(f"MICROSOFT_REFRESH_TOKEN={new_refresh_token}\n")
-                    else:
-                        f.write(line)
+        local_env = Path(".env")
+        if local_env.exists() and "MICROSOFT_ACCESS_TOKEN=" in local_env.read_text(encoding="utf-8"):
+            upsert_env(local_env, rotated)
 
         return new_access_token
 
