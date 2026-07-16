@@ -67,3 +67,102 @@ jobs:
       - name: Run browser transport + daemon tests (native Windows named pipes)
         run: |
           pytest tests/unit/test_transport.py tests/e2e/cli/test_browser_daemon.py -v --tb=short
+
+  # Simulate a REAL Windows user end-to-end: install from the wheel (exactly what
+  # PyPI ships — not an editable checkout), discover the CLI from the shell, run the
+  # documented patchright step, exercise paths with spaces + non-ASCII characters,
+  # then drive a REAL Chrome through `co browser` (daemon spawn → named pipe →
+  # launch → navigate → close). This is the "it installs but co/patchright won't
+  # run on my machine" class of failure, caught before release.
+  windows-e2e:
+    runs-on: windows-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build the wheel (what PyPI ships)
+        run: |
+          python -m pip install --upgrade pip build
+          python -m build --wheel
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Install from the wheel like a real user (not editable)
+        run: |
+          $whl = (Get-ChildItem dist\*.whl | Select-Object -First 1).FullName
+          pip install $whl
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: CLI is discoverable from a plain shell
+        run: |
+          co --version
+          if ($LASTEXITCODE -ne 0) { Write-Error "co not on PATH after pip install"; exit 1 }
+          python -m connectonion.cli.main --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          co doctor
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: patchright CLI runs and can install a browser (the documented user step)
+        run: |
+          python -m patchright --version
+          if ($LASTEXITCODE -ne 0) { Write-Error "patchright module not runnable"; exit 1 }
+          # Retry once: this downloads a browser and can flake on network hiccups.
+          python -m patchright install chrome
+          if ($LASTEXITCODE -ne 0) {
+            Write-Warning "patchright install chrome failed once - retrying"
+            python -m patchright install chrome
+            if ($LASTEXITCODE -ne 0) { exit 1 }
+          }
+
+      - name: Package data survives the wheel — skills copy in a path with spaces + CJK
+        run: |
+          $dir = Join-Path $env:RUNNER_TEMP "co test 测试 dir"
+          New-Item -ItemType Directory -Path $dir -Force | Out-Null
+          Set-Location $dir
+          co copy install-connectonion
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          if (!(Test-Path ".co/skills/install-connectonion/SKILL.md")) {
+            Write-Error "SKILL.md missing after co copy - package data broken on Windows"
+            exit 1
+          }
+          co copy --list
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Real co browser end-to-end — daemon spawn, named pipe, Chrome, navigation
+        run: |
+          # A local file:// page keeps this hermetic (no external network flake).
+          Set-Content -Path test.html -Value "<html><body><h1>co-windows-e2e</h1></body></html>"
+          $url = "file:///" + ($PWD.Path -replace '\\','/') + "/test.html"
+
+          co browser --headless go_to $url
+          if ($LASTEXITCODE -ne 0) { Write-Error "go_to failed - Chrome did not launch/navigate"; exit 1 }
+
+          $status = co browser status | Out-String
+          Write-Host $status
+          if ($status -notmatch "Browser: open") { Write-Error "daemon does not report an open browser"; exit 1 }
+
+          $cur = co browser get_current_url | Out-String
+          Write-Host $cur
+          if ($cur -notmatch "test.html") { Write-Error "navigation did not land on the test page"; exit 1 }
+
+          co browser close
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Second run — warm daemon lifecycle (spawn again after close)
+        run: |
+          co browser --headless go_to about:blank
+          if ($LASTEXITCODE -ne 0) { Write-Error "second daemon cold-start failed"; exit 1 }
+          co browser close
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Show the browser daemon log on failure
+        if: failure()
+        run: |
+          $log = Join-Path $env:USERPROFILE ".co\browser.log"
+          if (Test-Path $log) { Get-Content $log } else { Write-Host "no browser.log" }
