@@ -646,6 +646,14 @@ def _stringify(result) -> str:
 
 
 def main():
+    # The daemon's stdout/stderr are redirected to ~/.co/browser.log; on Windows
+    # they default to a legacy codepage (cp1252), so logging a page title or error
+    # containing any non-Latin-1 character would crash the daemon. Same fix as the
+    # CLI entry point in cli/main.py.
+    if sys.platform == "win32":
+        for stream in (sys.stdout, sys.stderr):
+            if hasattr(stream, "reconfigure"):
+                stream.reconfigure(encoding="utf-8", errors="replace")
     sock_path = sys.argv[1] if len(sys.argv) > 1 else default_sock_path()
     headless = "--headless" in sys.argv[2:]
     BrowserDaemon(sock_path, headless=headless).serve()
