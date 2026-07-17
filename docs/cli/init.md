@@ -195,12 +195,11 @@ $ co init  # After global config exists
 co init [options]
 
 Options:
-  --template, -t          Template to use (minimal/web-research/browser/custom)
-  --no-ai                 Disable AI features (not recommended)
+  --template, -t          Template to use (minimal/coder/browser/hosted-browser/co-ai/web-research/custom)
+  --yes, -y               Accept all defaults, skip prompts
   --key                   API key to use (saves to global config)
-  --force                 Initialize even in special directories
-  --yes, -y              Accept all defaults, skip prompts
-  --update-docs          Only update documentation
+  --description           Description for the custom template
+  --force                 Overwrite existing files / init in special directories
 ```
 
 ## Templates
@@ -246,10 +245,10 @@ $ co init
 # API keys are appended
 ```
 
-### Updating Documentation Only
+### Refresh Framework Docs
 ```bash
-$ co init --update-docs
-✓ Updated .co/docs/ to latest version
+# Re-run init to refresh the bundled vibe-coding docs; --force overwrites
+$ co init --force
 ```
 
 ### Custom Template
@@ -329,10 +328,10 @@ OPENAI_API_KEY=sk-old-key
 ```
 
 ### Docs Seem Old
-Re-run init to update:
+Re-run init to refresh the bundled docs (`--force` overwrites existing files):
 ```bash
-$ co init --update-docs
-✓ Documentation updated to latest version
+$ co init --force
+✓ Documentation refreshed to latest version
 ```
 
 ### Want Fresh .env
@@ -347,7 +346,7 @@ $ co init
 
 1. **Review .env after init** - Check that API keys were appended correctly
 
-2. **Keep docs updated** - Run `co init --update-docs` periodically
+2. **Keep docs updated** - Re-run `co init --force` periodically to refresh bundled docs
 
 3. **Don't edit framework docs** - They'll be overwritten on update
 

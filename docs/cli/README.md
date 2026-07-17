@@ -62,7 +62,6 @@ co create my-agent -t browser    # Specify template
 - `--key` - API key (auto-detects provider)
 - `--description` - For custom templates
 - `--yes, -y` - Skip all prompts
-- `--ai/--no-ai` - Enable/disable AI (enabled by default)
 
 **Templates:**
 - **minimal** - Basic agent with simple tools
