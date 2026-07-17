@@ -190,7 +190,7 @@ jobs:
           $jobs = 1..3 | ForEach-Object {
             Start-Job -ScriptBlock {
               param($i)
-              $o = co browser newtab --who "agent$i" --purpose "parallel-$i" 2>&1 | Out-String
+              $o = co browser newtab --who=agent$i --purpose=parallel-$i 2>&1 | Out-String
               [pscustomobject]@{ Code = $LASTEXITCODE; Out = $o }
             } -ArgumentList $_
           }
