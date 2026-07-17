@@ -154,7 +154,7 @@ With tools:
 
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional, Type
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import json
 import os
 import base64
@@ -194,11 +194,87 @@ from .exceptions import InsufficientCreditsError, LLMConnectionError, ProviderSe
 
 @dataclass
 class LLMResponse:
-    """Response from LLM including content and tool calls."""
+    """Response from LLM including content, tool calls, and generated images.
+
+    Attributes:
+        images: Generated images as data URLs ("data:image/png;base64,...").
+            Populated by image-output models (e.g. gemini-2.5-flash-image).
+    """
     content: Optional[str]
     tool_calls: List[ToolCall]
     raw_response: Any
     usage: Optional[TokenUsage] = None
+    images: List[str] = field(default_factory=list)
+
+
+def is_image_model(model: str) -> bool:
+    """Check if a model generates images (e.g. gemini-2.5-flash-image, gemini-3-pro-image-preview).
+
+    Handles provider prefixes: co/gemini-..., google/gemini-..., models/gemini-...
+    """
+    name = model.split("/")[-1]
+    return name.startswith("gemini") and "image" in name
+
+
+def _extract_images(message: Any) -> List[str]:
+    """Extract generated image data URLs from an OpenAI-compatible chat message.
+
+    Handles both response shapes used by image-output models:
+    - message.images: [{"type": "image_url", "image_url": {"url": "data:..."}}]
+      (Gemini OpenAI-compatible endpoint, OpenRouter, oo-api proxy)
+    - message.content as a list of multimodal parts with type "image_url"
+    """
+    images = []
+
+    def _url_from(item: Any) -> Optional[str]:
+        if isinstance(item, dict):
+            image_url = item.get("image_url") or {}
+            if isinstance(image_url, str):
+                return image_url
+            return image_url.get("url") or item.get("url")
+        image_url = getattr(item, "image_url", None)
+        if image_url is not None:
+            if isinstance(image_url, str):
+                return image_url
+            if isinstance(image_url, dict):
+                return image_url.get("url")
+            return getattr(image_url, "url", None)
+        return getattr(item, "url", None)
+
+    for item in getattr(message, "images", None) or []:
+        url = _url_from(item)
+        if url:
+            images.append(url)
+
+    content = getattr(message, "content", None)
+    if isinstance(content, list):
+        for part in content:
+            part_type = part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+            if part_type == "image_url":
+                url = _url_from(part)
+                if url:
+                    images.append(url)
+
+    return images
+
+
+def _extract_text(message: Any) -> Optional[str]:
+    """Extract text content from an OpenAI-compatible chat message.
+
+    Image models may return content as a list of multimodal parts; join the
+    text parts so callers always get a plain string (or None).
+    """
+    content = getattr(message, "content", None)
+    if isinstance(content, list):
+        texts = []
+        for part in content:
+            part_type = part.get("type") if isinstance(part, dict) else getattr(part, "type", None)
+            if part_type == "text":
+                text = part.get("text") if isinstance(part, dict) else getattr(part, "text", None)
+                if text:
+                    texts.append(text)
+        return "\n".join(texts) if texts else None
+    return content
 
 
 class LLM(ABC):
@@ -558,6 +634,11 @@ class GeminiLLM(LLM):
             **kwargs
         }
 
+        # Image models (gemini-2.5-flash-image, gemini-3-pro-image-preview, ...)
+        # return images only when the request declares image output modality
+        if is_image_model(self.model):
+            api_kwargs.setdefault("modalities", ["text", "image"])
+
         if tools:
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
@@ -595,10 +676,11 @@ class GeminiLLM(LLM):
             )
 
         return LLMResponse(
-            content=message.content,
+            content=_extract_text(message),
             tool_calls=tool_calls,
             raw_response=response,
             usage=usage,
+            images=_extract_images(message),
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
@@ -796,6 +878,10 @@ class OpenRouterLLM(LLM):
             **kwargs
         }
 
+        # OpenRouter requires the image modality to return generated images
+        if is_image_model(self.model):
+            api_kwargs.setdefault("modalities", ["text", "image"])
+
         if tools:
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
@@ -823,7 +909,13 @@ class OpenRouterLLM(LLM):
                 cost=cost,
             )
 
-        return LLMResponse(content=message.content, tool_calls=tool_calls, raw_response=response, usage=usage)
+        return LLMResponse(
+            content=_extract_text(message),
+            tool_calls=tool_calls,
+            raw_response=response,
+            usage=usage,
+            images=_extract_images(message),
+        )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
         """Get structured Pydantic output using JSON-mode + schema validation.
@@ -964,7 +1056,10 @@ MODEL_REGISTRY = {
     # Google Gemini models
     "gemini-3.5-flash": "google",
     "gemini-3-pro-preview": "google",
-    "gemini-3-pro-image-preview": "google",
+    "gemini-3-pro-image-preview": "google",     # Image generation (Nano Banana Pro)
+    "gemini-2.5-flash-image": "google",         # Image generation (Nano Banana)
+    "gemini-2.5-flash-image-preview": "google",
+    "gemini-2.0-flash-preview-image-generation": "google",
     "gemini-2.5-pro": "google",
     "gemini-2.5-flash": "google",
     "gemini-2.0-flash-exp": "google",
@@ -1021,6 +1116,11 @@ class OpenOnionLLM(LLM):
             **kwargs  # Pass through user kwargs (temperature, max_tokens, etc.)
         }
 
+        # Image models (co/gemini-3-pro-image-preview, co/gemini-2.5-flash-image, ...)
+        # return images only when the request declares image output modality
+        if is_image_model(self.model):
+            api_kwargs.setdefault("modalities", ["text", "image"])
+
         # Add tools if provided
         if tools:
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
@@ -1074,10 +1174,11 @@ class OpenOnionLLM(LLM):
             )
 
         return LLMResponse(
-            content=message.content,
+            content=_extract_text(message),
             tool_calls=tool_calls,
             raw_response=response,
             usage=usage,
+            images=_extract_images(message),
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:

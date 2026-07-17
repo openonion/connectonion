@@ -54,7 +54,7 @@ from .transcribe import transcribe
 from .prompts import load_system_prompt
 from .debug import xray, auto_debug_exception, replay, xray_replay
 from .useful_tools import (
-    send_email, get_emails, mark_read, mark_unread,
+    send_email, get_emails, mark_read, mark_unread, generate_image,
     Memory, Gmail, GoogleCalendar, Outlook, MicrosoftCalendar,
     WebFetch, Shell, bash, DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN,
     pick, yes_no, autocomplete, TodoList, SlashCommand,
@@ -83,6 +83,8 @@ __all__ = [
     "get_emails",
     "mark_read",
     "mark_unread",
+    # Image generation
+    "generate_image",
     # Class-based tools
     "Memory",
     "Gmail",

@@ -106,7 +106,47 @@ agent = Agent("assistant", model="gemini-2.5-flash")     # Your key
 # Ultra fast, cheapest Gemini option
 agent = Agent("assistant", model="co/gemini-2.5-flash-lite")  # Managed
 agent = Agent("assistant", model="gemini-2.5-flash-lite")     # Your key
+
+# Image generation (Nano Banana) — fast, cheap image output
+agent = Agent("assistant", model="co/gemini-2.5-flash-image")  # Managed
+agent = Agent("assistant", model="gemini-2.5-flash-image")     # Your key
 ```
+
+#### Image Generation (Nano Banana Family)
+
+The simplest way to generate images is the `generate_image` tool:
+
+```python
+from connectonion import generate_image
+
+# One-shot: prompt in, image file out
+path = generate_image("a watercolor fox in snow", save_to="fox.png")
+
+# Or give it to an agent as a tool
+from connectonion import Agent
+agent = Agent("artist", tools=[generate_image])
+agent.input("Draw a watercolor fox and save it as fox.png")
+```
+
+Using image models directly, generated images are available on the response:
+
+```python
+from connectonion.core.llm import create_llm
+
+llm = create_llm("co/gemini-3-pro-image-preview")  # Nano Banana Pro
+response = llm.complete([{"role": "user", "content": "a watercolor fox"}])
+response.images  # ["data:image/png;base64,..."]
+
+# Agents capture images from image models too
+agent = Agent("artist", model="co/gemini-2.5-flash-image")
+agent.input("Draw a fox")
+agent.last_images  # ["data:image/png;base64,..."]
+```
+
+| Model | Cost per image | Notes |
+|-------|---------------|-------|
+| gemini-2.5-flash-image | ~$0.039 | Nano Banana — fast, cheap |
+| gemini-3-pro-image-preview | ~$0.134 | Nano Banana Pro — highest quality, grounded generation |
 
 #### Gemini 2.0
 ```python

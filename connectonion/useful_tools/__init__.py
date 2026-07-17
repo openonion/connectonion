@@ -10,6 +10,7 @@ LLM-Note:
 
 from .send_email import send_email
 from .get_emails import get_emails, mark_read, mark_unread
+from .generate_image import generate_image
 from .memory import Memory
 from .gmail import Gmail
 from .google_calendar import GoogleCalendar
@@ -42,6 +43,8 @@ __all__ = [
     "get_emails",
     "mark_read",
     "mark_unread",
+    # Image generation
+    "generate_image",
     # Class-based tools
     "Memory",
     "Gmail",

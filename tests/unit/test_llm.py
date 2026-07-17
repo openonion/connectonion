@@ -59,6 +59,10 @@ class TestMultiLLMSupport:
         assert MODEL_REGISTRY["gemini-3-pro-image-preview"] == "google"
         assert MODEL_REGISTRY["gemini-2.5-flash"] == "google"
 
+        # Test Google image models (Nano Banana family)
+        assert MODEL_REGISTRY["gemini-2.5-flash-image"] == "google"
+        assert MODEL_REGISTRY["gemini-2.5-flash-image-preview"] == "google"
+
     def test_create_llm_factory(self):
         """Test the create_llm factory function."""
         from connectonion.core.llm import create_llm, OpenAILLM, AnthropicLLM, GeminiLLM
@@ -97,3 +101,120 @@ class TestMultiLLMSupport:
             llm = create_llm("gemini-next-gen")  # Starts with 'gemini'
             from connectonion.core.llm import GeminiLLM
             assert isinstance(llm, GeminiLLM)
+
+
+class TestImageModels:
+    """Test Gemini image-output model support (Nano Banana family)."""
+
+    def test_is_image_model(self):
+        from connectonion.core.llm import is_image_model
+
+        assert is_image_model("gemini-2.5-flash-image")
+        assert is_image_model("gemini-2.5-flash-image-preview")
+        assert is_image_model("gemini-3-pro-image-preview")
+        assert is_image_model("co/gemini-2.5-flash-image")
+        assert is_image_model("co/gemini-3-pro-image-preview")
+        assert is_image_model("google/gemini-2.5-flash-image")  # OpenRouter style
+
+        assert not is_image_model("gemini-2.5-flash")
+        assert not is_image_model("co/gemini-2.5-pro")
+        assert not is_image_model("gpt-4o")
+        assert not is_image_model("dall-e-3")  # not a gemini model
+
+    def _make_image_response(self, message):
+        """Build a mock chat.completions response around the given message."""
+        from unittest.mock import MagicMock
+
+        response = MagicMock()
+        response.choices = [MagicMock(message=message)]
+        response.usage.prompt_tokens = 10
+        response.usage.completion_tokens = 1290
+        response.usage.prompt_tokens_details = None
+        return response
+
+    def test_gemini_complete_returns_images(self, monkeypatch):
+        """GeminiLLM should surface generated images and request image modality."""
+        from unittest.mock import MagicMock
+        from connectonion.core.llm import GeminiLLM
+
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        llm = GeminiLLM(model="gemini-2.5-flash-image")
+
+        data_url = "data:image/png;base64,aGVsbG8="
+        message = MagicMock()
+        message.content = "Here is your image"
+        message.tool_calls = None
+        message.images = [{"type": "image_url", "image_url": {"url": data_url}}]
+
+        mock_create = MagicMock(return_value=self._make_image_response(message))
+        llm.client = MagicMock()
+        llm.client.chat.completions.create = mock_create
+
+        response = llm.complete([{"role": "user", "content": "draw a cat"}])
+
+        assert response.images == [data_url]
+        assert response.content == "Here is your image"
+        # Image models must declare image output modality
+        assert mock_create.call_args.kwargs["modalities"] == ["text", "image"]
+
+    def test_gemini_text_model_does_not_send_modalities(self, monkeypatch):
+        """Non-image models should not get the modalities parameter."""
+        from unittest.mock import MagicMock
+        from connectonion.core.llm import GeminiLLM
+
+        monkeypatch.setenv("GEMINI_API_KEY", "test-key")
+        llm = GeminiLLM(model="gemini-2.5-flash")
+
+        message = MagicMock()
+        message.content = "hello"
+        message.tool_calls = None
+        message.images = None
+
+        mock_create = MagicMock(return_value=self._make_image_response(message))
+        llm.client = MagicMock()
+        llm.client.chat.completions.create = mock_create
+
+        response = llm.complete([{"role": "user", "content": "hi"}])
+
+        assert response.images == []
+        assert "modalities" not in mock_create.call_args.kwargs
+
+    def test_openonion_complete_returns_images(self, monkeypatch):
+        """OpenOnionLLM (co/ managed keys) should surface generated images."""
+        from unittest.mock import MagicMock
+        from connectonion.core.llm import OpenOnionLLM
+
+        monkeypatch.setenv("OPENONION_API_KEY", "test-token")
+        llm = OpenOnionLLM(model="co/gemini-3-pro-image-preview")
+
+        data_url = "data:image/png;base64,aGVsbG8="
+        message = MagicMock()
+        message.content = None
+        message.tool_calls = None
+        message.images = [{"type": "image_url", "image_url": {"url": data_url}}]
+
+        mock_create = MagicMock(return_value=self._make_image_response(message))
+        llm.client = MagicMock()
+        llm.client.chat.completions.create = mock_create
+
+        response = llm.complete([{"role": "user", "content": "draw a cat"}])
+
+        assert response.images == [data_url]
+        assert mock_create.call_args.kwargs["model"] == "gemini-3-pro-image-preview"
+        assert mock_create.call_args.kwargs["modalities"] == ["text", "image"]
+
+    def test_extract_images_from_multimodal_content(self):
+        """Images embedded as multimodal content parts should also be extracted."""
+        from unittest.mock import MagicMock
+        from connectonion.core.llm import _extract_images, _extract_text
+
+        data_url = "data:image/png;base64,aGVsbG8="
+        message = MagicMock()
+        message.images = None
+        message.content = [
+            {"type": "text", "text": "Here you go"},
+            {"type": "image_url", "image_url": {"url": data_url}},
+        ]
+
+        assert _extract_images(message) == [data_url]
+        assert _extract_text(message) == "Here you go"

@@ -54,6 +54,9 @@ MODEL_PRICING = {
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00, "cached": 0.375},
     "gemini-3-pro-preview": {"input": 2.00, "output": 12.00, "cached": 0.50},
     "gemini-3-pro-image-preview": {"input": 2.00, "output": 0.134},
+    # Nano Banana: image output billed as tokens ($30/1M, ~1290 tokens ≈ $0.039/image)
+    "gemini-2.5-flash-image": {"input": 0.30, "output": 30.00, "cached": 0.075},
+    "gemini-2.5-flash-image-preview": {"input": 0.30, "output": 30.00, "cached": 0.075},
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00, "cached": 0.3125},
     "gemini-2.5-flash": {"input": 0.15, "output": 0.60, "cached": 0.0375},
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40, "cached": 0.025},
@@ -88,6 +91,8 @@ MODEL_CONTEXT_LIMITS = {
     "gemini-3.5-flash": 1000000,
     "gemini-3-pro-preview": 1000000,
     "gemini-3-pro-image-preview": 65000,
+    "gemini-2.5-flash-image": 32768,
+    "gemini-2.5-flash-image-preview": 32768,
     "gemini-2.5-pro": 1000000,
     "gemini-2.5-flash": 1000000,
     "gemini-2.0-flash": 1000000,
