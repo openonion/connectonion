@@ -2,6 +2,22 @@
 
 All notable changes to ConnectOnion will be documented in this file.
 
+## [1.2.1] - 2026-07-17
+
+### ✨ Features
+- **`co browser` runs natively on Windows** — the daemon speaks named pipes (stdlib, HMAC-authenticated) on Windows and keeps its Unix socket byte-identical on macOS/Linux. No WSL.
+- **Zero-setup browser**: the first page-driving `co browser` command auto-installs chromium (per-user, no admin rights) when no browser exists; desktop Chrome is auto-detected and preferred.
+
+### 🐛 Bug Fixes
+- Windows: emoji/Unicode CLI output no longer crashes on legacy codepages (cp1252) — including when `co` is driven through a pipe by Claude Code/codex.
+- `co browser go_to` no longer rewrites `file://`/`about:`/`data:` URLs into broken `https://` forms.
+- Offline first run: `co init` now degrades gracefully (friendly one-liner, scaffold + keypair still created) instead of aborting with a traceback; `authenticate()` carries a 15s network timeout.
+- Docs: removed nonexistent `co init --no-ai`/`--update-docs` flags; fixed the stale auth URL reference.
+
+### ✅ Testing
+- New `windows-e2e` CI job simulates a real Windows user end to end: wheel install, PowerShell 7 / 5.1 / cmd.exe, offline first run, CJK + space home directory, fresh-laptop browser auto-install (real download), three parallel agents, Task-Manager-kill recovery, authkey self-healing.
+- Windows unit/daemon matrix on Python 3.10/3.12/3.13; concurrency tests (8 simultaneous clients, cold-start singleton race).
+
 ## [1.0.5] - 2026-07-01
 
 ### 🐛 Bug Fixes
