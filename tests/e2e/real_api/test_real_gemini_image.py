@@ -11,6 +11,18 @@ Run with:
     pytest tests/e2e/real_api/test_real_gemini_image.py -v -s
 
 Costs money: ~$0.04 (nano banana) to ~$0.13 (nano banana pro) per image.
+
+Known server status (verified 2026-07-17 against oo.openonion.ai):
+    The co/ tests FAIL until oo-api adds image-model handling. oo-api currently
+    forwards image models to Google's OpenAI-compatible chat.completions, which
+    rejects them:
+    - gemini-2.5-flash-image -> 400 "Image generation is not yet supported on
+      the chat.completions endpoint for this model. Please use the standard
+      client.images.generate method"
+    - gemini-3-pro-image-preview -> 400 "Unhandled generated data mime type:
+      image/jpeg" (Google compat layer can't serialize the generated JPEG)
+    oo-api needs to either add a /v1/images/generations route or call Gemini's
+    native generateContent for image models and return message.images.
 """
 
 import base64

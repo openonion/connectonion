@@ -148,6 +148,10 @@ agent.last_images  # ["data:image/png;base64,..."]
 | gemini-2.5-flash-image | ~$0.039 | Nano Banana — fast, cheap |
 | gemini-3-pro-image-preview | ~$0.134 | Nano Banana Pro — highest quality, grounded generation |
 
+> **Note:** With a direct `GEMINI_API_KEY`, image models route through Google's
+> images API automatically. `co/` managed-key image generation additionally
+> requires oo-api server support for image models (rolling out).
+
 #### Gemini 2.0
 ```python
 # Previous gen workhorse

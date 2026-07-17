@@ -628,16 +628,16 @@ class GeminiLLM(LLM):
     
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation using Gemini's OpenAI-compatible endpoint."""
+        # Google's OpenAI-compatible layer rejects image models on
+        # chat.completions ("use client.images.generate") — route accordingly
+        if is_image_model(self.model) and not tools:
+            return self._complete_image_generation(messages, **kwargs)
+
         api_kwargs = {
             "model": self.model,
             "messages": messages,
             **kwargs
         }
-
-        # Image models (gemini-2.5-flash-image, gemini-3-pro-image-preview, ...)
-        # return images only when the request declares image output modality
-        if is_image_model(self.model):
-            api_kwargs.setdefault("modalities", ["text", "image"])
 
         if tools:
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
@@ -681,6 +681,47 @@ class GeminiLLM(LLM):
             raw_response=response,
             usage=usage,
             images=_extract_images(message),
+        )
+
+    def _complete_image_generation(self, messages: List[Dict[str, Any]], **kwargs) -> LLMResponse:
+        """Generate images via the images API (the only path Google's
+        OpenAI-compatible endpoint supports for image models).
+
+        The prompt is taken from the last user message; earlier turns are not
+        sent because images.generate is a single-prompt API.
+        """
+        prompt = ""
+        for msg in reversed(messages):
+            if msg.get("role") == "user":
+                content = msg.get("content")
+                if isinstance(content, list):
+                    prompt = "\n".join(
+                        part.get("text", "") for part in content
+                        if isinstance(part, dict) and part.get("type") == "text"
+                    )
+                else:
+                    prompt = content or ""
+                break
+
+        result = self.client.images.generate(
+            model=self.model,
+            prompt=prompt,
+            response_format="b64_json",
+            n=kwargs.pop("n", 1),
+        )
+
+        images = [
+            f"data:image/png;base64,{item.b64_json}"
+            for item in (result.data or [])
+            if getattr(item, "b64_json", None)
+        ]
+
+        return LLMResponse(
+            content=None,
+            tool_calls=[],
+            raw_response=result,
+            usage=None,
+            images=images,
         )
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
