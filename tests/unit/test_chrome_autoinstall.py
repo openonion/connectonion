@@ -71,7 +71,7 @@ def test_missing_browser_triggers_patchright_install(monkeypatch, capsys):
     run = _RecordingRun(returncode=0)
     _patch_env(monkeypatch, None, run)
     c._ensure_browser_ready("go_to example.com")
-    assert run.calls == [[sys.executable, "-m", "patchright", "install", "chrome"]]
+    assert run.calls == [[sys.executable, "-m", "patchright", "install", "chromium"]]  # chromium: per-user dir, never needs admin
     assert "one-time" in capsys.readouterr().err  # the user is told what's happening
 
 
@@ -80,4 +80,4 @@ def test_failed_install_warns_but_does_not_raise(monkeypatch, capsys):
     _patch_env(monkeypatch, None, run)
     c._ensure_browser_ready("do fill the form")  # must not raise
     err = capsys.readouterr().err
-    assert "patchright install chrome" in err  # the manual remedy is named
+    assert "patchright install chromium" in err  # the manual remedy is named
