@@ -933,3 +933,50 @@ def test_bind_holds_an_exclusive_lock_for_life(short_sock):
     fresh_lock = open(short_sock + ".lock", "w")
     fcntl.flock(fresh_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     fresh_lock.close()
+
+
+# ---- concurrency: many clients, one single-threaded daemon ----------------
+
+def test_concurrent_clients_are_all_served(short_sock, monkeypatch):
+    """8 clients firing at once against the single-threaded daemon: every request
+    must be served (queued, not dropped or deadlocked) and every reply delivered.
+    On Windows this drives real named-pipe contention (mpc PIPE_BUSY waits); on
+    POSIX the AF_UNIX accept backlog. This is the multi-agent daily reality."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    daemon = make_daemon(short_sock)
+    threading.Thread(target=daemon.serve, daemon=True).start()
+    _wait_until_listening(short_sock)
+
+    codes = []
+    def one_client(i):
+        codes.append(c.send(f"go_to site{i}.com", headless=True))
+
+    workers = [threading.Thread(target=one_client, args=(i,)) for i in range(8)]
+    for w in workers:
+        w.start()
+    for w in workers:
+        w.join(timeout=30)
+
+    assert len(codes) == 8 and all(code == 0 for code in codes)
+    assert len(daemon.browser.calls) == 8  # nothing dropped under contention
+
+
+def test_second_daemon_yields_at_the_singleton_lock(short_sock, monkeypatch):
+    """Two daemons cold-starting on the same endpoint: the loser must exit at the
+    lifetime singleton lock (fcntl.flock on POSIX, msvcrt.locking on Windows) —
+    never double-bind, never disturb the winner. Cross-platform: this is the
+    Windows counterpart of the POSIX-only flock tests above."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    winner = make_daemon(short_sock)
+    winner_thread = threading.Thread(target=winner.serve, daemon=True)
+    winner_thread.start()
+    _wait_until_listening(short_sock)
+
+    rival = make_daemon(short_sock)
+    with pytest.raises(SystemExit):
+        rival._bind()  # loses the lifetime lock and yields
+
+    # The winner is unharmed: a client round-trip still works.
+    code = c.send("go_to survivor.com", headless=True)
+    assert code == 0
+    assert ("go_to", "survivor.com") in winner.browser.calls

@@ -54,11 +54,18 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
     # Call the new unified auth endpoint
     auth_url = "https://oo.openonion.ai/api/v1/auth"
 
-    response = requests.post(auth_url, json={
-        "public_key": public_key,
-        "signature": signature,
-        "message": message
-    })
+    try:
+        response = requests.post(auth_url, json={
+            "public_key": public_key,
+            "signature": signature,
+            "message": message
+        }, timeout=15)
+    except requests.exceptions.RequestException:
+        # First-run must survive a bad/offline network: a traceback wall here used to
+        # abort `co init` before any scaffolding. One friendly line, keep going.
+        console.print("⚠️  Could not reach the ConnectOnion backend — continuing offline.", style="yellow")
+        console.print("   Run [bold]co auth[/bold] once you're online to activate co/* models and agent email.", style="yellow")
+        return False
 
     if response.status_code == 200:
         data = response.json()
