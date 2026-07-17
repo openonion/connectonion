@@ -50,7 +50,7 @@ grounded in the actual CLI code:
 - **`co email` is the built-in managed mailbox** (`…@mail.openonion.ai`), activated by that
   authentication. It needs only `OPENONION_API_KEY` — **not** `co auth google`. Gmail/Outlook
   OAuth (`co auth google`/`microsoft`) is a separate, optional thing.
-- **The browser binary is never auto-installed.** `pip install connectonion` brings the
+- **The browser auto-installs on first use (1.2.1+).** Before 1.2.1 it was never auto-installed: `pip install connectonion` brings the
   `patchright` library but no Chrome; `co browser` fails with *"Chrome failed to start"*
   until you run `patchright install chrome` or have desktop Chrome. And `co doctor` does
   **not** catch this — it only checks the patchright library, so the skill proves the

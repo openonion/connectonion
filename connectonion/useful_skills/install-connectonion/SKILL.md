@@ -153,16 +153,18 @@ needs `OPENONION_API_KEY` from Step 3.
 Skip unless the person wants web automation (`co browser`, or the `browser`/`hosted-browser`
 template). Two things to know first:
 
-- **`pip install connectonion` installs the browser *library* (`patchright`) but NOT a
-  browser to drive** — without one, `co browser` fails at launch with *"Chrome failed to
-  start — full log at ~/.co/browser.log"*.
+- **From connectonion 1.2.1, the first page-driving `co browser` command auto-installs a
+  browser when none exists** (visible one-time download in the terminal) — normally there
+  is NOTHING to do here. The manual step below is the fallback for older versions,
+  airgapped machines, or a failed auto-install.
 - **`co browser` works natively on Windows from connectonion 1.2.1** (named-pipe daemon —
   plain PowerShell/cmd is fine, no WSL). On an OLDER version (`co --version` < 1.2.1),
   native Windows isn't supported: upgrade first (`PY -m pip install -U connectonion`), or
   do the browser work inside WSL.
 
-Get a browser. The agent uses desktop **Google Chrome** if it's installed at the standard
-OS path; otherwise install Patchright's browser (the deterministic option that always works):
+If a manual install IS needed (older version / auto-install failed): the agent uses
+desktop **Google Chrome** when present at the standard OS path; otherwise install
+Patchright's browser:
 
 ```bash
 PY -m patchright install chrome          # all platforms (Windows/macOS/Linux)
