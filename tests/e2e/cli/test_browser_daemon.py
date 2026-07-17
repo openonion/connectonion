@@ -14,6 +14,7 @@ Strategy: a StubBrowser stands in for BrowserAutomation so no real Chrome/Playwr
 or network is needed. The daemon's lazy BrowserAutomation is swapped for the stub.
 """
 
+import contextlib
 import os
 import socket
 import subprocess
@@ -25,16 +26,28 @@ import pytest
 
 from connectonion.cli.browser_agent import daemon as d
 from connectonion.cli.browser_agent import client as c
+from connectonion.cli.browser_agent import transport as tp
+
+IS_WINDOWS = tp.IS_WINDOWS
+posix_only = pytest.mark.skipif(IS_WINDOWS, reason="exercises the raw AF_UNIX socket mechanism (POSIX)")
 
 
 @pytest.fixture
 def short_sock():
-    """A short AF_UNIX path (macOS caps socket paths at 104 chars; tmp_path is too long)."""
-    path = f"/tmp/co_test_{os.getpid()}_{time.time_ns()}.sock"
-    yield path
-    for leftover in (path, path + ".pid", path + ".lock"):
-        if os.path.exists(leftover):
-            os.unlink(leftover)
+    """A unique daemon endpoint. POSIX: a short AF_UNIX path (macOS caps paths at 104 chars,
+    so tmp_path is too long). Windows: a unique named pipe."""
+    if IS_WINDOWS:
+        address = rf"\\.\pipe\co_test_{os.getpid()}_{time.time_ns()}"
+    else:
+        address = f"/tmp/co_test_{os.getpid()}_{time.time_ns()}.sock"
+    yield address
+    for leftover in (address, tp.pid_path(address), tp.lock_path(address)):
+        # Windows cannot unlink the .lock file while a daemon thread in this same
+        # process still holds its byte-range lock — the OS frees it at process exit,
+        # so a failed cleanup here is expected, not a bug being hidden.
+        with contextlib.suppress(OSError):
+            if os.path.exists(leftover):
+                os.unlink(leftover)
 
 
 class StubBrowser:
@@ -116,13 +129,16 @@ class StubBrowser:
 
 
 def _wait_until_listening(sock_path, timeout=5.0):
-    """Wait until the daemon has bound its socket (file appears), without leaking a connection."""
+    """Wait until the daemon has bound (its pid file appears), without leaking a connection.
+    The pid file is written at bind time on both platforms, so this is transport-agnostic
+    (a Windows named pipe is not a filesystem path, so os.path.exists on it wouldn't work)."""
+    pid_file = tp.pid_path(sock_path)
     deadline = time.time() + timeout
     while time.time() < deadline:
-        if os.path.exists(sock_path):
+        if os.path.exists(pid_file):
             return
         time.sleep(0.02)
-    raise RuntimeError("daemon did not bind socket in time")
+    raise RuntimeError("daemon did not bind in time")
 
 
 def make_daemon(sock_path, stub=None):
@@ -780,6 +796,7 @@ def test_socket_round_trip_structured_exit_codes(short_sock, monkeypatch, capsys
 
 # ---- _bind: busy daemon vs stale socket ----------------------------------
 
+@posix_only
 def test_bind_yields_to_a_live_busy_daemon(short_sock):
     """A refused probe against a socket whose owner is STILL RUNNING means busy
     (backlog full during a long command), not stale. The newcomer must exit —
@@ -794,6 +811,7 @@ def test_bind_yields_to_a_live_busy_daemon(short_sock):
     assert os.path.exists(short_sock)  # the busy owner's socket was NOT unlinked
 
 
+@posix_only
 def test_bind_replaces_a_stale_socket_of_a_dead_daemon(short_sock):
     """A refused probe whose recorded owner is DEAD is a stale socket: unlink,
     bind fresh, and record our own pid as the new owner."""
@@ -811,6 +829,7 @@ def test_bind_replaces_a_stale_socket_of_a_dead_daemon(short_sock):
     daemon._srv.close()
 
 
+@posix_only
 def test_bind_replaces_a_stale_socket_without_pidfile(short_sock):
     """No pid file (pre-pidfile daemon, or cleanup already ran) reads as dead:
     the refused socket is stale and gets replaced."""
@@ -895,6 +914,7 @@ def test_newtab_with_tab_target_is_rejected(tmp_path):
     assert "tab open" in payload
 
 
+@posix_only
 def test_bind_holds_an_exclusive_lock_for_life(short_sock):
     """The whole probe-and-bind sequence runs under a lifetime flock: a rival
     daemon starting at the same instant must lose at the lock, never reach the
@@ -913,3 +933,50 @@ def test_bind_holds_an_exclusive_lock_for_life(short_sock):
     fresh_lock = open(short_sock + ".lock", "w")
     fcntl.flock(fresh_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
     fresh_lock.close()
+
+
+# ---- concurrency: many clients, one single-threaded daemon ----------------
+
+def test_concurrent_clients_are_all_served(short_sock, monkeypatch):
+    """8 clients firing at once against the single-threaded daemon: every request
+    must be served (queued, not dropped or deadlocked) and every reply delivered.
+    On Windows this drives real named-pipe contention (mpc PIPE_BUSY waits); on
+    POSIX the AF_UNIX accept backlog. This is the multi-agent daily reality."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    daemon = make_daemon(short_sock)
+    threading.Thread(target=daemon.serve, daemon=True).start()
+    _wait_until_listening(short_sock)
+
+    codes = []
+    def one_client(i):
+        codes.append(c.send(f"go_to site{i}.com", headless=True))
+
+    workers = [threading.Thread(target=one_client, args=(i,)) for i in range(8)]
+    for w in workers:
+        w.start()
+    for w in workers:
+        w.join(timeout=30)
+
+    assert len(codes) == 8 and all(code == 0 for code in codes)
+    assert len(daemon.browser.calls) == 8  # nothing dropped under contention
+
+
+def test_second_daemon_yields_at_the_singleton_lock(short_sock, monkeypatch):
+    """Two daemons cold-starting on the same endpoint: the loser must exit at the
+    lifetime singleton lock (fcntl.flock on POSIX, msvcrt.locking on Windows) —
+    never double-bind, never disturb the winner. Cross-platform: this is the
+    Windows counterpart of the POSIX-only flock tests above."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    winner = make_daemon(short_sock)
+    winner_thread = threading.Thread(target=winner.serve, daemon=True)
+    winner_thread.start()
+    _wait_until_listening(short_sock)
+
+    rival = make_daemon(short_sock)
+    with pytest.raises(SystemExit):
+        rival._bind()  # loses the lifetime lock and yields
+
+    # The winner is unharmed: a client round-trip still works.
+    code = c.send("go_to survivor.com", headless=True)
+    assert code == 0
+    assert ("go_to", "survivor.com") in winner.browser.calls

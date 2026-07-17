@@ -9,6 +9,18 @@ LLM-Note:
   Errors: typer.Exit() on --version or --browser | invalid commands show Typer error with suggestions | command-specific errors handled in respective handlers
 """
 
+import sys
+
+# Windows consoles and pipes default to a legacy codepage (cp1252): any emoji or
+# box-drawing character in CLI output then raises UnicodeEncodeError and crashes
+# the command — including when co is driven through a pipe by another tool
+# (Claude Code, codex, CI). Reconfigure this CLI process's own streams to UTF-8
+# with replacement before anything prints. Caught by the windows-e2e CI job.
+if sys.platform == "win32":
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+
 import typer
 from pathlib import Path
 from rich.console import Console

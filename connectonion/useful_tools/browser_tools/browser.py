@@ -554,14 +554,10 @@ class BrowserAutomation:
         # See: https://github.com/microsoft/playwright/issues/31736
         # Can test removing this in the future if cookie issues persist
 
-        # Use Google Chrome instead of Chromium when it exists.
-        chrome_paths = {
-            "Darwin": ["/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"],
-            "Linux": ["/usr/bin/google-chrome", "/usr/bin/google-chrome-stable", "/opt/google/chrome/chrome"],
-            "Windows": [r"C:\Program Files\Google\Chrome\Application\chrome.exe",
-                        r"C:\Program Files (x86)\Google\Chrome\Application\chrome.exe"],
-        }.get(platform.system(), [])
-        chrome_path = next((p for p in chrome_paths if os.path.exists(p)), None)
+        # Use Google Chrome instead of Chromium when it exists (shared detection —
+        # the CLI client uses the same probe to decide first-run auto-install).
+        from .chrome_finder import find_system_chrome
+        chrome_path = find_system_chrome()
 
         # Session persistence: use ONLY user_data_dir (simple approach)
         # - Persistent Chrome profile at ~/.co/browser_profile/
@@ -647,7 +643,10 @@ class BrowserAutomation:
         if not self.page:
             self.open_browser()
 
-        if not url.startswith(('http://', 'https://')):
+        # Auto-prefix bare inputs like "x.com" / "localhost:8080" — but never rewrite a
+        # URL that already carries a scheme (file:///page.html was becoming
+        # https://file///page.html; caught by the windows-e2e CI job).
+        if not url.startswith(('http://', 'https://', 'file://', 'about:', 'data:', 'chrome://')):
             url = f'https://{url}' if '.' in url else f'http://{url}'
 
         self.page.goto(url, wait_until='domcontentloaded', timeout=30000)
