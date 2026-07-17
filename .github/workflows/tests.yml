@@ -217,6 +217,40 @@ jobs:
           co browser close
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
+      # THE fresh-Windows-laptop test: no system Chrome anywhere, empty browsers dir.
+      # The first page-driving command must auto-install a browser (real download,
+      # no admin rights involved — chromium goes to the per-user browsers path) and
+      # then actually drive it. This is the exact first-experience a new Windows
+      # user gets on a machine without Chrome.
+      - name: Fresh laptop — auto-install fires for real (no system Chrome, empty browsers dir)
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ runner.temp }}\fresh-browsers
+        run: |
+          Stop-Process -Name chrome -Force -ErrorAction SilentlyContinue
+          Rename-Item "C:\Program Files\Google" "C:\Program Files\GoogleHidden"
+          if (!(Test-Path "C:\Program Files\GoogleHidden")) { Write-Error "could not hide system Chrome"; exit 1 }
+          New-Item -ItemType Directory -Path $env:PLAYWRIGHT_BROWSERS_PATH -Force | Out-Null
+
+          Set-Content -Path fresh.html -Value "<html><body><h1>fresh-laptop</h1></body></html>"
+          $url = "file:///" + ($PWD.Path -replace '\\','/') + "/fresh.html"
+          $out = co browser --headless go_to $url 2>&1 | Out-String
+          Write-Host $out
+          if ($LASTEXITCODE -ne 0) { Write-Error "auto-install path failed to launch/navigate"; exit 1 }
+          if ($out -notmatch "one-time download") { Write-Error "auto-install did not announce itself"; exit 1 }
+          if ($out -notmatch "Navigated to") { Write-Error "navigation missing after auto-install"; exit 1 }
+
+          $cur = co browser get_current_url | Out-String
+          if ($cur -notmatch "fresh.html") { Write-Error "wrong page after auto-install launch"; exit 1 }
+          co browser close
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Restore system Chrome (cleanup for the fresh-laptop test)
+        if: always()
+        run: |
+          if (Test-Path "C:\Program Files\GoogleHidden") {
+            Rename-Item "C:\Program Files\GoogleHidden" "C:\Program Files\Google"
+          }
+
       - name: Show the browser daemon log on failure
         if: failure()
         run: |
