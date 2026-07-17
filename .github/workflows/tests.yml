@@ -251,6 +251,87 @@ jobs:
             Rename-Item "C:\Program Files\GoogleHidden" "C:\Program Files\Google"
           }
 
+      - name: CLI works from Windows PowerShell 5.1 (many users' default shell)
+        shell: powershell
+        run: |
+          co --version
+          if ($LASTEXITCODE -ne 0) { Write-Error "co failed under PowerShell 5.1"; exit 1 }
+          co doctor
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      # The classic Chinese-Windows-user minefield: the ENTIRE home lives under a
+      # path with CJK characters and a space. keys.env, the keypair, browser
+      # sidecars/authkey (LOCALAPPDATA), the Chrome profile dir — all of it.
+      - name: Everything works with a CJK + space home directory
+        env:
+          USERPROFILE: ${{ runner.temp }}\co 用户 目录
+          LOCALAPPDATA: ${{ runner.temp }}\co 用户 目录\AppData\Local
+          HTTP_PROXY: http://127.0.0.1:9
+          HTTPS_PROXY: http://127.0.0.1:9
+        run: |
+          New-Item -ItemType Directory -Path $env:LOCALAPPDATA -Force | Out-Null
+          $proj = Join-Path $env:USERPROFILE "我的 项目"
+          New-Item -ItemType Directory -Path $proj -Force | Out-Null
+          Set-Location $proj
+
+          $out = co init --yes 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $out -match "Traceback") { Write-Host $out; Write-Error "init failed in CJK home"; exit 1 }
+          if (!(Test-Path (Join-Path $env:USERPROFILE ".co\keys\agent.key"))) { Write-Error "keypair missing under CJK home"; exit 1 }
+
+          # Idempotency: a second init must not corrupt the project.
+          $out2 = co init --yes --force 2>&1 | Out-String
+          if ($LASTEXITCODE -ne 0 -or $out2 -match "Traceback") { Write-Host $out2; Write-Error "second init corrupted the project"; exit 1 }
+          if (!(Test-Path ".env")) { Write-Error ".env lost on re-init"; exit 1 }
+
+          co copy install-connectonion
+          if ($LASTEXITCODE -ne 0) { Write-Error "co copy failed in CJK home"; exit 1 }
+
+          # Real browser with profile + sidecars + authkey all under the CJK home.
+          Set-Content -Path page.html -Value "<html><body>cjk-home</body></html>"
+          $url = "file:///" + ($PWD.Path -replace '\\','/') + "/page.html"
+          co browser --headless go_to $url
+          if ($LASTEXITCODE -ne 0) { Write-Error "browser failed with CJK home"; exit 1 }
+          co browser close
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      # Task-Manager-kill recovery: a stale pid file whose pid now belongs to a
+      # LIVE unrelated process must never block a fresh daemon (the pre-fix
+      # behavior was a permanent 'daemon is busy' denial of service).
+      - name: Stale pid file with a recycled live pid cannot brick the daemon
+        run: |
+          $pidfile = python -c "from connectonion.cli.browser_agent import transport, daemon as d; print(transport.pid_path(d.default_sock_path()))"
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+            Where-Object { $_.CommandLine -match "browser_agent.daemon" } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 1
+          $decoy = Start-Process notepad -PassThru -WindowStyle Hidden
+          New-Item -ItemType Directory -Path (Split-Path $pidfile) -Force | Out-Null
+          Set-Content -Path $pidfile -Value $decoy.Id -NoNewline
+
+          co browser status
+          $code = $LASTEXITCODE
+          Stop-Process -Id $decoy.Id -Force -ErrorAction SilentlyContinue
+          if ($code -ne 0) { Write-Error "stale pid file blocked the daemon (exit $code)"; exit 1 }
+          co browser close
+
+      # Corrupt authkey heals itself: a truncated key file (crashed writer) must
+      # not brick the CLI — the next command replaces it atomically and works.
+      - name: Corrupt authkey self-heals
+        run: |
+          Get-CimInstance Win32_Process -Filter "Name='python.exe'" |
+            Where-Object { $_.CommandLine -match "browser_agent.daemon" } |
+            ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
+          Start-Sleep -Seconds 1
+          $auth = Join-Path $env:LOCALAPPDATA "co\authkey"
+          New-Item -ItemType Directory -Path (Split-Path $auth) -Force | Out-Null
+          Set-Content -Path $auth -Value "xx" -NoNewline
+
+          co browser status
+          if ($LASTEXITCODE -ne 0) { Write-Error "corrupt authkey bricked the CLI"; exit 1 }
+          $len = (Get-Item $auth).Length
+          if ($len -lt 16) { Write-Error "authkey was not healed (length $len)"; exit 1 }
+          co browser close
+
       - name: Show the browser daemon log on failure
         if: failure()
         run: |
