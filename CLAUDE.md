@@ -137,8 +137,8 @@ python setup.py sdist bdist_wheel
 twine upload dist/*
 
 # Version update (see VERSIONING.md)
-# Current: 0.4.1
-# Strategy: increment PATCH (0.4.1 → 0.4.2), roll to MINOR at .10 (0.4.10 → 0.5.0)
+# Current: 1.2.1
+# Strategy: increment PATCH (1.2.1 → 1.2.2), roll to MINOR at .10 (1.2.10 → 1.3.0)
 ```
 
 ## Project Structure
@@ -383,10 +383,10 @@ git push
 
 ## Version Numbering Strategy
 
-**Current Version:** 0.4.1 (Production Ready)
+**Current Version:** 1.2.1 (Production Ready)
 
 **Strategy:** Semantic versioning with specific rollover rules
-- Increment PATCH: 0.4.1 → 0.4.2 → ... → 0.4.9
+- Increment PATCH: 1.2.1 → 1.2.2 → ... → 1.2.9
 - At .10, roll to MINOR: 0.4.10 → 0.5.0
 - At .10.0, roll to MAJOR: 0.10.0 → 1.0.0
 

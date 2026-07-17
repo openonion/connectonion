@@ -167,9 +167,10 @@ desktop **Google Chrome** when present at the standard OS path; otherwise instal
 Patchright's browser:
 
 ```bash
-PY -m patchright install chrome          # all platforms (Windows/macOS/Linux)
+PY -m patchright install chromium        # per-user dir, NEVER needs admin (what auto-install runs)
+PY -m patchright install chrome          # branded Chrome: best stealth, but a system installer
 # Linux/CI without desktop libraries may need system deps (asks for sudo):
-PY -m patchright install --with-deps chrome
+PY -m patchright install --with-deps chromium
 ```
 
 **Verify it actually launches — `co doctor` is NOT enough here.** `co doctor` only checks
@@ -182,9 +183,9 @@ co browser go_to example.com     # navigates → Chrome launched OK. Then: co br
 
 > **Recovery**
 > - *"Chrome failed to start … ~/.co/browser.log"* → no drivable browser. Run
->   `PY -m patchright install chrome` (Linux: add `--with-deps`), or install desktop Google
+>   `PY -m patchright install chromium` (Linux: add `--with-deps`), or install desktop Google
 >   Chrome to the standard path. Note: a Chrome in a non-standard spot (Windows per-user
->   `%LOCALAPPDATA%`, Linux snap/flatpak) isn't auto-detected — use `patchright install chrome`.
+>   `%LOCALAPPDATA%`, Linux snap/flatpak) isn't auto-detected — use `patchright install chromium`.
 > - `co doctor` Browser line **missing** → patchright library gone: `PY -m pip install patchright`.
 > - `co doctor` Browser line **broken** (stealth driver) → `PY -m pip install --force-reinstall --no-cache-dir patchright`.
 > - `co browser do "…"` says *"requires authentication"* → the natural-language mode uses a

@@ -150,17 +150,23 @@ This path uses managed keys — run `co auth` once if you see an authentication 
 
 ## Installation
 
-The browser needs Patchright (a stealth-patched, API-compatible Playwright fork):
+**None needed (1.2.1+).** The Patchright library ships with connectonion, and the first
+page-driving command auto-installs a browser when none exists — a one-time download,
+announced in your terminal, into your per-user directory (no admin rights). If a desktop
+Google Chrome is installed at the standard location, it is detected and used instead,
+with zero downloads.
+
+Manual fallback (older versions, airgapped machines, or a failed auto-install):
 
 ```bash
-pip install patchright
-patchright install chrome
+python -m patchright install chromium   # per-user, never needs admin
+python -m patchright install chrome     # branded Chrome: best stealth, system installer
 ```
 
 ## Sessions & Profile
 
 - One browser per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.
-- The daemon's socket lives under `$XDG_RUNTIME_DIR/co/browser.sock` (override with `$CO_BROWSER_SOCK`).
+- The daemon endpoint: a Unix socket under `$XDG_RUNTIME_DIR/co/browser.sock` on macOS/Linux, a per-user named pipe on Windows (native, 1.2.1+ — no WSL). Override with `$CO_BROWSER_SOCK`.
 
 ## Error Messages
 
