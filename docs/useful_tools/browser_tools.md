@@ -282,7 +282,7 @@ BROWSER_PROXY=socks5://host:port
 
 ## Notes
 
-- Uses Google Chrome if installed (better site compatibility), otherwise falls back to Chromium
+- Uses Google Chrome if installed (better site compatibility); if no browser exists, chromium is auto-installed per-user (no admin rights, v1.2.1+)
 - Viewport defaults to 1920×1200 for maximum content visibility
 - Output is truncated when used as an agent tool to prevent token overflow
-- Windows is not supported
+- Runs natively on Windows since v1.2.1 (named-pipe transport — no WSL), plus macOS and Linux
