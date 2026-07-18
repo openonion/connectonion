@@ -25,7 +25,7 @@ def create_agent():
     browser = BrowserAutomation(headless=True)
     return Agent(
         name="browser_agent",
-        model="co/gemini-2.5-pro",
+        model="co/gemini-3.5-flash",
         system_prompt=system_prompt_path,
         tools=[browser],
         plugins=[image_result_formatter, ui_stream],

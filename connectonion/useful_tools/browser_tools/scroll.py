@@ -92,7 +92,7 @@ def _ai_scroll(page, times: int, description: str):
     strategy = llm_do(
         _PROMPT.format(description=description, scrollable_elements=scrollable, simplified_html=html),
         output=ScrollStrategy,
-        model="co/gemini-2.5-flash",
+        model="co/gemini-3.5-flash",
         temperature=0.1
     )
     print(f"    AI: {strategy.explanation}")

@@ -108,7 +108,7 @@ def main():
     agent = Agent(
         name="web-research-agent",
         tools=[search_web, extract_data, analyze_data, save_research],
-        model=os.getenv("MODEL", "co/gemini-2.5-pro")
+        model=os.getenv("MODEL", "co/gemini-3.5-flash")
     )
     
     # Example research task

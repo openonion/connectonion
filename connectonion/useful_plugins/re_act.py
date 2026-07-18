@@ -134,7 +134,7 @@ Current user input: {user_prompt}
 
 Acknowledge this request (1-2 sentences):"""
 
-    model = "co/gemini-2.5-flash"
+    model = "co/gemini-3.5-flash"
     agent.logger.print(f"[dim]/understanding ({model})...[/dim]")
 
     ack = llm_do(
