@@ -52,20 +52,23 @@ class WebSocketIO(IO):
 
         Auto-generates 'id' (UUID) and 'ts' (timestamp) if not present.
         """
-        if not self._closed:
+        with self._agent_condition:
+            if self._closed:
+                return
             if 'id' not in message:
                 message['id'] = str(uuid.uuid4())
             if 'ts' not in message:
                 message['ts'] = time.time()
-            with self._agent_condition:
-                self._msgs_from_agent.append(message)
-                self._agent_condition.notify_all()
+            self._msgs_from_agent.append(message)
+            self._agent_condition.notify_all()
 
     def receive(self) -> Dict[str, Any]:
         """Block until client message arrives."""
         with self._client_condition:
-            while not self._msgs_from_client:
+            while not self._msgs_from_client and not self._closed:
                 self._client_condition.wait()
+            if not self._msgs_from_client:
+                return {'type': 'io_closed'}
             return self._msgs_from_client.pop(0)
 
     def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
@@ -92,8 +95,12 @@ class WebSocketIO(IO):
             self._agent_condition.notify_all()
 
     def close(self):
-        """Mark IO as closed (prevents further sends)."""
-        self._closed = True
+        """Prevent further sends and unblock agent-side receive calls."""
+        with self._agent_condition:
+            self._closed = True
+            self._agent_condition.notify_all()
+        with self._client_condition:
+            self._client_condition.notify_all()
 
     # ═══════════════════════════════════════════════════════
     # Transport side (async)
