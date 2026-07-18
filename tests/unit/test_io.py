@@ -14,6 +14,7 @@ Components under test:
 import threading
 import pytest
 
+from connectonion.core.interrupt import AgentInterrupted
 from connectonion.network.io import IO, WebSocketIO
 
 
@@ -70,6 +71,34 @@ class TestWebSocketIO:
 
         assert io._msgs_from_agent == []
 
+    def test_close_serializes_with_in_flight_send(self):
+        io = WebSocketIO()
+        send_entered = threading.Event()
+        release_send = threading.Event()
+        close_done = threading.Event()
+
+        class BlockingEvent(dict):
+            def __contains__(self, key):
+                send_entered.set()
+                release_send.wait(timeout=1)
+                return super().__contains__(key)
+
+        sender = threading.Thread(target=lambda: io.send(BlockingEvent(type="late")))
+        sender.start()
+        assert send_entered.wait(timeout=1)
+
+        closer = threading.Thread(target=lambda: (io.close(), close_done.set()))
+        closer.start()
+        assert not close_done.wait(timeout=0.05)
+
+        release_send.set()
+        sender.join(timeout=1)
+        closer.join(timeout=1)
+        io.send({"type": "after-close"})
+
+        assert close_done.is_set()
+        assert [message["type"] for message in io._msgs_from_agent] == ["late"]
+
     def test_receive_returns_from_inbox(self):
         """receive() returns item from incoming mailbox."""
         io = WebSocketIO()
@@ -100,6 +129,20 @@ class TestWebSocketIO:
 
         assert not thread.is_alive()
         assert result_holder[0] == {"approved": True}
+
+    def test_close_unblocks_receive_with_io_closed(self):
+        io = WebSocketIO()
+        result_holder = [None]
+        thread = threading.Thread(target=lambda: result_holder.__setitem__(0, io.receive()))
+        thread.start()
+        thread.join(timeout=0.05)
+        assert thread.is_alive()
+
+        io.close()
+        thread.join(timeout=0.1)
+
+        assert not thread.is_alive()
+        assert result_holder[0] == {"type": "io_closed"}
 
 
 class TestReceiveAll:
@@ -266,6 +309,13 @@ class TestHighLevelAPI:
 
         thread.join(timeout=1)
         assert result is False
+
+    def test_request_approval_interrupt_raises(self):
+        io = WebSocketIO()
+        io.send_to_agent({"type": "INTERRUPT"})
+
+        with pytest.raises(AgentInterrupted):
+            io.request_approval("delete_file", {"path": "/tmp/x"})
 
     def test_wait_for_msgs_returns_promptly_when_idle(self):
         """_wait_for_msgs_from_agent runs on the event loop's shared default
