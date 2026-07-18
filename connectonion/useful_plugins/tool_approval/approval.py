@@ -203,6 +203,7 @@ from typing import TYPE_CHECKING
 from pathlib import Path
 
 from ...core.events import before_each_tool, before_iteration, after_iteration, after_user_input
+from ...core.interrupt import AgentInterrupted
 from .constants import VALID_MODES, DEFAULT_MODE, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS
 from .bash_parser import extract_commands_from_bash, check_bash_chain_permitted
 
@@ -550,6 +551,10 @@ def check_approval(agent: 'Agent') -> None:
 
     # Wait for client response (BLOCKS)
     response = agent.io.receive()
+
+    if response.get('type') == 'INTERRUPT':
+        agent.current_session['stop_signal'] = 'user_interrupt'
+        raise AgentInterrupted()
 
     # Handle connection closed
     if response.get('type') == 'io_closed':

@@ -13,6 +13,8 @@ IO interface for agent-client communication during hosted execution.
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
+from ...core.interrupt import AgentInterrupted
+
 
 class IO(ABC):
     """Base IO interface for agent-client communication.
@@ -102,12 +104,17 @@ class IO(ABC):
         Returns:
             True if approved, False if rejected
 
+        Raises:
+            AgentInterrupted: If the client stops the active run.
+
         Example:
             if not io.request_approval("delete_file", {"path": "/tmp/x"}):
                 raise ToolRejected()
         """
         self.send({"type": "approval_needed", "tool": tool, "arguments": arguments})
         response = self.receive()
+        if response.get("type") == "INTERRUPT":
+            raise AgentInterrupted()
         return response.get("approved", False)
 
     def send_image(self, image_data: str) -> None:
