@@ -93,8 +93,14 @@ class IO:
         """Two-way: request permission, wait for response."""
         self.send({"type": "approval_needed", "tool": tool, "arguments": arguments})
         response = self.receive()
+        if response.get("type") == "INTERRUPT":
+            raise AgentInterrupted()
         return response.get("approved", False)
 ```
+
+`INTERRUPT` is never treated as a rejection. The framework raises it into the
+agent loop, which records an interrupted tool result and follows the normal Stop
+path.
 
 ---
 
