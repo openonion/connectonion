@@ -196,6 +196,9 @@ def execute_single_tool(
         if getattr(tool_func, '_needs_agent', False):
             tool_args['agent'] = agent
 
+        xray_user_prompt = agent.current_session.get('user_prompt', '')
+        xray_messages = agent.current_session['messages'].copy()
+        xray_iteration = agent.current_session['iteration']
         caller_thread = threading.get_ident()
 
         def call_tool():
@@ -203,9 +206,9 @@ def execute_single_tool(
             if running_in_worker:
                 inject_xray_context(
                     agent=agent,
-                    user_prompt=agent.current_session.get('user_prompt', ''),
-                    messages=agent.current_session['messages'].copy(),
-                    iteration=agent.current_session['iteration'],
+                    user_prompt=xray_user_prompt,
+                    messages=xray_messages,
+                    iteration=xray_iteration,
                     previous_tools=previous_tools,
                 )
             try:

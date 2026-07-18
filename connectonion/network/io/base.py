@@ -38,6 +38,8 @@ class IO(ABC):
                         raise ToolRejected()
     """
 
+    supports_interrupts = False
+
     # ═══════════════════════════════════════════════════════
     # LOW-LEVEL API (Primitives)
     # ═══════════════════════════════════════════════════════
@@ -72,6 +74,14 @@ class IO(ABC):
             List of messages (empty if none).
         """
         pass
+
+    def requeue(self, message: Dict[str, Any]) -> None:
+        """Restore a selectively received message to the agent mailbox.
+
+        IO implementations that set ``supports_interrupts = True`` must
+        implement this operation so completed work can win an interrupt race.
+        """
+        raise NotImplementedError
 
     # ═══════════════════════════════════════════════════════
     # HIGH-LEVEL API (Patterns)

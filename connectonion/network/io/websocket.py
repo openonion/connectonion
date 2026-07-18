@@ -26,6 +26,8 @@ class WebSocketIO(IO):
     - Client messages (client→agent): mailbox, selective receive, consumed on read
     """
 
+    supports_interrupts = True
+
     def __init__(self):
         # ── Agent messages (agent→client) ──
         self._msgs_from_agent: list[Dict[str, Any]] = []
@@ -88,6 +90,12 @@ class WebSocketIO(IO):
             self._msgs_from_client[:] = remaining
             return matched
 
+    def requeue(self, message: Dict[str, Any]) -> None:
+        """Restore a selectively received message to the agent mailbox."""
+        with self._client_condition:
+            self._msgs_from_client.append(message)
+            self._client_condition.notify_all()
+
     def mark_agent_done(self):
         """Signal that agent is done producing messages."""
         with self._agent_condition:
@@ -108,9 +116,7 @@ class WebSocketIO(IO):
 
     def send_to_agent(self, msg: Dict[str, Any]) -> None:
         """Deliver client message to agent mailbox."""
-        with self._client_condition:
-            self._msgs_from_client.append(msg)
-            self._client_condition.notify_all()
+        self.requeue(msg)
 
     def push_runtime_input(self, msg: Dict[str, Any]) -> None:
         """Queue a mid-execution user message; agent drains at next iteration."""

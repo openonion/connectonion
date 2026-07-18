@@ -725,13 +725,10 @@ def poll_mode_changes(agent: 'Agent') -> None:
 
 @after_iteration
 def poll_interrupt(agent: 'Agent') -> None:
-    """Stop the run at the iteration boundary when the client sent an INTERRUPT.
+    """Fallback for interrupts not consumed by a blocking-step wrapper.
 
-    Graceful stop: drains an INTERRUPT frame and sets the existing stop_signal,
-    which the iteration loop already honors right after after_iteration (halts and
-    returns a closing message). Runs after_iteration so the current step (LLM call
-    + tools) finishes first — not a mid-flight abort. Same primitive and placement
-    as no_progress_guard; no core changes.
+    Mid-flight LLM calls, tools, and interactive gates handle INTERRUPT directly.
+    This iteration-boundary poll preserves Stop behavior for any remaining frame.
     """
     if not agent.io:
         return

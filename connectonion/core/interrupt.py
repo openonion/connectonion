@@ -17,15 +17,11 @@ def run_interruptible(
     poll_seconds: float = 0.2,
 ) -> tuple[T | None, bool]:
     """Return ``(result, False)`` or abandon the daemon worker on interrupt."""
-    receive_all = getattr(io, "receive_all", None) if io is not None else None
-    restore = getattr(io, "send_to_agent", None) if io is not None else None
-    declared_receive_all = getattr(type(io), "receive_all", None) if io is not None else None
-    if (
-        not callable(receive_all)
-        or not callable(declared_receive_all)
-        or not callable(restore)
-    ):
+    if io is None or getattr(io, "supports_interrupts", False) is not True:
         return fn(), False
+
+    receive_all = io.receive_all
+    requeue = io.requeue
 
     if receive_all("INTERRUPT"):
         return None, True
@@ -47,7 +43,7 @@ def run_interruptible(
         interrupts = receive_all("INTERRUPT")
         if interrupts and not worker.is_alive():
             for message in interrupts:
-                restore(message)
+                requeue(message)
             break
         if interrupts:
             return None, True

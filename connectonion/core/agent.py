@@ -473,9 +473,10 @@ class Agent:
             'status': 'running',
         })
 
+        messages = self.current_session['messages'].copy()
         start = time.time()
         response, interrupted = run_interruptible(
-            lambda: self.llm.complete(self.current_session['messages'], tools=tool_schemas),
+            lambda: self.llm.complete(messages, tools=tool_schemas),
             self.io,
         )
         duration = (time.time() - start) * 1000  # milliseconds
