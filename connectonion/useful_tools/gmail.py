@@ -53,6 +53,7 @@ Example:
 """
 
 import os
+from pathlib import Path
 import base64
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -178,20 +179,14 @@ class Gmail:
         os.environ["GOOGLE_ACCESS_TOKEN"] = new_access_token
         os.environ["GOOGLE_TOKEN_EXPIRES_AT"] = expires_at
 
-        # Update .env file if it exists
-        env_file = os.path.join(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co")), "keys.env")
-        if os.path.exists(env_file):
-            with open(env_file, 'r') as f:
-                lines = f.readlines()
-
-            with open(env_file, 'w') as f:
-                for line in lines:
-                    if line.startswith("GOOGLE_ACCESS_TOKEN="):
-                        f.write(f"GOOGLE_ACCESS_TOKEN={new_access_token}\n")
-                    elif line.startswith("GOOGLE_TOKEN_EXPIRES_AT="):
-                        f.write(f"GOOGLE_TOKEN_EXPIRES_AT={expires_at}\n")
-                    else:
-                        f.write(line)
+        # Persist to global keys.env so the refreshed token survives this process
+        from ..cli.commands.project_cmd_lib import upsert_env
+        env_file = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+        upsert_env(env_file, {
+            "GOOGLE_ACCESS_TOKEN": new_access_token,
+            "GOOGLE_TOKEN_EXPIRES_AT": expires_at,
+        })
 
         return new_access_token
 
