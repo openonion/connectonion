@@ -474,8 +474,9 @@ side effects in the background, but its result and late IO events are discarded.
 The agent writes terminal `interrupted` trace entries and keeps every assistant
 tool call paired with a tool result so the next user turn has valid message history.
 
-This fast path is available to WebSocket and relay executions whose IO supports
-selective `receive_all`. Local agents and HTTP `POST /input` remain synchronous.
+This fast path is available to WebSocket and relay executions whose IO declares
+`supports_interrupts` and provides selective `receive_all` plus `requeue`. Local
+agents and HTTP `POST /input` remain synchronous.
 
 **Use cases:**
 - User rejects a tool execution (hard reject)
