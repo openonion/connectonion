@@ -11,6 +11,7 @@ LLM-Note:
 
 import time
 import json
+import threading
 from typing import List, Dict, Any, Optional, Callable
 
 from ..debug.xray import (
@@ -18,6 +19,7 @@ from ..debug.xray import (
     clear_xray_context,
     is_xray_enabled
 )
+from .interrupt import AgentInterrupted, run_interruptible
 
 
 def execute_and_record_tools(
@@ -57,7 +59,8 @@ def execute_and_record_tools(
         # stop_signal: swap result with clean message, mark remaining as rejected
         rejection = agent.current_session.get('stop_signal')
         if rejection:
-            _add_tool_result_message(agent.current_session['messages'], tool_call.id, rejection)
+            current_result = trace_entry["result"] if trace_entry["status"] == "interrupted" else rejection
+            _add_tool_result_message(agent.current_session['messages'], tool_call.id, current_result)
             for remaining in tool_calls[i + 1:]:
                 _add_tool_result_message(agent.current_session['messages'], remaining.id, "Rejected by user")
             break
@@ -177,11 +180,12 @@ def execute_single_tool(
             'description': getattr(tool_func, 'description', '')
         }
 
-        # Invoke before_each_tool events
-        agent._invoke_events('before_each_tool')
-
-        # Clear pending_tool after event (it's only valid during before_tool)
-        agent.current_session.pop('pending_tool', None)
+        # Invoke before_each_tool events. pending_tool is valid only inside the
+        # event, including when an approval interrupt raises out of it.
+        try:
+            agent._invoke_events('before_each_tool')
+        finally:
+            agent.current_session.pop('pending_tool', None)
 
         # Execute the tool with timing (restart timer AFTER events for accurate tool timing)
         tool_start = time.time()
@@ -192,7 +196,27 @@ def execute_single_tool(
         if getattr(tool_func, '_needs_agent', False):
             tool_args['agent'] = agent
 
-        result = tool_func(**tool_args)
+        caller_thread = threading.get_ident()
+
+        def call_tool():
+            running_in_worker = threading.get_ident() != caller_thread
+            if running_in_worker:
+                inject_xray_context(
+                    agent=agent,
+                    user_prompt=agent.current_session.get('user_prompt', ''),
+                    messages=agent.current_session['messages'].copy(),
+                    iteration=agent.current_session['iteration'],
+                    previous_tools=previous_tools,
+                )
+            try:
+                return tool_func(**tool_args)
+            finally:
+                if running_in_worker:
+                    clear_xray_context()
+
+        result, interrupted = run_interruptible(call_tool, agent.io)
+        if interrupted:
+            raise AgentInterrupted()
         tool_duration = (time.time() - tool_start) * 1000  # milliseconds
 
         trace_entry["timing_ms"] = tool_duration
@@ -213,6 +237,17 @@ def execute_single_tool(
             )
 
         # Note: after_tool event will fire in execute_and_record_tools after result message added
+
+    except AgentInterrupted:
+        tool_duration = (time.time() - tool_start) * 1000
+        agent.current_session['stop_signal'] = 'user_interrupt'
+        trace_entry.update(
+            timing_ms=tool_duration,
+            result='Interrupted by user',
+            status='interrupted',
+        )
+        agent._record_trace(trace_entry)
+        logger.print(f"[yellow]Interrupted[/yellow] {tool_name}")
 
     except Exception as e:
         # Calculate timing from initial start (includes before_tool if it succeeded)
