@@ -260,7 +260,10 @@ class TestWebSocketHardInterrupt:
                     await incoming.put({"type": "websocket.disconnect"})
 
             async def interrupt_when_started():
-                await asyncio.get_running_loop().run_in_executor(None, started.wait, 1)
+                did_start = await asyncio.get_running_loop().run_in_executor(
+                    None, started.wait, 1
+                )
+                assert did_start, f"{blocked_step} did not start before interrupt"
                 interrupt_sent_at[0] = time.monotonic()
                 await incoming.put({
                     "type": "websocket.receive",

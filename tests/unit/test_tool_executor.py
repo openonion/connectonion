@@ -143,8 +143,13 @@ class TestToolExecutor:
             ),
             ToolCall(name="later_tool", arguments={}, id="call_2"),
         ]
+
+        def interrupt_when_started():
+            assert started.wait(timeout=1)
+            agent.io.send_to_agent({"type": "INTERRUPT"})
+
         sender = threading.Thread(
-            target=lambda: (started.wait(timeout=1), agent.io.send_to_agent({"type": "INTERRUPT"})),
+            target=interrupt_when_started,
             daemon=True,
         )
         sender.start()
@@ -240,8 +245,13 @@ class TestToolExecutor:
         agent = FakeAgent()
         agent.io = WebSocketIO()
         agent.current_session["user_prompt"] = "first turn"
+
+        def interrupt_when_started():
+            assert started.wait(timeout=1)
+            agent.io.send_to_agent({"type": "INTERRUPT"})
+
         sender = threading.Thread(
-            target=lambda: (started.wait(timeout=1), agent.io.send_to_agent({"type": "INTERRUPT"})),
+            target=interrupt_when_started,
             daemon=True,
         )
         sender.start()
@@ -264,6 +274,62 @@ class TestToolExecutor:
             "slow_before": "first turn",
             "next": "second turn",
             "slow_after": "first turn",
+        }
+
+    def test_tool_worker_uses_xray_snapshot_taken_before_start(self, monkeypatch):
+        import builtins
+        import threading
+
+        observed = {}
+
+        def inspect_context() -> str:
+            observed["task"] = builtins.xray.task
+            observed["messages"] = builtins.xray.messages
+            observed["iteration"] = builtins.xray.iteration
+            return "done"
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(inspect_context))
+        agent = FakeAgent()
+        agent.current_session.update(
+            user_prompt="first turn",
+            messages=[{'role': 'user', 'content': 'first turn'}],
+            iteration=1,
+        )
+
+        def start_after_session_changes(fn, io, poll_seconds=0.2):
+            agent.current_session['user_prompt'] = 'second turn'
+            agent.current_session['messages'].append({
+                'role': 'user',
+                'content': 'second turn',
+            })
+            agent.current_session['iteration'] = 2
+            box = []
+            worker = threading.Thread(target=lambda: box.append(fn()))
+            worker.start()
+            worker.join(timeout=1)
+            assert not worker.is_alive()
+            return box[0], False
+
+        monkeypatch.setattr(
+            "connectonion.core.tool_executor.run_interruptible",
+            start_after_session_changes,
+        )
+
+        trace = execute_single_tool(
+            "inspect_context",
+            {},
+            "snapshot",
+            tools,
+            agent,
+            Logger("test-agent", log=False),
+        )
+
+        assert trace["status"] == "success"
+        assert observed == {
+            "task": "first turn",
+            "messages": [{'role': 'user', 'content': 'first turn'}],
+            "iteration": 1,
         }
 
 

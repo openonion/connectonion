@@ -40,6 +40,15 @@ class TestWebSocketIO:
         assert io._closed is False
         assert io._finished is False
         assert io._cursor == 0
+        assert io.supports_interrupts is True
+
+    def test_requeue_restores_message_to_agent_mailbox(self):
+        io = WebSocketIO()
+        message = {"type": "INTERRUPT"}
+
+        io.requeue(message)
+
+        assert io.receive_all("INTERRUPT") == [message]
 
     def test_send_appends_event(self):
         """send() appends event to event log with auto-generated id and ts."""

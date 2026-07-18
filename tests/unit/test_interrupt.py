@@ -9,6 +9,8 @@ from connectonion.core.interrupt import run_interruptible
 
 
 class MailboxIO:
+    supports_interrupts = True
+
     def __init__(self, messages=None):
         self.messages = list(messages or [])
         self.lock = threading.Lock()
@@ -19,9 +21,12 @@ class MailboxIO:
             self.messages = [m for m in self.messages if m not in matched]
             return matched
 
-    def send_to_agent(self, message):
+    def requeue(self, message):
         with self.lock:
             self.messages.append(message)
+
+    def send_to_agent(self, message):
+        self.requeue(message)
 
 
 def test_without_interrupt_capable_io_runs_inline():
@@ -33,7 +38,7 @@ def test_without_interrupt_capable_io_runs_inline():
     assert interrupted is False
 
 
-def test_selective_receive_without_requeue_runs_inline():
+def test_selective_receive_without_interrupt_capability_runs_inline():
     class ReceiveOnlyIO:
         def receive_all(self, msg_type=None):
             return []
@@ -80,8 +85,12 @@ def test_interrupt_abandons_running_step_within_poll_bound():
         release.wait(timeout=2)
         return "late"
 
+    def interrupt_when_started():
+        assert started.wait(timeout=1)
+        io.send_to_agent({"type": "INTERRUPT"})
+
     timer = threading.Thread(
-        target=lambda: (started.wait(timeout=1), io.send_to_agent({"type": "INTERRUPT"})),
+        target=interrupt_when_started,
         daemon=True,
     )
     timer.start()
@@ -97,6 +106,8 @@ def test_interrupt_abandons_running_step_within_poll_bound():
 
 def test_completed_step_wins_same_window_race():
     class RaceIO:
+        supports_interrupts = True
+
         def __init__(self):
             self.calls = 0
             self.release = threading.Event()
@@ -111,7 +122,7 @@ def test_completed_step_wins_same_window_race():
             assert self.completed.wait(timeout=1)
             return [{"type": "INTERRUPT"}]
 
-        def send_to_agent(self, message):
+        def requeue(self, message):
             self.messages.append(message)
 
     io = RaceIO()

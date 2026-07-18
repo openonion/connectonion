@@ -736,13 +736,15 @@ class TestGracefulInterrupt:
             return "noted"
 
         class InterruptIO:
+            supports_interrupts = True
+
             def __init__(self):
                 self.sent = []
 
             def receive_all(self, msg_type=None):
                 return [{'type': 'INTERRUPT'}] if msg_type == 'INTERRUPT' else []
 
-            def send_to_agent(self, message):
+            def requeue(self, message):
                 pass
 
             def send(self, event):
@@ -800,8 +802,12 @@ class TestGracefulInterrupt:
         agent = Agent("hard-stop", llm=llm, on_events=[record_stop], log=False, quiet=True)
         agent.io = io
 
+        def interrupt_when_started():
+            assert started.wait(timeout=1)
+            io.send_to_agent({"type": "INTERRUPT"})
+
         sender = threading.Thread(
-            target=lambda: (started.wait(timeout=1), io.send_to_agent({"type": "INTERRUPT"})),
+            target=interrupt_when_started,
             daemon=True,
         )
         sender.start()
@@ -824,6 +830,41 @@ class TestGracefulInterrupt:
         release.set()
         time.sleep(0.02)
         assert all(message.get('content') != 'late' for message in agent.current_session['messages'])
+
+    def test_llm_call_snapshots_messages_before_worker_starts(self, monkeypatch):
+        received_messages = []
+
+        class CapturingLLM:
+            model = "snapshot-test"
+
+            def complete(self, messages, tools=None):
+                received_messages.extend(messages)
+                return LLMResponse(
+                    content="done",
+                    tool_calls=[],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+
+        agent = Agent("snapshot", llm=CapturingLLM(), log=False, quiet=True)
+
+        def start_after_session_changes(fn, io, poll_seconds=0.2):
+            agent.current_session['messages'].append({
+                'role': 'user',
+                'content': 'next turn',
+            })
+            return fn(), False
+
+        monkeypatch.setattr(
+            "connectonion.core.agent.run_interruptible",
+            start_after_session_changes,
+        )
+
+        assert agent.input("first turn") == "done"
+        assert received_messages == [
+            {'role': 'system', 'content': agent.system_prompt},
+            {'role': 'user', 'content': 'first turn'},
+        ]
 
     def test_none_llm_response_is_not_mistaken_for_user_interrupt(self):
         from connectonion import on_stop_signal
@@ -913,8 +954,13 @@ class TestGracefulInterrupt:
             quiet=True,
         )
         agent.io = io
+
+        def interrupt_when_started():
+            assert started.wait(timeout=1)
+            io.send_to_agent({"type": "INTERRUPT"})
+
         sender = threading.Thread(
-            target=lambda: (started.wait(timeout=1), io.send_to_agent({"type": "INTERRUPT"})),
+            target=interrupt_when_started,
             daemon=True,
         )
         sender.start()
