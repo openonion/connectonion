@@ -17,6 +17,7 @@ from connectonion.core.tool_factory import create_tool_from_function
 from connectonion.core.tool_executor import execute_single_tool
 from connectonion.core.tool_registry import ToolRegistry
 from connectonion.logger import Logger
+from connectonion.core.interrupt import AgentInterrupted
 
 
 class FakeAgent:
@@ -132,6 +133,16 @@ class TestAskUserTool:
 
         assert result == ""
 
+    def test_interrupt_is_not_treated_as_an_answer(self):
+        agent = FakeAgent()
+        agent.io = Mock()
+        agent.io.receive.return_value = {"type": "INTERRUPT"}
+
+        with pytest.raises(AgentInterrupted):
+            ask_user(agent, "Question?", options=["A", "B"])
+
+        assert agent.current_session['stop_signal'] == 'user_interrupt'
+
 
 class TestAskUserSchema:
     """Test that ask_user schema excludes agent parameter."""
@@ -192,6 +203,26 @@ class TestAskUserInjection:
         # Second call should be the ask_user event
         second_call = agent.io.send.call_args_list[1]
         assert second_call[0][0]["type"] == "ask_user"
+
+    def test_interrupt_closes_tool_trace(self):
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(ask_user))
+        agent = FakeAgent()
+        agent.io = Mock()
+        agent.io.receive.return_value = {"type": "INTERRUPT"}
+
+        trace = execute_single_tool(
+            tool_name="ask_user",
+            tool_args={"question": "Test?", "options": ["A", "B"]},
+            tool_id="call_interrupt",
+            tools=tools,
+            agent=agent,
+            logger=Logger("test", log=False),
+        )
+
+        assert trace["status"] == "interrupted"
+        assert trace["result"] == "Interrupted by user"
+        assert agent.current_session["stop_signal"] == "user_interrupt"
 
     def test_agent_not_injected_for_other_tools(self):
         """tool_executor does not inject agent for regular tools."""

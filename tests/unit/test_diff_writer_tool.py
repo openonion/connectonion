@@ -23,6 +23,7 @@ import tempfile
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 from connectonion.useful_tools.diff_writer import DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN
+from connectonion.core.interrupt import AgentInterrupted
 
 
 class TestDiffWriterRead:
@@ -176,6 +177,18 @@ class TestDiffWriterWrite:
             assert not path.exists()
             assert "rejected" in result
             assert "different naming" in result
+
+    def test_interrupt_during_approval_does_not_write(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            path = Path(tmpdir) / "test.txt"
+            io = Mock()
+            io.receive.return_value = {"type": "INTERRUPT"}
+            agent = Mock(io=io)
+
+            with pytest.raises(AgentInterrupted):
+                DiffWriter(mode=MODE_NORMAL).write(agent, str(path), "content")
+
+            assert not path.exists()
 
     def test_write_plan_mode_no_write(self):
         """Test plan mode doesn't write file."""

@@ -43,6 +43,7 @@ from connectonion.useful_plugins.tool_approval.approval import (
     _get_approval_key,
     _resolve_display_name,
 )
+from connectonion.core.interrupt import AgentInterrupted
 
 
 class FakeIO:
@@ -169,6 +170,19 @@ class TestDangerousTools:
         assert io.sent[0]['tool'] == 'bash'  # Changed: no more :npm suffix
         assert io.sent[0]['arguments'] == {'command': 'npm install', 'description': 'Install dependencies'}
         assert io.sent[0]['description'] == 'Install dependencies'
+
+    def test_interrupt_during_approval_sets_stop_signal(self):
+        io = FakeIO(responses=[{'type': 'INTERRUPT'}])
+        agent = FakeAgent(io=io)
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'sleep 30'},
+        }
+
+        with pytest.raises(AgentInterrupted):
+            check_approval(agent)
+
+        assert agent.current_session['stop_signal'] == 'user_interrupt'
 
     def test_approved_once_continues(self):
         """Approved with scope=once should continue without saving."""
