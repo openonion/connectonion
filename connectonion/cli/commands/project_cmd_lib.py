@@ -512,6 +512,7 @@ def check_environment_for_api_keys() -> Optional[Tuple[str, str]]:
         ('GROQ_API_KEY', 'groq'),
         ('XAI_API_KEY', 'grok'),
         ('OPENROUTER_API_KEY', 'openrouter'),
+        ('ATLASCLOUD_API_KEY', 'atlascloud'),
     ]
 
     for env_var, provider in checks:
@@ -554,6 +555,10 @@ def detect_api_provider(api_key: str) -> Tuple[str, str]:
     if api_key.startswith('sk-or-'):
         return 'openrouter', 'openrouter'
 
+    # Atlas Cloud
+    if api_key.startswith('apikey-'):
+        return 'atlascloud', 'atlascloud'
+
     # Default to OpenAI if unsure
     return 'openai', 'unknown'
 
@@ -592,6 +597,10 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         'openrouter': {
             'var': 'OPENROUTER_API_KEY',
             'model': 'openrouter/openai/gpt-4o-mini'
+        },
+        'atlascloud': {
+            'var': 'ATLASCLOUD_API_KEY',
+            'model': 'atlascloud/qwen/qwen3.5-flash'
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
@@ -873,6 +882,7 @@ PROVIDER_TO_ENV = {
     "groq": "GROQ_API_KEY",
     "grok": "XAI_API_KEY",
     "openrouter": "OPENROUTER_API_KEY",
+    "atlascloud": "ATLASCLOUD_API_KEY",
     "openonion": "OPENONION_API_KEY",
 }
 
