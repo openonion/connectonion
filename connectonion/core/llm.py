@@ -962,6 +962,7 @@ MODEL_REGISTRY = {
     "claude-3-7-sonnet-20250219": "anthropic",
     
     # Google Gemini models
+    "gemini-3.6-flash": "google",
     "gemini-3.5-flash": "google",
     "gemini-3-pro-preview": "google",
     "gemini-3-pro-image-preview": "google",
