@@ -136,6 +136,29 @@ class TestHostRelayConnection:
             ],
         }
 
+    def test_profile_publishes_balance_when_present(self):
+        """Managed-key agents publish their balance so chat clients can show it
+        (clients can't fetch it themselves — it's gated by the agent's key)."""
+        profile = host_module._build_agent_profile({
+            "name": "test_agent",
+            "model": "co/gemini-2.5-flash",
+            "balance_usd": 4.22,
+            "skills": [],
+        })
+
+        assert profile["balance_usd"] == 4.22
+
+    def test_profile_omits_balance_when_absent(self):
+        """Agents on their own provider keys have no OpenOnion balance — the
+        field is simply left out rather than sent as null/zero."""
+        profile = host_module._build_agent_profile({
+            "name": "byo_key_agent",
+            "model": "gpt-4o",
+            "skills": [],
+        })
+
+        assert "balance_usd" not in profile
+
     def test_host_passes_profile_to_relay_lifespan(self, tmp_path, create_mock_agent):
         """Hosted agents publish their profile with the relay ANNOUNCE."""
         mock_addr = {'address': '0xtest', 'short_address': 'co/test', 'signing_key': Mock()}

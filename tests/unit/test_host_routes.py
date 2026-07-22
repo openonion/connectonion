@@ -270,6 +270,35 @@ class TestInfoHandler:
         assert result["trust"] == "careful"
         assert "version" in result
 
+    def test_includes_balance_when_present(self):
+        """A managed-key agent's balance snapshot is echoed on /info."""
+        metadata = {
+            "name": "my_agent",
+            "tools": [],
+            "address": "0x123",
+            "balance_usd": 4.22,
+        }
+        mock_trust = Mock()
+        mock_trust.trust = "careful"
+
+        result = info_handler(metadata, mock_trust)
+
+        assert result["balance_usd"] == 4.22
+
+    def test_omits_balance_when_absent(self):
+        """Agents without an OpenOnion balance don't get a null/zero field."""
+        metadata = {
+            "name": "agent",
+            "tools": [],
+            "address": "0x123",
+        }
+        mock_trust = Mock()
+        mock_trust.trust = "open"
+
+        result = info_handler(metadata, mock_trust)
+
+        assert "balance_usd" not in result
+
     def test_returns_onboard_info(self):
         """info_handler includes onboard info when trust_config provided."""
         metadata = {
