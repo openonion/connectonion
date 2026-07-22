@@ -55,6 +55,7 @@ class TestMultiLLMSupport:
         assert MODEL_REGISTRY["claude-opus-4.1"] == "anthropic"
 
         # Test Google models
+        assert MODEL_REGISTRY["gemini-3.6-flash"] == "google"
         assert MODEL_REGISTRY["gemini-3-pro-preview"] == "google"
         assert MODEL_REGISTRY["gemini-3-pro-image-preview"] == "google"
         assert MODEL_REGISTRY["gemini-2.5-flash"] == "google"

@@ -51,6 +51,7 @@ MODEL_PRICING = {
     "claude-opus-4-20250514": {"input": 15.00, "output": 75.00, "cached": 1.50, "cache_write": 18.75},
 
     # Google Gemini models - cached = 25% of input (75% discount)
+    "gemini-3.6-flash": {"input": 1.50, "output": 7.50, "cached": 0.15},
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00, "cached": 0.375},
     "gemini-3-pro-preview": {"input": 2.00, "output": 12.00, "cached": 0.50},
     "gemini-3-pro-image-preview": {"input": 2.00, "output": 0.134},
@@ -85,6 +86,7 @@ MODEL_CONTEXT_LIMITS = {
     "claude-opus-4-20250514": 200000,
 
     # Gemini
+    "gemini-3.6-flash": 1000000,
     "gemini-3.5-flash": 1000000,
     "gemini-3-pro-preview": 1000000,
     "gemini-3-pro-image-preview": 65000,
