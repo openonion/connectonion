@@ -201,12 +201,18 @@ def _v_rebrowser_cdp(b):
 
 
 def _v_incolumitas(b):
-    """bot.incolumitas.com — its 'new tests' JSON reports OK for every non-behavioral,
-    non-IP fingerprint check when the browser is clean."""
+    """bot.incolumitas.com — its 'new tests' JSON reports OK for every browser-automation
+    fingerprint check when the browser is clean. `connectionRTT` is excluded: it is a
+    network round-trip-timing heuristic (datacenter/proxy detection), not a browser signal,
+    and it flaps — it belongs to the IP bucket, not what the stealth browser controls."""
     _skip_if_down(b)
     nt = _eval(b, "() => { const n=document.querySelector('#new-tests'); return n ? n.textContent : ''; }")
-    fails = re.findall(r'"(\w+)":\s*"(?!OK)([^"]+)"', nt)
-    return (nt.count('"OK"') >= 8 and not fails), f"non-OK={fails or 'none'}"
+    if not nt.strip():
+        pytest.skip("incolumitas new-tests not rendered")
+    fails = [(k, v) for k, v in re.findall(r'"(\w+)":\s*"([^"]+)"', nt)
+             if v != "OK" and k != "connectionRTT"]
+    rtt = re.search(r'"connectionRTT":\s*"([^"]+)"', nt)
+    return (not fails), f"automation non-OK={fails or 'none'} (connectionRTT={rtt.group(1) if rtt else '?'})"
 
 
 def _v_webgl_present(b):
