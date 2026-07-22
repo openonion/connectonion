@@ -24,10 +24,10 @@ class FakeMouse:
     def move(self, x, y):
         self._pos = (x, y)
 
-    def down(self, button="left"):
+    def down(self, button="left", click_count=1):
         self.clicks.append(self._pos)
 
-    def up(self, button="left"):
+    def up(self, button="left", click_count=1):
         pass
 
     def click(self, x, y):  # kept for any direct callers

@@ -5,6 +5,8 @@ down→up dwell, per-char typing, off-center targeting, and cursor continuity be
 actions — without a real browser. That shape is what defeats behavioral fingerprinting.
 """
 
+import math
+
 import pytest
 
 from connectonion.useful_tools.browser_tools import humanize
@@ -17,11 +19,11 @@ class FakeMouse:
     def move(self, x, y):
         self._log.append(("move", x, y))
 
-    def down(self, button="left"):
-        self._log.append(("down", button))
+    def down(self, button="left", click_count=1):
+        self._log.append(("down", button, click_count))
 
-    def up(self, button="left"):
-        self._log.append(("up", button))
+    def up(self, button="left", click_count=1):
+        self._log.append(("up", button, click_count))
 
     def wheel(self, dx, dy):
         self._log.append(("wheel", dx, dy))
@@ -67,9 +69,16 @@ def test_move_emits_many_steps_ending_on_target():
 
 def test_move_path_is_curved_not_straight():
     page = FakePage()
-    humanize.move(page, 500, 0)  # horizontal target — a straight path would keep y≈0
-    ys = [y for (kind, x, y) in page.log if kind == "move"]
-    assert max(abs(y) for y in ys) > 1, "path should bow off the straight line"
+    humanize.move(page, 500, 0)
+    pts = [(x, y) for (kind, x, y) in page.log if kind == "move"]
+    # Curvature = max perpendicular distance of the path from the straight line between its
+    # own first and last sampled points. Robust to the random start offset (unlike an
+    # absolute-y check, which flaked when the path happened to run near-vertical).
+    (x0, y0), (x1, y1) = pts[0], pts[-1]
+    dx, dy = x1 - x0, y1 - y0
+    length = math.hypot(dx, dy) or 1.0
+    max_perp = max(abs((px - x0) * dy - (py - y0) * dx) / length for px, py in pts)
+    assert max_perp > 1, "path should bow off the straight line, not run straight"
 
 
 def test_click_moves_then_presses_with_dwell_order():
@@ -93,17 +102,20 @@ def test_click_targets_off_center_inside_box():
     assert not (x == 200 and y == 150)
 
 
-def test_double_click_presses_twice():
+def test_double_click_presses_twice_with_incrementing_click_count():
     page = FakePage()
     humanize.double_click(page, 50, 50)
-    assert _kinds(page.log).count("down") == 2
-    assert _kinds(page.log).count("up") == 2
+    downs = [e for e in page.log if e[0] == "down"]
+    assert len(downs) == 2
+    # click_count must go 1 then 2, or the browser won't fire a real dblclick.
+    assert [d[2] for d in downs] == [1, 2]
+    assert [u[2] for u in page.log if u[0] == "up"] == [1, 2]
 
 
 def test_right_click_uses_right_button():
     page = FakePage()
     humanize.click(page, 10, 10, button="right")
-    assert ("down", "right") in page.log and ("up", "right") in page.log
+    assert ("down", "right", 1) in page.log and ("up", "right", 1) in page.log
 
 
 def test_type_text_is_per_character():

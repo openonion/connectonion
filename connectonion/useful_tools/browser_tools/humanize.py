@@ -84,9 +84,11 @@ def click(page, x, y, button="left", clicks=1, box=None):
     move(page, x, y)
     time.sleep(random.uniform(0.03, 0.12))  # settle before pressing
     for i in range(clicks):
-        page.mouse.down(button=button)
+        # click_count must increment (1, 2, ...) or Chromium never synthesizes a dblclick
+        # from CDP-injected input — two count-1 presses are just two single clicks.
+        page.mouse.down(button=button, click_count=i + 1)
         time.sleep(random.uniform(0.04, 0.11))  # down→up dwell
-        page.mouse.up(button=button)
+        page.mouse.up(button=button, click_count=i + 1)
         if i + 1 < clicks:
             time.sleep(random.uniform(0.06, 0.12))  # inter-click gap (double click)
     _cursor[page] = (x, y)

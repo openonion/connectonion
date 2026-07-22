@@ -314,6 +314,7 @@ ISSUE_SITES = [
 ]
 
 
+@pytest.mark.network  # hits ~14 live third-party sites — excluded from the default run
 @pytest.mark.parametrize("name,url,settle,verdict", ISSUE_SITES,
                          ids=[s[0] for s in ISSUE_SITES])
 def test_issue_site_passes_via_co_browser(stealth_browser, name, url, settle, verdict):
