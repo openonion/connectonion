@@ -68,7 +68,10 @@ co init --template browser
 ### CLI Options
 
 - `co init` - Initialize a new agent project
-  - `--template, -t` - Choose template: `minimal` (default), `coder`, `browser`, `web-research`, `custom`
+  - `--template, -t` - Choose template: `minimal` (default), `browser`, `hosted-browser`, `coder`, `co-ai`, `web-research`, `custom`
+  - `--key` - API key
+  - `--description` - Description for custom template
+  - `--yes, -y` - Skip prompts
   - `--force` - Overwrite existing files
 
 ### What Gets Created
@@ -249,38 +252,27 @@ def tool_name(param1: type, param2: type = default) -> return_type:
     return result  # Must match return_type
 ```
 
-### Automatic Behavior Tracking
+### Automatic Activity Logging
 
-Every `agent.input()` call creates a record:
+Every `agent.input()` call is logged automatically:
+
+```
+.co/
+├── logs/
+│   └── {agent_name}.log          # Plain text audit trail with session markers
+└── evals/
+    ├── {input_slug}.yaml         # Structured YAML: turns, tokens, cost, duration
+    └── {input_slug}/
+        └── run_{n}.yaml          # Per-run metadata + full messages (JSON)
+```
+
+Control logging via Agent parameters:
 
 ```python
-# Automatic tracking in ~/.connectonion/agents/{name}/behavior.json
-{
-  "timestamp": "2024-01-15T10:30:00",
-  "user_prompt": "Search for Python tutorials and summarize",
-  "tool_calls": [
-    {
-      "name": "search",
-      "arguments": {"query": "Python tutorials"},
-      "result": "Found 10 tutorials...",
-      "status": "success",
-      "timing": 245.3  # milliseconds
-    },
-    {
-      "name": "summarize", 
-      "arguments": {"text": "Found 10 tutorials..."},
-      "result": "Summary: Python tutorials...",
-      "status": "success", 
-      "timing": 156.7
-    }
-  ],
-  "result": "Here's a summary of Python tutorials...",
-  "duration": 2.34  # total seconds
-}
-
-# Access history
-print(agent.history.summary())  # Human-readable summary
-print(len(agent.history.records))  # Number of tasks completed
+Agent("assistant")               # Default: console + logs + YAML sessions
+Agent("assistant", quiet=True)   # Suppress console output, keep session logs
+Agent("assistant", log=False)    # Disable all logging (benchmarking)
+Agent("assistant", log="custom.log")  # Custom log file path
 ```
 
 ---
@@ -298,8 +290,8 @@ class Agent:
         tools: Optional[List[Callable]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "gpt-4-mini",
-        max_iterations: int = 10
+        model: str = "co/gemini-2.5-pro",
+        max_iterations: int = 100
     )
     
     def input(self, prompt: str, max_iterations: Optional[int] = None) -> str:
@@ -547,7 +539,7 @@ Why this pattern works:
 ### Basic Usage
 
 ```python
-# Default: 10 iterations (good for most tasks)
+# Default: 100 iterations (good for most tasks)
 agent = Agent("helper", tools=[...])
 
 # Simple tasks - fewer iterations
@@ -576,7 +568,7 @@ result = agent.input(
 
 ```python
 # Error message when limit reached:
-"Task incomplete: Maximum iterations (10) reached."
+"Task incomplete: Maximum iterations (100) reached."
 
 # Solutions:
 # 1. Increase agent's default
@@ -726,7 +718,7 @@ Debug your agent's tool execution with real-time insights - see what your AI age
 ### Quick Start
 
 ```python
-from connectonion.decorators import xray
+from connectonion import xray
 
 @xray
 def my_tool(text: str) -> str:
@@ -1175,11 +1167,10 @@ agent = Agent(
 ```python
 # Check what happened
 if "Maximum iterations" in result:
-    # Look at the last record to see what went wrong
-    last_record = agent.history.records[-1]
-    for tool_call in last_record.tool_calls:
-        if tool_call['status'] == 'error':
-            print(f"Tool {tool_call['name']} failed: {tool_call['result']}")
+    # Look at the execution trace to see what went wrong
+    for entry in agent.current_session['trace']:
+        if entry.get('status') == 'error':
+            print(f"Tool {entry['tool_name']} failed: {entry['result']}")
 
 # Solutions:
 # 1. Increase iterations
@@ -1234,7 +1225,7 @@ def debug_tool(input: str) -> str:
 
 - **GitHub**: https://github.com/openonion/connectonion
 - **PyPI**: https://pypi.org/project/connectonion/
-- **Latest Version**: 0.0.1b4
+- **Latest Version**: 1.2.1
 
 ---
 

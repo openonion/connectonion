@@ -38,7 +38,7 @@ Runs the prompt, prints the result, and exits. No server started.
 | Option | Short | Default | Description |
 |--------|-------|---------|-------------|
 | `--port` | `-p` | `8000` | Port for web server |
-| `--model` | `-m` | `co/claude-opus-4-5` | LLM model to use |
+| `--model` | `-m` | `co/gemini-3.5-flash` | LLM model to use |
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
 
 ```bash

@@ -19,14 +19,14 @@ When you run an agent, you'll see the onion stack banner and execution flow:
  ◎    my-assistant
 ●     ────────────────────
       connectonion v0.5.1
-      co/o4-mini · 3 tools
+      co/gemini-2.5-pro · 3 tools
       .co/logs/ · .co/evals/
       ────────────────────
 
 [co] > "Generate a Python function"
 
-[co] ○ o4-mini                                    1/10
-[co] ● o4-mini · 1 tool · 150 tok · $0.0012       ⚡ 1.2s
+[co] ○ gemini-2.5-pro                                    1/100
+[co] ● gemini-2.5-pro · 1 tool · 150 tok · $0.0012       ⚡ 1.2s
 [co]   ▸ generate_code(language="python")         ✓ 0.12s
 
 [co] ═══════════════════════════════════════════════

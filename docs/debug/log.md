@@ -45,7 +45,7 @@ Session started: 2024-12-02 10:32:14
 ============================================================
 
 [10:32:14] INPUT: Generate a Python function...
-[10:32:14] -> LLM Request (co/o4-mini) • 2 msgs • 3 tools
+[10:32:14] -> LLM Request (co/gemini-2.5-pro) • 2 msgs • 3 tools
 [10:32:15] <- LLM Response (1.1s) • 1 tools • 1.2k tokens • $0.0012
 [10:32:15] -> Tool: generate_code({"language": "python"})
 [10:32:15] <- Result (0.05s): def hello(): print("Hi")...
@@ -62,7 +62,7 @@ timestamp: 2024-12-02 10:32:14
 
 turns:
   - input: "Generate a Python function"
-    model: "co/o4-mini"
+    model: "co/gemini-2.5-pro"
     duration_ms: 2300
     tokens: 1234
     cost: 0.0012

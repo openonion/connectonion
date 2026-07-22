@@ -160,7 +160,7 @@ llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4-5") # ✅
 | `input` | str | required | The input text/question |
 | `output` | BaseModel | None | Pydantic model for structured output |
 | `system_prompt` | str\|Path | None | System prompt (string or file path) |
-| `model` | str | "gpt-4o-mini" | Model to use (supports OpenAI, Gemini, Claude) |
+| `model` | str | "co/gemini-2.5-flash" | Model to use (supports OpenAI, Gemini, Claude) |
 | `temperature` | float | 0.1 | Randomness (0=deterministic, 2=creative) |
 
 ## What You Get

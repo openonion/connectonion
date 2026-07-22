@@ -96,8 +96,10 @@ co init --template browser
 ### CLI Options
 
 - `co init` - Initialize a new agent project
-  - `--template, -t` - Choose template: `minimal` (default), `coder`, `browser`, `web-research`, `custom`
-  - `--with-examples` - Include additional example tools
+  - `--template, -t` - Choose template: `minimal` (default), `browser`, `hosted-browser`, `coder`, `co-ai`, `web-research`, `custom`
+  - `--key` - API key
+  - `--description` - Description for custom template
+  - `--yes, -y` - Skip prompts
   - `--force` - Overwrite existing files
 
 ### What Gets Created
@@ -279,38 +281,27 @@ def tool_name(param1: type, param2: type = default) -> return_type:
     return result  # Must match return_type
 ```
 
-### Automatic Behavior Tracking
+### Automatic Activity Logging
 
-Every `agent.input()` call creates a record:
+Every `agent.input()` call is logged automatically:
+
+```
+.co/
+├── logs/
+│   └── {agent_name}.log          # Plain text audit trail with session markers
+└── evals/
+    ├── {input_slug}.yaml         # Structured YAML: turns, tokens, cost, duration
+    └── {input_slug}/
+        └── run_{n}.yaml          # Per-run metadata + full messages (JSON)
+```
+
+Control logging via Agent parameters:
 
 ```python
-# Automatic tracking in ~/.connectonion/agents/{name}/behavior.json
-{
-  "timestamp": "2024-01-15T10:30:00",
-  "user_prompt": "Search for Python tutorials and summarize",
-  "tool_calls": [
-    {
-      "name": "search",
-      "arguments": {"query": "Python tutorials"},
-      "result": "Found 10 tutorials...",
-      "status": "success",
-      "timing": 245.3  # milliseconds
-    },
-    {
-      "name": "summarize", 
-      "arguments": {"text": "Found 10 tutorials..."},
-      "result": "Summary: Python tutorials...",
-      "status": "success", 
-      "timing": 156.7
-    }
-  ],
-  "result": "Here's a summary of Python tutorials...",
-  "duration": 2.34  # total seconds
-}
-
-# Access history
-print(agent.history.summary())  # Human-readable summary
-print(len(agent.history.records))  # Number of tasks completed
+Agent("assistant")               # Default: console + logs + YAML sessions
+Agent("assistant", quiet=True)   # Suppress console output, keep session logs
+Agent("assistant", log=False)    # Disable all logging (benchmarking)
+Agent("assistant", log="custom.log")  # Custom log file path
 ```
 
 ---
@@ -328,8 +319,8 @@ class Agent:
         tools: Optional[List[Callable]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "gpt-4-mini",
-        max_iterations: int = 10
+        model: str = "co/gemini-2.5-pro",
+        max_iterations: int = 100
     )
     
     def input(self, prompt: str, max_iterations: Optional[int] = None) -> str:
@@ -347,7 +338,7 @@ class Agent:
 
 ### Key Parameters Explained
 
-**max_iterations** (Default: 10):
+**max_iterations** (Default: 100):
 - Controls how many tool calls the agent can make per task
 - Simple tasks: 3-5 iterations
 - Standard workflows: 10-15 iterations  
@@ -578,7 +569,7 @@ Why this pattern works:
 ### Basic Usage
 
 ```python
-# Default: 10 iterations (good for most tasks)
+# Default: 100 iterations (good for most tasks)
 agent = Agent("helper", tools=[...])
 
 # Simple tasks - fewer iterations
@@ -607,7 +598,7 @@ result = agent.input(
 
 ```python
 # Error message when limit reached:
-"Task incomplete: Maximum iterations (10) reached."
+"Task incomplete: Maximum iterations (100) reached."
 
 # Solutions:
 # 1. Increase agent's default
@@ -757,7 +748,7 @@ Debug your agent's tool execution with real-time insights - see what your AI age
 ### Quick Start
 
 ```python
-from connectonion.decorators import xray
+from connectonion import xray
 
 @xray
 def my_tool(text: str) -> str:
@@ -952,7 +943,7 @@ Debug your agents interactively - pause at breakpoints, inspect variables, and m
 
 ```python
 from connectonion import Agent
-from connectonion.decorators import xray
+from connectonion import xray
 
 @xray  # Tools with @xray become breakpoints
 def search(query: str):
@@ -1530,20 +1521,20 @@ Plugins are reusable event lists that package capabilities like reflection and r
 
 ```python
 from connectonion import Agent
-from connectonion.useful_plugins import reflection, react
+from connectonion.useful_plugins import re_act
 
 # Add built-in plugins to any agent
 agent = Agent(
     name="assistant",
     tools=[search, calculate],
-    plugins=[reflection, react]  # One line adds both!
+    plugins=[re_act]  # One line adds ReAct-style reasoning
 )
 
 agent.input("Search for Python and calculate 15 * 8")
 
 # After each tool execution:
-# 💭 We learned that Python is a popular programming language...
-# 🤔 We should next calculate 15 * 8 to complete the request.
+# 🤔 We learned that Python is a popular programming language.
+#    We should next calculate 15 * 8 to complete the request.
 ```
 
 ### What is a Plugin?
@@ -1590,25 +1581,13 @@ agent = Agent(
 
 ConnectOnion provides ready-to-use plugins:
 
-**Reflection Plugin** - Generates insights after each tool execution:
+**ReAct Plugin (`re_act`)** - Uses ReAct-style reasoning to plan next steps:
 
 ```python
 from connectonion import Agent
-from connectonion.useful_plugins import reflection
+from connectonion.useful_plugins import re_act
 
-agent = Agent("assistant", tools=[search], plugins=[reflection])
-
-agent.input("Search for Python")
-# 💭 We learned that Python is a popular high-level programming language known for simplicity
-```
-
-**ReAct Plugin** - Uses ReAct-style reasoning to plan next steps:
-
-```python
-from connectonion import Agent
-from connectonion.useful_plugins import react
-
-agent = Agent("assistant", tools=[search], plugins=[react])
+agent = Agent("assistant", tools=[search], plugins=[re_act])
 
 agent.input("Search for Python and explain it")
 # 🤔 We learned Python is widely used. We should next explain its key features and use cases.
@@ -1635,24 +1614,25 @@ agent.input("Take a screenshot of the homepage and describe what you see")
 
 ```python
 from connectonion import Agent
-from connectonion.useful_plugins import reflection, react, image_result_formatter
+from connectonion.useful_plugins import re_act, image_result_formatter
 
 # Combine plugins for powerful agents
 agent = Agent(
     name="visual_researcher",
     tools=[take_screenshot, search, analyze],
-    plugins=[image_result_formatter, reflection, react]
+    plugins=[image_result_formatter, re_act]
 )
 
 # Now you get:
 # 🖼️  Image formatting for screenshots
-# 💭 Reflection: What we learned
-# 🤔 ReAct: What to do next
+# 🤔 ReAct: What we learned and what to do next
 ```
+
+Other built-in plugins in `connectonion.useful_plugins` include `shell_approval` (user confirmation for shell commands), `gmail_plugin` and `calendar_plugin` (Google integrations), `ui_stream` (WebSocket event streaming), `eval`, `auto_compact`, and more.
 
 ### Writing Custom Plugins
 
-Learn by example - here's how the reflection plugin works:
+Learn by example - here's how to build a reflection plugin:
 
 **Step 1: Message Compression Helper**
 
@@ -1701,7 +1681,7 @@ def _compress_messages(messages: List[Dict], tool_result_limit: int = 150) -> st
 **Step 2: Event Handler Function**
 
 ```python
-from connectonion.events import after_tool
+from connectonion import after_tools
 from connectonion.llm_do import llm_do
 
 def _add_reflection(agent) -> None:
@@ -1771,7 +1751,7 @@ agent = Agent("assistant", tools=[search], plugins=[reflection])
 Build a simple plugin in 3 lines:
 
 ```python
-from connectonion import Agent, after_tool
+from connectonion import Agent, after_each_tool
 
 def log_tool(agent):
     trace = agent.current_session['trace'][-1]
@@ -1927,11 +1907,10 @@ agent = Agent(
 ```python
 # Check what happened
 if "Maximum iterations" in result:
-    # Look at the last record to see what went wrong
-    last_record = agent.history.records[-1]
-    for tool_call in last_record.tool_calls:
-        if tool_call['status'] == 'error':
-            print(f"Tool {tool_call['name']} failed: {tool_call['result']}")
+    # Look at the execution trace to see what went wrong
+    for entry in agent.current_session['trace']:
+        if entry.get('status') == 'error':
+            print(f"Tool {entry['tool_name']} failed: {entry['result']}")
 
 # Solutions:
 # 1. Increase iterations
@@ -1986,7 +1965,7 @@ def debug_tool(input: str) -> str:
 
 - **GitHub**: https://github.com/openonion/connectonion
 - **PyPI**: https://pypi.org/project/connectonion/
-- **Latest Version**: 0.0.4
+- **Latest Version**: 1.2.1
 
 ---
 

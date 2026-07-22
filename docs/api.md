@@ -229,7 +229,7 @@ Abstract base class for language models. ConnectOnion supports multiple LLM prov
 The `create_llm()` factory function routes models to the appropriate provider:
 
 ```python
-from connectonion.llm import create_llm
+from connectonion.core.llm import create_llm
 
 # OpenAI models
 llm = create_llm("gpt-4o-mini")      # → OpenAILLM
@@ -275,7 +275,7 @@ agent = Agent(name="bot", model="co/gemini-2.5-flash")
 OpenAI API implementation.
 
 ```python
-from connectonion.llm import OpenAILLM
+from connectonion.core.llm import OpenAILLM
 
 llm = OpenAILLM(
     api_key="your-key",  # or OPENAI_API_KEY env var
@@ -291,7 +291,7 @@ agent = Agent("bot", llm=llm)
 Anthropic Claude API implementation.
 
 ```python
-from connectonion.llm import AnthropicLLM
+from connectonion.core.llm import AnthropicLLM
 
 llm = AnthropicLLM(
     api_key="your-key",  # or ANTHROPIC_API_KEY env var
@@ -306,7 +306,7 @@ agent = Agent("bot", llm=llm)
 Google Gemini API implementation (uses OpenAI-compatible endpoint).
 
 ```python
-from connectonion.llm import GeminiLLM
+from connectonion.core.llm import GeminiLLM
 
 llm = GeminiLLM(
     api_key="your-key",  # or GEMINI_API_KEY env var
@@ -321,7 +321,7 @@ agent = Agent("bot", llm=llm)
 ConnectOnion managed keys implementation.
 
 ```python
-from connectonion.llm import OpenOnionLLM
+from connectonion.core.llm import OpenOnionLLM
 
 llm = OpenOnionLLM(
     api_key="your-token",  # or OPENONION_API_KEY env var
