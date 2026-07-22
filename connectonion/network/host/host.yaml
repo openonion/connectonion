@@ -301,6 +301,334 @@ permissions:
     expires:
       type: never
 
+  # File viewing & inspection (read-only, no side effects)
+  "Bash(cat *)":
+    allowed: true
+    source: config
+    reason: safe - view file contents
+    expires:
+      type: never
+
+  "Bash(head *)":
+    allowed: true
+    source: config
+    reason: safe - view start of file
+    expires:
+      type: never
+
+  "Bash(tail *)":
+    allowed: true
+    source: config
+    reason: safe - view end of file
+    expires:
+      type: never
+
+  "Bash(nl *)":
+    allowed: true
+    source: config
+    reason: safe - view file with line numbers
+    expires:
+      type: never
+
+  "Bash(wc *)":
+    allowed: true
+    source: config
+    reason: safe - count lines/words/bytes
+    expires:
+      type: never
+
+  "Bash(file *)":
+    allowed: true
+    source: config
+    reason: safe - identify file type
+    expires:
+      type: never
+
+  "Bash(stat *)":
+    allowed: true
+    source: config
+    reason: safe - file metadata
+    expires:
+      type: never
+
+  "Bash(diff *)":
+    allowed: true
+    source: config
+    reason: safe - compare files
+    expires:
+      type: never
+
+  "Bash(tree *)":
+    allowed: true
+    source: config
+    reason: safe - directory tree
+    expires:
+      type: never
+
+  "Bash(du *)":
+    allowed: true
+    source: config
+    reason: safe - disk usage of paths
+    expires:
+      type: never
+
+  "Bash(basename *)":
+    allowed: true
+    source: config
+    reason: safe - strip path
+    expires:
+      type: never
+
+  "Bash(dirname *)":
+    allowed: true
+    source: config
+    reason: safe - directory of path
+    expires:
+      type: never
+
+  "Bash(realpath *)":
+    allowed: true
+    source: config
+    reason: safe - resolve absolute path
+    expires:
+      type: never
+
+  "Bash(readlink *)":
+    allowed: true
+    source: config
+    reason: safe - resolve symlink
+    expires:
+      type: never
+
+  # Text processing (read-only — no in-place writes)
+  "Bash(echo *)":
+    allowed: true
+    source: config
+    reason: safe - print text
+    expires:
+      type: never
+
+  "Bash(sort *)":
+    allowed: true
+    source: config
+    reason: safe - sort lines
+    expires:
+      type: never
+
+  "Bash(uniq *)":
+    allowed: true
+    source: config
+    reason: safe - deduplicate lines
+    expires:
+      type: never
+
+  "Bash(cut *)":
+    allowed: true
+    source: config
+    reason: safe - extract columns
+    expires:
+      type: never
+
+  "Bash(tr *)":
+    allowed: true
+    source: config
+    reason: safe - translate characters
+    expires:
+      type: never
+
+  "Bash(column *)":
+    allowed: true
+    source: config
+    reason: safe - format into columns
+    expires:
+      type: never
+
+  "Bash(jq *)":
+    allowed: true
+    source: config
+    reason: safe - query JSON
+    expires:
+      type: never
+
+  # Checksums (read-only)
+  "Bash(md5sum *)":
+    allowed: true
+    source: config
+    reason: safe - md5 hash
+    expires:
+      type: never
+
+  "Bash(sha256sum *)":
+    allowed: true
+    source: config
+    reason: safe - sha256 hash
+    expires:
+      type: never
+
+  "Bash(shasum *)":
+    allowed: true
+    source: config
+    reason: safe - sha hash
+    expires:
+      type: never
+
+  "Bash(cksum *)":
+    allowed: true
+    source: config
+    reason: safe - checksum
+    expires:
+      type: never
+
+  # User & session identity (read-only)
+  "Bash(id *)":
+    allowed: true
+    source: config
+    reason: safe - user/group ids
+    expires:
+      type: never
+
+  "Bash(id)":
+    allowed: true
+    source: config
+    reason: safe - user/group ids
+    expires:
+      type: never
+
+  "Bash(groups *)":
+    allowed: true
+    source: config
+    reason: safe - group membership
+    expires:
+      type: never
+
+  "Bash(printenv *)":
+    allowed: true
+    source: config
+    reason: safe - environment variables
+    expires:
+      type: never
+
+  "Bash(locale)":
+    allowed: true
+    source: config
+    reason: safe - locale settings
+    expires:
+      type: never
+
+  "Bash(arch)":
+    allowed: true
+    source: config
+    reason: safe - machine architecture
+    expires:
+      type: never
+
+  "Bash(nproc *)":
+    allowed: true
+    source: config
+    reason: safe - cpu count
+    expires:
+      type: never
+
+  "Bash(lsb_release *)":
+    allowed: true
+    source: config
+    reason: safe - distro info
+    expires:
+      type: never
+
+  # Tool versions (exact — a wildcard here would run the interpreter itself)
+  "Bash(python --version)":
+    allowed: true
+    source: config
+    reason: safe - python version
+    expires:
+      type: never
+
+  "Bash(python3 --version)":
+    allowed: true
+    source: config
+    reason: safe - python version
+    expires:
+      type: never
+
+  "Bash(pip --version)":
+    allowed: true
+    source: config
+    reason: safe - pip version
+    expires:
+      type: never
+
+  "Bash(node --version)":
+    allowed: true
+    source: config
+    reason: safe - node version
+    expires:
+      type: never
+
+  "Bash(node -v)":
+    allowed: true
+    source: config
+    reason: safe - node version
+    expires:
+      type: never
+
+  "Bash(npm --version)":
+    allowed: true
+    source: config
+    reason: safe - npm version
+    expires:
+      type: never
+
+  "Bash(git --version)":
+    allowed: true
+    source: config
+    reason: safe - git version
+    expires:
+      type: never
+
+  "Bash(go version)":
+    allowed: true
+    source: config
+    reason: safe - go version
+    expires:
+      type: never
+
+  # Package inspection (read-only)
+  "Bash(pip list *)":
+    allowed: true
+    source: config
+    reason: safe - list installed packages
+    expires:
+      type: never
+
+  "Bash(pip freeze)":
+    allowed: true
+    source: config
+    reason: safe - list installed packages
+    expires:
+      type: never
+
+  "Bash(pip show *)":
+    allowed: true
+    source: config
+    reason: safe - package details
+    expires:
+      type: never
+
+  "Bash(npm list *)":
+    allowed: true
+    source: config
+    reason: safe - list npm packages
+    expires:
+      type: never
+
+  "Bash(npm ls *)":
+    allowed: true
+    source: config
+    reason: safe - list npm packages
+    expires:
+      type: never
+
   # Common command chains (exact matches)
   "Bash(pwd && ls -F)":
     allowed: true
@@ -349,6 +677,76 @@ permissions:
     allowed: true
     source: config
     reason: safe git branch info
+    expires:
+      type: never
+
+  "Bash(git show *)":
+    allowed: true
+    source: config
+    reason: safe git show
+    expires:
+      type: never
+
+  "Bash(git remote *)":
+    allowed: true
+    source: config
+    reason: safe git remote info
+    expires:
+      type: never
+
+  "Bash(git rev-parse *)":
+    allowed: true
+    source: config
+    reason: safe git rev-parse
+    expires:
+      type: never
+
+  "Bash(git describe *)":
+    allowed: true
+    source: config
+    reason: safe git describe
+    expires:
+      type: never
+
+  "Bash(git blame *)":
+    allowed: true
+    source: config
+    reason: safe git blame
+    expires:
+      type: never
+
+  "Bash(git shortlog *)":
+    allowed: true
+    source: config
+    reason: safe git shortlog
+    expires:
+      type: never
+
+  "Bash(git ls-files *)":
+    allowed: true
+    source: config
+    reason: safe git ls-files
+    expires:
+      type: never
+
+  "Bash(git stash list)":
+    allowed: true
+    source: config
+    reason: safe git stash list
+    expires:
+      type: never
+
+  "Bash(git config --get *)":
+    allowed: true
+    source: config
+    reason: safe git config read
+    expires:
+      type: never
+
+  "Bash(git config --list)":
+    allowed: true
+    source: config
+    reason: safe git config read
     expires:
       type: never
 
