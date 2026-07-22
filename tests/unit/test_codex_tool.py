@@ -74,22 +74,21 @@ class TestCodexSuccess:
         assert "error" not in result
 
     @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
-    def test_builds_exec_command_with_json_and_sandbox(self, _which):
+    def test_builds_exec_command_with_json(self, _which):
         popen, _ = _popen_factory(stdout_lines=_jsonl(*SUCCESS_EVENTS))
         with patch.object(codex_module.subprocess, "Popen", popen):
-            codex("do a task")
+            codex("do a task", approval="auto")
 
         cmd = popen.call_args[0][0]
         assert cmd[:2] == ["codex", "exec"]
         assert "--json" in cmd
-        assert cmd[cmd.index("--sandbox") + 1] == "read-only"
         assert cmd[-1] == "do a task"
 
     @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
     def test_cwd_model_and_sandbox_flags(self, _which):
         popen, _ = _popen_factory(stdout_lines=_jsonl(*SUCCESS_EVENTS))
         with patch.object(codex_module.subprocess, "Popen", popen):
-            codex("task", cwd="/repo", sandbox="workspace-write", model="gpt-5-codex")
+            codex("task", cwd="/repo", sandbox="workspace-write", model="gpt-5-codex", approval="auto")
 
         cmd = popen.call_args[0][0]
         assert cmd[cmd.index("--cd") + 1] == "/repo"
@@ -132,21 +131,40 @@ class TestCodexResume:
         assert result["session_id"] == "different-thread-id"
 
 
+class _SignatureIO:
+    """io stub matching the real connectonion IO.log(event_type, **data)
+    signature, so a bad forward call collides here just like it would against
+    the real IO — a bare MagicMock would silently swallow the mismatch."""
+    def __init__(self):
+        self.calls = []
+
+    def log(self, event_type, **data):
+        self.calls.append((event_type, data))
+
+    def request_approval(self, tool, arguments):
+        return True
+
+
+class _SignatureAgent:
+    def __init__(self):
+        self.io = _SignatureIO()
+
+
 class TestCodexStreaming:
     @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
     def test_events_forwarded_to_agent_io(self, _which):
-        agent = MagicMock()
+        agent = _SignatureAgent()
         popen, _ = _popen_factory(stdout_lines=_jsonl(*SUCCESS_EVENTS))
         with patch.object(codex_module.subprocess, "Popen", popen):
             codex("task", agent=agent)
 
         # Every parsed event is streamed to the client as a codex_event.
-        assert agent.io.log.call_count == len(SUCCESS_EVENTS)
-        first = agent.io.log.call_args_list[0]
-        assert first.args[0] == "codex_event"
-        assert first.kwargs["event_type"] == "thread.started"
+        assert len(agent.io.calls) == len(SUCCESS_EVENTS)
+        event_type, data = agent.io.calls[0]
+        assert event_type == "codex_event"
+        assert data["codex_type"] == "thread.started"
         # The command run inside Codex is visible to the frontend.
-        item_types = [c.kwargs["item_type"] for c in agent.io.log.call_args_list]
+        item_types = [d["item_type"] for _, d in agent.io.calls]
         assert "command_execution" in item_types
 
     @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
@@ -165,6 +183,71 @@ class TestCodexStreaming:
         with patch.object(codex_module.subprocess, "Popen", popen):
             result = json.loads(codex("task", agent=agent))
         assert result["session_id"] == THREAD_ID
+
+
+class TestCodexApproval:
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    def test_write_sandbox_downgrades_without_io(self, _which):
+        # Default sandbox is workspace-write; with no interactive client and
+        # manual approval it must NOT silently escalate — downgrade to read-only.
+        popen, _ = _popen_factory(stdout_lines=_jsonl(*SUCCESS_EVENTS))
+        with patch.object(codex_module.subprocess, "Popen", popen):
+            result = json.loads(codex("task"))
+
+        cmd = popen.call_args[0][0]
+        assert cmd[cmd.index("--sandbox") + 1] == "read-only"
+        assert "downgraded to read-only" in result["note"]
+
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    def test_auto_approval_runs_write_sandbox(self, _which):
+        popen, _ = _popen_factory(stdout_lines=_jsonl(*SUCCESS_EVENTS))
+        with patch.object(codex_module.subprocess, "Popen", popen):
+            codex("task", approval="auto")
+
+        cmd = popen.call_args[0][0]
+        assert cmd[cmd.index("--sandbox") + 1] == "workspace-write"
+
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    def test_manual_approval_asks_user_and_runs_when_approved(self, _which):
+        agent = MagicMock()
+        agent.io.request_approval.return_value = True
+        popen, _ = _popen_factory(stdout_lines=_jsonl(*SUCCESS_EVENTS))
+        with patch.object(codex_module.subprocess, "Popen", popen):
+            codex("task", cwd="/repo", agent=agent)
+
+        agent.io.request_approval.assert_called_once()
+        tool, args = agent.io.request_approval.call_args[0]
+        assert tool == "codex"
+        assert args["sandbox"] == "workspace-write" and args["cwd"] == "/repo"
+        cmd = popen.call_args[0][0]
+        assert cmd[cmd.index("--sandbox") + 1] == "workspace-write"
+
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    def test_manual_approval_rejected_never_launches(self, _which):
+        agent = MagicMock()
+        agent.io.request_approval.return_value = False
+        popen, _ = _popen_factory(stdout_lines=_jsonl(*SUCCESS_EVENTS))
+        with patch.object(codex_module.subprocess, "Popen", popen):
+            result = json.loads(codex("task", agent=agent))
+
+        assert "rejected" in result["error"]
+        assert popen.called is False
+
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    def test_read_only_never_asks_for_approval(self, _which):
+        agent = MagicMock()
+        popen, _ = _popen_factory(stdout_lines=_jsonl(*SUCCESS_EVENTS))
+        with patch.object(codex_module.subprocess, "Popen", popen):
+            codex("task", sandbox="read-only", agent=agent)
+
+        agent.io.request_approval.assert_not_called()
+        cmd = popen.call_args[0][0]
+        assert cmd[cmd.index("--sandbox") + 1] == "read-only"
+
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    def test_invalid_approval_mode(self, _which):
+        result = json.loads(codex("task", approval="whenever"))
+        assert "Invalid approval" in result["error"]
 
 
 class TestCodexErrors:
@@ -207,6 +290,24 @@ class TestCodexErrors:
 
         assert result["exit_code"] == 1
         assert "401 Unauthorized" in result["error"]
+
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    def test_turn_failed_uses_structured_error(self, _which):
+        # Real codex ends a failed run with turn.failed carrying a clean message,
+        # while stderr is noisy transport spam — prefer the structured message.
+        events = _jsonl(
+            {"type": "thread.started", "thread_id": THREAD_ID},
+            {"type": "turn.failed", "error": {"message": "401 Unauthorized: Missing bearer"}},
+        )
+        popen, _ = _popen_factory(stdout_lines=events,
+                                  stderr_text="ERROR websocket spam " * 200, returncode=1)
+        with patch.object(codex_module.subprocess, "Popen", popen):
+            result = json.loads(codex("task"))
+
+        assert result["exit_code"] == 1
+        assert result["session_id"] == THREAD_ID
+        assert "401 Unauthorized: Missing bearer" in result["error"]
+        assert "websocket spam" not in result["error"]
 
     @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
     def test_non_json_lines_ignored(self, _which):

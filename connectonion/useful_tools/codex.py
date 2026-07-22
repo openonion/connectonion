@@ -2,9 +2,9 @@
 Purpose: Run OpenAI Codex CLI headless as an agent tool, streaming its internal steps to the frontend, with session resume
 LLM-Note:
   Dependencies: imports from [subprocess, json, shutil, threading] | imported by [useful_tools/__init__.py] | tested by [tests/unit/test_codex_tool.py]
-  Data flow: receives prompt: str, session_id: str, cwd: str, sandbox: str, model: str, timeout: int, agent (injected) → builds `codex exec --json` argv (resume subcommand when session_id given) → subprocess.Popen() → reads stdout JSONL line by line as it arrives → forwards each event to agent.io.log("codex_event", ...) when io present → tracks thread.started/item.completed/turn.completed → returns JSON envelope: str
+  Data flow: receives prompt: str, session_id: str, cwd: str, sandbox: str, model: str, timeout: int, approval: str, agent (injected) → approval gate resolves the effective sandbox (manual asks agent.io.request_approval, auto trusts, read-only free) → builds `codex exec --json` argv (resume subcommand when session_id given) → subprocess.Popen() → reads stdout JSONL line by line as it arrives → forwards each event to agent.io.log("codex_event", ...) when io present → tracks thread.started/item.completed/turn.completed → returns JSON envelope: str
   State/Effects: executes codex CLI via subprocess | streams live events to agent.io | no persistent state in this module | Codex itself persists sessions under ~/.codex/sessions | file writes depend on sandbox level
-  Integration: exposes codex(prompt, session_id, cwd, sandbox, model, timeout, agent) function | used as agent tool | agent parameter injected by tool_executor (hidden from LLM) so codex's inner tool calls stream to the client live | session_id from a previous call resumes that Codex session | envelope includes resumed flag so callers can detect silent new-thread fallback
+  Integration: exposes codex(prompt, session_id, cwd, sandbox, model, timeout, approval, agent) function | used as agent tool | agent parameter injected by tool_executor (hidden from LLM) so codex's inner tool calls stream to the client live and write access is approved via agent.io.request_approval | session_id from a previous call resumes that Codex session | envelope includes resumed flag so callers can detect silent new-thread fallback
   Performance: timeout default 600s (Codex tasks can run minutes) | streams incrementally so the frontend sees progress instead of waiting for a final blob | watchdog thread kills the process on timeout
   Errors: returns JSON envelope with error field on missing CLI, timeout, bad sandbox value, or non-zero exit | never raises to the agent loop
 
@@ -37,30 +37,42 @@ import subprocess
 import threading
 
 SANDBOX_LEVELS = ("read-only", "workspace-write", "danger-full-access")
+APPROVAL_MODES = ("manual", "auto")
 
 
 def codex(prompt: str, session_id: str = "", cwd: str = "",
-          sandbox: str = "read-only", model: str = "", timeout: int = 600,
-          agent=None) -> str:
+          sandbox: str = "workspace-write", model: str = "", timeout: int = 600,
+          approval: str = "manual", agent=None) -> str:
     """Run Codex CLI headless. Pass session_id to resume a previous session.
 
     Args:
         prompt: Task for Codex (e.g., "fix the failing tests")
         session_id: Session id returned by a previous call, to resume it
         cwd: Directory Codex works in (default: current directory)
-        sandbox: "read-only" (default), "workspace-write", or "danger-full-access"
+        sandbox: "read-only", "workspace-write" (default, lets Codex edit files
+            in cwd), or "danger-full-access"
         model: Codex model override (e.g., "gpt-5-codex"); empty uses CLI default
         timeout: Seconds before timeout (default: 600)
+        approval: How a write-capable sandbox is authorized — "manual" (default:
+            ask the human via the frontend before running) or "auto" (the calling
+            agent approves it itself). "read-only" never needs approval.
 
     Returns:
         JSON string with provider, session_id, resumed, last_message,
-        usage, exit_code — and error when something went wrong.
+        usage, exit_code — plus note when the sandbox was adjusted, and
+        error when something went wrong.
     """
     if sandbox not in SANDBOX_LEVELS:
         return _envelope(session_id, error=f"Invalid sandbox {sandbox!r}. Use one of: {', '.join(SANDBOX_LEVELS)}")
+    if approval not in APPROVAL_MODES:
+        return _envelope(session_id, error=f"Invalid approval {approval!r}. Use 'manual' or 'auto'.")
 
     if shutil.which("codex") is None:
         return _envelope(session_id, error="codex CLI not found. Install it (npm install -g @openai/codex) and authenticate first.")
+
+    sandbox, gate_error, note = _gate_sandbox(sandbox, approval, agent, prompt, cwd)
+    if gate_error:
+        return _envelope(session_id, error=gate_error)
 
     cmd = ["codex", "exec"]
     if session_id:
@@ -84,7 +96,7 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
     timer = threading.Timer(timeout, lambda: (state.__setitem__("timed_out", True), proc.kill()))
     timer.start()
 
-    thread_id, last_message, usage = "", "", {}
+    thread_id, last_message, usage, turn_error = "", "", {}, ""
     try:
         for line in proc.stdout:
             event = _parse_line(line)
@@ -100,6 +112,10 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
                     last_message = item.get("text", "")
             elif etype == "turn.completed":
                 usage = event.get("usage", {})
+            elif etype == "turn.failed":
+                turn_error = event.get("error", {}).get("message", "") or turn_error
+            elif etype == "error":
+                turn_error = event.get("message", "") or turn_error
         proc.wait()
     finally:
         timer.cancel()
@@ -109,12 +125,34 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
         return _envelope(thread_id or session_id, error=f"Codex timed out after {timeout} seconds")
 
     if proc.returncode != 0:
-        stderr_tail = "".join(stderr_chunks).strip()[-2000:]
+        # Prefer the structured error Codex emits in the JSONL stream over the
+        # noisy stderr transport spam; fall back to stderr when none was seen.
+        detail = turn_error or "".join(stderr_chunks).strip()[-2000:]
         return _envelope(thread_id or session_id, exit_code=proc.returncode,
-                         error=f"codex exited with code {proc.returncode}: {stderr_tail}")
+                         error=f"codex exited with code {proc.returncode}: {detail}")
 
     return _envelope(thread_id, resumed=bool(session_id) and thread_id == session_id,
-                     last_message=last_message, usage=usage, exit_code=proc.returncode)
+                     last_message=last_message, usage=usage, exit_code=proc.returncode, note=note)
+
+
+def _gate_sandbox(sandbox, approval, agent, prompt, cwd):
+    """Resolve the effective sandbox after the approval gate.
+
+    read-only needs no approval. A write-capable sandbox runs only if the
+    calling agent auto-approves, or a human approves via io. With no io to
+    ask, it downgrades to read-only rather than silently escalating.
+
+    Returns (effective_sandbox, error, note): error set means reject the run.
+    """
+    if sandbox == "read-only" or approval == "auto":
+        return sandbox, "", ""
+    io = getattr(agent, "io", None) if agent is not None else None
+    if io is None:
+        return "read-only", "", f"downgraded to read-only: {sandbox} needs approval but no interactive client is available"
+    approved = io.request_approval("codex", {"sandbox": sandbox, "cwd": cwd or ".", "prompt": prompt})
+    if not approved:
+        return sandbox, f"Codex run rejected: user denied {sandbox} access", ""
+    return sandbox, "", ""
 
 
 def _parse_line(line: str):
@@ -137,16 +175,19 @@ def _forward(agent, event: dict) -> None:
     if agent is None or getattr(agent, "io", None) is None:
         return
     item = event.get("item", {})
+    # NB: io.log(event_type, **data) — the first positional IS the event type,
+    # so the Codex event's own type must go under a different key ("codex_type"),
+    # not "event_type", or it collides with that positional parameter.
     agent.io.log(
         "codex_event",
-        event_type=event.get("type", ""),
+        codex_type=event.get("type", ""),
         item_type=item.get("type", ""),
         event=event,
     )
 
 
 def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
-              usage: dict = None, exit_code: int = -1, error: str = "") -> str:
+              usage: dict = None, exit_code: int = -1, error: str = "", note: str = "") -> str:
     """Build the JSON result envelope returned to the calling agent."""
     result = {
         "provider": "codex",
@@ -158,4 +199,6 @@ def _envelope(session_id: str, resumed: bool = False, last_message: str = "",
     }
     if error:
         result["error"] = error
+    if note:
+        result["note"] = note
     return json.dumps(result)

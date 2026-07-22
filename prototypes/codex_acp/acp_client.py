@@ -90,14 +90,16 @@ class ACPClient:
 
     # ── JSON-RPC plumbing ────────────────────────────────────────
 
-    def request(self, method, params):
+    def request(self, method, params, timeout=60):
         with self._lock:
             self._next_id += 1
             req_id = self._next_id
             slot = {"event": threading.Event(), "result": None, "error": None}
             self._pending[req_id] = slot
         self._send({"jsonrpc": "2.0", "id": req_id, "method": method, "params": params})
-        slot["event"].wait()
+        if not slot["event"].wait(timeout):
+            self._pending.pop(req_id, None)
+            raise TimeoutError(f"ACP {method} timed out after {timeout}s")
         if slot["error"] is not None:
             raise RuntimeError(f"ACP {method} failed: {slot['error']}")
         return slot["result"]
