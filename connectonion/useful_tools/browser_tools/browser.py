@@ -575,6 +575,8 @@ class BrowserAutomation:
             executable_path=chrome_path,
             args=CHROME_DEFAULT_ARGS,  # environment-stability flags only
             ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # macOS cookie fix
+            no_viewport=True,  # use the real OS window size; a fixed 1280x720 viewport is a
+                               # Playwright tell (rebrowser 'viewport' check flags it)
             proxy=_browser_proxy_from_env(),  # route egress through BROWSER_PROXY if set, else None
             timeout=120000,
         )

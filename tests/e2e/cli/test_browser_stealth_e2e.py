@@ -150,8 +150,19 @@ def _v_iphey(b):
 
 def _v_deviceandbrowser(b):
     _skip_if_down(b)
-    is_bot = _eval(b, "() => (JSON.parse((document.body.innerText.match(/\\{[\\s\\S]*\\}/)||['{}'])[0]).isBot)")
-    return (is_bot is False), f"isBot={is_bot}"
+    d = _eval(b, "() => { const m=document.body.innerText.match(/\\{[\\s\\S]*\\}/);"
+                 " try { return JSON.parse(m[0]).details; } catch(e){ return null; } }")
+    if not d:
+        pytest.skip("detection details not rendered")
+    # The composite `isBot` also folds in `hasSuspiciousWeakSignals` — a datacenter-IP /
+    # environment heuristic that a residential IP clears. Assert the CONCRETE automation
+    # detectors (what the stealth browser controls); every one must read false.
+    automation_keys = ["hasWebdriverTrue", "isPlaywright", "isAutomatedWithCDP",
+                       "isAutomatedWithCDPInWebWorker", "isHeadlessChrome",
+                       "hasInconsistentChromeObject", "isWebGLInconsistent",
+                       "hasInconsistentGPUFeatures", "hasHeadlessChromeDefaultScreenResolution"]
+    flagged = [k for k in automation_keys if d.get(k)]
+    return (not flagged), f"automation flags={flagged or 'none'} weakSignals={d.get('hasSuspiciousWeakSignals')}"
 
 
 def _v_nowsecure_cloudflare(b):
@@ -171,6 +182,47 @@ def _v_recaptcha_v3(b):
     return (score >= 0.5), f"score={score}"
 
 
+_ROWS_JS = ("() => Array.from(document.querySelectorAll('table tr'))"
+            ".map(t => t.innerText.replace(/\\s+/g,' ').trim()).filter(Boolean)")
+
+
+def _v_rebrowser_cdp(b):
+    """rebrowser-bot-detector — the modern CDP-leak suite (Runtime.enable etc.). A 🔴 on
+    any row is a real automation tell; the ⚪️ rows are neutral (they need main-world
+    access, which Patchright's isolated world correctly denies)."""
+    _skip_if_down(b)
+    b.mouse_click(300, 300)                                # a real interaction
+    _eval(b, "() => new Promise(r => setTimeout(r, 3000))")  # let the tests settle
+    rows = _eval(b, _ROWS_JS)
+    reds = [r.split(" Notes")[0][:70] for r in rows if "🔴" in r]
+    critical_pass = any("runtimeEnableLeak" in r and "🟢" in r for r in rows) \
+        and any("navigatorWebdriver" in r and "🟢" in r for r in rows)
+    return (critical_pass and not reds), f"reds={reds or 'none'}"
+
+
+def _v_incolumitas(b):
+    """bot.incolumitas.com — its 'new tests' JSON reports OK for every non-behavioral,
+    non-IP fingerprint check when the browser is clean."""
+    _skip_if_down(b)
+    nt = _eval(b, "() => { const n=document.querySelector('#new-tests'); return n ? n.textContent : ''; }")
+    fails = re.findall(r'"(\w+)":\s*"(?!OK)([^"]+)"', nt)
+    return (nt.count('"OK"') >= 8 and not fails), f"non-OK={fails or 'none'}"
+
+
+def _v_webgl_present(b):
+    """A GPU-less server must still expose WebGL (SwiftShader fallback); 'no webgl context'
+    is a classic bot tell that our --enable-unsafe-swiftshader flag removes."""
+    _skip_if_down(b)
+    val = _eval(b, """() => {
+        const c=document.createElement('canvas');
+        const gl=c.getContext('webgl')||c.getContext('experimental-webgl');
+        if(!gl) return 'NO_WEBGL';
+        const d=gl.getExtension('WEBGL_debug_renderer_info');
+        return d ? gl.getParameter(d.UNMASKED_RENDERER_WEBGL) : 'webgl-no-debug-ext';
+    }""")
+    return (val != "NO_WEBGL"), val
+
+
 ISSUE_SITES = [
     ("sannysoft",        "https://bot.sannysoft.com/",                     3,  _v_sannysoft),
     ("browserscan",      "https://www.browserscan.net/bot-detection",      6,  _v_browserscan),
@@ -182,6 +234,10 @@ ISSUE_SITES = [
     ("nowsecure_cf",     "https://nowsecure.nl/",                          8,  _v_nowsecure_cloudflare),
     ("recaptcha_v3",     "https://antcpt.com/score_detector/",             9,  _v_recaptcha_v3),
     ("areyouheadless",   "https://arh.antoinevastel.com/bots/areyouheadless", 4, _v_webdriver_false),
+    # Harder / modern detectors added while chasing full coverage (issue #222 update).
+    ("rebrowser_cdp",    "https://bot-detector.rebrowser.net/",            5,  _v_rebrowser_cdp),
+    ("incolumitas",      "https://bot.incolumitas.com/",                   14, _v_incolumitas),
+    ("browserleaks_webgl", "https://browserleaks.com/webgl",              6,  _v_webgl_present),
 ]
 
 

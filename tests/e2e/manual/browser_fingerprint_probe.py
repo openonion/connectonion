@@ -120,7 +120,7 @@ def main():
         ctx = p.chromium.launch_persistent_context(
             user_data_dir=tempfile.mkdtemp(prefix="co_probe_"),
             headless=False,
-            args=["--disable-dev-shm-usage"],
+            args=["--disable-dev-shm-usage", "--enable-unsafe-swiftshader"],
         )
         page = ctx.new_page()
         print("== 1. EVENT SHAPE (humanize.py — the change under test) ==")
