@@ -88,7 +88,7 @@ def _spawn_daemon(sock_path: str, headless: bool):
     cmd = [sys.executable, "-m", "connectonion.cli.browser_agent.daemon", sock_path]
     if headless:
         cmd.append("--headless")
-    with open(log_path, "a") as log:  # the child dups the handle; ours closes right away
+    with open(log_path, "a", encoding="utf-8") as log:  # the child dups the handle; ours closes right away
         transport.spawn_detached(cmd, log)  # POSIX: new session · Windows: DETACHED_PROCESS
 
     # Wall-clock deadline, not an attempt count: against a busy daemon each _connect

@@ -194,7 +194,7 @@ def driver_stealth_status():
     version = importlib.metadata.version("patchright")
     lib = Path(patchright.__file__).parent / "driver" / "package" / "lib"
     marker = "disable-blink-features=AutomationControlled"
-    patched = any(marker in p.read_text(errors="ignore") for p in lib.rglob("*.js"))
+    patched = any(marker in p.read_text(errors="ignore", encoding="utf-8") for p in lib.rglob("*.js"))
     if patched:
         return "ok", version, "stealth patches present"
     return ("broken", version,
@@ -583,7 +583,7 @@ class BrowserAutomation:
         # storage_state=, so the exported cookies are applied with add_cookies. A missing file
         # raises (fail loud): if a deploy declared a seed it must be packaged.
         if self._seed_state and not self._seeded:
-            cookies = json.loads(Path(self._seed_state).read_text()).get("cookies", [])
+            cookies = json.loads(Path(self._seed_state).read_text(encoding="utf-8")).get("cookies", [])
             if cookies:
                 self.browser.add_cookies(cookies)
             self._seeded = True

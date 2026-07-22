@@ -143,7 +143,7 @@ def admin_logs_handler(agent_name: str) -> dict:
     """GET /admin/logs"""
     log_path = Path(f".co/logs/{agent_name}.log")
     if log_path.exists():
-        return {"content": log_path.read_text()}
+        return {"content": log_path.read_text(encoding="utf-8")}
     return {"error": "No logs found"}
 
 
@@ -156,7 +156,7 @@ def admin_sessions_handler() -> dict:
 
     sessions = []
     for session_file in sessions_dir.glob("*.yaml"):
-        with open(session_file) as f:
+        with open(session_file, encoding="utf-8") as f:
             session_data = yaml.safe_load(f)
             if session_data:
                 sessions.append(session_data)

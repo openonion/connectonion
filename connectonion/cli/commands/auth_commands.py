@@ -97,7 +97,7 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
             })
             # Ensure AGENT_ADDRESS and AGENT_CONFIG_PATH exist (append-only, don't overwrite)
             if global_keys_env.exists():
-                existing = global_keys_env.read_text()
+                existing = global_keys_env.read_text(encoding="utf-8")
                 append_lines = []
                 if 'AGENT_ADDRESS=' not in existing:
                     append_lines.append(f"AGENT_ADDRESS={public_key}\n")

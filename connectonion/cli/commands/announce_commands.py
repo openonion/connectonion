@@ -35,7 +35,7 @@ def _load_profile() -> dict:
     if not AGENT_JSON.exists():
         console.print(f"[red]No {AGENT_JSON}. Run `co setup` first.[/red]")
         raise SystemExit(1)
-    return json.loads(AGENT_JSON.read_text())
+    return json.loads(AGENT_JSON.read_text(encoding="utf-8"))
 
 
 def _build_listed_skills(profile: dict) -> list:

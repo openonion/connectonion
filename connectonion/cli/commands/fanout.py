@@ -63,7 +63,7 @@ def install_cursor(bundle: Path, alias: str) -> int:
         md = skill / "SKILL.md"
         if not md.exists():
             continue
-        m = FRONTMATTER_RE.match(md.read_text())
+        m = FRONTMATTER_RE.match(md.read_text(encoding="utf-8"))
         if not m:
             continue
         fm, body = m.groups()
@@ -72,7 +72,8 @@ def install_cursor(bundle: Path, alias: str) -> int:
             "",
         )
         (rules / f"{alias}-{skill.name}.mdc").write_text(
-            f"---\ndescription: {desc}\nalwaysApply: false\n---\n{body}"
+            f"---\ndescription: {desc}\nalwaysApply: false\n---\n{body}",
+            encoding="utf-8",
         )
         n += 1
     return n

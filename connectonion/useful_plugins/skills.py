@@ -136,7 +136,7 @@ def _load_skill(skill_name: str) -> Optional[Dict[str, Any]]:
     """
     for path in _get_skill_paths(skill_name):
         if path.exists():
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
             frontmatter, instructions = _parse_skill_content(content)
             return {
                 'path': str(path),
@@ -219,7 +219,7 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
 
             seen.add(name)
 
-            content = skill_file.read_text()
+            content = skill_file.read_text(encoding="utf-8")
             frontmatter, _ = _parse_skill_content(content)
             description = frontmatter.get('description', 'No description')
 

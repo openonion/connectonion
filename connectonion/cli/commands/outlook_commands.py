@@ -57,7 +57,7 @@ def _when(iso: str) -> str:
 def _print_listing(outlook, emails: list, title: str):
     """Render emails as a numbered table (or plain ID-bearing text when piped) and cache the numbering for read/reply."""
     INBOX_CACHE.parent.mkdir(exist_ok=True)
-    INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(emails, 1)}))
+    INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(emails, 1)}), encoding="utf-8")
 
     if not console.is_terminal:
         # Scripts and agents get the untruncated format with full message ids.
@@ -155,7 +155,7 @@ def handle_outlook_inbox(last: int = 10, unread: bool = False):
 
 def _resolve_email_id(outlook, email_id: str) -> str:
     """Turn a listing number into a Graph message id; full ids pass through. Numbers mean the last listing shown."""
-    cached = json.loads(INBOX_CACHE.read_text()) if INBOX_CACHE.exists() else {}
+    cached = json.loads(INBOX_CACHE.read_text(encoding="utf-8")) if INBOX_CACHE.exists() else {}
     if email_id in cached:
         return cached[email_id]
 
@@ -248,7 +248,7 @@ def handle_outlook_scheduled():
         return
 
     INBOX_CACHE.parent.mkdir(exist_ok=True)
-    INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(scheduled, 1)}))
+    INBOX_CACHE.write_text(json.dumps({str(i): e["id"] for i, e in enumerate(scheduled, 1)}), encoding="utf-8")
 
     if not console.is_terminal:
         # Scripts and agents get one plain line per email with the full id.

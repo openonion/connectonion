@@ -181,10 +181,10 @@ class Gmail:
         # Update .env file if it exists
         env_file = os.path.join(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co")), "keys.env")
         if os.path.exists(env_file):
-            with open(env_file, 'r') as f:
+            with open(env_file, 'r', encoding="utf-8") as f:
                 lines = f.readlines()
 
-            with open(env_file, 'w') as f:
+            with open(env_file, 'w', encoding="utf-8") as f:
                 for line in lines:
                     if line.startswith("GOOGLE_ACCESS_TOKEN="):
                         f.write(f"GOOGLE_ACCESS_TOKEN={new_access_token}\n")
@@ -1035,7 +1035,7 @@ class Gmail:
 
         # Write emails CSV
         if self.emails_csv:
-            with open(self.emails_csv, 'w', newline='') as f:
+            with open(self.emails_csv, 'w', newline='', encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=['id', 'thread_id', 'from_email', 'to_email', 'subject', 'date', 'snippet'])
                 writer.writeheader()
                 writer.writerows(email_records)
@@ -1043,7 +1043,7 @@ class Gmail:
         # Write contacts CSV (OVERWRITES - use sync_contacts to preserve CRM data)
         if self.contacts_csv:
             fieldnames = ['email', 'name', 'frequency', 'last_contact', 'type', 'company', 'relationship', 'priority', 'deal', 'next_contact_date', 'tags', 'notes']
-            with open(self.contacts_csv, 'w', newline='') as f:
+            with open(self.contacts_csv, 'w', newline='', encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(sorted_contacts)
@@ -1301,7 +1301,7 @@ Emails:
         # Get existing email IDs from cache
         existing_ids = set()
         if os.path.exists(self.emails_csv):
-            with open(self.emails_csv, 'r') as f:
+            with open(self.emails_csv, 'r', encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     existing_ids.add(row['id'])
@@ -1369,7 +1369,7 @@ Emails:
         # Append new emails to CSV
         fieldnames = ['id', 'thread_id', 'from_email', 'to_email', 'subject', 'date', 'body', 'snippet']
         file_exists = os.path.exists(self.emails_csv) and os.path.getsize(self.emails_csv) > 0
-        with open(self.emails_csv, 'a', newline='') as f:
+        with open(self.emails_csv, 'a', newline='', encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             if not file_exists:
                 writer.writeheader()
@@ -1403,7 +1403,7 @@ Emails:
         # Step 1: Load existing contacts with ALL data
         existing = {}
         if os.path.exists(self.contacts_csv):
-            with open(self.contacts_csv, 'r') as f:
+            with open(self.contacts_csv, 'r', encoding="utf-8") as f:
                 for row in csv.DictReader(f):
                     existing[row['email'].lower()] = dict(row)
 
@@ -1434,7 +1434,7 @@ Emails:
                       'relationship', 'priority', 'deal', 'next_contact_date', 'tags', 'notes']
         sorted_contacts = sorted(existing.values(), key=lambda x: int(x.get('frequency', 0)), reverse=True)
 
-        with open(self.contacts_csv, 'w', newline='') as f:
+        with open(self.contacts_csv, 'w', newline='', encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(sorted_contacts)
@@ -1453,7 +1453,7 @@ Emails:
         import csv
 
         contacts = []
-        with open(self.contacts_csv, 'r') as f:
+        with open(self.contacts_csv, 'r', encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 contacts.append(row)
@@ -1496,7 +1496,7 @@ Emails:
         # Read existing contacts
         contacts = []
         found = False
-        with open(self.contacts_csv, 'r') as f:
+        with open(self.contacts_csv, 'r', encoding="utf-8") as f:
             reader = csv.DictReader(f)
             fieldnames = reader.fieldnames
             for row in reader:
@@ -1526,7 +1526,7 @@ Emails:
             return f"Contact {email} not found in contacts.csv"
 
         # Write back
-        with open(self.contacts_csv, 'w', newline='') as f:
+        with open(self.contacts_csv, 'w', newline='', encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(contacts)
@@ -1575,7 +1575,7 @@ Emails:
         # Read all contacts
         contacts = []
         fieldnames = None
-        with open(self.contacts_csv, 'r') as f:
+        with open(self.contacts_csv, 'r', encoding="utf-8") as f:
             reader = csv.DictReader(f)
             fieldnames = reader.fieldnames
             for row in reader:
@@ -1588,7 +1588,7 @@ Emails:
                 contacts.append(row)
 
         # Write back
-        with open(self.contacts_csv, 'w', newline='') as f:
+        with open(self.contacts_csv, 'w', newline='', encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(contacts)

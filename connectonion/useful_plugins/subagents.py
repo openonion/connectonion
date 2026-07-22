@@ -65,7 +65,7 @@ def _load_agent(agent_name: str) -> Optional[Dict[str, Any]]:
     """Load agent configuration from filesystem."""
     for path in _get_agent_paths(agent_name):
         if path.exists():
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
             frontmatter, system_prompt = _parse_agent_content(content)
             return {
                 'path': str(path),
@@ -121,7 +121,7 @@ def _discover_all_agents() -> List[Dict[str, str]]:
 
             seen_names.add(agent_name)
 
-            content = agent_file.read_text()
+            content = agent_file.read_text(encoding="utf-8")
             frontmatter, _ = _parse_agent_content(content)
             description = frontmatter.get('description', 'No description')
 

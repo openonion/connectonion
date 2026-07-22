@@ -199,7 +199,7 @@ def assemble_prompt(
     # 1. Main prompt (required)
     main_file = prompts_path / "main.md"
     if main_file.exists():
-        content = main_file.read_text()
+        content = main_file.read_text(encoding="utf-8")
         parts.append(interpolate(content, ctx_dict))
 
     # 2. Workflow, ConnectOnion index, and examples are loaded on-demand
@@ -212,7 +212,7 @@ def assemble_prompt(
             tool_name = _get_tool_name(tool).lower()
             tool_file = tools_dir / f"{tool_name}.md"
             if tool_file.exists():
-                content = tool_file.read_text()
+                content = tool_file.read_text(encoding="utf-8")
                 parts.append(interpolate(content, ctx_dict))
     
     return "\n\n---\n\n".join(parts)
@@ -245,7 +245,7 @@ def load_reminder(
     if not reminder_file.exists():
         return None
     
-    content = reminder_file.read_text()
+    content = reminder_file.read_text(encoding="utf-8")
     
     # Build interpolation context
     ctx_dict = {}
@@ -284,7 +284,7 @@ def load_agent_prompt(
     if not agent_file.exists():
         return None
 
-    content = agent_file.read_text()
+    content = agent_file.read_text(encoding="utf-8")
 
     # Build interpolation context
     ctx_dict = {}

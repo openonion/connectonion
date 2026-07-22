@@ -991,7 +991,7 @@ def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> No
     found = set()
 
     if env_path.exists():
-        for line in env_path.read_text().splitlines(keepends=True):
+        for line in env_path.read_text(encoding="utf-8").splitlines(keepends=True):
             stripped = line.strip()
             if strip_prefix and stripped.startswith(strip_prefix):
                 continue
@@ -1007,7 +1007,7 @@ def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> No
         if key not in found:
             lines.append(f"{key}={value}\n")
 
-    env_path.write_text(''.join(lines))
+    env_path.write_text(''.join(lines), encoding="utf-8")
     if sys.platform != 'win32':
         env_path.chmod(0o600)
 
@@ -1058,7 +1058,7 @@ def ensure_global_config() -> None:
         lines = []
         config_path_found = False
         address_updated = False
-        for line in keys_env.read_text().splitlines(keepends=True):
+        for line in keys_env.read_text(encoding="utf-8").splitlines(keepends=True):
             if line.strip().startswith('AGENT_ADDRESS='):
                 lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
                 address_updated = True
@@ -1071,7 +1071,7 @@ def ensure_global_config() -> None:
             lines.insert(0, f"AGENT_CONFIG_PATH={global_dir}\n")
         if not address_updated:
             lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
-        keys_env.write_text(''.join(lines))
+        keys_env.write_text(''.join(lines), encoding="utf-8")
         if sys.platform != 'win32':
             os.chmod(keys_env, 0o600)
     console.print(f"  ✓ Created ~/.co/keys.env")

@@ -105,7 +105,7 @@ def _run_evals(eval_files: list, agent_override: Optional[str] = None):
     agents_cache = {}  # Cache agents by file path
 
     for eval_file in eval_files:
-        with open(eval_file) as f:
+        with open(eval_file, encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         # Get agent file: CLI override > YAML > error
@@ -201,7 +201,7 @@ def _run_evals(eval_files: list, agent_override: Optional[str] = None):
             # Update runs count and save
             data['runs'] = data.get('runs', 0) + 1
             data['updated'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            with open(eval_file, 'w') as f:
+            with open(eval_file, 'w', encoding="utf-8") as f:
                 yaml.dump(data, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
 
         console.print(f"[green]✓[/green] {eval_file.stem} completed")
@@ -241,7 +241,7 @@ def _show_eval_status(eval_files: list):
     no_expected = 0
 
     for eval_file in sorted(eval_files):
-        with open(eval_file) as f:
+        with open(eval_file, encoding="utf-8") as f:
             data = yaml.safe_load(f)
 
         for turn in data.get('turns', []):

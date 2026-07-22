@@ -43,7 +43,7 @@ def _check_host_export(entrypoint: str) -> bool:
     if not entrypoint_path.exists():
         return False
 
-    content = entrypoint_path.read_text()
+    content = entrypoint_path.read_text(encoding="utf-8")
 
     # Check for host() call pattern
     # Matches: host(agent), host(my_agent), host( agent ), etc.
@@ -60,7 +60,7 @@ def _load_deploy_ignore_patterns(project_dir: Path) -> list[str]:
     lines = GITIGNORE_CONTENT.splitlines()
     gitignore = project_dir / ".gitignore"
     if gitignore.exists():
-        lines.extend(gitignore.read_text().splitlines())
+        lines.extend(gitignore.read_text(encoding="utf-8").splitlines())
     return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
 
 
@@ -243,7 +243,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
         return False
 
     # Load config from host.yaml
-    with open(host_yaml_path, 'r') as f:
+    with open(host_yaml_path, 'r', encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
     project_name = config.get("name", "unnamed-agent")
     env_file = config.get("env", ".env")
