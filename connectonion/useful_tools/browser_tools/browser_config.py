@@ -25,6 +25,13 @@ CHROME_DEFAULT_ARGS = [
     # Xvfb, containers). Without it WebGL is simply absent — "Canvas has no webgl context"
     # on sannysoft, an obvious tell, since every real browser has WebGL. This is a FALLBACK:
     # a machine with a real GPU keeps using it and reports its true vendor/renderer.
+    #
+    # NOTE: Patchright recommends minimal launch args (custom headers/user_agent/automation
+    # flags can defeat its patches). This is the one deliberate exception — a GPU-rendering
+    # flag, not an automation flag. Verified it does NOT defeat the patches: with it enabled
+    # rebrowser's runtimeEnableLeak stays clean and deviceandbrowserinfo reports WebGL
+    # consistent. Patchright's other recommendations (channel=chrome via find_system_chrome,
+    # headless=False, no_viewport, persistent user_data_dir, no custom UA) are all honored.
     '--enable-unsafe-swiftshader',
 ]
 

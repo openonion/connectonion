@@ -575,8 +575,11 @@ class BrowserAutomation:
             executable_path=chrome_path,
             args=CHROME_DEFAULT_ARGS,  # environment-stability flags only
             ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # macOS cookie fix
-            no_viewport=True,  # use the real OS window size; a fixed 1280x720 viewport is a
-                               # Playwright tell (rebrowser 'viewport' check flags it)
+            no_viewport=True,  # part of Patchright's own recommended stealth config
+                               # (channel=chrome + headless=False + no_viewport). Patchright
+                               # inherits Playwright's fixed 1280x720 default, which is an
+                               # automation tell (rebrowser's 'viewport' check flags it); this
+                               # uses the real OS window size instead.
             proxy=_browser_proxy_from_env(),  # route egress through BROWSER_PROXY if set, else None
             timeout=120000,
         )
