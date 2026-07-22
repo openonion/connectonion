@@ -40,10 +40,22 @@ SANDBOX_LEVELS = ("read-only", "workspace-write", "danger-full-access")
 APPROVAL_MODES = ("manual", "auto")
 
 
+BACKENDS = ("cli", "acp")
+
+
 def codex(prompt: str, session_id: str = "", cwd: str = "",
           sandbox: str = "workspace-write", model: str = "", timeout: int = 600,
-          approval: str = "manual", agent=None) -> str:
-    """Run Codex CLI headless. Pass session_id to resume a previous session.
+          approval: str = "manual", backend: str = "cli", agent=None) -> str:
+    """Run Codex and (optionally) resume a previous session.
+
+    Two transports, one signature:
+      - backend="cli" (default): drives `codex exec --json` as a one-shot
+        subprocess. Approval is coarse — the sandbox is authorized once before
+        launch (Codex exec has no interactive approval of its own).
+      - backend="acp": drives the codex-acp adapter over the Agent Client
+        Protocol (a long-lived JSON-RPC session). Approval is per-action:
+        Codex asks before each sensitive step via session/request_permission,
+        which maps to agent.io.request_approval.
 
     Args:
         prompt: Task for Codex (e.g., "fix the failing tests")
@@ -53,9 +65,10 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
             in cwd), or "danger-full-access"
         model: Codex model override (e.g., "gpt-5-codex"); empty uses CLI default
         timeout: Seconds before timeout (default: 600)
-        approval: How a write-capable sandbox is authorized — "manual" (default:
-            ask the human via the frontend before running) or "auto" (the calling
-            agent approves it itself). "read-only" never needs approval.
+        approval: How write access is authorized — "manual" (default: ask the
+            human via the frontend) or "auto" (the calling agent approves it
+            itself). "read-only" never needs approval.
+        backend: "cli" (default) or "acp".
 
     Returns:
         JSON string with provider, session_id, resumed, last_message,
@@ -66,6 +79,13 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
         return _envelope(session_id, error=f"Invalid sandbox {sandbox!r}. Use one of: {', '.join(SANDBOX_LEVELS)}")
     if approval not in APPROVAL_MODES:
         return _envelope(session_id, error=f"Invalid approval {approval!r}. Use 'manual' or 'auto'.")
+    if backend not in BACKENDS:
+        return _envelope(session_id, error=f"Invalid backend {backend!r}. Use 'cli' or 'acp'.")
+
+    if backend == "acp":
+        from .codex_acp import run_codex_acp
+        return run_codex_acp(prompt, session_id=session_id, cwd=cwd, sandbox=sandbox,
+                             model=model, timeout=timeout, approval=approval, agent=agent)
 
     if shutil.which("codex") is None:
         return _envelope(session_id, error="codex CLI not found. Install it (npm install -g @openai/codex) and authenticate first.")

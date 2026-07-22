@@ -1,5 +1,11 @@
 # PROTOTYPE: driving codex-acp via the Agent Client Protocol (ACP)
 
+> **Graduated.** This spike now ships as `connectonion/useful_tools/codex_acp.py`,
+> reachable via `codex(..., backend="acp")`. These files are kept as the
+> standalone reference/demo (fake agent, no npm install needed). Real-binary
+> coverage lives in `tests/e2e/real_api/test_real_codex.py` and
+> `prototypes/codex_acp/test_real_codex_acp.py`.
+
 A spike, not a shipped feature. Validates that ConnectOnion can play the ACP
 **Client** role and drive **codex-acp** (the Agent) over JSON-RPC, mapping the
 protocol's streamed updates onto ConnectOnion's `io` model — including the

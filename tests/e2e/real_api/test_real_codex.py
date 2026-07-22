@@ -24,10 +24,12 @@ from connectonion.useful_tools import codex
 pytestmark = pytest.mark.real_api
 
 HAS_CODEX = shutil.which("codex") is not None
+HAS_CODEX_ACP = bool(os.environ.get("CODEX_ACP_CMD") or shutil.which("codex-acp"))
 HAS_AUTH = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("CODEX_API_KEY")
                 or os.path.exists(os.path.expanduser("~/.codex/auth.json")))
 
 requires_codex = pytest.mark.skipif(not HAS_CODEX, reason="codex CLI not installed (npm i -g @openai/codex)")
+requires_codex_acp = pytest.mark.skipif(not HAS_CODEX_ACP, reason="codex-acp not installed (npm i -g @zed-industries/codex-acp) / set $CODEX_ACP_CMD")
 
 
 class _RecordingIO:
@@ -84,6 +86,25 @@ def test_real_codex_read_only_needs_no_approval():
 
     assert approvals == []          # read-only asked for nothing
     assert result["session_id"]     # still ran the real binary
+
+
+@requires_codex_acp
+def test_real_codex_acp_backend_end_to_end():
+    """Drives the real codex-acp adapter via backend='acp'. The initialize +
+    session/new handshake runs against the real binary; a full turn needs auth."""
+    agent = _Agent()
+    result = json.loads(codex("Reply with exactly: pong", cwd=".",
+                              backend="acp", approval="auto", agent=agent, timeout=90))
+
+    assert result["provider"] == "codex"
+    if HAS_AUTH and "error" not in result:
+        assert result["exit_code"] == 0
+        assert result["last_message"]
+        assert any(e.get("codex_type") == "agent_message_chunk" for e in agent.io.events)
+    else:
+        # no credentials: session/new returns Authentication required, surfaced cleanly
+        assert "error" in result
+        assert "Authentication" in result["error"] or "auth" in result["error"].lower()
 
 
 @pytest.mark.skipif(not HAS_AUTH, reason="needs Codex credentials for a successful multi-turn resume")
