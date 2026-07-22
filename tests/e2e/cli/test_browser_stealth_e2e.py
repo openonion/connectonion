@@ -142,6 +142,38 @@ def test_humanized_scroll_emits_wheel_events(stealth_browser):
     assert len(set(ys)) >= 5, "scrollY should move incrementally, not in one jump"
 
 
+IME_PAGE = (
+    "<!doctype html><meta charset=utf-8>"
+    "<input id=box style='position:absolute;left:60px;top:80px;width:400px;height:32px'>"
+    "<b id=rec></b>"
+)
+INSTALL_IME_RECORDER = """() => {
+    const r=document.getElementById('rec'), box=document.getElementById('box');
+    r.dataset.kd=0; r.dataset.cs=0; r.dataset.it=''; r.dataset.tr='';
+    box.addEventListener('keydown', () => r.dataset.kd=(+r.dataset.kd)+1);
+    box.addEventListener('compositionstart', e => { r.dataset.cs=(+r.dataset.cs)+1; r.dataset.tr+='cs='+e.isTrusted+' '; });
+    box.addEventListener('input', e => r.dataset.it += (e.inputType||'?')+' ');
+}"""
+
+
+def test_humanized_cjk_typing_uses_ime_composition(stealth_browser):
+    """Typing CJK must go through the IME composition path (real compositionstart +
+    insertCompositionText), not the bare insertText a bot emits. Latin in the same string
+    still types key-by-key."""
+    b = stealth_browser
+    b.go_to("data:text/html," + urllib.parse.quote(IME_PAGE), purpose="ime test", who="e2e")
+    _eval(b, INSTALL_IME_RECORDER)
+    b.mouse_click(260, 96)
+    b.keyboard_type("hi 你好世界")
+
+    d = _eval(b, "() => ({v: document.getElementById('box').value, ...document.getElementById('rec').dataset})")
+    assert d["v"] == "hi 你好世界", f"typed text wrong: {d['v']!r}"
+    assert int(d.get("kd", 0)) >= 3, "Latin part should still emit real keystrokes"
+    assert int(d.get("cs", 0)) >= 3, "each CJK char should start a composition"
+    assert "insertCompositionText" in d.get("it", ""), "CJK should commit via composition, not insertText"
+    assert "cs=true" in d.get("tr", ""), "compositionstart must be a trusted event"
+
+
 # ---------------------------------------------------------------------------
 # Layer 3 — every fingerprint / bot-detection site listed in issue #222.
 # Each entry: (name, url, settle_seconds, verdict(browser) -> (passed, detail)).

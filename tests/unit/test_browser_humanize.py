@@ -130,6 +130,31 @@ def test_scroll_up_uses_negative_deltas():
     assert dys and all(dy < 0 for dy in dys) and sum(dys) == -600
 
 
+def test_needs_ime_flags_cjk_not_latin():
+    assert humanize._needs_ime("你") and humanize._needs_ime("好")
+    assert humanize._needs_ime("こ")   # hiragana
+    assert humanize._needs_ime("한")   # hangul
+    assert not humanize._needs_ime("a")
+    assert not humanize._needs_ime(" ")
+    assert not humanize._needs_ime("1")
+
+
+def test_segments_splits_cjk_and_latin_runs():
+    segs = humanize._segments("hi 你好 ok")
+    assert segs == [(False, "hi "), (True, "你好"), (False, " ok")]
+
+
+def test_segments_all_latin_is_one_run():
+    assert humanize._segments("hello") == [(False, "hello")]
+
+
+def test_type_text_latin_still_per_character_keystroke():
+    # Latin text must still go key-by-key through the keyboard (not the IME path).
+    page = FakePage()
+    humanize.type_text(page, "hi")
+    assert [e[1] for e in page.log if e[0] == "type"] == ["h", "i"]
+
+
 def test_cursor_position_is_remembered_between_actions():
     page = FakePage()
     humanize.move(page, 400, 400)
