@@ -92,6 +92,37 @@ agent = Agent("assistant", tools=[search], plugins=[logger])
 
 For more complex plugins, see [Events](events.md) for available event hooks.
 
+## Persisting Plugin State
+
+Handlers can read and write `agent.current_session` freely. In hosted `/input`
+and WebSocket reconnect flows, the client may return a session copy; for an
+existing owner-bound session, the server recovery transcript remains
+authoritative. Core then restores only a fixed whitelist of keys—`messages`,
+`trace`, `turn`, and `plugin_state`. Anything a plugin stashes elsewhere on the
+session is dropped on the next turn.
+
+So if your plugin needs state to survive a restore, store it under its own namespace inside `plugin_state`:
+
+```python
+from connectonion import Agent, after_each_tool
+
+def count_tools(agent):
+    state = agent.current_session.setdefault('plugin_state', {}).setdefault('tool_counter', {})
+    state['count'] = state.get('count', 0) + 1
+
+tool_counter = [after_each_tool(count_tools)]
+agent = Agent("assistant", tools=[search], plugins=[tool_counter])
+```
+
+`plugin_state['tool_counter']` survives the round-trip. `plugin_state` is the one generic slot plugins own, so the core never needs to know your plugin's keys — no plugin should add its own keys to the session's restore whitelist.
+
+**Don't store authority here.** `plugin_state` comes back from the untrusted client,
+so flags such as "skip approvals", "is admin", or "permissions granted" would be
+forgeable. A counter can also be authoritative: a retry count, rate-limit budget,
+or ULW turn lease may control how much privileged work remains. Keep those values
+in owner-bound server state. `plugin_state` may mirror them for UI display, but a
+plugin must never read that mirror to grant or extend capability.
+
 ## Reusing Plugins
 
 ```python

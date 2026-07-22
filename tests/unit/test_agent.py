@@ -790,3 +790,234 @@ class TestGracefulInterrupt:
         result = agent.input("do work")
 
         assert result == "all done"
+
+
+def test_input_restores_plugin_state_and_drops_untrusted_keys():
+    """plugin_state round-trips through stateless session restore, while sensitive/unlisted
+    top-level keys from the (untrusted) client session are dropped."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(content="ok", tool_calls=[], raw_response={}, usage=TokenUsage()),
+    ])
+    agent = Agent(name="restore", llm=mock_llm, log=False, quiet=True)
+
+    agent.input("continue", session={
+        'session_id': 's1',
+        'messages': [{"role": "system", "content": "sys"}],
+        'trace': [],
+        'turn': 2,
+        'plugin_state': {'tool_counter': {'count': 3}},
+        # keys a malicious client must NOT be able to inject via the session:
+        'mode': 'ulw',
+        'skip_tool_approval': True,
+        'permissions': {'granted_all': True},
+    })
+
+    # plugin-owned state survives the restore
+    assert agent.current_session['plugin_state'] == {'tool_counter': {'count': 3}}
+    # untrusted top-level keys are NOT restored (explicit whitelist, not dict(session))
+    assert 'mode' not in agent.current_session
+    assert 'skip_tool_approval' not in agent.current_session
+    assert 'permissions' not in agent.current_session
+
+
+def test_input_deep_copies_nested_plugin_state():
+    """Plugin UI state must not alias caller-owned nested dictionaries."""
+    client_state = {'tool_counter': {'count': 3}}
+    agent = Agent(name="restore-copy", llm=MockLLM(), log=False, quiet=True)
+
+    agent.input("continue", session={
+        'messages': [],
+        'trace': [],
+        'turn': 0,
+        'plugin_state': client_state,
+    })
+
+    client_state['tool_counter']['count'] = 99
+    assert agent.current_session['plugin_state']['tool_counter']['count'] == 3
+
+    agent.current_session['plugin_state']['tool_counter']['count'] = 7
+    assert client_state['tool_counter']['count'] == 99
+
+
+def test_input_accepts_explicit_trusted_mode():
+    """The dedicated mode argument is the local/trusted mode-control path."""
+    from connectonion import after_user_input
+
+    seen = []
+
+    @after_user_input
+    def capture_mode(agent):
+        seen.append((agent.current_session.get('mode'), agent._input_mode))
+
+    agent = Agent(
+        name="trusted-mode",
+        llm=MockLLM(),
+        on_events=[capture_mode],
+        log=False,
+        quiet=True,
+    )
+
+    agent.input("work", mode="ulw")
+
+    assert agent.current_session.get('mode') != 'ulw'
+    assert seen == [(None, 'ulw')]
+    assert agent._input_mode is None
+
+
+@pytest.mark.parametrize('mode', ['', 'admin', True, 1, {'mode': 'ulw'}])
+def test_input_rejects_invalid_explicit_mode(mode):
+    """Mode control accepts only the public approval-mode enum."""
+    agent = Agent(name="bad-mode", llm=MockLLM(), log=False, quiet=True)
+
+    with pytest.raises(ValueError, match="mode must be one of"):
+        agent.input("work", mode=mode)
+
+
+@pytest.mark.parametrize('plugin_state', [None, [], 'ulw', True, 1])
+def test_input_replaces_malformed_plugin_state(plugin_state):
+    agent = Agent(name="bad-plugin-state", llm=MockLLM(), log=False, quiet=True)
+
+    agent.input("work", session={
+        'messages': [],
+        'trace': [],
+        'turn': 0,
+        'plugin_state': plugin_state,
+    })
+
+    assert agent.current_session['plugin_state'] == {}
+
+
+def test_reset_conversation_revokes_trusted_mode_state():
+    agent = Agent(name="reset-mode", llm=MockLLM(), log=False, quiet=True)
+    agent.current_session = {'mode': 'ulw'}
+    agent._trusted_server_state = {
+        'mode': 'ulw',
+        'ulw': {'turns': 100, 'turns_used': 5},
+    }
+    agent._trusted_server_state_binding = ('0xowner', 'sid')
+
+    agent.reset_conversation()
+
+    assert agent.current_session is None
+    assert agent._trusted_server_state == {}
+    assert agent._trusted_server_state_binding is None
+    assert agent._input_mode is None
+
+
+def test_bound_ordinary_mode_restores_for_tool_approval_only_agent():
+    """Non-ULW modes resume from owner-bound server state without the ULW plugin."""
+    from connectonion.useful_plugins import tool_approval
+    from connectonion.useful_plugins.tool_approval import get_current_mode
+
+    agent = Agent(
+        name="bound-ordinary-mode",
+        llm=MockLLM(),
+        plugins=[tool_approval],
+        log=False,
+        quiet=True,
+    )
+    agent._session_owner_address = '0xowner'
+    agent._trusted_server_state = {'mode': 'accept_edits'}
+    agent._trusted_server_state_binding = ('0xowner', 'sid-a')
+
+    agent.input("continue", session={
+        'session_id': 'sid-a',
+        'messages': [],
+        'trace': [],
+        'turn': 1,
+    })
+
+    assert get_current_mode(agent) == 'accept_edits'
+    assert agent._trusted_server_state == {'mode': 'accept_edits'}
+
+
+def test_bound_mode_does_not_cross_explicit_session_ids():
+    from connectonion.useful_plugins import tool_approval
+    from connectonion.useful_plugins.tool_approval import get_current_mode
+
+    agent = Agent(
+        name="cross-session-mode",
+        llm=MockLLM(),
+        plugins=[tool_approval],
+        log=False,
+        quiet=True,
+    )
+    agent._session_owner_address = '0xowner'
+    agent._trusted_server_state = {'mode': 'accept_edits'}
+    agent._trusted_server_state_binding = ('0xowner', 'sid-a')
+
+    agent.input("new session", session={
+        'session_id': 'sid-b',
+        'messages': [],
+        'trace': [],
+        'turn': 0,
+    })
+
+    assert get_current_mode(agent) == 'safe'
+    assert agent._trusted_server_state == {}
+    assert agent._trusted_server_state_binding is None
+
+
+def test_bound_mode_does_not_cross_session_owners():
+    from connectonion.useful_plugins import tool_approval
+    from connectonion.useful_plugins.tool_approval import get_current_mode
+
+    agent = Agent(
+        name="cross-owner-mode",
+        llm=MockLLM(),
+        plugins=[tool_approval],
+        log=False,
+        quiet=True,
+    )
+    agent._session_owner_address = '0xnew-owner'
+    agent._trusted_server_state = {'mode': 'plan'}
+    agent._trusted_server_state_binding = ('0xold-owner', 'sid-a')
+
+    agent.input("continue", session={
+        'session_id': 'sid-a',
+        'messages': [],
+        'trace': [],
+        'turn': 1,
+    })
+
+    assert get_current_mode(agent) == 'safe'
+    assert agent._trusted_server_state == {}
+    assert agent._trusted_server_state_binding is None
+
+
+def test_explicit_mode_binds_and_survives_same_local_session():
+    from connectonion.useful_plugins import tool_approval
+    from connectonion.useful_plugins.tool_approval import get_current_mode
+
+    agent = Agent(
+        name="local-bound-mode",
+        llm=MockLLM(),
+        plugins=[tool_approval],
+        log=False,
+        quiet=True,
+    )
+    session = {'session_id': 'sid-local', 'messages': [], 'trace': [], 'turn': 0}
+
+    agent.input("authorize", session=session, mode='accept_edits')
+    continuation = {
+        'session_id': 'sid-local',
+        'messages': agent.current_session['messages'],
+        'trace': agent.current_session['trace'],
+        'turn': agent.current_session['turn'],
+    }
+    agent.input("continue", session=continuation)
+
+    assert get_current_mode(agent) == 'accept_edits'
+    assert agent._trusted_server_state_binding == (None, 'sid-local')
+
+
+def test_new_session_initializes_empty_plugin_state():
+    """A fresh session always exposes a plugin_state dict for plugins to write into."""
+    mock_llm = MockLLM(responses=[
+        LLMResponse(content="ok", tool_calls=[], raw_response={}, usage=TokenUsage()),
+    ])
+    agent = Agent(name="fresh", llm=mock_llm, log=False, quiet=True)
+
+    agent.input("hi")
+
+    assert agent.current_session['plugin_state'] == {}

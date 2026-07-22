@@ -33,7 +33,7 @@ network/host/ws_router/
 
 | File | Layer | What's in it |
 |---|---|---|
-| `session.py` | WS protocol orchestration | `run_ws_session` is the only public API. Owns the read loop, dispatches by message type, handles small inline cases (PONG / SESSION_STATUS / runtime input detection), and runs cleanup |
+| `session.py` | WS protocol orchestration | `run_ws_session` is the only public API. Owns the read loop, dispatches by message type, handles small inline cases (PONG / SESSION_STATUS / running-INPUT rejection), and runs cleanup |
 | `connect.py` | WS protocol | `handle_connect` — verifies auth, merges client/server session, decides new/connected/running, triggers reattach |
 | `agent_io.py` | Agent execution | Spawning agent threads, restarting forward tasks on reconnect, streaming agent output back to the client |
 | `ping.py` | WS keepalive | `ping_loop` coroutine that sends a PING frame every 30s |
@@ -133,7 +133,7 @@ match data["type"]:
     "ONBOARD_SUBMIT" → handle_onboard_submit(...)
     "ADMIN_*"        → handle_admin_message(...)
     "CONNECT"        → handle_connect(...)        # in connect.py
-    "INPUT"          → if existing running agent: push runtime_input + ACK (inline)
+    "INPUT"          → if existing running agent: retryable ERROR (inline)
                        else: start_agent(...)     # in agent_io.py
     else (with active_io) → active_io.send_to_agent(data)   # ASK_USER_RESPONSE, APPROVAL_RESPONSE, etc.
 ```
@@ -141,6 +141,17 @@ match data["type"]:
 `CONNECT` must come first — it authenticates and populates `conn`. `INPUT` and most others require `conn["authenticated"] == True`.
 
 `SESSION_STATUS`, `ONBOARD_SUBMIT`, `ADMIN_*` carry their own auth and don't require prior CONNECT.
+
+Modern session frames also carry action-specific signatures:
+
+- CONNECT signs `action: "session.connect"`, recipient `to`, timestamp,
+  optional session ID, and `session_sha256` for the top-level session snapshot.
+- INPUT signs `action: "session.input"`, `to`, session ID, prompt,
+  `input_id`/`request_id`, optional mode, and `attachments_sha256` for canonical
+  `{"images":[...],"files":[...]}`.
+
+Top-level routing values must match the payload. The host address is the signed
+audience, so a frame signed for one host cannot be replayed at another.
 
 ---
 
@@ -152,7 +163,11 @@ Client → CONNECT {from, signature, payload, session_id?, last_msg_id?, session
 
 1. **Auth** — `route_handlers["auth"](data, trust)` verifies Ed25519 signature.
 2. **Forbidden + onboard** — if auth returns "forbidden" and trust config defines onboard methods (invite_code / payment), server sends `ONBOARD_REQUIRED` instead of ERROR.
-3. **Session merge** — if `session_id` provided, loads stored session and merges with client's via `merge_sessions` (whichever is newer wins).
+3. **Session recovery** — validates the signed `session_sha256`. A new session may
+   be seeded from that snapshot; once an owner-bound server transcript exists,
+   it remains authoritative and client counters cannot replace it. An empty
+   stored transcript is still authoritative and must not trigger a client-side
+   fallback.
 4. **Registry check** — looks up session in `ActiveSessionRegistry`:
    - `running` → agent is mid-execution; client is reconnecting, reattach via `resume_forwarding`.
    - `connected` → agent finished; session alive, ready for next INPUT.
@@ -169,17 +184,26 @@ Server session statuses: only `'running'` and `'connected'`. WS disconnect doesn
 Two paths depending on whether an agent is already running:
 
 **Fresh agent (`agent_io.py:start_agent`)** when `registry.get(session_id)` is None or `connected`:
-1. Validate (`conn["authenticated"]`, `prompt` non-empty).
-2. Defense check: if status is unexpectedly `'running'`, refuse.
-3. Create `WebSocketIO` (thread-safe queue pair: agent ↔ async transport).
-4. Register in `ActiveSessionRegistry` BEFORE `agent_thread.start()` — registering after creates a race where a fast-completing agent calls `mark_session_connected` on an absent entry.
-5. Spawn daemon thread running `route_handlers["ws_input"]` (which calls user's `create_agent` factory and runs `agent.input(prompt)`).
-6. Spawn `forward_task = asyncio.create_task(forward_agent_msgs_to_client(...))` to pipe `io.read_msgs_from_agent()` events out via `send_msg`. On agent completion, sends `OUTPUT` (or `ERROR` on exception).
+1. Validate the `session.input` binding and non-empty string prompt.
+2. Create `WebSocketIO` and atomically reserve the session's
+   `connected` → `running` transition. A concurrent socket that loses this
+   transition is rejected before its request ID is claimed.
+3. Claim the one-time request ID. Duplicate claims are rejected and the
+   execution reservation is released.
+4. Spawn the daemon thread running `route_handlers["ws_input"]` (which calls
+   the user's `create_agent` factory and runs `agent.input(prompt)`).
+5. Spawn `forward_task = asyncio.create_task(forward_agent_msgs_to_client(...))`
+   to pipe `io.read_msgs_from_agent()` events to `send_msg`. On completion it
+   sends `OUTPUT` (or `ERROR` on exception).
 
-**Runtime input (inline in `session.py`)** when `existing.status == 'running'`:
-1. Push `{type: RUNTIME_INPUT, id, prompt}` onto `existing.io._runtime_inputs` (separate queue from `receive()`'s mailbox to avoid being eaten by ask_user/approval pops).
-2. Reply `RUNTIME_INPUT_ACK`. No new agent thread, no new OUTPUT cycle.
-3. The agent's `apply_runtime_input` plugin (in `useful_plugins/runtime_input.py`) drains the queue at the next iteration boundary and appends each prompt to message history with an additive framing prefix.
+**Running INPUT (inline in `session.py`)** when `existing.status == 'running'`:
+1. Validate a fully bound signed INPUT. Legacy/signature-stripped INPUT is also
+   rejected while running.
+2. Return a retryable `ERROR` without claiming the request ID or placing any
+   frame in the agent mailbox.
+3. After the current `OUTPUT`, retry the same signed INPUT to start the next
+   execution. This prevents a prompt or mode frame from being mistaken for an
+   approval, ask-user response, or checkpoint control message.
 
 See [websocket-protocol.md](websocket-protocol.md) for full message reference.
 
@@ -199,23 +223,40 @@ Agent thread                          Async event loop                 Client
      │◄─ io.receive() ◄─ _msgs_from_client ◄─│◄─ active_io.send_to_agent  │
      │  (block until client sends, e.g.      │  (per-message dispatch     │
      │   ASK_USER_RESPONSE)                  │   in run_ws_session)          │
-     │                                       │                            │
-     │  io.pop_runtime_inputs() (separate    │   push_runtime_input from  │
-     │  queue, drained at iteration start    │   INPUT-during-running     │
-     │  by apply_runtime_input plugin)       │   inline branch            │
 ```
 
-Three independent channels on one `WebSocketIO`:
+Two channels are populated by the hosted WebSocket protocol:
 
 | Channel | Direction | Storage | Reader / Writer |
 |---|---|---|---|
 | `_msgs_from_agent` | agent → client | append-only list, cursor-indexed for replay | written by `io.send`, read by `forward_task` via `read_msgs_from_agent` |
 | `_msgs_from_client` | client → agent | mailbox (consumed on read) | written by `send_to_agent`, read by `io.receive` (blocking) |
-| `_runtime_inputs` | client → agent | drain-all queue | written by `push_runtime_input`, drained by `apply_runtime_input` plugin |
+
+`WebSocketIO` retains a low-level opt-in runtime-input queue for direct library
+integrations, but hosted `INPUT` frames are not routed into it.
 
 ---
 
 ## Safety / lifecycle
+
+### Legacy and replay boundaries
+
+An incomplete legacy INPUT can start only an idle Safe-mode turn. It cannot
+restore server capabilities or request ULW/Accept Edits, and it cannot inject
+input into a running agent. Modern HTTP and WebSocket INPUT share the same
+bounded replay-claim store; reusing an `input_id`/`request_id` returns
+`duplicate request` (HTTP status `409` on `/input`).
+
+A stored record without `owner_address` is not claimable. The client must start
+a new session without that legacy `session_id`; admin bearer access remains
+available for inspection/migration tooling.
+
+### Single-process invariant
+
+Replay claims, active WebSocket sessions, lifecycle locks, and capability leases
+are process-local. `host()` fails fast for `workers != 1`. External ASGI servers
+must also use one worker unless these components are replaced by shared,
+transactional storage plus sticky WebSocket routing.
 
 ### Agent thread crash → still surfaces
 
@@ -277,15 +318,14 @@ Server → ADMIN_RESULT  {action: promote, success: true, level: contact}
 | File | Role |
 |---|---|
 | `network/host/ws_router/__init__.py` | Public re-export: `run_ws_session` |
-| `network/host/ws_router/session.py` | Main loop, dispatch chain, inline helpers (PONG, SESSION_STATUS, runtime input) |
+| `network/host/ws_router/session.py` | Main loop, dispatch chain, inline helpers (PONG, SESSION_STATUS, running-INPUT rejection) |
 | `network/host/ws_router/connect.py` | `handle_connect` — CONNECT auth, session merge, reattach trigger |
 | `network/host/ws_router/agent_io.py` | `start_agent`, `resume_forwarding`, `forward_agent_msgs_to_client`, `_agent_thread_body` |
 | `network/host/ws_router/ping.py` | `ping_loop` keepalive |
 | `network/asgi/websocket.py` | ASGI adapter — wraps ASGI WS into send_msg/recv_msg |
 | `network/relay.py` | Relay adapter — wraps relay WS + per-session queue into send_msg/recv_msg |
-| `network/io/websocket.py` | `WebSocketIO` — three channels, thread-safe, cursor-indexed replay |
+| `network/io/websocket.py` | `WebSocketIO` — thread-safe mailboxes and cursor-indexed replay |
 | `network/host/session/active.py` | `ActiveSessionRegistry` — running/connected sessions |
 | `network/host/session/storage.py` | `SessionStorage` — JSONL persistence |
 | `network/host/session/ui.py` | `session_to_chat_items` — convert session → ChatItem[] for UI |
 | `network/host/server.py` | `host()` entry point. Wires `run_ws_session` into ASGI app and as `relay_session_runner` partial for the relay path |
-| `useful_plugins/runtime_input.py` | `apply_runtime_input` `@before_iteration` plugin + `RUNTIME_INPUT_FRAME_PREFIX` |

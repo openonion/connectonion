@@ -30,6 +30,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 import httpx
 
 from .. import address as addr
+from .host.auth import canonical_attachments_sha256, canonical_session_sha256
 
 
 def _sort_endpoints(endpoints: List[str]) -> List[str]:
@@ -176,6 +177,7 @@ class RemoteAgent:
         on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None,
         images: Optional[List[str]] = None,
         files: Optional[List[Dict[str, Any]]] = None,
+        mode: Optional[str] = None,
     ) -> Response:
         """
         Send prompt to remote agent and get response.
@@ -217,7 +219,7 @@ class RemoteAgent:
         except RuntimeError as e:
             if "input() cannot be used" in str(e):
                 raise
-        return asyncio.run(self._stream_input(prompt, timeout, on_onboard, images, files))
+        return asyncio.run(self._stream_input(prompt, timeout, on_onboard, images, files, mode))
 
     async def input_async(
         self,
@@ -226,9 +228,10 @@ class RemoteAgent:
         on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None,
         images: Optional[List[str]] = None,
         files: Optional[List[Dict[str, Any]]] = None,
+        mode: Optional[str] = None,
     ) -> Response:
         """Async version of input()."""
-        return await self._stream_input(prompt, timeout, on_onboard, images, files)
+        return await self._stream_input(prompt, timeout, on_onboard, images, files, mode)
 
     def reset(self) -> None:
         """Clear conversation and start fresh."""
@@ -250,6 +253,7 @@ class RemoteAgent:
         on_onboard: Optional[Callable[[List[str], Optional[float]], Dict[str, Any]]] = None,
         images: Optional[List[str]] = None,
         files: Optional[List[Dict[str, Any]]] = None,
+        mode: Optional[str] = None,
     ) -> Response:
         """Send prompt via WebSocket and stream events."""
         import websockets
@@ -276,9 +280,9 @@ class RemoteAgent:
         # Generate input_id for routing/response matching
         input_id = str(uuid.uuid4())
 
-        # Build the CONNECT and INPUT messages
+        # CONNECT must finish first: the server may allocate the session id that
+        # privileged INPUT controls are required to sign.
         connect_msg = self._build_connect_message(is_direct)
-        input_msg = self._build_input_message(prompt, input_id, is_direct, images, files)
 
         try:
             async with websockets.connect(ws_url) as ws:
@@ -313,6 +317,15 @@ class RemoteAgent:
                         # Continue waiting for CONNECTED or ONBOARD_SUCCESS
 
                 # Now send INPUT
+                input_msg = self._build_input_message(
+                    prompt,
+                    input_id,
+                    is_direct,
+                    images,
+                    files,
+                    mode,
+                    session_id=self._current_session.get("session_id"),
+                )
                 await ws.send(json.dumps(input_msg))
 
                 # Stream events until OUTPUT or timeout
@@ -375,7 +388,15 @@ class RemoteAgent:
 
                         # Retry the original prompt
                         retry_input_id = str(uuid.uuid4())
-                        retry_msg = self._build_input_message(prompt, retry_input_id, is_direct)
+                        retry_msg = self._build_input_message(
+                            prompt,
+                            retry_input_id,
+                            is_direct,
+                            images,
+                            files,
+                            mode,
+                            session_id=(self._current_session or {}).get("session_id"),
+                        )
                         await ws.send(json.dumps(retry_msg))
                         # Continue loop to wait for OUTPUT
 
@@ -407,11 +428,9 @@ class RemoteAgent:
         """Build CONNECT message with signing."""
         connect_msg: Dict[str, Any] = {
             "type": "CONNECT",
-            "timestamp": int(time.time())
+            "timestamp": int(time.time()),
+            "to": self.address,
         }
-
-        if not is_direct:
-            connect_msg["to"] = self.address
 
         if self._current_session and self._current_session.get("session_id"):
             connect_msg["session_id"] = self._current_session["session_id"]
@@ -421,7 +440,14 @@ class RemoteAgent:
             connect_msg["session"] = self._current_session
 
         if self._keys:
-            payload: Dict[str, Any] = {"to": self.address, "timestamp": connect_msg["timestamp"]}
+            payload: Dict[str, Any] = {
+                "action": "session.connect",
+                "to": self.address,
+                "timestamp": connect_msg["timestamp"],
+                "session_sha256": canonical_session_sha256(self._current_session),
+            }
+            if connect_msg.get("session_id"):
+                payload["session_id"] = connect_msg["session_id"]
             canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
             signature = addr.sign(self._keys, canonical.encode())
             connect_msg["payload"] = payload
@@ -437,18 +463,17 @@ class RemoteAgent:
         is_direct: bool = False,
         images: Optional[List[str]] = None,
         files: Optional[List[Dict[str, Any]]] = None,
+        mode: Optional[str] = None,
+        session_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build INPUT message with optional signing."""
         input_msg: Dict[str, Any] = {
             "type": "INPUT",
             "input_id": input_id,
             "prompt": prompt,
-            "timestamp": int(time.time())
+            "timestamp": int(time.time()),
+            "to": self.address,
         }
-
-        # Only include 'to' for relay mode (not needed for direct connection)
-        if not is_direct:
-            input_msg["to"] = self.address
 
         # Session goes with CONNECT, not INPUT
 
@@ -457,12 +482,29 @@ class RemoteAgent:
             input_msg["images"] = images
         if files:
             input_msg["files"] = files
+        if mode is not None:
+            input_msg["mode"] = mode
+        if session_id is not None:
+            input_msg["session_id"] = session_id
+        if mode is not None and not session_id:
+            raise ValueError("mode-bearing INPUT requires a session_id")
+        if self._keys and not session_id:
+            raise ValueError("signed INPUT requires the server session_id")
 
         # Sign if keys provided
         if self._keys:
-            payload: Dict[str, Any] = {"prompt": prompt, "timestamp": input_msg["timestamp"]}
-            if not is_direct:
-                payload["to"] = self.address
+            payload: Dict[str, Any] = {
+                "action": "session.input",
+                "prompt": prompt,
+                "timestamp": input_msg["timestamp"],
+                "to": self.address,
+                "input_id": input_id,
+                "attachments_sha256": canonical_attachments_sha256(images, files),
+            }
+            if mode is not None:
+                payload["mode"] = mode
+            if session_id is not None:
+                payload["session_id"] = session_id
             canonical = json.dumps(payload, sort_keys=True, separators=(',', ':'))
             signature = addr.sign(self._keys, canonical.encode())
             input_msg["payload"] = payload
@@ -474,12 +516,15 @@ class RemoteAgent:
     def _build_onboard_submit(self, credentials: Dict[str, Any]) -> Dict[str, Any]:
         """Build ONBOARD_SUBMIT message with optional signing."""
         payload = {
+            **credentials,
+            "action": "session.onboard",
+            "to": self.address,
             "timestamp": int(time.time()),
-            **credentials
         }
 
         submit_msg: Dict[str, Any] = {
             "type": "ONBOARD_SUBMIT",
+            "to": self.address,
             "payload": payload
         }
 

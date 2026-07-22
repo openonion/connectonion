@@ -51,7 +51,10 @@ def pydantic_json_encoder(obj):
 CORS_HEADERS = [
     [b"access-control-allow-origin", b"*"],
     [b"access-control-allow-methods", b"GET, POST, OPTIONS"],
-    [b"access-control-allow-headers", b"authorization, content-type"],
+    [
+        b"access-control-allow-headers",
+        b"authorization, content-type, x-from, x-signature, x-timestamp",
+    ],
 ]
 
 

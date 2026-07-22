@@ -2,9 +2,9 @@
 Purpose: Apply mid-execution user input from io to message history at iteration boundaries
 LLM-Note:
   Dependencies: imports from [core/events (before_iteration)] | imported by [useful_plugins/__init__.py] | tested by [tests/unit/test_runtime_input.py]
-  Data flow: ws_router pushes runtime input to agent.io._runtime_inputs via push_runtime_input() → @before_iteration handler pulls them at iteration start → wrapped in RUNTIME_INPUT_FRAME_PREFIX (additive framing for LLM) → appended to messages as user role → user_input trace emitted with runtime_input: true → session_to_chat_items strips prefix when rendering user bubble
+  Data flow: an opt-in integration pushes runtime input to agent.io._runtime_inputs via push_runtime_input() → @before_iteration handler pulls them at iteration start → wrapped in RUNTIME_INPUT_FRAME_PREFIX (additive framing for LLM) → appended to messages as user role → user_input trace emitted with runtime_input: true → session_to_chat_items strips prefix when rendering user bubble
   State/Effects: mutates agent.current_session['messages'] | emits user_input trace events
-  Integration: exports runtime_input plugin (single before_iteration handler) + RUNTIME_INPUT_FRAME_PREFIX constant | plugin opt-in via Agent(plugins=[runtime_input]) for hosted agents that should accept mid-execution user input
+  Integration: exports runtime_input plugin (single before_iteration handler) + RUNTIME_INPUT_FRAME_PREFIX constant | plugin opt-in for direct integrations; hosted INPUT frames received during a running turn are retryably rejected and do not populate this queue
   Errors: silent no-op when agent.io is None or doesn't support pop_runtime_inputs
 """
 

@@ -229,8 +229,8 @@ class TestSessionStorageGet:
         assert result.result == "Complete"
         assert result.duration_ms == 100
 
-    def test_get_running_session_not_expired(self, tmp_path):
-        """get() returns running session even if expires is past."""
+    def test_get_expired_running_session_returns_none(self, tmp_path):
+        """get() expires stale running records after their lease."""
         path = tmp_path / "sessions.jsonl"
         storage = SessionStorage(str(path))
 
@@ -245,8 +245,7 @@ class TestSessionStorageGet:
 
         result = storage.get("running")
 
-        assert result is not None
-        assert result.status == "running"
+        assert result is None
 
     def test_get_expired_session_returns_none(self, tmp_path):
         """get() returns None for expired non-running session."""
@@ -352,8 +351,8 @@ class TestSessionStorageList:
         assert len(result) == 1
         assert result[0].session_id == "valid"
 
-    def test_list_includes_running_even_if_expired(self, tmp_path):
-        """list() includes running sessions even if past expires."""
+    def test_list_excludes_stale_running_session(self, tmp_path):
+        """list() does not keep crashed running records immortal."""
         path = tmp_path / "sessions.jsonl"
         storage = SessionStorage(str(path))
 
@@ -368,8 +367,7 @@ class TestSessionStorageList:
 
         result = storage.list()
 
-        assert len(result) == 1
-        assert result[0].session_id == "still_running"
+        assert result == []
 
     def test_list_sorted_by_created_descending(self, tmp_path):
         """list() sorts by created timestamp descending (newest first)."""

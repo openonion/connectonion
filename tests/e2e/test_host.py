@@ -75,6 +75,13 @@ class ASGITestClient:
     def get(self, path: str) -> "Response":
         return self._run(self._request("GET", path))
 
+    def get_admin(self, path: str) -> "Response":
+        return self._run(self._request(
+            "GET",
+            path,
+            headers=[[b"authorization", b"Bearer test-admin-key"]],
+        ))
+
     def post(self, path: str, json_data: dict = None) -> "Response":
         return self._run(self._request("POST", path, json_data))
 
@@ -83,13 +90,14 @@ class ASGITestClient:
         signed_data = create_signed_request(prompt)
         return self._run(self._request("POST", path, signed_data))
 
-    async def _request(self, method: str, path: str, body: dict = None) -> "Response":
+    async def _request(self, method: str, path: str, body: dict = None,
+                       headers=None) -> "Response":
         scope = {
             "type": "http",
             "method": method,
             "path": path,
             "query_string": b"",
-            "headers": [[b"content-type", b"application/json"]],
+            "headers": headers or [[b"content-type", b"application/json"]],
         }
 
         body_bytes = json.dumps(body).encode() if body else b""
@@ -148,10 +156,11 @@ class TestHostEndpoints:
         return factory
 
     @pytest.fixture
-    def app(self, create_mock_agent, tmp_path):
+    def app(self, create_mock_agent, tmp_path, monkeypatch):
         """Create test ASGI app."""
         from connectonion.network.host import create_app, SessionStorage
 
+        monkeypatch.setenv("OPENONION_API_KEY", "test-admin-key")
         storage = SessionStorage(str(tmp_path / ".co" / "session_results.jsonl"))
         return create_app(create_agent=create_mock_agent, storage=storage, trust="open", result_ttl=3600)
 
@@ -232,7 +241,7 @@ class TestHostEndpoints:
         create_response = client.post_signed("/input", "Hello")
         session_id = create_response.json()["session_id"]
 
-        response = client.get(f"/sessions/{session_id}")
+        response = client.get_admin(f"/sessions/{session_id}")
 
         assert response.status_code == 200
         data = response.json()
@@ -244,14 +253,14 @@ class TestHostEndpoints:
         session_id = create_response.json()["session_id"]
         partial_id = session_id[:8]
 
-        response = client.get(f"/sessions/{partial_id}")
+        response = client.get_admin(f"/sessions/{partial_id}")
 
         # Partial ID should return 404 - exact match required
         assert response.status_code == 404
 
     def test_get_session_not_found(self, client):
         """GET /sessions/{session_id} should return 404 for unknown session."""
-        response = client.get("/sessions/nonexistent")
+        response = client.get_admin("/sessions/nonexistent")
 
         assert response.status_code == 404
 
@@ -260,7 +269,7 @@ class TestHostEndpoints:
         create_response = client.post_signed("/input", "Hello")
         session_id = create_response.json()["session_id"]
 
-        response = client.get(f"/sessions/{session_id}")
+        response = client.get_admin(f"/sessions/{session_id}")
 
         data = response.json()
         assert "expires" in data
@@ -271,7 +280,7 @@ class TestHostEndpoints:
         create_response = client.post_signed("/input", "Hello")
         session_id = create_response.json()["session_id"]
 
-        response = client.get(f"/sessions/{session_id}")
+        response = client.get_admin(f"/sessions/{session_id}")
 
         data = response.json()
         assert "duration_ms" in data
@@ -283,7 +292,7 @@ class TestHostEndpoints:
         client.post_signed("/input", "Session 1")
         client.post_signed("/input", "Session 2")
 
-        response = client.get("/sessions")
+        response = client.get_admin("/sessions")
 
         assert response.status_code == 200
         data = response.json()
@@ -292,7 +301,7 @@ class TestHostEndpoints:
 
     def test_get_sessions_empty(self, client):
         """GET /sessions should return empty list if no sessions."""
-        response = client.get("/sessions")
+        response = client.get_admin("/sessions")
 
         assert response.status_code == 200
         assert response.json()["sessions"] == []
@@ -303,7 +312,7 @@ class TestHostEndpoints:
         time.sleep(0.01)  # Ensure different timestamps
         client.post_signed("/input", "Second")
 
-        response = client.get("/sessions")
+        response = client.get_admin("/sessions")
 
         sessions = response.json()["sessions"]
         assert len(sessions) >= 2
@@ -438,8 +447,8 @@ class TestSessionStorage:
 
         assert retrieved is None
 
-    def test_get_expired_running_session_still_returns(self, tmp_path):
-        """SessionStorage.get() should return running sessions even if expired."""
+    def test_get_expired_running_session_returns_none(self, tmp_path):
+        """SessionStorage.get() should expire stale running sessions."""
         from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
@@ -449,8 +458,7 @@ class TestSessionStorage:
 
         retrieved = storage.get("abc")
 
-        assert retrieved is not None
-        assert retrieved.session_id == "abc"
+        assert retrieved is None
 
     def test_list_excludes_expired_done_sessions(self, tmp_path):
         """SessionStorage.list() should exclude expired done sessions."""
@@ -466,8 +474,8 @@ class TestSessionStorage:
         assert len(sessions) == 1
         assert sessions[0].session_id == "valid"
 
-    def test_list_includes_expired_running_sessions(self, tmp_path):
-        """SessionStorage.list() should include running sessions even if expired."""
+    def test_list_excludes_expired_running_sessions(self, tmp_path):
+        """SessionStorage.list() should exclude stale running sessions."""
         from connectonion.network.host import SessionStorage, Session
 
         storage = SessionStorage(str(tmp_path / "session_results.jsonl"))
@@ -476,8 +484,7 @@ class TestSessionStorage:
 
         sessions = storage.list()
 
-        assert len(sessions) == 1
-        assert sessions[0].session_id == "running"
+        assert sessions == []
 
 
 class TestAgentAddress:

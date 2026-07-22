@@ -199,6 +199,7 @@ File Relationships:
                                     → raise ValueError or return
 """
 
+import inspect
 from typing import TYPE_CHECKING
 from pathlib import Path
 
@@ -340,6 +341,27 @@ def _set_mode(agent: 'Agent', mode: str) -> None:
         agent.io.send({'type': 'mode_changed', 'mode': mode, 'triggered_by': 'agent'})
 
 
+def _persist_trusted_mode(agent: 'Agent', mode: str) -> None:
+    """Persist an authenticated ordinary-mode change in owner-bound state."""
+    state = getattr(agent, '_trusted_server_state', None)
+    if isinstance(state, dict) and state.get('mode') == 'ulw':
+        from ..ulw import clear_ulw_state
+        clear_ulw_state(agent, mode)
+        return
+
+    agent._trusted_server_state = {'mode': mode}
+    bind = getattr(agent, '_bind_trusted_server_state', None)
+    if callable(bind):
+        bind()
+        return
+    session_id = agent.current_session.get('session_id')
+    if isinstance(session_id, str) and session_id:
+        agent._trusted_server_state_binding = (
+            getattr(agent, '_session_owner_address', None),
+            session_id,
+        )
+
+
 def matches_permission_pattern(tool_name: str, tool_args: dict, pattern: str) -> bool:
     """Check if tool call matches allowed pattern.
 
@@ -404,10 +426,25 @@ def check_approval(agent: 'Agent') -> None:
     Raises:
         ValueError: If tool rejected or blocked by mode
     """
+    # A signed mode change can arrive while a multi-tool LLM batch is already
+    # running. Drain it at every tool boundary so a Safe/Plan downgrade takes
+    # effect before the next side effect, not only before the next LLM iteration.
+    poll_mode_changes(agent)
+
+    pending = agent.current_session.get('pending_tool')
+    if pending and _get_mode(agent) == 'plan':
+        tool_name = pending['name']
+        if tool_name in DANGEROUS_TOOLS:
+            raise ValueError(
+                f"Tool '{tool_name}' is blocked in Plan Mode. "
+                "Use read-only tools to explore, write your plan with write_plan(), "
+                "then call exit_plan_and_implement() when ready for approval."
+            )
+        return
+
     # =================================================================
     # Check unified permissions from session
     # =================================================================
-    pending = agent.current_session.get('pending_tool')
     if pending:
         tool_name = pending['name']
         tool_args = pending['arguments']
@@ -467,11 +504,14 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     # Check if another plugin requested to skip approvals (e.g., ulw)
     # =================================================================
-    if agent.current_session.get('mode') == 'ulw':
+    from ..ulw import is_ulw_active
+
+    if is_ulw_active(agent):
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
-        if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+        if (hasattr(agent, 'logger') and agent.logger
+                and getattr(agent.logger, 'console', None)):
             agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'ulw mode')
         return
 
@@ -544,7 +584,25 @@ def check_approval(agent: 'Agent') -> None:
 
     # Checkpoint before blocking (enables reconnection recovery)
     if agent.storage:
-        agent.storage.checkpoint(agent.current_session)
+        checkpoint_state = (
+            getattr(agent, '_trusted_server_state', None)
+            if getattr(agent, '_session_id_authenticated', False)
+            else None
+        )
+        checkpoint = agent.storage.checkpoint
+        context = {
+            'owner_address': getattr(agent, '_session_owner_address', None),
+            'server_state': checkpoint_state,
+        }
+        try:
+            parameters = inspect.signature(checkpoint).parameters
+        except (TypeError, ValueError):
+            parameters = {}
+        if any(p.kind == inspect.Parameter.VAR_KEYWORD for p in parameters.values()):
+            supported = context
+        else:
+            supported = {key: value for key, value in context.items() if key in parameters}
+        checkpoint(agent.current_session, **supported)
 
     agent.io.send(approval_msg)
 
@@ -709,13 +767,26 @@ def poll_mode_changes(agent: 'Agent') -> None:
     if not agent.io:
         return
 
-    for msg in agent.io.receive_all('mode_change'):
+    receive_all = getattr(agent.io, 'receive_all', None)
+    if not callable(receive_all):
+        return
+
+    messages = receive_all('mode_change')
+    if not isinstance(messages, list):
+        return
+
+    for msg in messages:
+        if not isinstance(msg, dict):
+            continue
         new_mode = msg.get('mode')
         if new_mode in VALID_MODES:
             handle_mode_change(agent, new_mode)
         elif new_mode == 'ulw':
-            from ..ulw import handle_ulw_mode_change
-            handle_ulw_mode_change(agent, msg.get('turns'))
+            from ..ulw import clear_ulw_state, handle_ulw_mode_change
+            if getattr(agent, '_ulw_plugin_enabled', False):
+                handle_ulw_mode_change(agent, msg.get('turns'))
+            else:
+                clear_ulw_state(agent)
 
 
 @after_iteration
@@ -756,11 +827,13 @@ def handle_mode_change(agent: 'Agent', mode: str) -> None:
 
     old_mode = _get_mode(agent)
     if old_mode == mode:
+        _persist_trusted_mode(agent, mode)
         return  # No change
 
     # Clear skip_tool_approval when switching to a mode we handle
     agent.current_session.pop('skip_tool_approval', None)
 
+    _persist_trusted_mode(agent, mode)
     _set_mode(agent, mode)
     _log(agent, f"[cyan]Mode changed: {old_mode} → {mode}[/cyan]")
 

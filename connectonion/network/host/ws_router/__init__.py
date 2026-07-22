@@ -2,7 +2,7 @@
 Purpose: WebSocket message router package — single message-handling implementation shared by direct ASGI WebSocket and relay-routed paths
 LLM-Note:
   Dependencies: re-exports from .session | imported by [network/host/server.py, network/asgi/websocket.py, network/relay.py via session_handler partial] | tested by [tests/unit/test_asgi.py]
-  Data flow: send_msg/recv_msg adapter pair → run_ws_session → per-type dispatch → handle_connect / start_agent / inline branches | runtime input on existing running session → push_runtime_input + RUNTIME_INPUT_ACK | cleanup cancels forward + ping tasks
+  Data flow: send_msg/recv_msg adapter pair → run_ws_session → per-type dispatch → handle_connect / start_agent / inline branches | INPUT on an existing running session → retryable ERROR before replay claim | cleanup cancels forward + ping tasks
   State/Effects: no module-level state | session-scoped state lives inside run_ws_session (conn dict + active_io + forward_task + ping_task local vars)
   Integration: exposes run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, ...) | the only public API of this package; callers should not import private modules directly
   Performance: O(1) per-message dispatch | one forward_task + one ping_task per session

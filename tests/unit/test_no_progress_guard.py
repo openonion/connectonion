@@ -50,6 +50,15 @@ class TestLastToolSignature:
     def test_none_when_no_tool_calls(self):
         assert _last_tool_signature([{'role': 'user', 'content': 'hi'}]) is None
 
+    def test_final_text_does_not_reuse_previous_tool_call(self):
+        messages = [
+            _assistant_call('ping', '{}'),
+            {'role': 'tool', 'content': 'pong', 'tool_call_id': 'irrelevant'},
+            {'role': 'assistant', 'content': 'DONE'},
+        ]
+
+        assert _last_tool_signature(messages) is None
+
 
 class TestNoProgressGuard:
     def test_stops_after_repeated_identical_calls(self):

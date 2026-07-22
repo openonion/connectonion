@@ -256,11 +256,17 @@ Deploy with uvicorn, gunicorn, or any ASGI server:
 python agent.py
 
 # Uvicorn
-uvicorn agent:app --workers 4
+uvicorn agent:app --workers 1
 
 # Gunicorn
-gunicorn agent:app -w 4 -k uvicorn.workers.UvicornWorker
+gunicorn agent:app -w 1 -k uvicorn.workers.UvicornWorker
 ```
+
+One worker is a hard requirement for the built-in session backend. Replay
+claims, per-session locks, ULW leases, and active WebSocket state are
+process-local. `host()` fails fast for `workers != 1`; external ASGI servers
+must also remain at one worker. Multi-process deployment is unsupported unless
+you provide shared transactional state and sticky WebSocket routing.
 
 For full API reference, see [host()](host.md).
 

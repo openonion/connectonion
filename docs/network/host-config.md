@@ -156,8 +156,7 @@ blacklist: ./security/blocked-users.txt
 # Default: 8000
 port: 8000
 
-# Number of worker processes (OS-level parallelism)
-# Default: 1
+# Hosted session state is process-local; exactly one worker is required
 workers: 1
 
 # How long to keep session results (seconds)
@@ -542,7 +541,7 @@ examples:
 
 trust: strict
 port: 8000
-workers: 4
+workers: 1  # Required for session locks, replay claims, and WebSockets
 result_ttl: 3600  # 1 hour
 ```
 
@@ -575,7 +574,7 @@ trust:
   default: ask  # Use LLM for unknown users
 
 port: 8000
-workers: 2
+workers: 1  # Multi-process hosting is unsupported with built-in state
 ```
 
 ### Development
@@ -602,7 +601,7 @@ You can always override config settings in code:
 # Override specific settings
 host(create_agent,
      port=9000,           # Override config
-     workers=2,           # Override config
+     workers=1,           # Required for process-local hosted session state
      reload=True)         # Override config
 
 # Config file still used for other settings (summary, examples, trust)
