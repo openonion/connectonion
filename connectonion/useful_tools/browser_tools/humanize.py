@@ -10,7 +10,10 @@ LLM-Note:
 """
 
 import math
+import platform
 import random
+import shutil
+import subprocess
 import time
 from weakref import WeakKeyDictionary
 
@@ -202,6 +205,49 @@ def _segments(text):
     return [(ime, "".join(chars)) for ime, chars in runs]
 
 
+def _clipboard_cmds():
+    """(set_argv, get_argv) for the OS clipboard, or None if no tool is available. A real
+    user pastes Chinese far more than they hand-type it, and paste is a fully trusted event
+    with none of the IME path's residual tells (see type_text)."""
+    system = platform.system()
+    if system == "Darwin":
+        return (["pbcopy"], ["pbpaste"])
+    if system == "Windows":
+        return (["clip"], ["powershell", "-NoProfile", "-Command", "Get-Clipboard"])
+    if shutil.which("xclip"):
+        return (["xclip", "-selection", "clipboard"],
+                ["xclip", "-selection", "clipboard", "-o"])
+    if shutil.which("xsel"):
+        return (["xsel", "--clipboard", "--input"], ["xsel", "--clipboard", "--output"])
+    return None
+
+
+def _active_text_len(page):
+    return page.evaluate(
+        "() => { const e = document.activeElement;"
+        " return e ? ((e.value != null ? e.value : e.textContent) || '').length : 0; }")
+
+
+def _paste(page, text):
+    """Put `text` on the OS clipboard and Ctrl/Cmd+V it into the focused field, then restore
+    the user's clipboard. Returns True only if the field actually took the paste — some
+    inputs (password fields, paste-blocked forms) reject it, and the caller then falls back
+    to the IME path."""
+    cmds = _clipboard_cmds()
+    if cmds is None:
+        return False
+    set_argv, get_argv = cmds
+    saved = subprocess.run(get_argv, capture_output=True).stdout
+    subprocess.run(set_argv, input=text.encode())
+    before = _active_text_len(page)
+    modifier = "Meta" if platform.system() == "Darwin" else "Control"
+    page.keyboard.press(f"{modifier}+v")
+    _pause(page, 0.12, 0.4)
+    grew = _active_text_len(page) >= before + len(text)
+    subprocess.run(set_argv, input=saved)  # restore the user's clipboard
+    return grew
+
+
 def _type_ime(page, run):
     """Type a CJK run through the browser's real IME path via CDP: each character is shown
     composing (underlined) and then committed, firing compositionstart/update/end and
@@ -227,11 +273,13 @@ def _type_ime(page, run):
 
 def type_text(page, text):
     """Type with human cadence. Latin text goes key-by-key (most land quickly, word
-    boundaries pause, an occasional key hesitates). CJK runs go through the IME
-    composition path so they look like real pinyin/romaji input, not a bare insertText."""
+    boundaries pause, an occasional key hesitates). CJK runs are PASTED (a trusted paste
+    event — how people usually enter Chinese, and free of the IME path's zero-keydown /
+    untrusted-compositionend tells); if the field blocks paste we fall back to the IME."""
     for is_ime, run in _segments(text):
         if is_ime:
-            _type_ime(page, run)
+            if not _paste(page, run):
+                _type_ime(page, run)
             continue
         for ch in run:
             page.keyboard.type(ch)

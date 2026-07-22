@@ -149,17 +149,18 @@ IME_PAGE = (
 )
 INSTALL_IME_RECORDER = """() => {
     const r=document.getElementById('rec'), box=document.getElementById('box');
-    r.dataset.kd=0; r.dataset.cs=0; r.dataset.it=''; r.dataset.tr='';
+    r.dataset.kd=0; r.dataset.cs=0; r.dataset.paste=0; r.dataset.it=''; r.dataset.tr='';
     box.addEventListener('keydown', () => r.dataset.kd=(+r.dataset.kd)+1);
     box.addEventListener('compositionstart', e => { r.dataset.cs=(+r.dataset.cs)+1; r.dataset.tr+='cs='+e.isTrusted+' '; });
+    box.addEventListener('paste', e => { r.dataset.paste=(+r.dataset.paste)+1; r.dataset.tr+='paste='+e.isTrusted+' '; });
     box.addEventListener('input', e => r.dataset.it += (e.inputType||'?')+' ');
 }"""
 
 
-def test_humanized_cjk_typing_uses_ime_composition(stealth_browser):
-    """Typing CJK must go through the IME composition path (real compositionstart +
-    insertCompositionText), not the bare insertText a bot emits. Latin in the same string
-    still types key-by-key."""
+def test_humanized_cjk_typing_uses_trusted_paste_or_ime(stealth_browser):
+    """CJK must be entered by a TRUSTED mechanism — a real paste (preferred: insertFromPaste,
+    what people usually do for Chinese) or, if paste is blocked, the IME composition path.
+    Never the bare insertText a bot emits. Latin in the same string still types key-by-key."""
     b = stealth_browser
     b.go_to("data:text/html," + urllib.parse.quote(IME_PAGE), purpose="ime test", who="e2e")
     _eval(b, INSTALL_IME_RECORDER)
@@ -169,9 +170,12 @@ def test_humanized_cjk_typing_uses_ime_composition(stealth_browser):
     d = _eval(b, "() => ({v: document.getElementById('box').value, ...document.getElementById('rec').dataset})")
     assert d["v"] == "hi 你好世界", f"typed text wrong: {d['v']!r}"
     assert int(d.get("kd", 0)) >= 3, "Latin part should still emit real keystrokes"
-    assert int(d.get("cs", 0)) >= 3, "each CJK char should start a composition"
-    assert "insertCompositionText" in d.get("it", ""), "CJK should commit via composition, not insertText"
-    assert "cs=true" in d.get("tr", ""), "compositionstart must be a trusted event"
+
+    pasted = int(d.get("paste", 0)) >= 1 and "insertFromPaste" in d.get("it", "")
+    composed = int(d.get("cs", 0)) >= 3 and "insertCompositionText" in d.get("it", "")
+    assert pasted or composed, f"CJK not via paste or IME: {d.get('it')!r}"
+    # Whichever path ran, its entry event must be trusted.
+    assert "paste=true" in d.get("tr", "") or "cs=true" in d.get("tr", "")
 
 
 # ---------------------------------------------------------------------------
