@@ -22,58 +22,103 @@ _cursor = WeakKeyDictionary()
 _cdp = WeakKeyDictionary()
 
 
-def _bezier(start, end, steps):
-    """Cubic Bézier from start to end with two random control points, sampled at `steps`
-    points. The control points bow the path sideways off the straight line, giving the
-    curvature a hand produces instead of a ruler-straight segment a detector flags."""
-    (x0, y0), (x3, y3) = start, end
-    dx, dy = x3 - x0, y3 - y0
+# A per-page "persona": one real user has one hand and one input device for a whole
+# session, so their timing scale and scroll device are constant within a page but differ
+# between pages/runs. This defeats a detector that would fingerprint the tool by its fixed
+# timing envelope across every session.
+_personas = WeakKeyDictionary()
+
+
+def _persona(page):
+    p = _personas.get(page)
+    if p is None:
+        p = {
+            "speed": random.lognormvariate(0.0, 0.22),  # overall pace multiplier
+            "wheel_notch": random.random() < 0.6,       # 60% wheel mouse, 40% trackpad
+        }
+        _personas[page] = p
+    return p
+
+
+def _pause(page, base, sigma=0.45):
+    """Sleep a right-skewed (log-normal) time around `base` seconds, scaled by the page's
+    persona. Human inter-event gaps have a fat right tail, not the flat plateau uniform()
+    gives — and uniform's fixed min/max is itself a cross-session fingerprint."""
+    time.sleep(max(0.004, base * random.lognormvariate(0.0, sigma) * _persona(page)["speed"]))
+
+
+def _ease(u):
+    """Minimum-jerk position profile (smootherstep): slow → fast → slow. Sampling Bézier t
+    at _ease(i/steps) makes the cursor accelerate out of the start and decelerate into the
+    target — a bell velocity curve, not the constant speed equal-t sampling would give."""
+    return u * u * u * (u * (u * 6 - 15) + 10)
+
+
+def _control_points(start, end):
+    """Two Bézier control points bowed off the straight line so the path curves like a
+    hand's rather than running ruler-straight."""
+    (x0, y0), (x1, y1) = start, end
+    dx, dy = x1 - x0, y1 - y0
     dist = math.hypot(dx, dy) or 1.0
-    px, py = -dy / dist, dx / dist  # unit vector perpendicular to the travel direction
+    nx, ny = -dy / dist, dx / dist  # unit normal to the direction of travel
 
     def control(along):
         off = random.uniform(-0.22, 0.22) * dist
-        return x0 + dx * along + px * off, y0 + dy * along + py * off
+        return x0 + dx * along + nx * off, y0 + dy * along + ny * off
 
-    c1 = control(random.uniform(0.2, 0.4))
-    c2 = control(random.uniform(0.6, 0.8))
+    return control(random.uniform(0.2, 0.4)), control(random.uniform(0.6, 0.8))
 
-    points = []
-    for i in range(1, steps + 1):
-        t = i / steps
-        mt = 1 - t
-        x = mt ** 3 * x0 + 3 * mt ** 2 * t * c1[0] + 3 * mt * t ** 2 * c2[0] + t ** 3 * x3
-        y = mt ** 3 * y0 + 3 * mt ** 2 * t * c1[1] + 3 * mt * t ** 2 * c2[1] + t ** 3 * y3
-        points.append((x, y))
-    return points
+
+def _cubic(p0, c1, c2, p3, t):
+    mt = 1 - t
+    return (
+        mt ** 3 * p0[0] + 3 * mt ** 2 * t * c1[0] + 3 * mt * t ** 2 * c2[0] + t ** 3 * p3[0],
+        mt ** 3 * p0[1] + 3 * mt ** 2 * t * c1[1] + 3 * mt * t ** 2 * c2[1] + t ** 3 * p3[1],
+    )
 
 
 def move(page, x, y):
-    """Move the cursor to (x, y) along a curved, variable-speed path, emitting a real
-    mousemove event at every step."""
+    """Move the cursor to (x, y) along a curved path with a human velocity profile
+    (accelerate out, decelerate in) and a small overshoot-and-settle at the end, emitting a
+    real mousemove event at every step."""
     start = _cursor.get(page)
     if start is None:
-        # First move of the session: begin a little off the target so there is still a
-        # short trajectory, never an instant appearance on the exact pixel.
-        start = (x + random.uniform(-140, 140), y + random.uniform(-140, 140))
+        # First move of the session: start well off the target so there is a real approach
+        # trajectory, never an instant appearance on the exact pixel.
+        start = (x + random.uniform(-260, 260), y + random.uniform(-200, 200))
 
     dist = math.hypot(x - start[0], y - start[1])
-    steps = max(8, min(40, int(dist / 12)))
-    for px, py in _bezier(start, (x, y), steps):
+    steps = max(10, min(48, int(dist / 10)))
+    c1, c2 = _control_points(start, (x, y))
+    for i in range(1, steps + 1):
+        px, py = _cubic(start, c1, c2, (x, y), _ease(i / steps))
         page.mouse.move(px, py)
-        time.sleep(random.uniform(0.006, 0.02))
+        _pause(page, 0.011, 0.5)
+    _overshoot(page, x, y)
     _cursor[page] = (x, y)
 
 
+def _overshoot(page, x, y):
+    """Most human pointer landings overshoot by a few pixels and correct back — a tiny
+    end submovement a straight glide-to-target never has."""
+    if random.random() < 0.65:
+        page.mouse.move(x + random.gauss(0, 3), y + random.gauss(0, 3))
+        _pause(page, 0.03, 0.4)
+        page.mouse.move(x, y)
+        _pause(page, 0.02, 0.4)
+
+
 def _point_in_box(box):
-    """A point inside the element but off dead-center — humans don't hit the exact
-    centroid. Kept within the inner 60% so we never fall outside the element."""
+    """A point inside the element, gaussian-clustered near the centre — human click
+    positions form a radial gaussian around the target, not a uniform rectangle. Clamped
+    just inside the edges so we never fall outside the element."""
     cx = box["x"] + box["width"] / 2
     cy = box["y"] + box["height"] / 2
-    return (
-        cx + random.uniform(-0.3, 0.3) * box["width"],
-        cy + random.uniform(-0.3, 0.3) * box["height"],
-    )
+    x = cx + random.gauss(0, box["width"] * 0.15)
+    y = cy + random.gauss(0, box["height"] * 0.15)
+    x = min(max(x, box["x"] + 1), box["x"] + box["width"] - 1)
+    y = min(max(y, box["y"] + 1), box["y"] + box["height"] - 1)
+    return x, y
 
 
 def click(page, x, y, button="left", clicks=1, box=None):
@@ -82,15 +127,15 @@ def click(page, x, y, button="left", clicks=1, box=None):
     if box is not None:
         x, y = _point_in_box(box)
     move(page, x, y)
-    time.sleep(random.uniform(0.03, 0.12))  # settle before pressing
+    _pause(page, 0.06, 0.5)  # settle before pressing
     for i in range(clicks):
         # click_count must increment (1, 2, ...) or Chromium never synthesizes a dblclick
         # from CDP-injected input — two count-1 presses are just two single clicks.
         page.mouse.down(button=button, click_count=i + 1)
-        time.sleep(random.uniform(0.04, 0.11))  # down→up dwell
+        _pause(page, 0.06, 0.35)  # down→up dwell
         page.mouse.up(button=button, click_count=i + 1)
         if i + 1 < clicks:
-            time.sleep(random.uniform(0.06, 0.12))  # inter-click gap (double click)
+            _pause(page, 0.08, 0.3)  # inter-click gap (double click)
     _cursor[page] = (x, y)
 
 
@@ -100,21 +145,34 @@ def double_click(page, x, y, box=None):
 
 
 def scroll(page, total_dy):
-    """Human wheel scroll: cover `total_dy` pixels as many small mouse-wheel ticks with
-    variable size and cadence (plus the odd longer reading pause), so the page emits real
-    `wheel` events and `scrollY` moves incrementally — instead of the instant programmatic
-    `scrollBy(0, 1000)` jump a detector flags (scrollY changes with zero wheel events)."""
-    remaining = int(total_dy)
-    sign = 1 if remaining >= 0 else -1
+    """Human wheel scroll: emit real `wheel` events sized like the page's scroll device (a
+    wheel mouse fires near-constant ~120px notches; a trackpad fires many small deltas),
+    with variable cadence and a small overshoot-and-correct at the end — instead of the
+    instant programmatic `scrollBy(0, 1000)` jump a detector flags (scrollY changes with
+    zero wheel events)."""
+    p = _persona(page)
+    lo, hi = (100, 130) if p["wheel_notch"] else (8, 28)
+    sign = 1 if total_dy >= 0 else -1
+    target = int(total_dy)
+    # Overshoot a little past the target then correct back — net displacement == target,
+    # the way a human stops short of or past a mark and nudges into place.
+    overshoot = sign * random.randint(lo, hi) if target and random.random() < 0.6 else 0
+    _wheel(page, target + overshoot, sign, lo, hi)
+    if overshoot:
+        _wheel(page, -overshoot, -sign, lo, hi)
+
+
+def _wheel(page, amount, sign, lo, hi):
+    remaining = amount
     while remaining != 0:
-        step = sign * random.randint(90, 170)
+        step = sign * random.randint(lo, hi)
         if abs(step) > abs(remaining):
-            step = remaining  # final tick lands exactly on the target
+            step = remaining  # last tick lands exactly
         page.mouse.wheel(0, step)
         remaining -= step
-        time.sleep(random.uniform(0.03, 0.10))
-        if random.random() < 0.1:
-            time.sleep(random.uniform(0.2, 0.5))  # occasional reading pause
+        _pause(page, 0.045, 0.4)
+        if random.random() < 0.08:
+            _pause(page, 0.3, 0.5)  # occasional reading pause
 
 
 def _needs_ime(ch):
@@ -156,16 +214,15 @@ def _type_ime(page, run):
     for ch in run:
         session.send("Input.imeSetComposition",
                      {"text": ch, "selectionStart": 1, "selectionEnd": 1})
-        time.sleep(random.uniform(0.06, 0.16))   # candidate appears / gets chosen
+        _pause(page, 0.10, 0.4)   # candidate appears / gets chosen
         # insertText commits the candidate: fires compositionend + inputType
         # insertCompositionText. (compositionstart is a trusted event; compositionend from
         # this commit is not — a minor Chrome/CDP quirk, still far better than the bare
         # insertText with zero composition events that keyboard.type would emit.)
         session.send("Input.insertText", {"text": ch})
-        delay = random.uniform(0.08, 0.20)
+        _pause(page, 0.12, 0.5)
         if random.random() < 0.05:
-            delay += random.uniform(0.2, 0.5)    # occasional hesitation
-        time.sleep(delay)
+            _pause(page, 0.3, 0.5)   # occasional hesitation
 
 
 def type_text(page, text):
@@ -178,9 +235,8 @@ def type_text(page, text):
             continue
         for ch in run:
             page.keyboard.type(ch)
-            delay = random.uniform(0.04, 0.14)
+            _pause(page, 0.09, 0.5)  # inter-key gap (log-normal, persona-scaled)
             if ch in " \t\n":
-                delay += random.uniform(0.03, 0.12)  # word-boundary pause
+                _pause(page, 0.06, 0.5)  # word-boundary pause
             if random.random() < 0.03:
-                delay += random.uniform(0.2, 0.5)  # occasional hesitation
-            time.sleep(delay)
+                _pause(page, 0.3, 0.5)  # occasional hesitation

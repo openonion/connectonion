@@ -135,11 +135,14 @@ def test_scroll_emits_many_small_wheel_ticks_summing_to_target():
     assert sum(dys) == 1000, "ticks sum to the requested distance"
 
 
-def test_scroll_up_uses_negative_deltas():
+def test_scroll_up_nets_to_negative_target():
     page = FakePage()
     humanize.scroll(page, -600)
     dys = [dy for (kind, dx, dy) in page.log if kind == "wheel"]
-    assert dys and all(dy < 0 for dy in dys) and sum(dys) == -600
+    # Net displacement is the target; most ticks go up, but an overshoot-correct can add a
+    # small downward nudge at the end.
+    assert sum(dys) == -600
+    assert sum(1 for dy in dys if dy < 0) > sum(1 for dy in dys if dy > 0)
 
 
 def test_needs_ime_flags_cjk_not_latin():
