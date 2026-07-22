@@ -310,6 +310,21 @@ class TestCodexErrors:
         assert "websocket spam" not in result["error"]
 
     @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    def test_turn_failed_with_nonstandard_error_shape(self, _which):
+        # A malformed/other-version turn.failed (error as a bare string) must
+        # not crash the tool — it must never raise to the agent loop.
+        events = _jsonl(
+            {"type": "thread.started", "thread_id": THREAD_ID},
+            {"type": "turn.failed", "error": "plain string error"},
+        )
+        popen, _ = _popen_factory(stdout_lines=events, returncode=1)
+        with patch.object(codex_module.subprocess, "Popen", popen):
+            result = json.loads(codex("task"))
+
+        assert result["exit_code"] == 1
+        assert "plain string error" in result["error"]
+
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
     def test_non_json_lines_ignored(self, _which):
         lines = ["not json\n"] + _jsonl(*SUCCESS_EVENTS) + ["garbage\n"]
         popen, _ = _popen_factory(stdout_lines=lines)

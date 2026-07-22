@@ -22,13 +22,17 @@ Usage:
     # plan -> implement -> fix review comments, all with full context.
 
 Notes:
-    - Requires the `codex` CLI installed and authenticated.
+    - Requires the `codex` CLI installed and authenticated (backend="cli"),
+      or the codex-acp adapter (backend="acp", see codex_acp.py).
     - Always runs with --json internally: the thread.started event is the
       only reliable source of the session id, and JSONL lets us stream each
       of Codex's inner steps (command runs, file edits, MCP tool calls, web
       searches) to a watching frontend via agent.io as they happen.
-    - Codex exec mode has no interactive approval, so the sandbox level is
-      the only safety knob. Default is read-only; escalation is explicit.
+    - Default sandbox is workspace-write, gated by approval: write access is
+      authorized once before launch (manual → asked via agent.io, auto →
+      trusted) since codex exec has no interactive approval of its own. With
+      no frontend to ask, a write sandbox downgrades to read-only rather than
+      escalating silently. The acp backend approves per action instead.
 """
 
 import json
@@ -104,7 +108,12 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
         cmd += ["--model", model]
     cmd.append(prompt)
 
-    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    try:
+        # errors="replace": never let a stray non-UTF-8 byte crash the read loop.
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                text=True, encoding="utf-8", errors="replace")
+    except OSError as e:
+        return _envelope(session_id, error=f"failed to launch codex: {e}")
 
     # Drain stderr in a thread so a full stderr pipe can't deadlock stdout reads.
     stderr_chunks = []
@@ -133,7 +142,9 @@ def codex(prompt: str, session_id: str = "", cwd: str = "",
             elif etype == "turn.completed":
                 usage = event.get("usage", {})
             elif etype == "turn.failed":
-                turn_error = event.get("error", {}).get("message", "") or turn_error
+                err = event.get("error")
+                msg = err.get("message", "") if isinstance(err, dict) else (str(err) if err else "")
+                turn_error = msg or turn_error
             elif etype == "error":
                 turn_error = event.get("message", "") or turn_error
         proc.wait()

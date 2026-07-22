@@ -38,8 +38,10 @@ def run_codex_acp(prompt, session_id="", cwd="", sandbox="workspace-write",
     chunks = []
 
     def on_event(event):
-        kind = event.get("acp_update", "")
-        if kind in ("agent_message_chunk", "agent_thought_chunk"):
+        # Only the assistant's message is the result; agent_thought_chunk is
+        # reasoning and must NOT leak into last_message (it is still streamed
+        # to the frontend below for display).
+        if event.get("acp_update") == "agent_message_chunk":
             chunks.append(event.get("text", ""))
         _forward_acp(agent, event)
 
@@ -187,7 +189,12 @@ class ACPClient:
                 message = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            self._dispatch(message)
+            # A raised callback (on_event/on_permission) must not kill the reader
+            # thread — that would strand every pending request until it times out.
+            try:
+                self._dispatch(message)
+            except Exception:
+                continue
 
     def _dispatch(self, message):
         if "method" not in message and "id" in message:      # response to our request
@@ -205,7 +212,13 @@ class ACPClient:
 
     def _handle_server_request(self, req_id, method, params):
         if method == "session/request_permission":
-            option_id = self.on_permission(params.get("toolCall", {}), params.get("options", []))
+            options = params.get("options", [])
+            try:
+                option_id = self.on_permission(params.get("toolCall", {}), options)
+            except Exception:
+                # Never leave the agent's permission request unanswered (it would
+                # hang the turn). On handler failure, fail safe: deny.
+                option_id = _option_id(options, "reject")
             self._send({"jsonrpc": "2.0", "id": req_id,
                         "result": {"outcome": {"outcome": "selected", "optionId": option_id}}})
         else:

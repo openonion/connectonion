@@ -52,6 +52,7 @@ class FakeACPClient:
     def prompt(self, session_id, text, timeout=600):
         self.calls.append(("prompt", session_id, text))
         self.on_event({"acp_update": "agent_message_chunk", "text": "Hello "})
+        self.on_event({"acp_update": "agent_thought_chunk", "text": "(thinking hard)"})
         self.on_event({"acp_update": "tool_call", "tool_kind": "execute", "title": "run pytest"})
         self.permission_result = self.on_permission({"title": "run pytest"}, ALLOW_REJECT)
         self.on_event({"acp_update": "agent_message_chunk", "text": "world"})
@@ -110,6 +111,15 @@ class TestRunCodexAcp:
         assert "agent_message_chunk" in types
         assert "tool_call" in types
 
+    def test_thought_chunk_excluded_from_message_but_streamed(self):
+        # Reasoning must not leak into last_message, but is still shown live.
+        agent = _Agent(_IO())
+        result = _run(prompt="fix", approval="auto", agent=agent)
+
+        assert result["last_message"] == "Hello world"        # no "(thinking hard)"
+        streamed = [d["codex_type"] for et, d in agent.io.events if et == "codex_event"]
+        assert "agent_thought_chunk" in streamed              # but was streamed
+
     def test_missing_binary_errors(self):
         with patch.object(acp, "_base_command", return_value=None):
             result = json.loads(acp.run_codex_acp("fix"))
@@ -137,6 +147,29 @@ class TestAcpPermission:
     def test_manual_without_io_denies(self):
         result = acp._decide_permission({"title": "x"}, ALLOW_REJECT, "manual", agent=None)
         assert result == "reject-1"
+
+    def test_permission_handler_exception_fails_safe_to_deny(self):
+        # If on_permission raises, the client must still answer (deny) so the
+        # agent's request isn't left hanging until timeout.
+        sent = []
+
+        class _Stdin:
+            def write(self, s): sent.append(s)
+            def flush(self): pass
+
+        def boom(tool_call, options):
+            raise RuntimeError("handler blew up")
+
+        client = acp.ACPClient(command=["x"], on_permission=boom)
+        client.proc = type("P", (), {"stdin": _Stdin()})()
+        client._handle_server_request(
+            7, "session/request_permission",
+            {"toolCall": {"title": "rm -rf"}, "options": ALLOW_REJECT},
+        )
+
+        reply = json.loads(sent[0])
+        assert reply["id"] == 7
+        assert reply["result"]["outcome"]["optionId"] == "reject-1"
 
 
 class TestPickOption:
