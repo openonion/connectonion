@@ -6,6 +6,7 @@ Connect and collaborate between agents with automatic reliability and recovery.
 
 - [host.md](host.md) - Make agents network-accessible with `host()`
 - [connect.md](connect.md) - Connect to remote agents with `connect()`
+- [remote-call.md](remote-call.md) - Run a remote agent's tools directly with `remote.call()`, gated by the host.yaml whitelist
 - [io.md](io.md) - Stream events and communicate with clients
 - [session-reconnect.md](session-reconnect.md) - WebSocket reconnection and session recovery
 
