@@ -6,11 +6,18 @@ Tests cover:
 - Error paths: missing CLI, timeout, bad sandbox, non-zero exit
 """
 
+import importlib
 import json
 import subprocess
 from unittest.mock import patch, MagicMock
 
 from connectonion.useful_tools.codex import codex
+
+# The codex function shadows its own module in the package namespace
+# (useful_tools.codex is the function after `from .codex import codex`),
+# which breaks string-based patch targets on Python 3.10. Patch through
+# the module object instead.
+codex_module = importlib.import_module("connectonion.useful_tools.codex")
 
 
 def _jsonl(*events):
@@ -33,8 +40,8 @@ SUCCESS_STDOUT = _jsonl(
 
 
 class TestCodexSuccess:
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
-    @patch("connectonion.useful_tools.codex.subprocess.run")
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.subprocess, "run")
     def test_returns_session_id_and_message(self, mock_run, _which):
         mock_run.return_value = _completed_run(stdout=SUCCESS_STDOUT)
 
@@ -48,8 +55,8 @@ class TestCodexSuccess:
         assert result["resumed"] is False
         assert "error" not in result
 
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
-    @patch("connectonion.useful_tools.codex.subprocess.run")
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.subprocess, "run")
     def test_builds_exec_command_with_json_and_sandbox(self, mock_run, _which):
         mock_run.return_value = _completed_run(stdout=SUCCESS_STDOUT)
 
@@ -61,8 +68,8 @@ class TestCodexSuccess:
         assert cmd[cmd.index("--sandbox") + 1] == "read-only"
         assert cmd[-1] == "do a task"
 
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
-    @patch("connectonion.useful_tools.codex.subprocess.run")
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.subprocess, "run")
     def test_cwd_model_and_sandbox_flags(self, mock_run, _which):
         mock_run.return_value = _completed_run(stdout=SUCCESS_STDOUT)
 
@@ -75,8 +82,8 @@ class TestCodexSuccess:
 
 
 class TestCodexResume:
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
-    @patch("connectonion.useful_tools.codex.subprocess.run")
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.subprocess, "run")
     def test_resume_uses_resume_subcommand(self, mock_run, _which):
         mock_run.return_value = _completed_run(stdout=SUCCESS_STDOUT)
 
@@ -85,8 +92,8 @@ class TestCodexResume:
         cmd = mock_run.call_args[0][0]
         assert cmd[:4] == ["codex", "exec", "resume", THREAD_ID]
 
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
-    @patch("connectonion.useful_tools.codex.subprocess.run")
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.subprocess, "run")
     def test_resumed_true_when_same_thread_id(self, mock_run, _which):
         mock_run.return_value = _completed_run(stdout=SUCCESS_STDOUT)
 
@@ -95,8 +102,8 @@ class TestCodexResume:
         assert result["resumed"] is True
         assert result["session_id"] == THREAD_ID
 
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
-    @patch("connectonion.useful_tools.codex.subprocess.run")
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.subprocess, "run")
     def test_silent_new_thread_detected(self, mock_run, _which):
         # Codex silently starts a new thread when resuming an ephemeral session
         new_thread = _jsonl(
@@ -113,25 +120,25 @@ class TestCodexResume:
 
 
 class TestCodexErrors:
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value=None)
+    @patch.object(codex_module.shutil, "which", return_value=None)
     def test_missing_cli(self, _which):
         result = json.loads(codex("task"))
         assert "codex CLI not found" in result["error"]
 
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
     def test_invalid_sandbox(self, _which):
         result = json.loads(codex("task", sandbox="yolo"))
         assert "Invalid sandbox" in result["error"]
 
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
-    @patch("connectonion.useful_tools.codex.subprocess.run",
-           side_effect=subprocess.TimeoutExpired(cmd="codex", timeout=5))
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.subprocess, "run",
+                  side_effect=subprocess.TimeoutExpired(cmd="codex", timeout=5))
     def test_timeout(self, _run, _which):
         result = json.loads(codex("task", timeout=5))
         assert "timed out after 5 seconds" in result["error"]
 
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
-    @patch("connectonion.useful_tools.codex.subprocess.run")
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.subprocess, "run")
     def test_nonzero_exit_includes_stderr(self, mock_run, _which):
         mock_run.return_value = _completed_run(stderr="401 Unauthorized", returncode=1)
 
@@ -140,8 +147,8 @@ class TestCodexErrors:
         assert result["exit_code"] == 1
         assert "401 Unauthorized" in result["error"]
 
-    @patch("connectonion.useful_tools.codex.shutil.which", return_value="/usr/bin/codex")
-    @patch("connectonion.useful_tools.codex.subprocess.run")
+    @patch.object(codex_module.shutil, "which", return_value="/usr/bin/codex")
+    @patch.object(codex_module.subprocess, "run")
     def test_non_json_lines_ignored(self, mock_run, _which):
         stdout = "not json\n" + SUCCESS_STDOUT + "\ngarbage"
         mock_run.return_value = _completed_run(stdout=stdout)
