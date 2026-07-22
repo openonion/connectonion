@@ -581,7 +581,9 @@ ws.onmessage = (event) => {
 | ATTACH | Client → Server | Authenticate + resume existing session |
 | CONNECTED | Server → Client | Session info (session_id, status) |
 | INPUT | Client → Server | Send prompt (no auth needed) |
+| EXEC | Client → Server | Run one tool directly, no LLM |
 | OUTPUT | Server → Client | Final result + session data |
+| EXEC_RESULT | Server → Client | Result of an EXEC |
 | PING | Server → Client | Keep-alive (every 30s) |
 | PONG | Client → Server | Acknowledge keep-alive |
 | tool_call | Server → Client | Tool started |
@@ -590,6 +592,15 @@ ws.onmessage = (event) => {
 | ask_user | Server → Client | Agent needs input |
 | approval_needed | Server → Client | Tool approval required |
 | ERROR | Server → Client | Error message |
+
+### Direct tool execution (EXEC)
+
+Besides the LLM loop, a hosted agent exposes a **direct execution** fast path:
+clients can run one registered tool with no LLM via `EXEC` / `EXEC_RESULT`
+(`remote.call` in Python, `co call` from the shell). It's gated by the same
+`.co/host.yaml` `permissions` whitelist the LLM approval flow uses — nothing to
+enable, and only whitelisted commands run. See
+[remote-call.md](remote-call.md).
 
 ### Session Recovery
 
