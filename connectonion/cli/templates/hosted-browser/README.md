@@ -51,6 +51,31 @@ your local login with the browser's `save_state` tool and pass the file via
 `BrowserAutomation(seed_state=...)` from your deploy secret store — never
 commit it.
 
+## Drive it directly (no LLM): `remote.call`
+
+Sometimes you don't want the agent to *think* — you just want to run a browser
+step and see the result, like a remote command line. `host(..., exec_tools=[...])`
+(set in `agent.py`) exposes a curated set of tools for direct execution:
+
+```python
+from connectonion import connect
+
+remote = connect("0x...", keys=my_keys)
+
+# Run one tool, get the raw result straight back — no reasoning, no history.
+remote.call("go_to", url="https://example.com")
+shot = remote.call("take_screenshot")
+if shot.images:               # base64 data URLs extracted from the output
+    open("page.png", "wb").write(base64.b64decode(shot.images[0].split(",")[1]))
+```
+
+`remote.call(tool, **args)` returns an `ExecResult(text, status, duration_ms,
+error)`: `.ok` is True on success and `.images` pulls any base64 screenshots out
+of the output. This runs over the same authenticated WebSocket as `input()`, so
+relay discovery and trust still apply — only tools listed in `EXEC_TOOLS` are
+reachable this way; everything else stays behind the agent's judgement via
+`input()`.
+
 ## Knobs that matter in production
 
 - `BrowserAutomation(tab_idle_ttl=600, max_tabs=3)` — each chat session gets

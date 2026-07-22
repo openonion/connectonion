@@ -86,6 +86,53 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     }
 
 
+def exec_handler(create_agent: Callable, exec_tools, tool_name: str, args: dict) -> dict:
+    """Direct tool execution (WS EXEC) — run one registered tool by name, no LLM loop.
+
+    The terminal-style fast path: the client names a tool and its arguments,
+    the tool runs immediately, and the raw result (text, or base64 image for
+    screenshot tools) goes straight back. No thinking, no session, no history.
+
+    Access is gated by exec_tools, set explicitly on host():
+      - None/False (default): EXEC disabled entirely
+      - True: every registered tool callable
+      - list[str]: only the named tools callable
+
+    Tool errors are returned as data, not raised — same contract as the LLM
+    loop, where tool failures are reported back to the caller for retry.
+    """
+    if not exec_tools:
+        return {"status": "error",
+                "error": "direct exec not enabled on this host — start it with host(..., exec_tools=[...])"}
+
+    if exec_tools is not True and tool_name not in exec_tools:
+        return {"status": "error",
+                "error": f"tool '{tool_name}' is not exec-enabled (allowed: {sorted(exec_tools)})"}
+
+    agent = create_agent()
+    tool = agent.tools.get(tool_name)
+    if tool is None:
+        return {"status": "error",
+                "error": f"unknown tool '{tool_name}' (available: {agent.tools.names()})"}
+
+    # Same injection as tool_executor: tools that declare 'agent' get it at call
+    # time (never exposed to the caller's args).
+    if getattr(tool, '_needs_agent', False):
+        args = {**args, "agent": agent}
+
+    start = time.time()
+    try:
+        result = tool(**args)
+    except Exception as e:
+        return {"status": "error",
+                "error": f"{type(e).__name__}: {e}",
+                "duration_ms": int((time.time() - start) * 1000)}
+
+    return {"status": "success",
+            "result": str(result),
+            "duration_ms": int((time.time() - start) * 1000)}
+
+
 def session_handler(storage: SessionStorage, session_id: str) -> dict | None:
     """GET /sessions/{id}"""
     session = storage.get(session_id)

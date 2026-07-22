@@ -102,10 +102,20 @@ def create_hosted_agent():
     return agent
 
 
+# Tools a client may drive directly, bypassing the LLM (RemoteAgent.call). This
+# is the terminal-style fast path: `remote.call("take_screenshot")` runs the tool
+# and returns the raw result (a screenshot's base64 comes straight back) with no
+# thinking in between — good for a live "remote control" UI or scripted steps.
+# Only navigation/observation tools are exposed; anything destructive stays behind
+# the agent's judgement.
+EXEC_TOOLS = ["go_to", "take_screenshot", "click", "scroll",
+              "type_text_by_selector", "extract_items_by_selector", "wait_for_element"]
+
+
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         # Local one-shot run keeps wait_for_manual_login: with a headed browser
         # and a real terminal you can log in by hand once, and the profile keeps it.
         print(create_agent().input(" ".join(sys.argv[1:])))
     else:
-        host(create_hosted_agent)
+        host(create_hosted_agent, exec_tools=EXEC_TOOLS)

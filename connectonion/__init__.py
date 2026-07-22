@@ -61,7 +61,7 @@ from .useful_tools import (
     # Claude Code-style file tools
     read_file, edit, multi_edit, glob, grep, write,
 )
-from .network import connect, RemoteAgent, Response, host, create_app, IO
+from .network import connect, RemoteAgent, Response, ExecResult, host, create_app, IO
 from .network import relay, announce
 from . import address
 
@@ -114,6 +114,7 @@ __all__ = [
     "connect",
     "RemoteAgent",
     "Response",
+    "ExecResult",
     "host",
     "create_app",
     "IO",

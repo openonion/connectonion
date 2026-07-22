@@ -46,6 +46,7 @@ from .config import load_host_config, load_list_file, validate_files, DEFAULT_FI
 from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
 from .http_router import (
     input_handler,
+    exec_handler,
     session_handler,
     sessions_handler,
     health_handler,
@@ -149,7 +150,7 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
     return profile
 
 
-def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict):
+def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict, exec_tools=None):
     """Create route handler dict for ASGI app.
 
     Args:
@@ -160,6 +161,8 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         result_ttl: How long to keep results on server in seconds
         trust_agent: TrustAgent instance for trust operations
         config: Host config dict (includes file upload limits)
+        exec_tools: Direct-exec gate for WS EXEC frames — None/False disables
+                    (default), True allows all tools, list[str] whitelists names.
     """
     agent_name = agent_metadata["name"]
 
@@ -170,6 +173,9 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
     def handle_ws_input(storage, prompt, connection, session=None, images=None, files=None):
         validate_files(files, config)
         return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
+
+    def handle_ws_exec(tool_name, args):
+        return exec_handler(create_agent, exec_tools, tool_name, args)
 
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
@@ -188,6 +194,7 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         "info": handle_info,
         "auth": extract_and_authenticate,
         "ws_input": handle_ws_input,
+        "ws_exec": handle_ws_exec,
         "admin_logs": handle_admin_logs,
         "admin_sessions": admin_sessions_handler,
         # TrustAgent instance for direct access in http.py/websocket.py
@@ -364,6 +371,7 @@ def host(
     co_dir: Path = None,
     summary: str = None,
     examples: list = None,
+    exec_tools: Union[bool, list, None] = None,
 ):
     """
     Host an agent over HTTP/WebSocket with P2P relay discovery (enabled by default).
@@ -404,6 +412,11 @@ def host(
         co_dir: Path to .co directory for agent identity (default: ~/.co/)
         summary: Agent description (default: from config or agent.system_prompt)
         examples: Example prompts (default: from config or auto-generated)
+        exec_tools: Enable direct tool execution (WS EXEC) — the terminal-style
+            fast path that bypasses the LLM. None/False (default) disables it,
+            True allows every registered tool, a list of names whitelists tools:
+            host(create_agent, exec_tools=["bash", "take_screenshot"]).
+            Clients use RemoteAgent.call("bash", command="ls -la").
 
     Endpoints:
         POST /input          - Submit prompt, get result
@@ -487,7 +500,7 @@ def host(
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, config)
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, config, exec_tools)
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -543,7 +556,7 @@ def host(
     uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")
 
 
-def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None):
+def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, exec_tools=None):
     """Create ASGI app for external uvicorn/gunicorn usage.
 
     Each request calls create_agent() to get a fresh Agent instance.
@@ -576,7 +589,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS)
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS, exec_tools)
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,

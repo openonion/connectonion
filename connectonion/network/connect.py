@@ -114,6 +114,25 @@ class Response:
     done: bool      # True = complete, False = needs more input (agent asked a question)
 
 
+@dataclass
+class ExecResult:
+    """Result of a direct tool execution (RemoteAgent.call) — no LLM involved."""
+    text: str                     # Raw tool output (may contain base64 image data)
+    status: str                   # "success" | "error"
+    duration_ms: int = 0
+    error: Optional[str] = None   # Error message when status == "error"
+
+    @property
+    def ok(self) -> bool:
+        return self.status == "success"
+
+    @property
+    def images(self) -> List[str]:
+        """Base64 data-URL images embedded in the output (e.g. screenshots)."""
+        import re
+        return re.findall(r'data:image/[a-z]+;base64,[A-Za-z0-9+/=]+', self.text)
+
+
 class RemoteAgent:
     """
     Interface to a remote agent with real-time UI updates.
@@ -229,6 +248,98 @@ class RemoteAgent:
     ) -> Response:
         """Async version of input()."""
         return await self._stream_input(prompt, timeout, on_onboard, images, files)
+
+    def call(self, tool: str, timeout: float = 60.0, **args) -> ExecResult:
+        """Run one of the remote agent's tools directly — no LLM, no thinking.
+
+        The terminal-style fast path: name a tool, pass its arguments, get the
+        raw output straight back. Like typing a command and reading stdout — the
+        result can be text or a base64 screenshot (see ExecResult.images).
+
+        The host must opt in with host(..., exec_tools=[...]); otherwise the
+        call returns an error ExecResult.
+
+        Args:
+            tool: Name of the remote tool to run (e.g. "bash", "take_screenshot")
+            timeout: Seconds to wait for the result
+            **args: Keyword arguments passed to the tool
+
+        Returns:
+            ExecResult(text, status, duration_ms, error) — .ok True on success,
+            .images extracts any base64 screenshots from the output.
+
+        Example:
+            >>> agent = connect("0x...", keys=keys)
+            >>> print(agent.call("bash", command="uptime").text)
+            >>> shot = agent.call("take_screenshot")
+            >>> if shot.images: save(shot.images[0])
+        """
+        try:
+            asyncio.get_running_loop()
+            raise RuntimeError(
+                "call() cannot be used inside async context. "
+                "Use 'await agent.call_async()' instead."
+            )
+        except RuntimeError as e:
+            if "call() cannot be used" in str(e):
+                raise
+        return asyncio.run(self.call_async(tool, timeout=timeout, **args))
+
+    async def call_async(self, tool: str, timeout: float = 60.0, **args) -> ExecResult:
+        """Async version of call()."""
+        import websockets
+
+        await self._try_resolve_endpoint()
+        if self._resolved_endpoint:
+            ws_url = self._resolved_endpoint
+            is_direct = True
+        else:
+            ws_url = f"{self._relay_url}/ws/input"
+            is_direct = False
+
+        exec_id = str(uuid.uuid4())
+        connect_msg = self._build_connect_message(is_direct)
+        exec_msg = {"type": "EXEC", "exec_id": exec_id, "tool": tool, "args": args}
+
+        try:
+            async with websockets.connect(ws_url) as ws:
+                await ws.send(json.dumps(connect_msg))
+
+                # Wait for CONNECTED (EXEC needs the same auth gate as INPUT).
+                while True:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=30)
+                    event = json.loads(raw)
+                    etype = event.get("type")
+                    if etype == "CONNECTED":
+                        break
+                    if etype == "ONBOARD_REQUIRED":
+                        return ExecResult(text="", status="error",
+                                          error="agent requires onboarding — run input() once to onboard, then call() works")
+                    if etype == "ERROR":
+                        return ExecResult(text="", status="error",
+                                          error=event.get("message", "connect failed"))
+
+                await ws.send(json.dumps(exec_msg))
+
+                # Wait for our EXEC_RESULT; answer keepalive PINGs, skip other frames.
+                while True:
+                    raw = await asyncio.wait_for(ws.recv(), timeout=timeout)
+                    event = json.loads(raw)
+                    etype = event.get("type")
+                    if etype == "EXEC_RESULT" and event.get("exec_id") == exec_id:
+                        return ExecResult(
+                            text=event.get("result", ""),
+                            status=event.get("status", "error"),
+                            duration_ms=event.get("duration_ms", 0),
+                            error=event.get("error"),
+                        )
+                    if etype == "PING":
+                        await ws.send(json.dumps({"type": "PONG"}))
+                    elif etype == "ERROR":
+                        return ExecResult(text="", status="error",
+                                          error=event.get("message", "exec failed"))
+        except asyncio.TimeoutError:
+            return ExecResult(text="", status="error", error=f"exec timed out after {timeout}s")
 
     def reset(self) -> None:
         """Clear conversation and start fresh."""
