@@ -86,28 +86,28 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     }
 
 
-def exec_handler(create_agent: Callable, exec_tools, tool_name: str, args: dict) -> dict:
+def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict) -> dict:
     """Direct tool execution (WS EXEC) — run one registered tool by name, no LLM loop.
 
     The terminal-style fast path: the client names a tool and its arguments,
     the tool runs immediately, and the raw result (text, or base64 image for
     screenshot tools) goes straight back. No thinking, no session, no history.
 
-    Access is gated by exec_tools, set explicitly on host():
-      - None/False (default): EXEC disabled entirely
-      - True: every registered tool callable
-      - list[str]: only the named tools callable
+    Gated by the SAME permission whitelist the LLM approval flow uses — the
+    .co/host.yaml `permissions` block. Before running, the call is checked with
+    is_tool_permitted(); a command that isn't whitelisted is refused. So there is
+    one list to maintain, and "safe to run without a human" means the same thing
+    whether the LLM or a remote client initiates.
 
     Tool errors are returned as data, not raised — same contract as the LLM
     loop, where tool failures are reported back to the caller for retry.
     """
-    if not exec_tools:
-        return {"status": "error",
-                "error": "direct exec not enabled on this host — start it with host(..., exec_tools=[...])"}
+    from ...useful_plugins.tool_approval.approval import is_tool_permitted
 
-    if exec_tools is not True and tool_name not in exec_tools:
+    allowed, reason = is_tool_permitted(tool_name, args, permissions)
+    if not allowed:
         return {"status": "error",
-                "error": f"tool '{tool_name}' is not exec-enabled (allowed: {sorted(exec_tools)})"}
+                "error": f"blocked: {reason}. Allow it by adding a rule to .co/host.yaml permissions."}
 
     agent = create_agent()
     tool = agent.tools.get(tool_name)

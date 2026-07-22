@@ -150,7 +150,7 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
     return profile
 
 
-def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict, exec_tools=None):
+def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict, exec_permissions: dict | None = None):
     """Create route handler dict for ASGI app.
 
     Args:
@@ -161,10 +161,12 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         result_ttl: How long to keep results on server in seconds
         trust_agent: TrustAgent instance for trust operations
         config: Host config dict (includes file upload limits)
-        exec_tools: Direct-exec gate for WS EXEC frames — None/False disables
-                    (default), True allows all tools, list[str] whitelists names.
+        exec_permissions: The .co/host.yaml permission whitelist that gates WS
+                          EXEC (direct tool execution). Same list the LLM
+                          approval flow uses; empty dict → nothing runs directly.
     """
     agent_name = agent_metadata["name"]
+    exec_permissions = exec_permissions or {}
 
     def handle_input(storage, prompt, session=None, connection=None, images=None, files=None):
         validate_files(files, config)
@@ -175,7 +177,7 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
 
     def handle_ws_exec(tool_name, args):
-        return exec_handler(create_agent, exec_tools, tool_name, args)
+        return exec_handler(create_agent, exec_permissions, tool_name, args)
 
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
@@ -371,7 +373,6 @@ def host(
     co_dir: Path = None,
     summary: str = None,
     examples: list = None,
-    exec_tools: Union[bool, list, None] = None,
 ):
     """
     Host an agent over HTTP/WebSocket with P2P relay discovery (enabled by default).
@@ -412,11 +413,12 @@ def host(
         co_dir: Path to .co directory for agent identity (default: ~/.co/)
         summary: Agent description (default: from config or agent.system_prompt)
         examples: Example prompts (default: from config or auto-generated)
-        exec_tools: Enable direct tool execution (WS EXEC) — the terminal-style
-            fast path that bypasses the LLM. None/False (default) disables it,
-            True allows every registered tool, a list of names whitelists tools:
-            host(create_agent, exec_tools=["bash", "take_screenshot"]).
-            Clients use RemoteAgent.call("bash", command="ls -la").
+
+    Direct execution (WS EXEC):
+        Clients can run a tool directly, bypassing the LLM, via
+        RemoteAgent.call("bash", command="co status"). This is gated by the
+        SAME .co/host.yaml `permissions` whitelist the LLM approval flow uses —
+        only whitelisted commands run. Nothing to enable: edit the whitelist.
 
     Endpoints:
         POST /input          - Submit prompt, get result
@@ -500,7 +502,13 @@ def host(
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, config, exec_tools)
+    # Load the permission whitelist that gates direct execution (WS EXEC).
+    # Same list the LLM approval flow reads: template safe defaults + this
+    # project's .co/host.yaml permissions block.
+    from ...useful_plugins.tool_approval.approval import load_permission_patterns
+    exec_permissions = load_permission_patterns(co_dir)
+
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, config, exec_permissions)
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -556,7 +564,7 @@ def host(
     uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")
 
 
-def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, exec_tools=None):
+def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None):
     """Create ASGI app for external uvicorn/gunicorn usage.
 
     Each request calls create_agent() to get a fresh Agent instance.
@@ -589,7 +597,8 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS, exec_tools)
+    from ...useful_plugins.tool_approval.approval import load_permission_patterns
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS, load_permission_patterns())
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,

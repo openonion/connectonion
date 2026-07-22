@@ -54,8 +54,7 @@ commit it.
 ## Drive it directly (no LLM): `remote.call`
 
 Sometimes you don't want the agent to *think* — you just want to run a browser
-step and see the result, like a remote command line. `host(..., exec_tools=[...])`
-(set in `agent.py`) exposes a curated set of tools for direct execution:
+step and see the result, like a remote command line:
 
 ```python
 from connectonion import connect
@@ -71,10 +70,15 @@ if shot.images:               # base64 data URLs extracted from the output
 
 `remote.call(tool, **args)` returns an `ExecResult(text, status, duration_ms,
 error)`: `.ok` is True on success and `.images` pulls any base64 screenshots out
-of the output. This runs over the same authenticated WebSocket as `input()`, so
-relay discovery and trust still apply — only tools listed in `EXEC_TOOLS` are
-reachable this way; everything else stays behind the agent's judgement via
-`input()`.
+of the output. It runs over the same authenticated WebSocket as `input()`, so
+relay discovery and trust still apply.
+
+What may run this way is the `.co/host.yaml` **permissions** whitelist — the very
+same list that lets the LLM auto-run a command without asking. The browser
+navigation/observation tools (`go_to`, `take_screenshot`, `click`, `scroll`, ...)
+and `co ...` CLI commands are whitelisted by default; add a line to `host.yaml`
+to expose more, e.g. `"Bash(git status)"`. Anything not on the list stays behind
+the agent's judgement via `input()`.
 
 ## Knobs that matter in production
 

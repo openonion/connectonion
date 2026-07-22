@@ -98,6 +98,67 @@ permissions:
     expires:
       type: never
 
+  # Browser navigation & observation tools — safe to drive directly (no data
+  # loss), so a remote client can run them via RemoteAgent.call for a live
+  # "remote control" view. Inert for agents without a browser tool.
+  "go_to":
+    allowed: true
+    source: safe
+    reason: browser navigation
+    expires:
+      type: never
+
+  "take_screenshot":
+    allowed: true
+    source: safe
+    reason: read-only page capture
+    expires:
+      type: never
+
+  "click":
+    allowed: true
+    source: safe
+    reason: browser interaction
+    expires:
+      type: never
+
+  "scroll":
+    allowed: true
+    source: safe
+    reason: browser interaction
+    expires:
+      type: never
+
+  "type_text_by_selector":
+    allowed: true
+    source: safe
+    reason: browser interaction
+    expires:
+      type: never
+
+  "extract_items_by_selector":
+    allowed: true
+    source: safe
+    reason: read-only page extraction
+    expires:
+      type: never
+
+  "wait_for_element":
+    allowed: true
+    source: safe
+    reason: read-only wait
+    expires:
+      type: never
+
+  # co CLI — the framework's own commands (status, auth, browser, ...). Safe to
+  # run directly; they operate on this project's own .co config and identity.
+  "Bash(co *)":
+    allowed: true
+    source: config
+    reason: safe - connectonion CLI
+    expires:
+      type: never
+
   # System information commands (Linux/Unix)
   "Bash(pwd)":
     allowed: true
