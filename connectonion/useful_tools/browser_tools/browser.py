@@ -40,6 +40,7 @@ from connectonion.useful_plugins import image_result_formatter, ui_stream
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from . import element_finder
+from . import humanize
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 
 # Default screenshots directory
@@ -816,7 +817,7 @@ class BrowserAutomation:
             if index < 0 or index >= count:
                 return f"Selector matched {count} elements with text {text!r}; index {index} is out of range"
 
-            self.page.mouse.click(matches[index]["x"], matches[index]["y"])
+            humanize.click(self.page, matches[index]["x"], matches[index]["y"])
             self._save_context()
             self.page.wait_for_timeout(1000)
             return f"Clicked element {index + 1}/{count} matching selector: {selector} with text: {text}"
@@ -849,7 +850,7 @@ class BrowserAutomation:
         target = candidates[index]
         box = target.bounding_box()
         if box:
-            self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            humanize.click(self.page, 0, 0, box=box)
         else:
             target.click(force=True)
 
@@ -893,7 +894,7 @@ class BrowserAutomation:
 
         target = locator.nth(index)
         target.click(force=True)
-        self.page.keyboard.type(text)
+        humanize.type_text(self.page, text)
         self.page.wait_for_timeout(1000)
         return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
 
@@ -1271,7 +1272,7 @@ class BrowserAutomation:
         if not target or not target.get("ok"):
             return target.get("error", "Could not find target near anchor") if target else "Could not find target near anchor"
 
-        self.page.mouse.click(target["x"], target["y"])
+        humanize.click(self.page, target["x"], target["y"])
         self.page.wait_for_timeout(wait_ms)
         self._save_context()
 
@@ -1324,7 +1325,7 @@ class BrowserAutomation:
             import time as _time
             x = element.x + element.width // 2
             y = element.y + element.height // 2
-            self.page.mouse.click(x, y)
+            humanize.click(self.page, x, y)
             self._save_context()
             _time.sleep(1)
             print(f"\n[browser] CLICKED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
@@ -1355,7 +1356,7 @@ class BrowserAutomation:
             if box:
                 x = box['x'] + box['width'] / 2
                 y = box['y'] + box['height'] / 2
-                self.page.mouse.click(x, y)
+                humanize.click(self.page, x, y, box=box)
                 self._save_context()
                 _time.sleep(1)  # Wait for DOM changes (modals, dropdowns, etc.)
                 print(f"\n[browser] CLICKED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
@@ -1370,7 +1371,7 @@ class BrowserAutomation:
         # Fallback: use original coordinates
         x = element.x + element.width // 2
         y = element.y + element.height // 2
-        self.page.mouse.click(x, y)
+        humanize.click(self.page, x, y)
         self._save_context()
         _time.sleep(1)
         print(f"\n[browser] CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
@@ -1383,7 +1384,7 @@ class BrowserAutomation:
         if not self.page:
             return "Browser not open"
         import time as _time
-        self.page.mouse.click(x, y)
+        humanize.click(self.page, x, y)
         _time.sleep(1)
         print(f"\n[browser] CLICKED at ({x},{y})\n")
         return f"Clicked at ({x}, {y})"
@@ -1403,7 +1404,7 @@ class BrowserAutomation:
         if element.frame.startswith("shadow-"):
             x = element.x + element.width // 2
             y = element.y + element.height // 2
-            self.page.mouse.move(x, y)
+            humanize.move(self.page, x, y)
         elif element.frame != "main":
             frame = None
             for f in self.page.frames:
@@ -1414,13 +1415,13 @@ class BrowserAutomation:
             if locator.count() > 0:
                 locator.first.hover()
             else:
-                self.page.mouse.move(element.x + element.width // 2, element.y + element.height // 2)
+                humanize.move(self.page, element.x + element.width // 2, element.y + element.height // 2)
         else:
             locator = self.page.locator(element.locator)
             if locator.count() > 0:
                 locator.first.hover()
             else:
-                self.page.mouse.move(element.x + element.width // 2, element.y + element.height // 2)
+                humanize.move(self.page, element.x + element.width // 2, element.y + element.height // 2)
 
         _time.sleep(1)
         print(f"\n[browser] HOVERED element [{element.index}] {element.tag} text='{element.text}'\n")
@@ -1440,7 +1441,7 @@ class BrowserAutomation:
         if element.frame.startswith("shadow-"):
             x = element.x + element.width // 2
             y = element.y + element.height // 2
-            self.page.mouse.click(x, y, button="right")
+            humanize.click(self.page, x, y, button="right")
             _time.sleep(1)
             print(f"\n[browser] RIGHT-CLICKED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
             return f"Right-clicked [{element.index}] {element.tag} '{element.text}' (shadow DOM)"
@@ -1460,14 +1461,14 @@ class BrowserAutomation:
             if box:
                 x = box['x'] + box['width'] / 2
                 y = box['y'] + box['height'] / 2
-                self.page.mouse.click(x, y, button="right")
+                humanize.click(self.page, x, y, button="right", box=box)
                 _time.sleep(1)
                 print(f"\n[browser] RIGHT-CLICKED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
                 return f"Right-clicked [{element.index}] {element.tag} '{element.text}'"
 
         x = element.x + element.width // 2
         y = element.y + element.height // 2
-        self.page.mouse.click(x, y, button="right")
+        humanize.click(self.page, x, y, button="right")
         _time.sleep(1)
         print(f"\n[browser] RIGHT-CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
         return f"Right-clicked [{element.index}] '{element.text}' at ({x}, {y})"
@@ -1486,7 +1487,7 @@ class BrowserAutomation:
         if element.frame.startswith("shadow-"):
             x = element.x + element.width // 2
             y = element.y + element.height // 2
-            self.page.mouse.dblclick(x, y)
+            humanize.double_click(self.page, x, y)
             _time.sleep(1)
             print(f"\n[browser] DOUBLE-CLICKED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
             return f"Double-clicked [{element.index}] {element.tag} '{element.text}' (shadow DOM)"
@@ -1506,14 +1507,14 @@ class BrowserAutomation:
             if box:
                 x = box['x'] + box['width'] / 2
                 y = box['y'] + box['height'] / 2
-                self.page.mouse.dblclick(x, y)
+                humanize.double_click(self.page, x, y, box=box)
                 _time.sleep(1)
                 print(f"\n[browser] DOUBLE-CLICKED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
                 return f"Double-clicked [{element.index}] {element.tag} '{element.text}'"
 
         x = element.x + element.width // 2
         y = element.y + element.height // 2
-        self.page.mouse.dblclick(x, y)
+        humanize.double_click(self.page, x, y)
         _time.sleep(1)
         print(f"\n[browser] DOUBLE-CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
         return f"Double-clicked [{element.index}] '{element.text}' at ({x}, {y})"
@@ -1533,7 +1534,7 @@ class BrowserAutomation:
         if not self.page:
             return "Browser not open"
 
-        self.page.keyboard.type(text)
+        humanize.type_text(self.page, text)
 
         return f"""Typed: '{text}'
 
