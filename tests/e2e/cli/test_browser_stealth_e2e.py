@@ -107,6 +107,41 @@ def test_humanized_input_event_shape_end_to_end(stealth_browser):
     assert jitter > 5, f"expected variable keystroke timing, stdev was {jitter:.0f}ms"
 
 
+TALL_PAGE = (
+    "<!doctype html><meta charset=utf-8>"
+    "<div style='height:6000px;background:linear-gradient(white,black)'>tall</div>"
+    "<b id=rec></b>"
+)
+
+INSTALL_SCROLL_RECORDER = """() => {
+    const r = document.getElementById('rec');
+    addEventListener('wheel', () => { r.dataset.wheels = (+r.dataset.wheels||0)+1; }, {passive:true});
+    addEventListener('scroll', () => {
+        const s = (r.dataset.ys||'').split(',').filter(Boolean);
+        s.push(Math.round(window.scrollY));
+        r.dataset.ys = s.slice(-200).join(',');
+    }, {passive:true});
+}"""
+
+
+def test_humanized_scroll_emits_wheel_events(stealth_browser):
+    """The scroll tool must move the page with real mouse-wheel events and an incremental
+    scrollY — not the old instant programmatic scrollBy(0,1000) jump (zero wheel events)."""
+    b = stealth_browser
+    b.go_to("data:text/html," + urllib.parse.quote(TALL_PAGE), purpose="scroll test", who="e2e")
+    _eval(b, INSTALL_SCROLL_RECORDER)
+
+    y0 = _eval(b, "() => window.scrollY")
+    b.scroll(times=3)
+    data = _eval(b, "() => ({...document.getElementById('rec').dataset})")
+    y1 = _eval(b, "() => window.scrollY")
+    ys = [int(v) for v in data.get("ys", "").split(",") if v]
+
+    assert int(data.get("wheels", 0)) >= 6, "scroll should emit many real wheel events"
+    assert y1 - y0 > 500, f"page should have scrolled (moved {y1 - y0}px)"
+    assert len(set(ys)) >= 5, "scrollY should move incrementally, not in one jump"
+
+
 # ---------------------------------------------------------------------------
 # Layer 3 — every fingerprint / bot-detection site listed in issue #222.
 # Each entry: (name, url, settle_seconds, verdict(browser) -> (passed, detail)).

@@ -2,8 +2,8 @@
 Purpose: Humanize BrowserAutomation's pointer + keyboard events so clicks and typing survive
          BEHAVIORAL bot detection (mouse-trajectory entropy, click position, keystroke cadence)
 LLM-Note:
-  Dependencies: stdlib only [math, random, time, weakref] | imported by [useful_tools/browser_tools/browser.py — every click/hover/type path routes through here] | tested by [tests/unit/test_browser_humanize.py]
-  Data flow: browser.py calls move/click/double_click/type_text(page, ...) on the browser worker thread → each remembers the page's last cursor position in the module-level WeakKeyDictionary `_cursor`, so the NEXT action starts its curve from where the last one ended (a real cursor never teleports between actions)
+  Dependencies: stdlib only [math, random, time, weakref] | imported by [useful_tools/browser_tools/browser.py — every click/hover/type path routes through here; scroll.py — wheel scroll] | tested by [tests/unit/test_browser_humanize.py]
+  Data flow: browser.py/scroll.py call move/click/double_click/type_text/scroll(page, ...) on the browser worker thread → each remembers the page's last cursor position in the module-level WeakKeyDictionary `_cursor`, so the NEXT action starts its curve from where the last one ended (a real cursor never teleports between actions)
   State/Effects: drives the live page via page.mouse.* / page.keyboard.* and sleeps between events; the only retained state is `_cursor` (per-page last x/y, auto-dropped when the page is GC'd)
   Integration: Patchright already fixes the DRIVER-level tells (navigator.webdriver, Runtime.enable); this module fixes the layer above it — the shape of the events themselves. No public tool signatures change; only the low-level event generation.
   Errors: none — pure event emission; if the page is closed the underlying Playwright call raises and bubbles (fail fast)
@@ -92,6 +92,24 @@ def click(page, x, y, button="left", clicks=1, box=None):
 def double_click(page, x, y, box=None):
     """Two human clicks close enough in time/position that the browser raises dblclick."""
     click(page, x, y, clicks=2, box=box)
+
+
+def scroll(page, total_dy):
+    """Human wheel scroll: cover `total_dy` pixels as many small mouse-wheel ticks with
+    variable size and cadence (plus the odd longer reading pause), so the page emits real
+    `wheel` events and `scrollY` moves incrementally — instead of the instant programmatic
+    `scrollBy(0, 1000)` jump a detector flags (scrollY changes with zero wheel events)."""
+    remaining = int(total_dy)
+    sign = 1 if remaining >= 0 else -1
+    while abs(remaining) > 2:
+        step = sign * random.randint(90, 170)
+        if abs(step) > abs(remaining):
+            step = remaining
+        page.mouse.wheel(0, step)
+        remaining -= step
+        time.sleep(random.uniform(0.03, 0.10))
+        if random.random() < 0.1:
+            time.sleep(random.uniform(0.2, 0.5))  # occasional reading pause
 
 
 def type_text(page, text):

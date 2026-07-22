@@ -23,6 +23,9 @@ class FakeMouse:
     def up(self, button="left"):
         self._log.append(("up", button))
 
+    def wheel(self, dx, dy):
+        self._log.append(("wheel", dx, dy))
+
 
 class FakeKeyboard:
     def __init__(self, log):
@@ -108,6 +111,23 @@ def test_type_text_is_per_character():
     humanize.type_text(page, "hello")
     typed = [e[1] for e in page.log if e[0] == "type"]
     assert typed == ["h", "e", "l", "l", "o"], "typed one char at a time, not in bulk"
+
+
+def test_scroll_emits_many_small_wheel_ticks_summing_to_target():
+    page = FakePage()
+    humanize.scroll(page, 1000)
+    wheels = [e for e in page.log if e[0] == "wheel"]
+    assert len(wheels) >= 6, "a human scroll is many small wheel ticks, not one jump"
+    dys = [dy for (_, dx, dy) in wheels]
+    assert all(abs(dy) <= 170 for dy in dys), "each tick is a small delta"
+    assert sum(dys) == 1000, "ticks sum to the requested distance"
+
+
+def test_scroll_up_uses_negative_deltas():
+    page = FakePage()
+    humanize.scroll(page, -600)
+    dys = [dy for (kind, dx, dy) in page.log if kind == "wheel"]
+    assert dys and all(dy < 0 for dy in dys) and sum(dys) == -600
 
 
 def test_cursor_position_is_remembered_between_actions():

@@ -16,6 +16,8 @@ Usage:
 from pathlib import Path
 from pydantic import BaseModel
 from connectonion import llm_do
+from . import humanize
+import random
 import time
 
 _PROMPT = (Path(__file__).parent / "prompts" / "scroll_strategy.md").read_text()
@@ -42,6 +44,7 @@ def scroll(page, take_screenshot, times: int = 5, description: str = "the main c
     take_screenshot(path=before)
 
     strategies = [
+        ("Human wheel", lambda: _human_scroll(page, times)),
         ("AI strategy", lambda: _ai_scroll(page, times, description)),
         ("Element scroll", lambda: _element_scroll(page, times)),
         ("Page scroll", lambda: _page_scroll(page, times)),
@@ -64,6 +67,18 @@ def scroll(page, take_screenshot, times: int = 5, description: str = "the main c
             print(f"  ❌ {name} failed: {e}")
 
     return "All scroll strategies failed"
+
+
+def _human_scroll(page, times: int):
+    """Scroll with real mouse-wheel events. Tried FIRST because it is the only strategy
+    that looks human — the JS strategies below move scrollTop directly and emit no wheel
+    event. Move the cursor over the content so the wheel targets the page/container, then
+    roll it a screenful at a time."""
+    w, h = page.evaluate("() => [window.innerWidth, window.innerHeight]")
+    humanize.move(page, w // 2, h // 2)
+    for _ in range(times):
+        humanize.scroll(page, random.randint(int(h * 0.7), int(h * 0.95)))
+        time.sleep(random.uniform(0.3, 0.7))
 
 
 def _ai_scroll(page, times: int, description: str):
