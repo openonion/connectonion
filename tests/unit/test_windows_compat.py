@@ -19,12 +19,26 @@ Components under test:
 
 import tempfile
 import sys
+import time
 import pytest
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
 from connectonion import address
 from connectonion.console import Console
+
+
+# Codepoints for "中文测试🚀" (CJK + an emoji outside the BMP). We build the string
+# from codepoints so the *command line* stays pure ASCII — the child process
+# generates the Unicode itself and writes it to stdout. This isolates the pipe
+# decoding path (the actual bug) from Windows command-line argument encoding.
+_CJK_CODEPOINTS = [20013, 25991, 27979, 35797, 128640]
+_CJK_TEXT = "".join(chr(c) for c in _CJK_CODEPOINTS)
+
+
+def _py(code: str) -> str:
+    """A shell command that runs `code` in this interpreter (path safely quoted)."""
+    return f'"{sys.executable}" -c "{code}"'
 
 
 class TestUTF8Encoding:
@@ -109,6 +123,68 @@ class TestUTF8Encoding:
             # Read back with UTF-8 (critical test!)
             content = log_file.read_text(encoding='utf-8')
             assert "Test message with emoji 🚀" in content
+
+
+class TestSubprocessUTF8:
+    """Subprocess pipe I/O must decode as UTF-8 regardless of the console codepage.
+
+    On Chinese/Japanese/etc. Windows the default text encoding is a legacy codepage
+    (GBK/cp936, cp932). With `text=True` but no explicit `encoding`, subprocess would
+    decode child output with that codepage and raise UnicodeDecodeError on UTF-8/emoji
+    bytes — which is what broke `co ai` (see issue #230). These tests pin the encoding
+    to UTF-8 and prove it no longer depends on the ambient locale.
+    """
+
+    def test_shell_decodes_utf8_output_even_when_locale_claims_gbk(self, monkeypatch):
+        """Shell.run() returns CJK+emoji intact even if the locale says cp936."""
+        # Simulate a Chinese Windows box: locale reports GBK. Our explicit
+        # encoding="utf-8" must win over this.
+        monkeypatch.setattr("locale.getpreferredencoding", lambda *a, **k: "cp936")
+
+        from connectonion.useful_tools.shell import Shell
+
+        shell = Shell()
+        code = f"print(''.join(chr(c) for c in {_CJK_CODEPOINTS}))"
+        out = shell.run(_py(code))
+
+        assert _CJK_TEXT in out
+
+    def test_shell_survives_non_utf8_bytes(self, monkeypatch):
+        """A stray non-UTF-8 byte is replaced, not fatal (errors='replace')."""
+        monkeypatch.setattr("locale.getpreferredencoding", lambda *a, **k: "cp936")
+
+        from connectonion.useful_tools.shell import Shell
+
+        shell = Shell()
+        # Write a lone 0xFF byte (invalid UTF-8) between valid text.
+        code = r"import sys; sys.stdout.buffer.write(b'ok\xff done')"
+        out = shell.run(_py(code))
+
+        # Must not raise; surrounding text is preserved.
+        assert "ok" in out and "done" in out
+
+    def test_background_task_decodes_utf8_output(self, monkeypatch):
+        """run_background()'s reader thread must not die on UTF-8/emoji output."""
+        monkeypatch.setattr("locale.getpreferredencoding", lambda *a, **k: "cp936")
+
+        from connectonion.cli.co_ai.tools import background as bg
+
+        bg._reset_for_testing()
+        code = f"print(''.join(chr(c) for c in {_CJK_CODEPOINTS}))"
+        bg.run_background(_py(code))
+
+        # Wait for the reader thread + process to finish.
+        deadline = time.time() + 15
+        task = None
+        while time.time() < deadline:
+            task = bg._tasks.get("bg_1")
+            if task and task.status != bg.TaskStatus.RUNNING:
+                break
+            time.sleep(0.05)
+
+        assert task is not None
+        assert task.status == bg.TaskStatus.COMPLETED, f"reader thread failed: {task.status}"
+        assert _CJK_TEXT in bg.task_output("bg_1")
 
 
 class TestChmodPlatformCheck:

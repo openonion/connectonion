@@ -294,6 +294,49 @@ jobs:
           co browser close
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
+      # The GBK/cp936 minefield (issue #230): a Chinese Windows console runs in the
+      # legacy GBK codepage. Before the fix, the co_ai/shell subprocess layer used
+      # text=True with NO explicit encoding, so a child that emitted UTF-8/emoji
+      # crashed the reader thread (UnicodeDecodeError) or the child itself
+      # (UnicodeEncodeError). Force the console into GBK and turn OFF Python's UTF-8
+      # mode so the legacy codepage is actually in effect, then drive the *shipped*
+      # Shell + background runner through a child that prints CJK + an emoji and
+      # assert it round-trips cleanly.
+      - name: Subprocess tools survive the Chinese (GBK/cp936) console codepage
+        shell: pwsh
+        env:
+          PYTHONUTF8: "0"
+        run: |
+          chcp 936
+          @'
+          import sys, time
+          from connectonion.useful_tools.shell import Shell
+          from connectonion.cli.co_ai.tools import background as bg
+
+          cps = [20013, 25991, 27979, 35797, 128640]   # 中文测试 + rocket emoji
+          want = "".join(chr(c) for c in cps)
+          # Build the child from codepoints so the command line stays pure ASCII;
+          # the child generates the Unicode itself and prints it (UTF-8 thanks to the
+          # env the Shell/background runner inject).
+          inner = "print(''.join(chr(c) for c in %s))" % cps
+          child = '"%s" -c "%s"' % (sys.executable, inner)
+
+          out = Shell().run(child)
+          assert want in out, "Shell lost unicode under GBK console: %r" % out
+
+          bg.run_background(child)
+          for _ in range(100):
+              t = bg._tasks.get("bg_1")
+              if t and t.status != bg.TaskStatus.RUNNING:
+                  break
+              time.sleep(0.1)
+          o2 = bg.task_output("bg_1")
+          assert want in o2, "background lost unicode under GBK console: %r" % o2
+          print("OK: GBK/cp936 console subprocess round-trip clean")
+          '@ | Set-Content -Path gbk_check.py -Encoding ascii
+          python gbk_check.py
+          if ($LASTEXITCODE -ne 0) { Write-Error "GBK/cp936 subprocess round-trip failed"; exit 1 }
+
       # Task-Manager-kill recovery: a stale pid file whose pid now belongs to a
       # LIVE unrelated process must never block a fresh daemon (the pre-fix
       # behavior was a permanent 'daemon is busy' denial of service).

@@ -24,7 +24,19 @@ Note: Uses system default shell (bash/sh on Unix, cmd on Windows).
 For Unix-specific bash, use the `bash` function from bash.py instead.
 """
 
+import os
 import subprocess
+
+
+def _utf8_env() -> dict:
+    """Child env that forces UTF-8 I/O regardless of the console codepage.
+
+    On non-UTF-8 Windows locales (Chinese GBK/cp936, Japanese cp932, ...) a child
+    Python process would otherwise encode its stdout with the legacy codepage and
+    crash on emoji/non-local characters. PYTHONUTF8/PYTHONIOENCODING make it emit
+    UTF-8, which pairs with our UTF-8 decoding of the pipe below.
+    """
+    return {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
 
 
 class Shell:
@@ -56,8 +68,11 @@ class Shell:
                 shell=True,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 cwd=self.cwd,
-                timeout=timeout
+                timeout=timeout,
+                env=_utf8_env(),
             )
         except subprocess.TimeoutExpired:
             return f"Error: Command timed out after {timeout} seconds"
@@ -83,8 +98,11 @@ class Shell:
                 shell=True,
                 capture_output=True,
                 text=True,
+                encoding="utf-8",
+                errors="replace",
                 cwd=directory,
-                timeout=timeout
+                timeout=timeout,
+                env=_utf8_env(),
             )
         except subprocess.TimeoutExpired:
             return f"Error: Command timed out after {timeout} seconds"

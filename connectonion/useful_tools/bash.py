@@ -53,6 +53,8 @@ def bash(command: str, description: str, cwd: str = ".", timeout: int = 120) -> 
             executable="/bin/bash",
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=cwd,
             timeout=timeout
         )
