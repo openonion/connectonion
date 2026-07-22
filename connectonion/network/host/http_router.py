@@ -101,6 +101,16 @@ def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args
 
     Tool errors are returned as data, not raised — same contract as the LLM
     loop, where tool failures are reported back to the caller for retry.
+
+    NOTE — this runs the tool DIRECTLY: no LLM, and no event/plugin hooks
+    (before_each_tool etc.) fire. Anything a plugin does per tool call is skipped
+    here. That matters for the browser: the in-process BrowserAutomation relies
+    on the bind_browser_session plugin (a before_each_tool hook) to route each
+    session to its own tab, and that hook does NOT run for exec. So do NOT expose
+    the in-process browser tool names for direct exec. Browser remote-control
+    goes through the `co browser` CLI instead — `co browser <verb>` drives the
+    persistent browser DAEMON, a separate process that handles tab arbitration
+    and lifecycle on its own. See docs/network/remote-call.md.
     """
     from ...useful_plugins.tool_approval.approval import is_tool_permitted
 

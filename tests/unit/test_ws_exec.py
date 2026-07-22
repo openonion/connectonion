@@ -150,14 +150,18 @@ class TestPermissionWhitelist:
         # rm is not whitelisted → whole chain rejected
         assert is_tool_permitted("bash", {"command": "co status && rm -rf /"}, perms)[0] is False
 
-    def test_defaults_include_co_and_browser_tools(self):
-        """The shipped template whitelist grants co CLI + browser tools out of the box."""
+    def test_defaults_allow_co_cli_for_browser_control(self):
+        """Browser remote-control goes through `co browser` (the daemon), so the
+        shipped defaults whitelist the co CLI — NOT the in-process browser tool
+        names, which would bypass the daemon's tab arbitration."""
         from connectonion.useful_plugins.tool_approval.approval import load_permission_patterns, is_tool_permitted
         # Point at a nonexistent .co so only the shipped template defaults load.
         perms = load_permission_patterns(co_dir="/nonexistent/.co")
-        assert is_tool_permitted("take_screenshot", {}, perms)[0] is True
-        assert is_tool_permitted("go_to", {"url": "https://x.com"}, perms)[0] is True
+        assert is_tool_permitted("bash", {"command": "co browser take_screenshot"}, perms)[0] is True
         assert is_tool_permitted("bash", {"command": "co status"}, perms)[0] is True
+        # In-process browser tool names are deliberately NOT whitelisted.
+        assert is_tool_permitted("take_screenshot", {}, perms)[0] is False
+        assert is_tool_permitted("go_to", {"url": "https://x.com"}, perms)[0] is False
         # Still blocks something dangerous by default.
         assert is_tool_permitted("bash", {"command": "rm -rf /"}, perms)[0] is False
 

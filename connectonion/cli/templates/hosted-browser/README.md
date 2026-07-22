@@ -54,16 +54,17 @@ commit it.
 ## Drive it directly (no LLM): `remote.call`
 
 Sometimes you don't want the agent to *think* — you just want to run a browser
-step and see the result, like a remote command line:
+step and see the result, like a remote command line. Drive it through the
+`co browser` CLI:
 
 ```python
 from connectonion import connect
 
 remote = connect("0x...", keys=my_keys)
 
-# Run one tool, get the raw result straight back — no reasoning, no history.
-remote.call("go_to", url="https://example.com")
-shot = remote.call("take_screenshot")
+# One command, raw result straight back — no reasoning, no history.
+remote.call("bash", command="co browser go_to https://example.com")
+shot = remote.call("bash", command="co browser take_screenshot")
 if shot.images:               # base64 data URLs extracted from the output
     open("page.png", "wb").write(base64.b64decode(shot.images[0].split(",")[1]))
 ```
@@ -74,11 +75,17 @@ of the output. It runs over the same authenticated WebSocket as `input()`, so
 relay discovery and trust still apply.
 
 What may run this way is the `.co/host.yaml` **permissions** whitelist — the very
-same list that lets the LLM auto-run a command without asking. The browser
-navigation/observation tools (`go_to`, `take_screenshot`, `click`, `scroll`, ...)
-and `co ...` CLI commands are whitelisted by default; add a line to `host.yaml`
-to expose more, e.g. `"Bash(git status)"`. Anything not on the list stays behind
-the agent's judgement via `input()`.
+same list that lets the LLM auto-run a command without asking. `co ...` commands
+(including `co browser <verb>`) are whitelisted by default; add a line to
+`host.yaml` to expose more, e.g. `"Bash(git status)"`.
+
+**Why `co browser` and not the browser tools directly?** This template's agent
+holds an *in-process* browser whose per-session tab routing lives in the
+`bind_browser_session` plugin — and `remote.call` runs a tool directly, with no
+plugin hooks, so that routing wouldn't fire. `co browser` instead talks to the
+persistent browser **daemon**, a separate process that handles tabs and lifecycle
+itself. It's the one clean path for direct browser control. See
+[docs/network/remote-call.md](https://github.com/openonion/connectonion/blob/main/docs/network/remote-call.md).
 
 ## Knobs that matter in production
 

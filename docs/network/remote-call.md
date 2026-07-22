@@ -43,17 +43,19 @@ remote = connect("0x3d4017c3...")           # add keys=... for strict-trust agen
 # Text out
 print(remote.call("bash", command="co status").text)
 
-# Image out — a screenshot tool returns base64; .images extracts it
-shot = remote.call("take_screenshot")
+# Drive the browser through the co CLI — text and screenshots come back as output
+remote.call("bash", command="co browser go_to https://example.com")
+shot = remote.call("bash", command="co browser take_screenshot")
+
+# Image out — the screenshot is base64 in the output; .images extracts it
 if shot.images:
     import base64
     png = base64.b64decode(shot.images[0].split(",", 1)[1])
     open("page.png", "wb").write(png)
-
-# Drive a browser step by step
-remote.call("go_to", url="https://example.com")
-remote.call("click", selector="text=Sign in")
 ```
+
+> Browser control goes through `co browser <verb>`, not the browser tools
+> directly — see [Driving a browser](#driving-a-browser) for why.
 
 `remote.call` runs over the **same authenticated WebSocket** as `input()`, so
 relay discovery, Ed25519 auth, and trust all still apply. It's a fast path, not
@@ -112,10 +114,10 @@ Entries are keyed either by **tool name** or by a **`Bash(...)` command pattern*
 ```yaml
 permissions:
   # Simple tool name — matches any call to that tool
-  "take_screenshot":
+  "read_file":
     allowed: true
     source: safe
-    reason: read-only page capture
+    reason: read-only operation
 
   # Exact command
   "Bash(git status)":
@@ -146,14 +148,12 @@ permissions:
 
 ## Allowed by default
 
-A fresh `host()` ships a whitelist of safe, read-only commands and the browser
-navigation/observation tools. Highlights:
+A fresh `host()` ships a whitelist of safe, read-only commands. Highlights:
 
 | Group | Entries |
 |---|---|
 | Read-only agent tools | `read`, `read_file`, `glob`, `grep`, `search`, `list_files`, `ask_user` |
-| Browser (navigation/observe) | `go_to`, `take_screenshot`, `click`, `scroll`, `type_text_by_selector`, `extract_items_by_selector`, `wait_for_element` |
-| ConnectOnion CLI | `Bash(co *)` |
+| ConnectOnion CLI (incl. browser) | `Bash(co *)` — includes `co browser <verb>` |
 | File viewing | `cat *`, `head *`, `tail *`, `nl *`, `wc *`, `file *`, `stat *`, `diff *`, `tree *`, `du *` |
 | Path helpers | `basename *`, `dirname *`, `realpath *`, `readlink *` |
 | Text (read-only) | `echo *`, `sort *`, `uniq *`, `cut *`, `tr *`, `column *`, `jq *` |
@@ -170,6 +170,41 @@ Deliberately **not** included: anything with side effects (`sed -i`,
 (bare `python`, `node`). Add those yourself only if you trust the caller.
 
 ---
+
+## Driving a browser
+
+Steer the remote browser through the **`co browser`** CLI, over `bash`:
+
+```python
+remote.call("bash", command="co browser go_to https://example.com")
+remote.call("bash", command="co browser click 'Sign in'")
+shot = remote.call("bash", command="co browser take_screenshot")   # base64 in .images
+```
+
+`co browser <verb>` talks to a persistent **browser daemon** — a separate
+background process that owns one Chrome and arbitrates tabs, ownership, and
+lifecycle on its own. A bare command uses the shared `main` tab; add `-t <name>`
+to drive an isolated tab (`co browser tab open mytask`, then `co browser -t
+mytask go_to …`). The daemon registers the tab before running, so navigation
+never trips the "who is this for?" guard, and the whole thing round-trips as
+ordinary command output.
+
+**Why not call the browser tools directly?** ConnectOnion has two browser stacks
+— same code, different process, different Chrome instance (both share
+`~/.co/browser_profile`, so only one runs at a time):
+
+| | In-process browser tool | `co browser` daemon |
+|---|---|---|
+| Where Chrome runs | inside the agent process | a separate daemon process |
+| Tab routing | `bind_browser_session` plugin, per chat session | the daemon, via `-t` / `main` |
+| Driven by | `agent.input()` (the LLM) | `co browser <verb>` commands |
+| Under `remote.call` | ⚠️ skips the plugin → shared tab + a purpose/who guard meant for the LLM | ✅ daemon handles everything |
+
+`remote.call` runs a tool **directly**, with no event/plugin hooks — so the
+in-process browser's per-session tab binding never fires. That's why the
+in-process browser tool names (`go_to`, `take_screenshot`, …) are **not**
+whitelisted for direct exec, and browser remote-control goes through the daemon
+instead. One clean path, no surprises.
 
 ## Adding your own commands
 
@@ -205,7 +240,7 @@ user granted interactively.
 Inside an event loop, use the async form:
 
 ```python
-result = await remote.call_async("take_screenshot", timeout=30)
+result = await remote.call_async("bash", command="co browser take_screenshot", timeout=30)
 ```
 
 `remote.call(...)` is the sync wrapper; calling it from within a running event
@@ -220,7 +255,7 @@ If the agent's trust level requires onboarding (invite code or payment), a raw
 then `call()` works on the same identity:
 
 ```python
-remote.call("take_screenshot")
+remote.call("bash", command="co status")
 # ExecResult(status="error", error="agent requires onboarding — run input() once to onboard, then call() works")
 ```
 
