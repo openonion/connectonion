@@ -575,6 +575,33 @@ co browser --headless go_to "$DEPLOY_URL"   # --headless for CI
 
 ---
 
+#### `co call <address> <command>` - Run a Command on a Remote Agent
+
+The **remote twin of `co browser`**: run one command on a remote agent and print
+the result — no LLM, no session. What `co browser take_screenshot` does locally,
+`co call <address> co browser take_screenshot` does on a remote agent. See
+[call.md](call.md).
+
+```bash
+co call 0x3d40... co status                                   # run co status remotely
+co call 0x3d40... co browser go_to https://example.com        # drive its browser
+co call --out shot.png 0x3d40... co browser take_screenshot   # save its screenshot
+co call 0x3d40... uptime                                      # any whitelisted command
+```
+
+Everything after the address runs on the remote, gated by **that agent's**
+`.co/host.yaml` whitelist (`co ...` and read-only commands allowed by default).
+Options (`--out`, `--timeout`, `--relay`) go before the address; clean stdout and
+standard exit codes (`0` ok · `1` failure · `2` usage) make it script- and
+agent-friendly.
+
+**When to use:**
+- An agent driving another agent with an exact command
+- Remote-control browser steps from the shell
+- Scripting remote actions (vs. `connect().input()` for LLM-driven tasks)
+
+---
+
 ## Global Configuration
 
 ### The `~/.co/` Directory
@@ -942,7 +969,8 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 | `co deploy` | Deploy to cloud | No | ✅ Yes |
 | `co reset` | Reset account | Yes | ⚠️ Destructive |
 | `co doctor` | Diagnose issues | No | ✅ Yes |
-| `co browser` | Browser command | No | ✅ Yes |
+| `co browser` | Browser command (local) | No | ✅ Yes |
+| `co call` | Run a command on a remote agent | No | ✅ Yes |
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |
 
 ---

@@ -177,6 +177,22 @@ def browser(
     raise typer.Exit(handle_browser(args or [], headless=headless))
 
 
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def call(
+    args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] <address> <command...>"),
+):
+    """Run one command on a remote agent and print the result (no LLM).
+
+    The remote twin of `co browser` — everything after the address runs on the
+    remote agent, gated by its .co/host.yaml whitelist:
+
+        co call 0x3d40... co status
+        co call --out shot.png 0x3d40... co browser take_screenshot
+    """
+    from .commands.call_commands import handle_call
+    raise typer.Exit(handle_call(args or []))
+
+
 @app.command()
 def ai(
     prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),

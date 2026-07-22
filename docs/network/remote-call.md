@@ -61,6 +61,20 @@ if shot.images:
 relay discovery, Ed25519 auth, and trust all still apply. It's a fast path, not
 a back door.
 
+### From the shell: `co call`
+
+The same thing without writing Python — the remote twin of `co browser`:
+
+```bash
+co call 0x3d40... co status
+co call --out shot.png 0x3d40... co browser take_screenshot
+```
+
+`co call <address> <command...>` maps to `connect(address).call("bash",
+command="<command...>")`: everything after the address runs on the remote,
+gated by its whitelist, with clean stdout and exit codes for scripting. See
+[cli/call.md](../cli/call.md).
+
 ---
 
 ## The result: `ExecResult`
