@@ -18,6 +18,7 @@ from .microsoft_calendar import MicrosoftCalendar
 from .web_fetch import WebFetch
 from .shell import Shell
 from .bash import bash
+from .codex import codex
 from .diff_writer import DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN
 from ..tui import pick
 from .terminal import yes_no, autocomplete
@@ -51,6 +52,7 @@ __all__ = [
     "WebFetch",
     "Shell",
     "bash",
+    "codex",
     "DiffWriter",
     "MODE_NORMAL",
     "MODE_AUTO",
