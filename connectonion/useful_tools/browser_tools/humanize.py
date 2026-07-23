@@ -1,12 +1,13 @@
 """
-Purpose: Humanize BrowserAutomation's pointer + keyboard events so clicks and typing survive
-         BEHAVIORAL bot detection (mouse-trajectory entropy, click position, keystroke cadence)
+Purpose: Humanize BrowserAutomation's pointer + keyboard + scroll events so clicks, typing and
+         scrolling survive BEHAVIORAL bot detection (mouse-trajectory/velocity, click position,
+         keystroke cadence, wheel-device shape, IME/paste for CJK)
 LLM-Note:
-  Dependencies: stdlib only [math, random, time, weakref] | imported by [useful_tools/browser_tools/browser.py — every click/hover/type path routes through here; scroll.py — wheel scroll] | tested by [tests/unit/test_browser_humanize.py]
-  Data flow: browser.py/scroll.py call move/click/double_click/type_text/scroll(page, ...) on the browser worker thread → each remembers the page's last cursor position in the module-level WeakKeyDictionary `_cursor`, so the NEXT action starts its curve from where the last one ended (a real cursor never teleports between actions)
-  State/Effects: drives the live page via page.mouse.* / page.keyboard.* and (for CJK) a CDP session's Input.imeSetComposition, sleeping between events; retained state is `_cursor` (per-page last x/y) and `_cdp` (per-page CDP session for IME) — both auto-dropped when the page is GC'd
-  Integration: Patchright already fixes the DRIVER-level tells (navigator.webdriver, Runtime.enable); this module fixes the layer above it — the shape of the events themselves (curved cursor paths, keystroke cadence, real wheel events, and IME composition for CJK). No public tool signatures change; only the low-level event generation.
-  Errors: none — pure event emission; if the page is closed the underlying Playwright/CDP call raises and bubbles (fail fast)
+  Dependencies: stdlib only [math, platform, random, shutil, subprocess, time, weakref] | imported by [useful_tools/browser_tools/browser.py — every click/hover/type path routes through here; scroll.py — wheel scroll] | tested by [tests/unit/test_browser_humanize.py]
+  Data flow: browser.py/scroll.py call move/click/double_click/type_text/scroll(page, ...) on the browser worker thread → each remembers the page's last cursor position in the module-level WeakKeyDictionary `_cursor`, so the NEXT action starts its curve from where the last one ended (a real cursor never teleports between actions); timing/scroll-device come from a per-page `_persona`
+  State/Effects: drives the live page via page.mouse.* / page.keyboard.*, and for CJK sets the OS clipboard (subprocess: xclip/xsel/pbcopy/clip) then Ctrl/Cmd+V, falling back to a CDP session's Input.imeSetComposition when paste is blocked; sleeps between events. Retained state: `_cursor` (per-page x/y), `_cdp` (per-page CDP session), `_personas` (per-page timing/device persona) — all auto-dropped when the page is GC'd. The user's clipboard is saved and restored around a paste.
+  Integration: Patchright already fixes the DRIVER-level tells (navigator.webdriver, Runtime.enable); this module fixes the layer above it — the shape of the events themselves (curved cursor paths with a human velocity profile, log-normal keystroke cadence, real wheel events, and CJK entered by a trusted paste, IME fallback). No public tool signatures change; only the low-level event generation.
+  Errors: none — event emission plus a best-effort clipboard round-trip; if the page is closed the underlying Playwright/CDP call raises and bubbles (fail fast)
 """
 
 import math
@@ -179,11 +180,10 @@ def _wheel(page, amount, sign, lo, hi):
 
 
 def _needs_ime(ch):
-    """True for characters a human types through an IME (composition), not direct keys —
-    CJK ideographs, Japanese kana, Korean hangul. `page.keyboard.type` drops these as a
-    bare insertText with NO composition events, which is an obvious tell on IME-aware
-    (Chinese/Japanese/Korean) sites: a real typist always produces compositionstart/
-    update/end while choosing candidates."""
+    """True for characters a human enters by paste or an IME, not direct keystrokes — CJK
+    ideographs, Japanese kana, Korean hangul. `page.keyboard.type` drops these as a bare
+    insertText, which is an obvious tell on IME-aware (Chinese/Japanese/Korean) sites where
+    a real user pastes or composes them; see type_text for how these runs are entered."""
     o = ord(ch)
     return (0x3040 <= o <= 0x30FF or   # hiragana + katakana
             0x3400 <= o <= 0x4DBF or   # CJK ext A
@@ -193,8 +193,8 @@ def _needs_ime(ch):
 
 
 def _segments(text):
-    """Split text into (needs_ime, run) chunks so each run is typed with the right
-    mechanism — direct keystrokes for Latin, IME composition for CJK."""
+    """Split text into (needs_ime, run) chunks so each run is entered with the right
+    mechanism — direct keystrokes for Latin, paste (IME fallback) for CJK."""
     runs = []
     for ch in text:
         ime = _needs_ime(ch)

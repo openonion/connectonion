@@ -1851,9 +1851,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         return f"Waited for {seconds} seconds"
 
     def scroll(self, times: int = 5, description: str = "the main content area") -> str:
-        """Universal scroll with AI strategy and fallback.
+        """Universal scroll, humanized first.
 
-        Tries: AI-generated → Element scroll → Page scroll
+        Tries: Human wheel (real mouse-wheel events) → AI-generated → Element scroll → Page scroll
         Verifies success with screenshot comparison.
         """
         from . import scroll
