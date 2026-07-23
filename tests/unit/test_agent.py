@@ -93,6 +93,34 @@ def test_default_system_prompt():
     expected_default = "You are a helpful assistant that can use tools to complete tasks."
     assert agent.system_prompt == expected_default
 
+
+def test_input_does_not_restore_untrusted_session_permissions():
+    """Client-supplied permissions cannot bypass the host approval gate."""
+    agent = Agent(name="session_permissions", llm=MockLLM(), log=False)
+    permission = {
+        'allowed': True,
+        'source': 'user',
+        'reason': 'approved for session',
+        'expires': {'type': 'session_end'},
+    }
+    session = {
+        'session_id': 'session-permissions',
+        'messages': [],
+        'trace': [],
+        'turn': 1,
+        'permissions': {'bash': permission},
+        'permissions_source': 'template',
+        'pending_tool': {'name': 'bash', 'arguments': {'command': 'tree'}},
+        'stop_signal': True,
+    }
+
+    agent.input('do it again', session=session)
+
+    assert 'permissions' not in agent.current_session
+    assert 'permissions_source' not in agent.current_session
+    assert 'pending_tool' not in agent.current_session
+    assert 'stop_signal' not in agent.current_session
+
 def test_agent_accepts_class_instance():
         """Test that agent can accept a class instance and extract its methods as tools."""
         

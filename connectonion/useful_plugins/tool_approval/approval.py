@@ -330,6 +330,14 @@ def _get_mode(agent: 'Agent') -> str:
     return agent.current_session.get('mode', DEFAULT_MODE)
 
 
+def _permission_is_active(permission: dict, turn: int | None) -> bool:
+    """Return whether a permission is structurally valid and unexpired."""
+    if not isinstance(permission, dict):
+        return False
+    expires = permission.get('expires', {})
+    return expires.get('type') != 'turn_end' or expires.get('turn') == turn
+
+
 def _set_mode(agent: 'Agent', mode: str) -> None:
     """Set approval mode in session and notify frontend."""
     if mode not in VALID_MODES:
@@ -413,7 +421,11 @@ def check_approval(agent: 'Agent') -> None:
         tool_args = pending['arguments']
 
         # Get permissions from session (includes safe tools from template)
-        permissions = agent.current_session.get('permissions', {})
+        permissions = {
+            pattern: permission
+            for pattern, permission in agent.current_session.get('permissions', {}).items()
+            if _permission_is_active(permission, agent.current_session.get('turn'))
+        }
 
         if permissions:
             # matches_permission_pattern is from skills plugin - handles pattern matching
@@ -437,7 +449,7 @@ def check_approval(agent: 'Agent') -> None:
 
             # Check each permission in the dict
             for pattern, perm in permissions.items():
-                if not perm.get('allowed'):
+                if not isinstance(perm, dict) or not perm.get('allowed'):
                     continue
 
                 # First check basic pattern match (tool name or Bash command)
