@@ -115,6 +115,23 @@ agent.status    # 'idle' | 'working' | 'waiting'
 
 ---
 
+## Direct tool execution (`remote.call`)
+
+`input()` hands the remote **LLM** a task and waits for it to reason. When you
+already know the exact tool and arguments, `remote.call()` runs it directly — no
+LLM, no session — and returns the raw output (text or a base64 screenshot):
+
+```python
+remote = connect("0x3d40...")
+print(remote.call("bash", command="co status").text)
+shot = remote.call("bash", command="co browser take_screenshot")   # .images extracts base64
+```
+
+Gated by the host's `.co/host.yaml` whitelist. From the shell it's `co call
+<address> <command...>`. Full reference: [remote-call.md](remote-call.md).
+
+---
+
 ## Connection Modes
 
 ### Via Relay (Default)

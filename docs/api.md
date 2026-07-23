@@ -456,3 +456,42 @@ agent = Agent(
 # Agent can use multiple tools in one request
 result = agent.input("Search for Python tutorials, calculate 42*17, and tell me the time")
 ```
+
+## Networking
+
+Host an agent and connect to it from anywhere. Full guides live in
+[`network/`](network/README.md); the core surface:
+
+### `host(create_agent, **kwargs)`
+
+Serve an agent over HTTP/WebSocket with relay discovery. `create_agent` is a
+factory called once per request (isolation). See [network/host.md](network/host.md).
+
+```python
+from connectonion import host
+host(lambda: Agent("assistant", tools=[...]))
+```
+
+### `connect(address, *, keys=None, relay_url=...) -> RemoteAgent`
+
+Client to a remote agent. See [network/connect.md](network/connect.md).
+
+```python
+from connectonion import connect
+remote = connect("0x3d40...")
+
+# LLM-driven task
+resp = remote.input("Book a flight")      # -> Response(text, done)
+
+# Direct tool execution — no LLM (see network/remote-call.md)
+res = remote.call("bash", command="co status")   # -> ExecResult
+```
+
+| Method | Returns | Purpose |
+|--------|---------|---------|
+| `remote.input(prompt, timeout=60)` | `Response(text, done)` | Hand the remote LLM a task |
+| `remote.call(tool, timeout=60, **args)` | `ExecResult(text, status, duration_ms, error)` | Run one tool directly, no LLM |
+
+`ExecResult`: `.ok` (bool), `.images` (base64 data URLs pulled from `.text`).
+Direct execution is gated by the host's `.co/host.yaml` permission whitelist.
+From the shell: `co call <address> <command...>` (see [cli/call.md](cli/call.md)).

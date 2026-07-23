@@ -250,8 +250,24 @@ exactly one daemon — the loser exits and its command is served by the winner.
   daemon log: `~/.co/browser.log` · socket: `$TMPDIR/co/browser.sock` (plus
   `.pid`/`.lock` beside it).
 
+## Remote control
+
+Everything here runs the browser on **this** machine. To drive the browser on a
+**remote** agent, prefix the same command with `co call <address>`:
+
+```bash
+co browser take_screenshot                          # local
+co call 0x3d40... co browser take_screenshot        # remote (same verb)
+```
+
+`co call` sends the command to the remote agent over an authenticated WebSocket;
+it runs there against the remote's own browser daemon and the result (text or a
+saved screenshot) comes back. Gated by the remote's `.co/host.yaml` whitelist —
+`co browser <verb>` is allowed by default. See [cli/call.md](cli/call.md).
+
 ## See Also
 
 - `co browser help` — the live list of every function you can call directly.
+- [cli/call.md](cli/call.md) — `co call`, the remote twin of this command.
 - The `browser` and `hosted-browser` project templates (`co create --template browser`)
   for building agents on top of the same browser automation.

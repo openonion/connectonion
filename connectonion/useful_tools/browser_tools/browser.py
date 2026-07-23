@@ -9,6 +9,21 @@ LLM-Note:
   Errors: an unoccupied tab's first go_to/newtab raises ValueError coaching the AGENT to re-call with purpose/who (_occupancy_help) | launch failure returns the first error line + a pointer to ~/.co/browser.log | context liveness is judged at the CONTEXT level (_context_is_alive), so one dead page never tears down other sessions' tabs
 Browser Agent for CLI - Natural language browser automation.
 
+Two stacks drive this class — same code, different process, DIFFERENT Chrome
+instance (both use ~/.co/browser_profile, so only one can run at a time):
+
+  1. In-process TOOL — an agent holds a BrowserAutomation instance in its own
+     process (e.g. the hosted-browser template). Tabs are routed per session by
+     the bind_browser_session plugin (a before_each_tool hook), so each chat
+     session drives its own tab. Driven by agent.input() (the LLM). A direct
+     call that skips the event loop (network EXEC) skips the plugin → lands on
+     the shared 'main' tab.
+  2. DAEMON — `co browser <verb>` talks to a persistent background daemon
+     (cli/browser_agent/daemon.py) that owns ONE BrowserAutomation and arbitrates
+     tabs/ownership/lifecycle itself (`-t <tab>` targets a tab; bare = 'main').
+     This is the path for remote control: RemoteAgent.call("bash",
+     command="co browser take_screenshot"). See docs/network/remote-call.md.
+
 This module provides a browser automation agent that understands natural language
 requests for browser operations via the ConnectOnion CLI.
 

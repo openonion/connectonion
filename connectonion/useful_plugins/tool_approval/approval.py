@@ -622,6 +622,102 @@ def check_approval(agent: 'Agent') -> None:
     )
 
 
+def _convert_permission_patterns(raw: dict) -> dict:
+    """Normalize a raw host.yaml permissions dict.
+
+    A "Bash(cmd)" key keeps its form but gains when={command: cmd} so runtime
+    matching can fnmatch the actual command. Simple tool-name keys pass through.
+    """
+    converted = {}
+    for pattern, perm in raw.items():
+        if pattern.startswith('Bash(') and pattern.endswith(')'):
+            converted[pattern] = {**perm, 'when': {'command': pattern[5:-1]}}
+        else:
+            converted[pattern] = perm
+    return converted
+
+
+def load_permission_patterns(co_dir=None) -> dict:
+    """Load the merged permission whitelist: template safe defaults + project host.yaml.
+
+    Returns the same dict shape used in session['permissions']. This whitelist is
+    the single source of truth for "what may run without a human in the loop" —
+    honored both by the session approval flow (load_config_permissions) and by
+    direct tool execution (network EXEC), so there is only one list to maintain.
+
+    Args:
+        co_dir: Project .co directory (default: cwd/.co). The template defaults
+                always load; the project host.yaml merges on top.
+    """
+    import yaml
+
+    permissions = {}
+
+    template_path = Path(__file__).parent.parent.parent / 'network' / 'host' / 'host.yaml'
+    if template_path.exists():
+        with open(template_path, 'r', encoding='utf-8') as f:
+            template_config = yaml.safe_load(f) or {}
+        template_permissions = template_config.get('permissions')
+        if template_permissions and isinstance(template_permissions, dict):
+            permissions.update(_convert_permission_patterns(template_permissions))
+
+    co_dir = Path(co_dir) if co_dir else (Path.cwd() / '.co')
+    host_yaml = co_dir / 'host.yaml'
+    if host_yaml.exists():
+        with open(host_yaml, 'r', encoding='utf-8') as f:
+            config = yaml.safe_load(f) or {}
+        permissions_config = config.get('permissions')
+        if permissions_config and isinstance(permissions_config, dict):
+            for key, perm in _convert_permission_patterns(permissions_config).items():
+                # Project config overrides template, but never clobbers a
+                # user-granted approval.
+                if permissions.get(key, {}).get('source') != 'user':
+                    permissions[key] = perm
+
+    return permissions
+
+
+def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tuple[bool, str]:
+    """Check one tool call against a permission whitelist. Returns (allowed, reason).
+
+    Same matching the LLM approval flow uses in check_approval: bash command
+    chains require every subcommand permitted; other tools match by name (and
+    'when' parameter globs). Callers that run tools outside the LLM loop (network
+    EXEC) use this so direct execution honors exactly the host.yaml whitelist.
+    """
+    import fnmatch
+
+    if not permissions:
+        return False, "no permissions configured"
+
+    # Bash chains: every subcommand in "a && b | c" must be individually
+    # permitted. This is AUTHORITATIVE for bash — we never fall through to the
+    # generic loop below, because a pattern like "Bash(co *)" would otherwise
+    # prefix-match the whole chain string ("co status && rm -rf /") and wrongly
+    # permit the dangerous half. Per-subcommand matching is the only safe check.
+    if tool_name == 'bash' and 'command' in tool_args:
+        permitted, reason, _ = check_bash_chain_permitted(tool_args['command'], permissions)
+        return (True, reason or "permitted") if permitted else (False, "command not in the permission whitelist")
+
+    for pattern, perm in permissions.items():
+        if not perm.get('allowed'):
+            continue
+        if matches_permission_pattern(tool_name, tool_args, pattern):
+            when_config = perm.get('when')
+            if when_config:
+                all_match = True
+                for param_name, param_pattern in when_config.items():
+                    actual_value = tool_args.get(param_name, '')
+                    if not fnmatch.fnmatch(str(actual_value), str(param_pattern)):
+                        all_match = False
+                        break
+                if not all_match:
+                    continue
+            return True, perm.get('reason', 'allowed')
+
+    return False, f"'{tool_name}' is not in the permission whitelist"
+
+
 @after_user_input
 def load_config_permissions(agent: 'Agent') -> None:
     """Load permissions from host.yaml into session after user input.
@@ -634,68 +730,30 @@ def load_config_permissions(agent: 'Agent') -> None:
     Runs after user input so session is guaranteed to exist.
     Only loads once per session (first input).
     """
-    import yaml
-
     # Only load once per session
     if 'permissions' in agent.current_session and 'permissions_source' in agent.current_session:
         return
 
-    # Initialize permissions dict
-    if 'permissions' not in agent.current_session:
-        agent.current_session['permissions'] = {}
-
-    # Always load template permissions first (safe tools)
-    template_path = Path(__file__).parent.parent.parent / 'network' / 'host' / 'host.yaml'
-    if template_path.exists():
-        with open(template_path, 'r', encoding='utf-8') as f:
-            template_config = yaml.safe_load(f) or {}
-        template_permissions = template_config.get('permissions')
-        if template_permissions and isinstance(template_permissions, dict):
-            converted_template = {}
-            for pattern, perm in template_permissions.items():
-                if pattern.startswith('Bash(') and pattern.endswith(')'):
-                    # Keep Bash(X) as key (no collapse), add 'when' for runtime matching
-                    command_pattern = pattern[5:-1]
-                    converted_template[pattern] = {**perm, 'when': {'command': command_pattern}}
-                else:
-                    converted_template[pattern] = perm
-            agent.current_session['permissions'].update(converted_template)
-
-    # Then load project-specific config (if exists) and merge on top
+    # Reuse the shared loader — template safe defaults + project host.yaml —
+    # so the session flow and direct EXEC honor one whitelist.
     co_dir = Path.cwd() / '.co'
     host_yaml = co_dir / 'host.yaml'
+    loaded = load_permission_patterns(co_dir)
+
+    existing = agent.current_session.get('permissions', {})
+    # Preserve any user-granted approvals already in the session.
+    for key, perm in loaded.items():
+        if existing.get(key, {}).get('source') != 'user':
+            existing[key] = perm
+    agent.current_session['permissions'] = existing
 
     if host_yaml.exists():
-        with open(host_yaml, 'r', encoding='utf-8') as f:
-            config = yaml.safe_load(f) or {}
-
-        permissions_config = config.get('permissions')
-        if permissions_config and isinstance(permissions_config, dict):
-            converted_permissions = {}
-            for pattern, perm in permissions_config.items():
-                if pattern.startswith('Bash(') and pattern.endswith(')'):
-                    # Keep Bash(X) as key (avoids collapse), add 'when' for runtime fnmatch check
-                    command_pattern = pattern[5:-1]
-                    converted_permissions[pattern] = {**perm, 'when': {'command': command_pattern}}
-                else:
-                    converted_permissions[pattern] = perm
-
-            # Merge converted permissions (overrides template, but preserve user approvals)
-            for key, perm in converted_permissions.items():
-                # Don't overwrite user approvals
-                existing = agent.current_session['permissions'].get(key, {})
-                if existing.get('source') != 'user':
-                    agent.current_session['permissions'][key] = perm
-            agent.current_session['permissions_source'] = str(host_yaml.name)
-
-            # Log where permissions were loaded from (once, at startup)
-            if hasattr(agent, 'logger') and agent.logger and getattr(agent.logger, 'console', None):
-                count = len(permissions_config)
-                agent.logger.console.print(
-                    f"[dim]Loaded {count} permission(s) from {host_yaml.name}[/dim]"
-                )
+        agent.current_session['permissions_source'] = str(host_yaml.name)
+        if hasattr(agent, 'logger') and agent.logger and getattr(agent.logger, 'console', None):
+            agent.logger.console.print(
+                f"[dim]Loaded {len(loaded)} permission(s) from {host_yaml.name}[/dim]"
+            )
     else:
-        # No project config, using template only
         agent.current_session['permissions_source'] = 'template'
 
 

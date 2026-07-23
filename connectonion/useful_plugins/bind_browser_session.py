@@ -23,6 +23,14 @@ browser uses a single shared tab (original behaviour).
 
 State/Effects: writes the per-thread binding on the browser instance; no agent or
 module state. Best-effort — no browser tool or no session_id => no-op.
+
+Scope note: this only runs during agent.input() — it's a before_each_tool event
+handler. Paths that call a browser tool WITHOUT the event loop (network EXEC /
+RemoteAgent.call, which invoke the tool directly) never trigger it, so the
+binding stays None and those calls land on the single shared 'main' tab. That's
+why browser remote-control goes through the `co browser` CLI (the daemon
+arbitrates tabs itself) rather than direct-exec on the in-process browser tools.
+See connectonion/network/host/http_router.py:exec_handler.
 """
 
 from typing import TYPE_CHECKING

@@ -86,6 +86,63 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     }
 
 
+def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args: dict) -> dict:
+    """Direct tool execution (WS EXEC) — run one registered tool by name, no LLM loop.
+
+    The terminal-style fast path: the client names a tool and its arguments,
+    the tool runs immediately, and the raw result (text, or base64 image for
+    screenshot tools) goes straight back. No thinking, no session, no history.
+
+    Gated by the SAME permission whitelist the LLM approval flow uses — the
+    .co/host.yaml `permissions` block. Before running, the call is checked with
+    is_tool_permitted(); a command that isn't whitelisted is refused. So there is
+    one list to maintain, and "safe to run without a human" means the same thing
+    whether the LLM or a remote client initiates.
+
+    Tool errors are returned as data, not raised — same contract as the LLM
+    loop, where tool failures are reported back to the caller for retry.
+
+    NOTE — this runs the tool DIRECTLY: no LLM, and no event/plugin hooks
+    (before_each_tool etc.) fire. Anything a plugin does per tool call is skipped
+    here. That matters for the browser: the in-process BrowserAutomation relies
+    on the bind_browser_session plugin (a before_each_tool hook) to route each
+    session to its own tab, and that hook does NOT run for exec. So do NOT expose
+    the in-process browser tool names for direct exec. Browser remote-control
+    goes through the `co browser` CLI instead — `co browser <verb>` drives the
+    persistent browser DAEMON, a separate process that handles tab arbitration
+    and lifecycle on its own. See docs/network/remote-call.md.
+    """
+    from ...useful_plugins.tool_approval.approval import is_tool_permitted
+
+    allowed, reason = is_tool_permitted(tool_name, args, permissions)
+    if not allowed:
+        return {"status": "error",
+                "error": f"blocked: {reason}. Allow it by adding a rule to .co/host.yaml permissions."}
+
+    agent = create_agent()
+    tool = agent.tools.get(tool_name)
+    if tool is None:
+        return {"status": "error",
+                "error": f"unknown tool '{tool_name}' (available: {agent.tools.names()})"}
+
+    # Same injection as tool_executor: tools that declare 'agent' get it at call
+    # time (never exposed to the caller's args).
+    if getattr(tool, '_needs_agent', False):
+        args = {**args, "agent": agent}
+
+    start = time.time()
+    try:
+        result = tool(**args)
+    except Exception as e:
+        return {"status": "error",
+                "error": f"{type(e).__name__}: {e}",
+                "duration_ms": int((time.time() - start) * 1000)}
+
+    return {"status": "success",
+            "result": str(result),
+            "duration_ms": int((time.time() - start) * 1000)}
+
+
 def session_handler(storage: SessionStorage, session_id: str) -> dict | None:
     """GET /sessions/{id}"""
     session = storage.get(session_id)

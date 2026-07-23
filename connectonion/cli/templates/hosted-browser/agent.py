@@ -108,4 +108,7 @@ if __name__ == "__main__":
         # and a real terminal you can log in by hand once, and the profile keeps it.
         print(create_agent().input(" ".join(sys.argv[1:])))
     else:
+        # Clients can also drive tools directly (RemoteAgent.call) — that fast
+        # path is gated by the .co/host.yaml permissions whitelist, which already
+        # allows the browser navigation/observation tools. See README.
         host(create_hosted_agent)
