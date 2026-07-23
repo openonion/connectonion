@@ -313,7 +313,7 @@ jobs:
           from connectonion.useful_tools.shell import Shell
           from connectonion.cli.co_ai.tools import background as bg
 
-          cps = [20013, 25991, 27979, 35797, 128640]   # 中文测试 + rocket emoji
+          cps = [20013, 25991, 27979, 35797, 128640]   # CJK chars + a rocket emoji
           want = "".join(chr(c) for c in cps)
           # Build the child from codepoints so the command line stays pure ASCII;
           # the child generates the Unicode itself and prints it (UTF-8 thanks to the
