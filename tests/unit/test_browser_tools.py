@@ -15,10 +15,22 @@ class FakePage:
 
 
 class FakeMouse:
+    """Records the effective press point. Clicks are humanized (curved move → down →
+    up), so the press lands wherever the last move ended — that is the click point."""
     def __init__(self):
         self.clicks = []
+        self._pos = (0, 0)
 
-    def click(self, x, y):
+    def move(self, x, y):
+        self._pos = (x, y)
+
+    def down(self, button="left", click_count=1):
+        self.clicks.append(self._pos)
+
+    def up(self, button="left", click_count=1):
+        pass
+
+    def click(self, x, y):  # kept for any direct callers
         self.clicks.append((x, y))
 
 
@@ -204,7 +216,11 @@ def test_click_element_by_selector_wraps_playwright_locator(monkeypatch):
     )
 
     assert page.last_selector == 'button[aria-label="Reaction button state: no reaction"]'
-    assert page.mouse.clicks == [(60, 40)]
+    # Humanized click lands somewhere inside the element (box x:10..110, y:20..60),
+    # off dead-center by design — assert it's on the element, not on an exact pixel.
+    assert len(page.mouse.clicks) == 1
+    cx, cy = page.mouse.clicks[0]
+    assert 10 <= cx <= 110 and 20 <= cy <= 60
     assert page.waits == [1000]
     assert "Clicked element 1/1" in result
 
@@ -244,7 +260,8 @@ def test_type_text_by_selector_focuses_and_types():
     )
 
     assert item.force_clicked is True
-    assert page.keyboard.typed == ["Great point."]
+    # Typing is humanized — one keystroke per character, not one bulk insert.
+    assert page.keyboard.typed == list("Great point.")
     assert page.waits == [1000]
     assert "Typed text into element 1/1" in result
 
