@@ -26,7 +26,7 @@ Example: `0.0.2`
 - Reset MINOR and PATCH to 0
 - Reserved for major breaking changes or stable releases
 
-## Current Version: 1.2.1
+## Current Version: 1.3.0
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
@@ -38,6 +38,7 @@ Example: `0.0.2`
 - 1.0.0 → 1.1.0 (Stable release; cancelable scheduled email, scheduled replies)
 - 1.2.0 (co browser multi-agent tab CLI: -t targeting, tab lifecycle, contention guard, exit-code contract, daemon race hardening; graceful interrupt; Patchright stealth pin)
 - 1.2.1 (native Windows co browser via named-pipe transport; zero-setup chromium auto-install without admin; offline first-run hardening; windows-e2e CI)
+- 1.3.0 (remote tool execution: remote.call / co call; codex tool via native app-server; agent balance in ANNOUNCE profile + /info; humanized browser input + stealth; Gemini 3.6 Flash; bash description optional; browser-workflow-skill-builder; security: tightened default remote-exec whitelist)
 
 ## Files to Update When Versioning
 
