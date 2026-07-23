@@ -128,6 +128,10 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
         },
     }
 
+    # Startup balance snapshot for co/* managed-key agents; omitted otherwise.
+    if agent_metadata.get("balance_usd") is not None:
+        result["balance_usd"] = agent_metadata["balance_usd"]
+
     if trust_config:
         onboard = trust_config.get("onboard", {})
         if onboard:

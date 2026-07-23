@@ -117,6 +117,17 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
         "skills": [{"name": s.name, "description": s.description, "location": s.location}
                    for s in raw_skills],
     }
+    # Managed-key (co/*) agents have an OpenOnion account balance; publish it so
+    # chat clients can show the agent's balance. Clients can't fetch it themselves
+    # — it's gated by the agent's private key — so the agent is the only party that
+    # can report it. This is a one-time startup snapshot; it refreshes on restart.
+    # Agents on their own provider keys have no such balance, so get_balance is
+    # absent and the field is simply omitted.
+    get_balance = getattr(sample.llm, "get_balance", None)
+    if callable(get_balance):
+        balance = get_balance()
+        if balance is not None:
+            metadata["balance_usd"] = balance
     return metadata, sample
 
 
@@ -136,6 +147,10 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
         profile["tools"] = agent_metadata["tools"]
     if agent_metadata.get("model"):
         profile["model"] = agent_metadata["model"]
+    # Startup balance snapshot for co/* managed-key agents (see _extract_agent_metadata).
+    # Public for now — a later admin/subscriber tier can gate it.
+    if agent_metadata.get("balance_usd") is not None:
+        profile["balance_usd"] = agent_metadata["balance_usd"]
     # skill.location (useful_plugins/skills.py) is a 5-value discovery category. Publish
     # only the two that ship inside the project tree — project (.co/skills) and
     # claude-project (.claude/skills). user (~/.co/skills), claude-user (~/.claude/skills)
