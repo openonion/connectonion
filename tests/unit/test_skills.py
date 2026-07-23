@@ -186,6 +186,12 @@ class TestPatternMatching:
 
     def test_bash_command_prefix_wildcard(self):
         """Test bash command prefix wildcard (git *)."""
+        assert matches_permission_pattern(
+            'bash',
+            {'command': 'git'},
+            'Bash(git *)'
+        ) == True
+
         # "git *" should match any git command
         assert matches_permission_pattern(
             'bash',
@@ -205,11 +211,41 @@ class TestPatternMatching:
             'Bash(git *)'
         ) == True
 
+        assert matches_permission_pattern(
+            'bash',
+            {'command': 'git diff'},
+            'Bash(git diff *)'
+        ) == True
+
+        assert matches_permission_pattern(
+            'bash',
+            {'command': 'git diff --staged'},
+            'Bash(git diff *)'
+        ) == True
+
         # "git *" should NOT match non-git commands
         assert matches_permission_pattern(
             'bash',
             {'command': 'pytest'},
             'Bash(git *)'
+        ) == False
+
+        assert matches_permission_pattern(
+            'bash',
+            {'command': 'gitleaks detect'},
+            'Bash(git *)'
+        ) == False
+
+        assert matches_permission_pattern(
+            'bash',
+            {'command': 'lsof -i'},
+            'Bash(ls *)'
+        ) == False
+
+        assert matches_permission_pattern(
+            'bash',
+            {'command': 'git difftool'},
+            'Bash(git diff *)'
         ) == False
 
     def test_single_pattern_string(self):

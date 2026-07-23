@@ -373,10 +373,12 @@ def matches_permission_pattern(tool_name: str, tool_args: dict, pattern: str) ->
         if cmd_pattern == actual_cmd:
             return True
 
-        # Wildcard match: "git diff *" matches "git diff --staged"
+        # Wildcard match: "git diff *" matches "git diff --staged" (and bare
+        # "git diff"), but NOT "git difftool". Require a word boundary after the
+        # prefix so "git *" cannot match an unrelated binary like "gitleaks".
         if cmd_pattern.endswith(' *'):
             prefix = cmd_pattern[:-2]  # Remove " *"
-            if actual_cmd.startswith(prefix):
+            if actual_cmd == prefix or actual_cmd.startswith(prefix + ' '):
                 return True
 
         # Wildcard match: "git *" matches "git status"
