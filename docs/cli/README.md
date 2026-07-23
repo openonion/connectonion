@@ -363,7 +363,7 @@ $ co doctor
 🔍 ConnectOnion Diagnostics
 
 ┌─ System ─────────────────────────────────┐
-│ Version        ✓ 0.0.7                   │
+│ Version        ✓ 1.2.1                   │
 │ Python         ✓ 3.11.5                  │
 │ Python Path    /usr/local/bin/python3    │
 │ Environment    ✓ Virtual environment     │
@@ -737,12 +737,7 @@ Every installation generates master Ed25519 keypair:
 
 ### Recovery Phrase
 
-12-word phrase in `~/.co/keys/recovery.txt` restores keys:
-
-```bash
-# If you lose keys
-co restore "your twelve word recovery phrase here"
-```
+12-word phrase in `~/.co/keys/recovery.txt` can restore your keys if you lose them.
 
 **Store safely:**
 - Write down physically

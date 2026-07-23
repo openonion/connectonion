@@ -216,7 +216,8 @@ payment-*
 See `connectonion/network/trust/fast_rules.py`:
 
 ```python
-from connectonion.network.trust import parse_policy, evaluate_request
+from connectonion.network.trust import parse_policy
+from connectonion.network.trust.fast_rules import evaluate_request
 
 # Parse policy file
 config, markdown_body = parse_policy(policy_text)

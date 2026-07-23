@@ -17,7 +17,7 @@ Created automatically on first `co` command. Stores your identity and shared API
 │   ├── recovery.txt     # 12-word recovery phrase
 │   └── DO_NOT_SHARE     # Warning file
 ├── logs/                # Agent activity logs ({agent_name}.log)
-└── sessions/            # YAML session logs for eval/replay
+└── evals/               # YAML session logs for eval/replay
 ```
 
 ## Project Directory (`.co/`)
@@ -31,7 +31,7 @@ Created by `co create` or `co init`. Contains project-specific runtime data.
 │   ├── recovery.txt     # 12-word recovery phrase
 │   └── DO_NOT_SHARE     # Warning file
 ├── logs/                # Agent activity logs ({agent_name}.log)
-└── sessions/            # YAML session logs for eval/replay
+└── evals/               # YAML session logs for eval/replay
 ```
 
 ## host.yaml Reference
@@ -115,12 +115,12 @@ Each agent writes to `{agent_name}.log`:
 2025-01-15 10:30:02 [assistant] Result: The answer is 4
 ```
 
-### `sessions/` - YAML Session Logs
+### `evals/` - YAML Session Logs
 
-Detailed per-session logs for eval and replay:
+Detailed per-session logs for eval and replay, one file per unique first input:
 
 ```yaml
-# sessions/assistant_2025-01-15_103000.yaml
+# evals/what_is_2_2.yaml
 agent: assistant
 model: co/gemini-2.5-pro
 started_at: "2025-01-15T10:30:00Z"
@@ -130,6 +130,8 @@ turns:
     result: "The answer is 4"
     duration_ms: 1234
 ```
+
+Per-run details (system prompt, tokens, cost, full messages as JSON) are stored alongside in `evals/{input_slug}/run_{n}.yaml`.
 
 ## Security Considerations
 

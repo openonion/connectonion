@@ -57,7 +57,6 @@ agent = Agent(
     tools=[search, analyze, execute], # Your functions as tools
     system_prompt=company_prompt,     # Custom behavior
     max_iterations=10,                # Safety controls
-    trust="prompt"                    # Multi-agent ready
 )
 agent.input("Complex production task")
 ```
@@ -170,11 +169,13 @@ Plugins are just lists of event handlers — visible, modifiable, `co copy`-able
 
 ### Multi-Agent Trust System (Fast Rules)
 
-When agents call each other, trust decisions happen **before LLM involvement** — zero token cost for 90% of cases:
+When agents call each other, trust decisions happen **before LLM involvement** — zero token cost for 90% of cases. Trust is configured when hosting an agent:
 
 ```python
-agent = Agent(
-    name="production",
+from connectonion import host
+
+host(
+    create_agent,
     trust="careful"    # whitelist → allow, unknown → ask LLM, blocked → deny
 )
 ```
@@ -235,7 +236,7 @@ agent = Agent(
     name="my_assistant",
     system_prompt="You are a helpful and friendly assistant.",
     tools=[search, calculate]
-    # max_iterations=10 is the default - agent will try up to 10 tool calls per task
+    # max_iterations=100 is the default - agent will try up to 100 tool calls per task
 )
 
 # 3. Use the agent
@@ -255,7 +256,7 @@ Debug your agents like you debug code - pause at breakpoints, inspect variables,
 
 ```python
 from connectonion import Agent
-from connectonion.decorators import xray
+from connectonion import xray
 
 # Mark tools you want to debug with @xray
 @xray
@@ -313,7 +314,7 @@ Perfect for:
 - Exploring agent behavior interactively
 - Debugging complex multi-tool workflows
 
-[Learn more in the auto_debug guide](docs/auto_debug.md)
+[Learn more in the auto_debug guide](docs/debug/auto_debug.md)
 
 ### 🔌 Plugin System
 
@@ -358,7 +359,7 @@ from connectonion.useful_plugins import re_act, system_reminder
 agent = Agent("assistant", tools=[search], plugins=[re_act, system_reminder])
 ```
 
-[Learn more about plugins](docs/plugin.md) | [Built-in plugins](docs/useful_plugins/)
+[Built-in plugins](docs/useful_plugins/)
 
 ## 🔧 Core Concepts
 
@@ -441,11 +442,15 @@ Automatic logging of all agent activities including:
 
 You can still use the traditional Tool class approach, but the new functional approach is much simpler:
 
-### Traditional Tool Classes (Still Supported)
+### Class Instances as Tools (Still Supported)
 ```python
-from connectonion.tools import Calculator, CurrentTime, ReadFile
+class Calculator:
+    def calculate(self, expression: str) -> float:
+        """Evaluate a math expression."""
+        return eval(expression)
 
-agent = Agent("assistant", tools=[Calculator(), CurrentTime(), ReadFile()])
+# Each public method with type hints becomes a tool
+agent = Agent("assistant", tools=[Calculator()])
 ```
 
 ### New Function-Based Approach (Recommended)
@@ -479,18 +484,21 @@ ConnectOnion CLI provides templates to get you started quickly:
 co create my-agent
 
 # Create with specific template
-co create my-playwright-bot --template playwright
+co create my-browser-bot --template browser
 
 # Initialize in existing directory
 co init  # Adds .co folder only
-co init --template playwright  # Adds full template
+co init --template browser  # Adds full template
 ```
 
 **Available Templates:**
 - `minimal` (default) - Simple agent starter
-- `playwright` - Web automation with browser tools
-- `meta-agent` - Development assistant with docs search
+- `browser` - Web automation with browser tools
+- `hosted-browser` - Hosted browser sessions
+- `coder` - Coding agent
+- `co-ai` - AI assistant with web UI
 - `web-research` - Web research and data extraction
+- `custom` - AI generates a template based on your needs
 
 Each template includes:
 - Pre-configured agent ready to run
@@ -514,31 +522,23 @@ def weather(city: str) -> str:
 agent = Agent(name="weather_agent", tools=[weather])
 ```
 
-Or use the Tool class for more control:
+Or use a class instance to group related tools with shared state:
 
 ```python
-from connectonion.tools import Tool
+class WeatherService:
+    def __init__(self, api_key: str):
+        self.api_key = api_key
 
-class WeatherTool(Tool):
-    def __init__(self):
-        super().__init__(
-            name="weather",
-            description="Get current weather for a city"
-        )
-    
-    def run(self, city: str) -> str:
+    def current(self, city: str) -> str:
+        """Get current weather for a city."""
         return f"Weather in {city}: Sunny, 22°C"
-    
-    def get_parameters_schema(self):
-        return {
-            "type": "object",
-            "properties": {
-                "city": {"type": "string", "description": "City name"}
-            },
-            "required": ["city"]
-        }
 
-agent = Agent(name="weather_agent", tools=[WeatherTool()])
+    def forecast(self, city: str, days: int) -> str:
+        """Get a multi-day forecast for a city."""
+        return f"{days}-day forecast for {city}: mostly sunny"
+
+# Each public method becomes a tool; access the instance via agent.tools.weatherservice
+agent = Agent(name="weather_agent", tools=[WeatherService(api_key="...")])
 ```
 
 ## 📁 Project Structure
@@ -547,18 +547,29 @@ agent = Agent(name="weather_agent", tools=[WeatherTool()])
 connectonion/
 ├── connectonion/
 │   ├── __init__.py         # Main exports
-│   ├── agent.py            # Agent class
-│   ├── tools.py            # Tool interface and built-ins
-│   ├── llm.py              # LLM interface and OpenAI implementation
-│   ├── console.py          # Terminal output and logging
+│   ├── core/               # Agent, LLM, events, tool system
+│   │   ├── agent.py        # Agent class
+│   │   ├── llm.py          # Multi-provider LLM abstraction
+│   │   ├── events.py       # Event system
+│   │   └── tool_factory.py # Function → tool conversion
+│   ├── debug/              # xray, replay, auto_debug
+│   ├── network/            # connect, host, relay, trust
+│   ├── tui/                # Terminal UI components
+│   ├── logger.py           # Unified logging facade
+│   ├── console.py          # Terminal output
+│   ├── useful_tools/       # Built-in tools
+│   ├── useful_plugins/     # Built-in plugins
+│   ├── useful_skills/      # Built-in skills
 │   └── cli/                # CLI module
 │       ├── main.py         # CLI commands
-│       ├── docs.md         # Embedded documentation
+│       ├── commands/       # Command implementations
 │       └── templates/      # Agent templates
-│           ├── basic_agent.py
-│           ├── chat_agent.py
-│           ├── data_agent.py
-│           └── *.md        # Prompt templates
+│           ├── minimal/
+│           ├── browser/
+│           ├── hosted-browser/
+│           ├── coder/
+│           ├── co-ai/
+│           └── web-research/
 ├── docs/                   # Documentation
 │   ├── quickstart.md
 │   ├── concepts/           # Core concepts
@@ -566,9 +577,9 @@ connectonion/
 │   ├── templates/          # Project templates
 │   └── ...
 ├── examples/
-│   └── basic_example.py
 ├── tests/
-│   └── test_agent.py
+│   ├── unit/
+│   └── e2e/
 └── pyproject.toml
 ```
 
@@ -628,7 +639,7 @@ agent = Agent(name="test", api_key="your-api-key-here")
 
 ### Model Selection
 ```python
-agent = Agent(name="test", model="gpt-5")  # Default: gpt-5-mini
+agent = Agent(name="test", model="gpt-5")  # Default: co/gemini-2.5-pro
 ```
 
 ### Iteration Control
@@ -661,12 +672,12 @@ result = agent.input(
 
 When an agent reaches its iteration limit, it returns:
 ```
-"Task incomplete: Maximum iterations (10) reached."
+"Task incomplete: Maximum iterations (100) reached."
 ```
 
 **Choosing the Right Limit:**
 - **Simple tasks (1-3 tools)**: 5-10 iterations
-- **Standard workflows**: 10-15 iterations (default: 10)
+- **Standard workflows**: 10-15 iterations (default: 100)
 - **Complex analysis**: 20-30 iterations  
 - **Research/multi-step**: 30+ iterations
 
@@ -683,7 +694,7 @@ result = agent.input(
 
 ### Custom LLM Providers
 ```python
-from connectonion.llm import LLM
+from connectonion import LLM
 
 class CustomLLM(LLM):
     def complete(self, messages, tools=None):
@@ -719,10 +730,12 @@ python agent.py
 
 ### What LLM providers does ConnectOnion support?
 
-ConnectOnion supports multiple providers: OpenAI (default), Anthropic, Gemini, Groq, Grok, OpenRouter. Set via environment variable:
+ConnectOnion supports multiple providers: OpenAI, Anthropic, Gemini, and `co/` managed keys (the default — no API key setup needed). To use your own key, set the provider's environment variable:
 
 ```bash
-export OPENAI_API_KEY="your-key"
+export OPENAI_API_KEY="your-key"     # for gpt-* models
+export ANTHROPIC_API_KEY="your-key"  # for claude-* models
+export GEMINI_API_KEY="your-key"     # for gemini-* models
 ```
 
 ### How do I add tools to my agent?
@@ -757,7 +770,7 @@ agent = Agent("researcher", tools=[search], plugins=[re_act, subagents])
 `@xray` is an interactive debugging feature that pauses execution at marked tools:
 
 ```python
-from connectonion.decorators import xray
+from connectonion import xray
 
 @xray
 def my_tool(query: str) -> str:
@@ -787,7 +800,9 @@ Automatically loads Claude Code skills from `.claude/skills/` — no conversion 
 When agents call each other, trust decisions happen **before LLM involvement** (zero token cost):
 
 ```python
-agent = Agent(name="production", trust="careful")
+from connectonion import host
+
+host(create_agent, trust="careful")
 ```
 
 Three presets:

@@ -10,15 +10,15 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
 
 ### Core Components
 
-- **Agent** (`connectonion/agent.py:29`): Main orchestrator with LLM integration, tool execution, event system, and trust verification
-- **LLM** (`connectonion/llm.py:11`): Unified abstraction supporting OpenAI, Anthropic, Gemini, and managed keys via factory pattern
-- **Tool Executor** (`connectonion/tool_executor.py:24`): Executes tools with xray context injection, timing, error handling, and trace recording
-- **Tool Factory** (`connectonion/tool_factory.py`): Converts Python functions to OpenAI-compatible tool schemas automatically
+- **Agent** (`connectonion/core/agent.py`): Main orchestrator with LLM integration, tool execution, event system, and trust verification
+- **LLM** (`connectonion/core/llm.py`): Unified abstraction supporting OpenAI, Anthropic, Gemini, and managed keys via factory pattern
+- **Tool Executor** (`connectonion/core/tool_executor.py`): Executes tools with xray context injection, timing, error handling, and trace recording
+- **Tool Factory** (`connectonion/core/tool_factory.py`): Converts Python functions to OpenAI-compatible tool schemas automatically
 - **Logger** (`connectonion/logger.py`): Unified logging facade (terminal + plain text + YAML sessions) with `quiet` and `log` parameters
 - **Console** (`connectonion/console.py`): Low-level terminal output with Rich formatting (used internally by Logger)
-- **Events** (`connectonion/events.py:11`): Lifecycle hooks (after_user_input, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_complete, on_stop_signal)
+- **Events** (`connectonion/core/events.py`): Lifecycle hooks (after_user_input, before_iteration, after_iteration, before_llm, after_llm, before_each_tool, before_tools, after_each_tool, after_tools, on_error, on_agent_ready, on_complete, on_stop_signal)
 - **Trust System** (`connectonion/network/trust/`): Three-level verification (open/careful/strict) with custom policy support
-- **XRay Debug** (`connectonion/xray.py:32`): Runtime context injection for interactive debugging with `@xray` decorator
+- **XRay Debug** (`connectonion/debug/xray.py`): Runtime context injection for interactive debugging with `@xray` decorator
 
 ### Key Design Patterns
 
@@ -27,7 +27,7 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
 - **Class-based (legacy)**: Inherit from `Tool` base class with explicit schemas
 - Auto-conversion: `create_tool_from_function()` inspects signatures and generates OpenAI schemas
 
-#### Agent Execution Loop (`connectonion/agent.py:input()`)
+#### Agent Execution Loop (`connectonion/core/agent.py:input()`)
 1. Initialize/extend session with user input
 2. Fire `after_user_input` event
 3. Loop (max_iterations times):
@@ -41,39 +41,38 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
    - Add results to messages, continue
 4. Return final response or iteration limit message
 
-#### Multi-LLM Provider Architecture (`connectonion/llm.py`)
+#### Multi-LLM Provider Architecture (`connectonion/core/llm.py`)
 - Factory pattern: `create_llm(model, api_key)` routes to provider classes
 - OpenAI format as lingua franca (all providers convert to/from)
 - Structured output: Each provider uses native API (OpenAI's `parse()`, Anthropic's forced tool calling, Gemini's `response_schema`)
 - Tool calling: Unified `ToolCall` dataclass format across all providers
 
-#### Event System & Plugins (`connectonion/events.py`)
+#### Event System & Plugins (`connectonion/core/events.py`)
 - Wrapper functions tag handlers with `_event_type` attribute
 - Plugins are lists of event handlers bundled together
 - Handlers receive `agent` instance, can modify `current_session`
-- Built-in plugins: reflection, ReAct, image_result_formatter
+- Built-in plugins (`connectonion/useful_plugins/`): re_act, image_result_formatter, shell_approval, gmail_plugin, calendar_plugin, ui_stream, eval, auto_compact, and more
 
 #### Trust Verification (`connectonion/network/trust/`)
 - Three levels: "open" (dev), "careful" (staging), "strict" (prod)
 - Custom policies: markdown files or inline text describing verification rules
 - Custom agents: Pass your own Agent instance with verification tools
 - Environment-based defaults: `CONNECTONION_ENV` sets trust level automatically
-- Module structure: `factory.py` (creation), `prompts.py` (level prompts), `tools.py` (verification tools), `trust_agent.py` (TrustAgent class)
+- Module structure: `factory.py` (creation), `fast_rules.py` (policy parsing/evaluation), `tools.py` (verification tools), `trust_agent.py` (TrustAgent class), `policies/` (level policy markdown)
 - Onboard methods: `invite_code` (verify against configured codes), `payment` (verify via oo-api credit transfer)
 - Payment verification: `TrustAgent.verify_payment()` calls oo-api `/api/v1/onboard/verify` to check for recent transfers
 
-#### XRay Debugging (`connectonion/xray.py`)
+#### XRay Debugging (`connectonion/debug/xray.py`)
 - `@xray` decorator injects context: `xray.agent`, `xray.task`, `xray.messages`, `xray.iteration`
 - `xray.trace()` displays formatted execution history
-- `inject_xray_context()` in `tool_executor.py:24` provides runtime context
+- `inject_xray_context()` in `core/tool_executor.py` provides runtime context
 - Enables interactive debugging with `agent.auto_debug()`
 
 ## Development Commands
 
 ### Installation
 ```bash
-pip install -r requirements.txt
-pip install -e .  # Development mode
+pip install -e .  # Development mode (deps from pyproject.toml)
 ```
 
 ### Testing
@@ -105,7 +104,7 @@ co create my-agent                    # Minimal template (default)
 co create my-bot --template browser       # Browser automation
 co create coder --template coder          # Coding agent
 
-# Available templates: minimal, coder, browser, web-research
+# Available templates: minimal, browser, hosted-browser, coder, co-ai, web-research, custom
 
 # Initialize in existing directory
 co init                               # Add .co folder only
@@ -130,8 +129,8 @@ co status                             # Show project status
 
 ### Building & Publishing
 ```bash
-# Build package
-python setup.py sdist bdist_wheel
+# Build package (hatchling via pyproject.toml)
+python -m build
 
 # Publish to PyPI
 twine upload dist/*
@@ -147,71 +146,85 @@ twine upload dist/*
 connectonion/
 ├── connectonion/
 │   ├── __init__.py                 # Main exports
-│   ├── agent.py                    # Agent class with event system
-│   ├── llm.py                      # Multi-provider LLM abstraction
-│   ├── tool_executor.py            # Tool execution with xray
-│   ├── tool_factory.py             # Function → tool conversion
+│   ├── core/                       # Core engine
+│   │   ├── agent.py                # Agent class with event system
+│   │   ├── llm.py                  # Multi-provider LLM abstraction
+│   │   ├── tool_executor.py        # Tool execution with xray
+│   │   ├── tool_factory.py         # Function → tool conversion
+│   │   ├── tool_registry.py        # Tool lookup registry
+│   │   ├── events.py               # Event system
+│   │   ├── usage.py                # Token usage & cost tracking
+│   │   └── exceptions.py           # Custom exceptions
+│   ├── debug/                      # Debugging tools
+│   │   ├── xray.py                 # XRay debugging
+│   │   ├── decorators.py           # @replay, @xray_replay
+│   │   ├── auto_debug.py           # Interactive debugger
+│   │   ├── auto_debug_exception.py # Exception debugging
+│   │   ├── debug_explainer/        # Debug explanation agent
+│   │   └── execution_analyzer/     # Execution analysis
+│   ├── network/                    # Multi-agent networking
+│   │   ├── connect.py              # Connect to remote agents
+│   │   ├── host/                   # Host agents (trust config lives here)
+│   │   ├── relay.py                # Agent relay server
+│   │   ├── announce.py             # Service announcement
+│   │   └── trust/                  # Trust verification system
+│   │       ├── factory.py          # Trust agent creation
+│   │       ├── fast_rules.py       # Policy parsing/evaluation
+│   │       ├── tools.py            # Verification tools
+│   │       ├── trust_agent.py      # TrustAgent class
+│   │       └── policies/           # Trust level policy markdown
+│   ├── tui/                        # Terminal UI components
 │   ├── logger.py                   # Unified logging facade (terminal + file + YAML sessions)
 │   ├── console.py                  # Low-level terminal output with Rich
-│   ├── events.py                   # Event system
-│   ├── network/
-│   │   ├── trust/                  # Trust verification system
-│   │   │   ├── factory.py          # Trust agent creation
-│   │   │   ├── prompts.py          # Trust level prompts
-│   │   │   └── tools.py            # Verification tools
-│   ├── xray.py                     # XRay debugging
-│   ├── decorators.py               # @replay, @xray_replay
 │   ├── llm_do.py                   # One-shot LLM function
 │   ├── prompts.py                  # Prompt loading utilities
-│   ├── connect.py                  # Multi-agent networking
-│   ├── relay.py                    # Agent relay server
-│   ├── announce.py                 # Service announcement
+│   ├── transcribe.py               # Audio transcription
 │   ├── address.py                  # Agent addressing
-│   ├── auto_debug_exception.py     # Exception debugging
 │   ├── cli/
 │   │   ├── main.py                 # CLI entry point
 │   │   ├── commands/               # CLI command implementations
+│   │   ├── browser_agent/          # co browser agent
+│   │   ├── co_ai/                  # co ai agent
 │   │   └── templates/              # Agent templates
 │   │       ├── minimal/
-│   │       ├── coder/
 │   │       ├── browser/
+│   │       ├── hosted-browser/
+│   │       ├── coder/
+│   │       ├── co-ai/
 │   │       └── web-research/
 │   ├── useful_tools/               # Built-in tools
-│   │   ├── send_email.py
-│   │   └── get_emails.py
-│   ├── useful_plugins/             # Built-in plugins
-│   │   ├── reflection.py
-│   │   ├── react.py
-│   │   └── image_result_formatter.py
-│   ├── debug_agent/                # Interactive debugger
-│   ├── debug_explainer/            # Debug explanation agent
-│   └── execution_analyzer/         # Execution analysis
+│   ├── useful_plugins/             # Built-in plugins (re_act, image_result_formatter, ...)
+│   ├── useful_skills/              # Built-in skills (co-browser, install-connectonion, ship-feature)
+│   ├── useful_prompts/             # Reusable prompt snippets
+│   └── useful_events_handlers/     # Reusable event handlers
 ├── tests/
 │   ├── unit/                       # Fast, isolated tests
-│   ├── integration/                # Multi-component tests
-│   ├── real_api/                   # Tests requiring API keys
-│   ├── cli/                        # CLI command tests
-│   └── e2e/                        # End-to-end examples
+│   ├── e2e/                        # End-to-end workflows
+│   │   ├── cli/                    # CLI command tests
+│   │   ├── real_api/               # Tests requiring API keys
+│   │   └── manual/                 # Demo scripts (not collected)
+│   ├── fixtures/                   # Shared test fixtures
+│   └── utils/                      # Test utilities
 ├── docs/                           # Markdown documentation
 ├── wiki/                           # GitHub Wiki (nested repo)
 ├── docs-site/                      # Next.js docs site (nested repo, private)
 ├── examples/                       # Example agents
+├── subagents/                      # Subagent definitions
 ├── prompts/                        # System prompt templates
-├── setup.py                        # Package configuration
 ├── pytest.ini                      # Test configuration
-└── requirements.txt                # Dependencies
+└── pyproject.toml                  # Package configuration (hatchling)
 ```
 
 ## Key Implementation Details
 
-### Agent Session Management (`connectonion/agent.py`)
+### Agent Session Management (`connectonion/core/agent.py`)
 - `current_session`: Runtime-only context with `messages`, `trace`, `turn`, `iteration`
 - Session persists across turns for multi-turn conversations
 - `tools`: ToolRegistry with O(1) lookup via `.get()` or attribute access (`agent.tools.tool_name`)
 - Class instances accessible via `agent.tools.instance_name` (e.g., `agent.tools.gmail`)
-- Default model: `co/o4-mini` (managed keys via OpenOnion proxy)
+- Default model: `co/gemini-2.5-pro` (managed keys via OpenOnion proxy)
 
-### LLM Provider Routing (`connectonion/llm.py:create_llm()`)
+### LLM Provider Routing (`connectonion/core/llm.py:create_llm()`)
 - Model prefix determines provider:
   - `gpt-*` → OpenAI
   - `claude-*` or `anthropic.*` → Anthropic
@@ -220,7 +233,7 @@ connectonion/
 - API keys from environment or parameter
 - Structured output via provider-native APIs
 
-### Tool Execution Flow (`connectonion/tool_executor.py`)
+### Tool Execution Flow (`connectonion/core/tool_executor.py`)
 1. Add assistant message with tool_calls to session
 2. For each tool:
    - `inject_xray_context()` provides runtime context
@@ -245,9 +258,9 @@ Tools that need access to `agent.io` (for frontend communication) declare `agent
 - Trust agent created lazily when trust parameter provided
 - Prevents infinite recursion: trust agents don't have their own trust agents
 - Files: `factory.py` (create_trust_agent), `fast_rules.py` (parse_policy, evaluate_request), `tools.py` (is_whitelisted, is_blocked, promote_to_contact)
-- Policy files: `prompts/trust/{open,careful,strict}.md` with YAML frontmatter for fast rules
+- Policy files: `connectonion/network/trust/policies/*.md` with YAML frontmatter for fast rules
 
-### XRay Context Injection (`connectonion/xray.py`)
+### XRay Context Injection (`connectonion/debug/xray.py`)
 - Stores context in `builtins.xray` global object
 - Thread-safe via thread-local storage
 - Tools access: `xray.agent`, `xray.task`, `xray.messages`, `xray.iteration`, `xray.previous_tools`
@@ -257,7 +270,7 @@ Tools that need access to `agent.io` (for frontend communication) declare `agent
 - **Logger class**: Unified facade for terminal output + plain text + YAML sessions
 - **Console output**: Rich-formatted terminal output (unless `quiet=True`)
 - **Plain text logs**: `.co/logs/{agent_name}.log` (automatic audit trail)
-- **YAML sessions**: `.co/evals/{agent_name}_{timestamp}.yaml` (for eval/replay)
+- **YAML sessions**: `.co/evals/{input_slug}.yaml` + `.co/evals/{input_slug}/run_{n}.yaml` (for eval/replay)
 - **Parameters**:
   - `quiet=True`: Suppress console output, keep session logging
   - `log=False`: Disable all logging (console still shows)
@@ -372,11 +385,11 @@ git push
 ### Adding a CLI Template
 1. Create folder in `connectonion/cli/templates/{template-name}/`
 2. Add `agent.py`, `.env.example`, prompt files
-3. Update `setup.py` package_data to include template files
+3. Ensure template files are included in the package (`pyproject.toml` / MANIFEST.in)
 4. Test: `co create test-project --template {template-name}`
 
 ### Adding LLM Provider Support
-1. Implement class inheriting from `LLM` in `connectonion/llm.py`
+1. Implement class inheriting from `LLM` in `connectonion/core/llm.py`
 2. Implement `complete()` and `structured_complete()` methods
 3. Add routing logic to `create_llm()` factory function
 4. Add tests in `tests/e2e/real_api/test_real_{provider}.py`
@@ -390,7 +403,7 @@ git push
 - At .10, roll to MINOR: 0.4.10 → 0.5.0
 - At .10.0, roll to MAJOR: 0.10.0 → 1.0.0
 
-**Update Checklist:** See `VERSIONING.md` for complete steps (update `setup.py`, `__init__.py`, create git tag, update CHANGELOG.md)
+**Update Checklist:** See `VERSIONING.md` for complete steps (update `pyproject.toml`, `__init__.py`, create git tag, update CHANGELOG.md)
 
 ## Philosophy & Principles
 
@@ -463,7 +476,7 @@ git push
 
 ### Code Organization Preferences
 - Avoid `utils.py` - keep helper functions with their features
-- Default model for agents: `co/o4-mini` (production), `o4-mini` (testing)
+- Default model for agents: `co/gemini-2.5-pro` (managed keys)
 - No Co-Authored-By lines in commit messages (no Claude, Happy, or other brand attribution)
 - Function-based tools over class-based tools
 - Events/plugins over subclassing Agent
