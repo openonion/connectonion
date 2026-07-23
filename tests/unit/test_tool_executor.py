@@ -10,6 +10,8 @@ Components under test:
 """
 
 
+import asyncio
+
 import pytest
 from unittest.mock import Mock, patch
 from connectonion.core.tool_executor import execute_single_tool, _add_assistant_message
@@ -81,6 +83,143 @@ class TestToolExecutor:
             logger=logger,
         )
         assert trace["status"] == "not_found"
+
+    def test_execute_async_tool_success(self):
+        """Async tool functions are detected and awaited correctly."""
+        async def async_double(x: int) -> int:
+            return x * 2
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(async_double))
+
+        agent = FakeAgent()
+        logger = Logger("test-agent", log=False)
+        trace = execute_single_tool(
+            tool_name="async_double",
+            tool_args={"x": 21},
+            tool_id="call_async_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+        assert trace["status"] == "success"
+        assert "42" in str(trace["result"])
+
+    def test_execute_async_tool_error(self):
+        """Errors raised inside async tools are captured in the trace."""
+        async def async_fail(msg: str) -> str:
+            raise ValueError(msg)
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(async_fail))
+
+        agent = FakeAgent()
+        logger = Logger("test-agent", log=False)
+        trace = execute_single_tool(
+            tool_name="async_fail",
+            tool_args={"msg": "boom"},
+            tool_id="call_async_2",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+        assert trace["status"] == "error"
+        assert trace["error_type"] == "ValueError"
+        assert "boom" in str(trace["result"])
+
+    def test_execute_async_tool_preserves_runtime_error(self):
+        """RuntimeError from a tool is preserved without retrying its coroutine."""
+        calls = 0
+
+        async def async_fail() -> None:
+            nonlocal calls
+            calls += 1
+            raise RuntimeError("original tool failure")
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(async_fail))
+
+        trace = execute_single_tool(
+            tool_name="async_fail",
+            tool_args={},
+            tool_id="call_async_error",
+            tools=tools,
+            agent=FakeAgent(),
+            logger=Logger("test-agent", log=False),
+        )
+
+        assert trace["status"] == "error"
+        assert trace["error_type"] == "RuntimeError"
+        assert trace["error"] == "original tool failure"
+        assert calls == 1
+
+    @pytest.mark.asyncio
+    async def test_execute_async_tool_with_running_caller_loop(self):
+        """Async tools run when the caller thread already owns a running loop."""
+        caller_loop = asyncio.get_running_loop()
+
+        async def get_loop_id() -> int:
+            return id(asyncio.get_running_loop())
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(get_loop_id))
+
+        trace = execute_single_tool(
+            tool_name="get_loop_id",
+            tool_args={},
+            tool_id="call_async_running_loop",
+            tools=tools,
+            agent=FakeAgent(),
+            logger=Logger("test-agent", log=False),
+        )
+
+        assert trace["status"] == "success"
+        assert trace["result"] != str(id(caller_loop))
+
+    def test_execute_async_tools_share_loop_bound_resource(self):
+        """Sequential async tool calls retain event-loop affinity."""
+        resource_loop = None
+
+        async def use_resource() -> int:
+            nonlocal resource_loop
+            current_loop = asyncio.get_running_loop()
+            if resource_loop is None:
+                resource_loop = current_loop
+            assert current_loop is resource_loop
+            return id(current_loop)
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(use_resource))
+        agent = FakeAgent()
+        logger = Logger("test-agent", log=False)
+
+        first = execute_single_tool("use_resource", {}, "call_async_resource_1", tools, agent, logger)
+        second = execute_single_tool("use_resource", {}, "call_async_resource_2", tools, agent, logger)
+
+        assert first["status"] == "success"
+        assert second["status"] == "success"
+        assert first["result"] == second["result"]
+
+    def test_sync_tool_unaffected_by_async_support(self):
+        """Sync tools continue to work exactly as before."""
+        def sync_echo(text: str) -> str:
+            return text
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(sync_echo))
+
+        agent = FakeAgent()
+        logger = Logger("test-agent", log=False)
+        trace = execute_single_tool(
+            tool_name="sync_echo",
+            tool_args={"text": "hello"},
+            tool_id="call_sync_1",
+            tools=tools,
+            agent=agent,
+            logger=logger,
+        )
+        assert trace["status"] == "success"
+        assert "hello" in str(trace["result"])
 
 
 class TestAddAssistantMessage:

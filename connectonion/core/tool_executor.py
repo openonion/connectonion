@@ -11,6 +11,9 @@ LLM-Note:
 
 import time
 import json
+import asyncio
+import inspect
+import threading
 from typing import List, Dict, Any, Optional, Callable
 
 from ..debug.xray import (
@@ -18,6 +21,39 @@ from ..debug.xray import (
     clear_xray_context,
     is_xray_enabled
 )
+
+
+_async_loop: Optional[asyncio.AbstractEventLoop] = None
+_async_loop_lock = threading.Lock()
+
+
+def _get_async_tool_loop():
+    """Return the long-lived event loop used by asynchronous tools."""
+    global _async_loop
+
+    with _async_loop_lock:
+        if _async_loop is None or _async_loop.is_closed():
+            ready = threading.Event()
+
+            def run_loop():
+                global _async_loop
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                _async_loop = loop
+                ready.set()
+                loop.run_forever()
+
+            threading.Thread(target=run_loop, name="connectonion-async-tools", daemon=True).start()
+            ready.wait()
+
+    assert _async_loop is not None
+    return _async_loop
+
+
+def _run_async_tool(coro):
+    """Run a coroutine on the shared asynchronous-tool event loop."""
+    future = asyncio.run_coroutine_threadsafe(coro, _get_async_tool_loop())
+    return future.result()
 
 
 def execute_and_record_tools(
@@ -192,7 +228,10 @@ def execute_single_tool(
         if getattr(tool_func, '_needs_agent', False):
             tool_args['agent'] = agent
 
-        result = tool_func(**tool_args)
+        if inspect.iscoroutinefunction(tool_func):
+            result = _run_async_tool(tool_func(**tool_args))
+        else:
+            result = tool_func(**tool_args)
         tool_duration = (time.time() - tool_start) * 1000  # milliseconds
 
         trace_entry["timing_ms"] = tool_duration
