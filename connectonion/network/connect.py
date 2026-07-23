@@ -256,8 +256,9 @@ class RemoteAgent:
         raw output straight back. Like typing a command and reading stdout — the
         result can be text or a base64 screenshot (see ExecResult.images).
 
-        The host must opt in with host(..., exec_tools=[...]); otherwise the
-        call returns an error ExecResult.
+        The tool is gated by the host's .co/host.yaml permission whitelist — the
+        same list its LLM approval flow uses. A tool that isn't whitelisted comes
+        back as an error ExecResult.
 
         Args:
             tool: Name of the remote tool to run (e.g. "bash", "take_screenshot")
