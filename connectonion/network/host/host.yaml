@@ -13,6 +13,12 @@ reload: false
 # Auto-approve tool permissions
 # Default permissions for safe read-only commands
 permissions:
+  # SECURITY: this whitelist auto-approves tools for BOTH remote exec (remote.call /
+  # co call) and the local LLM approval flow. Do NOT add commands that can execute
+  # arbitrary code (pytest/perl/npm test/python -c/node -e) or dump arbitrary file or
+  # env contents (cat/head/tail/nl/grep/env/printenv) — those must fall through to a
+  # human approval, never be auto-permitted. Keep to metadata / system-info commands.
+  #
   # Safe read-only tools (built-in)
   "read":
     allowed: true
@@ -238,56 +244,7 @@ permissions:
     expires:
       type: never
 
-  "Bash(env *)":
-    allowed: true
-    source: config
-    reason: safe - environment variables
-    expires:
-      type: never
-
-  "Bash(grep *)":
-    allowed: true
-    source: config
-    reason: safe - search text
-    expires:
-      type: never
-
-  "Bash(perl *)":
-    allowed: true
-    source: config
-    reason: safe - text processing
-    expires:
-      type: never
-
   # File viewing & inspection (read-only, no side effects)
-  "Bash(cat *)":
-    allowed: true
-    source: config
-    reason: safe - view file contents
-    expires:
-      type: never
-
-  "Bash(head *)":
-    allowed: true
-    source: config
-    reason: safe - view start of file
-    expires:
-      type: never
-
-  "Bash(tail *)":
-    allowed: true
-    source: config
-    reason: safe - view end of file
-    expires:
-      type: never
-
-  "Bash(nl *)":
-    allowed: true
-    source: config
-    reason: safe - view file with line numbers
-    expires:
-      type: never
-
   "Bash(wc *)":
     allowed: true
     source: config
@@ -456,13 +413,6 @@ permissions:
     allowed: true
     source: config
     reason: safe - group membership
-    expires:
-      type: never
-
-  "Bash(printenv *)":
-    allowed: true
-    source: config
-    reason: safe - environment variables
     expires:
       type: never
 
@@ -705,21 +655,6 @@ permissions:
     allowed: true
     source: config
     reason: safe git config read
-    expires:
-      type: never
-
-  # Testing commands
-  "Bash(pytest *)":
-    allowed: true
-    source: config
-    reason: safe test execution
-    expires:
-      type: never
-
-  "Bash(npm test)":
-    allowed: true
-    source: config
-    reason: safe npm test
     expires:
       type: never
 
