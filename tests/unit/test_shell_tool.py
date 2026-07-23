@@ -137,6 +137,24 @@ class TestBashBasic:
         result = bash("echo hello", "Echo test")
         assert "hello" in result
 
+    def test_bash_command_only_no_description(self):
+        """description is optional: a direct/programmatic caller (remote.call, co
+        call, a script) may pass just the command without a TypeError."""
+        result = bash("echo hi")
+        assert "hi" in result
+        # keyword form (exactly what remote.call('bash', command=...) does)
+        assert "hi" in bash(command="echo hi")
+
+    def test_bash_description_optional_in_schema(self):
+        """The LLM still sees description (docstring guides it) but it is not
+        required, so the tool is callable with command alone."""
+        from connectonion import create_tool_from_function
+        tool = create_tool_from_function(bash)
+        schema = tool.get_parameters_schema()
+        assert "description" in schema["properties"]
+        assert "command" in schema["required"]
+        assert "description" not in schema["required"]
+
     def test_bash_returns_stdout(self):
         """Test that stdout is captured."""
         result = bash("echo 'test output'", "Echo test output")
