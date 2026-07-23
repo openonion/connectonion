@@ -231,6 +231,26 @@ class TestUIEventTransformation:
 
         assert agent.ui[0]["status"] == "error"
 
+    def test_handle_interrupted_tool_result_as_completed(self):
+        agent = RemoteAgent("0x123")
+        agent._handle_stream_event({
+            "type": "tool_call",
+            "id": "trace-start",
+            "tool_id": "tc1",
+            "name": "search",
+        })
+        agent._handle_stream_event({
+            "type": "tool_result",
+            "id": "trace-end",
+            "tool_id": "tc1",
+            "result": "Interrupted by user",
+            "status": "interrupted",
+        })
+
+        assert agent.ui[0]["id"] == "tc1"
+        assert agent.ui[0]["status"] == "done"
+        assert agent.ui[0]["result"] == "Interrupted by user"
+
     def test_handle_thinking_event(self):
         """Test thinking event adds thinking indicator."""
         agent = RemoteAgent("0x123")

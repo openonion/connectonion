@@ -12,7 +12,8 @@ Components under test:
 
 import pytest
 from unittest.mock import Mock, patch
-from connectonion.core.tool_executor import execute_single_tool, _add_assistant_message
+from connectonion.core.tool_executor import execute_and_record_tools, execute_single_tool, _add_assistant_message
+from connectonion.core.interrupt import AgentInterrupted
 from connectonion.core.tool_registry import ToolRegistry
 from connectonion.core.tool_factory import create_tool_from_function
 from connectonion.logger import Logger
@@ -81,6 +82,255 @@ class TestToolExecutor:
             logger=logger,
         )
         assert trace["status"] == "not_found"
+
+    def test_before_tool_interrupt_clears_pending_tool(self):
+        def sample_tool() -> str:
+            return "must not run"
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(sample_tool))
+        agent = FakeAgent()
+
+        def interrupt(event_type):
+            if event_type == "before_each_tool":
+                raise AgentInterrupted()
+
+        agent._invoke_events = interrupt
+        trace = execute_single_tool(
+            tool_name="sample_tool",
+            tool_args={},
+            tool_id="call_interrupt",
+            tools=tools,
+            agent=agent,
+            logger=Logger("test-agent", log=False),
+        )
+
+        assert trace["status"] == "interrupted"
+        assert "pending_tool" not in agent.current_session
+
+    def test_interrupt_abandons_tool_and_completes_batch_messages(self):
+        import threading
+        import time
+
+        from connectonion.network.io import WebSocketIO
+
+        started = threading.Event()
+        release = threading.Event()
+        later_called = False
+
+        def slow_tool() -> str:
+            started.set()
+            release.wait(timeout=2)
+            return "late result"
+
+        def later_tool() -> str:
+            nonlocal later_called
+            later_called = True
+            return "should not run"
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(slow_tool))
+        tools.add(create_tool_from_function(later_tool))
+        agent = FakeAgent()
+        agent.io = WebSocketIO()
+        logger = Logger("test-agent", log=False)
+        calls = [
+            ToolCall(
+                name="slow_tool",
+                arguments={},
+                id="call_1",
+                extra_content={"google": {"thought_signature": "sig"}},
+            ),
+            ToolCall(name="later_tool", arguments={}, id="call_2"),
+        ]
+
+        def interrupt_when_started():
+            assert started.wait(timeout=1)
+            agent.io.send_to_agent({"type": "INTERRUPT"})
+
+        sender = threading.Thread(
+            target=interrupt_when_started,
+            daemon=True,
+        )
+        sender.start()
+        began = time.monotonic()
+
+        execute_and_record_tools(calls, tools, agent, logger)
+
+        assert time.monotonic() - began < 0.8
+        assert later_called is False
+        assert agent.current_session['messages'][0]['tool_calls'][0]['extra_content'] == {
+            "google": {"thought_signature": "sig"}
+        }
+        results = agent.current_session['messages'][1:]
+        assert [(m['tool_call_id'], m['content']) for m in results] == [
+            ('call_1', 'Interrupted by user'),
+            ('call_2', 'Rejected by user'),
+        ]
+        terminal = [t for t in agent.current_session['trace'] if t['type'] == 'tool_result'][-1]
+        assert terminal['status'] == 'interrupted'
+        snapshot = list(agent.current_session['trace'])
+        release.set()
+        time.sleep(0.02)
+        assert agent.current_session['trace'] == snapshot
+
+    def test_interrupt_between_tools_prevents_next_tool_from_starting(self):
+        from connectonion.network.io import WebSocketIO
+
+        agent = FakeAgent()
+        agent.io = WebSocketIO()
+        second_called = False
+        third_called = False
+
+        def first_tool() -> str:
+            agent.io.send_to_agent({"type": "INTERRUPT"})
+            return "first done"
+
+        def second_tool() -> str:
+            nonlocal second_called
+            second_called = True
+            return "second done"
+
+        def third_tool() -> str:
+            nonlocal third_called
+            third_called = True
+            return "third done"
+
+        tools = ToolRegistry()
+        for tool in (first_tool, second_tool, third_tool):
+            tools.add(create_tool_from_function(tool))
+        calls = [
+            ToolCall(name="first_tool", arguments={}, id="call_1"),
+            ToolCall(name="second_tool", arguments={}, id="call_2"),
+            ToolCall(name="third_tool", arguments={}, id="call_3"),
+        ]
+
+        execute_and_record_tools(calls, tools, agent, Logger("test-agent", log=False))
+
+        assert second_called is False
+        assert third_called is False
+        results = agent.current_session['messages'][1:]
+        assert [(m['tool_call_id'], m['content']) for m in results] == [
+            ('call_1', 'first done'),
+            ('call_2', 'Interrupted by user'),
+            ('call_3', 'Rejected by user'),
+        ]
+
+    def test_abandoned_worker_keeps_its_xray_context_during_next_tool(self):
+        import builtins
+        import threading
+
+        from connectonion.network.io import WebSocketIO
+
+        started = threading.Event()
+        release = threading.Event()
+        abandoned_done = threading.Event()
+        observed = {}
+
+        def slow_tool() -> str:
+            observed["slow_before"] = builtins.xray.task
+            started.set()
+            release.wait(timeout=2)
+            observed["slow_after"] = builtins.xray.task
+            abandoned_done.set()
+            return "late"
+
+        def next_tool() -> str:
+            observed["next"] = builtins.xray.task
+            return "next"
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(slow_tool))
+        tools.add(create_tool_from_function(next_tool))
+        agent = FakeAgent()
+        agent.io = WebSocketIO()
+        agent.current_session["user_prompt"] = "first turn"
+
+        def interrupt_when_started():
+            assert started.wait(timeout=1)
+            agent.io.send_to_agent({"type": "INTERRUPT"})
+
+        sender = threading.Thread(
+            target=interrupt_when_started,
+            daemon=True,
+        )
+        sender.start()
+
+        first = execute_single_tool(
+            "slow_tool", {}, "slow", tools, agent, Logger("test-agent", log=False)
+        )
+        assert first["status"] == "interrupted"
+
+        agent.current_session.pop("stop_signal", None)
+        agent.current_session["user_prompt"] = "second turn"
+        second = execute_single_tool(
+            "next_tool", {}, "next", tools, agent, Logger("test-agent", log=False)
+        )
+        assert second["status"] == "success"
+
+        release.set()
+        assert abandoned_done.wait(timeout=1)
+        assert observed == {
+            "slow_before": "first turn",
+            "next": "second turn",
+            "slow_after": "first turn",
+        }
+
+    def test_tool_worker_uses_xray_snapshot_taken_before_start(self, monkeypatch):
+        import builtins
+        import threading
+
+        observed = {}
+
+        def inspect_context() -> str:
+            observed["task"] = builtins.xray.task
+            observed["messages"] = builtins.xray.messages
+            observed["iteration"] = builtins.xray.iteration
+            return "done"
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(inspect_context))
+        agent = FakeAgent()
+        agent.current_session.update(
+            user_prompt="first turn",
+            messages=[{'role': 'user', 'content': 'first turn'}],
+            iteration=1,
+        )
+
+        def start_after_session_changes(fn, io, poll_seconds=0.2):
+            agent.current_session['user_prompt'] = 'second turn'
+            agent.current_session['messages'].append({
+                'role': 'user',
+                'content': 'second turn',
+            })
+            agent.current_session['iteration'] = 2
+            box = []
+            worker = threading.Thread(target=lambda: box.append(fn()))
+            worker.start()
+            worker.join(timeout=1)
+            assert not worker.is_alive()
+            return box[0], False
+
+        monkeypatch.setattr(
+            "connectonion.core.tool_executor.run_interruptible",
+            start_after_session_changes,
+        )
+
+        trace = execute_single_tool(
+            "inspect_context",
+            {},
+            "snapshot",
+            tools,
+            agent,
+            Logger("test-agent", log=False),
+        )
+
+        assert trace["status"] == "success"
+        assert observed == {
+            "task": "first turn",
+            "messages": [{'role': 'user', 'content': 'first turn'}],
+            "iteration": 1,
+        }
 
 
 class TestAddAssistantMessage:

@@ -9,6 +9,8 @@ Components under test:
 - Module: agent
 """
 
+import threading
+import time
 from unittest.mock import Mock
 
 import pytest
@@ -723,25 +725,27 @@ def test_agent_input_file_path_traversal(tmp_path):
 
 
 class TestGracefulInterrupt:
-    """A client INTERRUPT stops the loop at the iteration boundary with a closing message."""
+    """A client INTERRUPT stops blocking work with a closing message."""
 
-    def test_interrupt_stops_after_current_step_with_message(self):
-        """The current step finishes, then poll_interrupt (after_iteration) halts the
-        loop via the existing stop_signal check — no silent cutoff, no extra LLM call."""
+    def test_pending_interrupt_prevents_step_from_starting(self):
+        """An already queued stop prevents the next LLM call from starting."""
         from connectonion.useful_plugins.tool_approval import poll_interrupt
 
         def note(text: str) -> str:
             """Record a note."""
             return "noted"
 
-        # INTERRUPT is queued; poll_interrupt drains it at iteration 1's after_iteration
-        # (after the LLM call + tools), and the loop's existing bottom check stops there.
         class InterruptIO:
+            supports_interrupts = True
+
             def __init__(self):
                 self.sent = []
 
             def receive_all(self, msg_type=None):
                 return [{'type': 'INTERRUPT'}] if msg_type == 'INTERRUPT' else []
+
+            def requeue(self, message):
+                pass
 
             def send(self, event):
                 self.sent.append(event)
@@ -765,7 +769,232 @@ class TestGracefulInterrupt:
         result = agent.input("do work")
 
         assert result == "What would you like me to do?"  # existing stop_signal message
-        assert mock_llm.call_count == 1  # one step ran; stopped before a 2nd LLM call
+        assert mock_llm.call_count == 0
+
+    def test_interrupt_abandons_llm_and_next_turn_is_valid(self):
+        from connectonion import on_stop_signal
+        from connectonion.network.io import WebSocketIO
+
+        started = threading.Event()
+        release = threading.Event()
+        stop_events = []
+
+        class BlockingThenImmediateLLM:
+            model = "blocking-test"
+
+            def __init__(self):
+                self.calls = 0
+
+            def complete(self, messages, tools=None):
+                self.calls += 1
+                if self.calls == 1:
+                    started.set()
+                    release.wait(timeout=2)
+                    return LLMResponse(content="late", tool_calls=[], raw_response={}, usage=TokenUsage())
+                return LLMResponse(content="second turn", tool_calls=[], raw_response={}, usage=TokenUsage())
+
+        @on_stop_signal
+        def record_stop(agent):
+            stop_events.append(agent.current_session['iteration'])
+
+        io = WebSocketIO()
+        llm = BlockingThenImmediateLLM()
+        agent = Agent("hard-stop", llm=llm, on_events=[record_stop], log=False, quiet=True)
+        agent.io = io
+
+        def interrupt_when_started():
+            assert started.wait(timeout=1)
+            io.send_to_agent({"type": "INTERRUPT"})
+
+        sender = threading.Thread(
+            target=interrupt_when_started,
+            daemon=True,
+        )
+        sender.start()
+        began = time.monotonic()
+        first = agent.input("first turn")
+
+        assert first == "What would you like me to do?"
+        assert time.monotonic() - began < 0.8
+        assert stop_events == [1]
+        assert [m['role'] for m in agent.current_session['messages']] == ['system', 'user']
+        llm_results = [t for t in agent.current_session['trace'] if t['type'] == 'llm_result']
+        assert llm_results[-1]['status'] == 'interrupted'
+
+        second = agent.input("second turn")
+        assert second == "second turn"
+        assert [m['role'] for m in agent.current_session['messages']] == [
+            'system', 'user', 'user', 'assistant'
+        ]
+
+        release.set()
+        time.sleep(0.02)
+        assert all(message.get('content') != 'late' for message in agent.current_session['messages'])
+
+    def test_llm_call_snapshots_messages_before_worker_starts(self, monkeypatch):
+        received_messages = []
+
+        class CapturingLLM:
+            model = "snapshot-test"
+
+            def complete(self, messages, tools=None):
+                received_messages.extend(messages)
+                return LLMResponse(
+                    content="done",
+                    tool_calls=[],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+
+        agent = Agent("snapshot", llm=CapturingLLM(), log=False, quiet=True)
+
+        def start_after_session_changes(fn, io, poll_seconds=0.2):
+            agent.current_session['messages'].append({
+                'role': 'user',
+                'content': 'next turn',
+            })
+            return fn(), False
+
+        monkeypatch.setattr(
+            "connectonion.core.agent.run_interruptible",
+            start_after_session_changes,
+        )
+
+        assert agent.input("first turn") == "done"
+        assert received_messages == [
+            {'role': 'system', 'content': agent.system_prompt},
+            {'role': 'user', 'content': 'first turn'},
+        ]
+
+    def test_none_llm_response_is_not_mistaken_for_user_interrupt(self):
+        from connectonion import on_stop_signal
+
+        stop_events = []
+
+        class BrokenLLM:
+            model = "broken-test"
+
+            def complete(self, messages, tools=None):
+                return None
+
+        @on_stop_signal
+        def record_stop(agent):
+            stop_events.append(True)
+
+        agent = Agent(
+            "broken-llm",
+            llm=BrokenLLM(),
+            on_events=[record_stop],
+            log=False,
+            quiet=True,
+        )
+
+        with pytest.raises(AttributeError):
+            agent.input("fail normally")
+
+        assert stop_events == []
+
+    def test_interrupt_abandons_tool_and_next_turn_has_provider_valid_history(self):
+        from connectonion.core.llm import AnthropicLLM
+        from connectonion.network.io import WebSocketIO
+
+        started = threading.Event()
+        release = threading.Event()
+        later_called = False
+        second_call_messages = []
+
+        def slow_tool() -> str:
+            started.set()
+            release.wait(timeout=2)
+            return "late result"
+
+        def later_tool() -> str:
+            nonlocal later_called
+            later_called = True
+            return "must not run"
+
+        class ToolThenAnswerLLM:
+            model = "tool-interrupt-test"
+
+            def __init__(self):
+                self.calls = 0
+
+            def complete(self, messages, tools=None):
+                self.calls += 1
+                if self.calls == 1:
+                    return LLMResponse(
+                        content="",
+                        tool_calls=[
+                            ToolCall(
+                                name="slow_tool",
+                                arguments={},
+                                id="slow-call",
+                                extra_content={"google": {"thought_signature": "sig"}},
+                            ),
+                            ToolCall(name="later_tool", arguments={}, id="later-call"),
+                        ],
+                        raw_response={},
+                        usage=TokenUsage(),
+                    )
+                second_call_messages.extend(messages)
+                return LLMResponse(
+                    content="next turn is valid",
+                    tool_calls=[],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+
+        io = WebSocketIO()
+        llm = ToolThenAnswerLLM()
+        agent = Agent(
+            "tool-hard-stop",
+            llm=llm,
+            tools=[slow_tool, later_tool],
+            log=False,
+            quiet=True,
+        )
+        agent.io = io
+
+        def interrupt_when_started():
+            assert started.wait(timeout=1)
+            io.send_to_agent({"type": "INTERRUPT"})
+
+        sender = threading.Thread(
+            target=interrupt_when_started,
+            daemon=True,
+        )
+        sender.start()
+
+        assert agent.input("first turn") == "What would you like me to do?"
+        assert later_called is False
+        assert agent.input("second turn") == "next turn is valid"
+
+        assistant = next(message for message in second_call_messages if message["role"] == "assistant")
+        assert assistant["tool_calls"][0]["extra_content"] == {
+            "google": {"thought_signature": "sig"}
+        }
+        tool_results = [message for message in second_call_messages if message["role"] == "tool"]
+        assert [(message["tool_call_id"], message["content"]) for message in tool_results] == [
+            ("slow-call", "Interrupted by user"),
+            ("later-call", "Rejected by user"),
+        ]
+
+        anthropic_messages = AnthropicLLM.__new__(AnthropicLLM)._convert_messages(second_call_messages)
+        tool_use_ids = [
+            item["id"]
+            for message in anthropic_messages
+            for item in message["content"] if isinstance(message["content"], list)
+            if item["type"] == "tool_use"
+        ]
+        tool_result_ids = [
+            item["tool_use_id"]
+            for message in anthropic_messages
+            for item in message["content"] if isinstance(message["content"], list)
+            if item["type"] == "tool_result"
+        ]
+        assert tool_result_ids == tool_use_ids == ["slow-call", "later-call"]
+
+        release.set()
 
     def test_no_interrupt_runs_to_completion(self):
         """Without an INTERRUPT the loop is unaffected and finishes normally."""

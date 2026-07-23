@@ -24,6 +24,7 @@ from ..debug.decorators import (
     _is_replay_enabled  # Only need this for replay check
 )
 from ..logger import Logger
+from .interrupt import AgentInterrupted, run_interruptible
 from .tool_executor import execute_and_record_tools, execute_single_tool
 from .events import EventHandler
 
@@ -422,7 +423,12 @@ class Agent:
             self._invoke_events('before_iteration')
 
             # Get LLM response
-            response = self._get_llm_decision()
+            try:
+                response = self._get_llm_decision()
+            except AgentInterrupted:
+                self.current_session.pop('stop_signal', None)
+                self._invoke_events('on_stop_signal')
+                return "What would you like me to do?"
 
             if not response.tool_calls:
                 content = response.content or ""
@@ -467,9 +473,28 @@ class Agent:
             'status': 'running',
         })
 
+        messages = self.current_session['messages'].copy()
         start = time.time()
-        response = self.llm.complete(self.current_session['messages'], tools=tool_schemas)
+        response, interrupted = run_interruptible(
+            lambda: self.llm.complete(messages, tools=tool_schemas),
+            self.io,
+        )
         duration = (time.time() - start) * 1000  # milliseconds
+
+        if interrupted:
+            self._record_trace({
+                'type': 'llm_result',
+                'id': llm_id,
+                'model': self.llm.model,
+                'iteration': self.current_session['iteration'],
+                'duration_ms': duration,
+                'tool_calls_count': 0,
+                'usage': None,
+                'context_percent': self.context_percent,
+                'status': 'interrupted',
+            })
+            self.current_session['stop_signal'] = 'user_interrupt'
+            raise AgentInterrupted()
 
         # Track token usage
         if response.usage:

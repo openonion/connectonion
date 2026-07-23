@@ -518,7 +518,7 @@ class RemoteAgent:
             # Add new tool_call UI event with running status
             self._add_ui_event({
                 "type": "tool_call",
-                "id": event.get("id"),
+                "id": event.get("tool_id") or event.get("id"),
                 "name": event.get("name"),
                 "args": event.get("args"),
                 "status": "running"
@@ -526,10 +526,11 @@ class RemoteAgent:
 
         elif event_type == "tool_result":
             # Find and update existing tool_call by id
-            tool_id = event.get("id")
+            tool_id = event.get("tool_id") or event.get("id")
             for ui_event in self._ui_events:
                 if ui_event.get("type") == "tool_call" and ui_event.get("id") == tool_id:
-                    ui_event["status"] = "done" if event.get("status") == "success" else "error"
+                    raw_status = event.get("status")
+                    ui_event["status"] = "done" if raw_status in ("success", "interrupted") else "error"
                     ui_event["result"] = event.get("result")
                     break
 

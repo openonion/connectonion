@@ -25,6 +25,7 @@ def _agent_thread_body(route_handlers, storage, prompt, io, session, images, fil
     except Exception as e:
         result_holder[0] = e
     finally:
+        io.close()
         io.mark_agent_done()
 
 

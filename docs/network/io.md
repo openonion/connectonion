@@ -50,15 +50,18 @@ Same events. Same code. Just check `if agent.io:`.
 │  io.log(type, **data)          → one-way notify             │
 │  io.request_approval(tool, args) → bool (two-way)           │
 ├─────────────────────────────────────────────────────────────┤
-│  LOW-LEVEL API (2 methods)                                  │
-│  ─────────────────────────                                  │
+│  LOW-LEVEL API                                              │
+│  ─────────────                                              │
 │  io.send(event)                → send any event             │
 │  io.receive()                  → get response               │
+│  io.receive_all(type)          → selectively drain mailbox  │
+│  io.requeue(message)           → restore a drained message  │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 **High-level**: `log()` for notifications, `request_approval()` for permissions
-**Low-level**: `send()` / `receive()` for custom needs
+**Low-level**: `send()` / `receive()` for custom needs; interrupt-capable IO also
+uses selective `receive_all()` / `requeue()` mailbox operations
 
 ---
 
@@ -67,6 +70,8 @@ Same events. Same code. Just check `if agent.io:`.
 ```python
 class IO:
     """IO to client for real-time communication."""
+
+    supports_interrupts = False
 
     # ═══════════════════════════════════════════════════════
     # LOW-LEVEL API (Primitives)
@@ -77,6 +82,12 @@ class IO:
 
     def receive(self) -> dict:
         """Receive response from client."""
+
+    def receive_all(self, msg_type: str | None = None) -> list[dict]:
+        """Selectively drain pending client messages."""
+
+    def requeue(self, message: dict) -> None:
+        """Restore a selectively received message."""
 
     # ═══════════════════════════════════════════════════════
     # HIGH-LEVEL API (Patterns)
@@ -93,8 +104,16 @@ class IO:
         """Two-way: request permission, wait for response."""
         self.send({"type": "approval_needed", "tool": tool, "arguments": arguments})
         response = self.receive()
+        if response.get("type") == "INTERRUPT":
+            raise AgentInterrupted()
         return response.get("approved", False)
 ```
+
+`INTERRUPT` is never treated as a rejection. The framework raises it into the
+agent loop, which records an interrupted tool result and follows the normal Stop
+path. IO implementations opt into mid-flight interruption with
+`supports_interrupts = True`; they must preserve nonmatching messages in
+`receive_all` and implement `requeue` for completion races.
 
 ---
 

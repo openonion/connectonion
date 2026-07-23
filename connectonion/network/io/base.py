@@ -13,6 +13,8 @@ IO interface for agent-client communication during hosted execution.
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 
+from ...core.interrupt import AgentInterrupted
+
 
 class IO(ABC):
     """Base IO interface for agent-client communication.
@@ -35,6 +37,8 @@ class IO(ABC):
                     if not agent.io.request_approval(tool['name'], tool['arguments']):
                         raise ToolRejected()
     """
+
+    supports_interrupts = False
 
     # ═══════════════════════════════════════════════════════
     # LOW-LEVEL API (Primitives)
@@ -71,6 +75,14 @@ class IO(ABC):
         """
         pass
 
+    def requeue(self, message: Dict[str, Any]) -> None:
+        """Restore a selectively received message to the agent mailbox.
+
+        IO implementations that set ``supports_interrupts = True`` must
+        implement this operation so completed work can win an interrupt race.
+        """
+        raise NotImplementedError
+
     # ═══════════════════════════════════════════════════════
     # HIGH-LEVEL API (Patterns)
     # ═══════════════════════════════════════════════════════
@@ -102,12 +114,17 @@ class IO(ABC):
         Returns:
             True if approved, False if rejected
 
+        Raises:
+            AgentInterrupted: If the client stops the active run.
+
         Example:
             if not io.request_approval("delete_file", {"path": "/tmp/x"}):
                 raise ToolRejected()
         """
         self.send({"type": "approval_needed", "tool": tool, "arguments": arguments})
         response = self.receive()
+        if response.get("type") == "INTERRUPT":
+            raise AgentInterrupted()
         return response.get("approved", False)
 
     def send_image(self, image_data: str) -> None:

@@ -644,6 +644,7 @@ class TestSessionToChatItems:
                 {'type': 'tool_result', 'tool_id': 'b', 'name': 'write', 'status': 'running'},
                 {'type': 'tool_result', 'tool_id': 'c', 'name': 'edit', 'status': 'success'},
                 {'type': 'tool_result', 'tool_id': 'd', 'name': 'cmd', 'status': 'not_found'},
+                {'type': 'tool_result', 'tool_id': 'e', 'name': 'slow', 'status': 'interrupted'},
             ],
         }
 
@@ -653,6 +654,7 @@ class TestSessionToChatItems:
         assert items[1]['status'] == 'running'
         assert items[2]['status'] == 'done'
         assert items[3]['status'] == 'error'
+        assert items[4]['status'] == 'done'
 
     def test_skips_tool_call_placeholders(self):
         """Initial 'tool_call' trace entries (no result yet) are skipped — only 'tool_result' renders."""

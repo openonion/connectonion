@@ -26,6 +26,8 @@ class WebSocketIO(IO):
     - Client messages (client→agent): mailbox, selective receive, consumed on read
     """
 
+    supports_interrupts = True
+
     def __init__(self):
         # ── Agent messages (agent→client) ──
         self._msgs_from_agent: list[Dict[str, Any]] = []
@@ -52,20 +54,23 @@ class WebSocketIO(IO):
 
         Auto-generates 'id' (UUID) and 'ts' (timestamp) if not present.
         """
-        if not self._closed:
+        with self._agent_condition:
+            if self._closed:
+                return
             if 'id' not in message:
                 message['id'] = str(uuid.uuid4())
             if 'ts' not in message:
                 message['ts'] = time.time()
-            with self._agent_condition:
-                self._msgs_from_agent.append(message)
-                self._agent_condition.notify_all()
+            self._msgs_from_agent.append(message)
+            self._agent_condition.notify_all()
 
     def receive(self) -> Dict[str, Any]:
         """Block until client message arrives."""
         with self._client_condition:
-            while not self._msgs_from_client:
+            while not self._msgs_from_client and not self._closed:
                 self._client_condition.wait()
+            if not self._msgs_from_client:
+                return {'type': 'io_closed'}
             return self._msgs_from_client.pop(0)
 
     def receive_all(self, msg_type: str = None) -> list[Dict[str, Any]]:
@@ -85,6 +90,12 @@ class WebSocketIO(IO):
             self._msgs_from_client[:] = remaining
             return matched
 
+    def requeue(self, message: Dict[str, Any]) -> None:
+        """Restore a selectively received message to the agent mailbox."""
+        with self._client_condition:
+            self._msgs_from_client.append(message)
+            self._client_condition.notify_all()
+
     def mark_agent_done(self):
         """Signal that agent is done producing messages."""
         with self._agent_condition:
@@ -92,8 +103,12 @@ class WebSocketIO(IO):
             self._agent_condition.notify_all()
 
     def close(self):
-        """Mark IO as closed (prevents further sends)."""
-        self._closed = True
+        """Prevent further sends and unblock agent-side receive calls."""
+        with self._agent_condition:
+            self._closed = True
+            self._agent_condition.notify_all()
+        with self._client_condition:
+            self._client_condition.notify_all()
 
     # ═══════════════════════════════════════════════════════
     # Transport side (async)
@@ -101,9 +116,7 @@ class WebSocketIO(IO):
 
     def send_to_agent(self, msg: Dict[str, Any]) -> None:
         """Deliver client message to agent mailbox."""
-        with self._client_condition:
-            self._msgs_from_client.append(msg)
-            self._client_condition.notify_all()
+        self.requeue(msg)
 
     def push_runtime_input(self, msg: Dict[str, Any]) -> None:
         """Queue a mid-execution user message; agent drains at next iteration."""

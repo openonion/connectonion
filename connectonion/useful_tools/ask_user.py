@@ -9,6 +9,8 @@ LLM-Note:
 
 from typing import List
 
+from ..core.interrupt import AgentInterrupted
+
 
 def ask_user(
     agent,
@@ -43,4 +45,8 @@ def ask_user(
     if fields:
         event["fields"] = fields
     agent.io.send(event)
-    return agent.io.receive().get("answer", "")
+    response = agent.io.receive()
+    if response.get("type") == "INTERRUPT":
+        agent.current_session["stop_signal"] = "user_interrupt"
+        raise AgentInterrupted()
+    return response.get("answer", "")

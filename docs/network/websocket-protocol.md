@@ -216,6 +216,28 @@ Send a prompt. Only valid after CONNECTED. **No session data — just the prompt
 
 If sent while the session's agent is already running, this message is routed as runtime input: the prompt is appended to the running agent's message history (with framing telling the LLM to treat it as additional context, not a replacement) and the server replies `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle. No new `thinking` chat item is created — the existing one keeps streaming.
 
+#### INTERRUPT
+
+Stop the active agent run without waiting for its current LLM call or tool to
+finish:
+
+```json
+{
+  "type": "INTERRUPT"
+}
+```
+
+The server forwards the frame to the running agent's mailbox. Blocking LLM and
+tool steps are abandoned on the next 200ms poll; approval, `ask_user`, and
+`DiffWriter` waits recognize the frame directly. The run then follows the normal
+stop path and finishes with an `OUTPUT` whose result is
+`"What would you like me to do?"`.
+
+There is no interrupt acknowledgement frame. Stop means the agent discards the
+worker's eventual result; it does not kill arbitrary Python or guarantee that an
+already-started external side effect is cancelled. Late events from the abandoned
+worker are suppressed when the execution IO closes.
+
 #### PONG
 
 ```json

@@ -32,6 +32,7 @@ Components under test:
 
 import asyncio
 import json
+import threading
 import time
 import pytest
 from nacl.signing import SigningKey
@@ -175,6 +176,146 @@ class TestWebSocket:
         sent = client.send_text("{not json}")
         errs = [json.loads(m["text"]) for m in sent if m.get("type") == "websocket.send"]
         assert any(e.get("type") == "ERROR" and "Invalid JSON" in e.get("message", "") for e in errs)
+
+
+class TestWebSocketHardInterrupt:
+    @pytest.mark.parametrize("blocked_step", ["llm", "tool"])
+    def test_interrupt_closes_trace_and_persists_while_step_is_still_blocked(
+        self, tmp_path, blocked_step
+    ):
+        from connectonion.core.llm import LLMResponse, ToolCall
+        from connectonion.core.usage import TokenUsage
+        from connectonion.network.host import SessionStorage, create_app
+
+        started = threading.Event()
+        release = threading.Event()
+
+        class BlockingLLM:
+            model = "blocking-test"
+
+            def complete(self, messages, tools=None):
+                if blocked_step == "llm":
+                    started.set()
+                    release.wait(timeout=2)
+                    return LLMResponse(
+                        content="late", tool_calls=[], raw_response={}, usage=TokenUsage()
+                    )
+                return LLMResponse(
+                    content="",
+                    tool_calls=[ToolCall(name="slow_tool", arguments={}, id="slow-call")],
+                    raw_response={},
+                    usage=TokenUsage(),
+                )
+
+        def slow_tool() -> str:
+            started.set()
+            release.wait(timeout=2)
+            return "late"
+
+        def create_interrupt_agent():
+            tools = [slow_tool] if blocked_step == "tool" else None
+            return Agent(
+                "interrupt-agent",
+                llm=BlockingLLM(),
+                tools=tools,
+                log=False,
+                quiet=True,
+            )
+
+        storage = SessionStorage(str(tmp_path / "interrupt-sessions.jsonl"))
+        app = create_app(
+            create_interrupt_agent,
+            storage=storage,
+            trust="open",
+            result_ttl=3600,
+        )
+
+        async def scenario():
+            incoming = asyncio.Queue()
+            sent = []
+            output_received = asyncio.Event()
+            interrupt_sent_at = [None]
+            output_received_at = [None]
+            key = SigningKey.generate()
+            session_id = f"hard-interrupt-{blocked_step}"
+            connect = sign_init(key)
+            connect["session_id"] = session_id
+            await incoming.put({"type": "websocket.receive", "text": json.dumps(connect)})
+            await incoming.put({
+                "type": "websocket.receive",
+                "text": json.dumps({"type": "INPUT", "prompt": "slow"}),
+            })
+
+            async def receive():
+                return await incoming.get()
+
+            async def send(message):
+                sent.append(message)
+                if message.get("type") != "websocket.send":
+                    return
+                payload = json.loads(message["text"])
+                if payload.get("type") == "OUTPUT":
+                    output_received_at[0] = time.monotonic()
+                    output_received.set()
+                    await incoming.put({"type": "websocket.disconnect"})
+
+            async def interrupt_when_started():
+                did_start = await asyncio.get_running_loop().run_in_executor(
+                    None, started.wait, 1
+                )
+                assert did_start, f"{blocked_step} did not start before interrupt"
+                interrupt_sent_at[0] = time.monotonic()
+                await incoming.put({
+                    "type": "websocket.receive",
+                    "text": json.dumps({"type": "INTERRUPT"}),
+                })
+
+            feeder = asyncio.create_task(interrupt_when_started())
+            scope = {"type": "websocket", "path": "/ws", "query_string": b"", "headers": []}
+            await asyncio.wait_for(app(scope, receive, send), timeout=1.5)
+            await feeder
+            assert output_received.is_set()
+            payloads = [
+                json.loads(message["text"])
+                for message in sent
+                if message.get("type") == "websocket.send"
+            ]
+            output = next(payload for payload in payloads if payload.get("type") == "OUTPUT")
+            assert output["result"] == "What would you like me to do?"
+            assert output_received_at[0] - interrupt_sent_at[0] < 0.8
+
+            running_type = f"{blocked_step}_call"
+            terminal_type = f"{blocked_step}_result"
+            correlation_key = "id" if blocked_step == "llm" else "tool_id"
+            running = [payload for payload in payloads if payload.get("type") == running_type]
+            terminal = [payload for payload in payloads if payload.get("type") == terminal_type]
+            assert len(running) == len(terminal) == 1
+            assert terminal[0][correlation_key] == running[0][correlation_key]
+            assert terminal[0]["status"] == "interrupted"
+
+            session_trace = output["session"]["trace"]
+            session_terminal = [
+                entry for entry in session_trace if entry.get("type") == terminal_type
+            ]
+            assert session_terminal[-1][correlation_key] == running[0][correlation_key]
+            assert session_terminal[-1]["status"] == "interrupted"
+
+            if blocked_step == "tool":
+                tool_item = next(item for item in output["chat_items"] if item["type"] == "tool_call")
+                assert tool_item["id"] == "slow-call"
+                assert tool_item["status"] == "done"
+                assert tool_item["result"] == "Interrupted by user"
+
+            stored = storage.get(session_id)
+            assert stored is not None
+            assert stored.status == "done"
+            assert stored.result == "What would you like me to do?"
+            assert stored.session["trace"][-1]["status"] == "interrupted"
+
+        try:
+            asyncio.run(scenario())
+        finally:
+            release.set()
 
 
 class TestWebSocketStrict:

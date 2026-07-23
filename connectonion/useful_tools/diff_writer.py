@@ -34,6 +34,8 @@ import difflib
 from pathlib import Path
 from typing import Optional, Tuple
 
+from ..core.interrupt import AgentInterrupted
+
 
 # Permission modes (like Claude Code's Shift+Tab cycle)
 MODE_NORMAL = "normal"      # Prompt for every edit
@@ -229,6 +231,9 @@ class DiffWriter:
 
         # Block waiting for response
         response = io.receive()
+
+        if response.get("type") == "INTERRUPT":
+            raise AgentInterrupted()
 
         # Handle connection closed
         if response.get("type") == "io_closed":

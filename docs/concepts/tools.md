@@ -159,6 +159,24 @@ Description defaults to `"Execute the add tool."`
 
 ---
 
+## Interrupt behavior
+
+For hosted WebSocket and relay agents, clicking Stop abandons an in-flight tool
+within roughly 200–300ms. ConnectOnion records the tool as `interrupted`, supplies
+tool-result messages for every call in the batch, and ignores the abandoned
+function's eventual return value.
+
+Python threads cannot be killed safely. Treat interrupt as **abandon**, not
+**cancel**: filesystem writes, browser clicks, subprocesses, or network requests
+that already started may still finish in the background. Tool authors should keep
+side effects explicit and may add their own cooperative cancellation between
+operations when stronger semantics are required.
+
+Local agents and HTTP `POST /input` do not have an interrupt mailbox, so their
+tools continue to run synchronously.
+
+---
+
 ## Stateful Tools (class-based tools)
 
 **✅ RECOMMENDED: Pass the class instance directly to ConnectOnion!**

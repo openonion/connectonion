@@ -11,6 +11,7 @@ Components under test:
 
 
 import builtins
+import threading
 import pytest
 from unittest.mock import Mock, patch
 
@@ -34,11 +35,11 @@ class TestXrayDecoratorInit:
     def test_initial_context_is_empty(self):
         """Initial context values are empty/None."""
         decorator = XrayDecorator()
-        assert decorator._agent is None
-        assert decorator._user_prompt is None
-        assert decorator._messages == []
-        assert decorator._iteration is None
-        assert decorator._previous_tools == []
+        assert decorator.agent is None
+        assert decorator.user_prompt is None
+        assert decorator.messages == []
+        assert decorator.iteration is None
+        assert decorator.previous_tools == []
 
 
 class TestXrayDecoratorCall:
@@ -94,47 +95,47 @@ class TestXrayProperties:
     """Test XrayDecorator properties."""
 
     def test_agent_property(self):
-        """agent property returns _agent."""
+        """agent property returns the active agent."""
         decorator = XrayDecorator()
         mock_agent = Mock()
-        decorator._agent = mock_agent
+        decorator._update(mock_agent, "", [], None, [])
 
         assert decorator.agent is mock_agent
 
     def test_task_property(self):
         """task property returns user_prompt."""
         decorator = XrayDecorator()
-        decorator._user_prompt = "test prompt"
+        decorator._update(None, "test prompt", [], None, [])
 
         assert decorator.task == "test prompt"
 
     def test_user_prompt_property(self):
-        """user_prompt property returns _user_prompt."""
+        """user_prompt property returns the active prompt."""
         decorator = XrayDecorator()
-        decorator._user_prompt = "test prompt"
+        decorator._update(None, "test prompt", [], None, [])
 
         assert decorator.user_prompt == "test prompt"
 
     def test_messages_property(self):
-        """messages property returns _messages."""
+        """messages property returns active messages."""
         decorator = XrayDecorator()
         messages = [{"role": "user", "content": "hello"}]
-        decorator._messages = messages
+        decorator._update(None, "", messages, None, [])
 
         assert decorator.messages is messages
 
     def test_iteration_property(self):
-        """iteration property returns _iteration."""
+        """iteration property returns the active iteration."""
         decorator = XrayDecorator()
-        decorator._iteration = 3
+        decorator._update(None, "", [], 3, [])
 
         assert decorator.iteration == 3
 
     def test_previous_tools_property(self):
-        """previous_tools property returns _previous_tools."""
+        """previous_tools property returns active previous tools."""
         decorator = XrayDecorator()
         tools = ["search", "fetch"]
-        decorator._previous_tools = tools
+        decorator._update(None, "", [], None, tools)
 
         assert decorator.previous_tools is tools
 
@@ -151,11 +152,11 @@ class TestXrayUpdate:
 
         decorator._update(mock_agent, "prompt", messages, 5, previous)
 
-        assert decorator._agent is mock_agent
-        assert decorator._user_prompt == "prompt"
-        assert decorator._messages is messages
-        assert decorator._iteration == 5
-        assert decorator._previous_tools is previous
+        assert decorator.agent is mock_agent
+        assert decorator.user_prompt == "prompt"
+        assert decorator.messages is messages
+        assert decorator.iteration == 5
+        assert decorator.previous_tools is previous
 
 
 class TestXrayClear:
@@ -164,19 +165,40 @@ class TestXrayClear:
     def test_clear_resets_all_context(self):
         """_clear resets all context values."""
         decorator = XrayDecorator()
-        decorator._agent = Mock()
-        decorator._user_prompt = "prompt"
-        decorator._messages = [{"role": "user"}]
-        decorator._iteration = 5
-        decorator._previous_tools = ["tool1"]
+        decorator._update(Mock(), "prompt", [{"role": "user"}], 5, ["tool1"])
 
         decorator._clear()
 
-        assert decorator._agent is None
-        assert decorator._user_prompt is None
-        assert decorator._messages == []
-        assert decorator._iteration is None
-        assert decorator._previous_tools == []
+        assert decorator.agent is None
+        assert decorator.user_prompt is None
+        assert decorator.messages == []
+        assert decorator.iteration is None
+        assert decorator.previous_tools == []
+
+    def test_context_is_isolated_between_threads(self):
+        decorator = XrayDecorator()
+        barrier = threading.Barrier(3)
+        results = {}
+
+        def use_context(name):
+            agent = Mock(name=name)
+            decorator._update(agent, name, [{"content": name}], 1, [name])
+            barrier.wait(timeout=1)
+            results[name] = (decorator.agent, decorator.user_prompt, decorator.previous_tools)
+            decorator._clear()
+
+        first = threading.Thread(target=use_context, args=("first",))
+        second = threading.Thread(target=use_context, args=("second",))
+        first.start()
+        second.start()
+        barrier.wait(timeout=1)
+        first.join(timeout=1)
+        second.join(timeout=1)
+
+        assert results["first"][1:] == ("first", ["first"])
+        assert results["second"][1:] == ("second", ["second"])
+        assert results["first"][0] is not results["second"][0]
+        assert decorator.agent is None
 
 
 class TestXrayRepr:
@@ -196,10 +218,7 @@ class TestXrayRepr:
         decorator = XrayDecorator()
         mock_agent = Mock()
         mock_agent.name = "test_agent"
-        decorator._agent = mock_agent
-        decorator._user_prompt = "test prompt"
-        decorator._iteration = 2
-        decorator._messages = [{"role": "user"}]
+        decorator._update(mock_agent, "test prompt", [{"role": "user"}], 2, [])
 
         result = repr(decorator)
 
@@ -212,10 +231,7 @@ class TestXrayRepr:
         decorator = XrayDecorator()
         mock_agent = Mock()
         mock_agent.name = "agent"
-        decorator._agent = mock_agent
-        decorator._user_prompt = "A" * 100
-        decorator._iteration = 1
-        decorator._messages = []
+        decorator._update(mock_agent, "A" * 100, [], 1, [])
 
         result = repr(decorator)
 
@@ -233,30 +249,26 @@ class TestHelperFunctions:
 
         inject_xray_context(mock_agent, "prompt", messages, 3, previous)
 
-        assert xray._agent is mock_agent
-        assert xray._user_prompt == "prompt"
-        assert xray._messages is messages
-        assert xray._iteration == 3
-        assert xray._previous_tools is previous
+        assert xray.agent is mock_agent
+        assert xray.user_prompt == "prompt"
+        assert xray.messages is messages
+        assert xray.iteration == 3
+        assert xray.previous_tools is previous
 
         # Cleanup
         clear_xray_context()
 
     def test_clear_xray_context(self):
         """clear_xray_context resets global xray."""
-        xray._agent = Mock()
-        xray._user_prompt = "prompt"
-        xray._messages = [{}]
-        xray._iteration = 5
-        xray._previous_tools = ["tool"]
+        inject_xray_context(Mock(), "prompt", [{}], 5, ["tool"])
 
         clear_xray_context()
 
-        assert xray._agent is None
-        assert xray._user_prompt is None
-        assert xray._messages == []
-        assert xray._iteration is None
-        assert xray._previous_tools == []
+        assert xray.agent is None
+        assert xray.user_prompt is None
+        assert xray.messages == []
+        assert xray.iteration is None
+        assert xray.previous_tools == []
 
     def test_is_xray_enabled_true(self):
         """is_xray_enabled returns True for decorated functions."""

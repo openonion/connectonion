@@ -462,11 +462,21 @@ Plugins can stop the iteration loop by setting `stop_signal` in the session:
 agent.current_session['stop_signal'] = "User rejected the tool"
 ```
 
-When `stop_signal` is set:
-1. The current iteration completes
-2. `@after_iteration` fires
-3. Agent checks `stop_signal` and returns immediately
-4. User must send a new message to continue
+When a plugin sets `stop_signal`, the current iteration completes, `@after_iteration`
+fires, and the agent returns immediately. A WebSocket `INTERRUPT` can also set the
+same signal while the agent is blocked in an LLM call, tool, approval, or
+`ask_user` wait. LLM calls and tool functions run on disposable daemon threads,
+so the agent can abandon their result within one 200ms poll. Interactive gates
+consume the interrupt directly and raise into the same stop path.
+
+An interrupt does not kill arbitrary Python. An abandoned tool may finish external
+side effects in the background, but its result and late IO events are discarded.
+The agent writes terminal `interrupted` trace entries and keeps every assistant
+tool call paired with a tool result so the next user turn has valid message history.
+
+This fast path is available to WebSocket and relay executions whose IO declares
+`supports_interrupts` and provides selective `receive_all` plus `requeue`. Local
+agents and HTTP `POST /input` remain synchronous.
 
 **Use cases:**
 - User rejects a tool execution (hard reject)

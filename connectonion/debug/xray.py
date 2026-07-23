@@ -3,7 +3,7 @@ Purpose: Provide runtime debugging context and visual trace for AI agent tool ex
 LLM-Note:
   Dependencies: imports from [inspect, builtins, typing] | imported by [tool_executor.py, __init__.py] | tested by [tests/test_xray_class.py, tests/test_xray_without_decorator.py, tests/test_xray_auto_trace.py]
   Data flow: receives from tool_executor → inject_xray_context(agent, user_prompt, messages, iteration, previous_tools) → stores in builtins.xray global → tool accesses xray.agent, xray.task, etc. → tool calls xray.trace() to display formatted execution history → clear_xray_context() after execution
-  State/Effects: modifies builtins namespace by injecting global 'xray' object | stores thread-local context in XrayDecorator instance (_agent, _user_prompt, _messages, _iteration, _previous_tools) | clears context after tool execution | no file I/O or persistence
+  State/Effects: modifies builtins namespace by injecting global 'xray' object | stores agent, prompt, messages, iteration, and previous tools in threading.local() | clears context after tool execution | no file I/O or persistence
   Integration: exposes @xray decorator, xray global object with .agent, .task, .user_prompt, .messages, .iteration, .previous_tools properties, .trace() method | inject_xray_context(), clear_xray_context(), is_xray_enabled() helper functions | tool_executor checks __xray_enabled__ attribute to auto-print Rich tables
   Performance: lightweight context storage | trace() uses stack inspection to find agent instance | smart value formatting with truncation for strings (400 chars), lists, dicts, DataFrames, Images
   Errors: trace() handles missing agent gracefully with helpful messages | handles missing current_session | handles empty execution history
@@ -26,6 +26,7 @@ Usage:
 
 import inspect
 import builtins
+import threading
 from typing import Any, Callable, Optional
 
 
@@ -47,12 +48,7 @@ class XrayDecorator:
 
     def __init__(self):
         """Initialize with empty context."""
-        # Store context directly (no wrapper class needed)
-        self._agent = None
-        self._user_prompt = None
-        self._messages = []
-        self._iteration = None
-        self._previous_tools = []
+        self._context = threading.local()
 
         # Make available globally as 'xray' for easy access
         builtins.xray = self
@@ -97,67 +93,68 @@ class XrayDecorator:
     @property
     def agent(self):
         """The Agent instance that called this tool."""
-        return self._agent
+        return getattr(self._context, "agent", None)
 
     @property
     def task(self):
         """The original user prompt/task (alias for user_prompt)."""
-        return self._user_prompt
+        return getattr(self._context, "user_prompt", None)
 
     @property
     def user_prompt(self):
         """The original user prompt string from agent.input()."""
-        return self._user_prompt
+        return getattr(self._context, "user_prompt", None)
 
     @property
     def messages(self):
         """Complete conversation history (the prompt)."""
-        return self._messages
+        return getattr(self._context, "messages", [])
 
     @property
     def iteration(self):
         """Current iteration number in the agent loop."""
-        return self._iteration
+        return getattr(self._context, "iteration", None)
 
     @property
     def previous_tools(self):
         """List of tools called in previous iterations."""
-        return self._previous_tools
+        return getattr(self._context, "previous_tools", [])
 
     def _update(self, agent, user_prompt, messages, iteration, previous_tools):
         """Internal: Update context (called by tool_executor before tool runs)."""
-        self._agent = agent
-        self._user_prompt = user_prompt
-        self._messages = messages
-        self._iteration = iteration
-        self._previous_tools = previous_tools
+        self._context.agent = agent
+        self._context.user_prompt = user_prompt
+        self._context.messages = messages
+        self._context.iteration = iteration
+        self._context.previous_tools = previous_tools
 
     def _clear(self):
         """Internal: Clear context after tool execution."""
-        self._agent = None
-        self._user_prompt = None
-        self._messages = []
-        self._iteration = None
-        self._previous_tools = []
+        self._context.agent = None
+        self._context.user_prompt = None
+        self._context.messages = []
+        self._context.iteration = None
+        self._context.previous_tools = []
 
     def __repr__(self):
         """Provide helpful representation for debugging."""
-        if not self._agent:
+        if not self.agent:
             return "<xray (no active context)>"
 
-        agent_name = self._agent.name if self._agent else 'None'
-        prompt_preview = (self._user_prompt[:50] + '...') if self._user_prompt and len(self._user_prompt) > 50 else self._user_prompt
+        agent_name = self.agent.name if self.agent else 'None'
+        prompt = self.user_prompt
+        prompt_preview = (prompt[:50] + '...') if prompt and len(prompt) > 50 else prompt
 
         lines = [
             f"<xray active>",
             f"  agent: '{agent_name}'",
             f"  task: '{prompt_preview}'",
-            f"  iteration: {self._iteration}",
-            f"  messages: {len(self._messages)} items",
+            f"  iteration: {self.iteration}",
+            f"  messages: {len(self.messages)} items",
         ]
 
-        if self._previous_tools:
-            lines.append(f"  previous_tools: {self._previous_tools}")
+        if self.previous_tools:
+            lines.append(f"  previous_tools: {self.previous_tools}")
 
         return '\n'.join(lines)
 
