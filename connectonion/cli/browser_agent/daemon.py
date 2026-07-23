@@ -112,7 +112,7 @@ def _owner_alive(sock_path: str) -> bool:
     pid_file = Path(transport.pid_path(sock_path))
     if not pid_file.exists():
         return False
-    raw = pid_file.read_text().strip()
+    raw = pid_file.read_text(encoding="utf-8").strip()
     if not raw.isdigit():
         return False
     return transport.pid_alive(int(raw))
@@ -532,7 +532,7 @@ class BrowserDaemon:
                 os.unlink(self.sock_path)  # stale socket
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.sock_path)
-        Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()))
+        Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()), encoding="utf-8")
         self._srv.listen(8)
 
     def _bind_windows(self):
@@ -557,7 +557,7 @@ class BrowserDaemon:
             # First-instance pipe creation refused: another daemon owns the name after
             # all (probe raced its accept loop). Yield, exactly like the POSIX loser.
             sys.exit(0)
-        Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()))
+        Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()), encoding="utf-8")
 
     # ---- transport seam: POSIX raw AF_UNIX socket vs Windows named-pipe Connection ----
 
@@ -606,7 +606,7 @@ class BrowserDaemon:
         # daemon may already own the path — a late-exiting zombie deleting the live
         # socket or pid file would re-arm the very bug the pid file exists to prevent.
         pid_file = Path(transport.pid_path(self.sock_path))
-        if pid_file.exists() and pid_file.read_text().strip() == str(os.getpid()):
+        if pid_file.exists() and pid_file.read_text(encoding="utf-8").strip() == str(os.getpid()):
             if not transport.IS_WINDOWS and os.path.exists(self.sock_path):
                 os.unlink(self.sock_path)  # POSIX: remove our socket file (mpc did it on Win)
             pid_file.unlink()

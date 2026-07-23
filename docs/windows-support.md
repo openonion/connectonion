@@ -82,6 +82,65 @@ is_global = co_dir.resolve() == (Path.home() / ".co").resolve()  # ✅ Works!
 # Both normalize to same canonical path
 ```
 
+### Problem 4: Subprocess Encoding (GBK/cp936)
+
+**Before:**
+```
+UnicodeDecodeError: 'gbk' codec can't decode byte 0x?? in position ...:
+illegal multibyte sequence
+```
+
+**Why it failed:**
+- Chinese/Japanese/Korean Windows uses a legacy locale codepage (GBK/cp936, cp932) as the default text encoding — **not UTF-8**
+- `subprocess` with `text=True` but no explicit `encoding` decodes a child process's stdout/stderr with that codepage
+- When `co ai` (or the `Shell`/background tools) ran a command that emitted UTF-8/emoji output, the reader crashed with `UnicodeDecodeError` — and a child printing emoji to a GBK console raised `UnicodeEncodeError`
+- Note: v0.3.5 fixed **file** I/O; this was the remaining **subprocess pipe** gap (see issue #230)
+
+**After:**
+```python
+# All subprocess calls pin UTF-8 and never crash on a stray byte
+subprocess.run(cmd, text=True, encoding="utf-8", errors="replace", ...)
+
+# Command runners also force child processes to emit UTF-8 regardless of codepage
+env = {**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"}
+```
+
+**Fixed in:**
+- `useful_tools/shell.py`, `useful_tools/bash.py`, `useful_tools/read_file.py`
+- `cli/co_ai/tools/background.py` (the `co ai` background runner)
+- `cli/co_ai/context.py`, `cli/co_ai/commands/undo.py` (git subprocess calls)
+
+### Problem 5: Console Output Codepage
+
+**Before:**
+```
+UnicodeEncodeError: 'gbk' codec can't encode character '\U0001f680' ...
+```
+
+**Why it failed:**
+- The `co` CLI prints emoji and box-drawing characters (Rich output). On a GBK/cp1252 console, `sys.stdout` uses that codepage, so any non-encodable character crashes the command — including when `co`/`co ai` is driven through a pipe by another tool.
+
+**After:**
+```python
+# connectonion/cli/main.py — reconfigure the CLI's own streams before anything prints
+if sys.platform == "win32":
+    for _stream in (sys.stdout, sys.stderr):
+        if hasattr(_stream, "reconfigure"):
+            _stream.reconfigure(encoding="utf-8", errors="replace")
+```
+
+`co ai` is a subcommand of the `co` app, so it inherits this reconfigure automatically.
+
+### Comprehensive UTF-8 coverage
+
+Beyond the specific traceback fixes above, a full audit now pins **every** text-mode
+file read/write in the package to `encoding="utf-8"` (`open()`, `Path.read_text()`,
+`Path.write_text()`) — CSV contact/email exports, `.env`/keys files, session storage,
+memory JSON, eval YAML, skills manifests, prompt assembly, and browser-daemon
+pid/lock files. Binary I/O (images, tarballs, raw fds) is intentionally left alone.
+The three encoding directions — **file I/O**, **subprocess pipes**, and **console
+output** — are now all UTF-8 regardless of the Windows locale codepage.
+
 ## User Journey: Windows with Chinese Username
 
 ### Scenario: User "王小明" installing ConnectOnion
@@ -205,6 +264,11 @@ New tests in `tests/unit/test_windows_compat.py`:
 - ✅ chmod skipped on Windows, applied on Unix
 - ✅ Path comparison with `.resolve()`
 - ✅ Round-trip encoding (write → read → same content)
+- ✅ Subprocess pipe decodes UTF-8/emoji even when the locale reports GBK/cp936
+- ✅ Subprocess survives non-UTF-8 bytes (`errors="replace"`, no crash)
+
+A real Windows E2E job (`.github/workflows/tests.yml` → `windows-e2e`) also runs the
+shipped `Shell` + background runner under an actual `chcp 936` (GBK) console.
 
 ## Supported Characters
 

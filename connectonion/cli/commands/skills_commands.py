@@ -118,7 +118,7 @@ def handle_skills_discover(save: bool = True, json_out: bool = False, include_na
 
     if save:
         SKILLS_DIR.mkdir(parents=True, exist_ok=True)
-        INDEX_FILE.write_text(json.dumps(index, indent=2))
+        INDEX_FILE.write_text(json.dumps(index, indent=2), encoding="utf-8")
 
     if json_out:
         console.print_json(data=index)
@@ -141,7 +141,7 @@ def handle_skills_discover(save: bool = True, json_out: bool = False, include_na
 def _load_index() -> Optional[dict]:
     if not INDEX_FILE.exists():
         return None
-    return json.loads(INDEX_FILE.read_text())
+    return json.loads(INDEX_FILE.read_text(encoding="utf-8"))
 
 
 SOURCE_PRIORITY = {src: i for i, (src, _, _) in enumerate(SOURCES)}
@@ -277,7 +277,7 @@ def handle_skills_manifest(
         if not out_path.exists():
             console.print(f"[red]Not found: {out_path}. Run `co setup` first or pass --out to write standalone JSON.[/red]")
             raise SystemExit(1)
-        profile = json.loads(out_path.read_text())
+        profile = json.loads(out_path.read_text(encoding="utf-8"))
         existing_by_name = {
             s.get("name"): s
             for s in profile.get("skills", [])
@@ -290,11 +290,11 @@ def handle_skills_manifest(
         profile["skills"] = manifest
         profile.pop("signature", None)
         profile.pop("signer", None)
-        out_path.write_text(json.dumps(profile, indent=2))
+        out_path.write_text(json.dumps(profile, indent=2), encoding="utf-8")
         console.print(f"[green]✓ Merged {len(manifest)} skill(s) into {out_path}[/green]")
         console.print("[dim]Note: removed prior signature — re-sign before publishing.[/dim]")
     else:
-        out_path.write_text(json.dumps(manifest, indent=2))
+        out_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
         console.print(f"[green]✓ Wrote {len(manifest)} skill(s) → {out_path}[/green]")
 
 

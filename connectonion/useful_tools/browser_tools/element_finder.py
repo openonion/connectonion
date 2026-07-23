@@ -41,11 +41,11 @@ _BASE_DIR = Path(__file__).parent
 # Reload prompts on each use (so changes are picked up without restart)
 def _get_extract_js():
     """Load extract_elements.js fresh each time (no caching for development)."""
-    return (_BASE_DIR / "scripts" / "extract_elements.js").read_text()
+    return (_BASE_DIR / "scripts" / "extract_elements.js").read_text(encoding="utf-8")
 
 def _get_element_matcher_prompt():
     """Load element_matcher.md fresh each time (no caching for development)."""
-    return (_BASE_DIR / "prompts" / "element_matcher.md").read_text()
+    return (_BASE_DIR / "prompts" / "element_matcher.md").read_text(encoding="utf-8")
 
 
 class InteractiveElement(BaseModel):
@@ -102,7 +102,7 @@ def extract_elements(page) -> List[InteractiveElement]:
     debug_dir.mkdir(parents=True, exist_ok=True)
     debug_file = debug_dir / "elements.json"
 
-    with open(debug_file, 'w') as f:
+    with open(debug_file, 'w', encoding="utf-8") as f:
         json.dump(raw, f, indent=2)
 
     # Count elements by frame context

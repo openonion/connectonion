@@ -60,7 +60,7 @@ def assemble_prompt(
     # 1. Main prompt (required)
     main_file = prompts_path / "main.md"
     if main_file.exists():
-        parts.append(main_file.read_text())
+        parts.append(main_file.read_text(encoding="utf-8"))
 
     # 2. Tool descriptions (for each available tool)
     tools_dir = prompts_path / "tools"
@@ -69,13 +69,13 @@ def assemble_prompt(
             tool_name = _get_tool_name(tool).lower()
             tool_file = tools_dir / f"{tool_name}.md"
             if tool_file.exists():
-                parts.append(tool_file.read_text())
+                parts.append(tool_file.read_text(encoding="utf-8"))
 
     # 3. Project context (optional)
     if context_file:
         context_path = Path(context_file)
         if context_path.exists():
-            parts.append(f"# Project Context\n\n{context_path.read_text()}")
+            parts.append(f"# Project Context\n\n{context_path.read_text(encoding='utf-8')}")
 
     return "\n\n---\n\n".join(parts)
 
@@ -102,7 +102,7 @@ if __name__ == "__main__":
     # Define tools
     def read_file(path: str) -> str:
         """Read file contents."""
-        return Path(path).read_text()
+        return Path(path).read_text(encoding="utf-8")
 
     writer = DiffWriter()
     todo = TodoList()

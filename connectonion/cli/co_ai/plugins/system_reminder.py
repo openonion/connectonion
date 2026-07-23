@@ -87,7 +87,7 @@ def _load_reminders(reminders_dir):
         return {}
     reminders = {}
     for f in reminders_dir.glob("*.md"):
-        meta, body = _parse_frontmatter(f.read_text())
+        meta, body = _parse_frontmatter(f.read_text(encoding="utf-8"))
         if meta.get('name'):
             reminders[meta['name']] = {
                 'content': body,
@@ -141,18 +141,18 @@ def _load_build_context():
     # Workflow (agent creation workflow)
     workflow_file = PROMPTS_DIR / "workflow.md"
     if workflow_file.exists():
-        parts.append(workflow_file.read_text())
+        parts.append(workflow_file.read_text(encoding="utf-8"))
 
     # ConnectOnion framework index (API reference + guides table)
     co_index = PROMPTS_DIR / "connectonion" / "index.md"
     if co_index.exists():
-        parts.append(co_index.read_text())
+        parts.append(co_index.read_text(encoding="utf-8"))
 
     # ConnectOnion examples
     examples_dir = PROMPTS_DIR / "connectonion" / "examples"
     if examples_dir.exists():
         for example_file in sorted(examples_dir.glob("*.md")):
-            parts.append(example_file.read_text())
+            parts.append(example_file.read_text(encoding="utf-8"))
 
     return "\n\n---\n\n".join(parts)
 

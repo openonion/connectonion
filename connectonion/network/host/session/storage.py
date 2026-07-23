@@ -37,14 +37,14 @@ class SessionStorage:
         self.path.parent.mkdir(exist_ok=True)
 
     def save(self, session: Session):
-        with open(self.path, "a") as f:
+        with open(self.path, "a", encoding="utf-8") as f:
             f.write(session.model_dump_json() + "\n")
 
     def get(self, session_id: str) -> Session | None:
         if not self.path.exists():
             return None
         now = time.time()
-        with open(self.path) as f:
+        with open(self.path, encoding="utf-8") as f:
             lines = f.readlines()
         for line in reversed(lines):
             data = json.loads(line)
@@ -60,7 +60,7 @@ class SessionStorage:
             return []
         sessions = {}
         now = time.time()
-        with open(self.path) as f:
+        with open(self.path, encoding="utf-8") as f:
             for line in f:
                 data = json.loads(line)
                 sessions[data["session_id"]] = Session(**data)

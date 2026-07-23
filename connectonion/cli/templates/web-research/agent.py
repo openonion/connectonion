@@ -96,7 +96,7 @@ def save_research(topic: str, findings: List[str], filename: str = None) -> str:
         "timestamp": __import__('datetime').datetime.now().isoformat()
     }
     
-    with open(filename, 'w') as f:
+    with open(filename, 'w', encoding="utf-8") as f:
         json.dump(research_data, f, indent=2)
     
     return f"Research saved to {filename}"

@@ -139,10 +139,10 @@ class Outlook:
         # Update .env file if it exists
         env_file = os.path.join(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co")), "keys.env")
         if os.path.exists(env_file):
-            with open(env_file, 'r') as f:
+            with open(env_file, 'r', encoding="utf-8") as f:
                 lines = f.readlines()
 
-            with open(env_file, 'w') as f:
+            with open(env_file, 'w', encoding="utf-8") as f:
                 for line in lines:
                     if line.startswith("MICROSOFT_ACCESS_TOKEN="):
                         f.write(f"MICROSOFT_ACCESS_TOKEN={new_access_token}\n")

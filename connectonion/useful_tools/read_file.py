@@ -165,7 +165,7 @@ def _read_video(file_path: Path) -> str:
         proc = subprocess.run(
             ["ffmpeg", "-y", "-i", str(file_path),
              "-vn", "-ac", "1", "-b:a", "64k", str(audio_path)],
-            capture_output=True, text=True,
+            capture_output=True, text=True, encoding="utf-8", errors="replace",
         )
         if proc.returncode != 0 or not audio_path.exists():
             return f"Error: failed to extract audio from '{file_path}':\n{proc.stderr[-500:]}"
