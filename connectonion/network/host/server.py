@@ -458,6 +458,10 @@ def host(
     agent_metadata['summary'] = summary
     agent_metadata['examples'] = examples
 
+    # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
+    from .ws_router.dashboard import ensure_dashboard
+    ensure_dashboard(agent_metadata)
+
     # Load whitelist/blacklist: code param (list) takes priority, else load from YAML file path
     if whitelist is None:
         whitelist = load_list_file(config.get('whitelist'))
