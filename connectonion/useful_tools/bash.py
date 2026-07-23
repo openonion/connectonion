@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [subprocess, platform] | imported by [useful_tools/__init__.py, useful_prompts/coding_agent/assembler.py] | tested by command execution
   Data flow: receives command: str, description: str, cwd: str, timeout: int → subprocess.run() with shell=True → captures stdout+stderr → truncates if >10000 chars → returns formatted output: str
   State/Effects: executes system commands via subprocess.run(shell=True) | no persistent state | reads/writes filesystem based on command | can have any side effect depending on command (network calls, file operations, etc.)
-  Integration: exposes bash(command, description, cwd, timeout) function | used as agent tool | description parameter for user clarity (not passed to shell) | Unix/Mac only (raises ValueError on Windows)
+  Integration: exposes bash(command, description="", cwd, timeout) function | used as agent tool | description is OPTIONAL (defaults "") — an LLM is prompted to fill it for the approval UI, but direct/programmatic callers (remote.call, co call, scripts) can pass command alone | not passed to shell | Unix/Mac only (raises ValueError on Windows)
   Performance: timeout default 120s, max 600s | truncates output >10000 chars to prevent token overflow | synchronous execution (blocks until command completes)
   Errors: raises ValueError on Windows | returns formatted error on timeout | non-zero exit codes included in output | stderr merged with stdout
 
@@ -27,12 +27,14 @@ import subprocess
 import platform
 
 
-def bash(command: str, description: str, cwd: str = ".", timeout: int = 120) -> str:
+def bash(command: str, description: str = "", cwd: str = ".", timeout: int = 120) -> str:
     """Execute a bash command, returns output (Unix/Mac only).
 
     Args:
         command: Bash command to execute (e.g., "ls -la", "git status")
-        description: What this command does (e.g., "Install dependencies")
+        description: What this command does (e.g., "Install dependencies"). Optional
+            — an LLM should fill it in so the approval UI can show intent, but direct
+            callers (scripts, remote.call, co call) may pass just the command.
         cwd: Working directory (default: current directory)
         timeout: Seconds before timeout (default: 120, max: 600)
 
