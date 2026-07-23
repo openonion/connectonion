@@ -1,14 +1,11 @@
 # PROTOTYPE: driving codex-acp via the Agent Client Protocol (ACP)
 
-> **Graduated.** This spike now ships as the codex tool itself:
-> `connectonion/useful_tools/codex.py` is ACP-only — `codex()` drives codex-acp
-> directly (the CLI backend was dropped to avoid maintaining two transports).
-> Codex's steps are streamed to the frontend in its NATIVE event vocabulary
-> (`tool_call` / `tool_result`), and permission requests map to
-> `agent.io.request_approval`, so no frontend/SDK change is needed. These files
-> are kept as the standalone reference/demo (fake agent, no npm install needed).
-> Real-binary coverage: `tests/e2e/real_api/test_real_codex.py` and
-> `prototypes/codex_acp/test_real_codex_acp.py`.
+> **Superseded — historical reference only.** The shipped codex tool does NOT
+> use ACP / codex-acp. It drives Codex's own native `codex app-server` protocol
+> directly from Python (`connectonion/useful_tools/codex.py`) — no external Node
+> adapter, only the `codex` binary. This ACP spike is kept as a record of the
+> investigation that led there. See `docs/codex-tool-frontend-contract.md` for
+> the frontend integration contract and why app-server won over codex-acp.
 
 A spike, not a shipped feature. Validates that ConnectOnion can play the ACP
 **Client** role and drive **codex-acp** (the Agent) over JSON-RPC, mapping the
