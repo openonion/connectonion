@@ -40,13 +40,13 @@ agent.input("Send an email to alice@example.com saying hello")
 co auth microsoft
 ```
 
-Your agent can now read and manage Outlook emails.
+Your agent can now read and manage Outlook emails and contacts.
 
 **Switch accounts?** Run `co auth microsoft` again to connect a different Microsoft account.
 
 **Prefer the terminal?** The same functions are available as
 [`co outlook`](../cli/outlook.md) commands (`inbox`, `read`, `send`, `reply`,
-`sent`, `search`, `scheduled`).
+`sent`, `search`, `scheduled`, and `contact add/list/search`).
 
 ## Agent Methods
 
@@ -73,6 +73,28 @@ Your agent can now read and manage Outlook emails.
 **`search_emails(query, max_results=10)`**
 - Search using Microsoft Graph search
 - Examples: `"quarterly report"`, `"meeting notes"`, `"invoice"`
+
+### Contacts
+
+**`add_contact(name, email)`**
+- Create a contact in the root Outlook Contacts folder
+- Returns a dict with `id`, `name`, and `email`
+- Requires the delegated `Contacts.ReadWrite` scope
+
+**`list_contacts(max_results=25)`**
+- List saved contacts as `id` / `name` / `email` dicts
+
+**`search_contacts(query, max_results=25)`**
+- Find contacts by a case-insensitive display-name or email substring
+
+```python
+outlook.add_contact("Zhou Yifei", "zhouyifei0428@gmail.com")
+outlook.list_contacts()
+outlook.search_contacts("yifei")
+```
+
+If Microsoft was connected before contacts were enabled, run
+`co auth microsoft` again to consent to `Contacts.ReadWrite`.
 
 ### Sending
 
@@ -148,6 +170,7 @@ agent = Agent(
     system_prompt="You help manage Outlook emails and remember important info."
 )
 
+agent.input("Save Zhou Yifei <zhouyifei0428@gmail.com> as a contact")
 agent.input("Check unread emails and save important deadlines to memory")
 agent.input("Send an email to alice@example.com about the project update")
 agent.input("Find all emails about the quarterly report")
@@ -171,6 +194,9 @@ from tools.outlook import Outlook    # After - customize freely!
 ## Troubleshooting
 
 **Missing Microsoft Mail scopes**: Run `co auth microsoft`
+
+**Missing Microsoft Contacts.ReadWrite scope**: Run `co auth microsoft` again
+to grant the new contact permission.
 
 **Credentials not found**: Run `co auth microsoft`
 

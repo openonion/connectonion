@@ -1,10 +1,10 @@
 """
-Purpose: Outlook integration tool for reading, sending, scheduling, and managing emails via Microsoft Graph API
+Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
   Dependencies: imports from [os, datetime, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
-  Data flow: Agent calls Outlook methods → _get_access_token() loads MICROSOFT_ACCESS_TOKEN from env (auto-refresh via oo-api) → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns formatted results (email summaries, bodies, send confirmations) | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() pages the drafts folder (Graph rejects $filter on the property) and returns dicts (id, subject, to, send_at)
-  State/Effects: reads MICROSOFT_* env vars for OAuth tokens | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails) | token refresh rewrites ~/.co/keys.env | no other local file persistence
-  Integration: exposes Outlook class with read_inbox(), get_sent_emails(), search_emails(), get_email_body(), send(), reply(), get_scheduled(), mark_read(), archive_email() | list_inbox()/list_search()/get_scheduled() return dicts for the CLI (cli/commands/outlook_commands.py) | used as agent tool via Agent(tools=[Outlook()])
+  Data flow: Agent calls Outlook methods → _get_access_token() loads MICROSOFT_ACCESS_TOKEN from env (auto-refresh via oo-api) → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
+  State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails) and create contacts | token refresh rewrites ~/.co/keys.env | no other local file persistence
+  Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()])
   Performance: network I/O per API call | batch fetching for list operations | email body fetched separately
   Errors: raises ValueError if OAuth not configured | HTTP errors from Graph API propagate | deferred drafts cannot be deleted via API (Exchange 403) — cancel via Outlook's own Cancel Send | returns error strings for display to user
 
@@ -24,6 +24,9 @@ Usage:
     # - send(to, subject, body, cc, bcc, attachments, send_at)
     # - reply(email_id, body, send_at)
     # - get_scheduled(max_results)
+    # - add_contact(name, email)
+    # - list_contacts(max_results)
+    # - search_contacts(query, max_results)
     # - mark_read(email_id)
     # - archive_email(email_id)
 
@@ -43,12 +46,12 @@ Example:
 
 import html
 import os
-from datetime import datetime, timedelta
+
 import httpx
 
 
 class Outlook:
-    """Outlook tool for reading and managing emails via Microsoft Graph API."""
+    """Outlook tool for managing email and contacts via Microsoft Graph API."""
 
     GRAPH_API_URL = "https://graph.microsoft.com/v1.0"
 
@@ -59,15 +62,30 @@ class Outlook:
         Raises ValueError if credentials are missing.
         """
         scopes = os.getenv("MICROSOFT_SCOPES", "")
-        if not scopes or "Mail" not in scopes:
+        granted_scopes = set(scopes.replace(",", " ").split())
+        has_outlook_scope = any(
+            scope.startswith(("Mail.", "Contacts."))
+            for scope in granted_scopes
+        )
+        if not has_outlook_scope:
             raise ValueError(
-                "Missing Microsoft Mail scopes.\n"
+                "Missing Microsoft Mail scopes or Contacts scope.\n"
                 f"Current scopes: {scopes}\n"
                 "Please authorize Microsoft access:\n"
                 "  co auth microsoft"
             )
 
         self._access_token = None
+
+    def _require_scope(self, required_scope: str) -> None:
+        """Raise a re-consent hint when an operation's OAuth scope is absent."""
+        scopes = set(os.getenv("MICROSOFT_SCOPES", "").replace(",", " ").split())
+        if required_scope not in scopes:
+            raise ValueError(
+                f"Missing Microsoft {required_scope} scope.\n"
+                "Reconnect Microsoft access to grant it:\n"
+                "  co auth microsoft"
+            )
 
     def _get_access_token(self) -> str:
         """Get Microsoft access token, refreshing once per Outlook instance.
@@ -325,6 +343,77 @@ class Outlook:
             return f"No emails found matching query: {query}"
         return self._format_dicts(emails)
 
+    # === Contacts ===
+
+    @staticmethod
+    def _contact_dict(contact: dict) -> dict:
+        """Normalize a Graph contact to the CLI/agent contact shape."""
+        addresses = [
+            item.get("address", "")
+            for item in contact.get("emailAddresses", [])
+            if item.get("address")
+        ]
+        return {
+            "id": contact.get("id", ""),
+            "name": contact.get("displayName", ""),
+            "email": ", ".join(addresses),
+        }
+
+    def _iter_contacts(self):
+        """Yield normalized contacts from every Graph contacts page."""
+        endpoint = (
+            "/me/contacts"
+            "?$select=id,displayName,emailAddresses"
+            "&$orderby=displayName&$top=100"
+        )
+        while endpoint:
+            result = self._request("GET", endpoint)
+            for contact in result.get("value", []):
+                yield self._contact_dict(contact)
+            next_link = result.get("@odata.nextLink")
+            endpoint = next_link.replace(self.GRAPH_API_URL, "") if next_link else None
+
+    def add_contact(self, name: str, email: str) -> dict:
+        """Create an Outlook contact with a display name and email address."""
+        self._require_scope("Contacts.ReadWrite")
+        data = {
+            "displayName": name,
+            "emailAddresses": [{"name": name, "address": email}],
+        }
+        contact = self._contact_dict(
+            self._request("POST", "/me/contacts", json=data)
+        )
+        contact["name"] = contact["name"] or name
+        contact["email"] = contact["email"] or email
+        return contact
+
+    def list_contacts(self, max_results: int = 25) -> list:
+        """List Outlook contacts as dicts containing id, name, and email."""
+        self._require_scope("Contacts.ReadWrite")
+        if max_results < 1:
+            return []
+        contacts = []
+        for contact in self._iter_contacts():
+            contacts.append(contact)
+            if len(contacts) >= max_results:
+                break
+        return contacts
+
+    def search_contacts(self, query: str, max_results: int = 25) -> list:
+        """Find Outlook contacts by a case-insensitive name/email substring."""
+        self._require_scope("Contacts.ReadWrite")
+        needle = query.strip().casefold()
+        if not needle or max_results < 1:
+            return []
+        matches = []
+        for contact in self._iter_contacts():
+            searchable = f"{contact['name']} {contact['email']}".casefold()
+            if needle in searchable:
+                matches.append(contact)
+            if len(matches) >= max_results:
+                break
+        return matches
+
     # === Content ===
 
     def get_email_body(self, email_id: str) -> str:
@@ -493,7 +582,7 @@ class Outlook:
 
         if send_at:
             return f"Reply scheduled for {send_at}"
-        return f"Reply sent successfully"
+        return "Reply sent successfully"
 
     def get_scheduled(self, max_results: int = 25) -> list:
         """List emails waiting for scheduled delivery (deferred-send drafts).

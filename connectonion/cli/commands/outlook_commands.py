@@ -1,11 +1,11 @@
 """
-Purpose: CLI surface for the user's Outlook mailbox — send, list (inbox/sent/scheduled), read, reply, and search from the terminal
+Purpose: CLI surface for Outlook email and contacts — send/read/search mail and add/list/search contacts from the terminal
 LLM-Note:
   Dependencies: imports from [os, sys, json, pathlib, datetime, typer, dotenv, rich.console, rich.panel, rich.table, ...useful_tools.outlook.Outlook] | imported by [cli/main.py via handle_outlook_*()] | hits Microsoft Graph API through the Outlook tool
-  Data flow: _outlook() loads MICROSOFT_* from .env / ~/.co/keys.env → Outlook() instance | inbox/search: list_inbox()/list_search() → numbered Rich table (plain ID-bearing text when piped) → saves {#: message_id} to ~/.co/outlook_last_inbox.json | read/reply: resolve short numbers via that cache → get_email_body()/reply() | send: '-' body reads stdin, attachments prechecked, --at validated to UTC ISO → send() | scheduled: get_scheduled() → read-only table (To/Subject/Sends at), plain full-id lines when piped; does NOT touch the numbering cache
-  State/Effects: writes ~/.co/outlook_last_inbox.json (last listing's # → message id map; "numbers mean your last listing" — only inbox and search write it) | read marks emails read server-side | Outlook auto-refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
-  Integration: exposes handle_outlook_send(), handle_outlook_inbox(), handle_outlook_read(), handle_outlook_reply(), handle_outlook_sent(), handle_outlook_search(), handle_outlook_scheduled() for cli/main.py | presentation mirrors email_commands.py (table shape, ● unread mark, ✉️ panel, '✓ Sent' wording) | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
-  Errors: every guarded failure prints a hint and exits 1 (typer.Exit) so scripts can detect it — missing auth/scopes, missing/oversized attachments, invalid --at, unresolvable email # | Graph API errors propagate from the Outlook tool | scheduled sends can't be cancelled via API (Exchange 403) — the listing hints at Outlook's own Cancel Send
+  Data flow: _outlook() loads MICROSOFT_* from .env / ~/.co/keys.env and checks the operation scope → Outlook() instance | mail commands use list/read/send methods and the numbered inbox cache | contact commands use add_contact()/list_contacts()/search_contacts() and render Rich tables or tab-separated plain output
+  State/Effects: writes ~/.co/outlook_last_inbox.json for mail numbering | mutates Outlook mail/contact data through the library | Outlook auto-refreshes expired tokens via oo-api and rewrites ~/.co/keys.env
+  Integration: exposes handle_outlook_* functions for cli/main.py, including handle_outlook_contact_add/list/search | presentation mirrors existing mail tables | Graph logic lives in useful_tools/outlook.py | requires prior 'co auth microsoft'
+  Errors: guarded failures print a hint and exit 1 (typer.Exit) — missing auth/Mail/Contacts.ReadWrite scopes, invalid files/times/ids | Graph API errors propagate from Outlook
 """
 
 import json
@@ -25,15 +25,28 @@ INBOX_CACHE = Path.home() / ".co" / "outlook_last_inbox.json"
 ATTACHMENT_LIMIT = 3_000_000  # Graph sendMail rejects larger payloads
 
 
-def _outlook():
-    """Load MICROSOFT_* credentials from .env files and return an Outlook instance. Exits 1 with a hint if not connected."""
+def _outlook(required_scope: str = "Mail"):
+    """Load Microsoft credentials and require Mail or an exact Graph scope."""
     from dotenv import load_dotenv
 
     for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
         if env_path.exists():
             load_dotenv(env_path)
 
-    if not os.getenv("MICROSOFT_ACCESS_TOKEN") or "Mail" not in os.getenv("MICROSOFT_SCOPES", ""):
+    scopes = set(os.getenv("MICROSOFT_SCOPES", "").replace(",", " ").split())
+    has_scope = (
+        any(scope.startswith("Mail.") for scope in scopes)
+        if required_scope == "Mail"
+        else required_scope in scopes
+    )
+    if not os.getenv("MICROSOFT_ACCESS_TOKEN") or not has_scope:
+        if os.getenv("MICROSOFT_ACCESS_TOKEN") and required_scope != "Mail":
+            console.print(
+                f"\n❌ [bold red]Microsoft {required_scope} permission missing[/bold red]"
+            )
+            console.print("\n[cyan]Reconnect Microsoft to grant it:[/cyan]")
+            console.print("  [bold]co auth microsoft[/bold]\n")
+            raise typer.Exit(1)
         console.print("\n❌ [bold red]Microsoft account not connected[/bold red]")
         console.print("\n[cyan]Connect Outlook first:[/cyan]")
         console.print("  [bold]co auth microsoft[/bold]     Authorize Outlook access\n")
@@ -237,6 +250,61 @@ def handle_outlook_search(query: str, last: int = 10):
         console.print(f"\n[cyan]Search:[/cyan] no emails matching [bold]{query}[/bold]\n")
         return
     _print_listing(outlook, emails, f"🔎 Outlook — {query}")
+
+
+def _print_contacts(contacts: list, title: str):
+    """Render contacts as a table, or stable tab-separated rows when piped."""
+    if not console.is_terminal:
+        for contact in contacts:
+            console.print(
+                f"{contact['name']}\t{contact['email']}\t{contact['id']}",
+                markup=False,
+                highlight=False,
+            )
+        return
+
+    table = Table(title=title, show_header=True, header_style="bold cyan")
+    table.add_column("#", justify="right")
+    table.add_column("Name", max_width=36, no_wrap=True)
+    table.add_column("Email", max_width=48, no_wrap=True)
+    for index, contact in enumerate(contacts, 1):
+        table.add_row(str(index), contact["name"], contact["email"])
+    console.print()
+    console.print(table)
+    console.print()
+
+
+def handle_outlook_contact_add(name: str, email: str):
+    """Create a contact in the connected Outlook account."""
+    outlook = _outlook(required_scope="Contacts.ReadWrite")
+    contact = outlook.add_contact(name, email)
+    console.print(
+        f"\n[green]✓ Saved contact[/green] "
+        f"[bold]{contact['name']}[/bold] <[cyan]{contact['email']}[/cyan]>\n"
+    )
+
+
+def handle_outlook_contact_list(last: int = 25):
+    """List contacts from the connected Outlook account."""
+    outlook = _outlook(required_scope="Contacts.ReadWrite")
+    contacts = outlook.list_contacts(max_results=last)
+    if not contacts:
+        console.print("\n[cyan]Outlook contacts:[/cyan] none saved\n")
+        return
+    _print_contacts(contacts, "👥 Outlook contacts")
+
+
+def handle_outlook_contact_search(query: str, last: int = 25):
+    """Search Outlook contacts by name or email."""
+    outlook = _outlook(required_scope="Contacts.ReadWrite")
+    contacts = outlook.search_contacts(query, max_results=last)
+    if not contacts:
+        console.print(
+            f"\n[cyan]Contact search:[/cyan] no contacts matching "
+            f"[bold]{query}[/bold]\n"
+        )
+        return
+    _print_contacts(contacts, f"🔎 Outlook contacts — {query}")
 
 
 def handle_outlook_scheduled():

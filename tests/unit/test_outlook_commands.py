@@ -30,6 +30,9 @@ from connectonion.cli.commands.outlook_commands import (
     _outlook,
     _parse_send_at,
     _resolve_email_id,
+    handle_outlook_contact_add,
+    handle_outlook_contact_list,
+    handle_outlook_contact_search,
     handle_outlook_inbox,
     handle_outlook_send,
 )
@@ -38,6 +41,11 @@ CONNECTED_ENV = {
     "MICROSOFT_ACCESS_TOKEN": "test-token",
     "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
     "MICROSOFT_EMAIL": "aaron@example.com",
+}
+
+CONNECTED_CONTACT_ENV = {
+    **CONNECTED_ENV,
+    "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send,Contacts.ReadWrite",
 }
 
 
@@ -80,6 +88,15 @@ class TestOutlookGuard:
 
         from connectonion.useful_tools.outlook import Outlook
         assert isinstance(result, Outlook)
+
+    def test_contacts_scope_missing_exits_with_reconnect_hint(self, capsys):
+        with patch.dict(os.environ, CONNECTED_ENV, clear=False):
+            with pytest.raises(typer.Exit):
+                _outlook(required_scope="Contacts.ReadWrite")
+
+        output = capsys.readouterr().out
+        assert "Contacts.ReadWrite" in output
+        assert "co auth microsoft" in output
 
 
 class TestParseSendAt:
@@ -258,3 +275,62 @@ class TestHandleOutlookSend:
                     handle_outlook_send(to="bob@example.com", subject="Hi", message="hello")
 
         mock_cls.assert_not_called()
+
+
+class TestHandleOutlookContacts:
+    """Contact handlers delegate Graph work to Outlook and format the result."""
+
+    def test_add_contact(self, capsys):
+        outlook = MagicMock()
+        outlook.add_contact.return_value = {
+            "id": "contact-1",
+            "name": "Zhou Yifei",
+            "email": "zhouyifei0428@gmail.com",
+        }
+
+        with patch.dict(os.environ, CONNECTED_CONTACT_ENV, clear=False):
+            with patch.object(outlook_commands, "_outlook", return_value=outlook):
+                handle_outlook_contact_add(
+                    "Zhou Yifei", "zhouyifei0428@gmail.com"
+                )
+
+        outlook.add_contact.assert_called_once_with(
+            "Zhou Yifei", "zhouyifei0428@gmail.com"
+        )
+        output = capsys.readouterr().out
+        assert "Saved contact" in output
+        assert "Zhou Yifei" in output
+        assert "zhouyifei0428@gmail.com" in output
+
+    def test_list_contacts_terminal_table(self, monkeypatch, capsys):
+        monkeypatch.setattr(
+            outlook_commands, "console",
+            Console(force_terminal=True, width=120),
+        )
+        outlook = MagicMock()
+        outlook.list_contacts.return_value = [{
+            "id": "contact-1",
+            "name": "Zhou Yifei",
+            "email": "zhouyifei0428@gmail.com",
+        }]
+
+        with patch.object(outlook_commands, "_outlook", return_value=outlook):
+            handle_outlook_contact_list(last=25)
+
+        outlook.list_contacts.assert_called_once_with(max_results=25)
+        output = capsys.readouterr().out
+        assert "Outlook contacts" in output
+        assert "Zhou Yifei" in output
+        assert "zhouyifei0428@gmail.com" in output
+
+    def test_search_contacts_empty_result(self, capsys):
+        outlook = MagicMock()
+        outlook.search_contacts.return_value = []
+
+        with patch.object(outlook_commands, "_outlook", return_value=outlook):
+            handle_outlook_contact_search("yifei", last=25)
+
+        outlook.search_contacts.assert_called_once_with(
+            "yifei", max_results=25
+        )
+        assert "no contacts matching" in capsys.readouterr().out
