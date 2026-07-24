@@ -33,6 +33,7 @@ browser alive** behind a small daemon, so:
 - You log into a site **once**; subsequent commands are already authenticated.
 - A shell script (or an AI agent) can issue many quick commands against the same page.
 - Multiple agents can work in the same browser at the same time — each in its own tab.
+- It stays undetected on both layers — the browser (Patchright) *and* the behavior (humanized mouse/keyboard/scroll, CJK paste). See [Browser Tools → Anti-Detection](useful_tools/browser_tools.md#anti-detection).
 
 ## One Task = One Tab
 

@@ -163,6 +163,10 @@ python -m patchright install chromium   # per-user, never needs admin
 python -m patchright install chrome     # branded Chrome: best stealth, system installer
 ```
 
+## Stealth
+
+The browser hides both the **driver-level** automation tells (Patchright: `navigator.webdriver`, CDP leaks, real Chrome, real viewport, WebGL) and the **behavioral** ones (humanized mouse paths, keystroke timing, mouse-wheel scrolling, and CJK paste/IME) — automatically, with nothing to configure. `co browser status` and `co doctor` report the stealth-driver health. IP reputation is the one thing it can't fix; route a datacenter box through a residential proxy with `BROWSER_PROXY`. Full detail: [Browser Tools → Anti-Detection](../useful_tools/browser_tools.md#anti-detection).
+
 ## Sessions & Profile
 
 - One browser per machine, backed by a persistent profile at `~/.co/browser_profile/` — so logins survive restarts.

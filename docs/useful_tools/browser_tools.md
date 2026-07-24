@@ -1,6 +1,6 @@
 # Browser Tools
 
-Natural language browser automation via [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) — a stealth-patched, API-compatible Playwright fork that hides driver-level automation tells out of the box. Navigate, click, type, screenshot — no CSS selectors needed.
+Natural language browser automation via [Patchright](https://github.com/Kaliiiiiiiiii-Vinyzu/patchright) — a stealth-patched, API-compatible Playwright fork that hides driver-level automation tells out of the box. On top of that, every mouse, keyboard and scroll action is **humanized** so the *behavior* looks human too, not just the browser (see [Anti-Detection](#anti-detection)). Navigate, click, type, screenshot — no CSS selectors needed.
 
 ## Installation
 
@@ -155,6 +155,8 @@ browser.keyboard_press("Tab")
 
 After `keyboard_type()`, call `take_screenshot()` to verify the text landed in the right field.
 
+Typing is humanized: Latin text is entered key-by-key with a human, right-skewed rhythm, and CJK (Chinese/Japanese/Korean) is entered the way people actually do — a real paste, falling back to IME composition when a field blocks paste — never a bare programmatic insert. See [Anti-Detection](#anti-detection).
+
 ### Scrolling
 
 ```python
@@ -162,7 +164,7 @@ browser.scroll()                                     # 5 scrolls on main content
 browser.scroll(times=3, description="the sidebar")  # Scroll a specific area
 ```
 
-Uses AI to pick the best scroll strategy (element scroll, page scroll, or mouse wheel).
+Scrolls with real mouse-wheel events first (human-like, no LLM), falling back to an AI-picked JS strategy (element scroll, page scroll) only if the wheel doesn't move the page.
 
 ### Reading Page Content
 
@@ -279,6 +281,20 @@ BROWSER_PROXY=socks5://host:port
 ```
 
 `BROWSER_PROXY` is read when `open_browser()` launches the context. Leave it unset for direct egress. Use a proxy only against sites whose terms permit it.
+
+## Anti-Detection
+
+Bot detection works on two layers, and the browser tools address both — automatically, with no configuration and no change to any method you call.
+
+**Driver layer (Patchright).** The stealth-patched Playwright fork removes the automation tells a page can read directly — `navigator.webdriver`, the `Runtime.enable` / CDP leaks, the "controlled by automated test software" infobar. It also launches real Google Chrome (not "Chrome for Testing") when available, uses the real window size instead of a fixed viewport, and enables software WebGL so a GPU-less server still reports a WebGL context. Check it with `co browser status` or `co doctor`.
+
+**Behavior layer (humanized input).** Even with a clean browser, *how* it moves gives automation away — instant cursor teleports, zero-dwell clicks, uniform keystroke timing, programmatic scroll jumps. Every action here is shaped to look human instead:
+
+- **Mouse** — curved (Bézier) paths with a real acceleration/deceleration velocity profile and a small landing overshoot; clicks land on a gaussian spread near the target (not dead-center) with a randomized press dwell.
+- **Keyboard** — character-by-character with right-skewed (log-normal) timing and the occasional pause, per a per-session "persona" so the cadence isn't a fixed fingerprint across runs. CJK text is entered by a trusted paste (IME composition fallback).
+- **Scroll** — real mouse-wheel events sized like a physical wheel or trackpad, with overshoot-and-correct — not a `scrollBy()` jump.
+
+This holds up against behavioral checkers (e.g. sannysoft, BrowserScan, CreepJS, rebrowser-bot-detector, reCAPTCHA v3). One thing it can't change is **IP reputation** — a datacenter IP still reads as suspicious to IP-aware detectors regardless of behavior; route through a residential [proxy](#proxy) for those.
 
 ## Notes
 
