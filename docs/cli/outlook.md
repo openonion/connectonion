@@ -1,8 +1,8 @@
 # Outlook CLI (co outlook)
 
-Send and read email from your Outlook account right in the terminal — the same
-Microsoft Graph access your agents get from the [Outlook tool](../useful_tools/outlook.md),
-as a command.
+Manage email and contacts from your Outlook account right in the terminal —
+the same Microsoft Graph access your agents get from the
+[Outlook tool](../useful_tools/outlook.md), as a command.
 
 ## Quick Start
 
@@ -18,13 +18,17 @@ co outlook read 3
 
 # Send a message
 co outlook send alice@example.com "Hello" "Thanks for the meeting today!"
+
+# Save and find contacts
+co outlook contact add "Zhou Yifei" zhouyifei0428@gmail.com
+co outlook contact search yifei
 ```
 
 That's the whole surface. Everything below is detail.
 
 ## Setup
 
-`co outlook` needs a connected Microsoft account with Mail scopes:
+`co outlook` needs a connected Microsoft account:
 
 ```bash
 co auth microsoft
@@ -32,11 +36,35 @@ co auth microsoft
 
 This opens the Microsoft OAuth flow and saves `MICROSOFT_*` credentials
 (access token, refresh token, scopes, email) to your project `.env` and
-`~/.co/keys.env`. Tokens auto-refresh. If credentials or Mail scopes are
-missing, any `co outlook` command tells you to run `co auth microsoft` first.
-See [Microsoft Integration](../integrations/microsoft.md) for scope details.
+`~/.co/keys.env`. Tokens auto-refresh.
+
+Contact commands require `Contacts.ReadWrite`. If you authenticated before
+contact support was added, run `co auth microsoft` once more to grant the new
+permission. See [Microsoft Integration](../integrations/microsoft.md) for all
+requested scopes.
 
 ## Commands
+
+### `co outlook contact` — Manage contacts
+
+Contacts start deliberately small: a display name and one email address.
+
+```bash
+# Create
+co outlook contact add "Zhou Yifei" zhouyifei0428@gmail.com
+
+# List (25 by default)
+co outlook contact list
+co outlook contact list -n 50
+
+# Find by a case-insensitive name or email substring
+co outlook contact search yifei
+co outlook contact search gmail.com -n 10
+```
+
+`list` and `search` print a Rich table in a terminal. When output is piped,
+each contact is a tab-separated `name`, `email`, and full Microsoft Graph ID,
+so scripts do not receive truncated values.
 
 ### `co outlook` — Show the inbox
 
@@ -183,6 +211,9 @@ Or call it directly:
 ```python
 outlook = Outlook()
 outlook.list_inbox(last=10, unread=True)
+outlook.add_contact("Zhou Yifei", "zhouyifei0428@gmail.com")
+outlook.list_contacts(max_results=25)
+outlook.search_contacts("yifei")
 outlook.send(
     "alice@example.com", "Report", "See attached.",
     attachments=["report.pdf"],
@@ -194,6 +225,8 @@ outlook.send(
 
 - **"Microsoft account not connected"** → run `co auth microsoft`.
 - **Missing Mail scopes** → run `co auth microsoft` again to re-consent.
+- **Missing `Contacts.ReadWrite`** → run `co auth microsoft` again; an older
+  token cannot gain the new permission through refresh alone.
 - **Token expired** → tokens auto-refresh; if issues persist, re-run
   `co auth microsoft`.
 - **`No email #N in your inbox`** → the number is out of range; run

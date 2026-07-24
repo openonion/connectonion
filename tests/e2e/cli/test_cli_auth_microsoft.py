@@ -22,11 +22,10 @@ Components under test:
 - connectonion.cli.commands.auth_commands._save_microsoft_to_env
 """
 
-import os
 import tempfile
 from pathlib import Path
 import pytest
-from unittest.mock import Mock, patch, MagicMock
+from unittest.mock import Mock, patch
 
 from .argparse_runner import ArgparseCliRunner
 
@@ -181,7 +180,7 @@ class TestAuthMicrosoftFlow:
                 'access_token': 'eyJ0eXAi.test',
                 'refresh_token': '0.ATcA.test',
                 'expires_at': '2025-12-31T23:59:59',
-                'scopes': 'Mail.Read,Mail.Send,Calendars.Read,Calendars.ReadWrite',
+                'scopes': 'Mail.ReadWrite,Mail.Send,Contacts.ReadWrite,Calendars.Read,Calendars.ReadWrite',
                 'microsoft_email': 'test@outlook.com'
             }
 
@@ -196,7 +195,7 @@ class TestAuthMicrosoftFlow:
 
             with patch('time.sleep', return_value=None):
                 from connectonion.cli.main import cli
-                result = self.runner.invoke(cli, ['auth', 'microsoft'])
+                self.runner.invoke(cli, ['auth', 'microsoft'])
 
             mock_requests.delete.assert_called_once()
             mock_webbrowser.open.assert_called_once()
@@ -204,6 +203,7 @@ class TestAuthMicrosoftFlow:
             env_content = Path('.env').read_text()
             assert 'MICROSOFT_ACCESS_TOKEN=eyJ0eXAi.test' in env_content
             assert 'MICROSOFT_REFRESH_TOKEN=0.ATcA.test' in env_content
+            assert 'Contacts.ReadWrite' in env_content
             assert 'MICROSOFT_EMAIL=test@outlook.com' in env_content
 
     @patch('connectonion.cli.commands.auth_commands.requests')
@@ -257,5 +257,3 @@ class TestAuthMicrosoftFlow:
             result = self.runner.invoke(cli, ['auth', 'microsoft'])
 
             assert 'timed out' in result.output.lower() or result.exit_code != 0
-
-

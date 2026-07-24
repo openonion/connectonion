@@ -74,7 +74,7 @@ def _show_help():
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
-    console.print("  [green]outlook[/green]           Send and read Outlook email (co auth microsoft)")
+    console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
     console.print("  [green]status[/green]            Check account balance")
@@ -458,6 +458,42 @@ def outlook_callback(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         from .commands.outlook_commands import handle_outlook_inbox
         handle_outlook_inbox()
+
+
+outlook_contact_app = typer.Typer(
+    help="Add, list, and search Outlook contacts.",
+    no_args_is_help=True,
+)
+outlook_app.add_typer(outlook_contact_app, name="contact")
+
+
+@outlook_contact_app.command("add")
+def outlook_contact_add(
+    name: str = typer.Argument(..., help="Contact display name"),
+    email: str = typer.Argument(..., help="Contact email address"),
+):
+    """Save a contact with a name and email address."""
+    from .commands.outlook_commands import handle_outlook_contact_add
+    handle_outlook_contact_add(name, email)
+
+
+@outlook_contact_app.command("list")
+def outlook_contact_list(
+    last: int = typer.Option(25, "--last", "-n", help="How many contacts to show"),
+):
+    """List saved Outlook contacts."""
+    from .commands.outlook_commands import handle_outlook_contact_list
+    handle_outlook_contact_list(last=last)
+
+
+@outlook_contact_app.command("search")
+def outlook_contact_search(
+    query: str = typer.Argument(..., help="Name or email substring"),
+    last: int = typer.Option(25, "--last", "-n", help="How many matches to show"),
+):
+    """Search saved Outlook contacts by name or email."""
+    from .commands.outlook_commands import handle_outlook_contact_search
+    handle_outlook_contact_search(query, last=last)
 
 
 @outlook_app.command("send", epilog="Examples:  co outlook send a@b.com \"Hi\" \"Quick note\"  |  "

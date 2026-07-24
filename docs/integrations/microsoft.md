@@ -1,6 +1,6 @@
 # Microsoft Integration (co auth microsoft)
 
-> Send emails via Outlook and read calendar events from your AI agents. 30-second setup.
+> Manage Outlook email, contacts, and calendar events from your AI agents. 30-second setup.
 
 ---
 
@@ -13,11 +13,13 @@ co auth microsoft
 What happens:
 1. Clears any existing Microsoft connection (allows switching accounts)
 2. Opens browser to Microsoft OAuth consent screen
-3. You authorize Mail + Calendar permissions
+3. You authorize Mail + Contacts + Calendar permissions
 4. Credentials saved to `.env` (both local and global `~/.co/keys.env`)
 5. Ready to use Outlook and Microsoft Calendar tools immediately
 
-**That's it.** Your agents can now send emails via Outlook and read your Microsoft calendar. You can too, from the terminal — see [`co outlook`](../cli/outlook.md).
+**That's it.** Your agents can now manage Outlook email and contacts and read
+your Microsoft calendar. You can too, from the terminal — see
+[`co outlook`](../cli/outlook.md).
 
 **Switching accounts?** Just run `co auth microsoft` again - it will clear the old connection and let you pick a new Microsoft account.
 
@@ -44,7 +46,7 @@ After successful authentication, your `.env` file contains:
 MICROSOFT_ACCESS_TOKEN=eyJ0eXAi...
 MICROSOFT_REFRESH_TOKEN=0.ATcA...
 MICROSOFT_TOKEN_EXPIRES_AT=2025-12-31T23:59:59
-MICROSOFT_SCOPES=Mail.Read,Mail.Send,Calendars.Read,Calendars.ReadWrite
+MICROSOFT_SCOPES=Mail.ReadWrite,Mail.Send,Contacts.ReadWrite,Calendars.Read,Calendars.ReadWrite
 MICROSOFT_EMAIL=your.email@outlook.com
 ```
 
@@ -62,17 +64,19 @@ When you run `co auth microsoft`, we request these Microsoft Graph API scopes:
 
 | Scope | Purpose | What agents can do |
 |-------|---------|-------------------|
-| `Mail.Read` | Read user emails | Read inbox, search emails |
+| `Mail.ReadWrite` | Read and manage user emails | Read inbox, search, mark read, archive |
 | `Mail.Send` | Send emails on your behalf | Send emails via Outlook |
+| `Contacts.ReadWrite` | Manage personal Outlook contacts | Add, list, and search contacts |
 | `Calendars.Read` | Read calendar events | Read your calendar to check availability |
 | `Calendars.ReadWrite` | Create/modify calendar events | Create and update events |
 | `User.Read` | Get your profile | Identify which Microsoft account is connected |
 | `offline_access` | Refresh tokens | Keep credentials working without re-auth |
 
-**Privacy**: We only request the permissions needed. We cannot:
-- Delete your emails
-- Access your OneDrive or other services
-- Access your contacts beyond basic profile
+**Privacy**: We only request the permissions needed. The CLI does not expose
+email deletion and cannot access OneDrive or other unrelated services.
+
+The contact CLI currently exposes only add, list, and search. Microsoft grants
+`Contacts.ReadWrite` because Graph requires that scope to create a contact.
 
 ---
 
@@ -134,6 +138,11 @@ outlook.send(to="alice@example.com", subject="Report", body="See attached.",
              attachments=["report.pdf"],              # local files, ~3MB Graph limit
              send_at="2026-07-06T15:30:00Z")           # deferred send (UTC ISO)
 outlook.reply(email_id, body="Thanks for your message")
+
+# Contacts
+outlook.add_contact("Zhou Yifei", "zhouyifei0428@gmail.com")
+outlook.list_contacts(max_results=25)
+outlook.search_contacts("yifei")
 
 # Actions
 outlook.mark_read(email_id)     # Mark email as read
@@ -319,7 +328,7 @@ The backend handles:
 | Email | Gmail | Outlook |
 | Calendar | Google Calendar | Microsoft Calendar |
 | API | Google APIs | Microsoft Graph API |
-| Scopes | gmail.send, calendar | Mail.Read, Mail.Send, Calendars.* |
+| Scopes | gmail.send, calendar | Mail.ReadWrite, Mail.Send, Contacts.ReadWrite, Calendars.* |
 | Token endpoint | oauth2.googleapis.com | login.microsoftonline.com |
 
 Both follow the same CLI pattern and save credentials in the same format.

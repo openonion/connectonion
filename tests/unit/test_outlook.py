@@ -45,6 +45,17 @@ class TestOutlookInit:
             outlook = Outlook()
             assert outlook._access_token is None
 
+    def test_outlook_init_with_contacts_scope_only(self):
+        """Contact-only Graph credentials can use the contact methods."""
+        with patch.dict(
+            os.environ,
+            {"MICROSOFT_SCOPES": "User.Read,Contacts.ReadWrite"},
+            clear=False,
+        ):
+            from connectonion.useful_tools.outlook import Outlook
+
+            assert Outlook()._access_token is None
+
 
 class TestOutlookTokenManagement:
     """Test Outlook token management."""
@@ -638,3 +649,162 @@ class TestOutlookScheduled:
         assert url.endswith("/me/messages/sched-1")
 
 
+class TestOutlookContacts:
+    """Test minimal Outlook contact management through Microsoft Graph."""
+
+    ENV = {
+        "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send,Contacts.ReadWrite",
+        "MICROSOFT_ACCESS_TOKEN": "test-token",
+        "MICROSOFT_REFRESH_TOKEN": "test-refresh",
+    }
+
+    @patch("connectonion.useful_tools.outlook.httpx")
+    def test_add_contact_posts_name_and_email(self, mock_httpx):
+        response = MagicMock(status_code=201, text="ok")
+        response.json.return_value = {
+            "id": "contact-1",
+            "displayName": "Zhou Yifei",
+            "emailAddresses": [{
+                "name": "Zhou Yifei",
+                "address": "zhouyifei0428@gmail.com",
+            }],
+        }
+        mock_httpx.request.return_value = response
+
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            outlook._access_token = "test-token"
+            contact = outlook.add_contact(
+                "Zhou Yifei", "zhouyifei0428@gmail.com"
+            )
+
+        assert contact == {
+            "id": "contact-1",
+            "name": "Zhou Yifei",
+            "email": "zhouyifei0428@gmail.com",
+        }
+        method, url = mock_httpx.request.call_args.args[:2]
+        assert method == "POST"
+        assert url.endswith("/me/contacts")
+        assert mock_httpx.request.call_args.kwargs["json"] == {
+            "displayName": "Zhou Yifei",
+            "emailAddresses": [{
+                "name": "Zhou Yifei",
+                "address": "zhouyifei0428@gmail.com",
+            }],
+        }
+
+    @patch("connectonion.useful_tools.outlook.httpx")
+    def test_list_contacts_normalizes_graph_results(self, mock_httpx):
+        response = MagicMock(status_code=200, text="ok")
+        response.json.return_value = {"value": [
+            {
+                "id": "contact-1",
+                "displayName": "Zhou Yifei",
+                "emailAddresses": [{
+                    "name": "Zhou Yifei",
+                    "address": "zhouyifei0428@gmail.com",
+                }],
+            },
+            {
+                "id": "contact-2",
+                "displayName": "No Email",
+                "emailAddresses": [],
+            },
+        ]}
+        mock_httpx.request.return_value = response
+
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            outlook._access_token = "test-token"
+            contacts = outlook.list_contacts(max_results=25)
+
+        assert contacts == [
+            {
+                "id": "contact-1",
+                "name": "Zhou Yifei",
+                "email": "zhouyifei0428@gmail.com",
+            },
+            {"id": "contact-2", "name": "No Email", "email": ""},
+        ]
+        _, url = mock_httpx.request.call_args.args[:2]
+        assert "/me/contacts" in url
+        assert "$select=id,displayName,emailAddresses" in url
+
+    def test_search_contacts_matches_name_and_email_case_insensitively(self):
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            contacts = [
+                {
+                    "id": "contact-1",
+                    "name": "Zhou Yifei",
+                    "email": "zhouyifei0428@gmail.com",
+                },
+                {
+                    "id": "contact-2",
+                    "name": "Alice",
+                    "email": "alice@example.com",
+                },
+            ]
+            outlook._iter_contacts = MagicMock(side_effect=[
+                iter(contacts),
+                iter(contacts),
+            ])
+            assert outlook.search_contacts("YIFEI") == [{
+                "id": "contact-1",
+                "name": "Zhou Yifei",
+                "email": "zhouyifei0428@gmail.com",
+            }]
+            assert outlook.search_contacts("0428@gmail") == [{
+                "id": "contact-1",
+                "name": "Zhou Yifei",
+                "email": "zhouyifei0428@gmail.com",
+            }]
+
+    @patch("connectonion.useful_tools.outlook.httpx")
+    def test_search_contacts_follows_graph_pages(self, mock_httpx):
+        page1 = MagicMock(status_code=200, text="ok")
+        page1.json.return_value = {
+            "value": [{
+                "id": "contact-1",
+                "displayName": "Alice",
+                "emailAddresses": [{
+                    "name": "Alice",
+                    "address": "alice@example.com",
+                }],
+            }],
+            "@odata.nextLink": (
+                "https://graph.microsoft.com/v1.0/me/contacts?$skip=100"
+            ),
+        }
+        page2 = MagicMock(status_code=200, text="ok")
+        page2.json.return_value = {"value": [{
+            "id": "contact-2",
+            "displayName": "Zhou Yifei",
+            "emailAddresses": [{
+                "name": "Zhou Yifei",
+                "address": "zhouyifei0428@gmail.com",
+            }],
+        }]}
+        mock_httpx.request.side_effect = [page1, page2]
+
+        with patch.dict(os.environ, self.ENV, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            outlook._access_token = "test-token"
+            contacts = outlook.search_contacts("yifei")
+
+        assert [contact["id"] for contact in contacts] == ["contact-2"]
+        assert mock_httpx.request.call_count == 2
+
+    def test_contact_methods_require_contacts_readwrite(self):
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.ReadWrite,Mail.Send",
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            outlook = Outlook()
+            with pytest.raises(ValueError, match="Contacts.ReadWrite"):
+                outlook.list_contacts()
