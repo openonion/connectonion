@@ -2,11 +2,11 @@
 Purpose: Send emails via OpenOnion API using agent's authenticated email address
 LLM-Note:
   Dependencies: imports from [os, json, yaml, requests, pathlib, typing, dotenv] | imported by [__init__.py, useful_tools/__init__.py] | tested by [tests/test_email_functions.py, tests/test_real_email.py]
-  Data flow: Agent calls send_email(to, subject, message) → searches for .env file (cwd → parent dirs → ~/.co/keys.env) → loads OPENONION_API_KEY and AGENT_EMAIL → validates email format → detects HTML vs plain text → POST to oo.openonion.ai/api/email with auth token → returns {success, message_id, from, error}
+  Data flow: Agent calls send_email(to, subject, message) → searches for .env file (cwd → parent dirs → ~/.co/keys.env) → loads .env via dotenv if found (does not override existing env vars) → loads OPENONION_API_KEY and AGENT_EMAIL from environment → validates email format → detects HTML vs plain text → POST to oo.openonion.ai/api/email with auth token → returns {success, message_id, from, error}
   State/Effects: reads .env files from filesystem | loads environment variables via dotenv | makes HTTP POST request to OpenOnion API | no local state persistence
   Integration: exposes send_email(to, subject, message) → returns dict | used as agent tool function | requires prior 'co auth' to set OPENONION_API_KEY and AGENT_EMAIL | API endpoint: POST /api/email with Bearer token
   Performance: file search up to 5 parent dirs | one HTTP request per email | no caching | synchronous (blocks on network)
-  Errors: returns {success: False, error: str} for: missing .env, missing keys, invalid email format, API failures | HTTP errors caught and wrapped | validates @ and . in email | let-it-crash pattern (returns errors, doesn't raise)
+  Errors: returns {success: False, error: str} for: missing credentials, invalid email format, API failures | HTTP errors caught and wrapped | validates @ and . in email | let-it-crash pattern (returns errors, doesn't raise)
 """
 
 import os
@@ -15,6 +15,8 @@ import yaml
 import requests
 from pathlib import Path
 from typing import Dict, Optional
+
+from dotenv import load_dotenv
 
 
 def send_email(to: str, subject: str, message: str) -> Dict:
@@ -32,7 +34,10 @@ def send_email(to: str, subject: str, message: str) -> Dict:
             - from (str): Sender email address
             - error (str): Error message if failed
     """
-    # Find .env file by searching up the directory tree
+    # Load .env if one is available (populates os.environ, does not override
+    # values that are already set), then read credentials from the environment.
+    # A physical .env file is a convenience, not a requirement: deployments that
+    # inject OPENONION_API_KEY / AGENT_EMAIL directly as env vars should work.
     env_file = None
     current_dir = Path.cwd()
 
@@ -52,11 +57,8 @@ def send_email(to: str, subject: str, message: str) -> Dict:
         if global_keys_env.exists():
             env_file = global_keys_env
 
-    if not env_file:
-        return {
-            "success": False,
-            "error": "No .env file found. Run 'co init' or 'co auth' first."
-        }
+    if env_file:
+        load_dotenv(env_file)
 
     # Get authentication token and agent email from environment
     token = os.getenv("OPENONION_API_KEY")
@@ -65,13 +67,13 @@ def send_email(to: str, subject: str, message: str) -> Dict:
     if not token:
         return {
             "success": False,
-            "error": "OPENONION_API_KEY not found in .env. Run 'co auth' to authenticate."
+            "error": "OPENONION_API_KEY not set. Run 'co auth' to authenticate."
         }
 
     if not from_email:
         return {
             "success": False,
-            "error": "AGENT_EMAIL not found in .env. Run 'co auth' to set up email."
+            "error": "AGENT_EMAIL not set. Run 'co auth' to set up email."
         }
     
     # Validate recipient email

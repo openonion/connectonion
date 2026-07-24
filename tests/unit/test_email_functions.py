@@ -71,12 +71,13 @@ def test_send_email_not_activated(mock_post):
     assert "Email not activated" in result["error"]
 
 
+@patch('pathlib.Path.exists', return_value=False)
 @patch.dict('os.environ', {}, clear=True)
-def test_send_email_no_project():
+def test_send_email_no_project(mock_path_exists):
     """Test email sending when missing OPENONION_API_KEY."""
     result = send_email("test@example.com", "Test", "Message")
     assert result["success"] is False
-    assert ("OPENONION_API_KEY" in result["error"]) or ("No .env file" in result["error"])
+    assert "OPENONION_API_KEY" in result["error"]
 
 
 @patch.dict('os.environ', {'OPENONION_API_KEY': 'test-token-123', 'AGENT_EMAIL': 'test@openonion.ai'})
