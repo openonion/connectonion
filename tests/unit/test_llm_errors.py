@@ -38,6 +38,7 @@ from connectonion.core.llm import (
     GroqLLM,
     GrokLLM,
     OpenRouterLLM,
+    AtlasCloudLLM,
     OpenOnionLLM,
     LLMResponse,
     ToolCall
@@ -414,6 +415,40 @@ class TestOpenAICompatibleProviders:
             called = llm.client.chat.completions.create.call_args.kwargs
             assert called["response_format"] == {"type": "json_object"}
 
+    def test_atlascloud_uses_openai_compatible_endpoint(self):
+        """Atlas Cloud should configure the OpenAI client with its API base URL."""
+        with patch.dict(os.environ, {"ATLASCLOUD_API_KEY": "test-key"}):
+            with patch("connectonion.core.llm.openai.OpenAI") as mock_openai:
+                llm = AtlasCloudLLM(model="atlascloud/qwen/qwen3.5-flash")
+
+                _, kwargs = mock_openai.call_args
+                assert kwargs["api_key"] == "test-key"
+                assert kwargs["base_url"] == "https://api.atlascloud.ai/v1"
+                assert llm.model == "qwen/qwen3.5-flash"
+
+    def test_atlascloud_structured_complete_json_mode(self):
+        """Atlas Cloud structured output should use JSON mode and validate with Pydantic."""
+        with patch.dict(os.environ, {"ATLASCLOUD_API_KEY": "test-key"}):
+            llm = AtlasCloudLLM(model="atlascloud/qwen/qwen3.5-flash")
+
+            mock_message = Mock()
+            mock_message.content = '{"value": 13, "message": "atlas"}'
+            mock_response = Mock()
+            mock_response.choices = [Mock(message=mock_message)]
+            llm.client.chat.completions.create = Mock(return_value=mock_response)
+
+            result = llm.structured_complete(
+                [{"role": "user", "content": "Return test payload"}],
+                StructuredOutputSchema
+            )
+
+            assert result.value == 13
+            assert result.message == "atlas"
+            llm.client.chat.completions.create.assert_called_once()
+            called = llm.client.chat.completions.create.call_args.kwargs
+            assert called["model"] == "qwen/qwen3.5-flash"
+            assert called["response_format"] == {"type": "json_object"}
+
 
 class TestModelInference:
     """Test model provider inference from model names."""
@@ -430,6 +465,12 @@ class TestModelInference:
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
             llm = create_llm("openrouter/openai/gpt-4o-mini")
             assert isinstance(llm, OpenRouterLLM)
+
+    def test_infer_atlascloud_from_prefix(self):
+        """Test that atlascloud/* models are routed to AtlasCloudLLM."""
+        with patch.dict(os.environ, {"ATLASCLOUD_API_KEY": "test-key"}):
+            llm = create_llm("atlascloud/qwen/qwen3.5-flash")
+            assert isinstance(llm, AtlasCloudLLM)
 
     def test_infer_grok_from_prefix(self):
         """Test that grok/* models are routed to GrokLLM."""
