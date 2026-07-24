@@ -25,6 +25,8 @@ from .terminal import yes_no, autocomplete
 from .todo_list import TodoList
 from .slash_command import SlashCommand
 from .ask_user import ask_user
+from .browser_use_agent import browser_use_agent
+from .browser_use_tools import BrowserUseTools
 
 # Claude Code-style file tools
 from .file_tools import (
@@ -65,6 +67,8 @@ __all__ = [
     "TodoList",
     "SlashCommand",
     "ask_user",
+    "browser_use_agent",
+    "BrowserUseTools",
     # Claude Code-style file tools
     "FileTools",
     "read_file",
