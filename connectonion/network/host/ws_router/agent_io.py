@@ -67,6 +67,12 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
     else:
         await send_msg({"type": "ERROR", "message": "Agent completed without result"})
 
+    # After the run, push the (possibly rewritten) dashboard.html so Home reflects it.
+    from .dashboard import read_dashboard_snapshot
+    snapshot = read_dashboard_snapshot(session_id)
+    if snapshot:
+        await send_msg(snapshot)
+
 
 def resume_forwarding(send_msg, active, registry, session_id, storage):
     """Restart the forward task on an existing running session's io. Returns (io, forward_task).

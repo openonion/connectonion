@@ -488,6 +488,10 @@ def host(
     agent_metadata['summary'] = summary
     agent_metadata['examples'] = examples
 
+    # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
+    from .ws_router.dashboard import ensure_dashboard
+    ensure_dashboard(agent_metadata)
+
     # Load whitelist/blacklist: code param (list) takes priority, else load from YAML file path
     if whitelist is None:
         whitelist = load_list_file(config.get('whitelist'))
@@ -605,6 +609,10 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     # Extract metadata once at startup
     agent_metadata, sample = _extract_agent_metadata(create_agent)
     agent_metadata["address"] = get_agent_address(sample)
+
+    # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
+    from .ws_router.dashboard import ensure_dashboard
+    ensure_dashboard(agent_metadata)
 
     # Create TrustAgent instance
     if isinstance(trust, TrustAgent):
