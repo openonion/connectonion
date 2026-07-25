@@ -46,7 +46,7 @@ print(f"\nAgent default model: {agent_model_default}")
 print(f"llm_do default model: {llm_do_model_default}")
 
 # Expected values
-expected_agent = "co/o4-mini"
+expected_agent = "co/gemini-3.6-flash"
 expected_llm_do = "co/gpt-4o"
 
 if agent_model_default == expected_agent:
@@ -70,7 +70,7 @@ print("   ")
 print("   # Simple call - uses co/gpt-4o")
 print("   answer = llm_do('What is 2+2?')")
 print("   ")
-print("   # Agent - uses co/o4-mini")
+print("   # Agent - uses co/gemini-3.6-flash")
 print("   agent = Agent('assistant', tools=[...])")
 print("   result = agent.input('Analyze this data')")
 
@@ -81,7 +81,7 @@ print("   agent = Agent('name', model='claude-3-5-sonnet', api_key='sk-ant-...')
 
 print("\n3. Backend supported models:")
 print("   - co/gpt-4o ✓")
-print("   - co/o4-mini ✓")
+print("   - co/gemini-3.6-flash ✓")
 
 # Test 3: Try to use with override (if OpenAI key available)
 if has_openai:

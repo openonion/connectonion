@@ -249,9 +249,9 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                             console.print("\n[green]✓ We verified your star. Thanks for supporting us![/green]")
                             console.print("[green]You now have 100k free tokens![/green]")
                             console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
-                            console.print("  • co/gemini-2.5-pro")
+                            console.print("  • co/gemini-3.6-flash")
                             console.print("  • co/gpt-4o")
-                            console.print("  • co/gemini-2.5-pro")
+                            console.print("  • co/gemini-3.6-flash")
                             console.print("  • co/gpt-5")
                             console.print("  • co/claude-3-haiku")
                             console.print("  • co/claude-3-sonnet")
@@ -332,9 +332,9 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                         console.print("\n[green]✓ We verified your star. Thanks for supporting us![/green]")
                         console.print("[green]You now have 100k free tokens![/green]")
                         console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
-                        console.print("  • co/gemini-2.5-pro")
+                        console.print("  • co/gemini-3.6-flash")
                         console.print("  • co/gpt-4o")
-                        console.print("  • co/gemini-2.5-pro")
+                        console.print("  • co/gemini-3.6-flash")
                         console.print("  • co/gpt-5")
                         console.print("  • co/claude-3-haiku")
                         console.print("  • co/claude-3-sonnet")
@@ -595,7 +595,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
-            'model': 'co/gemini-2.5-pro'  # Prefixed models for managed keys
+            'model': 'co/gemini-3.6-flash'  # Prefixed models for managed keys
         }
     }
 
@@ -610,8 +610,8 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
 # Same pricing as OpenAI/Anthropic
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-2.5-pro
-# Available models: co/gemini-2.5-pro, co/gpt-4o, co/claude-3-haiku, co/claude-3-sonnet
+MODEL=co/gemini-3.6-flash
+# Available models: co/gemini-3.6-flash, co/gpt-4o, co/claude-3-haiku, co/claude-3-sonnet
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -626,7 +626,7 @@ MODEL=co/gemini-2.5-pro
 # 3. Your GitHub star will be verified automatically
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-2.5-pro
+MODEL=co/gemini-3.6-flash
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -669,8 +669,8 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
         try:
             from ...core.llm import create_llm
 
-            # Use the model specified or default to co/gemini-2.5-pro
-            llm_model = model if model else "co/gemini-2.5-pro"
+            # Use the model specified or default to co/gemini-3.6-flash
+            llm_model = model if model else "co/gemini-3.6-flash"
 
             if loading_animation:
                 loading_animation.update(f"Connecting to {llm_model}...")
@@ -755,7 +755,7 @@ def process_request(query: str) -> str:
 # Create agent
 agent = Agent(
     name="{suggested_name.replace('-', '_')}",
-    model="{'co/gemini-2.5-pro' if model and model.startswith('co/') else 'co/gemini-2.5-pro'}",
+    model="{'co/gemini-3.6-flash' if model and model.startswith('co/') else 'co/gemini-3.6-flash'}",
     system_prompt=\"\"\"You are an AI agent designed to: {description}
 
     Provide helpful, accurate, and concise responses.\"\"\",

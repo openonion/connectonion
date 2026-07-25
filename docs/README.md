@@ -320,7 +320,7 @@ class Agent:
         tools: Optional[List[Callable]] = None,
         system_prompt: Union[str, Path, None] = None,
         api_key: Optional[str] = None,
-        model: str = "co/gemini-2.5-pro",
+        model: str = "co/gemini-3.6-flash",
         max_iterations: int = 100
     )
     

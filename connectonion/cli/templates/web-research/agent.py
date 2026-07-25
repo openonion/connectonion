@@ -3,7 +3,7 @@ Purpose: Web research agent template for searching, extracting, and analyzing we
 LLM-Note:
   Dependencies: imports from [os, json, requests, connectonion.Agent, connectonion.llm_do] | template file copied by [cli/commands/init.py, cli/commands/create.py]
   Data flow: user query → Agent.input() → search_web (placeholder) | extract_data fetches URL → returns content preview | analyze_data uses llm_do | save_research writes JSON file
-  State/Effects: HTTP requests to external URLs | writes research JSON files | uses MODEL env var or co/gemini-2.5-pro
+  State/Effects: HTTP requests to external URLs | writes research JSON files | uses MODEL env var or co/gemini-3.6-flash
   Integration: template for 'co create --template web-research' | tools: search_web, extract_data, analyze_data, save_research | extensible for real search APIs
   Performance: HTTP timeout 10s | analysis truncates to 1000 chars for llm_do
   Errors: request exceptions caught and returned | ⚠️ TODO: search_web is placeholder, needs real API integration
@@ -108,7 +108,7 @@ def main():
     agent = Agent(
         name="web-research-agent",
         tools=[search_web, extract_data, analyze_data, save_research],
-        model=os.getenv("MODEL", "co/gemini-2.5-pro")
+        model=os.getenv("MODEL", "co/gemini-3.6-flash")
     )
     
     # Example research task

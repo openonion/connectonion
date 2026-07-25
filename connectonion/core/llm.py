@@ -984,7 +984,7 @@ MODEL_REGISTRY = {
 class OpenOnionLLM(LLM):
     """OpenOnion managed keys LLM implementation using OpenAI-compatible API."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "co/o4-mini", **kwargs):
+    def __init__(self, api_key: Optional[str] = None, model: str = "co/gemini-3.6-flash", **kwargs):
         # For co/ models, api_key is actually the auth token
         # Framework auto-loads .env, so OPENONION_API_KEY will be in environment
         self.auth_token = api_key or os.getenv("OPENONION_API_KEY")

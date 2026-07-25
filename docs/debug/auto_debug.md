@@ -59,7 +59,7 @@ Type your message to the agent:
 ────────────────────────────────────────────────────
 
 Iteration 1/10
-→ LLM Request (co/gemini-2.5-pro)
+→ LLM Request (co/gemini-3.6-flash)
 ← LLM Response (234ms): 2 tool calls
 
 → Tool: search_emails({"query": "John"})
@@ -324,7 +324,7 @@ Conversation Messages:
 
 Agent State:
   Name: email_assistant
-  Model: co/gemini-2.5-pro
+  Model: co/gemini-3.6-flash
   Iteration: 1/10
   Tools available: [search_emails, send_email]
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

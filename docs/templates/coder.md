@@ -41,7 +41,7 @@ agent = Agent(
     name="coder",
     system_prompt="prompt.md",
     tools=[bash, read_file, edit, glob, grep, write],
-    model="co/gemini-2.5-pro",
+    model="co/gemini-3.6-flash",
     max_iterations=50,
 )
 
