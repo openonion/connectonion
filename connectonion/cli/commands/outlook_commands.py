@@ -250,12 +250,10 @@ def handle_outlook_search(query: str, last: int = 10):
 def _print_contacts(contacts: list, title: str):
     """Render contacts as a table, or stable tab-separated rows when piped."""
     if not console.is_terminal:
+        # Plain print, not console.print: Rich expands \t into spaces, which
+        # silently turns tab-separated output into something cut -f can't read.
         for contact in contacts:
-            console.print(
-                f"{contact['name']}\t{contact['email']}\t{contact['id']}",
-                markup=False,
-                highlight=False,
-            )
+            print(f"{contact['name']}\t{contact['email']}\t{contact['id']}")
         return
 
     table = Table(title=title, show_header=True, header_style="bold cyan")

@@ -345,3 +345,19 @@ class TestHandleOutlookContacts:
             "yifei", max_results=25
         )
         assert "no contacts matching" in capsys.readouterr().out
+
+
+class TestContactPipedOutput:
+    """Piped contact rows must be machine-readable."""
+
+    def test_rows_are_really_tab_separated(self, monkeypatch, capsys):
+        """Rich expands \\t into spaces — the docs promise tabs, so `cut -f2` must work."""
+        monkeypatch.setattr(outlook_commands, "console", Console(force_terminal=False, width=120))
+
+        outlook_commands._print_contacts(
+            [{"id": "contact-1", "name": "Zhou Yifei", "email": "zhou@example.com"}],
+            "contacts",
+        )
+
+        row = capsys.readouterr().out.splitlines()[0]
+        assert row.split("\t") == ["Zhou Yifei", "zhou@example.com", "contact-1"]
