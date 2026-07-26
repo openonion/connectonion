@@ -20,7 +20,7 @@ co outlook read 3
 co outlook send alice@example.com "Hello" "Thanks for the meeting today!"
 
 # Save and find contacts
-co outlook contact add "Zhou Yifei" zhouyifei0428@gmail.com
+co outlook contact add "Zhou Yifei" zhou@example.com
 co outlook contact search yifei
 ```
 
@@ -51,7 +51,7 @@ Contacts start deliberately small: a display name and one email address.
 
 ```bash
 # Create
-co outlook contact add "Zhou Yifei" zhouyifei0428@gmail.com
+co outlook contact add "Zhou Yifei" zhou@example.com
 
 # List (25 by default)
 co outlook contact list
@@ -211,7 +211,7 @@ Or call it directly:
 ```python
 outlook = Outlook()
 outlook.list_inbox(last=10, unread=True)
-outlook.add_contact("Zhou Yifei", "zhouyifei0428@gmail.com")
+outlook.add_contact("Zhou Yifei", "zhou@example.com")
 outlook.list_contacts(max_results=25)
 outlook.search_contacts("yifei")
 outlook.send(

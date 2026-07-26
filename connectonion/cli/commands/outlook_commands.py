@@ -26,30 +26,25 @@ ATTACHMENT_LIMIT = 3_000_000  # Graph sendMail rejects larger payloads
 
 
 def _outlook(required_scope: str = "Mail"):
-    """Load Microsoft credentials and require Mail or an exact Graph scope."""
+    """Load Microsoft credentials and require the Graph scope this command needs."""
     from dotenv import load_dotenv
 
     for env_path in [Path(".env"), Path.home() / ".co" / "keys.env"]:
         if env_path.exists():
             load_dotenv(env_path)
 
-    scopes = set(os.getenv("MICROSOFT_SCOPES", "").replace(",", " ").split())
-    has_scope = (
-        any(scope.startswith("Mail.") for scope in scopes)
-        if required_scope == "Mail"
-        else required_scope in scopes
-    )
-    if not os.getenv("MICROSOFT_ACCESS_TOKEN") or not has_scope:
-        if os.getenv("MICROSOFT_ACCESS_TOKEN") and required_scope != "Mail":
-            console.print(
-                f"\n❌ [bold red]Microsoft {required_scope} permission missing[/bold red]"
-            )
-            console.print("\n[cyan]Reconnect Microsoft to grant it:[/cyan]")
-            console.print("  [bold]co auth microsoft[/bold]\n")
-            raise typer.Exit(1)
+    if not os.getenv("MICROSOFT_ACCESS_TOKEN"):
         console.print("\n❌ [bold red]Microsoft account not connected[/bold red]")
         console.print("\n[cyan]Connect Outlook first:[/cyan]")
         console.print("  [bold]co auth microsoft[/bold]     Authorize Outlook access\n")
+        raise typer.Exit(1)
+
+    # "Mail" matches any Mail.* grant; "Contacts.ReadWrite" matches only itself.
+    scopes = os.getenv("MICROSOFT_SCOPES", "").replace(",", " ").split()
+    if not any(s == required_scope or s.startswith(f"{required_scope}.") for s in scopes):
+        console.print(f"\n❌ [bold red]Microsoft {required_scope} permission missing[/bold red]")
+        console.print("\n[cyan]Reconnect Microsoft to grant it:[/cyan]")
+        console.print("  [bold]co auth microsoft[/bold]     Re-authorize with the new scope\n")
         raise typer.Exit(1)
 
     from ...useful_tools.outlook import Outlook

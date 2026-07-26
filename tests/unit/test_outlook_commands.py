@@ -79,8 +79,19 @@ class TestOutlookGuard:
                 _outlook()
 
         output = capsys.readouterr().out
-        assert "Microsoft account not connected" in output
+        assert "Mail permission missing" in output
         assert "co auth microsoft" in output
+
+    def test_mailbox_settings_scope_does_not_pass_as_mail(self, capsys):
+        with patch.dict(
+            os.environ,
+            {"MICROSOFT_ACCESS_TOKEN": "test-token", "MICROSOFT_SCOPES": "MailboxSettings.Read"},
+            clear=False,
+        ):
+            with pytest.raises(typer.Exit):
+                _outlook()
+
+        assert "Mail permission missing" in capsys.readouterr().out
 
     def test_connected_returns_outlook_instance(self):
         with patch.dict(os.environ, CONNECTED_ENV, clear=False):
@@ -285,22 +296,22 @@ class TestHandleOutlookContacts:
         outlook.add_contact.return_value = {
             "id": "contact-1",
             "name": "Zhou Yifei",
-            "email": "zhouyifei0428@gmail.com",
+            "email": "zhou@example.com",
         }
 
         with patch.dict(os.environ, CONNECTED_CONTACT_ENV, clear=False):
             with patch.object(outlook_commands, "_outlook", return_value=outlook):
                 handle_outlook_contact_add(
-                    "Zhou Yifei", "zhouyifei0428@gmail.com"
+                    "Zhou Yifei", "zhou@example.com"
                 )
 
         outlook.add_contact.assert_called_once_with(
-            "Zhou Yifei", "zhouyifei0428@gmail.com"
+            "Zhou Yifei", "zhou@example.com"
         )
         output = capsys.readouterr().out
         assert "Saved contact" in output
         assert "Zhou Yifei" in output
-        assert "zhouyifei0428@gmail.com" in output
+        assert "zhou@example.com" in output
 
     def test_list_contacts_terminal_table(self, monkeypatch, capsys):
         monkeypatch.setattr(
@@ -311,7 +322,7 @@ class TestHandleOutlookContacts:
         outlook.list_contacts.return_value = [{
             "id": "contact-1",
             "name": "Zhou Yifei",
-            "email": "zhouyifei0428@gmail.com",
+            "email": "zhou@example.com",
         }]
 
         with patch.object(outlook_commands, "_outlook", return_value=outlook):
@@ -321,7 +332,7 @@ class TestHandleOutlookContacts:
         output = capsys.readouterr().out
         assert "Outlook contacts" in output
         assert "Zhou Yifei" in output
-        assert "zhouyifei0428@gmail.com" in output
+        assert "zhou@example.com" in output
 
     def test_search_contacts_empty_result(self, capsys):
         outlook = MagicMock()

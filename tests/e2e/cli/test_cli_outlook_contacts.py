@@ -15,12 +15,12 @@ def test_outlook_contact_add_routes_arguments():
     ) as handler:
         result = runner.invoke(app, [
             "outlook", "contact", "add",
-            "Zhou Yifei", "zhouyifei0428@gmail.com",
+            "Zhou Yifei", "zhou@example.com",
         ])
 
     assert result.exit_code == 0
     handler.assert_called_once_with(
-        "Zhou Yifei", "zhouyifei0428@gmail.com"
+        "Zhou Yifei", "zhou@example.com"
     )
 
 

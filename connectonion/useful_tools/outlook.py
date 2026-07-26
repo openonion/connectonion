@@ -1,7 +1,7 @@
 """
 Purpose: Outlook integration tool for email and contact management via Microsoft Graph API
 LLM-Note:
-  Dependencies: imports from [os, datetime, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
+  Dependencies: imports from [os, html, httpx] | imported by [useful_tools/__init__.py] | requires OAuth tokens from 'co auth microsoft' | tested by [tests/unit/test_outlook.py]
   Data flow: Agent calls Outlook methods → _get_access_token() loads MICROSOFT_ACCESS_TOKEN from env (auto-refresh via oo-api) → HTTP calls to Graph API (https://graph.microsoft.com/v1.0) → returns email/contact data or confirmations | send()/reply() with send_at attach deferred-send extended property (SystemTime 0x3FEF) so Exchange holds delivery | reply() escapes bodies (html.escape) and converts to HTML <p> paragraphs (blank-line splits, \n → <br>) since Graph renders the comment as HTML | get_scheduled() and contacts page through Graph collections
   State/Effects: reads MICROSOFT_* env vars for OAuth tokens/scopes | makes HTTP calls to Microsoft Graph API | can modify mailbox state (mark read, archive, send emails) and create contacts | token refresh rewrites ~/.co/keys.env | no other local file persistence
   Integration: exposes Outlook class with email methods plus add_contact(), list_contacts(), search_contacts() | structured list methods feed cli/commands/outlook_commands.py | used as agent tool via Agent(tools=[Outlook()])
@@ -380,12 +380,7 @@ class Outlook:
             "displayName": name,
             "emailAddresses": [{"name": name, "address": email}],
         }
-        contact = self._contact_dict(
-            self._request("POST", "/me/contacts", json=data)
-        )
-        contact["name"] = contact["name"] or name
-        contact["email"] = contact["email"] or email
-        return contact
+        return self._contact_dict(self._request("POST", "/me/contacts", json=data))
 
     def list_contacts(self, max_results: int = 25) -> list:
         """List Outlook contacts as dicts containing id, name, and email."""
@@ -400,7 +395,11 @@ class Outlook:
         return contacts
 
     def search_contacts(self, query: str, max_results: int = 25) -> list:
-        """Find Outlook contacts by a case-insensitive name/email substring."""
+        """Find Outlook contacts by a case-insensitive name/email substring.
+
+        Graph's $filter on contacts only does startswith on displayName, so
+        matching a substring of either name or email means paging client-side.
+        """
         self._require_scope("Contacts.ReadWrite")
         needle = query.strip().casefold()
         if not needle or max_results < 1:

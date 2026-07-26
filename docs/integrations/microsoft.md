@@ -140,7 +140,7 @@ outlook.send(to="alice@example.com", subject="Report", body="See attached.",
 outlook.reply(email_id, body="Thanks for your message")
 
 # Contacts
-outlook.add_contact("Zhou Yifei", "zhouyifei0428@gmail.com")
+outlook.add_contact("Zhou Yifei", "zhou@example.com")
 outlook.list_contacts(max_results=25)
 outlook.search_contacts("yifei")
 

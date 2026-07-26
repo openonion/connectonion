@@ -666,7 +666,7 @@ class TestOutlookContacts:
             "displayName": "Zhou Yifei",
             "emailAddresses": [{
                 "name": "Zhou Yifei",
-                "address": "zhouyifei0428@gmail.com",
+                "address": "zhou@example.com",
             }],
         }
         mock_httpx.request.return_value = response
@@ -676,13 +676,13 @@ class TestOutlookContacts:
             outlook = Outlook()
             outlook._access_token = "test-token"
             contact = outlook.add_contact(
-                "Zhou Yifei", "zhouyifei0428@gmail.com"
+                "Zhou Yifei", "zhou@example.com"
             )
 
         assert contact == {
             "id": "contact-1",
             "name": "Zhou Yifei",
-            "email": "zhouyifei0428@gmail.com",
+            "email": "zhou@example.com",
         }
         method, url = mock_httpx.request.call_args.args[:2]
         assert method == "POST"
@@ -691,7 +691,7 @@ class TestOutlookContacts:
             "displayName": "Zhou Yifei",
             "emailAddresses": [{
                 "name": "Zhou Yifei",
-                "address": "zhouyifei0428@gmail.com",
+                "address": "zhou@example.com",
             }],
         }
 
@@ -704,7 +704,7 @@ class TestOutlookContacts:
                 "displayName": "Zhou Yifei",
                 "emailAddresses": [{
                     "name": "Zhou Yifei",
-                    "address": "zhouyifei0428@gmail.com",
+                    "address": "zhou@example.com",
                 }],
             },
             {
@@ -725,7 +725,7 @@ class TestOutlookContacts:
             {
                 "id": "contact-1",
                 "name": "Zhou Yifei",
-                "email": "zhouyifei0428@gmail.com",
+                "email": "zhou@example.com",
             },
             {"id": "contact-2", "name": "No Email", "email": ""},
         ]
@@ -741,7 +741,7 @@ class TestOutlookContacts:
                 {
                     "id": "contact-1",
                     "name": "Zhou Yifei",
-                    "email": "zhouyifei0428@gmail.com",
+                    "email": "zhou@example.com",
                 },
                 {
                     "id": "contact-2",
@@ -756,12 +756,12 @@ class TestOutlookContacts:
             assert outlook.search_contacts("YIFEI") == [{
                 "id": "contact-1",
                 "name": "Zhou Yifei",
-                "email": "zhouyifei0428@gmail.com",
+                "email": "zhou@example.com",
             }]
-            assert outlook.search_contacts("0428@gmail") == [{
+            assert outlook.search_contacts("ou@example") == [{
                 "id": "contact-1",
                 "name": "Zhou Yifei",
-                "email": "zhouyifei0428@gmail.com",
+                "email": "zhou@example.com",
             }]
 
     @patch("connectonion.useful_tools.outlook.httpx")
@@ -786,7 +786,7 @@ class TestOutlookContacts:
             "displayName": "Zhou Yifei",
             "emailAddresses": [{
                 "name": "Zhou Yifei",
-                "address": "zhouyifei0428@gmail.com",
+                "address": "zhou@example.com",
             }],
         }]}
         mock_httpx.request.side_effect = [page1, page2]
