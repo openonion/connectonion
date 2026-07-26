@@ -222,7 +222,7 @@ connectonion/
 - Session persists across turns for multi-turn conversations
 - `tools`: ToolRegistry with O(1) lookup via `.get()` or attribute access (`agent.tools.tool_name`)
 - Class instances accessible via `agent.tools.instance_name` (e.g., `agent.tools.gmail`)
-- Default model: `co/gemini-2.5-pro` (managed keys via OpenOnion proxy)
+- Default model: `co/gemini-3.6-flash` (managed keys via OpenOnion proxy)
 
 ### LLM Provider Routing (`connectonion/core/llm.py:create_llm()`)
 - Model prefix determines provider:
@@ -441,7 +441,7 @@ git push
 - Example:
   ```python
   try:
-      agent = Agent("my_agent", model="co/gemini-2.5-pro")
+      agent = Agent("my_agent", model="co/gemini-3.6-flash")
       response = agent.input("Hello")
   except InsufficientCreditsError as e:
       print(f"Need ${e.shortfall:.4f} more credits")
@@ -476,7 +476,7 @@ git push
 
 ### Code Organization Preferences
 - Avoid `utils.py` - keep helper functions with their features
-- Default model for agents: `co/gemini-2.5-pro` (managed keys)
+- Default model for agents: `co/gemini-3.6-flash` (managed keys)
 - No Co-Authored-By lines in commit messages (no Claude, Happy, or other brand attribution)
 - Function-based tools over class-based tools
 - Events/plugins over subclassing Agent
