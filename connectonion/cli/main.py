@@ -38,7 +38,17 @@ for _env_file in (Path.home() / ".co" / "keys.env", Path.cwd() / ".env"):
         load_dotenv(_env_file)
 
 console = Console()
-app = typer.Typer(add_completion=False, no_args_is_help=False)
+# pretty_exceptions_show_locals defaults to True in Typer, which dumps every
+# local variable of every frame on an uncaught exception. The OAuth paths hold
+# OPENONION_API_KEY, refresh tokens and access tokens in locals, so a routine
+# "session expired" crash printed live credentials into the terminal — and from
+# there into scrollback, CI logs, and any error output a user pastes into a
+# chat or an issue.
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=False,
+    pretty_exceptions_show_locals=False,
+)
 
 
 def version_callback(value: bool):
