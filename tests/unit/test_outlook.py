@@ -151,6 +151,70 @@ class TestOutlookTokenManagement:
 
         assert "MICROSOFT_REFRESH_TOKEN=old-refresh" in keys_env.read_text()
 
+    @pytest.mark.real_refresh
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_refresh_updates_project_env_holding_the_tokens(self, mock_httpx, tmp_path, monkeypatch):
+        """A project .env is loaded first and never overridden — it must rotate too."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text(
+            "MICROSOFT_ACCESS_TOKEN=old-access\n"
+            "MICROSOFT_REFRESH_TOKEN=old-refresh\n"
+        )
+        config_dir = tmp_path / "co"
+        config_dir.mkdir()
+
+        refresh_response = MagicMock()
+        refresh_response.status_code = 200
+        refresh_response.json.return_value = {
+            "access_token": "new-access",
+            "expires_at": "2099-12-31T23:59:59Z",
+            "refresh_token": "rotated-refresh",
+        }
+        mock_httpx.post.return_value = refresh_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "old-access",
+            "MICROSOFT_REFRESH_TOKEN": "old-refresh",
+            "OPENONION_API_KEY": "test-key",
+            "AGENT_CONFIG_PATH": str(config_dir),
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            assert Outlook()._get_access_token() == "new-access"
+
+        saved = (tmp_path / ".env").read_text()
+        assert "MICROSOFT_ACCESS_TOKEN=new-access" in saved
+        assert "MICROSOFT_REFRESH_TOKEN=rotated-refresh" in saved
+
+    @pytest.mark.real_refresh
+    @patch('connectonion.useful_tools.outlook.httpx')
+    def test_refresh_leaves_unrelated_project_env_untouched(self, mock_httpx, tmp_path, monkeypatch):
+        """Don't scatter Microsoft keys into whatever .env the process sits next to."""
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / ".env").write_text("DATABASE_URL=postgres://local\n")
+        config_dir = tmp_path / "co"
+        config_dir.mkdir()
+
+        refresh_response = MagicMock()
+        refresh_response.status_code = 200
+        refresh_response.json.return_value = {
+            "access_token": "new-access",
+            "expires_at": "2099-12-31T23:59:59Z",
+        }
+        mock_httpx.post.return_value = refresh_response
+
+        with patch.dict(os.environ, {
+            "MICROSOFT_SCOPES": "Mail.Read,Mail.Send",
+            "MICROSOFT_ACCESS_TOKEN": "old-access",
+            "MICROSOFT_REFRESH_TOKEN": "old-refresh",
+            "OPENONION_API_KEY": "test-key",
+            "AGENT_CONFIG_PATH": str(config_dir),
+        }, clear=False):
+            from connectonion.useful_tools.outlook import Outlook
+            assert Outlook()._get_access_token() == "new-access"
+
+        assert (tmp_path / ".env").read_text() == "DATABASE_URL=postgres://local\n"
+
 
 class TestOutlookEmailFormatting:
     """Test Outlook email formatting."""
