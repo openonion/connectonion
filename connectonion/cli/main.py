@@ -77,6 +77,7 @@ def _show_help():
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
+    console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
@@ -447,6 +448,82 @@ def email_upgrade(
     """Upgrade email tier — deducts the monthly price from your credits."""
     from .commands.email_commands import handle_email_upgrade
     handle_email_upgrade(tier, domain=domain, alias=alias)
+
+
+# Gmail command group. `co gmail` (no args) shows the Gmail inbox.
+# Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
+gmail_app = typer.Typer(help="Send and read email from your Gmail account. Bare 'co gmail' shows the inbox.")
+app.add_typer(gmail_app, name="gmail")
+
+
+@gmail_app.callback(invoke_without_command=True)
+def gmail_callback(ctx: typer.Context):
+    """With no subcommand, show the Gmail inbox."""
+    if ctx.invoked_subcommand is None:
+        from .commands.gmail_commands import handle_gmail_inbox
+        handle_gmail_inbox()
+
+
+@gmail_app.command("inbox")
+def gmail_inbox(
+    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+):
+    """List recent inbox emails, numbered for read/reply."""
+    from .commands.gmail_commands import handle_gmail_inbox
+    handle_gmail_inbox(last=last, unread=unread)
+
+
+@gmail_app.command("read")
+def gmail_read(
+    email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+):
+    """Show one email's full body and mark it read."""
+    from .commands.gmail_commands import handle_gmail_read
+    handle_gmail_read(email_id)
+
+
+@gmail_app.command("reply")
+def gmail_reply(
+    email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+    message: str = typer.Argument(..., help="Reply body, or '-' to read stdin"),
+):
+    """Reply to an email from the last listing."""
+    from .commands.gmail_commands import handle_gmail_reply
+    handle_gmail_reply(email_id, message)
+
+
+@gmail_app.command("send", epilog="Examples:  co gmail send a@b.com \"Hi\" \"Quick note\"  |  "
+                                  "cat body.txt | co gmail send a@b.com \"Report\" -")
+def gmail_send(
+    to: str = typer.Argument(..., help="Recipient address (comma-separated for several)"),
+    subject: str = typer.Argument(..., help="Email subject"),
+    message: str = typer.Argument(..., help="Email body, or '-' to read stdin"),
+    cc: str = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
+    bcc: str = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+):
+    """Send an email from your Gmail account."""
+    from .commands.gmail_commands import handle_gmail_send
+    handle_gmail_send(to, subject, message, cc=cc, bcc=bcc)
+
+
+@gmail_app.command("sent")
+def gmail_sent(
+    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+):
+    """List recently sent emails."""
+    from .commands.gmail_commands import handle_gmail_sent
+    handle_gmail_sent(last=last)
+
+
+@gmail_app.command("search")
+def gmail_search(
+    query: str = typer.Argument(..., help="Gmail search query, e.g. 'from:alice@example.com'"),
+    last: int = typer.Option(10, "--last", "-n", help="How many matches to show"),
+):
+    """Search your mail with Gmail query syntax."""
+    from .commands.gmail_commands import handle_gmail_search
+    handle_gmail_search(query, last=last)
 
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.

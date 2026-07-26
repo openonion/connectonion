@@ -187,11 +187,8 @@ class Gmail:
 
         return new_access_token
 
-    def _format_emails(self, messages, max_results=10):
-        """Helper to format email list."""
-        if not messages:
-            return "No emails found."
-
+    def _email_dicts(self, messages, max_results=10):
+        """Fetch metadata for message stubs and return plain email dicts."""
         service = self._get_service()
         emails = []
 
@@ -208,19 +205,22 @@ class Gmail:
             from_email = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown')
             date = next((h['value'] for h in headers if h['name'] == 'Date'), 'Unknown')
 
-            snippet = message.get('snippet', '')
-            is_unread = 'UNREAD' in message.get('labelIds', [])
-
             emails.append({
                 'id': msg['id'],
                 'from': from_email,
                 'subject': subject,
                 'date': date,
-                'snippet': snippet,
-                'unread': is_unread
+                'snippet': message.get('snippet', ''),
+                'unread': 'UNREAD' in message.get('labelIds', [])
             })
 
-        # Format output
+        return emails
+
+    def _format_dicts(self, emails):
+        """Format email dicts (from _email_dicts) into a readable list."""
+        if not emails:
+            return "No emails found."
+
         output = [f"Found {len(emails)} email(s):\n"]
         for i, email in enumerate(emails, 1):
             status = "[UNREAD]" if email['unread'] else ""
@@ -232,7 +232,50 @@ class Gmail:
 
         return "\n".join(output)
 
+    def _format_emails(self, messages, max_results=10):
+        """Helper to format raw message stubs as a readable list."""
+        if not messages:
+            return "No emails found."
+        return self._format_dicts(self._email_dicts(messages, max_results))
+
     # === Reading ===
+
+    def list_inbox(self, last: int = 10, unread: bool = False) -> list:
+        """Fetch inbox emails as dicts (id, from, subject, date, snippet, unread).
+
+        Programmatic counterpart of read_inbox() — used by the CLI.
+
+        Args:
+            last: Number of emails to retrieve (default: 10)
+            unread: Only get unread emails (default: False)
+
+        Returns:
+            List of email dicts, newest first
+        """
+        service = self._get_service()
+
+        results = service.users().messages().list(
+            userId='me',
+            q="is:unread in:inbox" if unread else "in:inbox",
+            maxResults=last
+        ).execute()
+
+        return self._email_dicts(results.get('messages', []), last)
+
+    def list_search(self, query: str, max_results: int = 10) -> list:
+        """Search emails and return them as dicts (same shape as list_inbox).
+
+        Programmatic counterpart of search_emails() — used by the CLI.
+        """
+        service = self._get_service()
+
+        results = service.users().messages().list(
+            userId='me',
+            q=query,
+            maxResults=max_results
+        ).execute()
+
+        return self._email_dicts(results.get('messages', []), max_results)
 
     def read_inbox(self, last: int = 10, unread: bool = False) -> str:
         """Read emails from inbox.
@@ -244,18 +287,7 @@ class Gmail:
         Returns:
             Formatted string with email list
         """
-        service = self._get_service()
-
-        query = "is:unread in:inbox" if unread else "in:inbox"
-
-        results = service.users().messages().list(
-            userId='me',
-            q=query,
-            maxResults=last
-        ).execute()
-
-        messages = results.get('messages', [])
-        return self._format_emails(messages, last)
+        return self._format_dicts(self.list_inbox(last=last, unread=unread))
 
     def get_sent_emails(self, max_results: int = 10) -> str:
         """Get emails you sent.
@@ -308,20 +340,10 @@ class Gmail:
         Returns:
             Formatted string with matching emails
         """
-        service = self._get_service()
-
-        results = service.users().messages().list(
-            userId='me',
-            q=query,
-            maxResults=max_results
-        ).execute()
-
-        messages = results.get('messages', [])
-
-        if not messages:
+        emails = self.list_search(query, max_results)
+        if not emails:
             return f"No emails found matching query: {query}"
-
-        return self._format_emails(messages, max_results)
+        return self._format_dicts(emails)
 
     # === Content ===
 
