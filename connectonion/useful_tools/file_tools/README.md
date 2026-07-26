@@ -195,7 +195,7 @@ from connectonion.useful_tools import FileTools
 
 agent = Agent(
     "code-reviewer",
-    model="co/gemini-2.5-pro",
+    model="co/gemini-3.6-flash",
     tools=[FileTools()],
     instructions="Review and fix code. Always read files before editing."
 )
