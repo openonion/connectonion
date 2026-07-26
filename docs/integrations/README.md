@@ -9,4 +9,4 @@ Connect ConnectOnion to external services.
 ## OAuth Integrations
 
 - [google.md](google.md) - Google OAuth (Gmail, Calendar)
-- [microsoft.md](microsoft.md) - Microsoft OAuth (Outlook, Calendar)
+- [microsoft.md](microsoft.md) - Microsoft OAuth (Outlook email, contacts, Calendar)

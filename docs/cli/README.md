@@ -224,10 +224,10 @@ details and current limitations.
 
 ---
 
-#### `co outlook` - Send & Read Outlook Email
+#### `co outlook` - Manage Outlook Email & Contacts
 
 Your personal Outlook account from the terminal, via Microsoft Graph.
-Requires `co auth microsoft` once (Mail scopes; saved as `MICROSOFT_*` in
+Requires `co auth microsoft` once (Mail/Contacts scopes; saved as `MICROSOFT_*` in
 `.env` / `~/.co/keys.env`).
 
 **Basic usage:**
@@ -237,6 +237,8 @@ co outlook inbox -n 25 -u                             # last 25, unread only
 co outlook read 3                                     # read #3 from the listing, mark read
 co outlook send bob@example.com "Hi" "Body text"      # send now
 co outlook send bob@example.com "Hi" - < body.txt     # body from stdin
+co outlook contact add "Zhou Yifei" zhou@example.com  # save contact
+co outlook contact search yifei                       # find by name/email
 ```
 
 **Subcommands:**
@@ -245,6 +247,9 @@ co outlook send bob@example.com "Hi" - < body.txt     # body from stdin
 - `co outlook send <to> <subject> <message>` - send, with `--cc`, `--bcc`, repeatable `--attach FILE` (~3MB Graph limit), and `--at` to schedule (`+30m`, `+2h`, or UTC ISO time — Exchange holds delivery)
 - `co outlook sent` - list recently sent emails
 - `co outlook search <query>` - search subject and body
+- `co outlook contact add <name> <email>` - save a contact
+- `co outlook contact list` - list saved contacts (`--last/-n`)
+- `co outlook contact search <query>` - find contacts by name or email
 
 The CLI wraps the same `Outlook` tool your agents use. See
 [outlook.md](outlook.md) for details.
