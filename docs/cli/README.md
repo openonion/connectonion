@@ -1026,6 +1026,6 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 
 - [Agent Documentation](../concepts/agent.md) - Building agents
 - [Tools Documentation](../concepts/tools.md) - Custom tools
-- [Interactive Debugging](../auto_debug.md) - `@xray` debugger
-- [Trust System](../concepts/trust.md) - Multi-agent trust
+- [Interactive Debugging](../debug/auto_debug.md) - `@xray` debugger
+- [Trust System](../features/trust.md) - Multi-agent trust
 - [Getting Started](../quickstart.md) - Full tutorial

@@ -301,7 +301,6 @@ Based on user feedback, we're considering:
 
 ## See Also
 
-- [Getting Started](quickstart.md) - ConnectOnion basics
-- [RuntimeInspector](runtime_inspector.md) - Technical details of runtime tools
-- [Debug Agent](debug_agent.md) - How the debug agent works
-- [Examples](examples.md#auto-debug) - More auto_debug examples
+- [Getting Started](../quickstart.md) - ConnectOnion basics
+- [Auto Debug](auto_debug.md) - How the debug agent works
+- [Examples](../examples.md#auto-debug) - More auto_debug examples

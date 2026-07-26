@@ -50,7 +50,7 @@ agent = Agent("a", plugins=[re_act, logger])
 
 | Plugin | Purpose | Docs |
 |--------|---------|------|
-| `skills` | Invoke pre-packaged workflows with scoped permissions | [skills.md](skills.md) |
+| `skills` | Invoke pre-packaged workflows with scoped permissions | [skills.md](../useful_plugins/skills.md) |
 | `subagents` | Run tasks in parallel sub-agents | [subagents.md](../useful_plugins/subagents.md) |
 | `re_act` | Planning + reflection (ReAct pattern) | [re_act.md](../useful_plugins/re_act.md) |
 | `eval` | Task evaluation for debugging | [eval.md](../useful_plugins/eval.md) |

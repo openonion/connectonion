@@ -1199,5 +1199,5 @@ Even with all auto-approval mechanisms, dangerous tools not covered by other lay
 
 - [Skills](skills.md) - Pre-packaged workflows with scoped permissions
 - [Tool Approval](../useful_plugins/tool_approval.md) - Web-based approval plugin
-- [Plugins](plugins.md) - Plugin system overview
-- [Events](events.md) - Event hooks for custom permission logic
+- [Plugins](../concepts/plugins.md) - Plugin system overview
+- [Events](../concepts/events.md) - Event hooks for custom permission logic

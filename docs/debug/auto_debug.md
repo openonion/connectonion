@@ -1014,10 +1014,10 @@ A: Not currently - this is an interactive tool. For automation, use unit tests w
 
 ## See Also
 
-- [Getting Started](quickstart.md) - ConnectOnion basics
+- [Getting Started](../quickstart.md) - ConnectOnion basics
 - [`@xray` Decorator](xray.md) - Tool visibility and context
-- [Tools Guide](concepts/tools.md) - Creating tools
-- [Examples](examples.md#debugging) - More debugging examples
+- [Tools Guide](../concepts/tools.md) - Creating tools
+- [Examples](../examples.md#debugging) - More debugging examples
 
 ---
 

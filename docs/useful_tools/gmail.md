@@ -59,11 +59,19 @@ Your agent can now read and manage Gmail.
 **`get_all_emails(max_results=50)`**
 - Get emails from all folders (inbox, sent, archive)
 
+**`list_inbox(last=10, unread=False)`**
+- Same fetch as `read_inbox()` but returns a list of dicts instead of text
+- Each dict: `{id, from, subject, date, snippet, unread}`
+- Use this when your code needs the data; use `read_inbox()` when an agent needs something readable
+
 ### Search
 
 **`search_emails(query, max_results=10)`**
 - Search using Gmail query syntax
 - Examples: `"from:alice@example.com"`, `"subject:meeting"`, `"is:unread has:attachment"`
+
+**`list_search(query, max_results=10)`**
+- Same search, returned as dicts in the same shape as `list_inbox()`
 
 ### Content
 
@@ -147,6 +155,24 @@ Then import from your local copy:
 # from connectonion import Gmail  # Before
 from tools.gmail import Gmail      # After - customize freely!
 ```
+
+## From the terminal
+
+The same tool backs [`co gmail`](../cli/gmail.md), so anything your agent can do
+you can do by hand:
+
+```bash
+co gmail                                            # inbox
+co gmail read 3                                     # open #3, mark read
+co gmail send bob@example.com "Hi" "Body text"
+co gmail search "from:alice@example.com is:unread"
+```
+
+## See Also
+
+- [`co gmail`](../cli/gmail.md) — the CLI wrapper
+- [GDrive](gdrive.md) — the same shape for Drive files
+- [Outlook](outlook.md) — the equivalent for a Microsoft account
 
 ## Troubleshooting
 

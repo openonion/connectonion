@@ -251,6 +251,6 @@ except Exception as e:
 
 ## Next Steps
 
-- Learn about [Agents](concepts/agent.md) for multi-step workflows
-- Explore [Tools](concepts/tools.md) for extending agents
-- See [xray](debug/xray.md) for debugging
+- Learn about [Agents](agent.md) for multi-step workflows
+- Explore [Tools](tools.md) for extending agents
+- See [xray](../debug/xray.md) for debugging
