@@ -29,10 +29,13 @@ from dotenv import load_dotenv
 
 from .. import __version__
 
-# Load global keys.env for all CLI commands
-_global_keys = Path.home() / ".co" / "keys.env"
-if _global_keys.exists():
-    load_dotenv(_global_keys)
+# Load both env files for all CLI commands. keys.env stays first — that is
+# already the CLI's effective precedence, since commands that load .env do so
+# after this import and load_dotenv never overrides. Adding .env here only
+# fills in keys it alone defines.
+for _env_file in (Path.home() / ".co" / "keys.env", Path.cwd() / ".env"):
+    if _env_file.exists():
+        load_dotenv(_env_file)
 
 console = Console()
 app = typer.Typer(add_completion=False, no_args_is_help=False)

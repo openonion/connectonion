@@ -2,8 +2,8 @@
 Purpose: Main package entry point exposing public API for ConnectOnion framework
 LLM-Note:
   Dependencies: imports from [core/, logger.py, llm_do.py, transcribe.py, prompts.py, debug/, useful_tools/, network/, address.py] | imported by [user code, tests/, examples/] | no direct tests (integration tests import from here)
-  Data flow: loads .env from cwd via load_dotenv() → exports all public API symbols → user imports `from connectonion import Agent, llm_do, ...`
-  State/Effects: auto-loads .env file from current working directory (NOT module directory) at import time
+  Data flow: loads cwd .env then ~/.co/keys.env via load_dotenv() (first file to define a key wins) → exports all public API symbols → user imports `from connectonion import Agent, llm_do, ...`
+  State/Effects: auto-loads both the cwd .env (NOT module directory) and the global ~/.co/keys.env at import time
   Integration: exposes complete public API: Agent, LLM, Logger, create_tool_from_function, llm_do, transcribe, xray, event decorators, built-in tools, networking functions | __all__ defines explicit public exports
   Performance: .env loading happens once at first import (dotenv caches)
   Errors: none (import errors bubble from submodules)
@@ -17,20 +17,16 @@ import sys as _sys
 from dotenv import load_dotenv
 from pathlib import Path as _Path
 
-# Load .env with fallback: cwd .env -> global ~/.co/keys.env
+# Load BOTH the project .env and the global ~/.co/keys.env, in that order.
+# load_dotenv never overrides an already-set variable, so the first file to
+# define a key wins: the project .env overrides, keys.env fills in the rest.
+# Loading only one of them silently hid every credential that lives solely in
+# keys.env (OAuth tokens land there) from any project that had its own .env.
 # Diagnostics go to stderr so command output on stdout stays clean (scriptable).
-# Priority 1: Current directory .env (project-specific keys)
-_env_file = _Path.cwd() / ".env"
-if _env_file.exists():
-    load_dotenv(_env_file)
-    print(f"[env] {_env_file.resolve()}", file=_sys.stderr)
-else:
-    # Priority 2: Global keys.env (shared API keys fallback)
-    _global_keys = _Path.home() / ".co" / "keys.env"
-    if _global_keys.exists():
-        load_dotenv(_global_keys)
-        print(f"[env] {_global_keys.resolve()}", file=_sys.stderr)
-    # No else - if neither exists, proceed without .env (API keys might be in shell env)
+for _env_file in (_Path.cwd() / ".env", _Path.home() / ".co" / "keys.env"):
+    if _env_file.exists():
+        load_dotenv(_env_file)
+        print(f"[env] {_env_file.resolve()}", file=_sys.stderr)
 
 from .core import Agent, LLM, create_tool_from_function
 from .core import (
