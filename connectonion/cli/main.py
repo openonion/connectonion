@@ -318,6 +318,15 @@ def skills_list():
     handle_skills_list()
 
 
+@skills_app.command("link")
+def skills_link(
+    force: bool = typer.Option(False, "--force", help="Replace directories you own"),
+):
+    """Link ConnectOnion's bundled skills into Claude Code and Codex."""
+    from .commands.skills_commands import handle_skills_link
+    handle_skills_link(force=force)
+
+
 # Trust command group
 trust_app = typer.Typer(help="Manage trust lists (contacts, whitelist, blocklist, admins)")
 app.add_typer(trust_app, name="trust")

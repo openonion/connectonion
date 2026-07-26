@@ -15,6 +15,7 @@ Pre-built tools for common agent tasks.
 | [TodoList](todo_list.md) | Track task progress | `from connectonion import TodoList` |
 | [WebFetch](web_fetch.md) | Fetch web content | `from connectonion import WebFetch` |
 | [Gmail](gmail.md) | Gmail integration | `from connectonion import Gmail` |
+| [GDrive](gdrive.md) | Google Drive files | `from connectonion import GDrive` |
 | [get_emails](get_emails.md) | Email parsing utilities | `from connectonion import get_emails` |
 | [send_email](send_email.md) | Send emails via API | `from connectonion import send_email` |
 | [Outlook](outlook.md) | Outlook integration | `from connectonion import Outlook` |
@@ -83,6 +84,7 @@ See [co copy](../cli/copy.md) for full details.
 ### Calendar
 - **GoogleCalendar** - Google Calendar events
 - **MicrosoftCalendar** - Microsoft Calendar events
+- **GDrive** - List, search, download and upload Google Drive files
 
 ### Utilities
 - **WebFetch** - Fetch and parse web pages

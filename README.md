@@ -99,6 +99,7 @@ from connectonion.useful_tools import FileTools                         # File s
 from connectonion.useful_tools.browser_tools import BrowserAutomation   # Natural language browser automation
 
 from connectonion import Gmail, Outlook              # Email
+from connectonion import GDrive                      # Google Drive files
 from connectonion import GoogleCalendar              # Calendar
 from connectonion import Memory                      # Persistent memory
 from connectonion import TodoList                    # Task tracking
@@ -815,7 +816,7 @@ Three presets:
 Ready-to-use tools with no schema writing:
 
 ```python
-from connectonion import bash, Shell, Gmail, Outlook, GoogleCalendar, Memory, TodoList
+from connectonion import bash, Shell, Gmail, GDrive, Outlook, GoogleCalendar, Memory, TodoList
 from connectonion.useful_tools import FileTools
 from connectonion.useful_tools.browser_tools import BrowserAutomation
 ```
@@ -925,7 +926,7 @@ pip install connectonion
 
 ### Available Tools
 
-bash, Shell, FileTools, BrowserAutomation, Gmail, Outlook, GoogleCalendar, Memory, TodoList
+bash, Shell, FileTools, BrowserAutomation, Gmail, GDrive, Outlook, GoogleCalendar, Memory, TodoList
 
 ### Customize Tools
 

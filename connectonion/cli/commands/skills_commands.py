@@ -13,6 +13,7 @@ LLM-Note:
 """
 
 import json
+import os
 import re
 import shutil
 from datetime import datetime, timezone
@@ -325,3 +326,66 @@ def handle_skills_list():
             desc = desc[:97] + "..."
         table.add_row(name, desc)
     console.print(table)
+
+
+# Write direction: publish the skills bundled with ConnectOnion into the
+# agent tools that read them. SOURCES above is the read side; these are the
+# two targets that use the same <name>/SKILL.md layout.
+LINK_TARGETS = [
+    ("claude", Path.home() / ".claude" / "skills"),
+    ("codex", Path.home() / ".codex" / "skills"),
+]
+
+BUNDLED_SKILLS = Path(__file__).parent.parent.parent / "useful_skills"
+
+
+def _link_one(source: Path, target: Path, force: bool) -> str:
+    """Point target at source. Returns a one-word status for the report."""
+    if target.is_symlink():
+        if target.resolve() == source.resolve() and not force:
+            return "already linked"
+        target.unlink()
+    elif target.exists():
+        if not force:
+            # A real directory here is the user's own skill of the same name.
+            # Silently replacing it would delete work we did not create.
+            return "exists, not ours — skipped"
+        shutil.rmtree(target)
+
+    target.parent.mkdir(parents=True, exist_ok=True)
+
+    # Windows only allows symlinks under Developer Mode or elevation, so fall
+    # back to a copy there rather than failing. The cost is that a copy goes
+    # stale on upgrade and has to be re-linked.
+    if os.name == "nt":
+        shutil.copytree(source, target)
+        return "copied"
+
+    target.symlink_to(source, target_is_directory=True)
+    return "linked"
+
+
+def handle_skills_link(force: bool = False):
+    """Link the bundled ConnectOnion skills into ~/.claude/skills and ~/.codex/skills."""
+    skills = sorted(d for d in BUNDLED_SKILLS.iterdir() if d.is_dir() and (d / "SKILL.md").exists())
+    if not skills:
+        console.print("[dim]No bundled skills found.[/dim]")
+        return
+
+    table = Table(title=f"Linking {len(skills)} bundled skill(s)")
+    table.add_column("Skill", style="cyan")
+    for name, _ in LINK_TARGETS:
+        table.add_column(name)
+
+    for skill in skills:
+        row = [skill.name]
+        for _, root in LINK_TARGETS:
+            row.append(_link_one(skill, root / skill.name, force))
+        table.add_row(*row)
+
+    console.print()
+    console.print(table)
+    console.print(
+        "\n[dim]Skipped entries are directories you own — pass [/dim]"
+        "[bold]--force[/bold][dim] to replace them.[/dim]\n"
+    )

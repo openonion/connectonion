@@ -13,6 +13,9 @@ co skills copy ship-feature
 
 # See what's already imported
 co skills list
+
+# Publish ConnectOnion's own skills into Claude Code and Codex
+co skills link
 ```
 
 ## Why
@@ -98,6 +101,37 @@ With `--all`, collisions are resolved automatically using the **`SOURCES` priori
 | `--all` | `-a` | Copy every discovered skill (dedupe by source priority) |
 | `--source` | `-s` | Pick a specific source: `claude`, `codex`, `cursor`, `kiro`, `co-user`, `co-project` |
 | `--force` | `-f` | Overwrite existing skill(s) at the destination |
+
+### `co skills link`
+
+The other direction. `discover`/`copy` pull skills **in** from your agent tools; `link` pushes ConnectOnion's **bundled** skills **out** to them, so Claude Code and Codex can use `co browser`, `co gmail`, `co gdrive` and the rest without you writing anything.
+
+```bash
+co skills link
+```
+
+```
+                     Linking 5 bundled skill(s)
+┏━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━┓
+┃ Skill                          ┃ claude         ┃ codex          ┃
+┡━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━┩
+│ browser-workflow-skill-builder │ linked         │ linked         │
+│ co-browser                     │ linked         │ already linked │
+│ co-mail-and-drive              │ linked         │ linked         │
+│ install-connectonion           │ linked         │ linked         │
+│ ship-feature                   │ already linked │ already linked │
+└────────────────────────────────┴────────────────┴────────────────┘
+```
+
+Targets `~/.claude/skills/` and `~/.codex/skills/`. Safe to re-run — it's how you pick up skills added by a ConnectOnion upgrade.
+
+**It will not overwrite a directory you own.** If `~/.claude/skills/co-browser/` is a real directory rather than a link, that's your own skill of the same name and it's left alone (reported as `exists, not ours — skipped`). Pass `--force` to replace it.
+
+On macOS and Linux these are symlinks, so a ConnectOnion upgrade updates the skills in place. On Windows, where symlinks need Developer Mode or elevation, the files are copied instead — re-run `co skills link` after upgrading.
+
+| Option | Description |
+|--------|-------------|
+| `--force` | Replace directories you own (destructive) |
 
 ### `co skills manifest`
 
