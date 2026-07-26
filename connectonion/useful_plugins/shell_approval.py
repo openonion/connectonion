@@ -31,6 +31,8 @@ if TYPE_CHECKING:
 
 _console = Console()
 
+SHELL_CONTROL_RE = re.compile(r'&&|\|\||[|;<>`]|[$][(]|[\r\n]')
+
 # Safe read-only commands that don't need approval
 SAFE_PATTERNS = [
     r'^ls\b',                     # list files
@@ -87,6 +89,14 @@ SAFE_PATTERNS = [
 def _is_safe(command: str) -> bool:
     """Check if command is a safe read-only command."""
     cmd = command.strip()
+    if not cmd:
+        return False
+
+    # Treat shell control syntax as unsafe so chained commands, pipes,
+    # redirections, substitutions, and newline injection still require approval.
+    if SHELL_CONTROL_RE.search(cmd):
+        return False
+
     for pattern in SAFE_PATTERNS:
         if re.search(pattern, cmd):
             return True
