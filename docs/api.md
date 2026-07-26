@@ -13,7 +13,7 @@ Agent(
     tools: Optional[List[Callable]] = None,
     system_prompt: Union[str, Path, None] = None,
     api_key: Optional[str] = None,
-    model: str = "co/gemini-2.5-pro"
+    model: str = "co/gemini-3.6-flash"
 )
 ```
 
@@ -27,8 +27,8 @@ Agent(
   - `Path`: Path object pointing to a prompt file
   - `None`: Uses default prompt
 - **api_key** (`Optional[str]`): OpenAI API key (if not using custom LLM)
-- **model** (`str`): Model to use (default: "co/gemini-2.5-pro")
-  - Managed keys: `co/gemini-2.5-pro`, `co/gpt-4o-mini`, `co/claude-sonnet-4-5`
+- **model** (`str`): Model to use (default: "co/gemini-3.6-flash")
+  - Managed keys: `co/gemini-3.6-flash`, `co/gpt-4o-mini`, `co/claude-sonnet-4-5`
   - Your own key: `gpt-4o-mini`, `claude-sonnet-4-5`, `gemini-2.5-pro`
 
 ### System Prompt Options

@@ -19,7 +19,7 @@ When you run an agent, you'll see the onion stack banner and execution flow:
  ◎    my-assistant
 ●     ────────────────────
       connectonion v0.5.1
-      co/gemini-2.5-pro · 3 tools
+      co/gemini-3.6-flash · 3 tools
       .co/logs/ · .co/evals/
       ────────────────────
 

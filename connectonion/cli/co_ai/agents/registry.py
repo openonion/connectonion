@@ -33,7 +33,7 @@ SUBAGENTS: Dict[str, Dict[str, Any]] = {
     "plan": {
         "description": "Design implementation plans. Analyze architecture, identify files to change, plan steps.",
         "tools": [FileTools],
-        "model": "co/gemini-2.5-pro",  # Smarter model for planning
+        "model": "co/gemini-3.6-flash",  # Smarter model for planning
         "max_iterations": 10,
     },
 }

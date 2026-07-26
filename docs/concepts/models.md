@@ -178,7 +178,8 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | Model | Provider | Key Strengths | Multimodal |
 |-------|----------|---------------|------------|
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
-| gemini-2.5-pro | Google | Default model, best price-performance for agents | ✅ |
+| gemini-3.6-flash | Google | Default model, newest fast Gemini | ✅ |
+| gemini-2.5-pro | Google | Strong multimodal model for agents | ✅ |
 | gemini-3-pro-preview | Google | State-of-the-art reasoning | ✅ |
 | claude-sonnet-4-5 | Anthropic | Best balance of intelligence and speed | ✅ |
 | mistral-large-latest | Mistral | High performance European model | ✅ |
@@ -223,11 +224,11 @@ All prices are **per 1M tokens** and match official provider pricing:
 
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
-| gemini-3.6-flash | $1.50 | $7.50 | Newest fast Gemini |
+| gemini-3.6-flash | $1.50 | $7.50 | **Default model** - newest fast Gemini |
 | gemini-3-pro-preview | $2.00 | $12.00 | State-of-the-art reasoning |
 | gemini-3.5-flash | $1.50 | $9.00 | Previous fast Gemini |
 | gemini-3-pro-image-preview | $2.00 | $0.134 | Image generation |
-| gemini-2.5-pro | $1.25 | $10.00 | **Default model** - best for agents |
+| gemini-2.5-pro | $1.25 | $10.00 | Strong multimodal model for agents |
 | gemini-2.5-flash | $0.15 | $0.60 | Best price-performance |
 | gemini-2.5-flash-lite | $0.10 | $0.40 | Ultra fast, cheapest |
 | gemini-2.0-flash | $0.10 | $0.40 | Previous gen |

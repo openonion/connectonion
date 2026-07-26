@@ -41,13 +41,13 @@ OPENAI_MODELS = [
     "co/gpt-5",
     "co/gpt-5-mini",
     "co/gpt-5-nano",
-    "co/o4-mini",
+    "co/gemini-3.6-flash",
 ]
 
 GEMINI_MODELS = [
     "co/gemini-2.5-flash",
     "co/gemini-2.5-flash-lite",
-    "co/gemini-2.5-pro",
+    "co/gemini-3.6-flash",
     "co/gemini-2.0-flash",
     "co/gemini-2.0-flash-lite",
     "co/gemini-3.5-flash",
