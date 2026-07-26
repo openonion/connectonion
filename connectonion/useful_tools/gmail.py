@@ -93,33 +93,28 @@ class Gmail:
         self.contacts_csv = contacts_csv
 
     def _get_service(self):
-        """Get Gmail API service (lazy load with auto-refresh)."""
-        access_token = os.getenv("GOOGLE_ACCESS_TOKEN")
-        refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
-        expires_at_str = os.getenv("GOOGLE_TOKEN_EXPIRES_AT")
+        """Get Gmail API service, refreshing the access token once per instance.
 
-        if not access_token or not refresh_token:
+        Mirrors Outlook: refresh unconditionally on first use rather than doing
+        expiry arithmetic. An access token lasts an hour, so a cached one is
+        nearly always stale by the next run anyway, and the old
+        "only refresh if GOOGLE_TOKEN_EXPIRES_AT says so" check silently did
+        nothing at all when that variable was absent — which the backend allows,
+        since /google/credentials returns expires_at: null when the stored row
+        has no expiry. That produced 401s that looked like broken auth.
+        """
+        if self._service:
+            return self._service
+
+        refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
+
+        if not os.getenv("GOOGLE_ACCESS_TOKEN") or not refresh_token:
             raise ValueError(
                 "Google OAuth credentials not found.\n"
                 "Run: co auth google"
             )
 
-        # Check if token is expired or about to expire (within 5 minutes)
-        # Always check before returning cached service
-        if expires_at_str:
-            from datetime import datetime, timedelta
-            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-            now = datetime.utcnow().replace(tzinfo=expires_at.tzinfo) if expires_at.tzinfo else datetime.utcnow()
-
-            if now >= expires_at - timedelta(minutes=5):
-                # Token expired or about to expire, refresh via backend
-                access_token = self._refresh_via_backend(refresh_token)
-                # Clear cached service to use new token
-                self._service = None
-
-        # Return cached service if available
-        if self._service:
-            return self._service
+        access_token = self._refresh_via_backend(refresh_token)
 
         # Create credentials without client_id/client_secret
         # Backend handles token refresh, so we don't need auto-refresh

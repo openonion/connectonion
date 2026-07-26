@@ -36,6 +36,17 @@ from pathlib import Path
 FUTURE_EXPIRY = (datetime.utcnow() + timedelta(hours=1)).isoformat() + 'Z'
 
 
+@pytest.fixture(autouse=True)
+def _stub_token_refresh(request, monkeypatch):
+    """Gmail refreshes its access token once per instance; stub that network
+    call so API-operation tests stay isolated. Tests of the refresh flow
+    itself opt out with @pytest.mark.real_refresh."""
+    if "real_refresh" in request.keywords:
+        return
+    from connectonion.useful_tools.gmail import Gmail
+    monkeypatch.setattr(Gmail, "_refresh_via_backend", lambda self, rt: "test_token")
+
+
 class TestGmailInit:
     """Tests for Gmail initialization and scope validation."""
 
@@ -122,6 +133,44 @@ class TestGmailGetService:
 
         assert service1 == service2
         assert mock_build.call_count == 1  # Only built once
+
+    @pytest.mark.real_refresh
+    @patch.dict(os.environ, {
+        "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+        "GOOGLE_ACCESS_TOKEN": "stale_token",
+        "GOOGLE_REFRESH_TOKEN": "test_refresh",
+        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
+    })
+    @patch('connectonion.useful_tools.gmail.build')
+    def test_get_service_refreshes_even_when_expiry_looks_fresh(self, mock_build, monkeypatch):
+        """Refresh is unconditional — an hour-old token is stale by the next run."""
+        from connectonion.useful_tools.gmail import Gmail
+        calls = []
+        monkeypatch.setattr(
+            Gmail, "_refresh_via_backend",
+            lambda self, rt: calls.append(rt) or "fresh_token",
+        )
+
+        Gmail()._get_service()
+
+        assert calls == ["test_refresh"]
+        assert mock_build.call_args.kwargs["credentials"].token == "fresh_token"
+
+    @pytest.mark.real_refresh
+    @patch.dict(os.environ, {
+        "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+        "GOOGLE_ACCESS_TOKEN": "stale_token",
+        "GOOGLE_REFRESH_TOKEN": "test_refresh",
+    }, clear=True)
+    @patch('connectonion.useful_tools.gmail.build')
+    def test_get_service_refreshes_without_expiry_variable(self, mock_build, monkeypatch):
+        """GOOGLE_TOKEN_EXPIRES_AT can be absent — that must not skip the refresh."""
+        from connectonion.useful_tools.gmail import Gmail
+        monkeypatch.setattr(Gmail, "_refresh_via_backend", lambda self, rt: "fresh_token")
+
+        Gmail()._get_service()
+
+        assert mock_build.call_args.kwargs["credentials"].token == "fresh_token"
 
     @patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}, clear=True)
     def test_get_service_missing_credentials(self):
