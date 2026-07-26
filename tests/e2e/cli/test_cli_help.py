@@ -226,3 +226,12 @@ class TestHelpBestPractices:
 
         assert "co create" in result.output
         assert "python agent.py" in result.output
+
+
+def test_tracebacks_never_print_local_variables():
+    """Typer defaults show_locals=True, which dumps API keys and refresh
+    tokens from the OAuth frames straight into the terminal on any uncaught
+    exception — and from there into scrollback, CI logs, and pasted output."""
+    from connectonion.cli.main import app
+
+    assert app.pretty_exceptions_show_locals is False
