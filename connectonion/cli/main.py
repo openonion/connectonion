@@ -21,11 +21,12 @@ if sys.platform == "win32":
         if hasattr(_stream, "reconfigure"):
             _stream.reconfigure(encoding="utf-8", errors="replace")
 
-import typer
 from pathlib import Path
-from rich.console import Console
-from typing import Optional, List
+from typing import List, Optional
+
+import typer
 from dotenv import load_dotenv
+from rich.console import Console
 
 from .. import __version__
 
@@ -77,7 +78,7 @@ def _show_help():
     console.print("  [green]outlook[/green]           Send and read Outlook email (co auth microsoft)")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
-    console.print("  [green]status[/green]            Check account balance")
+    console.print("  [green]status[/green]            Check credentials, account, and deployments")
     console.print("  [green]doctor[/green]            Diagnose installation")
     console.print()
     console.print("[bold]Docs:[/bold] https://docs.connectonion.com")
@@ -147,7 +148,7 @@ def keys(
 
 @app.command()
 def status():
-    """Check account status."""
+    """Check credential sources, account status, and deployments."""
     from .commands.status_commands import handle_status
     handle_status()
 

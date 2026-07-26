@@ -81,13 +81,19 @@ What it does:
 4. Calls the OpenOnion auth API.
 5. Saves `OPENONION_API_KEY`, `AGENT_EMAIL`, and `AGENT_ADDRESS` to the appropriate env files.
 
-### `co status` — check account and deployment status
+### `co status` — check credentials, account, and deployments
 
 ```bash
 co status
 ```
 
-Use this after `co auth` to confirm the CLI can load your API key and reach the backend.
+The default output lists supported credential variable names, whether each one is
+configured, discovered-but-not-loaded, conflicting, or missing, and its privacy-safe
+source such as `process environment`, `<project>/.env`, or `~/.co/keys.env`. It never
+prints any raw, partial, hashed, or fingerprinted secret material.
+
+Use this after `co auth` to confirm the CLI can load your API key and reach the backend,
+or to diagnose why a provider key in `.env` is not visible to the current process.
 
 ### `co keys` — inspect local credentials
 

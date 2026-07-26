@@ -251,9 +251,10 @@ The CLI wraps the same `Outlook` tool your agents use. See
 
 ---
 
-#### `co status` - Check Account and Deployments
+#### `co status` - Check Credentials, Account, and Deployments
 
-Shows your managed keys balance, usage, and deployed agents.
+Shows redacted provider credential availability and source paths, followed by your
+managed-keys balance, usage, and deployed agents. Credential values are never shown.
 
 **Basic usage:**
 ```bash
@@ -263,6 +264,14 @@ co status
 **Example output:**
 ```bash
 $ co status
+
+Credential Sources
+┏━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━━━━━┳━━━━━━━━━━━━━━━━━━━━━┓
+┃ Provider   ┃ Credential        ┃ Status                  ┃ Source              ┃
+┡━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━┩
+│ Gemini     │ GEMINI_API_KEY    │ discovered · not loaded │ <project>/.env      │
+│ OpenAI     │ OPENAI_API_KEY    │ configured              │ process environment │
+└────────────┴───────────────────┴─────────────────────────┴─────────────────────┘
 
 ConnectOnion Account Status
 ============================
@@ -280,6 +289,9 @@ Deployed Agents
 ```
 
 **When to use:**
+- See which supported provider credentials are configured or discovered
+- Find a credential's privacy-safe source path without exposing its value
+- Diagnose credentials that exist in `.env` but are not loaded
 - Check remaining credits
 - Verify authentication
 - See account details

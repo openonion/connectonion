@@ -1,12 +1,4 @@
-"""Unit tests for connectonion/cli/commands/status_commands.py
-
-Tests cover:
-- load_api_key: Load API key from env var, .env, ~/.co/keys.env
-- handle_status: Display account status without re-authenticating
-"""
-
-"""
-LLM-Note: Tests for CLI status command (co status)
+"""Tests for the CLI status command (``co status``).
 
 What it tests:
 - TestLoadApiKey: API key loading from multiple sources
@@ -18,15 +10,179 @@ What it tests:
 
 Components under test:
 - connectonion.cli.commands.project_cmd_lib.load_api_key
-- connectonion.cli.commands.status_commands._load_config
+- connectonion.cli.commands.status_commands._credential_rows
 - connectonion.cli.commands.status_commands.handle_status
 """
 
-import pytest
 import os
 import tempfile
+from io import StringIO
 from pathlib import Path
-from unittest.mock import patch, Mock, MagicMock
+from unittest.mock import Mock, patch
+
+from rich.console import Console
+
+
+class TestCredentialStatus:
+    """Credential diagnostics expose metadata, never secret material."""
+
+    @staticmethod
+    def _row(rows, credential):
+        return next(row for row in rows if row["credential"] == credential)
+
+    def test_reports_configured_key_and_all_matching_sources(self, tmp_path):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        project = tmp_path / "project"
+        home = tmp_path / "home"
+        project.mkdir()
+        home.mkdir()
+        secret = "gemini-super-secret-value"
+        (project / ".env").write_text(f"GEMINI_API_KEY={secret}\n")
+
+        rows = _credential_rows(
+            project_dir=project,
+            home=home,
+            environ={"GEMINI_API_KEY": secret},
+        )
+        gemini = self._row(rows, "GEMINI_API_KEY")
+
+        assert gemini == {
+            "provider": "Gemini",
+            "credential": "GEMINI_API_KEY",
+            "status": "configured",
+            "source": "process environment + <project>/.env",
+        }
+        assert secret not in repr(rows)
+
+    def test_reports_discovered_key_without_loading_environment(self, tmp_path):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        project = tmp_path / "project"
+        home = tmp_path / "home"
+        project.mkdir()
+        home.mkdir()
+        (project / ".env").write_text("OPENAI_API_KEY=local-secret\n")
+        environment = {}
+
+        rows = _credential_rows(
+            project_dir=project,
+            home=home,
+            environ=environment,
+        )
+        openai = self._row(rows, "OPENAI_API_KEY")
+
+        assert openai["status"] == "discovered · not loaded"
+        assert openai["source"] == "<project>/.env"
+        assert environment == {}
+        assert "local-secret" not in repr(rows)
+
+    def test_reports_conflicting_sources_without_values(self, tmp_path):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        project = tmp_path / "project"
+        home = tmp_path / "home"
+        project.mkdir()
+        (home / ".co").mkdir(parents=True)
+        (project / ".env").write_text("ANTHROPIC_API_KEY=local-secret\n")
+        (home / ".co" / "keys.env").write_text(
+            "ANTHROPIC_API_KEY=global-secret\n"
+        )
+
+        rows = _credential_rows(
+            project_dir=project,
+            home=home,
+            environ={},
+        )
+        anthropic = self._row(rows, "ANTHROPIC_API_KEY")
+
+        assert anthropic["status"] == "conflict"
+        assert anthropic["source"] == "<project>/.env + ~/.co/keys.env"
+        assert "local-secret" not in repr(rows)
+        assert "global-secret" not in repr(rows)
+        assert str(tmp_path) not in repr(rows)
+
+    def test_ignores_placeholders_and_empty_values(self, tmp_path):
+        from connectonion.cli.commands.status_commands import _credential_rows
+
+        project = tmp_path / "project"
+        home = tmp_path / "home"
+        project.mkdir()
+        home.mkdir()
+        (project / ".env").write_text(
+            "GROQ_API_KEY=your-api-key-here\n"
+            "XAI_API_KEY=\n"
+            "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}\n"
+        )
+
+        rows = _credential_rows(
+            project_dir=project,
+            home=home,
+            environ={},
+        )
+
+        for credential in ("GROQ_API_KEY", "XAI_API_KEY", "OPENROUTER_API_KEY"):
+            assert self._row(rows, credential)["status"] == "missing"
+
+    @patch('connectonion.address.load')
+    @patch('connectonion.address.sign')
+    @patch('connectonion.cli.commands.status_commands.requests.get')
+    @patch('connectonion.cli.commands.status_commands.requests.post')
+    def test_default_status_never_prints_api_key_material(
+        self,
+        mock_post,
+        mock_get,
+        mock_sign,
+        mock_load,
+        tmp_path,
+        monkeypatch,
+    ):
+        from connectonion.cli.commands import status_commands
+
+        secret = "openonion-secret-that-must-never-appear"
+        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("OPENONION_API_KEY", secret)
+        fake_home = tmp_path / "home"
+        fake_home.mkdir()
+        co_dir = tmp_path / ".co" / "keys"
+        co_dir.mkdir(parents=True)
+        (co_dir / "agent.key").write_text("dummy")
+
+        mock_load.return_value = {"address": "0x1234567890abcdef"}
+        mock_sign.return_value = b'\x00' * 64
+        mock_post.return_value = Mock(
+            status_code=200,
+            json=lambda: {
+                "user": {
+                    "balance_usd": 1.0,
+                    "total_cost_usd": 0.0,
+                    "credits_usd": 1.0,
+                    "email": {"address": "test@mail.openonion.ai"},
+                }
+            },
+        )
+        mock_get.return_value = Mock(
+            status_code=200,
+            json=lambda: {"deployments": []},
+        )
+
+        output = StringIO()
+        test_console = Console(
+            file=output,
+            force_terminal=False,
+            color_system=None,
+            width=140,
+        )
+        with patch.object(Path, "home", return_value=fake_home):
+            with patch.object(status_commands, "console", test_console):
+                status_commands.handle_status()
+
+        rendered = output.getvalue()
+        assert "Credential Sources" in rendered
+        assert "OPENONION_API_KEY" in rendered
+        assert "process environment" in rendered
+        assert secret not in rendered
+        assert secret[:20] not in rendered
 
 
 class TestLoadApiKey:
@@ -53,16 +209,18 @@ class TestLoadApiKey:
             try:
                 # Clear env var
                 with patch.dict(os.environ, {}, clear=True):
-                    # Need to reimport after patching env
                     from connectonion.cli.commands.project_cmd_lib import load_api_key
+
                     result = load_api_key()
-                    # Result depends on dotenv loading
+                    assert result == "local-env-key"
             finally:
                 os.chdir(original_cwd)
 
     def test_load_api_key_from_global_keys_env(self):
         """Test loading API key from ~/.co/keys.env."""
         with tempfile.TemporaryDirectory() as tmpdir:
+            original_cwd = os.getcwd()
+            os.chdir(tmpdir)
             fake_home = Path(tmpdir) / "fake_home"
             fake_home.mkdir()
             co_dir = fake_home / ".co"
@@ -70,10 +228,14 @@ class TestLoadApiKey:
             keys_env = co_dir / "keys.env"
             keys_env.write_text("OPENONION_API_KEY=global-keys-env-key\n")
 
-            with patch.object(Path, 'home', return_value=fake_home):
-                with patch.dict(os.environ, {}, clear=True):
-                    from connectonion.cli.commands.project_cmd_lib import load_api_key
-                    # Result depends on dotenv loading and env state
+            try:
+                with patch.object(Path, 'home', return_value=fake_home):
+                    with patch.dict(os.environ, {}, clear=True):
+                        from connectonion.cli.commands.project_cmd_lib import load_api_key
+
+                        assert load_api_key() == "global-keys-env-key"
+            finally:
+                os.chdir(original_cwd)
 
     def test_load_api_key_returns_none_when_not_found(self):
         """Test _load_api_key returns None when key not found anywhere."""
@@ -87,8 +249,9 @@ class TestLoadApiKey:
                 with patch.object(Path, 'home', return_value=fake_home):
                     with patch.dict(os.environ, {}, clear=True):
                         from connectonion.cli.commands.project_cmd_lib import load_api_key
+
                         result = load_api_key()
-                        # Should be None or empty when not found
+                        assert not result
             finally:
                 os.chdir(original_cwd)
 
