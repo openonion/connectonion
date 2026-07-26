@@ -755,7 +755,7 @@ def process_request(query: str) -> str:
 # Create agent
 agent = Agent(
     name="{suggested_name.replace('-', '_')}",
-    model="{'co/gemini-3.6-flash' if model and model.startswith('co/') else 'co/gemini-3.6-flash'}",
+    model="{model if model and model.startswith('co/') else 'co/gemini-3.6-flash'}",
     system_prompt=\"\"\"You are an AI agent designed to: {description}
 
     Provide helpful, accurate, and concise responses.\"\"\",

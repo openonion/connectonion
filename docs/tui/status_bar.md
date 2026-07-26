@@ -11,7 +11,7 @@ from rich.console import Console
 console = Console()
 
 status = StatusBar([
-    ("🤖", "co/gemini-2.5-pro", "magenta"),
+    ("🤖", "co/gemini-3.6-flash", "magenta"),
     ("📊", "50%", "green"),
     ("", "main", "blue"),
 ])
@@ -63,5 +63,5 @@ ProgressSegment(
 ## Example Output
 
 ```
-🤖 co/gemini-2.5-pro  📊 50%   main
+🤖 co/gemini-3.6-flash  📊 50%   main
 ```

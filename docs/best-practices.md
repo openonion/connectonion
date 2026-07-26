@@ -498,7 +498,7 @@ print(result.sentiment)  # Type-safe!
 
 ```python
 # ✅ Default: Fast and cheap
-llm_do("Quick task")  # Uses co/gemini-2.5-flash
+llm_do("Quick task")  # Uses co/gemini-3.6-flash
 
 # ✅ For complex reasoning
 llm_do("Complex analysis", model="co/gemini-3.6-flash")

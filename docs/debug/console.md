@@ -25,8 +25,8 @@ When you run an agent, you'll see the onion stack banner and execution flow:
 
 [co] > "Generate a Python function"
 
-[co] ○ gemini-2.5-pro                                    1/100
-[co] ● gemini-2.5-pro · 1 tool · 150 tok · $0.0012       ⚡ 1.2s
+[co] ○ gemini-3.6-flash                                    1/100
+[co] ● gemini-3.6-flash · 1 tool · 150 tok · $0.0012       ⚡ 1.2s
 [co]   ▸ generate_code(language="python")         ✓ 0.12s
 
 [co] ═══════════════════════════════════════════════
