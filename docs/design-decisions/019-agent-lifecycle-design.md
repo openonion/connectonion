@@ -2,7 +2,7 @@
 
 **Status:** Implemented
 **Date:** 2025-12-03
-**Related:** [009-tool-execution-separation.md](./009-tool-execution-separation.md), [014-event-api-naming.md](./014-event-api-naming.md)
+**Related:** [009-tool-execution-separation.md](012-tool-execution-separation.md), [014-event-api-naming.md](018-event-api-naming.md)
 
 ---
 

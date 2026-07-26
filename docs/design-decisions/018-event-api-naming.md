@@ -2,7 +2,7 @@
 
 **Status:** Decided (Updated 2025-12-07)
 **Date:** 2025-12-03, Updated 2025-12-07
-**Related:** [010-hook-system-design.md](./010-hook-system-design.md)
+**Related:** [010-hook-system-design.md](014-hook-system-design.md)
 
 ---
 

@@ -481,8 +481,8 @@ print(os.path.exists("memory.md"))  # Should be True
 ## Next Steps
 
 - See [Examples](../examples/memory_agent.py) for complete working code
-- Learn about [Plugins](./plugin.md) for automatic memory behaviors
-- Explore [Multi-Agent Systems](./multi-agent.md) with shared memory
+- Learn about [Plugins](../concepts/plugins.md) for automatic memory behaviors
+- Explore [agent networking](../network/README.md) for agents that share state
 
 ## Customizing
 
@@ -501,6 +501,6 @@ from tools.memory import Memory      # After - customize freely!
 
 ## Related Documentation
 
-- [Agent Basics](./agent.md)
-- [Tools](./tools.md)
-- [Plugins](./plugin.md)
+- [Agent Basics](../concepts/agent.md)
+- [Tools](../concepts/tools.md)
+- [Plugins](../concepts/plugins.md)

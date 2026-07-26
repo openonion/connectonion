@@ -151,6 +151,6 @@ result = agent.input("Research and analyze...")
 
 ## Next Steps
 
-- Learn about [llm_do()](concepts/llm_do.md) for one-shot LLM calls
-- Explore [Agents](concepts/agent.md) for multi-step workflows
-- See [Tools](concepts/tools.md) for extending agents
+- Learn about [llm_do()](../concepts/llm_do.md) for one-shot LLM calls
+- Explore [Agents](../concepts/agent.md) for multi-step workflows
+- See [Tools](../concepts/tools.md) for extending agents

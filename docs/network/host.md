@@ -946,7 +946,7 @@ signature = signing_key.sign(canonical.encode()).signature.hex()
 
 Trust controls **who can access your agent**. All forms of trust use a trust agent behind the scenes.
 
-See [Trust in ConnectOnion](/docs/concepts/trust.md) for the complete trust system documentation.
+See [Trust in ConnectOnion](../features/trust.md) for the complete trust system documentation.
 
 ### 1. Trust Level (string)
 

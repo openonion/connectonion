@@ -660,7 +660,7 @@ Permission scope auto-clears at turn end. If it persists:
 
 - [Built-in Skills](../useful_skills/) - Copyable skills (ship-feature, etc.)
 - [Permissions](permissions.md) - Complete permission system overview
-- [Plugins](plugins.md) - Plugin system overview
-- [Events](events.md) - Available event hooks
+- [Plugins](../concepts/plugins.md) - Plugin system overview
+- [Events](../concepts/events.md) - Available event hooks
 - [Tool Approval](../useful_plugins/tool_approval.md) - Web-based approval plugin
-- [Tools](tools.md) - Tool system overview
+- [Tools](../concepts/tools.md) - Tool system overview

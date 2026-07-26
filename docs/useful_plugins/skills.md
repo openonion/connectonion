@@ -154,7 +154,7 @@ This prevents accidental permission escalation across turns.
 
 ## Full Documentation
 
-See [Skills](../concepts/skills.md) for complete documentation:
+See [Skills](skills.md) for complete documentation:
 - SKILL.md format specification
 - Pattern matching details
 - Session state structure
@@ -164,7 +164,7 @@ See [Skills](../concepts/skills.md) for complete documentation:
 
 ## Related
 
-- [Permissions](../concepts/permissions.md) - Complete permission system overview
+- [Permissions](../features/permissions.md) - Complete permission system overview
 - [Tool Approval](tool_approval.md) - Web-based approval plugin that skills integrate with
 - [Plugins](../concepts/plugins.md) - Plugin system overview
 - [Events](../concepts/events.md) - Event hooks used by skills

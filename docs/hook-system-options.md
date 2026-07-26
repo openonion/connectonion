@@ -6,7 +6,7 @@ Four different API styles for hooks in ConnectOnion.
 > - `before_each_tool` / `after_each_tool` - per-tool events
 > - `before_tools` / `after_tools` - batch events (fire once per round)
 >
-> See [014-event-api-naming.md](./design-decisions/014-event-api-naming.md) for the rationale.
+> See [014-event-api-naming.md](design-decisions/018-event-api-naming.md) for the rationale.
 
 ---
 

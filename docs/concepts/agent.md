@@ -1011,7 +1011,7 @@ This makes agents resilient to errors.
 
 ### Advanced Features
 - **[xray.md](../debug/xray.md)** - Debug and inspect agent behavior
-- **[trust.md](trust.md)** - Security and tool verification
+- **[trust.md](../features/trust.md)** - Security and tool verification
 - **[max_iterations.md](max_iterations.md)** - Detailed iteration control
 - **[log.md](../debug/log.md)** - Logging configuration
 - **[console.md](../debug/console.md)** - Console output and debugging

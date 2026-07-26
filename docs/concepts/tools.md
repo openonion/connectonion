@@ -490,17 +490,17 @@ ConnectOnion provides ready-to-use tools. See [useful_tools/](useful_tools/) for
 
 | Tool | Purpose |
 |------|---------|
-| [Shell](useful_tools/shell.md) | Execute shell commands |
-| [DiffWriter](useful_tools/diff_writer.md) | Edit files with diffs |
-| [TodoList](useful_tools/todo_list.md) | Track task progress |
-| [WebFetch](useful_tools/web_fetch.md) | Fetch web content |
-| [Gmail](useful_tools/gmail.md) | Gmail integration |
-| [Outlook](useful_tools/outlook.md) | Outlook integration |
-| [GoogleCalendar](useful_tools/google_calendar.md) | Google Calendar |
-| [MicrosoftCalendar](useful_tools/microsoft_calendar.md) | Microsoft Calendar |
-| [Memory](useful_tools/memory.md) | Persistent storage |
-| [Terminal](useful_tools/terminal.md) | Interactive terminal |
-| [SlashCommand](useful_tools/slash_command.md) | Custom commands |
+| [Shell](../useful_tools/shell.md) | Execute shell commands |
+| [DiffWriter](../useful_tools/diff_writer.md) | Edit files with diffs |
+| [TodoList](../useful_tools/todo_list.md) | Track task progress |
+| [WebFetch](../useful_tools/web_fetch.md) | Fetch web content |
+| [Gmail](../useful_tools/gmail.md) | Gmail integration |
+| [Outlook](../useful_tools/outlook.md) | Outlook integration |
+| [GoogleCalendar](../useful_tools/google_calendar.md) | Google Calendar |
+| [MicrosoftCalendar](../useful_tools/microsoft_calendar.md) | Microsoft Calendar |
+| [Memory](../useful_tools/memory.md) | Persistent storage |
+| [Terminal](../useful_tools/terminal.md) | Interactive terminal |
+| [SlashCommand](../useful_tools/slash_command.md) | Custom commands |
 
 ```python
 from connectonion import Agent, Shell, Gmail

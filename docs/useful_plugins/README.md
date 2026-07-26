@@ -6,7 +6,7 @@ Pre-built plugins that extend agent behavior via event hooks.
 
 | Plugin | Purpose | Import |
 |--------|---------|--------|
-| [skills](../concepts/skills.md) | Invoke workflows with scoped permissions | `from connectonion.useful_plugins import skills` |
+| [skills](skills.md) | Invoke workflows with scoped permissions | `from connectonion.useful_plugins import skills` |
 | [subagents](subagents.md) | Run tasks in parallel sub-agents | `from connectonion.useful_plugins import subagents` |
 | [tool_approval](tool_approval.md) | Web-based tool approval | `from connectonion.useful_plugins import tool_approval` |
 | [re_act](re_act.md) | ReAct reasoning pattern | `from connectonion.useful_plugins import re_act` |
