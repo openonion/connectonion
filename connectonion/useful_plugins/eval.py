@@ -72,7 +72,7 @@ What should happen to complete this task? (1-2 sentences)"""
 
     return llm_do(
         prompt,
-        model="co/gemini-2.5-flash",
+        model="co/gemini-3.6-flash",
         temperature=0.2,
         system_prompt=EXPECTED_PROMPT
     )
@@ -187,7 +187,7 @@ Is this task truly complete? What was achieved or what's missing?"""
     eval_result = llm_do(
         prompt,
         output=EvalResult,
-        model="co/gemini-2.5-flash",
+        model="co/gemini-3.6-flash",
         temperature=0,
         system_prompt=EVALUATE_PROMPT_TEXT
     )

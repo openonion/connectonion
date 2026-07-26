@@ -188,7 +188,7 @@ def detect_intent(agent: 'Agent') -> None:
     # Use llm_do with structured output
     analysis = llm_do(
         INTENT_PROMPT.format(user_prompt=user_prompt),
-        model="co/gemini-2.5-flash",
+        model="co/gemini-3.6-flash",
         output=IntentAnalysis,
         temperature=0,
     )

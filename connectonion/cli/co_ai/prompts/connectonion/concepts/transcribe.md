@@ -97,7 +97,7 @@ result = agent.input("Transcribe the file meeting.mp3 and summarize it")
 |-----------|------|---------|-------------|
 | `audio` | str | required | Path to audio file |
 | `prompt` | str | None | Context hints for accuracy |
-| `model` | str | "co/gemini-3.5-flash" | Model to use |
+| `model` | str | "co/gemini-3.6-flash" | Model to use |
 | `timestamps` | bool | False | Include timestamps in output |
 
 ## Supported Formats
@@ -110,8 +110,8 @@ result = agent.input("Transcribe the file meeting.mp3 and summarize it")
 
 ```python
 # OpenOnion managed keys (default - no API key needed)
-transcribe("audio.mp3", model="co/gemini-3.5-flash")
-transcribe("audio.mp3", model="co/gemini-2.5-flash")
+transcribe("audio.mp3", model="co/gemini-3.6-flash")
+transcribe("audio.mp3", model="co/gemini-3.6-flash")
 
 # Your own Gemini API key (set GEMINI_API_KEY)
 transcribe("audio.mp3", model="gemini-3.5-flash")
