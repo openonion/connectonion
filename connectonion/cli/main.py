@@ -78,6 +78,7 @@ def _show_help():
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
+    console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
@@ -524,6 +525,66 @@ def gmail_search(
     """Search your mail with Gmail query syntax."""
     from .commands.gmail_commands import handle_gmail_search
     handle_gmail_search(query, last=last)
+# Google Drive command group. `co gdrive` (no args) lists recent files.
+# Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
+gdrive_app = typer.Typer(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
+app.add_typer(gdrive_app, name="gdrive")
+
+
+@gdrive_app.callback(invoke_without_command=True)
+def gdrive_callback(ctx: typer.Context):
+    """With no subcommand, list recent Drive files."""
+    if ctx.invoked_subcommand is None:
+        from .commands.gdrive_commands import handle_gdrive_list
+        handle_gdrive_list()
+
+
+@gdrive_app.command("list")
+def gdrive_list(
+    last: int = typer.Option(20, "--last", "-n", help="How many files to show"),
+):
+    """List recently modified files, numbered for get/rm."""
+    from .commands.gdrive_commands import handle_gdrive_list
+    handle_gdrive_list(last=last)
+
+
+@gdrive_app.command("search")
+def gdrive_search(
+    query: str = typer.Argument(..., help="Text to look for in file names"),
+    last: int = typer.Option(20, "--last", "-n", help="How many matches to show"),
+):
+    """Search Drive by file name."""
+    from .commands.gdrive_commands import handle_gdrive_search
+    handle_gdrive_search(query, last=last)
+
+
+@gdrive_app.command("get")
+def gdrive_get(
+    file_id: str = typer.Argument(..., help="File # from the last listing, or a full file id"),
+    dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
+):
+    """Download a file (Google Docs/Sheets/Slides are exported)."""
+    from .commands.gdrive_commands import handle_gdrive_get
+    handle_gdrive_get(file_id, dest=dest)
+
+
+@gdrive_app.command("put")
+def gdrive_put(
+    path: str = typer.Argument(..., help="Local file to upload"),
+    name: str = typer.Option(None, "--name", help="Name to give it in Drive"),
+):
+    """Upload a local file to Drive."""
+    from .commands.gdrive_commands import handle_gdrive_put
+    handle_gdrive_put(path, name=name)
+
+
+@gdrive_app.command("rm")
+def gdrive_rm(
+    file_id: str = typer.Argument(..., help="File # from the last listing, or a full file id"),
+):
+    """Move a file to the Drive trash (recoverable)."""
+    from .commands.gdrive_commands import handle_gdrive_rm
+    handle_gdrive_rm(file_id)
 
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
