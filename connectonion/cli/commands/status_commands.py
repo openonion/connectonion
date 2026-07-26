@@ -1,12 +1,12 @@
 """
-Purpose: Display account status, deployments, and redacted credential-source diagnostics without re-authenticating
+Purpose: Display account status, deployments, and credential-source diagnostics without re-authenticating
 LLM-Note:
-  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, address] | imported by [cli/main.py via handle_status()] | calls backend at [https://oo.openonion.ai/api/v1/auth] | tested by [tests/e2e/cli/test_cli_status.py]
-  Data flow: receives no args → inspects supported provider variable names in process env/local .env/global ~/.co/keys.env without loading values → displays redacted name/status/source table → load_api_key() resolves OPENONION_API_KEY → address.load() reads Ed25519 keypair → creates fresh auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth → displays account and deployments
-  State/Effects: no state modifications | makes network requests to oo.openonion.ai after local diagnostics | reads env vars, .env, ~/.co/keys.env without exporting them | writes only credential names/status/source paths, never values or fingerprints | does NOT update any files
-  Integration: exposes handle_status() for CLI | credential discovery supports every provider in core/llm.py | OpenOnion auth still uses load_api_key() priority | source paths are privacy-safe (<project>/.env and ~/.co/keys.env)
+  Dependencies: imports from [os, requests, pathlib, dotenv.dotenv_values, rich.console, rich.panel, rich.table, rich.text, address] | imported by [cli/main.py via handle_status()] | calls backend at [https://oo.openonion.ai/api/v1/auth] | tested by [tests/e2e/cli/test_cli_status.py]
+  Data flow: receives reveal=False by default → inspects supported provider variable names in process env/local .env/global ~/.co/keys.env without loading values → displays redacted name/status/source table → if reveal=True, displays full values in a separate warning-marked table → load_api_key() resolves OPENONION_API_KEY → address.load() reads Ed25519 keypair → creates fresh auth message with timestamp → address.sign() creates signature → POST to /api/v1/auth → displays account and deployments
+  State/Effects: no state modifications | makes network requests to oo.openonion.ai after local diagnostics | reads env vars, .env, ~/.co/keys.env without exporting them | default output contains no secret material; explicit --reveal writes full values to the terminal | does NOT update any files
+  Integration: exposes handle_status(reveal=False) for CLI | credential discovery supports every provider in core/llm.py | OpenOnion auth still uses load_api_key() priority | source paths are privacy-safe (<project>/.env and ~/.co/keys.env)
   Performance: network call to backend (1-2s) | signature generation is fast (<10ms) | file I/O for .env files
-  Errors: credential parse/read failures are treated as no discovered keys | account status fails gracefully if OPENONION_API_KEY or identity keys are missing | backend errors do not expose credential values
+  Errors: credential parse/read failures are treated as no discovered keys | account status fails gracefully if OPENONION_API_KEY or identity keys are missing | backend errors do not expose credential values; only explicit --reveal prints them
 """
 
 import os
@@ -18,6 +18,7 @@ from dotenv import dotenv_values
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
+from rich.text import Text
 
 from .project_cmd_lib import load_api_key
 
@@ -49,8 +50,8 @@ _PLACEHOLDER_VALUES = {
 def _is_configured(value: object) -> bool:
     """Return whether *value* looks like a real configured secret.
 
-    Values are inspected only in memory. They are never included in returned
-    rows, terminal output, logs, or errors.
+    Values are inspected only in memory unless the caller explicitly selects
+    the ``--reveal`` display path.
     """
     if value is None:
         return False
@@ -81,6 +82,24 @@ def _read_credential_file(path: Path) -> dict[str, str]:
     }
 
 
+def _credential_sources(
+    *,
+    project_dir: Path | None = None,
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[tuple[str, Mapping[str, str]], ...]:
+    """Return supported credential values grouped by privacy-safe source."""
+    project_dir = (project_dir or Path.cwd()).resolve()
+    home = (home or Path.home()).resolve()
+    environ = os.environ if environ is None else environ
+
+    return (
+        ("process environment", environ),
+        ("<project>/.env", _read_credential_file(project_dir / ".env")),
+        ("~/.co/keys.env", _read_credential_file(home / ".co" / "keys.env")),
+    )
+
+
 def _credential_rows(
     *,
     project_dir: Path | None = None,
@@ -91,16 +110,10 @@ def _credential_rows(
 
     The returned dictionaries intentionally cannot contain secret values.
     """
-    project_dir = (project_dir or Path.cwd()).resolve()
-    home = (home or Path.home()).resolve()
-    environ = os.environ if environ is None else environ
-
-    local_values = _read_credential_file(project_dir / ".env")
-    global_values = _read_credential_file(home / ".co" / "keys.env")
-    sources = (
-        ("process environment", environ),
-        ("<project>/.env", local_values),
-        ("~/.co/keys.env", global_values),
+    sources = _credential_sources(
+        project_dir=project_dir,
+        home=home,
+        environ=environ,
     )
 
     rows: list[dict[str, str]] = []
@@ -137,8 +150,36 @@ def _credential_rows(
     return rows
 
 
-def _show_credentials() -> None:
-    """Print provider credential availability without any secret material."""
+def _revealed_credential_rows(
+    *,
+    project_dir: Path | None = None,
+    home: Path | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> list[dict[str, str]]:
+    """Return full credential values for the explicit ``--reveal`` path."""
+    sources = _credential_sources(
+        project_dir=project_dir,
+        home=home,
+        environ=environ,
+    )
+    rows: list[dict[str, str]] = []
+    for name, provider in CREDENTIAL_ENV_VARS:
+        for source, values in sources:
+            value = values.get(name)
+            if _is_configured(value):
+                rows.append(
+                    {
+                        "provider": provider,
+                        "credential": name,
+                        "source": source,
+                        "value": str(value),
+                    }
+                )
+    return rows
+
+
+def _show_credentials(reveal: bool = False) -> None:
+    """Print provider credential availability and optionally full values."""
     status_style = {
         "configured": "green",
         "discovered · not loaded": "yellow",
@@ -166,6 +207,42 @@ def _show_credentials() -> None:
 
     console.print()
     console.print(table)
+
+    if not reveal:
+        console.print(
+            "[dim]Values hidden. Use [bold]co status --reveal[/bold] "
+            "only when you intentionally need full credentials.[/dim]"
+        )
+        return
+
+    revealed_rows = _revealed_credential_rows()
+    if not revealed_rows:
+        console.print("[dim]No credential values are available to reveal.[/dim]")
+        return
+
+    console.print(
+        "\n[bold yellow]⚠ Secrets shown in full. "
+        "Do not share this output or paste it into logs.[/bold yellow]"
+    )
+    revealed_table = Table(
+        title="Revealed Credential Values",
+        show_header=True,
+        header_style="bold yellow",
+    )
+    revealed_table.add_column("Provider")
+    revealed_table.add_column("Credential")
+    revealed_table.add_column("Source")
+    revealed_table.add_column("Value", overflow="fold", no_wrap=False)
+
+    for row in revealed_rows:
+        revealed_table.add_row(
+            row["provider"],
+            row["credential"],
+            row["source"],
+            Text(row["value"]),
+        )
+
+    console.print(revealed_table)
 
 
 def _fetch_deployments(api_key: str):
@@ -209,8 +286,11 @@ def _show_deployments(deployments):
     console.print(table)
 
 
-def handle_status():
+def handle_status(reveal: bool = False):
     """Check account status without re-authenticating.
+
+    Args:
+        reveal: If True, print full provider credential values.
 
     Shows:
     - Agent ID
@@ -220,7 +300,7 @@ def handle_status():
     - Last seen
     - Warnings if balance is low
     """
-    _show_credentials()
+    _show_credentials(reveal=reveal)
 
     # Load API key
     api_key = load_api_key()

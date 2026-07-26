@@ -22,9 +22,11 @@ from unittest.mock import Mock, patch
 
 from rich.console import Console
 
+from .argparse_runner import ArgparseCliRunner
+
 
 class TestCredentialStatus:
-    """Credential diagnostics expose metadata, never secret material."""
+    """Credential diagnostics are redacted unless explicitly revealed."""
 
     @staticmethod
     def _row(rows, credential):
@@ -184,6 +186,46 @@ class TestCredentialStatus:
         assert secret not in rendered
         assert secret[:20] not in rendered
 
+    def test_explicit_reveal_prints_full_values_and_sources(
+        self,
+        tmp_path,
+        monkeypatch,
+    ):
+        from connectonion.cli.commands import status_commands
+
+        project = tmp_path / "project"
+        fake_home = tmp_path / "home"
+        project.mkdir()
+        fake_home.mkdir()
+        process_secret = "gemini-process-secret"
+        local_secret = "gemini-project-secret"
+        (project / ".env").write_text(f"GEMINI_API_KEY={local_secret}\n")
+        monkeypatch.chdir(project)
+
+        output = StringIO()
+        test_console = Console(
+            file=output,
+            force_terminal=False,
+            color_system=None,
+            width=160,
+        )
+        with patch.dict(
+            os.environ,
+            {"GEMINI_API_KEY": process_secret},
+            clear=True,
+        ):
+            with patch.object(Path, "home", return_value=fake_home):
+                with patch.object(status_commands, "console", test_console):
+                    status_commands._show_credentials(reveal=True)
+
+        rendered = output.getvalue()
+        assert "Revealed Credential Values" in rendered
+        assert "Secrets shown in full" in rendered
+        assert "process environment" in rendered
+        assert "<project>/.env" in rendered
+        assert process_secret in rendered
+        assert local_secret in rendered
+
 
 class TestLoadApiKey:
     """Tests for _load_api_key function."""
@@ -270,6 +312,37 @@ class TestHandleStatusNoApiKey:
 
         # Should print error message
         assert mock_console.print.called
+
+    @patch('connectonion.cli.commands.status_commands._show_credentials')
+    @patch('connectonion.cli.commands.status_commands.load_api_key')
+    def test_status_forwards_explicit_reveal(
+        self,
+        mock_load_key,
+        mock_show_credentials,
+    ):
+        mock_load_key.return_value = None
+
+        from connectonion.cli.commands.status_commands import handle_status
+
+        handle_status(reveal=True)
+
+        mock_show_credentials.assert_called_once_with(reveal=True)
+
+
+class TestStatusCli:
+    """Tests for the status command's Typer options."""
+
+    def setup_method(self):
+        self.runner = ArgparseCliRunner()
+
+    @patch('connectonion.cli.commands.status_commands.handle_status')
+    def test_status_reveal_flag(self, mock_handle_status):
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ["status", "--reveal"])
+
+        assert result.exit_code == 0
+        mock_handle_status.assert_called_once_with(reveal=True)
 
 
 class TestHandleStatusNoKeys:

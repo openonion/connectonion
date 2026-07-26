@@ -254,11 +254,13 @@ The CLI wraps the same `Outlook` tool your agents use. See
 #### `co status` - Check Credentials, Account, and Deployments
 
 Shows redacted provider credential availability and source paths, followed by your
-managed-keys balance, usage, and deployed agents. Credential values are never shown.
+managed-keys balance, usage, and deployed agents. Credential values are hidden by
+default and shown in full only when you explicitly pass `--reveal`.
 
 **Basic usage:**
 ```bash
 co status
+co status --reveal  # intentionally print full provider credential values
 ```
 
 **Example output:**
@@ -292,6 +294,8 @@ Deployed Agents
 - See which supported provider credentials are configured or discovered
 - Find a credential's privacy-safe source path without exposing its value
 - Diagnose credentials that exist in `.env` but are not loaded
+- Intentionally inspect full values with `co status --reveal` (avoid shared terminals,
+  logs, recordings, and screenshots)
 - Check remaining credits
 - Verify authentication
 - See account details

@@ -85,12 +85,17 @@ What it does:
 
 ```bash
 co status
+co status --reveal  # intentionally print full provider credential values
 ```
 
 The default output lists supported credential variable names, whether each one is
 configured, discovered-but-not-loaded, conflicting, or missing, and its privacy-safe
 source such as `process environment`, `<project>/.env`, or `~/.co/keys.env`. It never
-prints any raw, partial, hashed, or fingerprinted secret material.
+prints any raw, partial, hashed, or fingerprinted secret material by default.
+
+Pass `--reveal` (or `-r`) only when you deliberately need the full provider values.
+This prints every discovered value and its source, including conflicts. Avoid using
+it in shared terminals, logs, recordings, screenshots, or support messages.
 
 Use this after `co auth` to confirm the CLI can load your API key and reach the backend,
 or to diagnose why a provider key in `.env` is not visible to the current process.
