@@ -51,7 +51,7 @@ from .prompts import load_system_prompt
 from .debug import xray, auto_debug_exception, replay, xray_replay
 from .useful_tools import (
     send_email, get_emails, mark_read, mark_unread,
-    Memory, Gmail, GoogleCalendar, Outlook, MicrosoftCalendar,
+    Memory, Gmail, GDrive, GoogleCalendar, Outlook, MicrosoftCalendar,
     WebFetch, Shell, bash, codex, DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN,
     pick, yes_no, autocomplete, TodoList, SlashCommand,
     # Claude Code-style file tools
@@ -82,6 +82,7 @@ __all__ = [
     # Class-based tools
     "Memory",
     "Gmail",
+    "GDrive",
     "GoogleCalendar",
     "Outlook",
     "MicrosoftCalendar",

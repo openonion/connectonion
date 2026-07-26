@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [send_email, get_emails, memory, gmail, google_calendar, outlook, microsoft_calendar, web_fetch, shell, diff_writer, tui.pick, terminal, todo_list, slash_command, read_file, edit, multi_edit, glob_files, grep_files, write_file] | imported by [__init__.py main package] | re-exports tools for agent consumption
   Data flow: agent imports from useful_tools → accesses tool functions/classes directly
   State/Effects: no state | pure re-exports | lazy loading for heavy dependencies
-  Integration: exposes send_email, get_emails, mark_read, mark_unread (email functions) | Memory, Gmail, GoogleCalendar, Outlook, MicrosoftCalendar, WebFetch, Shell, DiffWriter, TodoList (tool classes) | pick, yes_no, autocomplete (TUI helpers) | SlashCommand (extension point) | read_file, edit, multi_edit, glob, grep, write, Write (Claude Code-style tools)
+  Integration: exposes send_email, get_emails, mark_read, mark_unread (email functions) | Memory, Gmail, GDrive, GoogleCalendar, Outlook, MicrosoftCalendar, WebFetch, Shell, DiffWriter, TodoList (tool classes) | pick, yes_no, autocomplete (TUI helpers) | SlashCommand (extension point) | read_file, edit, multi_edit, glob, grep, write, Write (Claude Code-style tools)
   Errors: ImportError if dependency not installed (e.g., google-auth for GoogleCalendar, httpx for Outlook/MicrosoftCalendar)
 """
 
@@ -12,6 +12,7 @@ from .send_email import send_email
 from .get_emails import get_emails, mark_read, mark_unread
 from .memory import Memory
 from .gmail import Gmail
+from .gdrive import GDrive
 from .google_calendar import GoogleCalendar
 from .outlook import Outlook
 from .microsoft_calendar import MicrosoftCalendar
@@ -46,6 +47,7 @@ __all__ = [
     # Class-based tools
     "Memory",
     "Gmail",
+    "GDrive",
     "GoogleCalendar",
     "Outlook",
     "MicrosoftCalendar",

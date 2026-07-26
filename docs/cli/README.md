@@ -237,6 +237,17 @@ co gmail inbox -n 25 -u                             # last 25, unread only
 co gmail read 3                                     # read #3 from the listing, mark read
 co gmail send bob@example.com "Hi" "Body text"      # send now
 co gmail search "from:alice@example.com is:unread"  # full Gmail query syntax
+#### `co gdrive` - Google Drive Files
+
+Your Drive from the terminal. Requires `co auth google` once (Drive scope;
+saved as `GOOGLE_*` in `.env` / `~/.co/keys.env`).
+
+**Basic usage:**
+```bash
+co gdrive                             # 20 most recently modified files
+co gdrive search report                # find by name (word prefixes)
+co gdrive get 3 --to ~/Downloads       # download #3 from the listing
+co gdrive put report.pdf               # upload
 ```
 
 **Subcommands:**
@@ -250,6 +261,13 @@ co gmail search "from:alice@example.com is:unread"  # full Gmail query syntax
 
 The CLI wraps the same `Gmail` tool your agents use. See
 [gmail.md](gmail.md) for details.
+- `co gdrive` / `co gdrive list` - recent files (`--last/-n`)
+- `co gdrive search <query>` - find by file name
+- `co gdrive get <#>` - download (`--to`); Docs/Sheets/Slides are exported to md/csv/pdf
+- `co gdrive put <path>` - upload (`--name`)
+- `co gdrive rm <#>` - move to trash (recoverable)
+
+See [gdrive.md](gdrive.md) for details.
 
 ---
 
