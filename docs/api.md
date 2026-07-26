@@ -29,7 +29,7 @@ Agent(
 - **api_key** (`Optional[str]`): OpenAI API key (if not using custom LLM)
 - **model** (`str`): Model to use (default: "co/gemini-3.6-flash")
   - Managed keys: `co/gemini-3.6-flash`, `co/gpt-4o-mini`, `co/claude-sonnet-4-5`
-  - Your own key: `gpt-4o-mini`, `claude-sonnet-4-5`, `gemini-2.5-pro`
+  - Your own key: `gpt-4o-mini`, `claude-sonnet-4-5`, `gemini-3.6-flash`
 
 ### System Prompt Options
 
@@ -239,11 +239,11 @@ llm = create_llm("o4-mini")          # → OpenAILLM
 llm = create_llm("claude-sonnet-4-5") # → AnthropicLLM
 
 # Google Gemini models
-llm = create_llm("gemini-2.5-flash")  # → GeminiLLM
+llm = create_llm("gemini-3.6-flash")  # → GeminiLLM
 
 # ConnectOnion managed keys (co/ prefix)
 llm = create_llm("co/gpt-4o-mini")    # → OpenOnionLLM
-llm = create_llm("co/gemini-2.5-flash") # → OpenOnionLLM
+llm = create_llm("co/gemini-3.6-flash") # → OpenOnionLLM
 ```
 
 ### co/ Models (Managed Keys)
@@ -254,7 +254,7 @@ Models prefixed with `co/` use ConnectOnion's managed API keys through the OpenO
 from connectonion import Agent
 
 # Uses OpenOnion managed keys - no API key needed
-agent = Agent(name="bot", model="co/gemini-2.5-flash")
+agent = Agent(name="bot", model="co/gemini-3.6-flash")
 ```
 
 **How it works:**
@@ -310,7 +310,7 @@ from connectonion.core.llm import GeminiLLM
 
 llm = GeminiLLM(
     api_key="your-key",  # or GEMINI_API_KEY env var
-    model="gemini-2.5-flash"
+    model="gemini-3.6-flash"
 )
 
 agent = Agent("bot", llm=llm)
@@ -325,7 +325,7 @@ from connectonion.core.llm import OpenOnionLLM
 
 llm = OpenOnionLLM(
     api_key="your-token",  # or OPENONION_API_KEY env var
-    model="co/gemini-2.5-flash"
+    model="co/gemini-3.6-flash"
 )
 
 agent = Agent("bot", llm=llm)

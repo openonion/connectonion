@@ -463,8 +463,8 @@ agent = Agent("bot", model="claude-haiku-4-5")
 agent = Agent("bot", model="claude-opus-4")
 
 # Google Gemini
-agent = Agent("bot", model="gemini-2.5-pro")
-agent = Agent("bot", model="gemini-2.5-flash")
+agent = Agent("bot", model="gemini-3.6-flash")
+agent = Agent("bot", model="gemini-3.6-flash")
 agent = Agent("bot", model="gemini-2.0-flash-exp")
 ```
 
@@ -895,7 +895,7 @@ import pytest
 @pytest.mark.real_api
 def test_real_agent():
     """Requires OPENONION_API_KEY or GEMINI_API_KEY in environment."""
-    agent = Agent("test", tools=[search], model="co/gemini-2.5-flash")
+    agent = Agent("test", tools=[search], model="co/gemini-3.6-flash")
     result = agent.input("Search for Python")
     assert "Python" in result
 

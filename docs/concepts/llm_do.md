@@ -12,7 +12,7 @@ answer = llm_do("What's 2+2?")
 print(answer)  # "4"
 
 # Google Gemini (your own key)
-answer = llm_do("What's 2+2?", model="gemini-2.5-flash")  
+answer = llm_do("What's 2+2?", model="gemini-3.6-flash")  
 
 # Anthropic Claude
 answer = llm_do("What's 2+2?", model="claude-haiku-4-5")
@@ -120,7 +120,7 @@ llm_do("Hello", model="co/gpt-4o-mini")
 llm_do("Hello", model="co/o4-mini")
 
 # Google Gemini models (via managed keys)
-llm_do("Hello", model="co/gemini-2.5-pro")
+llm_do("Hello", model="co/gemini-3.6-flash")
 llm_do("Hello", model="co/gemini-3.6-flash")
 
 # Anthropic Claude models (via managed keys)

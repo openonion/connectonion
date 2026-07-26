@@ -1,7 +1,7 @@
 ---
 name: plan
 description: Design implementation plans and architecture strategies
-model: co/gemini-2.5-pro
+model: co/gemini-3.6-flash
 max_iterations: 10
 tools:
   - file_read
