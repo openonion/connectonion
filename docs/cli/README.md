@@ -224,6 +224,35 @@ details and current limitations.
 
 ---
 
+#### `co gmail` - Send & Read Gmail
+
+Your personal Gmail account from the terminal, via the Gmail API. Requires
+`co auth google` once (Gmail scopes; saved as `GOOGLE_*` in `.env` /
+`~/.co/keys.env`).
+
+**Basic usage:**
+```bash
+co gmail                                            # inbox (10 most recent)
+co gmail inbox -n 25 -u                             # last 25, unread only
+co gmail read 3                                     # read #3 from the listing, mark read
+co gmail send bob@example.com "Hi" "Body text"      # send now
+co gmail search "from:alice@example.com is:unread"  # full Gmail query syntax
+```
+
+**Subcommands:**
+
+- `co gmail` / `co gmail inbox` - list recent emails (`--last/-n`, `--unread/-u`)
+- `co gmail read <#>` - show one email and mark it read
+- `co gmail reply <#> <message>` - threaded reply (`-` reads stdin)
+- `co gmail send <to> <subject> <message>` - send, with `--cc` and `--bcc`
+- `co gmail sent` - list recently sent emails
+- `co gmail search <query>` - search with Gmail query syntax
+
+The CLI wraps the same `Gmail` tool your agents use. See
+[gmail.md](gmail.md) for details.
+
+---
+
 #### `co outlook` - Manage Outlook Email & Contacts
 
 Your personal Outlook account from the terminal, via Microsoft Graph.
