@@ -55,10 +55,11 @@ def _check_host_export(entrypoint: str) -> bool:
 
     content = entrypoint_path.read_text(encoding="utf-8")
 
-    # A host(...) call on a line of its own or bound to a name. `[^#\n]*` keeps
-    # commented-out calls from counting, and the lookbehind rules out attribute
-    # calls and names that merely end in "host" (client.host(...), ghost(...)).
-    host_call_pattern = r'^[^#\n]*(?<![\w.])host\s*\([^)]+\)'
+    # `[^#\n]*` keeps commented-out calls from counting. The lookbehind rules out
+    # names that merely end in "host" (ghost(...), localhost(...)) but allows a
+    # leading dot, so `connectonion.host(agent)` still counts — wrongly blocking
+    # a valid deploy is worse than letting one through to a clear container error.
+    host_call_pattern = r'^[^#\n]*(?<![A-Za-z0-9_])host\s*\([^)]+\)'
 
     if re.search(host_call_pattern, content, re.MULTILINE):
         return True
@@ -118,6 +119,12 @@ def _is_git_repo(project_dir: Path) -> bool:
         capture_output=True,
     )
     return result.returncode == 0 and Path(result.stdout.decode().strip()).resolve() == project_dir.resolve()
+
+
+def _suggest_project_name(project_name: str) -> str | None:
+    """Nearest name that satisfies PROJECT_NAME_PATTERN, or None if there isn't one."""
+    candidate = re.sub(r"[^a-z0-9]+", "-", project_name.lower()).strip("-")[:39].rstrip("-")
+    return candidate if PROJECT_NAME_PATTERN.match(candidate) else None
 
 
 def _error_text(response: requests.Response) -> str:
@@ -275,6 +282,11 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
             "[dim]Names may use 1-39 lowercase letters, digits, and hyphens, "
             "and must start with a letter or digit.[/dim]"
         )
+        # `co create My_Agent` writes that name straight into host.yaml, so
+        # offer the corrected form rather than leaving the user to derive it.
+        suggestion = _suggest_project_name(project_name)
+        if suggestion:
+            console.print(f"[dim]Try:  name: {suggestion}[/dim]")
         console.print(f"[dim]Set 'name' in {host_yaml_path}[/dim]")
         return False
 

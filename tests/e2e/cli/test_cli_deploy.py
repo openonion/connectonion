@@ -303,6 +303,20 @@ class TestDeployValidation:
             result = self.runner.invoke(cli, ['deploy'])
             assert "Invalid project name" in result.output
 
+    def test_invalid_name_suggests_a_valid_one(self):
+        """`co create My_Agent` writes that name into host.yaml, so the deploy
+        error has to say what to change it to."""
+        from connectonion.cli.main import cli
+
+        with self.runner.isolated_filesystem():
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text("name: My_Agent\nentrypoint: agent.py\n")
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+            result = self.runner.invoke(cli, ['deploy'])
+            assert "Invalid project name" in result.output
+            assert "my-agent" in result.output
+
     @patch('connectonion.cli.commands.deploy_commands.requests.get')
     @patch('connectonion.cli.commands.deploy_commands.requests.post')
     def test_deploy_stops_when_backend_returns_no_id(self, mock_post, mock_get):
@@ -321,22 +335,37 @@ class TestDeployValidation:
 
             mock_get.assert_not_called()
 
-    def test_host_export_check_ignores_comments_and_attributes(self):
-        """Only a real host(...) call counts as exporting an ASGI app."""
+    def test_host_export_check_ignores_commented_out_calls(self):
+        """A commented-out host() call must not pass the pre-flight check."""
         from connectonion.cli.commands.deploy_commands import _check_host_export
 
         with self.runner.isolated_filesystem():
             Path("commented.py").write_text("# host(agent)\nprint('hi')\n")
             assert _check_host_export("commented.py") is False
 
-            Path("attribute.py").write_text("client.host(agent)\n")
-            assert _check_host_export("attribute.py") is False
+            Path("trailing.py").write_text("x = 1  # host(agent) goes here later\n")
+            assert _check_host_export("trailing.py") is False
 
-            Path("real.py").write_text("from connectonion import host\nhost(agent)\n")
-            assert _check_host_export("real.py") is True
+            Path("similar.py").write_text("ghost(agent)\nurl = localhost(8000)\n")
+            assert _check_host_export("similar.py") is False
 
-            Path("assigned.py").write_text("app = host(agent)\n")
-            assert _check_host_export("assigned.py") is True
+    def test_host_export_check_accepts_every_way_of_calling_host(self):
+        """Blocking a valid deploy is worse than letting one reach a clear
+        container error, so any real host(...) call counts — including the
+        module-qualified form."""
+        from connectonion.cli.commands.deploy_commands import _check_host_export
+
+        with self.runner.isolated_filesystem():
+            for name, source in [
+                ("plain.py", "from connectonion import host\nhost(agent)\n"),
+                ("assigned.py", "app = host(agent)\n"),
+                ("kwargs.py", "host(agent, port=8000)\n"),
+                ("qualified.py", "import connectonion\nconnectonion.host(agent)\n"),
+                ("aliased.py", "import connectonion as co\nco.host(agent)\n"),
+                ("guarded.py", "if __name__ == '__main__': host(agent)\n"),
+            ]:
+                Path(name).write_text(source)
+                assert _check_host_export(name) is True, name
 
 
 @SKIP_NO_GIT
