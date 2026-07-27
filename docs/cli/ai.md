@@ -29,6 +29,7 @@ co ai
 co ai "Create a calculator tool"
 co ai "Fix the failing test in tests/unit/test_agent.py"
 co ai "Refactor agent.py to use the new event system"
+co ai --yolo "/deploy-oo-chat"
 ```
 
 Runs the prompt, prints the result, and exits. No server started.
@@ -40,12 +41,38 @@ Runs the prompt, prints the result, and exits. No server started.
 | `--port` | `-p` | `8000` | Port for web server |
 | `--model` | `-m` | `co/gemini-3.6-flash` | LLM model to use |
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
+| `--yolo` | | off | Skip tool approvals and keep starting improvement turns |
+| `--yolo-turns` | | `100` | Completed turns before the autonomous checkpoint |
 
 ```bash
 co ai --port 9000
 co ai --model co/gemini-3.6-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
+co ai --yolo --yolo-turns 25 "Finish the refactor and tests"
 ```
+
+## YOLO Mode
+
+YOLO mode is an explicit, bounded autonomous mode. It bypasses tool-approval
+prompts, reviews the result after each completed turn, and keeps working until
+the configured turn checkpoint.
+
+Use it only for work you have already authorized:
+
+```bash
+# Autonomous one-shot task
+co ai --yolo "Fix the failing tests and open a draft PR"
+
+# Invoke a project skill from .co/skills/ or .claude/skills/
+co ai --yolo --yolo-turns 20 "/deploy-oo-chat"
+
+# Start web chat with YOLO enabled for its agent turns
+co ai --yolo
+```
+
+The default `co ai` behavior is unchanged. YOLO uses the existing `ulw` wire
+mode, session keys, and events so currently deployed web clients remain
+compatible.
 
 ## What the Agent Can Do
 
@@ -116,6 +143,9 @@ co ai "The test test_agent_loop is failing, investigate and fix it"
 
 # Use a different model
 co ai --model co/gemini-3.6-flash
+
+# Run an authorized skill without approval prompts
+co ai --yolo "/deploy-oo-chat"
 
 # Run on a different port
 co ai --port 9000

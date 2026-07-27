@@ -18,7 +18,7 @@ Pre-built plugins that extend agent behavior via event hooks.
 | [ui_stream](ui_stream.md) | Stream events to WebSocket clients | `from connectonion.useful_plugins import ui_stream` |
 | [auto_compact](auto_compact.md) | Compact conversation when context fills up | `from connectonion.useful_plugins import auto_compact` |
 | [prefer_write_tool](prefer_write_tool.md) | Guide agent to prefer write for new files | `from connectonion.useful_plugins import prefer_write_tool` |
-| [ulw](ulw.md) | Ultra-light workflow: pause for user input | `from connectonion.useful_plugins import ulw` |
+| [yolo / ulw](ulw.md) | Bounded autonomous work; ULW-compatible | `from connectonion.useful_plugins import yolo` |
 | [gmail_plugin](gmail_plugin.md) | Gmail OAuth flow | `from connectonion.useful_plugins import gmail_plugin` |
 | [calendar_plugin](calendar_plugin.md) | Calendar OAuth flow | `from connectonion.useful_plugins import calendar_plugin` |
 
@@ -86,7 +86,8 @@ See [co copy](../cli/copy.md) for full details.
 - **auto_compact** - Compact conversation when context window fills up
 
 ### User Interaction
-- **ulw** - Ultra-light workflow: pause loop and wait for user input
+- **yolo** - Explicit approval-free autonomous work with a turn checkpoint
+- **ulw** - Backward-compatible frontend-controlled alias
 
 ### Streaming
 - **ui_stream** - Stream agent trace events to WebSocket clients

@@ -151,18 +151,20 @@ Inject logic at any point in the agent execution cycle:
 
 ```python
 from connectonion import Agent, after_tools, llm_do
-from connectonion.useful_plugins import re_act, eval, auto_compact, subagents, ulw
+from connectonion.useful_plugins import re_act, eval, auto_compact, subagents, yolo
 
 # Built-in plugins — same capabilities as Claude Code, open to any agent
 agent = Agent("researcher", tools=[search], plugins=[
     re_act,         # Reflect + plan after each tool call
     auto_compact,   # Auto-compress context at 90% capacity
     subagents,      # Spawn sub-agents with independent tools and prompts
-    ulw,            # Ultra Light Work — fully autonomous mode
+    yolo(turns=25), # Bounded approval-free autonomous mode
 ])
 ```
 
-These plugins mirror Claude Code's internal capabilities — `auto_compact`, `subagents`, `ulw` directly correspond to Claude Code's context compression, sub-agent spawning, and autonomous work mode. ConnectOnion makes these capabilities available to any agent you build.
+These plugins mirror coding-agent capabilities such as context compression,
+sub-agent spawning, and autonomous work. Existing `ulw` imports and frontend
+messages remain supported as compatibility aliases for `yolo`.
 
 Hooks: `after_user_input`, `before_iteration`, `before_llm`, `after_llm`, `before_tools`, `before_each_tool`, `after_each_tool`, `after_tools`, `on_error`, `after_iteration`, `on_stop_signal`, `on_complete`
 
@@ -759,7 +761,7 @@ Plugins are lists of lifecycle hooks that inject logic at any point in the agent
 - `re_act`: Reflect + plan after each tool call
 - `auto_compact`: Auto-compress context at 90% capacity
 - `subagents`: Spawn sub-agents with independent tools
-- `ulw`: Ultra Light Work — fully autonomous mode
+- `yolo`: Bounded approval-free autonomous mode (`ulw` remains compatible)
 
 ```python
 from connectonion.useful_plugins import re_act, subagents
@@ -915,7 +917,7 @@ ConnectOnion is a simple, elegant framework for production-ready AI agents. Phil
 | Approval System | Dangerous ops auto-trigger approval |
 | Skills System | Claude Code compatible, auto-discovery |
 | 12 Lifecycle Hooks | Inject logic at any point |
-| Plugin System | re_act, auto_compact, subagents, ulw |
+| Plugin System | re_act, auto_compact, subagents, yolo |
 | Multi-Agent Trust | Fast rules, zero token cost |
 
 ### Quick Start
@@ -941,7 +943,7 @@ co copy Gmail  # Copy tool source for modification
 | re_act | Reflect + plan after each tool | - |
 | auto_compact | Auto-compress context at 90% | Context compression |
 | subagents | Spawn sub-agents | Sub-agent spawning |
-| ulw | Ultra Light Work autonomous | Autonomous mode |
+| yolo / ulw | Bounded autonomous work | Autonomous mode |
 
 ### Skills Auto-Discovery
 

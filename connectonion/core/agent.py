@@ -60,6 +60,11 @@ class Agent:
         # Session storage (None locally, injected by host() for persistence)
         self.storage = None
 
+        # Runtime-only continuation queue. Plugins can enqueue another user turn
+        # without recursively calling input(); it is never restored or synced as
+        # part of current_session.
+        self._pending_inputs: List[str] = []
+
         # Token usage tracking
         self.total_cost: float = 0.0  # Cumulative cost in USD
         self.last_usage: Optional[TokenUsage] = None  # From most recent LLM call
@@ -240,10 +245,6 @@ class Agent:
         Returns:
             The agent's response after processing the input
         """
-        start_time = time.time()
-        if self.logger.console:
-            self.logger.console.print_task(prompt)
-
         # Session restoration: if session passed, restore it (stateless API continuation)
         if session is not None:
             self.current_session = {
@@ -292,6 +293,50 @@ class Agent:
             file_list = "\n".join(f"- {p}" for p in saved_files)
             prompt += f"\n\n<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
 
+        self._pending_inputs.clear()
+        try:
+            result = self._run_input_turn(
+                prompt,
+                max_iterations=max_iterations or self.max_iterations,
+                images=images,
+                saved_files=saved_files,
+            )
+
+            # Drain plugin-requested continuations iteratively. Recursive
+            # agent.input() calls used to return the first result, reverse log
+            # ordering, and eventually hit Python's recursion limit.
+            while self._pending_inputs:
+                next_prompt = self._pending_inputs.pop(0)
+                result = self._run_input_turn(
+                    next_prompt,
+                    max_iterations=self.max_iterations,
+                    images=None,
+                    saved_files=[],
+                )
+
+            return result
+        finally:
+            # Never leak continuations into a later user request after an error.
+            self._pending_inputs.clear()
+
+    def _queue_input(self, prompt: str) -> None:
+        """Queue a runtime-only continuation for the active input call."""
+        if not isinstance(prompt, str) or not prompt:
+            raise ValueError("queued input must be a non-empty string")
+        self._pending_inputs.append(prompt)
+
+    def _run_input_turn(
+        self,
+        prompt: str,
+        *,
+        max_iterations: int,
+        images: list[str] | None,
+        saved_files: list[str],
+    ) -> str:
+        """Run one input turn, including its complete event and turn log."""
+        if self.logger.console:
+            self.logger.console.print_task(prompt)
+
         # Add user message to conversation (multimodal if images provided)
         if images:
             content = [{"type": "text", "text": prompt}]
@@ -327,9 +372,7 @@ class Agent:
 
         # Process
         self.current_session['iteration'] = 0  # Reset iteration for this turn
-        result = self._run_iteration_loop(
-            max_iterations or self.max_iterations
-        )
+        result = self._run_iteration_loop(max_iterations)
 
         # Calculate duration
         duration = time.time() - turn_start
@@ -427,6 +470,12 @@ class Agent:
             if not response.tool_calls:
                 content = response.content or ""
                 self.current_session['messages'].append({"role": "assistant", "content": content})
+                # after_llm handlers can detect a text-only graceful interrupt.
+                # Honor it here without firing after_iteration, whose existing
+                # contract is the completed tool-call boundary.
+                if self.current_session.pop('stop_signal', None):
+                    self._invoke_events('on_stop_signal')
+                    return "What would you like me to do?"
                 return content
 
             # Process tool calls

@@ -25,6 +25,9 @@ import pytest
 from pathlib import Path
 from unittest.mock import Mock, patch, MagicMock
 
+from connectonion import Agent
+from connectonion.core.llm import LLMResponse
+from connectonion.core.usage import TokenUsage
 from connectonion.network.host.http_router import (
     input_handler,
     session_handler,
@@ -42,6 +45,8 @@ from connectonion.network.host.http_router import (
     admin_admins_remove_handler,
 )
 from connectonion.network.host.session import Session, SessionStorage
+from connectonion.useful_plugins import yolo
+from tests.utils.mock_helpers import MockLLM
 
 
 class TestInputHandler:
@@ -167,6 +172,55 @@ class TestInputHandler:
                       session={"session_id": "test-123"})
 
         assert mock_agent.storage == storage
+
+    def test_yolo_host_result_session_and_storage_use_terminal_turn(self, tmp_path):
+        """Hosted YOLO returns and stores the same final result and checkpoint."""
+        storage = SessionStorage(str(tmp_path / "sessions.jsonl"))
+        checkpoint_events = []
+
+        class CheckpointIO:
+            def send(self, event):
+                checkpoint_events.append(event)
+
+            def receive_all(self, msg_type=None):
+                return []
+
+            def receive(self):
+                return {'action': 'stop'}
+
+        def create_agent():
+            llm = MockLLM(responses=[
+                LLMResponse(content="turn-1", tool_calls=[], raw_response={}, usage=TokenUsage()),
+                LLMResponse(content="turn-2", tool_calls=[], raw_response={}, usage=TokenUsage()),
+                LLMResponse(content="turn-3", tool_calls=[], raw_response={}, usage=TokenUsage()),
+            ])
+            return Agent(
+                "hosted-yolo",
+                llm=llm,
+                plugins=[yolo(turns=3)],
+                log=False,
+                quiet=True,
+            )
+
+        result = input_handler(
+            create_agent,
+            storage,
+            "start",
+            result_ttl=3600,
+            session={"session_id": "yolo-123"},
+            connection=CheckpointIO(),
+        )
+        stored = storage.get("yolo-123")
+
+        assert result["result"] == "turn-3"
+        assert result["session"]["result"] == "turn-3"
+        assert stored.result == "turn-3"
+        assert stored.session["result"] == "turn-3"
+        assert {
+            'type': 'ulw_turns_reached',
+            'turns_used': 3,
+            'max_turns': 3,
+        } in checkpoint_events
 
 
 class TestSessionHandler:

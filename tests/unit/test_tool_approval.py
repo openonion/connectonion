@@ -130,6 +130,24 @@ class TestNoIO:
         check_approval(agent)
 
 
+class TestAutonomousModes:
+    """YOLO and legacy ULW bypass approval without changing safe mode."""
+
+    @pytest.mark.parametrize("mode", ["yolo", "ulw"])
+    def test_autonomous_mode_skips_dangerous_tool_approval(self, mode):
+        io = FakeIO()
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = mode
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'npm publish'},
+        }
+
+        check_approval(agent)
+
+        assert io.sent == []
+
+
 class TestSafeTools:
     """Test safe tools skip approval."""
 
@@ -694,6 +712,18 @@ class TestPollModeChanges:
 
         assert agent.current_session['mode'] == 'ulw'
         assert agent.current_session['ulw_turns'] == 50
+        assert agent.current_session['skip_tool_approval'] is True
+
+    def test_poll_mode_changes_handles_yolo_mode(self):
+        """poll_mode_changes should handle the public yolo mode."""
+        io = FakeIO(pending_signals=[{'type': 'mode_change', 'mode': 'yolo', 'turns': 12}])
+        agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
+
+        poll_mode_changes(agent)
+
+        assert agent.current_session['mode'] == 'ulw'
+        assert agent.current_session['ulw_turns'] == 12
         assert agent.current_session['skip_tool_approval'] is True
 
     def test_poll_mode_changes_handles_multiple_signals(self):

@@ -18,7 +18,7 @@ Plugins included:
 - prefer_write_tool: Block bash file creation, soft-remind for file reading
 - tool_approval: Approval flow for dangerous operations
 - auto_compact: Context window management
-- ulw: Ultra work mode (autonomous N-turn sessions with continuation)
+- yolo/ulw: Bounded autonomous work with approval bypass and continuation
 
 Architecture:
 - Uses prompt assembly from prompts/assembler.py
@@ -46,7 +46,7 @@ from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
 from connectonion.useful_tools.browser_tools import BrowserAutomation
-from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents, image_result_formatter, runtime_input, bind_browser_session
+from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, yolo, subagents, image_result_formatter, runtime_input, bind_browser_session
 from connectonion.useful_plugins.skills import skills as skills_plugin
 
 
@@ -59,6 +59,7 @@ def create_coding_agent(
     model: str = "co/gemini-3.6-flash",
     max_iterations: int = 100,
     co_dir: Path = Path(".co"),
+    yolo_turns: int | None = None,
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
@@ -95,7 +96,8 @@ def create_coding_agent(
     # bind_browser_session routes each chat panel to its own browser tab: co ai is
     # served via host(), which runs every session's turns on the shared BrowserAutomation,
     # so without it concurrent panels navigate over one shared page.
-    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw, image_result_formatter, runtime_input, bind_browser_session]
+    autonomous_work = yolo(yolo_turns) if yolo_turns is not None else ulw
+    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, autonomous_work, image_result_formatter, runtime_input, bind_browser_session]
 
     agent = Agent(
         name="oo",

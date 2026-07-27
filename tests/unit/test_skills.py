@@ -305,6 +305,116 @@ class TestSkillInvocation:
         # Message should not be replaced
         assert agent.current_session['messages'][-1]['content'] == '/nonexistent'
 
+    def test_claude_project_skill_composes_with_yolo(self, tmp_path, monkeypatch):
+        """co ai --yolo can invoke a project skill from .claude/skills."""
+        from connectonion.useful_plugins.ulw import yolo
+
+        skill_dir = tmp_path / ".claude" / "skills" / "deploy-oo-chat"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: deploy-oo-chat\n"
+            "description: Deploy oo-chat\n"
+            "---\n\n"
+            "Run the production release workflow.",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+
+        agent = FakeAgent()
+        agent.io = None
+        agent.current_session['messages'] = [
+            {'role': 'user', 'content': '/deploy-oo-chat'}
+        ]
+
+        handle_skill_invocation(agent)
+        yolo(turns=7)[0](agent)
+
+        assert agent.current_session['messages'][-1]['content'] == (
+            "Run the production release workflow."
+        )
+        assert agent.current_session['mode'] == 'ulw'
+        assert agent.current_session['ulw_turns'] == 7
+
+    def test_real_agent_runs_claude_skill_and_bypasses_first_approval_in_yolo(
+        self, tmp_path, monkeypatch
+    ):
+        """The real plugin order loads /skill before YOLO's first tool call."""
+        from connectonion import Agent
+        from connectonion.core.llm import LLMResponse, ToolCall
+        from connectonion.core.usage import TokenUsage
+        from connectonion.useful_plugins import tool_approval, yolo
+        from tests.utils.mock_helpers import MockLLM
+
+        skill_dir = tmp_path / ".claude" / "skills" / "deploy-oo-chat"
+        skill_dir.mkdir(parents=True)
+        (skill_dir / "SKILL.md").write_text(
+            "---\n"
+            "name: deploy-oo-chat\n"
+            "description: Deploy oo-chat\n"
+            "---\n\n"
+            "Run the production release workflow.",
+            encoding="utf-8",
+        )
+        monkeypatch.chdir(tmp_path)
+        executed = []
+
+        def bash(command: str) -> str:
+            """Record a harmless stand-in for a dangerous shell call."""
+            executed.append(command)
+            return "ok"
+
+        class CheckpointIO:
+            def __init__(self):
+                self.sent = []
+
+            def receive_all(self, msg_type=None):
+                return []
+
+            def send(self, event):
+                self.sent.append(event)
+
+            def receive(self):
+                assert self.sent[-1]['type'] == 'ulw_turns_reached'
+                return {'action': 'stop'}
+
+        llm = MockLLM(responses=[
+            LLMResponse(
+                content="",
+                tool_calls=[ToolCall(
+                    name="bash",
+                    arguments={"command": "printf safe"},
+                    id="shell-1",
+                )],
+                raw_response={},
+                usage=TokenUsage(),
+            ),
+            LLMResponse(
+                content="deployed",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            ),
+        ])
+        agent = Agent(
+            "skill-yolo",
+            llm=llm,
+            tools=[bash],
+            plugins=[skills, tool_approval, yolo(turns=1)],
+            log=False,
+            quiet=True,
+        )
+        agent.io = CheckpointIO()
+
+        result = agent.input("/deploy-oo-chat")
+
+        assert result == "deployed"
+        assert executed == ["printf safe"]
+        assert llm.calls[0]["messages"][1]["content"] == (
+            "Run the production release workflow."
+        )
+        assert not any(event.get('type') == 'approval_needed' for event in agent.io.sent)
+
 
 class TestCleanup:
     """Tests for cleanup on turn end."""

@@ -21,7 +21,7 @@ from .system_reminder import system_reminder
 from .tool_approval import tool_approval, handle_mode_change
 from .auto_compact import auto_compact
 from .prefer_write_tool import prefer_write_tool
-from .ulw import ulw, handle_ulw_mode_change
+from .ulw import ulw, yolo, handle_ulw_mode_change, handle_yolo_mode_change
 from .skills import skills, skill
 from .subagents import subagents, task
 from .runtime_input import runtime_input, RUNTIME_INPUT_FRAME_PREFIX
@@ -29,4 +29,4 @@ from .no_progress_guard import no_progress_guard
 from .human_jitter import human_jitter
 from .bind_browser_session import bind_browser_session
 
-__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream', 'system_reminder', 'tool_approval', 'handle_mode_change', 'auto_compact', 'prefer_write_tool', 'ulw', 'handle_ulw_mode_change', 'skills', 'skill', 'subagents', 'task', 'runtime_input', 'RUNTIME_INPUT_FRAME_PREFIX', 'no_progress_guard', 'human_jitter', 'bind_browser_session']
+__all__ = ['re_act', 'eval', 'image_result_formatter', 'shell_approval', 'gmail_plugin', 'calendar_plugin', 'ui_stream', 'system_reminder', 'tool_approval', 'handle_mode_change', 'auto_compact', 'prefer_write_tool', 'ulw', 'yolo', 'handle_ulw_mode_change', 'handle_yolo_mode_change', 'skills', 'skill', 'subagents', 'task', 'runtime_input', 'RUNTIME_INPUT_FRAME_PREFIX', 'no_progress_guard', 'human_jitter', 'bind_browser_session']

@@ -39,6 +39,28 @@ def test_handle_ai_calls_start_server(monkeypatch):
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
     assert created["co_dir"] == GLOBAL_CO_DIR
+    assert created["yolo_turns"] is None
+
+
+def test_handle_ai_forwards_yolo_turn_budget_to_one_shot_agent(monkeypatch, capsys):
+    created = {}
+
+    class FakeAgent:
+        def input(self, prompt):
+            created["prompt"] = prompt
+            return "done"
+
+    def fake_create_coding_agent(**kwargs):
+        created.update(kwargs)
+        return FakeAgent()
+
+    monkeypatch.setattr("connectonion.cli.co_ai.agent.create_coding_agent", fake_create_coding_agent)
+
+    ai_mod.handle_ai(prompt="/deploy-oo-chat", yolo=True, yolo_turns=17)
+
+    assert created["yolo_turns"] == 17
+    assert created["prompt"] == "/deploy-oo-chat"
+    assert "done" in capsys.readouterr().out
 
 
 def test_trust_commands_list_and_actions(tmp_path, monkeypatch):

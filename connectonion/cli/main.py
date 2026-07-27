@@ -214,10 +214,19 @@ def ai(
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
     model: str = typer.Option("co/gemini-3.6-flash", "--model", "-m", help="Model to use"),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
+    yolo: bool = typer.Option(False, "--yolo", help="Skip approvals and keep working autonomously"),
+    yolo_turns: int = typer.Option(100, "--yolo-turns", min=1, help="Completed turns before a YOLO checkpoint"),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
-    handle_ai(prompt=prompt, port=port, model=model, max_iterations=max_iterations)
+    handle_ai(
+        prompt=prompt,
+        port=port,
+        model=model,
+        max_iterations=max_iterations,
+        yolo=yolo,
+        yolo_turns=yolo_turns,
+    )
 
 
 @app.command()
