@@ -96,10 +96,9 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
     await send_msg(connected_msg)
 
     # Push the current dashboard.html so Home paints immediately, before any input.
-    from .dashboard import read_dashboard_snapshot
-    snapshot = read_dashboard_snapshot(session_id)
-    if snapshot:
-        await send_msg(snapshot)
+    # This connection has seen nothing yet, so it always sends when a file exists.
+    from .dashboard import send_dashboard
+    await send_dashboard(send_msg, session_id, conn)
 
     if status == "running":
         active.io.rewind_to(data.get("last_msg_id"))

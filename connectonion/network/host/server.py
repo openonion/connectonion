@@ -136,15 +136,15 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
         profile["tools"] = agent_metadata["tools"]
     if agent_metadata.get("model"):
         profile["model"] = agent_metadata["model"]
-    # skill.location (useful_plugins/skills.py) is a 5-value discovery category. Publish
-    # only the two that ship inside the project tree — project (.co/skills) and
-    # claude-project (.claude/skills). user (~/.co/skills), claude-user (~/.claude/skills)
-    # are the operator's personal toolboxes and builtin is framework noise; none may leak
-    # into the public directory. Allowlist, so an unknown future category stays private.
+    # skill.location (useful_plugins/skills.py) is a 5-value discovery category; only
+    # the two that ship inside the project tree are publishable. See
+    # PUBLISHED_SKILL_LOCATIONS for why, and keep every client-facing skill list
+    # (profile, starter dashboard) drawn from that same allowlist.
+    from ...useful_plugins.skills import PUBLISHED_SKILL_LOCATIONS
     profile["skills"] = [
         {"name": s["name"], "description": s.get("description", "")}
         for s in agent_metadata.get("skills", [])
-        if s.get("location") in ("project", "claude-project")
+        if s.get("location") in PUBLISHED_SKILL_LOCATIONS
     ]
     return profile
 

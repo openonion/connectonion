@@ -26,10 +26,12 @@ A button that runs something MUST be a real, user-invocable skill, wired like th
 - Optional arguments: `data-ochat-skill="meeting-prep" data-ochat-args="2pm sync"` → runs `/meeting-prep 2pm sync`.
 - Use an **outcome-oriented label** ("Prepare my next meeting"), not the raw skill name.
 - Only reference skills that actually exist. Never invent skill names, and don't add buttons for internal/bootstrap skills.
+- **Only project skills work as buttons** — the ones in `.co/skills/` or `.claude/skills/`. Your personal skills (`~/.co/skills/`) and builtin skills aren't published to clients, so a button for one renders but silently refuses to run. Check the skill's location before wiring it up.
 
 ## Rules
 
 - One file: `dashboard.html`. No sidecar JSON, no build step.
+- Keep it under 512KB — the host won't send a larger file, and the Home pane goes blank.
 - Keep the responsive layout and `prefers-color-scheme` dark mode intact.
 - Do not add `<script>` tags or inline `onclick` handlers — OChat strips all scripting; only the `data-ochat-skill` button contract works.
 - Keep styles inline in the file (external URLs are blocked in the sandbox).
