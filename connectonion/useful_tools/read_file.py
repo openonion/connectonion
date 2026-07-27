@@ -30,8 +30,6 @@ Usage:
 Video needs `ffmpeg` on PATH; the tool says so if it's missing.
 """
 
-import base64
-import mimetypes
 import shutil
 import subprocess
 import tempfile
@@ -42,6 +40,7 @@ from connectonion import transcribe
 from docx import Document
 from pypdf import PdfReader
 from pptx import Presentation
+from connectonion.useful_tools.read_image import read_image
 
 # Extensions handled by a dedicated path; everything else is read as text.
 IMAGE_EXTS = {".png", ".jpg", ".jpeg", ".gif", ".webp"}
@@ -77,7 +76,7 @@ def read_file(path: str) -> str:
     ext = file_path.suffix.lower()
 
     if ext in IMAGE_EXTS:
-        return _read_image(file_path)
+        return read_image(str(file_path))
     if ext == ".pdf":
         return _read_pdf(file_path)
     if ext in (".pptx", ".ppt"):
@@ -104,13 +103,6 @@ def _read_text(file_path: Path, ext: str) -> str:
     # aren't misdetected as some unrelated charset.
     match = from_bytes(data, cp_isolation=["utf_8", "gb18030"]).best()
     return str(match) if match is not None else data.decode("utf-8", errors="replace")
-
-
-def _read_image(file_path: Path) -> str:
-    """Return an image as a base64 data URL for the vision model."""
-    mime = mimetypes.guess_type(str(file_path))[0] or "image/png"
-    b64 = base64.b64encode(file_path.read_bytes()).decode("utf-8")
-    return f"data:{mime};base64,{b64}"
 
 
 def _read_pdf(file_path: Path) -> str:

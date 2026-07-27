@@ -110,7 +110,7 @@ Screenshot saved to: /Users/you/project/.tmp/step_20260630_142927.png
 
 Add `--full-page` to capture the entire scrollable height instead of just the viewport.
 
-> **Why a path, not the image?** The underlying `take_screenshot()` function returns a base64 data URL — that's what the AI agent "sees" when it drives the browser with `do`. A direct CLI call deliberately prints the **file path** instead, so `co browser take_screenshot` never floods your terminal with a screenful of base64. Open or pipe the saved file when you want the actual image.
+> **Why a path, not the image?** Screenshot capture and image inspection are separate operations. `take_screenshot()` returns the saved path without adding image data to model context. Agents call `read_image(path)` only when they need to inspect it visually.
 
 ## Scripting
 

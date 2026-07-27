@@ -82,7 +82,8 @@ browser.get_current_url()                # → "https://example.com"
 ### Screenshots
 
 ```python
-browser.take_screenshot()                # Returns base64 image (auto-saved to .tmp/)
+path = browser.take_screenshot()         # Returns saved path (auto-saved to .tmp/)
+read_image(path)                         # Inspect it with a vision-capable model
 browser.take_screenshot("my_step.png")  # Custom filename
 browser.take_screenshot(full_page=True) # Capture full page height
 ```

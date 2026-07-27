@@ -16,6 +16,7 @@ from connectonion import Agent
 from connectonion.useful_plugins import image_result_formatter, ui_stream
 from dotenv import load_dotenv
 from connectonion.useful_tools.browser_tools import BrowserAutomation
+from connectonion.useful_tools import read_image
 
 # Prompt path for browser agent
 PROMPT_PATH = Path(__file__).parent / "prompts" / "agent.md"
@@ -39,7 +40,7 @@ def build_browser_agent(browser, api_key: str) -> Agent:
         model="co/gemini-3.6-flash",
         api_key=api_key,
         system_prompt=PROMPT_PATH,
-        tools=[browser],
+        tools=[browser, read_image],
         plugins=[image_result_formatter, ui_stream],
         max_iterations=200,
     )

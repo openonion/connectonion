@@ -37,7 +37,6 @@ Features:
 """
 
 import os
-import base64
 import functools
 import inspect
 import json
@@ -1811,14 +1810,14 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         )
 
     def take_screenshot(self, path: str = None, full_page: bool = False) -> str:
-        """Take a screenshot of the current page and return base64 encoded image.
+        """Take a screenshot of the current page and return its saved path.
 
         Args:
             path: Optional path for the screenshot
             full_page: If True, captures entire page height (may lose details but shows overview)
 
         Returns:
-            Base64 encoded image data
+            Path to the saved screenshot. Call read_image(path) to inspect it.
         """
         if not BROWSER_AVAILABLE:
             return 'Browser tools not installed. Run: pip install patchright && patchright install chrome'
@@ -1842,25 +1841,11 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         print(f"\n[browser] Screenshot saved to: {path}")
         print(f"[browser] Full page: {full_page}, Size: {len(screenshot_bytes)} bytes\n")
 
-        # Bound the payload. The screenshot is sent to the frontend as a base64 data URL
-        # in ONE relay WebSocket frame; base64 inflates bytes ~33% and the relay's default
-        # cap is 1 MB (websockets max_size), so a frame over it drops the relay connection
-        # (and reconnect replays it, so the agent flaps offline). A dense 1920-wide page is
-        # a ~800 KB PNG = >1 MB base64. Re-encode only oversized captures as JPEG
-        # (Playwright-native, no Pillow); keep PNG for the common case so text stays sharp.
-        mime = "image/png"
-        if len(screenshot_bytes) > 600_000:   # ~800 KB base64 + JSON, safely under 1 MB
-            screenshot_bytes = self.page.screenshot(full_page=full_page, type="jpeg", quality=85)
-            mime = "image/jpeg"
-            print(f"[browser] oversized PNG re-encoded as JPEG q85: {len(screenshot_bytes)} bytes\n")
-
         # Wait for page to stabilize after screenshot (especially for full_page which scrolls/resizes)
         # This prevents focus loss when typing after taking a screenshot
         self.page.wait_for_timeout(1000)
 
-        screenshot_base64 = base64.b64encode(screenshot_bytes).decode('utf-8')
-
-        return f"data:{mime};base64,{screenshot_base64}"
+        return path
 
     def set_viewport(self, width: int, height: int) -> str:
         """Set the browser viewport size."""

@@ -77,7 +77,7 @@ When something fails:
 1. Open browser if not already open
 2. Navigate to the target site
 3. Wait for page to load completely
-4. **Take a screenshot after navigation**
+4. **Take a screenshot after navigation, then call `read_image` with the returned path when you need to inspect it visually**
 
 ### Finding Elements
 - Use natural descriptions first
@@ -88,7 +88,7 @@ When something fails:
 - Use `click_element_near_selector(...)` when a skill provides an anchor selector and a nearby target selector.
 - Fall back to text matching if needed
 - Never expose CSS selectors to users
-- **Take a screenshot when you find important elements**
+- **Take a screenshot when you find important elements, then call `read_image` with its path to inspect it**
 
 ### Saving Page Context
 When a user wants to analyze a site's HTML/CSS, make a workflow more accurate, or debug why a click matched the wrong element, use `save_page_context(name)`.
@@ -100,12 +100,12 @@ It saves under `~/.co/browser_context/`:
 
 ### Form Filling
 1. Find all form fields first
-2. **Take a screenshot of the empty form**
+2. **Take a screenshot of the empty form and call `read_image` with its path**
 3. Generate appropriate values using user context
 4. Fill fields in logical order
-5. **Take a screenshot after filling**
+5. **Take a screenshot after filling and call `read_image` with its path**
 6. Validate before submission
-7. **Take a screenshot after submission**
+7. **Take a screenshot after submission and call `read_image` with its path**
 
 ### Completing Tasks
 - **Take screenshots at each major step**

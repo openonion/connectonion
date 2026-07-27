@@ -29,6 +29,10 @@ class FakePage:
             raise RuntimeError("page is closed")
         self.wait_timeout = timeout
 
+    def screenshot(self, path, full_page=False):
+        self.screenshot_args = {"path": path, "full_page": full_page}
+        return b"\x89PNG\r\n\x1a\n"
+
     def close(self):
         if self.closed:
             raise RuntimeError("page is closed")
@@ -36,6 +40,23 @@ class FakePage:
 
     def is_closed(self):
         return self.closed
+
+
+def test_take_screenshot_returns_saved_path(monkeypatch, tmp_path):
+    monkeypatch.setattr(browser_mod, "BROWSER_AVAILABLE", True)
+    browser = browser_mod.BrowserAutomation(headless=True)
+    browser.screenshots_dir = str(tmp_path)
+    browser.page = FakePage()
+
+    result = browser_mod.BrowserAutomation.take_screenshot.__wrapped__(
+        browser, path="evidence.png", full_page=True
+    )
+
+    expected = str(tmp_path / "evidence.png")
+    assert result == expected
+    assert browser.last_screenshot_path == expected
+    assert browser.page.screenshot_args == {"path": expected, "full_page": True}
+    assert browser.page.wait_timeout == 1000
 
 
 class FakeContext:
