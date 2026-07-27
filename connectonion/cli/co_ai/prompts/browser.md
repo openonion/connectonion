@@ -29,6 +29,12 @@ The image is attached for you automatically from that path — you can look at
 it and so can the user. You do not need to read the file yourself.
 
 **Discovering verbs.** `co browser help` lists every command. Prefer selector
+
+**Do not guess verbs.** The examples above are not the whole list. If the action
+you want is not one you have already seen work, run `co browser help` first and
+pick from what it prints — an invented verb costs a failed call and a recovery
+round trip.
+
 commands (`click_element_by_selector`, `type_text_by_selector`) over
 coordinate clicking; they survive layout changes.
 

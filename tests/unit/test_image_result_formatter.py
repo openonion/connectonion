@@ -517,3 +517,51 @@ class TestScreenshotPathDetection:
         is_image, mime, data = _is_base64_image("data:image/png;base64,iVBORw0KGgo=")
         assert (is_image, mime) == (True, "image/png")
         assert data == "iVBORw0KGgo="
+
+
+def test_screenshot_path_becomes_an_attached_image(tmp_path, monkeypatch):
+    """The whole point of the path branch: a `co browser take_screenshot`
+    result must end up as an image the model and the user can see.
+
+    Detection alone isn't enough — this drives _format_image_result so a
+    regression in the plumbing between them can't pass unnoticed.
+    """
+    import base64 as b64
+    from importlib import import_module
+    fmt = import_module("connectonion.useful_plugins.image_result_formatter")
+
+    png = tmp_path / "shot.png"
+    png.write_bytes(b64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
+        "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    ))
+    # No raising=False: a wrong name here would silently leave the real
+    # uploader in place and put a network call in the unit suite.
+    monkeypatch.setattr(fmt, "_upload_to_oo_api", lambda *a, **k: "https://example.com/i.png")
+
+    class Logger:
+        def print(self, *a, **k): pass
+
+    class FakeAgent:
+        logger = Logger()
+        io = None
+
+        def __init__(self):
+            result = f"Screenshot saved to: {png}"
+            self.current_session = {
+                "messages": [
+                    {"role": "assistant", "tool_calls": [{"id": "c1"}]},
+                    {"role": "tool", "tool_call_id": "c1", "content": result},
+                ],
+                "trace": [{"type": "tool_result", "status": "success",
+                           "tool_id": "c1", "name": "bash", "result": result}],
+            }
+
+    agent = FakeAgent()
+    fmt._format_image_result(agent)
+    messages = agent.current_session["messages"]
+
+    assert any("image_url" in str(m.get("content", "")) for m in messages), \
+        "no multimodal image message was inserted"
+    assert "Screenshot saved to" not in str(messages[1].get("content")), \
+        "the raw path should be replaced by a placeholder"
