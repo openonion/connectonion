@@ -2,6 +2,7 @@
 
 from unittest.mock import patch
 
+from click.utils import strip_ansi
 from typer.testing import CliRunner
 
 from connectonion.cli.main import app
@@ -35,5 +36,6 @@ def test_ai_rejects_non_positive_yolo_turns():
     )
 
     assert result.exit_code != 0
-    assert "--yolo-turns" in result.output
-    assert "1" in result.output
+    output = strip_ansi(result.output)
+    assert "--yolo-turns" in output
+    assert "1" in output
