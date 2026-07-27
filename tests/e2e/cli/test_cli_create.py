@@ -410,3 +410,24 @@ class TestCliCreate:
 
             # docs README should be in .co/docs/
             assert os.path.exists("readme-test-agent/.co/docs/README.md")
+
+    def test_create_writes_a_deployable_name_for_an_awkward_project_name(self):
+        """`co create My_Agent` keeps the folder name but must record a name
+        that can actually deploy — uppercase is not a legal Docker tag and an
+        underscore is not a legal DNS label."""
+        import yaml
+        from connectonion.cli.main import cli
+        from connectonion.cli.commands.project_cmd_lib import DEPLOY_NAME_PATTERN
+
+        with self.runner.isolated_filesystem():
+            result = self.runner.invoke(cli, ['create', 'My_Agent',
+                                              '--yes', '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            # The directory keeps the name the user asked for.
+            assert os.path.isdir("My_Agent")
+
+            name = yaml.safe_load(Path("My_Agent/.co/host.yaml").read_text())["name"]
+            assert name == "my-agent"
+            assert DEPLOY_NAME_PATTERN.match(name)
+            assert "Deployment name set to" in result.output

@@ -2,7 +2,7 @@
 Purpose: Deploy agent projects to ConnectOnion Cloud with local packaging and env vars
 LLM-Note:
   Dependencies: imports from [fnmatch, json, os, re, shutil, subprocess, tarfile, tempfile, time, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
-  Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → reads host.yaml for project name, entrypoint, env file path → checks the name against PROJECT_NAME_PATTERN (same rule the backend enforces) and the entrypoint's host() export → load_api_key() loads OPENONION_API_KEY → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
+  Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → reads host.yaml for project name, entrypoint, env file path → checks the name against DEPLOY_NAME_PATTERN (same rule the backend enforces) and the entrypoint's host() export → load_api_key() loads OPENONION_API_KEY → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
   State/Effects: creates temporary tarball file in tempdir | template deploy creates/deletes a temporary project on success | reads .co/host.yaml, .env files | makes network POST request | prints progress to stdout via rich.Console | normal deploy does not modify project files
   Integration: exposes handle_deploy(template, skills, name) for CLI | expects .co/host.yaml (name, entrypoint, env) unless --template is used | --name only valid with --template (otherwise the name comes from host.yaml) | uses Bearer token auth | returns bool success
   Performance: packaging is local file I/O | network timeout 600s for upload, 30s for status checks | polls every 3s for up to 20 min, covering the backend's own build budget (rsync 120s + docker build 900s + run 60s)
@@ -23,7 +23,12 @@ from pathlib import Path
 from rich.console import Console
 from dotenv import dotenv_values
 
-from .project_cmd_lib import GITIGNORE_CONTENT, load_api_key
+from .project_cmd_lib import (
+    GITIGNORE_CONTENT,
+    DEPLOY_NAME_PATTERN,
+    load_api_key,
+    normalize_deploy_name,
+)
 
 console = Console()
 
@@ -35,10 +40,6 @@ DASHBOARD_URL = "https://o.openonion.ai/dashboard"
 # users a co-ai or browser deploy had failed while it was still building.
 DEPLOY_POLL_SECONDS = 3
 DEPLOY_TIMEOUT_SECONDS = 20 * 60
-
-# Mirrors the server's rule (oo-api deploy/service.py). Checked locally so a bad
-# name in host.yaml fails before packaging and uploading the whole project.
-PROJECT_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,38}$")
 
 
 def _check_host_export(entrypoint: str) -> bool:
@@ -119,12 +120,6 @@ def _is_git_repo(project_dir: Path) -> bool:
         capture_output=True,
     )
     return result.returncode == 0 and Path(result.stdout.decode().strip()).resolve() == project_dir.resolve()
-
-
-def _suggest_project_name(project_name: str) -> str | None:
-    """Nearest name that satisfies PROJECT_NAME_PATTERN, or None if there isn't one."""
-    candidate = re.sub(r"[^a-z0-9]+", "-", project_name.lower()).strip("-")[:39].rstrip("-")
-    return candidate if PROJECT_NAME_PATTERN.match(candidate) else None
 
 
 def _error_text(response: requests.Response) -> str:
@@ -275,16 +270,17 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     entrypoint = config.get("entrypoint", "agent.py")
 
     # The name becomes a hostname and a Docker tag, so the backend rejects
-    # anything outside this set. Fail here rather than after the upload.
-    if not PROJECT_NAME_PATTERN.match(project_name):
+    # anything outside this set. `co init` now normalizes it when writing
+    # host.yaml, but an older project or a hand-edited file can still carry a
+    # bad one — catch it here rather than after packaging and uploading.
+    if not DEPLOY_NAME_PATTERN.match(project_name):
         console.print(f"[red]Invalid project name: {project_name}[/red]")
         console.print(
             "[dim]Names may use 1-39 lowercase letters, digits, and hyphens, "
             "and must start with a letter or digit.[/dim]"
         )
-        # `co create My_Agent` writes that name straight into host.yaml, so
-        # offer the corrected form rather than leaving the user to derive it.
-        suggestion = _suggest_project_name(project_name)
+        # Offer the corrected form rather than leaving the user to derive it.
+        suggestion = normalize_deploy_name(project_name)
         if suggestion:
             console.print(f"[dim]Try:  name: {suggestion}[/dim]")
         console.print(f"[dim]Set 'name' in {host_yaml_path}[/dim]")

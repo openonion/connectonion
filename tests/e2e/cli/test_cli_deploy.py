@@ -304,8 +304,9 @@ class TestDeployValidation:
             assert "Invalid project name" in result.output
 
     def test_invalid_name_suggests_a_valid_one(self):
-        """`co create My_Agent` writes that name into host.yaml, so the deploy
-        error has to say what to change it to."""
+        """host.yaml can still carry a bad name — written before `co init`
+        normalized it, or edited by hand — so the error says what to change
+        it to rather than only what is wrong."""
         from connectonion.cli.main import cli
 
         with self.runner.isolated_filesystem():
