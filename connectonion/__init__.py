@@ -13,6 +13,7 @@ ConnectOnion - A simple agent framework with behavior tracking.
 __version__ = "1.4.0"
 
 # Auto-load .env files for the entire framework
+import os as _os
 import sys as _sys
 from dotenv import load_dotenv
 from pathlib import Path as _Path
@@ -22,11 +23,18 @@ from pathlib import Path as _Path
 # define a key wins: the project .env overrides, keys.env fills in the rest.
 # Loading only one of them silently hid every credential that lives solely in
 # keys.env (OAuth tokens land there) from any project that had its own .env.
-# Diagnostics go to stderr so command output on stdout stays clean (scriptable).
+# The [env] diagnostic answers "which file won?" for a human at a terminal.
+# It is written to stderr only when stderr IS a terminal: agents drive `co`
+# through bash, which appends any stderr to the tool result as "STDERR:" no
+# matter what the exit code was, so an unconditional print made every
+# successful command look like it had failed. CO_DEBUG_ENV=1 forces it on for
+# piped or redirected debugging.
+_show_env = _sys.stderr.isatty() or _os.getenv("CO_DEBUG_ENV") == "1"
 for _env_file in (_Path.cwd() / ".env", _Path.home() / ".co" / "keys.env"):
     if _env_file.exists():
         load_dotenv(_env_file)
-        print(f"[env] {_env_file.resolve()}", file=_sys.stderr)
+        if _show_env:
+            print(f"[env] {_env_file.resolve()}", file=_sys.stderr)
 
 from .core import Agent, LLM, create_tool_from_function
 from .core import (
