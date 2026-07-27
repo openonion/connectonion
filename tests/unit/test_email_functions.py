@@ -71,6 +71,9 @@ def test_send_email_not_activated(mock_post):
     assert "Email not activated" in result["error"]
 
 
+# Neutralize .env discovery so a stray ~/.co/keys.env on the dev machine can't
+# re-inject real credentials into the cleared environment (keeps this hermetic).
+@patch('connectonion.useful_tools.send_email.load_dotenv', lambda *a, **k: None)
 @patch.dict('os.environ', {}, clear=True)
 def test_send_email_no_project():
     """Test email sending when missing OPENONION_API_KEY."""
