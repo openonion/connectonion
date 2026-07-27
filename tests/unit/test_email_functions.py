@@ -20,6 +20,11 @@ import sys
 import requests
 import pytest
 
+import importlib
+# The `send_email` function is re-exported in the connectonion.useful_tools package
+# namespace, which shadows the submodule for attribute-based lookups. Resolve the
+# actual module object via importlib so patch.object targets the module, not the fn.
+send_email_module = importlib.import_module("connectonion.useful_tools.send_email")
 from connectonion.useful_tools.send_email import send_email, get_agent_email, is_email_active
 from connectonion.useful_tools.get_emails import get_emails, mark_read, mark_unread
 
@@ -73,7 +78,9 @@ def test_send_email_not_activated(mock_post):
 
 # Neutralize .env discovery so a stray ~/.co/keys.env on the dev machine can't
 # re-inject real credentials into the cleared environment (keeps this hermetic).
-@patch('connectonion.useful_tools.send_email.load_dotenv', lambda *a, **k: None)
+# patch.object on the module object avoids the send_email module-vs-function name
+# collision that string-target patching resolves inconsistently across Python versions.
+@patch.object(send_email_module, 'load_dotenv', lambda *a, **k: None)
 @patch.dict('os.environ', {}, clear=True)
 def test_send_email_no_project():
     """Test email sending when missing OPENONION_API_KEY."""
