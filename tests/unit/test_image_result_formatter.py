@@ -435,3 +435,56 @@ class TestUploadToOoApi:
         assert image_part['image_url']['url'] == UPLOADED_URL
         agent.io.send_image.assert_called_once_with(UPLOADED_URL)
         assert base64_data not in str(agent.current_session['messages'])
+
+
+class TestScreenshotPathDetection:
+    """`co browser take_screenshot` prints a path, not base64.
+
+    The daemon strips the payload so CLI output stays readable, which means an
+    agent driving the browser through the CLI would be blind to its own
+    screenshots — and the user would never see them — unless the formatter
+    reads the file the path points at.
+    """
+
+    def _png(self, tmp_path):
+        import base64 as b64
+        data = b64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
+            "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        )
+        path = tmp_path / "step_3.png"
+        path.write_bytes(data)
+        return path
+
+    def test_reads_the_image_the_daemon_points_at(self, tmp_path):
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        path = self._png(tmp_path)
+
+        is_image, mime, data = _is_base64_image(f"Screenshot saved to: {path}")
+
+        assert is_image is True
+        assert mime == "image/png"
+        assert data.startswith("iVBORw0KGgo")
+
+    def test_jpeg_and_webp_paths(self, tmp_path):
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        for ext, expected in (("jpg", "image/jpeg"), ("jpeg", "image/jpeg"), ("webp", "image/webp")):
+            p = tmp_path / f"shot.{ext}"
+            p.write_bytes(b"\xff\xd8\xff")
+            assert _is_base64_image(f"saved to {p}")[1] == expected
+
+    def test_a_path_that_does_not_exist_is_not_an_image(self):
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        assert _is_base64_image("Screenshot saved to: /nope/missing.png")[0] is False
+
+    def test_ordinary_tool_output_is_untouched(self):
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        for text in ("done", "", "Created report.pdf", "see notes.md for details"):
+            assert _is_base64_image(text)[0] is False
+
+    def test_base64_still_wins_over_path_scanning(self):
+        """In-process tools returning data URLs must keep working unchanged."""
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        is_image, mime, data = _is_base64_image("data:image/png;base64,iVBORw0KGgo=")
+        assert (is_image, mime) == (True, "image/png")
+        assert data == "iVBORw0KGgo="
