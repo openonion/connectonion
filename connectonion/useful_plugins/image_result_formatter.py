@@ -56,7 +56,44 @@ def _is_base64_image(text: str) -> tuple[bool, str, str]:
         # Likely a base64 image, default to PNG
         return True, "image/png", text.strip()
 
-    return False, "", ""
+    return _image_from_path(text)
+
+
+# `co browser take_screenshot` deliberately returns a path rather than base64 —
+# the daemon strips the payload so the CLI stays readable. Agents driving the
+# browser through the CLI would otherwise be blind to their own screenshots,
+# and the user would never see them either.
+# Anchored to the daemon's exact output, not "any image path anywhere". A loose
+# scan turned `ls` and `git status` output into screenshots whenever the listing
+# happened to name a real .png — uploading unrelated user files and replacing
+# the tool result with an image placeholder.
+_PATH_PATTERN = re.compile(
+    r'^\s*(?:screenshot\s+)?saved to:\s*([^\n]+?\.(?:png|jpe?g|gif|webp))\s*$',
+    re.IGNORECASE,
+)
+_MAX_IMAGE_BYTES = 20 * 1024 * 1024
+_EXT_MIME = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg",
+             "gif": "image/gif", "webp": "image/webp"}
+
+
+def _image_from_path(text: str) -> tuple[bool, str, str]:
+    """Read an image file named in tool output, e.g. 'Screenshot saved to: a.png'."""
+    match = _PATH_PATTERN.match(text)
+    if not match:
+        return False, "", ""
+
+    path = os.path.expanduser(match.group(1).strip())
+    if not os.path.isfile(path):
+        return False, "", ""
+
+    # A screenshot is well under this; anything larger is not one, and
+    # base64-ing it would balloon the request.
+    if os.path.getsize(path) > _MAX_IMAGE_BYTES:
+        return False, "", ""
+
+    ext = path.rsplit(".", 1)[-1].lower()
+    with open(path, "rb") as f:
+        return True, _EXT_MIME[ext], base64.b64encode(f.read()).decode()
 
 
 def _format_image_result(agent: 'Agent') -> None:

@@ -202,10 +202,17 @@ def assemble_prompt(
         content = main_file.read_text(encoding="utf-8")
         parts.append(interpolate(content, ctx_dict))
 
-    # 2. Workflow, ConnectOnion index, and examples are loaded on-demand
+    # 2. Browser usage. The browser is driven through the `co browser` CLI rather
+    # than in-process tools, so nothing in the tool list would pull this section
+    # in — it has to be loaded by name.
+    browser_file = prompts_path / "browser.md"
+    if browser_file.exists():
+        parts.append(interpolate(browser_file.read_text(encoding="utf-8"), ctx_dict))
+
+    # 3. Workflow, ConnectOnion index, and examples are loaded on-demand
     # by the system_reminder plugin when intent is "build agent"
 
-    # 3. Tool descriptions (for each available tool)
+    # 4. Tool descriptions (for each available tool)
     tools_dir = prompts_path / "tools"
     if tools_dir.exists() and tools:
         for tool in tools:

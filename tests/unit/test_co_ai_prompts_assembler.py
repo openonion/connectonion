@@ -83,7 +83,9 @@ def test_login_prompt_uses_ask_user_and_screenshot():
     assert "help me login" in prompt
     assert "log in" in prompt
     assert "sign in" in prompt
-    assert "open_browser" in prompt
+    # The login flow now goes through the CLI, not in-process browser tools.
+    assert "co browser go_to" in prompt
+    assert "co browser take_screenshot" in prompt
     assert "go_to" in prompt
     assert "take_screenshot" in prompt
     assert "ask_user" in prompt

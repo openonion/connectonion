@@ -45,8 +45,7 @@ from .tools import (
 from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
-from connectonion.useful_tools.browser_tools import BrowserAutomation
-from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents, image_result_formatter, runtime_input, bind_browser_session
+from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents, image_result_formatter, runtime_input
 from connectonion.useful_plugins.skills import skills as skills_plugin
 
 
@@ -62,11 +61,9 @@ def create_coding_agent(
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
-    browser = BrowserAutomation(headless=False)
 
     tools = [
         file_tools,
-        browser,
         bash,
         # task is now provided by subagents plugin (no need to import from .tools)
         enter_plan_mode,
@@ -91,11 +88,12 @@ def create_coding_agent(
     if project_context:
         system_prompt += f"\n\n---\n\n{project_context}"
 
-    # Use SDK's subagents plugin instead of custom task implementation.
-    # bind_browser_session routes each chat panel to its own browser tab: co ai is
-    # served via host(), which runs every session's turns on the shared BrowserAutomation,
-    # so without it concurrent panels navigate over one shared page.
-    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw, image_result_formatter, runtime_input, bind_browser_session]
+    # The browser is driven through the `co browser` CLI (see prompts/browser.md),
+    # not an in-process BrowserAutomation: one daemon owns the profile and the tabs,
+    # so panels no longer share a page and 40 tool schemas leave the request.
+    # image_result_formatter stays — it turns the screenshot path the CLI prints
+    # back into an image the model and the user can actually see.
+    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw, image_result_formatter, runtime_input]
 
     agent = Agent(
         name="oo",
