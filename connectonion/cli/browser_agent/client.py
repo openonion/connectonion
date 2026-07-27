@@ -48,8 +48,14 @@ def _connect_posix(sock_path: str):
             time.sleep(0.1)
         except OSError:
             conn.close()
-            if os.path.exists(sock_path):
-                os.unlink(sock_path)  # stale socket: nothing is listening on it
+            # ConnectionRefused (handled above) is the only error that means
+            # "nobody is listening". Any other OSError — EACCES from a process
+            # sandbox, EMFILE, ENOBUFS — says nothing about whether the daemon
+            # is alive, and unlinking on those took a live, idle daemon
+            # permanently offline: it kept accept()ing on an unlinked inode
+            # while every later client reported "daemon is busy".
+            if not _owner_alive(sock_path) and os.path.exists(sock_path):
+                os.unlink(sock_path)
             return None
     return None  # still refusing after the window — let the caller spawn a fresh daemon
 
@@ -88,7 +94,7 @@ def _spawn_daemon(sock_path: str, headless: bool):
     cmd = [sys.executable, "-m", "connectonion.cli.browser_agent.daemon", sock_path]
     if headless:
         cmd.append("--headless")
-    with open(log_path, "a") as log:  # the child dups the handle; ours closes right away
+    with open(log_path, "a", encoding="utf-8") as log:  # the child dups the handle; ours closes right away
         transport.spawn_detached(cmd, log)  # POSIX: new session · Windows: DETACHED_PROCESS
 
     # Wall-clock deadline, not an attempt count: against a busy daemon each _connect

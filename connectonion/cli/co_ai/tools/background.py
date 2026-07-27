@@ -15,6 +15,7 @@ Architecture:
 - Used by co_ai for builds, tests, servers, and other long operations
 """
 
+import os
 import subprocess
 import threading
 import time
@@ -100,7 +101,12 @@ def run_background(command: str, description: str = "") -> str:
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,
+        encoding="utf-8",
+        errors="replace",  # a stray non-UTF-8 byte must never kill the reader thread
         bufsize=1,
+        # Force UTF-8 in child processes regardless of the Windows console codepage
+        # (Chinese GBK/cp936, etc.), so their output round-trips through the pipe above.
+        env={**os.environ, "PYTHONUTF8": "1", "PYTHONIOENCODING": "utf-8"},
     )
 
     task = BackgroundTask(

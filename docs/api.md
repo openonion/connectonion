@@ -13,7 +13,7 @@ Agent(
     tools: Optional[List[Callable]] = None,
     system_prompt: Union[str, Path, None] = None,
     api_key: Optional[str] = None,
-    model: str = "co/gemini-2.5-pro"
+    model: str = "co/gemini-3.6-flash"
 )
 ```
 
@@ -27,9 +27,9 @@ Agent(
   - `Path`: Path object pointing to a prompt file
   - `None`: Uses default prompt
 - **api_key** (`Optional[str]`): OpenAI API key (if not using custom LLM)
-- **model** (`str`): Model to use (default: "co/gemini-2.5-pro")
-  - Managed keys: `co/gemini-2.5-pro`, `co/gpt-4o-mini`, `co/claude-sonnet-4-5`
-  - Your own key: `gpt-4o-mini`, `claude-sonnet-4-5`, `gemini-2.5-pro`
+- **model** (`str`): Model to use (default: "co/gemini-3.6-flash")
+  - Managed keys: `co/gemini-3.6-flash`, `co/gpt-4o-mini`, `co/claude-sonnet-4-5`
+  - Your own key: `gpt-4o-mini`, `claude-sonnet-4-5`, `gemini-3.6-flash`
 
 ### System Prompt Options
 
@@ -229,7 +229,7 @@ Abstract base class for language models. ConnectOnion supports multiple LLM prov
 The `create_llm()` factory function routes models to the appropriate provider:
 
 ```python
-from connectonion.llm import create_llm
+from connectonion.core.llm import create_llm
 
 # OpenAI models
 llm = create_llm("gpt-4o-mini")      # → OpenAILLM
@@ -239,11 +239,11 @@ llm = create_llm("o4-mini")          # → OpenAILLM
 llm = create_llm("claude-sonnet-4-5") # → AnthropicLLM
 
 # Google Gemini models
-llm = create_llm("gemini-2.5-flash")  # → GeminiLLM
+llm = create_llm("gemini-3.6-flash")  # → GeminiLLM
 
 # ConnectOnion managed keys (co/ prefix)
 llm = create_llm("co/gpt-4o-mini")    # → OpenOnionLLM
-llm = create_llm("co/gemini-2.5-flash") # → OpenOnionLLM
+llm = create_llm("co/gemini-3.6-flash") # → OpenOnionLLM
 ```
 
 ### co/ Models (Managed Keys)
@@ -254,7 +254,7 @@ Models prefixed with `co/` use ConnectOnion's managed API keys through the OpenO
 from connectonion import Agent
 
 # Uses OpenOnion managed keys - no API key needed
-agent = Agent(name="bot", model="co/gemini-2.5-flash")
+agent = Agent(name="bot", model="co/gemini-3.6-flash")
 ```
 
 **How it works:**
@@ -275,7 +275,7 @@ agent = Agent(name="bot", model="co/gemini-2.5-flash")
 OpenAI API implementation.
 
 ```python
-from connectonion.llm import OpenAILLM
+from connectonion.core.llm import OpenAILLM
 
 llm = OpenAILLM(
     api_key="your-key",  # or OPENAI_API_KEY env var
@@ -291,7 +291,7 @@ agent = Agent("bot", llm=llm)
 Anthropic Claude API implementation.
 
 ```python
-from connectonion.llm import AnthropicLLM
+from connectonion.core.llm import AnthropicLLM
 
 llm = AnthropicLLM(
     api_key="your-key",  # or ANTHROPIC_API_KEY env var
@@ -306,11 +306,11 @@ agent = Agent("bot", llm=llm)
 Google Gemini API implementation (uses OpenAI-compatible endpoint).
 
 ```python
-from connectonion.llm import GeminiLLM
+from connectonion.core.llm import GeminiLLM
 
 llm = GeminiLLM(
     api_key="your-key",  # or GEMINI_API_KEY env var
-    model="gemini-2.5-flash"
+    model="gemini-3.6-flash"
 )
 
 agent = Agent("bot", llm=llm)
@@ -321,11 +321,11 @@ agent = Agent("bot", llm=llm)
 ConnectOnion managed keys implementation.
 
 ```python
-from connectonion.llm import OpenOnionLLM
+from connectonion.core.llm import OpenOnionLLM
 
 llm = OpenOnionLLM(
     api_key="your-token",  # or OPENONION_API_KEY env var
-    model="co/gemini-2.5-flash"
+    model="co/gemini-3.6-flash"
 )
 
 agent = Agent("bot", llm=llm)
@@ -456,3 +456,42 @@ agent = Agent(
 # Agent can use multiple tools in one request
 result = agent.input("Search for Python tutorials, calculate 42*17, and tell me the time")
 ```
+
+## Networking
+
+Host an agent and connect to it from anywhere. Full guides live in
+[`network/`](network/README.md); the core surface:
+
+### `host(create_agent, **kwargs)`
+
+Serve an agent over HTTP/WebSocket with relay discovery. `create_agent` is a
+factory called once per request (isolation). See [network/host.md](network/host.md).
+
+```python
+from connectonion import host
+host(lambda: Agent("assistant", tools=[...]))
+```
+
+### `connect(address, *, keys=None, relay_url=...) -> RemoteAgent`
+
+Client to a remote agent. See [network/connect.md](network/connect.md).
+
+```python
+from connectonion import connect
+remote = connect("0x3d40...")
+
+# LLM-driven task
+resp = remote.input("Book a flight")      # -> Response(text, done)
+
+# Direct tool execution — no LLM (see network/remote-call.md)
+res = remote.call("bash", command="co status")   # -> ExecResult
+```
+
+| Method | Returns | Purpose |
+|--------|---------|---------|
+| `remote.input(prompt, timeout=60)` | `Response(text, done)` | Hand the remote LLM a task |
+| `remote.call(tool, timeout=60, **args)` | `ExecResult(text, status, duration_ms, error)` | Run one tool directly, no LLM |
+
+`ExecResult`: `.ok` (bool), `.images` (base64 data URLs pulled from `.text`).
+Direct execution is gated by the host's `.co/host.yaml` permission whitelist.
+From the shell: `co call <address> <command...>` (see [cli/call.md](cli/call.md)).

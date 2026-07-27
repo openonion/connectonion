@@ -15,10 +15,24 @@ mirror was a standing sync burden and a regression risk. What stays here is only
 about the run environment, which are invisible to bot-detection.
 """
 
-# --disable-dev-shm-usage: Chrome crashes on the small default /dev/shm inside Docker
-# (the co-ai deploy runs headful under Xvfb in a container). Not an anti-detection flag.
+# These are run-environment flags, not anti-detection spoofs — both make a GPU-less server
+# behave like an ordinary desktop Chrome, which is exactly what bot-detectors expect to see.
 CHROME_DEFAULT_ARGS = [
+    # Chrome crashes on the small default /dev/shm inside Docker (the co-ai deploy runs
+    # headful under Xvfb in a container).
     '--disable-dev-shm-usage',
+    # Permit SwiftShader as the WebGL backend when no GPU is present (headless servers,
+    # Xvfb, containers). Without it WebGL is simply absent — "Canvas has no webgl context"
+    # on sannysoft, an obvious tell, since every real browser has WebGL. This is a FALLBACK:
+    # a machine with a real GPU keeps using it and reports its true vendor/renderer.
+    #
+    # NOTE: Patchright recommends minimal launch args (custom headers/user_agent/automation
+    # flags can defeat its patches). This is the one deliberate exception — a GPU-rendering
+    # flag, not an automation flag. Verified it does NOT defeat the patches: with it enabled
+    # rebrowser's runtimeEnableLeak stays clean and deviceandbrowserinfo reports WebGL
+    # consistent. Patchright's other recommendations (channel=chrome via find_system_chrome,
+    # headless=False, no_viewport, persistent user_data_dir, no custom UA) are all honored.
+    '--enable-unsafe-swiftshader',
 ]
 
 # Nothing to strip from Patchright's defaults: it already omits the automation markers we

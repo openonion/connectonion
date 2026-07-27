@@ -53,6 +53,7 @@ Example:
 """
 
 import os
+from pathlib import Path
 import base64
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
@@ -93,33 +94,28 @@ class Gmail:
         self.contacts_csv = contacts_csv
 
     def _get_service(self):
-        """Get Gmail API service (lazy load with auto-refresh)."""
-        access_token = os.getenv("GOOGLE_ACCESS_TOKEN")
-        refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
-        expires_at_str = os.getenv("GOOGLE_TOKEN_EXPIRES_AT")
+        """Get Gmail API service, refreshing the access token once per instance.
 
-        if not access_token or not refresh_token:
+        Mirrors Outlook: refresh unconditionally on first use rather than doing
+        expiry arithmetic. An access token lasts an hour, so a cached one is
+        nearly always stale by the next run anyway, and the old
+        "only refresh if GOOGLE_TOKEN_EXPIRES_AT says so" check silently did
+        nothing at all when that variable was absent — which the backend allows,
+        since /google/credentials returns expires_at: null when the stored row
+        has no expiry. That produced 401s that looked like broken auth.
+        """
+        if self._service:
+            return self._service
+
+        refresh_token = os.getenv("GOOGLE_REFRESH_TOKEN")
+
+        if not os.getenv("GOOGLE_ACCESS_TOKEN") or not refresh_token:
             raise ValueError(
                 "Google OAuth credentials not found.\n"
                 "Run: co auth google"
             )
 
-        # Check if token is expired or about to expire (within 5 minutes)
-        # Always check before returning cached service
-        if expires_at_str:
-            from datetime import datetime, timedelta
-            expires_at = datetime.fromisoformat(expires_at_str.replace('Z', '+00:00'))
-            now = datetime.utcnow().replace(tzinfo=expires_at.tzinfo) if expires_at.tzinfo else datetime.utcnow()
-
-            if now >= expires_at - timedelta(minutes=5):
-                # Token expired or about to expire, refresh via backend
-                access_token = self._refresh_via_backend(refresh_token)
-                # Clear cached service to use new token
-                self._service = None
-
-        # Return cached service if available
-        if self._service:
-            return self._service
+        access_token = self._refresh_via_backend(refresh_token)
 
         # Create credentials without client_id/client_secret
         # Backend handles token refresh, so we don't need auto-refresh
@@ -178,28 +174,21 @@ class Gmail:
         os.environ["GOOGLE_ACCESS_TOKEN"] = new_access_token
         os.environ["GOOGLE_TOKEN_EXPIRES_AT"] = expires_at
 
-        # Update .env file if it exists
-        env_file = os.path.join(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co")), "keys.env")
-        if os.path.exists(env_file):
-            with open(env_file, 'r') as f:
-                lines = f.readlines()
-
-            with open(env_file, 'w') as f:
-                for line in lines:
-                    if line.startswith("GOOGLE_ACCESS_TOKEN="):
-                        f.write(f"GOOGLE_ACCESS_TOKEN={new_access_token}\n")
-                    elif line.startswith("GOOGLE_TOKEN_EXPIRES_AT="):
-                        f.write(f"GOOGLE_TOKEN_EXPIRES_AT={expires_at}\n")
-                    else:
-                        f.write(line)
+        # Persist to global keys.env so the refreshed token survives this
+        # process. Google refresh tokens don't rotate, so the next process can
+        # always re-derive an access token — only keys.env needs updating.
+        from ..cli.commands.project_cmd_lib import upsert_env
+        env_file = Path(os.getenv("AGENT_CONFIG_PATH", os.path.expanduser("~/.co"))) / "keys.env"
+        env_file.parent.mkdir(parents=True, exist_ok=True)
+        upsert_env(env_file, {
+            "GOOGLE_ACCESS_TOKEN": new_access_token,
+            "GOOGLE_TOKEN_EXPIRES_AT": expires_at,
+        })
 
         return new_access_token
 
-    def _format_emails(self, messages, max_results=10):
-        """Helper to format email list."""
-        if not messages:
-            return "No emails found."
-
+    def _email_dicts(self, messages, max_results=10):
+        """Fetch metadata for message stubs and return plain email dicts."""
         service = self._get_service()
         emails = []
 
@@ -216,19 +205,22 @@ class Gmail:
             from_email = next((h['value'] for h in headers if h['name'] == 'From'), 'Unknown')
             date = next((h['value'] for h in headers if h['name'] == 'Date'), 'Unknown')
 
-            snippet = message.get('snippet', '')
-            is_unread = 'UNREAD' in message.get('labelIds', [])
-
             emails.append({
                 'id': msg['id'],
                 'from': from_email,
                 'subject': subject,
                 'date': date,
-                'snippet': snippet,
-                'unread': is_unread
+                'snippet': message.get('snippet', ''),
+                'unread': 'UNREAD' in message.get('labelIds', [])
             })
 
-        # Format output
+        return emails
+
+    def _format_dicts(self, emails):
+        """Format email dicts (from _email_dicts) into a readable list."""
+        if not emails:
+            return "No emails found."
+
         output = [f"Found {len(emails)} email(s):\n"]
         for i, email in enumerate(emails, 1):
             status = "[UNREAD]" if email['unread'] else ""
@@ -240,7 +232,50 @@ class Gmail:
 
         return "\n".join(output)
 
+    def _format_emails(self, messages, max_results=10):
+        """Helper to format raw message stubs as a readable list."""
+        if not messages:
+            return "No emails found."
+        return self._format_dicts(self._email_dicts(messages, max_results))
+
     # === Reading ===
+
+    def list_inbox(self, last: int = 10, unread: bool = False) -> list:
+        """Fetch inbox emails as dicts (id, from, subject, date, snippet, unread).
+
+        Programmatic counterpart of read_inbox() — used by the CLI.
+
+        Args:
+            last: Number of emails to retrieve (default: 10)
+            unread: Only get unread emails (default: False)
+
+        Returns:
+            List of email dicts, newest first
+        """
+        service = self._get_service()
+
+        results = service.users().messages().list(
+            userId='me',
+            q="is:unread in:inbox" if unread else "in:inbox",
+            maxResults=last
+        ).execute()
+
+        return self._email_dicts(results.get('messages', []), last)
+
+    def list_search(self, query: str, max_results: int = 10) -> list:
+        """Search emails and return them as dicts (same shape as list_inbox).
+
+        Programmatic counterpart of search_emails() — used by the CLI.
+        """
+        service = self._get_service()
+
+        results = service.users().messages().list(
+            userId='me',
+            q=query,
+            maxResults=max_results
+        ).execute()
+
+        return self._email_dicts(results.get('messages', []), max_results)
 
     def read_inbox(self, last: int = 10, unread: bool = False) -> str:
         """Read emails from inbox.
@@ -252,18 +287,7 @@ class Gmail:
         Returns:
             Formatted string with email list
         """
-        service = self._get_service()
-
-        query = "is:unread in:inbox" if unread else "in:inbox"
-
-        results = service.users().messages().list(
-            userId='me',
-            q=query,
-            maxResults=last
-        ).execute()
-
-        messages = results.get('messages', [])
-        return self._format_emails(messages, last)
+        return self._format_dicts(self.list_inbox(last=last, unread=unread))
 
     def get_sent_emails(self, max_results: int = 10) -> str:
         """Get emails you sent.
@@ -316,20 +340,10 @@ class Gmail:
         Returns:
             Formatted string with matching emails
         """
-        service = self._get_service()
-
-        results = service.users().messages().list(
-            userId='me',
-            q=query,
-            maxResults=max_results
-        ).execute()
-
-        messages = results.get('messages', [])
-
-        if not messages:
+        emails = self.list_search(query, max_results)
+        if not emails:
             return f"No emails found matching query: {query}"
-
-        return self._format_emails(messages, max_results)
+        return self._format_dicts(emails)
 
     # === Content ===
 
@@ -1035,7 +1049,7 @@ class Gmail:
 
         # Write emails CSV
         if self.emails_csv:
-            with open(self.emails_csv, 'w', newline='') as f:
+            with open(self.emails_csv, 'w', newline='', encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=['id', 'thread_id', 'from_email', 'to_email', 'subject', 'date', 'snippet'])
                 writer.writeheader()
                 writer.writerows(email_records)
@@ -1043,7 +1057,7 @@ class Gmail:
         # Write contacts CSV (OVERWRITES - use sync_contacts to preserve CRM data)
         if self.contacts_csv:
             fieldnames = ['email', 'name', 'frequency', 'last_contact', 'type', 'company', 'relationship', 'priority', 'deal', 'next_contact_date', 'tags', 'notes']
-            with open(self.contacts_csv, 'w', newline='') as f:
+            with open(self.contacts_csv, 'w', newline='', encoding="utf-8") as f:
                 writer = csv.DictWriter(f, fieldnames=fieldnames)
                 writer.writeheader()
                 writer.writerows(sorted_contacts)
@@ -1301,7 +1315,7 @@ Emails:
         # Get existing email IDs from cache
         existing_ids = set()
         if os.path.exists(self.emails_csv):
-            with open(self.emails_csv, 'r') as f:
+            with open(self.emails_csv, 'r', encoding="utf-8") as f:
                 reader = csv.DictReader(f)
                 for row in reader:
                     existing_ids.add(row['id'])
@@ -1369,7 +1383,7 @@ Emails:
         # Append new emails to CSV
         fieldnames = ['id', 'thread_id', 'from_email', 'to_email', 'subject', 'date', 'body', 'snippet']
         file_exists = os.path.exists(self.emails_csv) and os.path.getsize(self.emails_csv) > 0
-        with open(self.emails_csv, 'a', newline='') as f:
+        with open(self.emails_csv, 'a', newline='', encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             if not file_exists:
                 writer.writeheader()
@@ -1403,7 +1417,7 @@ Emails:
         # Step 1: Load existing contacts with ALL data
         existing = {}
         if os.path.exists(self.contacts_csv):
-            with open(self.contacts_csv, 'r') as f:
+            with open(self.contacts_csv, 'r', encoding="utf-8") as f:
                 for row in csv.DictReader(f):
                     existing[row['email'].lower()] = dict(row)
 
@@ -1434,7 +1448,7 @@ Emails:
                       'relationship', 'priority', 'deal', 'next_contact_date', 'tags', 'notes']
         sorted_contacts = sorted(existing.values(), key=lambda x: int(x.get('frequency', 0)), reverse=True)
 
-        with open(self.contacts_csv, 'w', newline='') as f:
+        with open(self.contacts_csv, 'w', newline='', encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(sorted_contacts)
@@ -1453,7 +1467,7 @@ Emails:
         import csv
 
         contacts = []
-        with open(self.contacts_csv, 'r') as f:
+        with open(self.contacts_csv, 'r', encoding="utf-8") as f:
             reader = csv.DictReader(f)
             for row in reader:
                 contacts.append(row)
@@ -1496,7 +1510,7 @@ Emails:
         # Read existing contacts
         contacts = []
         found = False
-        with open(self.contacts_csv, 'r') as f:
+        with open(self.contacts_csv, 'r', encoding="utf-8") as f:
             reader = csv.DictReader(f)
             fieldnames = reader.fieldnames
             for row in reader:
@@ -1526,7 +1540,7 @@ Emails:
             return f"Contact {email} not found in contacts.csv"
 
         # Write back
-        with open(self.contacts_csv, 'w', newline='') as f:
+        with open(self.contacts_csv, 'w', newline='', encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(contacts)
@@ -1575,7 +1589,7 @@ Emails:
         # Read all contacts
         contacts = []
         fieldnames = None
-        with open(self.contacts_csv, 'r') as f:
+        with open(self.contacts_csv, 'r', encoding="utf-8") as f:
             reader = csv.DictReader(f)
             fieldnames = reader.fieldnames
             for row in reader:
@@ -1588,7 +1602,7 @@ Emails:
                 contacts.append(row)
 
         # Write back
-        with open(self.contacts_csv, 'w', newline='') as f:
+        with open(self.contacts_csv, 'w', newline='', encoding="utf-8") as f:
             writer = csv.DictWriter(f, fieldnames=fieldnames)
             writer.writeheader()
             writer.writerows(contacts)

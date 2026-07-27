@@ -354,5 +354,5 @@ We're not saying "never." We're saying "not now, and not without clear need."
 ## Further Reading
 
 - [Trust System Design](./003-choosing-trust-keyword.md)
-- [Agent Network Protocol](./004-designing-agent-network-protocol.md)
-- [Behavioral Trust in Action](../trust.md)
+- [Agent Network Protocol](005-designing-agent-network-protocol.md)
+- [Behavioral Trust in Action](../features/trust.md)

@@ -36,8 +36,11 @@ $ co create my-first-agent
 
 ✔ Choose a template:
   ❯ Minimal - Simple starting point
+    Browser - Browser automation
+    Hosted Browser - Hosted browser sessions
+    Coder - Coding agent
+    Co-AI - AI assistant with web UI
     Web Research - Data scraping & analysis
-    Playwright - Browser automation
     Custom - AI generates based on needs
 
 ✔ Paste your API key (or Enter to skip): › sk-proj-xxx

@@ -80,7 +80,7 @@ def handle_doctor():
     if local_config.exists():
         config_table.add_row("Config", f"[green]✓[/green] {local_config}")
         import yaml
-        with open(local_config, 'r') as f:
+        with open(local_config, 'r', encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
         agent_name = config.get("name", "Not set")
         config_table.add_row("Agent Name", f"[dim]{agent_name}[/dim]")

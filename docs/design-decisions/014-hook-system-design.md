@@ -5,7 +5,7 @@
 **Decision Makers:** Core team + Community
 **Related:** [Issue #31](https://github.com/openonion/connectonion/issues/31), [Discussion #33](https://github.com/openonion/connectonion/discussions/33)
 
-> **Note:** This document is historical. The event naming has been updated in [014-event-api-naming.md](./014-event-api-naming.md):
+> **Note:** This document is historical. The event naming has been updated in [014-event-api-naming.md](018-event-api-naming.md):
 > - `before_tool` → `before_each_tool` (per-tool)
 > - `after_tool` → `after_tools` (batch, fires once after all tools)
 > - New: `after_each_tool` (per-tool), `before_tools` (batch)

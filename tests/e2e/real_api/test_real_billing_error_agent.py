@@ -47,7 +47,7 @@ def test_beautiful_error_message():
 
     agent = Agent(
         name="billing_test",
-        model="co/gemini-2.5-pro",
+        model="co/gemini-3.6-flash",
         api_key=LOW_CREDIT_API_KEY,
         quiet=True,
         log=False
@@ -92,7 +92,7 @@ def test_exception_has_typed_attributes():
 
     agent = Agent(
         name="billing_test",
-        model="co/gemini-2.5-pro",
+        model="co/gemini-3.6-flash",
         api_key=LOW_CREDIT_API_KEY,
         quiet=True,
         log=False
@@ -133,7 +133,7 @@ def test_programmatic_error_handling():
 
     agent = Agent(
         name="billing_test",
-        model="co/gemini-2.5-pro",
+        model="co/gemini-3.6-flash",
         api_key=LOW_CREDIT_API_KEY,
         quiet=True,
         log=False

@@ -27,13 +27,13 @@ SUBAGENTS: Dict[str, Dict[str, Any]] = {
     "explore": {
         "description": "Fast agent for exploring codebases. Find files, search code, answer questions about structure.",
         "tools": [FileTools],
-        "model": "co/gemini-2.5-flash",  # Fast model for exploration
+        "model": "co/gemini-3.6-flash",  # Fast model for exploration
         "max_iterations": 15,
     },
     "plan": {
         "description": "Design implementation plans. Analyze architecture, identify files to change, plan steps.",
         "tools": [FileTools],
-        "model": "co/gemini-2.5-pro",  # Smarter model for planning
+        "model": "co/gemini-3.6-flash",  # Smarter model for planning
         "max_iterations": 10,
     },
 }

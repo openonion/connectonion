@@ -9,6 +9,21 @@ LLM-Note:
   Errors: an unoccupied tab's first go_to/newtab raises ValueError coaching the AGENT to re-call with purpose/who (_occupancy_help) | launch failure returns the first error line + a pointer to ~/.co/browser.log | context liveness is judged at the CONTEXT level (_context_is_alive), so one dead page never tears down other sessions' tabs
 Browser Agent for CLI - Natural language browser automation.
 
+Two stacks drive this class — same code, different process, DIFFERENT Chrome
+instance (both use ~/.co/browser_profile, so only one can run at a time):
+
+  1. In-process TOOL — an agent holds a BrowserAutomation instance in its own
+     process (e.g. the hosted-browser template). Tabs are routed per session by
+     the bind_browser_session plugin (a before_each_tool hook), so each chat
+     session drives its own tab. Driven by agent.input() (the LLM). A direct
+     call that skips the event loop (network EXEC) skips the plugin → lands on
+     the shared 'main' tab.
+  2. DAEMON — `co browser <verb>` talks to a persistent background daemon
+     (cli/browser_agent/daemon.py) that owns ONE BrowserAutomation and arbitrates
+     tabs/ownership/lifecycle itself (`-t <tab>` targets a tab; bare = 'main').
+     This is the path for remote control: RemoteAgent.call("bash",
+     command="co browser take_screenshot"). See docs/network/remote-call.md.
+
 This module provides a browser automation agent that understands natural language
 requests for browser operations via the ConnectOnion CLI.
 
@@ -40,6 +55,7 @@ from connectonion.useful_plugins import image_result_formatter, ui_stream
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field
 from . import element_finder
+from . import humanize
 from .browser_config import CHROME_DEFAULT_ARGS, IGNORE_DEFAULT_ARGS
 
 # Default screenshots directory
@@ -194,7 +210,7 @@ def driver_stealth_status():
     version = importlib.metadata.version("patchright")
     lib = Path(patchright.__file__).parent / "driver" / "package" / "lib"
     marker = "disable-blink-features=AutomationControlled"
-    patched = any(marker in p.read_text(errors="ignore") for p in lib.rglob("*.js"))
+    patched = any(marker in p.read_text(errors="ignore", encoding="utf-8") for p in lib.rglob("*.js"))
     if patched:
         return "ok", version, "stealth patches present"
     return ("broken", version,
@@ -574,6 +590,11 @@ class BrowserAutomation:
             executable_path=chrome_path,
             args=CHROME_DEFAULT_ARGS,  # environment-stability flags only
             ignore_default_args=IGNORE_DEFAULT_ARGS + ['--use-mock-keychain'],  # macOS cookie fix
+            no_viewport=True,  # part of Patchright's own recommended stealth config
+                               # (channel=chrome + headless=False + no_viewport). Patchright
+                               # inherits Playwright's fixed 1280x720 default, which is an
+                               # automation tell (rebrowser's 'viewport' check flags it); this
+                               # uses the real OS window size instead.
             proxy=_browser_proxy_from_env(),  # route egress through BROWSER_PROXY if set, else None
             timeout=120000,
         )
@@ -583,7 +604,7 @@ class BrowserAutomation:
         # storage_state=, so the exported cookies are applied with add_cookies. A missing file
         # raises (fail loud): if a deploy declared a seed it must be packaged.
         if self._seed_state and not self._seeded:
-            cookies = json.loads(Path(self._seed_state).read_text()).get("cookies", [])
+            cookies = json.loads(Path(self._seed_state).read_text(encoding="utf-8")).get("cookies", [])
             if cookies:
                 self.browser.add_cookies(cookies)
             self._seeded = True
@@ -816,7 +837,7 @@ class BrowserAutomation:
             if index < 0 or index >= count:
                 return f"Selector matched {count} elements with text {text!r}; index {index} is out of range"
 
-            self.page.mouse.click(matches[index]["x"], matches[index]["y"])
+            humanize.click(self.page, matches[index]["x"], matches[index]["y"])
             self._save_context()
             self.page.wait_for_timeout(1000)
             return f"Clicked element {index + 1}/{count} matching selector: {selector} with text: {text}"
@@ -849,7 +870,7 @@ class BrowserAutomation:
         target = candidates[index]
         box = target.bounding_box()
         if box:
-            self.page.mouse.click(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
+            humanize.click(self.page, 0, 0, box=box)
         else:
             target.click(force=True)
 
@@ -893,7 +914,7 @@ class BrowserAutomation:
 
         target = locator.nth(index)
         target.click(force=True)
-        self.page.keyboard.type(text)
+        humanize.type_text(self.page, text)
         self.page.wait_for_timeout(1000)
         return f"Typed text into element {index + 1}/{count} matching selector: {selector}"
 
@@ -1271,7 +1292,7 @@ class BrowserAutomation:
         if not target or not target.get("ok"):
             return target.get("error", "Could not find target near anchor") if target else "Could not find target near anchor"
 
-        self.page.mouse.click(target["x"], target["y"])
+        humanize.click(self.page, target["x"], target["y"])
         self.page.wait_for_timeout(wait_ms)
         self._save_context()
 
@@ -1324,7 +1345,7 @@ class BrowserAutomation:
             import time as _time
             x = element.x + element.width // 2
             y = element.y + element.height // 2
-            self.page.mouse.click(x, y)
+            humanize.click(self.page, x, y)
             self._save_context()
             _time.sleep(1)
             print(f"\n[browser] CLICKED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
@@ -1355,7 +1376,7 @@ class BrowserAutomation:
             if box:
                 x = box['x'] + box['width'] / 2
                 y = box['y'] + box['height'] / 2
-                self.page.mouse.click(x, y)
+                humanize.click(self.page, x, y, box=box)
                 self._save_context()
                 _time.sleep(1)  # Wait for DOM changes (modals, dropdowns, etc.)
                 print(f"\n[browser] CLICKED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
@@ -1370,7 +1391,7 @@ class BrowserAutomation:
         # Fallback: use original coordinates
         x = element.x + element.width // 2
         y = element.y + element.height // 2
-        self.page.mouse.click(x, y)
+        humanize.click(self.page, x, y)
         self._save_context()
         _time.sleep(1)
         print(f"\n[browser] CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
@@ -1383,7 +1404,7 @@ class BrowserAutomation:
         if not self.page:
             return "Browser not open"
         import time as _time
-        self.page.mouse.click(x, y)
+        humanize.click(self.page, x, y)
         _time.sleep(1)
         print(f"\n[browser] CLICKED at ({x},{y})\n")
         return f"Clicked at ({x}, {y})"
@@ -1403,7 +1424,7 @@ class BrowserAutomation:
         if element.frame.startswith("shadow-"):
             x = element.x + element.width // 2
             y = element.y + element.height // 2
-            self.page.mouse.move(x, y)
+            humanize.move(self.page, x, y)
         elif element.frame != "main":
             frame = None
             for f in self.page.frames:
@@ -1414,13 +1435,13 @@ class BrowserAutomation:
             if locator.count() > 0:
                 locator.first.hover()
             else:
-                self.page.mouse.move(element.x + element.width // 2, element.y + element.height // 2)
+                humanize.move(self.page, element.x + element.width // 2, element.y + element.height // 2)
         else:
             locator = self.page.locator(element.locator)
             if locator.count() > 0:
                 locator.first.hover()
             else:
-                self.page.mouse.move(element.x + element.width // 2, element.y + element.height // 2)
+                humanize.move(self.page, element.x + element.width // 2, element.y + element.height // 2)
 
         _time.sleep(1)
         print(f"\n[browser] HOVERED element [{element.index}] {element.tag} text='{element.text}'\n")
@@ -1440,7 +1461,7 @@ class BrowserAutomation:
         if element.frame.startswith("shadow-"):
             x = element.x + element.width // 2
             y = element.y + element.height // 2
-            self.page.mouse.click(x, y, button="right")
+            humanize.click(self.page, x, y, button="right")
             _time.sleep(1)
             print(f"\n[browser] RIGHT-CLICKED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
             return f"Right-clicked [{element.index}] {element.tag} '{element.text}' (shadow DOM)"
@@ -1460,14 +1481,14 @@ class BrowserAutomation:
             if box:
                 x = box['x'] + box['width'] / 2
                 y = box['y'] + box['height'] / 2
-                self.page.mouse.click(x, y, button="right")
+                humanize.click(self.page, x, y, button="right", box=box)
                 _time.sleep(1)
                 print(f"\n[browser] RIGHT-CLICKED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
                 return f"Right-clicked [{element.index}] {element.tag} '{element.text}'"
 
         x = element.x + element.width // 2
         y = element.y + element.height // 2
-        self.page.mouse.click(x, y, button="right")
+        humanize.click(self.page, x, y, button="right")
         _time.sleep(1)
         print(f"\n[browser] RIGHT-CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
         return f"Right-clicked [{element.index}] '{element.text}' at ({x}, {y})"
@@ -1486,7 +1507,7 @@ class BrowserAutomation:
         if element.frame.startswith("shadow-"):
             x = element.x + element.width // 2
             y = element.y + element.height // 2
-            self.page.mouse.dblclick(x, y)
+            humanize.double_click(self.page, x, y)
             _time.sleep(1)
             print(f"\n[browser] DOUBLE-CLICKED (shadow DOM) element [{element.index}] {element.tag} text='{element.text}' at ({x},{y})\n")
             return f"Double-clicked [{element.index}] {element.tag} '{element.text}' (shadow DOM)"
@@ -1506,14 +1527,14 @@ class BrowserAutomation:
             if box:
                 x = box['x'] + box['width'] / 2
                 y = box['y'] + box['height'] / 2
-                self.page.mouse.dblclick(x, y)
+                humanize.double_click(self.page, x, y, box=box)
                 _time.sleep(1)
                 print(f"\n[browser] DOUBLE-CLICKED element [{element.index}] {element.tag} text='{element.text}' at ({x:.0f},{y:.0f})\n")
                 return f"Double-clicked [{element.index}] {element.tag} '{element.text}'"
 
         x = element.x + element.width // 2
         y = element.y + element.height // 2
-        self.page.mouse.dblclick(x, y)
+        humanize.double_click(self.page, x, y)
         _time.sleep(1)
         print(f"\n[browser] DOUBLE-CLICKED (coords) element [{element.index}] text='{element.text}' at ({x},{y})\n")
         return f"Double-clicked [{element.index}] '{element.text}' at ({x}, {y})"
@@ -1533,7 +1554,7 @@ class BrowserAutomation:
         if not self.page:
             return "Browser not open"
 
-        self.page.keyboard.type(text)
+        humanize.type_text(self.page, text)
 
         return f"""Typed: '{text}'
 
@@ -1845,9 +1866,9 @@ SYSTEM REMINDER: Please use take_screenshot() to verify the text was typed into 
         return f"Waited for {seconds} seconds"
 
     def scroll(self, times: int = 5, description: str = "the main content area") -> str:
-        """Universal scroll with AI strategy and fallback.
+        """Universal scroll, humanized first.
 
-        Tries: AI-generated → Element scroll → Page scroll
+        Tries: Human wheel (real mouse-wheel events) → AI-generated → Element scroll → Page scroll
         Verifies success with screenshot comparison.
         """
         from . import scroll

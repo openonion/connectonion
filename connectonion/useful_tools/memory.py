@@ -144,12 +144,12 @@ class Memory:
         """Write to single memory file."""
         if not os.path.exists(self.memory_file):
             # Create new file
-            with open(self.memory_file, 'w') as f:
+            with open(self.memory_file, 'w', encoding="utf-8") as f:
                 f.write(f"## {key}\n\n{content}\n\n")
             return f"Memory saved: {key}"
 
         # Read and parse existing file
-        with open(self.memory_file, 'r') as f:
+        with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
         sections = self._parse_sections(file_content)
@@ -157,7 +157,7 @@ class Memory:
 
         # Write back
         new_content = self._serialize_sections(sections)
-        with open(self.memory_file, 'w') as f:
+        with open(self.memory_file, 'w', encoding="utf-8") as f:
             f.write(new_content)
 
         # Check if we need to split
@@ -173,7 +173,7 @@ class Memory:
         if not os.path.exists(self.memory_file):
             return f"Memory not found: {key}\nNo memories stored yet"
 
-        with open(self.memory_file, 'r') as f:
+        with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
         sections = self._parse_sections(file_content)
@@ -189,7 +189,7 @@ class Memory:
         if not os.path.exists(self.memory_file):
             return "No memories stored yet"
 
-        with open(self.memory_file, 'r') as f:
+        with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
         sections = self._parse_sections(file_content)
@@ -209,7 +209,7 @@ class Memory:
         if not os.path.exists(self.memory_file):
             return "No memories to search"
 
-        with open(self.memory_file, 'r') as f:
+        with open(self.memory_file, 'r', encoding="utf-8") as f:
             file_content = f.read()
 
         sections = self._parse_sections(file_content)
@@ -283,7 +283,7 @@ class Memory:
         # Write each section to its own file
         for key, content in sections.items():
             filepath = os.path.join(self.memory_dir, f"{key}.md")
-            with open(filepath, 'w') as f:
+            with open(filepath, 'w', encoding="utf-8") as f:
                 f.write(content)
 
         # Remove single file
@@ -297,7 +297,7 @@ class Memory:
         """Write to directory structure."""
         os.makedirs(self.memory_dir, exist_ok=True)
         filepath = os.path.join(self.memory_dir, f"{key}.md")
-        with open(filepath, 'w') as f:
+        with open(filepath, 'w', encoding="utf-8") as f:
             f.write(content)
         return f"Memory saved: {key}"
 
@@ -313,7 +313,7 @@ class Memory:
             available = ", ".join(sorted(files)) if files else "none"
             return f"Memory not found: {key}\nAvailable memories: {available}"
 
-        with open(filepath, 'r') as f:
+        with open(filepath, 'r', encoding="utf-8") as f:
             content = f.read()
 
         return f"Memory: {key}\n\n{content}"
@@ -356,7 +356,7 @@ class Memory:
             key = filename.replace('.md', '')
             filepath = os.path.join(self.memory_dir, filename)
 
-            with open(filepath, 'r') as f:
+            with open(filepath, 'r', encoding="utf-8") as f:
                 content = f.read()
                 lines = content.split('\n')
 

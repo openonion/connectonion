@@ -137,7 +137,7 @@ Keep the summary under 800 words but preserve all critical technical details."""
 
     summary = llm_do(
         summary_prompt,
-        model="co/gemini-2.5-flash",
+        model="co/gemini-3.6-flash",
         temperature=0,
     )
 

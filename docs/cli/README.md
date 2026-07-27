@@ -171,13 +171,13 @@ from connectonion import llm_do
 # Use co/ prefix
 response = llm_do("Hello", model="co/gpt-4o")
 response = llm_do("Hello", model="co/claude-sonnet-4-5")
-response = llm_do("Hello", model="co/gemini-2.5-pro")
+response = llm_do("Hello", model="co/gemini-3.6-flash")
 ```
 
 **Available models:**
 - OpenAI: `co/gpt-4o`, `co/gpt-4o-mini`, `co/o4-mini`
 - Anthropic: `co/claude-sonnet-4-5`, `co/claude-haiku-4-5`
-- Google: `co/gemini-2.5-pro`, `co/gemini-2.5-flash`
+- Google: `co/gemini-3.6-flash` (default), `co/gemini-3-pro-preview`, `co/gemini-2.5-flash`
 - And more...
 
 **Benefits:**
@@ -224,10 +224,57 @@ details and current limitations.
 
 ---
 
-#### `co outlook` - Send & Read Outlook Email
+#### `co gmail` - Send & Read Gmail
+
+Your personal Gmail account from the terminal, via the Gmail API. Requires
+`co auth google` once (Gmail scopes; saved as `GOOGLE_*` in `.env` /
+`~/.co/keys.env`).
+
+**Basic usage:**
+```bash
+co gmail                                            # inbox (10 most recent)
+co gmail inbox -n 25 -u                             # last 25, unread only
+co gmail read 3                                     # read #3 from the listing, mark read
+co gmail send bob@example.com "Hi" "Body text"      # send now
+co gmail search "from:alice@example.com is:unread"  # full Gmail query syntax
+#### `co gdrive` - Google Drive Files
+
+Your Drive from the terminal. Requires `co auth google` once (Drive scope;
+saved as `GOOGLE_*` in `.env` / `~/.co/keys.env`).
+
+**Basic usage:**
+```bash
+co gdrive                             # 20 most recently modified files
+co gdrive search report                # find by name (word prefixes)
+co gdrive get 3 --to ~/Downloads       # download #3 from the listing
+co gdrive put report.pdf               # upload
+```
+
+**Subcommands:**
+
+- `co gmail` / `co gmail inbox` - list recent emails (`--last/-n`, `--unread/-u`)
+- `co gmail read <#>` - show one email and mark it read
+- `co gmail reply <#> <message>` - threaded reply (`-` reads stdin)
+- `co gmail send <to> <subject> <message>` - send, with `--cc` and `--bcc`
+- `co gmail sent` - list recently sent emails
+- `co gmail search <query>` - search with Gmail query syntax
+
+The CLI wraps the same `Gmail` tool your agents use. See
+[gmail.md](gmail.md) for details.
+- `co gdrive` / `co gdrive list` - recent files (`--last/-n`)
+- `co gdrive search <query>` - find by file name
+- `co gdrive get <#>` - download (`--to`); Docs/Sheets/Slides are exported to md/csv/pdf
+- `co gdrive put <path>` - upload (`--name`)
+- `co gdrive rm <#>` - move to trash (recoverable)
+
+See [gdrive.md](gdrive.md) for details.
+
+---
+
+#### `co outlook` - Manage Outlook Email & Contacts
 
 Your personal Outlook account from the terminal, via Microsoft Graph.
-Requires `co auth microsoft` once (Mail scopes; saved as `MICROSOFT_*` in
+Requires `co auth microsoft` once (Mail/Contacts scopes; saved as `MICROSOFT_*` in
 `.env` / `~/.co/keys.env`).
 
 **Basic usage:**
@@ -237,6 +284,8 @@ co outlook inbox -n 25 -u                             # last 25, unread only
 co outlook read 3                                     # read #3 from the listing, mark read
 co outlook send bob@example.com "Hi" "Body text"      # send now
 co outlook send bob@example.com "Hi" - < body.txt     # body from stdin
+co outlook contact add "Zhou Yifei" zhou@example.com  # save contact
+co outlook contact search yifei                       # find by name/email
 ```
 
 **Subcommands:**
@@ -245,6 +294,9 @@ co outlook send bob@example.com "Hi" - < body.txt     # body from stdin
 - `co outlook send <to> <subject> <message>` - send, with `--cc`, `--bcc`, repeatable `--attach FILE` (~3MB Graph limit), and `--at` to schedule (`+30m`, `+2h`, or UTC ISO time — Exchange holds delivery)
 - `co outlook sent` - list recently sent emails
 - `co outlook search <query>` - search subject and body
+- `co outlook contact add <name> <email>` - save a contact
+- `co outlook contact list` - list saved contacts (`--last/-n`)
+- `co outlook contact search <query>` - find contacts by name or email
 
 The CLI wraps the same `Outlook` tool your agents use. See
 [outlook.md](outlook.md) for details.
@@ -363,7 +415,7 @@ $ co doctor
 🔍 ConnectOnion Diagnostics
 
 ┌─ System ─────────────────────────────────┐
-│ Version        ✓ 0.0.7                   │
+│ Version        ✓ 1.2.1                   │
 │ Python         ✓ 3.11.5                  │
 │ Python Path    /usr/local/bin/python3    │
 │ Environment    ✓ Virtual environment     │
@@ -575,6 +627,33 @@ co browser --headless go_to "$DEPLOY_URL"   # --headless for CI
 
 ---
 
+#### `co call <address> <command>` - Run a Command on a Remote Agent
+
+The **remote twin of `co browser`**: run one command on a remote agent and print
+the result — no LLM, no session. What `co browser take_screenshot` does locally,
+`co call <address> co browser take_screenshot` does on a remote agent. See
+[call.md](call.md).
+
+```bash
+co call 0x3d40... co status                                   # run co status remotely
+co call 0x3d40... co browser go_to https://example.com        # drive its browser
+co call --out shot.png 0x3d40... co browser take_screenshot   # save its screenshot
+co call 0x3d40... uptime                                      # any whitelisted command
+```
+
+Everything after the address runs on the remote, gated by **that agent's**
+`.co/host.yaml` whitelist (`co ...` and read-only commands allowed by default).
+Options (`--out`, `--timeout`, `--relay`) go before the address; clean stdout and
+standard exit codes (`0` ok · `1` failure · `2` usage) make it script- and
+agent-friendly.
+
+**When to use:**
+- An agent driving another agent with an exact command
+- Remote-control browser steps from the shell
+- Scripting remote actions (vs. `connect().input()` for LLM-driven tasks)
+
+---
+
 ## Global Configuration
 
 ### The `~/.co/` Directory
@@ -737,12 +816,7 @@ Every installation generates master Ed25519 keypair:
 
 ### Recovery Phrase
 
-12-word phrase in `~/.co/keys/recovery.txt` restores keys:
-
-```bash
-# If you lose keys
-co restore "your twelve word recovery phrase here"
-```
+12-word phrase in `~/.co/keys/recovery.txt` can restore your keys if you lose them.
 
 **Store safely:**
 - Write down physically
@@ -942,7 +1016,8 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 | `co deploy` | Deploy to cloud | No | ✅ Yes |
 | `co reset` | Reset account | Yes | ⚠️ Destructive |
 | `co doctor` | Diagnose issues | No | ✅ Yes |
-| `co browser` | Browser command | No | ✅ Yes |
+| `co browser` | Browser command (local) | No | ✅ Yes |
+| `co call` | Run a command on a remote agent | No | ✅ Yes |
 | `co outlook` | Send/read Outlook email | No | ✅ Yes |
 
 ---
@@ -951,6 +1026,6 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 
 - [Agent Documentation](../concepts/agent.md) - Building agents
 - [Tools Documentation](../concepts/tools.md) - Custom tools
-- [Interactive Debugging](../auto_debug.md) - `@xray` debugger
-- [Trust System](../concepts/trust.md) - Multi-agent trust
+- [Interactive Debugging](../debug/auto_debug.md) - `@xray` debugger
+- [Trust System](../features/trust.md) - Multi-agent trust
 - [Getting Started](../quickstart.md) - Full tutorial

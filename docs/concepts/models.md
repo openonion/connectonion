@@ -178,7 +178,8 @@ agent = Agent("assistant", model="mistral/mistral-medium-latest")
 | Model | Provider | Key Strengths | Multimodal |
 |-------|----------|---------------|------------|
 | gpt-5 | OpenAI | Best for coding and agentic tasks | ✅ |
-| gemini-2.5-pro | Google | Default model, best price-performance for agents | ✅ |
+| gemini-3.6-flash | Google | Default model, newest fast Gemini | ✅ |
+| gemini-2.5-pro | Google | Strong multimodal model for agents | ✅ |
 | gemini-3-pro-preview | Google | State-of-the-art reasoning | ✅ |
 | claude-sonnet-4-5 | Anthropic | Best balance of intelligence and speed | ✅ |
 | mistral-large-latest | Mistral | High performance European model | ✅ |
@@ -217,18 +218,18 @@ All prices are **per 1M tokens** and match official provider pricing:
 | gpt-5-nano | $0.05 | $0.40 | Cheapest OpenAI |
 | gpt-4o | $2.50 | $10.00 | Previous gen flagship |
 | gpt-4o-mini | $0.15 | $0.60 | Most cost-effective |
-| o4-mini | $3.00 | $12.00 | Reasoning model |
+| o4-mini | $1.10 | $4.40 | Reasoning model |
 
 ### Google Gemini Models
 
 | Model | Input | Output | Notes |
 |-------|-------|--------|-------|
-| gemini-3.6-flash | $1.50 | $7.50 | Newest fast Gemini |
+| gemini-3.6-flash | $1.50 | $7.50 | **Default model** - newest fast Gemini |
 | gemini-3-pro-preview | $2.00 | $12.00 | State-of-the-art reasoning |
 | gemini-3.5-flash | $1.50 | $9.00 | Previous fast Gemini |
 | gemini-3-pro-image-preview | $2.00 | $0.134 | Image generation |
-| gemini-2.5-pro | $1.25 | $10.00 | **Default model** - best for agents |
-| gemini-2.5-flash | $0.30 | $2.50 | Best price-performance |
+| gemini-2.5-pro | $1.25 | $10.00 | Strong multimodal model for agents |
+| gemini-2.5-flash | $0.15 | $0.60 | Best price-performance |
 | gemini-2.5-flash-lite | $0.10 | $0.40 | Ultra fast, cheapest |
 | gemini-2.0-flash | $0.10 | $0.40 | Previous gen |
 | gemini-2.0-flash-lite | $0.075 | $0.30 | Previous gen lite |
@@ -244,12 +245,14 @@ All prices are **per 1M tokens** and match official provider pricing:
 | claude-sonnet-4 | $3.00 | $15.00 | Previous gen |
 | claude-opus-4 | $15.00 | $75.00 | Previous gen |
 
+> **Note:** Prices above are provider list prices. ConnectOnion's built-in cost tracking (`agent.total_cost`) covers the models registered in its pricing table; models not in the table fall back to a default estimate of $1/M input and $3/M output.
+
 ### Cost Estimation Examples
 
 ```python
 # Typical conversation (~1000 input, ~500 output tokens)
 # gpt-5:           $0.00125 + $0.005 = $0.00625 (~$6.25 per 1000 requests)
-# gemini-2.5-flash: $0.0003 + $0.00125 = $0.00155 (~$1.55 per 1000 requests)
+# gemini-2.5-flash: $0.00015 + $0.0003 = $0.00045 (~$0.45 per 1000 requests)
 # claude-sonnet-4-5: $0.003 + $0.0075 = $0.0105 (~$10.50 per 1000 requests)
 
 # With 100K free tokens, you can make approximately:

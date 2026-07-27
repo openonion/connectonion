@@ -50,7 +50,7 @@ def _load_reminders(reminders_dir):
         return {}
     reminders = {}
     for f in reminders_dir.glob("*.md"):
-        meta, body = _parse_frontmatter(f.read_text())
+        meta, body = _parse_frontmatter(f.read_text(encoding="utf-8"))
         if meta.get('name'):
             reminders[meta['name']] = {'content': body, 'triggers': meta.get('triggers', [])}
     return reminders

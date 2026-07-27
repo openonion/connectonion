@@ -308,7 +308,7 @@ co auth
 
 ```python
 # After co auth, just use co/ prefix
-agent = Agent("bot", model="co/gemini-2.5-pro")
+agent = Agent("bot", model="co/gemini-3.6-flash")
 agent = Agent("bot", model="co/gpt-5")
 ```
 
@@ -498,10 +498,10 @@ print(result.sentiment)  # Type-safe!
 
 ```python
 # ✅ Default: Fast and cheap
-llm_do("Quick task")  # Uses gpt-4o-mini
+llm_do("Quick task")  # Uses co/gemini-3.6-flash
 
 # ✅ For complex reasoning
-llm_do("Complex analysis", model="co/gemini-2.5-pro")
+llm_do("Complex analysis", model="co/gemini-3.6-flash")
 
 # ✅ For structured output (Anthropic 4.5+ only)
 from pydantic import BaseModel

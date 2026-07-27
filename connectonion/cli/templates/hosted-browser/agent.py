@@ -89,7 +89,7 @@ def create_agent():
             bind_browser_session,     # each session gets its own tab in the shared browser
             reaper.stamp,             # any tool call resets the browser idle clock
         ],
-        model="co/gemini-3.5-flash",
+        model="co/gemini-3.6-flash",
         max_iterations=200,           # a normal site flow is ~15-20 steps; backstop
     )
 
@@ -108,4 +108,7 @@ if __name__ == "__main__":
         # and a real terminal you can log in by hand once, and the profile keeps it.
         print(create_agent().input(" ".join(sys.argv[1:])))
     else:
+        # Clients can also drive tools directly (RemoteAgent.call) — that fast
+        # path is gated by the .co/host.yaml permissions whitelist, which already
+        # allows the browser navigation/observation tools. See README.
         host(create_hosted_agent)

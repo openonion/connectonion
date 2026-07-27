@@ -46,6 +46,7 @@ from .config import load_host_config, load_list_file, validate_files, DEFAULT_FI
 from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
 from .http_router import (
     input_handler,
+    exec_handler,
     session_handler,
     sessions_handler,
     health_handler,
@@ -117,6 +118,17 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
         "skills": [{"name": s.name, "description": s.description, "location": s.location}
                    for s in raw_skills],
     }
+    # Managed-key (co/*) agents have an OpenOnion account balance; publish it so
+    # chat clients can show the agent's balance. Clients can't fetch it themselves
+    # — it's gated by the agent's private key — so the agent is the only party that
+    # can report it. This is a one-time startup snapshot; it refreshes on restart.
+    # Agents on their own provider keys have no such balance, so get_balance is
+    # absent and the field is simply omitted.
+    get_balance = getattr(sample.llm, "get_balance", None)
+    if callable(get_balance):
+        balance = get_balance()
+        if balance is not None:
+            metadata["balance_usd"] = balance
     return metadata, sample
 
 
@@ -136,10 +148,17 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
         profile["tools"] = agent_metadata["tools"]
     if agent_metadata.get("model"):
         profile["model"] = agent_metadata["model"]
-    # skill.location (useful_plugins/skills.py) is a 5-value discovery category; only
-    # the two that ship inside the project tree are publishable. See
-    # PUBLISHED_SKILL_LOCATIONS for why, and keep every client-facing skill list
-    # (profile, starter dashboard) drawn from that same allowlist.
+    # Startup balance snapshot for co/* managed-key agents (see _extract_agent_metadata).
+    # Public for now — a later admin/subscriber tier can gate it.
+    if agent_metadata.get("balance_usd") is not None:
+        profile["balance_usd"] = agent_metadata["balance_usd"]
+    # skill.location (useful_plugins/skills.py) is a 5-value discovery category. Publish
+    # only the two that ship inside the project tree — project (.co/skills) and
+    # claude-project (.claude/skills). user (~/.co/skills), claude-user (~/.claude/skills)
+    # are the operator's personal toolboxes and builtin is framework noise; none may leak
+    # into the public directory. Allowlist, so an unknown future category stays private.
+    # Every client-facing skill list (this profile, the starter dashboard) draws from it,
+    # so a dashboard button can't name a skill the client will refuse to run.
     from ...useful_plugins.skills import PUBLISHED_SKILL_LOCATIONS
     profile["skills"] = [
         {"name": s["name"], "description": s.get("description", "")}
@@ -149,7 +168,7 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
     return profile
 
 
-def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict):
+def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_ttl: int, trust_agent, config: dict, exec_permissions: dict | None = None):
     """Create route handler dict for ASGI app.
 
     Args:
@@ -160,8 +179,12 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         result_ttl: How long to keep results on server in seconds
         trust_agent: TrustAgent instance for trust operations
         config: Host config dict (includes file upload limits)
+        exec_permissions: The .co/host.yaml permission whitelist that gates WS
+                          EXEC (direct tool execution). Same list the LLM
+                          approval flow uses; empty dict → nothing runs directly.
     """
     agent_name = agent_metadata["name"]
+    exec_permissions = exec_permissions or {}
 
     def handle_input(storage, prompt, session=None, connection=None, images=None, files=None):
         validate_files(files, config)
@@ -170,6 +193,9 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
     def handle_ws_input(storage, prompt, connection, session=None, images=None, files=None):
         validate_files(files, config)
         return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
+
+    def handle_ws_exec(tool_name, args):
+        return exec_handler(create_agent, exec_permissions, tool_name, args)
 
     def handle_health(start_time):
         return health_handler(agent_name, start_time)
@@ -188,6 +214,7 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         "info": handle_info,
         "auth": extract_and_authenticate,
         "ws_input": handle_ws_input,
+        "ws_exec": handle_ws_exec,
         "admin_logs": handle_admin_logs,
         "admin_sessions": admin_sessions_handler,
         # TrustAgent instance for direct access in http.py/websocket.py
@@ -405,6 +432,12 @@ def host(
         summary: Agent description (default: from config or agent.system_prompt)
         examples: Example prompts (default: from config or auto-generated)
 
+    Direct execution (WS EXEC):
+        Clients can run a tool directly, bypassing the LLM, via
+        RemoteAgent.call("bash", command="co status"). This is gated by the
+        SAME .co/host.yaml `permissions` whitelist the LLM approval flow uses —
+        only whitelisted commands run. Nothing to enable: edit the whitelist.
+
     Endpoints:
         POST /input          - Submit prompt, get result
         GET  /sessions/{id}  - Get session by ID
@@ -491,7 +524,13 @@ def host(
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, config)
+    # Load the permission whitelist that gates direct execution (WS EXEC).
+    # Same list the LLM approval flow reads: template safe defaults + this
+    # project's .co/host.yaml permissions block.
+    from ...useful_plugins.tool_approval.approval import load_permission_patterns
+    exec_permissions = load_permission_patterns(co_dir)
+
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, config, exec_permissions)
 
     # Parse trust config for /info onboard info
     trust_config = _parse_trust_config(trust)
@@ -584,7 +623,8 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     else:
         trust_agent = TrustAgent(trust if isinstance(trust, str) else "careful")
 
-    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS)
+    from ...useful_plugins.tool_approval.approval import load_permission_patterns
+    route_handlers = _create_route_handlers(create_agent, agent_metadata, result_ttl, trust_agent, DEFAULT_FILE_LIMITS, load_permission_patterns())
     return asgi_create_app(
         route_handlers=route_handlers,
         storage=storage,

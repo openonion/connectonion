@@ -36,6 +36,17 @@ from pathlib import Path
 FUTURE_EXPIRY = (datetime.utcnow() + timedelta(hours=1)).isoformat() + 'Z'
 
 
+@pytest.fixture(autouse=True)
+def _stub_token_refresh(request, monkeypatch):
+    """Gmail refreshes its access token once per instance; stub that network
+    call so API-operation tests stay isolated. Tests of the refresh flow
+    itself opt out with @pytest.mark.real_refresh."""
+    if "real_refresh" in request.keywords:
+        return
+    from connectonion.useful_tools.gmail import Gmail
+    monkeypatch.setattr(Gmail, "_refresh_via_backend", lambda self, rt: "test_token")
+
+
 class TestGmailInit:
     """Tests for Gmail initialization and scope validation."""
 
@@ -122,6 +133,44 @@ class TestGmailGetService:
 
         assert service1 == service2
         assert mock_build.call_count == 1  # Only built once
+
+    @pytest.mark.real_refresh
+    @patch.dict(os.environ, {
+        "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+        "GOOGLE_ACCESS_TOKEN": "stale_token",
+        "GOOGLE_REFRESH_TOKEN": "test_refresh",
+        "GOOGLE_TOKEN_EXPIRES_AT": FUTURE_EXPIRY,
+    })
+    @patch('connectonion.useful_tools.gmail.build')
+    def test_get_service_refreshes_even_when_expiry_looks_fresh(self, mock_build, monkeypatch):
+        """Refresh is unconditional — an hour-old token is stale by the next run."""
+        from connectonion.useful_tools.gmail import Gmail
+        calls = []
+        monkeypatch.setattr(
+            Gmail, "_refresh_via_backend",
+            lambda self, rt: calls.append(rt) or "fresh_token",
+        )
+
+        Gmail()._get_service()
+
+        assert calls == ["test_refresh"]
+        assert mock_build.call_args.kwargs["credentials"].token == "fresh_token"
+
+    @pytest.mark.real_refresh
+    @patch.dict(os.environ, {
+        "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+        "GOOGLE_ACCESS_TOKEN": "stale_token",
+        "GOOGLE_REFRESH_TOKEN": "test_refresh",
+    }, clear=True)
+    @patch('connectonion.useful_tools.gmail.build')
+    def test_get_service_refreshes_without_expiry_variable(self, mock_build, monkeypatch):
+        """GOOGLE_TOKEN_EXPIRES_AT can be absent — that must not skip the refresh."""
+        from connectonion.useful_tools.gmail import Gmail
+        monkeypatch.setattr(Gmail, "_refresh_via_backend", lambda self, rt: "fresh_token")
+
+        Gmail()._get_service()
+
+        assert mock_build.call_args.kwargs["credentials"].token == "fresh_token"
 
     @patch.dict(os.environ, {"GOOGLE_SCOPES": "gmail.readonly gmail.send"}, clear=True)
     def test_get_service_missing_credentials(self):
@@ -279,6 +328,162 @@ class TestReadEmails:
         result = gmail.search_emails(query="nonexistent")
 
         assert "No emails found matching query" in result
+
+
+class TestListingFormat:
+    """Pins the exact text of every listing method.
+
+    read_inbox/search_emails/get_sent_emails/get_all_emails are agent-facing
+    tool output, so their wording and layout are the contract. These goldens
+    were captured from the pre-refactor implementation.
+    """
+
+    @pytest.fixture
+    def gmail_with_mock(self):
+        with patch.dict(os.environ, {
+            "GOOGLE_SCOPES": "gmail.readonly gmail.send",
+            "GOOGLE_ACCESS_TOKEN": "test_token",
+            "GOOGLE_REFRESH_TOKEN": "test_refresh"
+        }):
+            from connectonion.useful_tools.gmail import Gmail
+            gmail = Gmail()
+            mock_service = Mock()
+            gmail._get_service = Mock(return_value=mock_service)
+            return gmail, mock_service
+
+    def load(self, mock_service, messages):
+        """Serve `messages` (keyed by id) from the mocked Gmail API."""
+        mock_service.users().messages().list().execute.return_value = {
+            'messages': [{'id': mid} for mid in messages]
+        }
+        mock_service.users().messages().get.side_effect = lambda **kw: Mock(
+            execute=Mock(return_value=messages[kw['id']])
+        )
+
+    def two_emails(self):
+        return {
+            'msg1': {
+                'payload': {'headers': [
+                    {'name': 'From', 'value': 'alice@example.com'},
+                    {'name': 'Subject', 'value': 'Meeting Notes'},
+                    {'name': 'Date', 'value': 'Sun, 26 Jul 2026 14:30:00 +0000'},
+                ]},
+                'snippet': 'Hello there',
+                'labelIds': ['UNREAD', 'INBOX'],
+            },
+            # No headers at all, and a snippet past the 80-char preview cut.
+            'msg2': {'payload': {'headers': []}, 'snippet': 'b' * 100, 'labelIds': []},
+        }
+
+    GOLDEN = (
+        "Found 2 email(s):\n"
+        "\n"
+        "1. [UNREAD] From: alice@example.com\n"
+        "   Subject: Meeting Notes\n"
+        "   Date: Sun, 26 Jul 2026 14:30:00 +0000\n"
+        "   Preview: Hello there...\n"
+        "   ID: msg1\n"
+        "\n"
+        "2.  From: Unknown\n"
+        "   Subject: No Subject\n"
+        "   Date: Unknown\n"
+        "   Preview: " + "b" * 80 + "...\n"
+        "   ID: msg2\n"
+    )
+
+    def test_read_inbox_exact_output(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        self.load(mock_service, self.two_emails())
+
+        assert gmail.read_inbox(last=10) == self.GOLDEN
+
+    def test_search_emails_exact_output(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        self.load(mock_service, self.two_emails())
+
+        assert gmail.search_emails("from:alice@example.com") == self.GOLDEN
+
+    def test_get_sent_emails_exact_output(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        self.load(mock_service, self.two_emails())
+
+        assert gmail.get_sent_emails() == self.GOLDEN
+
+    def test_get_all_emails_exact_output(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        self.load(mock_service, self.two_emails())
+
+        assert gmail.get_all_emails() == self.GOLDEN
+
+    def test_message_without_snippet_key(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        self.load(mock_service, {'msg1': {'payload': {'headers': []}, 'labelIds': []}})
+
+        assert gmail.read_inbox() == (
+            "Found 1 email(s):\n"
+            "\n"
+            "1.  From: Unknown\n"
+            "   Subject: No Subject\n"
+            "   Date: Unknown\n"
+            "   Preview: ...\n"
+            "   ID: msg1\n"
+        )
+
+    def test_limit_truncates_to_requested_count(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        self.load(mock_service, self.two_emails())
+
+        result = gmail.read_inbox(last=1)
+
+        assert result.startswith("Found 1 email(s):")
+        assert "msg2" not in result
+
+    def test_list_inbox_returns_the_same_emails_it_formats(self, gmail_with_mock):
+        """The CLI reads dicts, the agent reads text — they must agree."""
+        gmail, mock_service = gmail_with_mock
+        self.load(mock_service, self.two_emails())
+
+        assert gmail.list_inbox(last=10) == [
+            {'id': 'msg1', 'from': 'alice@example.com', 'subject': 'Meeting Notes',
+             'date': 'Sun, 26 Jul 2026 14:30:00 +0000', 'snippet': 'Hello there', 'unread': True},
+            {'id': 'msg2', 'from': 'Unknown', 'subject': 'No Subject',
+             'date': 'Unknown', 'snippet': 'b' * 100, 'unread': False},
+        ]
+
+    def test_list_search_returns_dicts_for_the_query(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        self.load(mock_service, self.two_emails())
+
+        emails = gmail.list_search("from:alice@example.com", max_results=5)
+
+        assert [e['id'] for e in emails] == ['msg1', 'msg2']
+        call_kwargs = mock_service.users().messages().list.call_args[1]
+        assert call_kwargs['q'] == "from:alice@example.com"
+        assert call_kwargs['maxResults'] == 5
+
+    def test_list_inbox_unread_filter(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().list().execute.return_value = {'messages': []}
+
+        assert gmail.list_inbox(last=10, unread=True) == []
+        assert mock_service.users().messages().list.call_args[1]['q'] == "is:unread in:inbox"
+
+    def test_list_inbox_default_scopes_to_inbox(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().list().execute.return_value = {'messages': []}
+
+        gmail.list_inbox(last=10)
+
+        assert mock_service.users().messages().list.call_args[1]['q'] == "in:inbox"
+
+    def test_empty_listings_say_no_emails_found(self, gmail_with_mock):
+        gmail, mock_service = gmail_with_mock
+        mock_service.users().messages().list().execute.return_value = {'messages': []}
+
+        assert gmail.read_inbox() == "No emails found."
+        assert gmail.get_sent_emails() == "No emails found."
+        assert gmail.get_all_emails() == "No emails found."
+        assert gmail.search_emails("nope") == "No emails found matching query: nope"
 
 
 class TestEmailContent:

@@ -124,7 +124,7 @@ from connectonion import Agent
 agent = Agent(
     name="my_agent",
     tools=[...],
-    model="co/gemini-2.5-pro"
+    model="co/gemini-3.6-flash"
 )
 
 if __name__ == "__main__":

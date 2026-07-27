@@ -26,7 +26,7 @@ INFO: Loaded global keys: /Users/you/.co/keys.env
 
 [agent] ─────────────────────────────────────
         translator
-        co/gemini-2.5-pro • 12 tools
+        co/gemini-3.6-flash • 12 tools
 
 [host]  ─────────────────────────────────────
         http://localhost:8000
@@ -434,7 +434,7 @@ curl http://localhost:8000/info
   "name": "translator",
   "address": "0x3d4017c3...",
   "tools": ["translate", "detect_language"],
-  "model": "co/gemini-2.5-pro",
+  "model": "co/gemini-3.6-flash",
   "trust": "careful",
   "version": "0.4.1",
   "accepted_inputs": {
@@ -581,7 +581,9 @@ ws.onmessage = (event) => {
 | ATTACH | Client → Server | Authenticate + resume existing session |
 | CONNECTED | Server → Client | Session info (session_id, status) |
 | INPUT | Client → Server | Send prompt (no auth needed) |
+| EXEC | Client → Server | Run one tool directly, no LLM |
 | OUTPUT | Server → Client | Final result + session data |
+| EXEC_RESULT | Server → Client | Result of an EXEC |
 | PING | Server → Client | Keep-alive (every 30s) |
 | PONG | Client → Server | Acknowledge keep-alive |
 | tool_call | Server → Client | Tool started |
@@ -590,6 +592,15 @@ ws.onmessage = (event) => {
 | ask_user | Server → Client | Agent needs input |
 | approval_needed | Server → Client | Tool approval required |
 | ERROR | Server → Client | Error message |
+
+### Direct tool execution (EXEC)
+
+Besides the LLM loop, a hosted agent exposes a **direct execution** fast path:
+clients can run one registered tool with no LLM via `EXEC` / `EXEC_RESULT`
+(`remote.call` in Python, `co call` from the shell). It's gated by the same
+`.co/host.yaml` `permissions` whitelist the LLM approval flow uses — nothing to
+enable, and only whitelisted commands run. See
+[remote-call.md](remote-call.md).
 
 ### Session Recovery
 
@@ -935,7 +946,7 @@ signature = signing_key.sign(canonical.encode()).signature.hex()
 
 Trust controls **who can access your agent**. All forms of trust use a trust agent behind the scenes.
 
-See [Trust in ConnectOnion](/docs/concepts/trust.md) for the complete trust system documentation.
+See [Trust in ConnectOnion](../features/trust.md) for the complete trust system documentation.
 
 ### 1. Trust Level (string)
 

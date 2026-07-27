@@ -249,9 +249,9 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                             console.print("\n[green]✓ We verified your star. Thanks for supporting us![/green]")
                             console.print("[green]You now have 100k free tokens![/green]")
                             console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
-                            console.print("  • co/gemini-2.5-pro")
+                            console.print("  • co/gemini-3.6-flash")
                             console.print("  • co/gpt-4o")
-                            console.print("  • co/gemini-2.5-pro")
+                            console.print("  • co/gemini-3.6-flash")
                             console.print("  • co/gpt-5")
                             console.print("  • co/claude-3-haiku")
                             console.print("  • co/claude-3-sonnet")
@@ -332,9 +332,9 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                         console.print("\n[green]✓ We verified your star. Thanks for supporting us![/green]")
                         console.print("[green]You now have 100k free tokens![/green]")
                         console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
-                        console.print("  • co/gemini-2.5-pro")
+                        console.print("  • co/gemini-3.6-flash")
                         console.print("  • co/gpt-4o")
-                        console.print("  • co/gemini-2.5-pro")
+                        console.print("  • co/gemini-3.6-flash")
                         console.print("  • co/gpt-5")
                         console.print("  • co/claude-3-haiku")
                         console.print("  • co/claude-3-sonnet")
@@ -595,7 +595,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
-            'model': 'co/gemini-2.5-pro'  # Prefixed models for managed keys
+            'model': 'co/gemini-3.6-flash'  # Prefixed models for managed keys
         }
     }
 
@@ -610,8 +610,8 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
 # Same pricing as OpenAI/Anthropic
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-2.5-pro
-# Available models: co/gemini-2.5-pro, co/gpt-4o, co/claude-3-haiku, co/claude-3-sonnet
+MODEL=co/gemini-3.6-flash
+# Available models: co/gemini-3.6-flash, co/gpt-4o, co/claude-3-haiku, co/claude-3-sonnet
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -626,7 +626,7 @@ MODEL=co/gemini-2.5-pro
 # 3. Your GitHub star will be verified automatically
 
 # Model Configuration (use co/ prefix for managed models)
-MODEL=co/gemini-2.5-pro
+MODEL=co/gemini-3.6-flash
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -669,8 +669,8 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
         try:
             from ...core.llm import create_llm
 
-            # Use the model specified or default to co/gemini-2.5-pro
-            llm_model = model if model else "co/gemini-2.5-pro"
+            # Use the model specified or default to co/gemini-3.6-flash
+            llm_model = model if model else "co/gemini-3.6-flash"
 
             if loading_animation:
                 loading_animation.update(f"Connecting to {llm_model}...")
@@ -755,7 +755,7 @@ def process_request(query: str) -> str:
 # Create agent
 agent = Agent(
     name="{suggested_name.replace('-', '_')}",
-    model="{'co/gemini-2.5-pro' if model and model.startswith('co/') else 'co/gemini-2.5-pro'}",
+    model="{model if model and model.startswith('co/') else 'co/gemini-3.6-flash'}",
     system_prompt=\"\"\"You are an AI agent designed to: {description}
 
     Provide helpful, accurate, and concise responses.\"\"\",
@@ -991,7 +991,7 @@ def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> No
     found = set()
 
     if env_path.exists():
-        for line in env_path.read_text().splitlines(keepends=True):
+        for line in env_path.read_text(encoding="utf-8").splitlines(keepends=True):
             stripped = line.strip()
             if strip_prefix and stripped.startswith(strip_prefix):
                 continue
@@ -1003,11 +1003,16 @@ def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> No
                     continue
             lines.append(line)
 
+    # A file whose last line has no newline would otherwise get the first
+    # appended key glued onto it (FOO=barBAZ=qux).
+    if lines and not lines[-1].endswith("\n"):
+        lines[-1] += "\n"
+
     for key, value in updates.items():
         if key not in found:
             lines.append(f"{key}={value}\n")
 
-    env_path.write_text(''.join(lines))
+    env_path.write_text(''.join(lines), encoding="utf-8")
     if sys.platform != 'win32':
         env_path.chmod(0o600)
 
@@ -1058,7 +1063,7 @@ def ensure_global_config() -> None:
         lines = []
         config_path_found = False
         address_updated = False
-        for line in keys_env.read_text().splitlines(keepends=True):
+        for line in keys_env.read_text(encoding="utf-8").splitlines(keepends=True):
             if line.strip().startswith('AGENT_ADDRESS='):
                 lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
                 address_updated = True
@@ -1071,7 +1076,7 @@ def ensure_global_config() -> None:
             lines.insert(0, f"AGENT_CONFIG_PATH={global_dir}\n")
         if not address_updated:
             lines.append(f"AGENT_ADDRESS={addr_data['address']}\n")
-        keys_env.write_text(''.join(lines))
+        keys_env.write_text(''.join(lines), encoding="utf-8")
         if sys.platform != 'win32':
             os.chmod(keys_env, 0o600)
     console.print(f"  ✓ Created ~/.co/keys.env")

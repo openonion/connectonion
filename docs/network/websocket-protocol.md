@@ -1,19 +1,22 @@
 # WebSocket Protocol
 
-> CONNECT to start or resume, INPUT to message. Session stays alive between executions.
+> CONNECT to start or resume, INPUT to message, EXEC to run one tool directly. Session stays alive between executions.
 
 ---
 
 ## Overview
 
-Two client message types, two intents:
+Three client message types, three intents:
 
 | Message | Intent | When |
 |---------|--------|------|
 | `CONNECT` | "Authenticate me, restore my session" | First message on every WebSocket |
 | `INPUT` | "Run this prompt" or runtime input mid-execution | After CONNECT |
+| `EXEC` | "Run this one tool directly, no LLM" | After CONNECT |
 
 If `INPUT` arrives while the session's agent is already running, the server treats it as **runtime input** (mid-execution user input) instead of starting a second agent. The new prompt is appended to the agent's message history at the next iteration, and the server replies with `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle.
+
+`EXEC` is the direct-execution fast path: it runs one named tool with no LLM, no session, and no history, replying with a single `EXEC_RESULT`. It requires the same CONNECT auth as INPUT, and the tool is gated by the host's `.co/host.yaml` permission whitelist. See [remote-call.md](remote-call.md).
 
 ```
 ┌────────────────────────────────────────────────────────────────┐
@@ -216,6 +219,21 @@ Send a prompt. Only valid after CONNECTED. **No session data — just the prompt
 
 If sent while the session's agent is already running, this message is routed as runtime input: the prompt is appended to the running agent's message history (with framing telling the LLM to treat it as additional context, not a replacement) and the server replies `RUNTIME_INPUT_ACK` instead of starting a new OUTPUT cycle. No new `thinking` chat item is created — the existing one keeps streaming.
 
+#### EXEC
+
+Run one registered tool directly — no LLM, no session, no history. Only valid after CONNECTED. The server replies with a single `EXEC_RESULT`.
+
+```json
+{
+  "type": "EXEC",
+  "exec_id": "7c2a...",
+  "tool": "bash",
+  "args": { "command": "co status" }
+}
+```
+
+The tool is checked against the host's `.co/host.yaml` permission whitelist (the same list the LLM approval flow uses); a tool that isn't whitelisted comes back as an `EXEC_RESULT` with `status: "error"`. Each `EXEC` runs as its own server-side task, so a slow tool never blocks the connection, and `exec_id` correlates the reply — several `EXEC`s can be pipelined on one socket.
+
 #### PONG
 
 ```json
@@ -272,6 +290,23 @@ Execution completed. **Session stays alive for next INPUT.**
   "session": { "messages": [...], "trace": [...], "turn": 2 }
 }
 ```
+
+#### EXEC_RESULT
+
+Reply to an `EXEC`. `exec_id` echoes the request. `result` is the tool's raw output — text, or a base64 data URL for a screenshot tool.
+
+```json
+{
+  "type": "EXEC_RESULT",
+  "exec_id": "7c2a...",
+  "tool": "bash",
+  "status": "success",
+  "result": "...raw output...",
+  "duration_ms": 42
+}
+```
+
+On failure (tool raised, not whitelisted, unknown tool): `status: "error"` with an `error` field instead of `result`.
 
 #### PING
 

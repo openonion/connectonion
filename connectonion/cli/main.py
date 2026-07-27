@@ -29,13 +29,26 @@ from dotenv import load_dotenv
 
 from .. import __version__
 
-# Load global keys.env for all CLI commands
-_global_keys = Path.home() / ".co" / "keys.env"
-if _global_keys.exists():
-    load_dotenv(_global_keys)
+# Load both env files for all CLI commands. keys.env stays first — that is
+# already the CLI's effective precedence, since commands that load .env do so
+# after this import and load_dotenv never overrides. Adding .env here only
+# fills in keys it alone defines.
+for _env_file in (Path.home() / ".co" / "keys.env", Path.cwd() / ".env"):
+    if _env_file.exists():
+        load_dotenv(_env_file)
 
 console = Console()
-app = typer.Typer(add_completion=False, no_args_is_help=False)
+# pretty_exceptions_show_locals defaults to True in Typer, which dumps every
+# local variable of every frame on an uncaught exception. The OAuth paths hold
+# OPENONION_API_KEY, refresh tokens and access tokens in locals, so a routine
+# "session expired" crash printed live credentials into the terminal — and from
+# there into scrollback, CI logs, and any error output a user pastes into a
+# chat or an issue.
+app = typer.Typer(
+    add_completion=False,
+    no_args_is_help=False,
+    pretty_exceptions_show_locals=False,
+)
 
 
 def version_callback(value: bool):
@@ -74,7 +87,9 @@ def _show_help():
     console.print("  [green]deploy[/green]            Deploy to ConnectOnion Cloud")
     console.print("  [green]auth[/green]              Authenticate for managed keys")
     console.print("  [green]email[/green]             Send and read agent email")
-    console.print("  [green]outlook[/green]           Send and read Outlook email (co auth microsoft)")
+    console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
+    console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
+    console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
     console.print("  [green]status[/green]            Check account balance")
@@ -177,11 +192,27 @@ def browser(
     raise typer.Exit(handle_browser(args or [], headless=headless))
 
 
+@app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})
+def call(
+    args: List[str] = typer.Argument(None, help="[--out F] [--timeout S] [--relay U] <address> <command...>"),
+):
+    """Run one command on a remote agent and print the result (no LLM).
+
+    The remote twin of `co browser` — everything after the address runs on the
+    remote agent, gated by its .co/host.yaml whitelist:
+
+        co call 0x3d40... co status
+        co call --out shot.png 0x3d40... co browser take_screenshot
+    """
+    from .commands.call_commands import handle_call
+    raise typer.Exit(handle_call(args or []))
+
+
 @app.command()
 def ai(
     prompt: Optional[str] = typer.Argument(None, help="One-shot prompt (runs and exits)"),
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
-    model: str = typer.Option("co/gemini-3.5-flash", "--model", "-m", help="Model to use"),
+    model: str = typer.Option("co/gemini-3.6-flash", "--model", "-m", help="Model to use"),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
 ):
     """Start AI coding agent or run one-shot prompt."""
@@ -285,6 +316,15 @@ def skills_list():
     """List skills currently installed in ~/.co/skills/."""
     from .commands.skills_commands import handle_skills_list
     handle_skills_list()
+
+
+@skills_app.command("link")
+def skills_link(
+    force: bool = typer.Option(False, "--force", help="Replace directories you own"),
+):
+    """Link ConnectOnion's bundled skills into Claude Code and Codex."""
+    from .commands.skills_commands import handle_skills_link
+    handle_skills_link(force=force)
 
 
 # Trust command group
@@ -430,6 +470,142 @@ def email_upgrade(
     handle_email_upgrade(tier, domain=domain, alias=alias)
 
 
+# Gmail command group. `co gmail` (no args) shows the Gmail inbox.
+# Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
+gmail_app = typer.Typer(help="Send and read email from your Gmail account. Bare 'co gmail' shows the inbox.")
+app.add_typer(gmail_app, name="gmail")
+
+
+@gmail_app.callback(invoke_without_command=True)
+def gmail_callback(ctx: typer.Context):
+    """With no subcommand, show the Gmail inbox."""
+    if ctx.invoked_subcommand is None:
+        from .commands.gmail_commands import handle_gmail_inbox
+        handle_gmail_inbox()
+
+
+@gmail_app.command("inbox")
+def gmail_inbox(
+    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+    unread: bool = typer.Option(False, "--unread", "-u", help="Only unread emails"),
+):
+    """List recent inbox emails, numbered for read/reply."""
+    from .commands.gmail_commands import handle_gmail_inbox
+    handle_gmail_inbox(last=last, unread=unread)
+
+
+@gmail_app.command("read")
+def gmail_read(
+    email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+):
+    """Show one email's full body and mark it read."""
+    from .commands.gmail_commands import handle_gmail_read
+    handle_gmail_read(email_id)
+
+
+@gmail_app.command("reply")
+def gmail_reply(
+    email_id: str = typer.Argument(..., help="Email # from the last listing, or a full message id"),
+    message: str = typer.Argument(..., help="Reply body, or '-' to read stdin"),
+):
+    """Reply to an email from the last listing."""
+    from .commands.gmail_commands import handle_gmail_reply
+    handle_gmail_reply(email_id, message)
+
+
+@gmail_app.command("send", epilog="Examples:  co gmail send a@b.com \"Hi\" \"Quick note\"  |  "
+                                  "cat body.txt | co gmail send a@b.com \"Report\" -")
+def gmail_send(
+    to: str = typer.Argument(..., help="Recipient address (comma-separated for several)"),
+    subject: str = typer.Argument(..., help="Email subject"),
+    message: str = typer.Argument(..., help="Email body, or '-' to read stdin"),
+    cc: str = typer.Option(None, "--cc", help="CC recipients (comma-separated)"),
+    bcc: str = typer.Option(None, "--bcc", help="BCC recipients (comma-separated)"),
+):
+    """Send an email from your Gmail account."""
+    from .commands.gmail_commands import handle_gmail_send
+    handle_gmail_send(to, subject, message, cc=cc, bcc=bcc)
+
+
+@gmail_app.command("sent")
+def gmail_sent(
+    last: int = typer.Option(10, "--last", "-n", help="How many emails to show"),
+):
+    """List recently sent emails."""
+    from .commands.gmail_commands import handle_gmail_sent
+    handle_gmail_sent(last=last)
+
+
+@gmail_app.command("search")
+def gmail_search(
+    query: str = typer.Argument(..., help="Gmail search query, e.g. 'from:alice@example.com'"),
+    last: int = typer.Option(10, "--last", "-n", help="How many matches to show"),
+):
+    """Search your mail with Gmail query syntax."""
+    from .commands.gmail_commands import handle_gmail_search
+    handle_gmail_search(query, last=last)
+# Google Drive command group. `co gdrive` (no args) lists recent files.
+# Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
+gdrive_app = typer.Typer(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
+app.add_typer(gdrive_app, name="gdrive")
+
+
+@gdrive_app.callback(invoke_without_command=True)
+def gdrive_callback(ctx: typer.Context):
+    """With no subcommand, list recent Drive files."""
+    if ctx.invoked_subcommand is None:
+        from .commands.gdrive_commands import handle_gdrive_list
+        handle_gdrive_list()
+
+
+@gdrive_app.command("list")
+def gdrive_list(
+    last: int = typer.Option(20, "--last", "-n", help="How many files to show"),
+):
+    """List recently modified files, numbered for get/rm."""
+    from .commands.gdrive_commands import handle_gdrive_list
+    handle_gdrive_list(last=last)
+
+
+@gdrive_app.command("search")
+def gdrive_search(
+    query: str = typer.Argument(..., help="Text to look for in file names"),
+    last: int = typer.Option(20, "--last", "-n", help="How many matches to show"),
+):
+    """Search Drive by file name."""
+    from .commands.gdrive_commands import handle_gdrive_search
+    handle_gdrive_search(query, last=last)
+
+
+@gdrive_app.command("get")
+def gdrive_get(
+    file_id: str = typer.Argument(..., help="File # from the last listing, or a full file id"),
+    dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
+):
+    """Download a file (Google Docs/Sheets/Slides are exported)."""
+    from .commands.gdrive_commands import handle_gdrive_get
+    handle_gdrive_get(file_id, dest=dest)
+
+
+@gdrive_app.command("put")
+def gdrive_put(
+    path: str = typer.Argument(..., help="Local file to upload"),
+    name: str = typer.Option(None, "--name", help="Name to give it in Drive"),
+):
+    """Upload a local file to Drive."""
+    from .commands.gdrive_commands import handle_gdrive_put
+    handle_gdrive_put(path, name=name)
+
+
+@gdrive_app.command("rm")
+def gdrive_rm(
+    file_id: str = typer.Argument(..., help="File # from the last listing, or a full file id"),
+):
+    """Move a file to the Drive trash (recoverable)."""
+    from .commands.gdrive_commands import handle_gdrive_rm
+    handle_gdrive_rm(file_id)
+
+
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
 # Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
 outlook_app = typer.Typer(help="Send and read email from your Outlook account. Bare 'co outlook' shows the inbox.")
@@ -442,6 +618,42 @@ def outlook_callback(ctx: typer.Context):
     if ctx.invoked_subcommand is None:
         from .commands.outlook_commands import handle_outlook_inbox
         handle_outlook_inbox()
+
+
+outlook_contact_app = typer.Typer(
+    help="Add, list, and search Outlook contacts.",
+    no_args_is_help=True,
+)
+outlook_app.add_typer(outlook_contact_app, name="contact")
+
+
+@outlook_contact_app.command("add")
+def outlook_contact_add(
+    name: str = typer.Argument(..., help="Contact display name"),
+    email: str = typer.Argument(..., help="Contact email address"),
+):
+    """Save a contact with a name and email address."""
+    from .commands.outlook_commands import handle_outlook_contact_add
+    handle_outlook_contact_add(name, email)
+
+
+@outlook_contact_app.command("list")
+def outlook_contact_list(
+    last: int = typer.Option(25, "--last", "-n", help="How many contacts to show"),
+):
+    """List saved Outlook contacts."""
+    from .commands.outlook_commands import handle_outlook_contact_list
+    handle_outlook_contact_list(last=last)
+
+
+@outlook_contact_app.command("search")
+def outlook_contact_search(
+    query: str = typer.Argument(..., help="Name or email substring"),
+    last: int = typer.Option(25, "--last", "-n", help="How many matches to show"),
+):
+    """Search saved Outlook contacts by name or email."""
+    from .commands.outlook_commands import handle_outlook_contact_search
+    handle_outlook_contact_search(query, last=last)
 
 
 @outlook_app.command("send", epilog="Examples:  co outlook send a@b.com \"Hi\" \"Quick note\"  |  "

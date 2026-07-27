@@ -1,7 +1,7 @@
 ---
 name: explore
 description: Fast agent for exploring codebases and finding files
-model: co/gemini-2.5-flash
+model: co/gemini-3.6-flash
 max_iterations: 15
 tools:
   - file_read

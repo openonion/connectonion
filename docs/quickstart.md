@@ -184,6 +184,40 @@ co init  # Adds .co folder only
 co init --template coder  # Adds full template
 ```
 
+## Your Own Mail and Files
+
+Your agent can work on **your** Gmail, Outlook, and Google Drive — one
+authorization, then plain commands. Useful from the terminal too, not just
+inside an agent:
+
+```bash
+co auth google                          # once, opens the browser
+
+co gmail                                # your inbox, numbered
+co gmail read 3                         # open #3
+co gmail send bob@example.com "Hi" "Body text"
+co gmail search "from:alice@example.com is:unread"
+
+co gdrive                               # 20 most recently modified files
+co gdrive get 3 --to ~/Downloads        # download #3
+co gdrive put report.pdf                # upload
+```
+
+Numbers mean your last listing — `read 3` opens row 3 of the table you just
+saw. `co auth microsoft` gives you the same thing for Outlook, plus contacts.
+
+The same access is available to agents:
+
+```python
+from connectonion import Agent, Gmail, GDrive
+
+agent = Agent("assistant", tools=[Gmail(), GDrive()])
+agent.input("Any unread mail from Alice? If so, find her latest file in my Drive.")
+```
+
+See [`co gmail`](cli/gmail.md), [`co gdrive`](cli/gdrive.md), and
+[`co outlook`](cli/outlook.md).
+
 ## Copy & Customize Built-in Tools
 
 Want to customize a built-in tool? Copy it to your project:

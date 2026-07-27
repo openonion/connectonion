@@ -210,7 +210,7 @@ Both can land without changing the CLI surface — only the internals get smarte
 
 ## See also
 
-- [co announce](../announce.md) — the publisher side: sign `agent.json` and push to the relay
+- [co announce](../network/protocol/announce-message.md) — the publisher side: sign `agent.json` and push to the relay
 - [co setup](setup.md) — set up `~/.co/` identity and skill library
 - [co skills](skills.md) — discover and import skills you've written yourself
 - [Multi-Agent Networking](../network/README.md) — the broader relay/host/connect picture

@@ -408,10 +408,10 @@ else:
 
 ## Related
 
-- [CLI Auth](cli-auth.md) - Authenticate with OpenOnion first
-- [Send Email](send_email.md) - Send emails via OpenOnion's email service
-- [Get Emails](get_emails.md) - Read emails from your OpenOnion inbox
-- [Global .co Directory](co-directory-structure.md) - Where credentials are stored
+- [CLI Auth](../cli/auth.md) - Authenticate with OpenOnion first
+- [Send Email](../useful_tools/send_email.md) - Send emails via OpenOnion's email service
+- [Get Emails](../useful_tools/get_emails.md) - Read emails from your OpenOnion inbox
+- [Global .co Directory](../co-directory-structure.md) - Where credentials are stored
 
 ---
 

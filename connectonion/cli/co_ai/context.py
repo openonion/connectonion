@@ -109,6 +109,8 @@ def _get_git_info(base: Path) -> Optional[str]:
             ["git", "branch", "--show-current"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=base,
             timeout=5,
         )
@@ -119,6 +121,8 @@ def _get_git_info(base: Path) -> Optional[str]:
             ["git", "status", "--short"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=base,
             timeout=5,
         )
@@ -129,6 +133,8 @@ def _get_git_info(base: Path) -> Optional[str]:
             ["git", "log", "--oneline", "-3"],
             capture_output=True,
             text=True,
+            encoding="utf-8",
+            errors="replace",
             cwd=base,
             timeout=5,
         )

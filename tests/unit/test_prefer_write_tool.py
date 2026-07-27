@@ -2,6 +2,7 @@
 
 import pytest
 from connectonion import Agent
+from tests.utils.mock_helpers import MockLLM
 from connectonion.useful_plugins import prefer_write_tool
 from connectonion.useful_plugins.prefer_write_tool import (
     _is_file_creation_command,
@@ -94,7 +95,7 @@ class TestFileReadingDetection:
 class TestFileCreationBlocking:
 
     def _make_agent(self, command):
-        agent = Agent("test", plugins=[prefer_write_tool])
+        agent = Agent("test", plugins=[prefer_write_tool], llm=MockLLM())
         agent.current_session = {
             'messages': [],
             'trace': [],
@@ -129,7 +130,7 @@ class TestFileCreationBlocking:
         block_bash_file_creation(agent)  # Should not raise
 
     def test_allows_non_bash_tools(self):
-        agent = Agent("test", plugins=[prefer_write_tool])
+        agent = Agent("test", plugins=[prefer_write_tool], llm=MockLLM())
         agent.current_session = {
             'messages': [],
             'trace': [],
@@ -147,7 +148,7 @@ class TestFileCreationBlocking:
 class TestFileReadingSoftReminder:
 
     def _make_agent(self, command):
-        agent = Agent("test", plugins=[prefer_write_tool])
+        agent = Agent("test", plugins=[prefer_write_tool], llm=MockLLM())
         agent.current_session = {
             'messages': [],
             'trace': [],
@@ -224,7 +225,7 @@ class TestFileReadingSoftReminder:
 class TestEdgeCases:
 
     def test_no_pending_tool(self):
-        agent = Agent("test", plugins=[prefer_write_tool])
+        agent = Agent("test", plugins=[prefer_write_tool], llm=MockLLM())
         agent.current_session = {
             'messages': [],
             'trace': [],
@@ -233,7 +234,7 @@ class TestEdgeCases:
         block_bash_file_creation(agent)  # Should not raise
 
     def test_empty_command(self):
-        agent = Agent("test", plugins=[prefer_write_tool])
+        agent = Agent("test", plugins=[prefer_write_tool], llm=MockLLM())
         agent.current_session = {
             'messages': [],
             'trace': [],

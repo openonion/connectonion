@@ -435,3 +435,133 @@ class TestUploadToOoApi:
         assert image_part['image_url']['url'] == UPLOADED_URL
         agent.io.send_image.assert_called_once_with(UPLOADED_URL)
         assert base64_data not in str(agent.current_session['messages'])
+
+
+class TestScreenshotPathDetection:
+    """`co browser take_screenshot` prints a path, not base64.
+
+    The daemon strips the payload so CLI output stays readable, which means an
+    agent driving the browser through the CLI would be blind to its own
+    screenshots — and the user would never see them — unless the formatter
+    reads the file the path points at.
+    """
+
+    def _png(self, tmp_path):
+        import base64 as b64
+        data = b64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
+            "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        )
+        path = tmp_path / "step_3.png"
+        path.write_bytes(data)
+        return path
+
+    def test_reads_the_image_the_daemon_points_at(self, tmp_path):
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        path = self._png(tmp_path)
+
+        is_image, mime, data = _is_base64_image(f"Screenshot saved to: {path}")
+
+        assert is_image is True
+        assert mime == "image/png"
+        assert data.startswith("iVBORw0KGgo")
+
+    def test_jpeg_and_webp_paths(self, tmp_path):
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        for ext, expected in (("jpg", "image/jpeg"), ("jpeg", "image/jpeg"), ("webp", "image/webp")):
+            p = tmp_path / f"shot.{ext}"
+            p.write_bytes(b"\xff\xd8\xff")
+            assert _is_base64_image(f"Screenshot saved to: {p}")[1] == expected
+
+    def test_a_path_that_does_not_exist_is_not_an_image(self):
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        assert _is_base64_image("Screenshot saved to: /nope/missing.png")[0] is False
+
+    def test_ordinary_tool_output_is_untouched(self):
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        for text in ("done", "", "Created report.pdf", "see notes.md for details"):
+            assert _is_base64_image(text)[0] is False
+
+    def test_shell_output_that_merely_names_a_real_image_is_not_a_screenshot(self, tmp_path, monkeypatch):
+        """`ls` and `git status` list real .png files all the time.
+
+        A loose path scan treated those as screenshots: it uploaded unrelated
+        user files to the backend and replaced the tool result with an image
+        placeholder. Detection is anchored to the daemon's actual output.
+        """
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        for text in (
+            "logo.png\nREADME.md",              # ls
+            "modified:   logo.png",             # git status
+            "docs/logo.png: matched",           # grep
+            "Deleted logo.png",
+        ):
+            assert _is_base64_image(text)[0] is False, text
+
+    def test_oversized_file_is_not_treated_as_an_image(self, tmp_path, monkeypatch):
+        """Guards against base64-ing something huge into the request."""
+        from importlib import import_module
+        fmt = import_module("connectonion.useful_plugins.image_result_formatter")
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "big.png").write_bytes(b"x" * 64)
+        monkeypatch.setattr(fmt, "_MAX_IMAGE_BYTES", 10)
+
+        assert fmt._is_base64_image("Screenshot saved to: big.png")[0] is False
+
+    def test_base64_still_wins_over_path_scanning(self):
+        """In-process tools returning data URLs must keep working unchanged."""
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        is_image, mime, data = _is_base64_image("data:image/png;base64,iVBORw0KGgo=")
+        assert (is_image, mime) == (True, "image/png")
+        assert data == "iVBORw0KGgo="
+
+
+def test_screenshot_path_becomes_an_attached_image(tmp_path, monkeypatch):
+    """The whole point of the path branch: a `co browser take_screenshot`
+    result must end up as an image the model and the user can see.
+
+    Detection alone isn't enough — this drives _format_image_result so a
+    regression in the plumbing between them can't pass unnoticed.
+    """
+    import base64 as b64
+    from importlib import import_module
+    fmt = import_module("connectonion.useful_plugins.image_result_formatter")
+
+    png = tmp_path / "shot.png"
+    png.write_bytes(b64.b64decode(
+        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
+        "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    ))
+    # No raising=False: a wrong name here would silently leave the real
+    # uploader in place and put a network call in the unit suite.
+    monkeypatch.setattr(fmt, "_upload_to_oo_api", lambda *a, **k: "https://example.com/i.png")
+
+    class Logger:
+        def print(self, *a, **k): pass
+
+    class FakeAgent:
+        logger = Logger()
+        io = None
+
+        def __init__(self):
+            result = f"Screenshot saved to: {png}"
+            self.current_session = {
+                "messages": [
+                    {"role": "assistant", "tool_calls": [{"id": "c1"}]},
+                    {"role": "tool", "tool_call_id": "c1", "content": result},
+                ],
+                "trace": [{"type": "tool_result", "status": "success",
+                           "tool_id": "c1", "name": "bash", "result": result}],
+            }
+
+    agent = FakeAgent()
+    fmt._format_image_result(agent)
+    messages = agent.current_session["messages"]
+
+    assert any("image_url" in str(m.get("content", "")) for m in messages), \
+        "no multimodal image message was inserted"
+    assert "Screenshot saved to" not in str(messages[1].get("content")), \
+        "the raw path should be replaced by a placeholder"

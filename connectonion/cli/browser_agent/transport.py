@@ -205,7 +205,7 @@ def acquire_singleton_lock(path: str):
 
     POSIX: fcntl.flock. Windows: msvcrt.locking on the first byte.
     """
-    handle = open(path, "a+")
+    handle = open(path, "a+", encoding="utf-8")
     try:
         if IS_WINDOWS:
             import msvcrt

@@ -96,7 +96,7 @@ class SlashCommand:
             yaml.YAMLError: If frontmatter is invalid
             ValueError: If required fields missing
         """
-        content = filepath.read_text()
+        content = filepath.read_text(encoding="utf-8")
 
         # Split frontmatter and prompt
         if not content.startswith("---"):

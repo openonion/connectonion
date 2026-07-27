@@ -2,7 +2,7 @@
 Purpose: Run one client session — read loop, per-type dispatch, lifecycle of forward + ping tasks
 LLM-Note:
   Dependencies: imports from [.connect (handle_connect), .agent_io (start_agent), .ping (ping_loop), ...trust.ws_admin (handle_admin_message, handle_onboard_submit), asyncio, uuid, rich.console] | imported by [.__init__ as the only public symbol]
-  Data flow: recv_msg() → match data["type"] → dispatch | PONG → registry.update_ping | SESSION_STATUS → registry lookup + reply (inline) | CONNECT → handle_connect (auth + reattach) | INPUT → if running session: push_runtime_input + RUNTIME_INPUT_ACK (inline); else: start_agent | other types with active_io → active_io.send_to_agent | finally: cancel forward + ping tasks
+  Data flow: recv_msg() → match data["type"] → dispatch | PONG → registry.update_ping | SESSION_STATUS → registry lookup + reply (inline) | CONNECT → handle_connect (auth + reattach) | INPUT → if running session: push_runtime_input + RUNTIME_INPUT_ACK (inline); else: start_agent | EXEC → run_exec as own task (direct tool call, no LLM; requires auth) | other types with active_io → active_io.send_to_agent | finally: cancel forward + ping + exec tasks
   State/Effects: per-call local state — conn dict, active_io, forward_task, ping_task | mutates conn via handle_connect | spawns asyncio Tasks (forward + ping) cancelled in finally
   Integration: run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registry, trust, blacklist=None, whitelist=None, enable_ping=True) | enable_ping=True on both direct and relay paths: the 30s client PING is forwarded through the relay to the client, since the relay's ANNOUNCE heartbeat only keeps the agent↔relay link alive and never reaches the client
   Performance: single-reader of recv_msg | O(1) per-message dispatch | bounded local state
@@ -15,6 +15,7 @@ from rich.console import Console
 from ...trust.ws_admin import handle_admin_message, handle_onboard_submit
 from .connect import handle_connect, establish_connection
 from .agent_io import start_agent
+from .exec import run_exec
 from .ping import ping_loop
 
 console = Console()
@@ -30,6 +31,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
     conn = {"authenticated": False, "agent_address": None, "session_id": None, "session": None}
     active_io = None
     forward_task = None
+    exec_tasks = set()
     ping_task = asyncio.create_task(ping_loop(send_msg)) if enable_ping else None
 
     try:
@@ -110,6 +112,17 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                     if result:
                         active_io, forward_task = result
 
+            elif msg_type == "EXEC":
+                # Direct tool execution — no LLM, no session. Auth is the same
+                # gate as INPUT; each EXEC runs as its own task so a slow tool
+                # (long shell command) never blocks this read loop or other EXECs.
+                if not conn["authenticated"]:
+                    await send_msg({"type": "ERROR", "message": "authenticate first (send CONNECT)"})
+                else:
+                    task = asyncio.create_task(run_exec(data, send_msg, route_handlers))
+                    exec_tasks.add(task)
+                    task.add_done_callback(exec_tasks.discard)
+
             elif active_io:
                 # Anything else (ASK_USER_RESPONSE, APPROVAL_RESPONSE, mode_change, ...)
                 # → forward to the running agent's input mailbox.
@@ -118,7 +131,7 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
         # asyncio cancel idiom: cancel() only signals; await ensures the task
         # actually unwinds before we return. The CancelledError surfaced by
         # that await is the expected exit signal — not a bug, swallow it.
-        for task in (forward_task, ping_task):
+        for task in (forward_task, ping_task, *exec_tasks):
             if task and not task.done():
                 task.cancel()
                 try:

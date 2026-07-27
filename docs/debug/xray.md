@@ -173,7 +173,7 @@ If you need multi-threading, either:
 1. Don't use `@xray` in production (recommended)
 2. Use separate agent instances per thread
 
-**For production:** If you need to access agent context in tools, use the [Events system](../events.md) instead. Events provide a cleaner, safer pattern for injecting agent context without global state.
+**For production:** If you need to access agent context in tools, use the [Events system](../concepts/events.md) instead. Events provide a cleaner, safer pattern for injecting agent context without global state.
 
 If you have a use case that requires thread-local xray context, please [open a GitHub issue](https://github.com/openonion/connectonion/issues) to discuss.
 
@@ -210,6 +210,6 @@ def smart_search(query: str) -> str:
 
 ## Next Steps
 
-- Try [@replay](replay.md) for re-running tools with different parameters
-- See [Examples](examples.md) for complete debugging workflows
-- Check [API Reference](api.md) for all xray properties
+- Try `@replay` for re-running tools with different parameters
+- See [Examples](../examples.md) for complete debugging workflows
+- Check [API Reference](../api.md) for all xray properties

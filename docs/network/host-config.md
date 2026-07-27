@@ -756,5 +756,5 @@ trust:
 ## See Also
 
 - [host()](host.md) - Host function reference
-- [Trust System](../concepts/trust.md) - Trust verification details
+- [Trust System](../features/trust.md) - Trust verification details
 - [ANNOUNCE Message](protocol/announce-message.md) - Agent discovery protocol

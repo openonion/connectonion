@@ -349,7 +349,7 @@ class RuntimeInspector:
             if not path.exists():
                 return f"File not found: {filename}"
 
-            with open(path, 'r') as f:
+            with open(path, 'r', encoding="utf-8") as f:
                 lines = f.readlines()
 
             start = max(0, line_number - context_lines - 1)

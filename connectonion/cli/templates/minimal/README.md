@@ -45,9 +45,9 @@ The `.env` file is created automatically during `co init`. It includes:
 
 **Ready for more?** Try these templates:
 
-- `co init --template playwright` - Browser automation with Playwright
+- `co init --template browser` - Browser automation, driven by `co browser`
 - `co init --template web-research` - Web search and research tools
-- `co init --template meta-agent` - Multi-agent orchestration
+- `co init --template coder` - Coding agent with bash and file editing
 
 ## Learn More
 

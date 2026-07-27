@@ -51,7 +51,7 @@ def _write_agent_json(name: str, bio: str, addr: str):
         "skills":  [],
         "version": "v0.1.0",
     }
-    AGENT_JSON.write_text(json.dumps(profile, indent=2))
+    AGENT_JSON.write_text(json.dumps(profile, indent=2), encoding="utf-8")
 
 
 def handle_setup(
@@ -69,7 +69,7 @@ def handle_setup(
 
     # Phase 2: agent.json
     if AGENT_JSON.exists() and not force:
-        existing = json.loads(AGENT_JSON.read_text())
+        existing = json.loads(AGENT_JSON.read_text(encoding="utf-8"))
         console.print(f"[dim]✓ {AGENT_JSON} exists (alias={existing.get('alias')}, skip — pass --force to overwrite)[/dim]")
     else:
         if AGENT_JSON.exists() and force:
@@ -92,7 +92,7 @@ def handle_setup(
         handle_skills_manifest()
 
     # Auth check
-    auth_ok = KEYS_ENV.exists() and "OPENONION_API_KEY=" in KEYS_ENV.read_text()
+    auth_ok = KEYS_ENV.exists() and "OPENONION_API_KEY=" in KEYS_ENV.read_text(encoding="utf-8")
     console.print()
     if auth_ok:
         console.print("[green]✓ Auth:[/green] OPENONION_API_KEY present")

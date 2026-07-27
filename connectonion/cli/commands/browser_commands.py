@@ -55,10 +55,10 @@ def _next_tip():
     """Rotate through TIPS so each run teaches something new; index persists in ~/.co.
     A garbled state file (e.g. two commands racing the write) resets to the first tip."""
     state = Path.home() / ".co" / ".browser_tip"
-    raw = state.read_text().strip() if state.exists() else ""
+    raw = state.read_text(encoding="utf-8").strip() if state.exists() else ""
     idx = int(raw) if raw.isdigit() else 0
     state.parent.mkdir(parents=True, exist_ok=True)
-    state.write_text(str((idx + 1) % len(TIPS)))
+    state.write_text(str((idx + 1) % len(TIPS)), encoding="utf-8")
     return TIPS[idx % len(TIPS)]
 
 

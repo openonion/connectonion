@@ -18,7 +18,7 @@ AGENT.md Format:
 ---
 name: explore
 description: Fast codebase exploration agent
-model: co/gemini-2.5-flash
+model: co/gemini-3.6-flash
 max_iterations: 15
 tools:
   - glob
@@ -65,7 +65,7 @@ def _load_agent(agent_name: str) -> Optional[Dict[str, Any]]:
     """Load agent configuration from filesystem."""
     for path in _get_agent_paths(agent_name):
         if path.exists():
-            content = path.read_text()
+            content = path.read_text(encoding="utf-8")
             frontmatter, system_prompt = _parse_agent_content(content)
             return {
                 'path': str(path),
@@ -121,7 +121,7 @@ def _discover_all_agents() -> List[Dict[str, str]]:
 
             seen_names.add(agent_name)
 
-            content = agent_file.read_text()
+            content = agent_file.read_text(encoding="utf-8")
             frontmatter, _ = _parse_agent_content(content)
             description = frontmatter.get('description', 'No description')
 
@@ -162,7 +162,7 @@ def task(agent, prompt: str, agent_type: str) -> str:
     # Extract configuration
     frontmatter = config['frontmatter']
     system_prompt = config['system_prompt']
-    model = frontmatter.get('model', 'co/gemini-2.5-pro')
+    model = frontmatter.get('model', 'co/gemini-3.6-flash')
     max_iterations = frontmatter.get('max_iterations', 10)
     tool_names = frontmatter.get('tools', [])
 

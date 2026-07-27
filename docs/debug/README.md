@@ -15,4 +15,4 @@ Tools for debugging and understanding your agents.
 ## Logging
 
 - [log.md](log.md) - Activity logging configuration
-- [session-yaml-format.md](session-yaml-format.md) - Session YAML format specification
+- [eval-format.md](eval-format.md) - Session YAML format specification

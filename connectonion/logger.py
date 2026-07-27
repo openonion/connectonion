@@ -195,7 +195,7 @@ class Logger:
 
         # Load existing or create new
         if self.eval_file.exists():
-            with open(self.eval_file, 'r') as f:
+            with open(self.eval_file, 'r', encoding="utf-8") as f:
                 self.eval_data = yaml.safe_load(f) or {}
 
             # Check if this is the same conversation (same first input)
@@ -469,5 +469,5 @@ class Logger:
         """Load eval data from file."""
         if not self.eval_file or not self.eval_file.exists():
             return {'turns': [], 'runs': 0}
-        with open(self.eval_file, 'r') as f:
+        with open(self.eval_file, 'r', encoding="utf-8") as f:
             return yaml.safe_load(f) or {'turns': [], 'runs': 0}

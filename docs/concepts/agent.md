@@ -42,7 +42,7 @@ Agent(
     name="my_bot",                        # Required: agent identifier
     tools=[func1, func2],                 # Optional: functions agent can call
     system_prompt="You are helpful",      # Optional: personality/behavior
-    model="co/gemini-2.5-pro",            # Optional: LLM model (default: co/gemini-2.5-pro)
+    model="co/gemini-3.6-flash",            # Optional: LLM model (default: co/gemini-3.6-flash)
     max_iterations=100,                   # Optional: how many tool calls allowed (default: 100)
     api_key="sk-...",                     # Optional: override environment variable
     llm=custom_llm,                       # Optional: bring your own LLM instance
@@ -448,7 +448,7 @@ See [max_iterations.md](max_iterations.md) for detailed guide.
 
 ### Supported Providers
 
-Default model is `co/gemini-2.5-pro`. You can use:
+Default model is `co/gemini-3.6-flash`. You can use:
 
 ```python
 # OpenAI models
@@ -463,8 +463,8 @@ agent = Agent("bot", model="claude-haiku-4-5")
 agent = Agent("bot", model="claude-opus-4")
 
 # Google Gemini
-agent = Agent("bot", model="gemini-2.5-pro")
-agent = Agent("bot", model="gemini-2.5-flash")
+agent = Agent("bot", model="gemini-3.6-flash")
+agent = Agent("bot", model="gemini-3.6-flash")
 agent = Agent("bot", model="gemini-2.0-flash-exp")
 ```
 
@@ -491,7 +491,7 @@ agent = Agent("bot", api_key="sk-...", model="gpt-4o-mini")
 ### Custom LLM Instance (Advanced)
 
 ```python
-from connectonion.llm import AnthropicLLM
+from connectonion.core.llm import AnthropicLLM
 
 custom_llm = AnthropicLLM(
     model="claude-sonnet-4-5",
@@ -526,7 +526,7 @@ print(f"Context window used: {agent.context_percent:.1f}%")
 After each LLM call, `agent.last_usage` contains:
 
 ```python
-from connectonion.usage import TokenUsage
+from connectonion.core.usage import TokenUsage
 
 # TokenUsage fields:
 agent.last_usage.input_tokens      # Total input tokens
@@ -592,10 +592,10 @@ Token usage is automatically shown in console logs after each LLM call:
 
 Cost tracking works with all supported providers:
 - OpenAI (gpt-4o, gpt-4o-mini, o1, o3-mini, o4-mini)
-- Anthropic Claude (claude-opus-4-5, claude-sonnet-4-5, claude-haiku-4-5)
-- Google Gemini (gemini-3-pro-preview, gemini-2.5-pro, gemini-2.5-flash)
+- Anthropic Claude (claude-sonnet-4, claude-opus-4, claude-3-5-sonnet, claude-3-5-haiku)
+- Google Gemini (gemini-3.6-flash, gemini-3.5-flash, gemini-3-pro-preview, gemini-2.5-pro, gemini-2.5-flash)
 
-Unknown models use default pricing estimates.
+Models not in the pricing table fall back to default pricing estimates ($1/M input, $3/M output).
 
 ---
 
@@ -689,7 +689,7 @@ CONNECTONION_LOG=debug.log python agent.py
 See what your agent is thinking inside tool execution:
 
 ```python
-from connectonion.decorators import xray
+from connectonion import xray
 
 @xray
 def search(query: str) -> str:
@@ -859,7 +859,7 @@ agent.input("Go to wikipedia.org, search for 'Python', take screenshot")
 ```python
 from unittest.mock import Mock
 from connectonion import Agent
-from connectonion.llm import LLMResponse
+from connectonion.core.llm import LLMResponse
 
 def test_agent():
     agent = Agent("test", tools=[calculate])
@@ -895,7 +895,7 @@ import pytest
 @pytest.mark.real_api
 def test_real_agent():
     """Requires OPENONION_API_KEY or GEMINI_API_KEY in environment."""
-    agent = Agent("test", tools=[search], model="co/gemini-2.5-flash")
+    agent = Agent("test", tools=[search], model="co/gemini-3.6-flash")
     result = agent.input("Search for Python")
     assert "Python" in result
 
@@ -933,10 +933,10 @@ agent.input("prompt")
 
 If you want to explore the source code:
 
-- **Agent core**: `connectonion/agent.py:32` (Agent class definition)
-- **Tool execution**: `connectonion/tool_executor.py:24` (Tool execution logic)
-- **LLM interface**: `connectonion/llm.py:41` (LLM abstraction)
-- **Tool factory**: `connectonion/tool_factory.py:26` (Function → Tool conversion)
+- **Agent core**: `connectonion/core/agent.py` (Agent class definition)
+- **Tool execution**: `connectonion/core/tool_executor.py` (Tool execution logic)
+- **LLM interface**: `connectonion/core/llm.py` (LLM abstraction)
+- **Tool factory**: `connectonion/core/tool_factory.py` (Function → Tool conversion)
 - **Console**: `connectonion/console.py:15` (Logging)
 
 ### Error Handling Philosophy
@@ -1011,7 +1011,7 @@ This makes agents resilient to errors.
 
 ### Advanced Features
 - **[xray.md](../debug/xray.md)** - Debug and inspect agent behavior
-- **[trust.md](trust.md)** - Security and tool verification
+- **[trust.md](../features/trust.md)** - Security and tool verification
 - **[max_iterations.md](max_iterations.md)** - Detailed iteration control
 - **[log.md](../debug/log.md)** - Logging configuration
 - **[console.md](../debug/console.md)** - Console output and debugging

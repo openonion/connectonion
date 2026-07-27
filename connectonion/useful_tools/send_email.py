@@ -15,6 +15,7 @@ import yaml
 import requests
 from pathlib import Path
 from typing import Dict, Optional
+from dotenv import load_dotenv
 
 
 def send_email(to: str, subject: str, message: str) -> Dict:
@@ -32,11 +33,14 @@ def send_email(to: str, subject: str, message: str) -> Dict:
             - from (str): Sender email address
             - error (str): Error message if failed
     """
-    # Find .env file by searching up the directory tree
+    # Credentials come from the environment. A .env file is a convenience fallback,
+    # NOT a precondition: env vars set directly (container / CI / systemd, or already
+    # loaded by the `co` CLI) are equally valid. Load a .env if we can find one to
+    # populate any missing vars, but never require the file to exist on disk.
     env_file = None
     current_dir = Path.cwd()
 
-    # Search up to 5 levels for .env
+    # Search up to 5 levels for a local .env
     for _ in range(5):
         potential_env = current_dir / ".env"
         if potential_env.exists():
@@ -46,32 +50,30 @@ def send_email(to: str, subject: str, message: str) -> Dict:
             break
         current_dir = current_dir.parent
 
-    # If no local .env found, try global keys.env
+    # Fall back to the global keys.env
     if not env_file:
         global_keys_env = Path.home() / ".co" / "keys.env"
         if global_keys_env.exists():
             env_file = global_keys_env
 
-    if not env_file:
-        return {
-            "success": False,
-            "error": "No .env file found. Run 'co init' or 'co auth' first."
-        }
+    # Load it if present (does not override vars already set in the environment)
+    if env_file:
+        load_dotenv(env_file)
 
-    # Get authentication token and agent email from environment
+    # Get authentication token and agent email from the environment
     token = os.getenv("OPENONION_API_KEY")
     from_email = os.getenv("AGENT_EMAIL")
 
     if not token:
         return {
             "success": False,
-            "error": "OPENONION_API_KEY not found in .env. Run 'co auth' to authenticate."
+            "error": "OPENONION_API_KEY not set. Run 'co auth' to authenticate."
         }
 
     if not from_email:
         return {
             "success": False,
-            "error": "AGENT_EMAIL not found in .env. Run 'co auth' to set up email."
+            "error": "AGENT_EMAIL not set. Run 'co auth' to set up email."
         }
     
     # Validate recipient email
@@ -166,7 +168,7 @@ def get_agent_email() -> Optional[str]:
         return None
 
     try:
-        with open(config_path, 'r') as f:
+        with open(config_path, 'r', encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
         agent_config = config.get("agent", {})
 

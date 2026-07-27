@@ -7,12 +7,12 @@ Make direct LLM calls with optional structured output. Supports OpenAI, Google G
 ```python
 from connectonion import llm_do
 
-# Default: co/gemini-2.5-flash (managed key, no setup needed)
+# Default: co/gemini-3.6-flash (managed key, no setup needed)
 answer = llm_do("What's 2+2?")  
 print(answer)  # "4"
 
 # Google Gemini (your own key)
-answer = llm_do("What's 2+2?", model="gemini-2.5-flash")  
+answer = llm_do("What's 2+2?", model="gemini-3.6-flash")  
 
 # Anthropic Claude
 answer = llm_do("What's 2+2?", model="claude-haiku-4-5")
@@ -120,8 +120,8 @@ llm_do("Hello", model="co/gpt-4o-mini")
 llm_do("Hello", model="co/o4-mini")
 
 # Google Gemini models (via managed keys)
-llm_do("Hello", model="co/gemini-2.5-pro")
-llm_do("Hello", model="co/gemini-2.5-flash")
+llm_do("Hello", model="co/gemini-3.6-flash")
+llm_do("Hello", model="co/gemini-3.6-flash")
 
 # Anthropic Claude models (via managed keys)
 llm_do("Hello", model="co/claude-sonnet-4-5")
@@ -146,7 +146,7 @@ class Answer(BaseModel):
 
 # Works with all providers
 llm_do("What is 2+2?", output=Answer, model="co/gpt-4o-mini")      # ✅
-llm_do("What is 2+2?", output=Answer, model="co/gemini-2.5-flash") # ✅
+llm_do("What is 2+2?", output=Answer, model="co/gemini-3.6-flash") # ✅
 llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4-5") # ✅
 
 # Legacy Claude models do NOT support structured output
@@ -160,7 +160,7 @@ llm_do("What is 2+2?", output=Answer, model="co/claude-sonnet-4-5") # ✅
 | `input` | str | required | The input text/question |
 | `output` | BaseModel | None | Pydantic model for structured output |
 | `system_prompt` | str\|Path | None | System prompt (string or file path) |
-| `model` | str | "gpt-4o-mini" | Model to use (supports OpenAI, Gemini, Claude) |
+| `model` | str | "co/gemini-3.6-flash" | Model to use (supports OpenAI, Gemini, Claude) |
 | `temperature` | float | 0.1 | Randomness (0=deterministic, 2=creative) |
 
 ## What You Get
@@ -251,6 +251,6 @@ except Exception as e:
 
 ## Next Steps
 
-- Learn about [Agents](concepts/agent.md) for multi-step workflows
-- Explore [Tools](concepts/tools.md) for extending agents
-- See [xray](debug/xray.md) for debugging
+- Learn about [Agents](agent.md) for multi-step workflows
+- Explore [Tools](tools.md) for extending agents
+- See [xray](../debug/xray.md) for debugging

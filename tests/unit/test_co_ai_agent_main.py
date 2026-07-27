@@ -37,12 +37,17 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert "ask_user" in agent.tools._tools
     # agent.py removes this stdin-blocking helper; it must not come back
     assert "wait_for_manual_login" not in agent.tools._tools
-    assert agent.tools.get_instance("browserautomation")._headless is False
+    # The browser is driven through the `co browser` CLI, so no in-process
+    # BrowserAutomation is wired in — bash carries every browser action, and
+    # 40 tool schemas stay out of the request.
+    assert agent.tools.get_instance("browserautomation") is None
+    assert "bash" in agent.tools._tools
     assert agent.co_dir == Path(".co")
-    # Hosted co ai serves many chat panels off one shared browser, so the
-    # session-binding handler must be registered or every panel shares one tab.
+    # bind_browser_session existed only because hosted co ai ran every panel's
+    # turns on one in-process BrowserAutomation. The `co browser` daemon owns
+    # tabs itself (`-t <tab>`), so the workaround is gone.
     from connectonion.useful_plugins.bind_browser_session import _bind_browser_session
-    assert _bind_browser_session in agent.events["before_each_tool"]
+    assert _bind_browser_session not in agent.events["before_each_tool"]
 
 
 def test_start_server_hosts_provided_agent(monkeypatch):

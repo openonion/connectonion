@@ -40,20 +40,20 @@ def _is_git_repo() -> bool:
 def _git_stash_push(message: str) -> bool:
     result = subprocess.run(
         ["git", "stash", "push", "-m", message, "--include-untracked"],
-        capture_output=True, text=True
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     return result.returncode == 0
 
 
 def _git_stash_pop() -> bool:
-    result = subprocess.run(["git", "stash", "pop"], capture_output=True, text=True)
+    result = subprocess.run(["git", "stash", "pop"], capture_output=True, text=True, encoding="utf-8", errors="replace")
     return result.returncode == 0
 
 
 def _git_stash_apply(index: int = 0) -> bool:
     result = subprocess.run(
         ["git", "stash", "apply", f"stash@{{{index}}}"],
-        capture_output=True, text=True
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     return result.returncode == 0
 
@@ -61,7 +61,7 @@ def _git_stash_apply(index: int = 0) -> bool:
 def _git_stash_drop(index: int = 0) -> bool:
     result = subprocess.run(
         ["git", "stash", "drop", f"stash@{{{index}}}"],
-        capture_output=True, text=True
+        capture_output=True, text=True, encoding="utf-8", errors="replace"
     )
     return result.returncode == 0
 
