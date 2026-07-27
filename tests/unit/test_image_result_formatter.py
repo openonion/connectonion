@@ -535,7 +535,9 @@ def test_screenshot_path_becomes_an_attached_image(tmp_path, monkeypatch):
         "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8"
         "z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
     ))
-    monkeypatch.setattr(fmt, "_upload_image", lambda *a, **k: "https://example.com/i.png", raising=False)
+    # No raising=False: a wrong name here would silently leave the real
+    # uploader in place and put a network call in the unit suite.
+    monkeypatch.setattr(fmt, "_upload_to_oo_api", lambda *a, **k: "https://example.com/i.png")
 
     class Logger:
         def print(self, *a, **k): pass
