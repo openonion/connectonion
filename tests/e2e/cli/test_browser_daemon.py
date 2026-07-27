@@ -980,3 +980,49 @@ def test_second_daemon_yields_at_the_singleton_lock(short_sock, monkeypatch):
     code = c.send("go_to survivor.com", headless=True)
     assert code == 0
     assert ("go_to", "survivor.com") in winner.browser.calls
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX socket path")
+def test_permission_error_never_unlinks_a_live_socket(short_sock, monkeypatch):
+    """A sandbox that denies connect() must not take a healthy daemon offline.
+
+    _connect_posix used to treat every non-ConnectionRefused OSError as proof of
+    a stale socket. An EACCES from a restricted process therefore unlinked the
+    socket of a live, idle daemon, which kept accept()ing on the now-unlinked
+    inode while every later client reported "daemon is busy".
+    """
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    daemon = make_daemon(short_sock)
+    thread = threading.Thread(target=daemon.serve, daemon=True)
+    thread.start()
+    _wait_until_listening(short_sock)
+
+    real_connect = socket.socket.connect
+
+    def denied(self, addr):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(socket.socket, "connect", denied)
+    assert c._connect_posix(short_sock) is None
+    monkeypatch.setattr(socket.socket, "connect", real_connect)
+
+    # The live daemon keeps its socket, and a normal client still reaches it.
+    assert os.path.exists(short_sock), "live daemon's socket was unlinked"
+    assert c.send("go_to survivor.com", headless=True) == 0
+    assert ("go_to", "survivor.com") in daemon.browser.calls
+
+
+@pytest.mark.skipif(os.name == "nt", reason="POSIX socket path")
+def test_permission_error_still_clears_a_dead_owners_socket(short_sock, monkeypatch):
+    """The cleanup this guard replaced must still happen when nobody is home."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    sock.bind(short_sock)  # a socket file with no live owner recorded
+    sock.close()
+
+    def denied(self, addr):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(socket.socket, "connect", denied)
+    assert c._connect_posix(short_sock) is None
+    assert not os.path.exists(short_sock), "stale socket should have been removed"
