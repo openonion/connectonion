@@ -533,7 +533,11 @@ class BrowserDaemon:
         self._srv = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self._srv.bind(self.sock_path)
         Path(transport.pid_path(self.sock_path)).write_text(str(os.getpid()), encoding="utf-8")
-        self._srv.listen(8)
+        # Commands execute serially, so a long browser action can leave many
+        # concurrent CLI callers waiting to be accepted. Use the platform's
+        # supported maximum queue instead of making the ninth caller look as if
+        # the healthy daemon disappeared.
+        self._srv.listen(socket.SOMAXCONN)
 
     def _bind_windows(self):
         """Named-pipe bind. A pipe vanishes WITH its owning process, so 'no pipe' is

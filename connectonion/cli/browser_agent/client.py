@@ -48,6 +48,13 @@ def _connect_posix(sock_path: str):
             time.sleep(0.1)
         except OSError:
             conn.close()
+            # macOS may report a full AF_UNIX accept queue as a generic OSError
+            # rather than ConnectionRefusedError. The socket belongs to a healthy
+            # daemon in that case; unlinking it would strand that daemon and let a
+            # second one start against the same browser profile.
+            if _owner_alive(sock_path):
+                time.sleep(0.1)
+                continue
             if os.path.exists(sock_path):
                 os.unlink(sock_path)  # stale socket: nothing is listening on it
             return None

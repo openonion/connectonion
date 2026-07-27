@@ -843,6 +843,34 @@ def test_bind_replaces_a_stale_socket_without_pidfile(short_sock):
     daemon._srv.close()
 
 
+@posix_only
+def test_connect_retries_generic_oserror_while_daemon_owner_is_alive(
+        short_sock, monkeypatch):
+    """macOS can surface a full accept queue as generic OSError. A live owner
+    makes that socket busy, not stale: retry it and never unlink its endpoint."""
+    Path(short_sock).touch()
+    attempts = []
+
+    class FakeSocket:
+        def connect(self, path):
+            attempts.append(path)
+            if len(attempts) == 1:
+                raise OSError("accept queue full")
+
+        def close(self):
+            pass
+
+    monkeypatch.setattr(c.socket, "socket", lambda *args: FakeSocket())
+    monkeypatch.setattr(c, "_owner_alive", lambda path: True)
+    monkeypatch.setattr(c.time, "sleep", lambda seconds: None)
+
+    conn = c._connect_posix(short_sock)
+
+    assert isinstance(conn, FakeSocket)
+    assert attempts == [short_sock, short_sock]
+    assert os.path.exists(short_sock)
+
+
 # ---- newtab id allocation vs named tabs -----------------------------------
 
 def test_newtab_skips_ids_taken_by_named_tabs(tmp_path):
@@ -959,6 +987,49 @@ def test_concurrent_clients_are_all_served(short_sock, monkeypatch):
 
     assert len(codes) == 8 and all(code == 0 for code in codes)
     assert len(daemon.browser.calls) == 8  # nothing dropped under contention
+
+
+@posix_only
+def test_32_clients_queue_behind_a_long_running_command(short_sock, monkeypatch):
+    """A burst larger than the old eight-connection backlog remains queued while
+    one command holds the single-threaded daemon."""
+    monkeypatch.setenv("CO_BROWSER_SOCK", short_sock)
+    entered = threading.Event()
+    release = threading.Event()
+
+    class SlowFirstBrowser(StubBrowser):
+        def go_to(self, url, purpose="", who="", hours=0.0):
+            if url == "slow.example":
+                entered.set()
+                assert release.wait(timeout=10)
+            return super().go_to(url, purpose=purpose, who=who, hours=hours)
+
+    daemon = make_daemon(short_sock, SlowFirstBrowser())
+    threading.Thread(target=daemon.serve, daemon=True).start()
+    _wait_until_listening(short_sock)
+
+    codes = []
+    blocker = threading.Thread(
+        target=lambda: codes.append(c.send("go_to slow.example", headless=True)))
+    blocker.start()
+    assert entered.wait(timeout=5)
+
+    workers = [
+        threading.Thread(
+            target=lambda i=i: codes.append(
+                c.send(f"go_to queued{i}.example", headless=True)))
+        for i in range(32)
+    ]
+    for worker in workers:
+        worker.start()
+    time.sleep(0.25)
+    release.set()
+    blocker.join(timeout=30)
+    for worker in workers:
+        worker.join(timeout=30)
+
+    assert len(codes) == 33 and all(code == 0 for code in codes)
+    assert len(daemon.browser.calls) == 33
 
 
 def test_second_daemon_yields_at_the_singleton_lock(short_sock, monkeypatch):
