@@ -92,8 +92,8 @@ class TestCliDeploy:
             mock_post.return_value = MagicMock(
                 status_code=200,
                 json=lambda: {
-                    "deployment_id": "abc123",
-                    "agent_url": "https://test-agent-abc123.agents.openonion.ai"
+                    "id": "abc123",
+                    "url": "https://test-agent-abc123.agents.openonion.ai"
                 }
             )
             mock_get.return_value = MagicMock(
@@ -277,6 +277,66 @@ class TestCliDeploy:
                 result = self.runner.invoke(cli, ['deploy'])
 
             assert "Deploy failed" in result.output
+
+
+class TestDeployValidation:
+    """Names and backend replies the CLI must reject before doing slow work."""
+
+    def setup_method(self):
+        self.runner = ArgparseCliRunner()
+
+    @pytest.mark.parametrize("project_name", [
+        "My-Agent",       # docker build rejects uppercase tags
+        "my_agent",       # not a legal DNS label
+        "x; rm -rf /",
+        "-leading-hyphen",
+    ])
+    def test_deploy_rejects_invalid_project_name(self, project_name):
+        """The name becomes a hostname and a Docker tag; fail before uploading."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text(f'name: {project_name!r}\nentrypoint: agent.py\n')
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+            result = self.runner.invoke(cli, ['deploy'])
+            assert "Invalid project name" in result.output
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.get')
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_deploy_stops_when_backend_returns_no_id(self, mock_post, mock_get):
+        """Without an id there is nothing to poll — don't loop on /deploy/None/status."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.commands.deploy_commands import _deploy_current_project
+
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+            mock_post.return_value = MagicMock(status_code=200, json=lambda: {"url": "u"})
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                assert _deploy_current_project([]) is False
+
+            mock_get.assert_not_called()
+
+    def test_host_export_check_ignores_comments_and_attributes(self):
+        """Only a real host(...) call counts as exporting an ASGI app."""
+        from connectonion.cli.commands.deploy_commands import _check_host_export
+
+        with self.runner.isolated_filesystem():
+            Path("commented.py").write_text("# host(agent)\nprint('hi')\n")
+            assert _check_host_export("commented.py") is False
+
+            Path("attribute.py").write_text("client.host(agent)\n")
+            assert _check_host_export("attribute.py") is False
+
+            Path("real.py").write_text("from connectonion import host\nhost(agent)\n")
+            assert _check_host_export("real.py") is True
+
+            Path("assigned.py").write_text("app = host(agent)\n")
+            assert _check_host_export("assigned.py") is True
 
 
 @SKIP_NO_GIT

@@ -2,11 +2,11 @@
 Purpose: Deploy agent projects to ConnectOnion Cloud with local packaging and env vars
 LLM-Note:
   Dependencies: imports from [fnmatch, json, os, re, shutil, subprocess, tarfile, tempfile, time, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
-  Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → load_api_key() loads OPENONION_API_KEY → reads host.yaml for project name, entrypoint, env file path → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
+  Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → reads host.yaml for project name, entrypoint, env file path → checks the name against PROJECT_NAME_PATTERN (same rule the backend enforces) and the entrypoint's host() export → load_api_key() loads OPENONION_API_KEY → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
   State/Effects: creates temporary tarball file in tempdir | template deploy creates/deletes a temporary project on success | reads .co/host.yaml, .env files | makes network POST request | prints progress to stdout via rich.Console | normal deploy does not modify project files
   Integration: exposes handle_deploy(template, skills, name) for CLI | expects .co/host.yaml (name, entrypoint, env) unless --template is used | --name only valid with --template (otherwise the name comes from host.yaml) | uses Bearer token auth | returns bool success
-  Performance: packaging is local file I/O | network timeout 600s for upload, 30s for status checks | polls every 3s up to 100 times (~5 min)
-  Errors: fails if not ConnectOnion project (no host.yaml) | fails if no API key | prints backend error messages
+  Performance: packaging is local file I/O | network timeout 600s for upload, 30s for status checks | polls every 3s for up to 20 min, covering the backend's own build budget (rsync 120s + docker build 900s + run 60s)
+  Errors: fails if not ConnectOnion project (no host.yaml) | fails if project name is not a valid hostname label | fails if no API key | prints backend error messages
 """
 
 import fnmatch
@@ -30,6 +30,16 @@ console = Console()
 API_BASE = "https://oo.openonion.ai"
 DASHBOARD_URL = "https://o.openonion.ai/dashboard"
 
+# Poll until the backend's own build budget is exhausted (rsync 120s + docker
+# build 900s + run 60s), plus slack for queueing. Giving up at 5 minutes told
+# users a co-ai or browser deploy had failed while it was still building.
+DEPLOY_POLL_SECONDS = 3
+DEPLOY_TIMEOUT_SECONDS = 20 * 60
+
+# Mirrors the server's rule (oo-api deploy/service.py). Checked locally so a bad
+# name in host.yaml fails before packaging and uploading the whole project.
+PROJECT_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,38}$")
+
 
 def _check_host_export(entrypoint: str) -> bool:
     """Check if entrypoint file exports an ASGI app via host().
@@ -45,11 +55,12 @@ def _check_host_export(entrypoint: str) -> bool:
 
     content = entrypoint_path.read_text(encoding="utf-8")
 
-    # Check for host() call pattern
-    # Matches: host(agent), host(my_agent), host( agent ), etc.
-    host_call_pattern = r'\bhost\s*\([^)]+\)'
+    # A host(...) call on a line of its own or bound to a name. `[^#\n]*` keeps
+    # commented-out calls from counting, and the lookbehind rules out attribute
+    # calls and names that merely end in "host" (client.host(...), ghost(...)).
+    host_call_pattern = r'^[^#\n]*(?<![\w.])host\s*\([^)]+\)'
 
-    if re.search(host_call_pattern, content):
+    if re.search(host_call_pattern, content, re.MULTILINE):
         return True
 
     return False
@@ -107,6 +118,17 @@ def _is_git_repo(project_dir: Path) -> bool:
         capture_output=True,
     )
     return result.returncode == 0 and Path(result.stdout.decode().strip()).resolve() == project_dir.resolve()
+
+
+def _error_text(response: requests.Response) -> str:
+    """Backend errors are {"detail": "..."}; fall back to the raw body."""
+    try:
+        detail = response.json().get("detail")
+    except ValueError:
+        return response.text
+    if isinstance(detail, str):
+        return detail
+    return response.text
 
 
 def _format_bytes(size: int) -> str:
@@ -236,18 +258,25 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
             console.print(f"[red]Skills path not found or not a directory: {sp}[/red]")
             return False
 
-    # Must have API key
-    api_key = load_api_key()
-    if not api_key:
-        console.print("[red]No API key. Run 'co auth' first.[/red]")
-        return False
-
-    # Load config from host.yaml
+    # Load config from host.yaml. The project is checked before credentials are:
+    # a broken host.yaml is worth reporting whether or not you happen to be
+    # logged in.
     with open(host_yaml_path, 'r', encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
     project_name = config.get("name", "unnamed-agent")
     env_file = config.get("env", ".env")
     entrypoint = config.get("entrypoint", "agent.py")
+
+    # The name becomes a hostname and a Docker tag, so the backend rejects
+    # anything outside this set. Fail here rather than after the upload.
+    if not PROJECT_NAME_PATTERN.match(project_name):
+        console.print(f"[red]Invalid project name: {project_name}[/red]")
+        console.print(
+            "[dim]Names may use 1-39 lowercase letters, digits, and hyphens, "
+            "and must start with a letter or digit.[/dim]"
+        )
+        console.print(f"[dim]Set 'name' in {host_yaml_path}[/dim]")
+        return False
 
     # Validate entrypoint exists
     entrypoint_path = project_dir / entrypoint
@@ -268,6 +297,12 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
         console.print("  [cyan]host(agent)  # Starts HTTP server[/cyan]")
         console.print()
         console.print("[dim]See: https://docs.connectonion.com/deploy[/dim]")
+        return False
+
+    # Must have API key
+    api_key = load_api_key()
+    if not api_key:
+        console.print("[red]No API key. Run 'co auth' first.[/red]")
         return False
 
     # Load env vars from .env as runtime secrets; .env itself stays out of the tarball.
@@ -317,7 +352,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
             )
 
     if response.status_code != 200:
-        console.print(f"[red]Deploy failed: {response.text}[/red]")
+        console.print(f"[red]Deploy failed: {_error_text(response)}[/red]")
         return False
 
     result = response.json()
@@ -329,8 +364,12 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
 
     deployment_id = result.get("id")
     url = result.get("url", "")
-    if deployment_id:
-        console.print(f"Deployment: {deployment_id}")
+    if not deployment_id:
+        # Without an id there is nothing to poll; don't spend five minutes
+        # requesting /deploy/None/status.
+        console.print("[red]Deploy failed: backend did not return a deployment id[/red]")
+        return False
+    console.print(f"Deployment: {deployment_id}")
 
     # Wait for deployment
     console.print("Building container on ConnectOnion Cloud...")
@@ -338,7 +377,9 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     final_status = "unknown"
     timeout_count = 0
 
-    for attempt in range(100):
+    deadline = time.monotonic() + DEPLOY_TIMEOUT_SECONDS
+
+    while time.monotonic() < deadline:
         try:
             status_resp = requests.get(
                 f"{API_BASE}/api/v1/deploy/{deployment_id}/status",
@@ -350,11 +391,11 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
             if timeout_count >= 3:
                 console.print("[yellow]Status checks timing out, but deploy may still succeed.[/yellow]")
                 break
-            time.sleep(3)
+            time.sleep(DEPLOY_POLL_SECONDS)
             continue
         except requests.exceptions.RequestException as e:
             console.print(f"[yellow]Network error: {e}[/yellow]")
-            time.sleep(3)
+            time.sleep(DEPLOY_POLL_SECONDS)
             continue
 
         if status_resp.status_code != 200:
@@ -363,7 +404,8 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
 
         result = status_resp.json()
         final_status = result.get("status", "unknown")
-        console.print(f"  [{attempt + 1}/100] status: {final_status}")
+        remaining = int(deadline - time.monotonic())
+        console.print(f"  [{remaining // 60}m{remaining % 60:02d}s left] status: {final_status}")
 
         if final_status == "running":
             deploy_success = True
@@ -373,7 +415,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
         if final_status in ("error", "failed"):
             console.print(f"[red]Deploy failed: {result.get('error_message') or 'Unknown error'}[/red]")
             return False
-        time.sleep(3)
+        time.sleep(DEPLOY_POLL_SECONDS)
 
     if deploy_success:
         console.print("[bold green]Deployed![/bold green]")
