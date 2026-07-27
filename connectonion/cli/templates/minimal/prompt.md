@@ -21,5 +21,11 @@ One daemon keeps the browser open between commands, so the page you left is
 the page you come back to — including logins. Run `co browser status` if you
 are unsure what is open, and `co browser help` for the full verb list.
 
+**Do not guess verbs.** The examples above are not the whole list. If the action
+you want is not one you have already seen work, run `co browser help` first and
+pick from what it prints — an invented verb costs a failed call and a recovery
+round trip.
+
+
 Screenshots print a path (`Screenshot saved to: ...`); the image is attached
 for you automatically, so you can look at it without reading the file.
