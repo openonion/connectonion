@@ -19,9 +19,16 @@ from ....console import Console
 
 DASHBOARD_FILE = "dashboard.html"
 
-# A dashboard is a glanceable Home, not a data dump. Well past any hand-written or
-# agent-written page, small enough that reading and framing it is never a problem.
-MAX_DASHBOARD_BYTES = 512 * 1024
+# Generous on purpose: the client's CSP allows images only as `data:` URIs, so the one
+# way to put a chart or logo on a dashboard is to inline it, and base64 adds ~33%. A
+# single 400KB screenshot lands near 530KB before any markup — a tighter cap would
+# reject pages the format actively pushes authors toward.
+#
+# The ceiling this has to stay under is the relay's: uvicorn accepts WebSocket messages
+# up to 16MB by default, and the snapshot crosses it as one frame (plus JSON escaping,
+# which adds a few percent). 2MB keeps ~8x headroom while still catching a runaway file
+# — a log accidentally named dashboard.html, or an agent dumping a dataset into it.
+MAX_DASHBOARD_BYTES = 2 * 1024 * 1024
 
 # Where dashboard.html lives, captured at host startup. Resolving cwd per read
 # would follow any later os.chdir (a tool, a plugin) and start serving whatever
@@ -49,8 +56,9 @@ def read_dashboard_snapshot(session_id=None):
         return None
     if size > MAX_DASHBOARD_BYTES:
         Console().print(
-            f"[yellow]{DASHBOARD_FILE} is {size // 1024}KB (limit "
-            f"{MAX_DASHBOARD_BYTES // 1024}KB) — not sending it to clients.[/yellow]"
+            f"[yellow]{DASHBOARD_FILE} is {size / 1_048_576:.1f}MB (limit "
+            f"{MAX_DASHBOARD_BYTES // 1_048_576}MB) — not sending it to clients. "
+            f"Inline images are the usual cause; compress them before embedding.[/yellow]"
         )
         return None
     try:

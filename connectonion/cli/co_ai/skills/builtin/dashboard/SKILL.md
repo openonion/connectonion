@@ -31,7 +31,7 @@ A button that runs something MUST be a real, user-invocable skill, wired like th
 ## Rules
 
 - One file: `dashboard.html`. No sidecar JSON, no build step.
-- Keep it under 512KB — the host won't send a larger file, and the Home pane goes blank.
+- Keep it under 2MB — the host won't send a larger file, and the Home pane goes blank. Inline images are base64, which is ~33% bigger than the source file, so compress screenshots before embedding them.
 - Keep the responsive layout and `prefers-color-scheme` dark mode intact.
 - Do not add `<script>` tags or inline `onclick` handlers — OChat strips all scripting; only the `data-ochat-skill` button contract works.
 - Keep styles inline in the file (external URLs are blocked in the sandbox).

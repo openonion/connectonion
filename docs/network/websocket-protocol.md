@@ -345,7 +345,7 @@ saw it.
 ```
 
 The HTML is agent-authored and untrusted: clients render it in a sandboxed iframe with
-scripting and network access blocked. Files over 512KB are not sent. See
+scripting and network access blocked. Files over 2MB are not sent. See
 [dashboard.md](dashboard.md).
 
 #### RUNTIME_INPUT_ACK

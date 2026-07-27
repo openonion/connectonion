@@ -48,8 +48,9 @@ sandbox rather than by convention:
 - **No external URLs.** No CDN stylesheets, no remote images, no fonts from the
   network. Inline your styles and use `data:` URIs for images.
 
-Keep it under **512KB**. The Host won't send a larger file, and the Home pane goes
-blank.
+Keep it under **2MB**. The Host won't send a larger file, and the Home pane goes
+blank. Inline images are base64, which is ~33% larger than the source file — compress
+screenshots before embedding them.
 
 ## Action buttons
 
@@ -117,7 +118,7 @@ See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.
 | `send_dashboard(send_msg, session_id, conn=None)` | Send it unless this connection already has the current file; reads off the event loop |
 | `ensure_dashboard(agent_metadata, project_dir=None)` | Write the starter if absent, and anchor the directory later reads resolve against |
 | `render_starter(agent_metadata)` | The day-zero HTML |
-| `MAX_DASHBOARD_BYTES` | 512KB size cap |
+| `MAX_DASHBOARD_BYTES` | 2MB size cap |
 
 The path is resolved against the project directory captured at host startup, not the
 live working directory — so a tool that changes directories mid-run can't redirect
