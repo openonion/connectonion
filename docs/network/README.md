@@ -8,6 +8,7 @@ Connect and collaborate between agents with automatic reliability and recovery.
 - [connect.md](connect.md) - Connect to remote agents with `connect()`
 - [io.md](io.md) - Stream events and communicate with clients
 - [session-reconnect.md](session-reconnect.md) - WebSocket reconnection and session recovery
+- [dashboard.md](dashboard.md) - Give your agent a Home page with `dashboard.html`
 
 ## Key Features
 

@@ -282,9 +282,16 @@ EOF
 
 ### 3. Built-in Skill (Shipped with ConnectOnion)
 
-Built-in skills are in `connectonion/cli/co_ai/skills/builtin/`.
+Built-in skills are in `connectonion/cli/co_ai/skills/builtin/`: `commit`, `dashboard`
+(edit the agent's [Home page](../network/dashboard.md)), `review-pr`, `ship-feature`.
 
 Users can override by creating same-named skill in project or user level.
+
+Built-in skills are **not published** to chat clients — only project-tree skills
+(`.co/skills/`, `.claude/skills/`) appear in an agent's public profile. This matters
+for dashboard action buttons, which a client validates against that profile: a button
+naming a built-in or user-level skill renders but never runs. The allowlist is
+`PUBLISHED_SKILL_LOCATIONS` in `connectonion/useful_plugins/skills.py`.
 
 ### 4. Copyable Skill (from useful_skills/)
 

@@ -293,6 +293,26 @@ Keep-alive. Sent every 30 seconds.
 | `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
 
+#### DASHBOARD_SNAPSHOT
+
+The agent's `dashboard.html` — its Home page — for the client to render beside the
+chat. Sent right after `CONNECTED` so Home paints before any input, and again after
+`OUTPUT` when the run changed the file. Agents without a `dashboard.html` never send
+it, and the frame is skipped when the file hasn't changed since this connection last
+saw it.
+
+```json
+{
+  "type": "DASHBOARD_SNAPSHOT",
+  "html": "<!DOCTYPE html>…",
+  "session_id": "550e8400-..."
+}
+```
+
+The HTML is agent-authored and untrusted: clients render it in a sandboxed iframe with
+scripting and network access blocked. Files over 512KB are not sent. See
+[dashboard.md](dashboard.md).
+
 #### RUNTIME_INPUT_ACK
 
 Acknowledges an INPUT that arrived while the agent was running. The prompt has been queued and will be picked up at the agent's next iteration.
