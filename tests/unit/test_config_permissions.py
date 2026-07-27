@@ -126,7 +126,7 @@ def test_simple_tool_name_pattern_matching(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
 
     # Create agent
-    agent = Agent("test", plugins=[tool_approval])
+    agent = Agent("test", plugins=[tool_approval], llm=MockLLM())
 
     # Initialize session
     agent.current_session = {
@@ -177,7 +177,7 @@ def test_bash_exact_command_pattern(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
 
-    agent = Agent("test", plugins=[tool_approval])
+    agent = Agent("test", plugins=[tool_approval], llm=MockLLM())
     agent.current_session = {
         'messages': [],
         'trace': [],
@@ -225,7 +225,7 @@ def test_bash_wildcard_pattern(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
 
-    agent = Agent("test", plugins=[tool_approval])
+    agent = Agent("test", plugins=[tool_approval], llm=MockLLM())
     agent.current_session = {
         'messages': [],
         'trace': [],
@@ -276,7 +276,7 @@ def test_parameter_matching_with_match_field(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
 
-    agent = Agent("test", plugins=[tool_approval])
+    agent = Agent("test", plugins=[tool_approval], llm=MockLLM())
     agent.current_session = {
         'messages': [],
         'trace': [],
@@ -330,7 +330,7 @@ def test_parameter_matching_rejects_non_matching(tmp_path, monkeypatch):
     mock_io.send = Mock()
     mock_io.receive = Mock(return_value={'approved': False, 'mode': 'reject_hard'})
 
-    agent = Agent("test", plugins=[tool_approval])
+    agent = Agent("test", plugins=[tool_approval], llm=MockLLM())
     agent.io = mock_io
     agent.current_session = {
         'messages': [],
@@ -376,7 +376,7 @@ def test_glob_pattern_matching_in_match_field(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
 
-    agent = Agent("test", plugins=[tool_approval])
+    agent = Agent("test", plugins=[tool_approval], llm=MockLLM())
     agent.current_session = {
         'messages': [],
         'trace': [],
@@ -422,7 +422,7 @@ def test_priority_config_permissions_with_safe_tools(tmp_path, monkeypatch):
 
     monkeypatch.chdir(tmp_path)
 
-    agent = Agent("test", plugins=[tool_approval])
+    agent = Agent("test", plugins=[tool_approval], llm=MockLLM())
     agent.current_session = {
         'messages': [],
         'trace': [],
@@ -470,7 +470,7 @@ def _make_agent_with_permissions(tmp_path, monkeypatch, bash_patterns):
     }}
     (co_dir / 'host.yaml').write_text(yaml.dump(config))
     monkeypatch.chdir(tmp_path)
-    agent = Agent("test", plugins=[tool_approval], quiet=True)
+    agent = Agent("test", plugins=[tool_approval], quiet=True, llm=MockLLM())
     agent.current_session = {'messages': [], 'trace': [], 'turn': 0}
     load_config_permissions(agent)
     return agent

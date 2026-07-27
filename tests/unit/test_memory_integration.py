@@ -18,6 +18,7 @@ import os
 import shutil
 import pytest
 from connectonion import Agent, Memory
+from tests.utils.mock_helpers import MockLLM
 from unittest.mock import Mock, MagicMock
 
 
@@ -37,7 +38,7 @@ def memory_instance():
 
 def test_memory_as_agent_tool(memory_instance):
     """Test that Memory can be used as an agent tool."""
-    agent = Agent("test-agent", tools=[memory_instance])
+    agent = Agent("test-agent", tools=[memory_instance], llm=MockLLM())
 
     # Check that all memory methods are registered as tools
     tool_names = [tool.name for tool in agent.tools]
@@ -50,7 +51,7 @@ def test_memory_as_agent_tool(memory_instance):
 
 def test_memory_tool_schemas(memory_instance):
     """Test that Memory methods have correct tool schemas."""
-    agent = Agent("test-agent", tools=[memory_instance])
+    agent = Agent("test-agent", tools=[memory_instance], llm=MockLLM())
 
     # Check write_memory schema
     write_tool = agent.tools.get("write_memory")
@@ -68,7 +69,7 @@ def test_memory_tool_schemas(memory_instance):
 
 def test_memory_methods_callable_from_agent(memory_instance):
     """Test that memory methods work when called via agent's tools."""
-    agent = Agent("test-agent", tools=[memory_instance])
+    agent = Agent("test-agent", tools=[memory_instance], llm=MockLLM())
 
     # Write via tools
     write_result = agent.tools.write_memory.run("test-key", "test content")
@@ -87,8 +88,8 @@ def test_multiple_agents_same_memory():
 
     memory = Memory(memory_dir=shared_dir)
 
-    agent1 = Agent("agent1", tools=[memory])
-    agent2 = Agent("agent2", tools=[memory])
+    agent1 = Agent("agent1", tools=[memory], llm=MockLLM())
+    agent2 = Agent("agent2", tools=[memory], llm=MockLLM())
 
     # Agent1 writes
     agent1.tools.write_memory.run("shared-key", "Shared content")
@@ -107,7 +108,7 @@ def test_memory_with_other_tools(memory_instance):
         """Calculate a math expression."""
         return str(eval(expression))
 
-    agent = Agent("multi-tool-agent", tools=[memory_instance, calculate])
+    agent = Agent("multi-tool-agent", tools=[memory_instance, calculate], llm=MockLLM())
 
     tool_names = [tool.name for tool in agent.tools]
     assert "write_memory" in tool_names

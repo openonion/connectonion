@@ -5,6 +5,7 @@ Unit tests for subagents plugin
 import pytest
 from pathlib import Path
 from connectonion import Agent
+from tests.utils.mock_helpers import MockLLM
 from connectonion.useful_plugins import subagents, task
 from connectonion.useful_plugins.subagents import (
     _discover_all_agents,
@@ -23,7 +24,7 @@ class TestSubagentsPlugin:
             name="test-agent",
             tools=[],
             plugins=[subagents],
-            model="co/gemini-2.5-flash",
+            llm=MockLLM(),
             quiet=True
         )
 
@@ -144,7 +145,7 @@ With multiple lines.
             name="test-agent",
             tools=[],
             plugins=[subagents],
-            model="co/gemini-2.5-flash",
+            llm=MockLLM(),
             quiet=True
         )
 
