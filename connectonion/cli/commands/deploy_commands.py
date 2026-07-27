@@ -437,23 +437,23 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     if deploy_success:
         console.print(f"Dashboard: {DASHBOARD_URL}")
 
-    # Show the agent's startup logs (best-effort).
-    if deployment_id:
-        time.sleep(5)  # "running" fires when the container starts; wait for the app to print its banner or crash
-        try:
-            logs_resp = requests.get(
-                f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
-                headers={"Authorization": f"Bearer {api_key}"},
-                timeout=10,
-            )
-        except requests.exceptions.RequestException:
-            logs_resp = None
-        if logs_resp is not None and logs_resp.status_code == 200:
-            logs = logs_resp.json().get("logs", "")
-            if logs:
-                console.print()
-                console.print("[dim]Container logs:[/dim]")
-                console.print(f"[dim]{logs}[/dim]")
+    # Show the agent's startup logs (best-effort). deployment_id is always set
+    # here — the missing-id case returned above.
+    time.sleep(5)  # "running" fires when the container starts; wait for the app to print its banner or crash
+    try:
+        logs_resp = requests.get(
+            f"{API_BASE}/api/v1/deploy/{deployment_id}/logs?tail=20",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10,
+        )
+    except requests.exceptions.RequestException:
+        logs_resp = None
+    if logs_resp is not None and logs_resp.status_code == 200:
+        logs = logs_resp.json().get("logs", "")
+        if logs:
+            console.print()
+            console.print("[dim]Container logs:[/dim]")
+            console.print(f"[dim]{logs}[/dim]")
 
     console.print()
     return deploy_success
