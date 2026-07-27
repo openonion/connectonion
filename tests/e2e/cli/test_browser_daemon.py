@@ -16,6 +16,7 @@ or network is needed. The daemon's lazy BrowserAutomation is swapped for the stu
 
 import contextlib
 import os
+import sys
 import socket
 import subprocess
 import threading
@@ -1026,3 +1027,60 @@ def test_permission_error_still_clears_a_dead_owners_socket(short_sock, monkeypa
     monkeypatch.setattr(socket.socket, "connect", denied)
     assert c._connect_posix(short_sock) is None
     assert not os.path.exists(short_sock), "stale socket should have been removed"
+
+
+class TestTabLimits:
+    """One daemon owns the browser for every caller on the box, so tab bounds
+    are the box's. Before these knobs existed, hosted-browser could not move
+    to the CLI without silently losing tab reclamation and its tab cap."""
+
+    def test_defaults_are_unchanged_when_nothing_is_asked_for(self, short_sock):
+        # Real BrowserAutomation, not the stub — the point is its own defaults.
+        # Construction is lazy, so no browser actually launches.
+        daemon = d.BrowserDaemon(short_sock)
+        assert daemon.browser._max_tabs == 10
+        assert daemon.browser._tab_idle_ttl == 3600.0
+
+    def test_explicit_limits_reach_the_browser(self, short_sock):
+        daemon = d.BrowserDaemon(short_sock, tab_idle_ttl=600, max_tabs=3)
+        assert daemon.browser._max_tabs == 3
+        assert daemon.browser._tab_idle_ttl == 600
+
+    def test_status_reports_the_limits_in_force(self, short_sock):
+        """A caller cannot read them off a launch command it never wrote."""
+        daemon = d.BrowserDaemon(short_sock, tab_idle_ttl=600, max_tabs=3)
+        daemon.browser = StubBrowser()
+        daemon.browser._max_tabs = 3  # StubBrowser mirrors the real attribute names
+        daemon.browser._tab_idle_ttl = 600
+        daemon.browser._headless = False
+
+        ok, text = daemon.dispatch("status")
+
+        assert ok is True
+        assert "max_tabs=3" in text
+        assert "tab_idle_ttl=600s" in text
+
+    def test_flags_and_env_both_work_and_flag_wins(self, monkeypatch, short_sock):
+        """The daemon is usually started implicitly by the first client, so the
+        env vars are the only reachable knob in that path."""
+        seen = {}
+
+        class Recorder(d.BrowserDaemon):
+            def __init__(self, sock, headless=False, tab_idle_ttl=None, max_tabs=None):
+                seen["ttl"] = tab_idle_ttl
+                seen["cap"] = max_tabs
+
+            def serve(self):
+                pass
+
+        monkeypatch.setattr(d, "BrowserDaemon", Recorder)
+
+        monkeypatch.setattr(sys, "argv", ["daemon", short_sock])
+        monkeypatch.setenv("CO_BROWSER_MAX_TABS", "5")
+        monkeypatch.setenv("CO_BROWSER_TAB_IDLE_TTL", "900")
+        d.main()
+        assert (seen["cap"], seen["ttl"]) == (5, 900.0)
+
+        monkeypatch.setattr(sys, "argv", ["daemon", short_sock, "--max-tabs", "2"])
+        d.main()
+        assert seen["cap"] == 2, "an explicit flag must beat the environment"

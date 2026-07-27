@@ -129,9 +129,18 @@ def _held_by_other(meta, caller: str) -> bool:
 class BrowserDaemon:
     """Single-threaded server owning one BrowserAutomation, dispatching verbs to it."""
 
-    def __init__(self, sock_path: str, headless: bool = False):
+    def __init__(self, sock_path: str, headless: bool = False,
+                 tab_idle_ttl: float = None, max_tabs: int = None):
         self.sock_path = sock_path
-        self.browser = BrowserAutomation(headless=headless)
+        # One daemon owns the browser for every caller on the box, so these
+        # bounds are the box's, not one caller's. Left as BrowserAutomation's
+        # defaults unless set, so nothing changes for anyone who doesn't ask.
+        limits = {}
+        if tab_idle_ttl is not None:
+            limits["tab_idle_ttl"] = tab_idle_ttl
+        if max_tabs is not None:
+            limits["max_tabs"] = max_tabs
+        self.browser = BrowserAutomation(headless=headless, **limits)
         self._srv = None
         self._had_browser = False
         self.last_command = None  # {"line": str, "at": float} of the last real command
@@ -277,7 +286,16 @@ class BrowserDaemon:
         """Report browser state, the last command, and the tab board."""
         open_state = "open" if self.browser._context_is_alive() else "not open"
         headless = str(getattr(self.browser, "_headless", False)).lower()
-        lines = [f"Browser: {open_state} · headless={headless} · targeting is per-command (-t <tab>; bare = main)"]
+        # Show the limits actually in force: one daemon serves every caller, so
+        # "which numbers am I bound by?" is not answerable from any one launch
+        # command.
+        ttl = int(getattr(self.browser, "_tab_idle_ttl", 0))
+        cap = getattr(self.browser, "_max_tabs", 0)
+        lines = [
+            f"Browser: {open_state} · headless={headless} · "
+            f"max_tabs={cap} · tab_idle_ttl={ttl}s · "
+            "targeting is per-command (-t <tab>; bare = main)"
+        ]
         # Surface stealth-driver health here so a misconfigured driver (webdriver leak) is
         # visible where users look for browser state, not only in `co doctor`.
         stealth, version, detail = driver_stealth_status()
@@ -655,8 +673,28 @@ def main():
             if hasattr(stream, "reconfigure"):
                 stream.reconfigure(encoding="utf-8", errors="replace")
     sock_path = sys.argv[1] if len(sys.argv) > 1 else default_sock_path()
-    headless = "--headless" in sys.argv[2:]
-    BrowserDaemon(sock_path, headless=headless).serve()
+    args = sys.argv[2:]
+    headless = "--headless" in args
+
+    def _opt(flag: str, env: str):
+        """Flag wins over env; both absent means BrowserAutomation's default.
+
+        The env vars matter because the daemon is usually started implicitly by
+        the first client, not by a hand-written command line."""
+        if flag in args:
+            i = args.index(flag)
+            if i + 1 < len(args):
+                return args[i + 1]
+        return os.environ.get(env)
+
+    ttl = _opt("--tab-idle-ttl", "CO_BROWSER_TAB_IDLE_TTL")
+    cap = _opt("--max-tabs", "CO_BROWSER_MAX_TABS")
+    BrowserDaemon(
+        sock_path,
+        headless=headless,
+        tab_idle_ttl=float(ttl) if ttl else None,
+        max_tabs=int(cap) if cap else None,
+    ).serve()
 
 
 if __name__ == "__main__":
