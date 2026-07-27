@@ -61,7 +61,8 @@ agent = Agent("a", plugins=[re_act, logger])
 | `system_reminder` | Inject contextual reminders into tool results | [system_reminder.md](../useful_plugins/system_reminder.md) |
 | `auto_compact` | Compact conversation when context gets large | [auto_compact.md](../useful_plugins/auto_compact.md) |
 | `prefer_write_tool` | Guide agent to prefer write over edit for new files | [prefer_write_tool.md](../useful_plugins/prefer_write_tool.md) |
-| `ulw` | Ultra-light workflow: pause loop for user input | [ulw.md](../useful_plugins/ulw.md) |
+| `yolo` | Approval-free autonomous work with bounded checkpoints | [yolo.md](../useful_plugins/yolo.md) |
+| `ulw` | Compatibility alias and frontend wire protocol for YOLO | [ulw.md](../useful_plugins/ulw.md) |
 | `gmail_plugin` | Gmail OAuth flow | [gmail_plugin.md](../useful_plugins/gmail_plugin.md) |
 | `calendar_plugin` | Google Calendar OAuth flow | [calendar_plugin.md](../useful_plugins/calendar_plugin.md) |
 

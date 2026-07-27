@@ -18,7 +18,7 @@ Plugins included:
 - prefer_write_tool: Block bash file creation, soft-remind for file reading
 - tool_approval: Approval flow for dangerous operations
 - auto_compact: Context window management
-- ulw: Ultra work mode (autonomous N-turn sessions with continuation)
+- yolo: Approval-free autonomous N-turn sessions with continuation
 
 Architecture:
 - Uses prompt assembly from prompts/assembler.py
@@ -45,7 +45,17 @@ from .tools import (
 from .skills import skill
 from .plugins import system_reminder
 from connectonion import Agent, bash, TodoList
-from connectonion.useful_plugins import eval, tool_approval, auto_compact, prefer_write_tool, ulw, subagents, image_result_formatter, runtime_input
+from connectonion.useful_plugins import (
+    auto_compact,
+    enable_yolo,
+    eval,
+    image_result_formatter,
+    prefer_write_tool,
+    runtime_input,
+    subagents,
+    tool_approval,
+    yolo,
+)
 from connectonion.useful_plugins.skills import skills as skills_plugin
 
 
@@ -58,6 +68,7 @@ def create_coding_agent(
     model: str = "co/gemini-3.6-flash",
     max_iterations: int = 100,
     co_dir: Path = Path(".co"),
+    yolo_turns: int | None = None,
 ) -> Agent:
     todo = TodoList()
     file_tools = FileTools()
@@ -93,7 +104,18 @@ def create_coding_agent(
     # so panels no longer share a page and 40 tool schemas leave the request.
     # image_result_formatter stays — it turns the screenshot path the CLI prints
     # back into an image the model and the user can actually see.
-    plugins = [skills_plugin, subagents, eval, system_reminder, prefer_write_tool, tool_approval, auto_compact, ulw, image_result_formatter, runtime_input]
+    plugins = [
+        skills_plugin,
+        subagents,
+        eval,
+        system_reminder,
+        prefer_write_tool,
+        tool_approval,
+        auto_compact,
+        yolo,
+        image_result_formatter,
+        runtime_input,
+    ]
 
     agent = Agent(
         name="oo",
@@ -108,5 +130,8 @@ def create_coding_agent(
     # This browser helper blocks on stdin, which is wrong for co ai's websocket
     # chat runtime. Use browser tools plus frontend-mediated user handoffs.
     agent.tools.remove("wait_for_manual_login")
+
+    if yolo_turns is not None:
+        enable_yolo(agent, turns=yolo_turns)
 
     return agent

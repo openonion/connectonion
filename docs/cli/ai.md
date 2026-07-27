@@ -40,12 +40,40 @@ Runs the prompt, prints the result, and exits. No server started.
 | `--port` | `-p` | `8000` | Port for web server |
 | `--model` | `-m` | `co/gemini-3.6-flash` | LLM model to use |
 | `--max-iterations` | `-i` | `100` | Max tool iterations per turn |
+| `--yolo` | | off | Skip tool approvals and keep working across turns |
+| `--yolo-turns` | | `100` | Autonomous turns before a checkpoint; must be positive |
 
 ```bash
 co ai --port 9000
 co ai --model co/gemini-3.6-flash
 co ai "Build an agent" --model co/gpt-4o --max-iterations 50
+co ai --yolo "Fix the failing suite" --yolo-turns 20
 ```
+
+## YOLO mode
+
+Use `--yolo` for a trusted task that should run without tool-approval prompts.
+It works in both one-shot and web-server modes:
+
+```bash
+# Run one task autonomously, then exit at the 20-turn bound
+co ai --yolo "Implement issue #123" --yolo-turns 20
+
+# Start web chat with autonomous mode enabled for each session
+co ai --yolo --yolo-turns 20
+```
+
+Slash skills are expanded before the first model call. Project skills can live
+under either `.co/skills/` or `.claude/skills/`, so a project workflow can run
+directly:
+
+```bash
+co ai --yolo "/deploy-oo-chat" --yolo-turns 10
+```
+
+YOLO deliberately reuses the existing ULW session and frontend protocol.
+Persisted fields such as `mode: ulw`, `ulw_turns`, and
+`skip_tool_approval` remain unchanged for compatibility.
 
 ## What the Agent Can Do
 
