@@ -61,9 +61,13 @@ class ASGITestClient:
         return resp
 
 
-def test_docs_served(tmp_path):
+def test_docs_served(tmp_path, monkeypatch):
     from unittest.mock import MagicMock
     from connectonion.network.host import create_app
+
+    # create_app() writes a starter dashboard.html into the cwd — run it somewhere
+    # disposable so the test doesn't drop that file in the repo root.
+    monkeypatch.chdir(tmp_path)
 
     def create_agent():
         agent = MagicMock()

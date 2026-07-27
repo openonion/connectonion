@@ -179,3 +179,7 @@ IMPLEMENTATION_PLAN.md
 STATUS.md
 TASK.md
 TASKS.md
+
+# Starter Home page that host()/create_app() writes into the cwd. Real agent
+# projects commit theirs; in this repo it is only ever a test/run artifact.
+dashboard.html
