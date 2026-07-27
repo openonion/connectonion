@@ -528,3 +528,24 @@ class TestCliInit:
             name = yaml.safe_load(Path(".co/host.yaml").read_text())["name"]
             assert name == "my-project"
             assert "Deployment name set to" not in result.output
+
+    def test_init_falls_back_when_the_directory_name_has_nothing_reusable(self):
+        """A directory named entirely in non-ASCII leaves no usable deploy name.
+
+        It must still produce a project that can deploy — CI runs `co init` in a
+        CJK-named folder on Windows — rather than an empty or invalid name.
+        """
+        from connectonion.cli.main import cli
+        from connectonion.cli.commands.project_cmd_lib import DEPLOY_NAME_PATTERN
+
+        with self.runner.isolated_filesystem():
+            os.makedirs("我的 项目")
+            os.chdir("我的 项目")
+
+            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
+            assert result.exit_code == 0
+            assert "Traceback" not in result.output
+
+            name = yaml.safe_load(Path(".co/host.yaml").read_text())["name"]
+            assert name == "agent"
+            assert DEPLOY_NAME_PATTERN.match(name)
