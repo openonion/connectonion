@@ -471,7 +471,7 @@ class TestScreenshotPathDetection:
         for ext, expected in (("jpg", "image/jpeg"), ("jpeg", "image/jpeg"), ("webp", "image/webp")):
             p = tmp_path / f"shot.{ext}"
             p.write_bytes(b"\xff\xd8\xff")
-            assert _is_base64_image(f"saved to {p}")[1] == expected
+            assert _is_base64_image(f"Screenshot saved to: {p}")[1] == expected
 
     def test_a_path_that_does_not_exist_is_not_an_image(self):
         from connectonion.useful_plugins.image_result_formatter import _is_base64_image
@@ -481,6 +481,35 @@ class TestScreenshotPathDetection:
         from connectonion.useful_plugins.image_result_formatter import _is_base64_image
         for text in ("done", "", "Created report.pdf", "see notes.md for details"):
             assert _is_base64_image(text)[0] is False
+
+    def test_shell_output_that_merely_names_a_real_image_is_not_a_screenshot(self, tmp_path, monkeypatch):
+        """`ls` and `git status` list real .png files all the time.
+
+        A loose path scan treated those as screenshots: it uploaded unrelated
+        user files to the backend and replaced the tool result with an image
+        placeholder. Detection is anchored to the daemon's actual output.
+        """
+        from connectonion.useful_plugins.image_result_formatter import _is_base64_image
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "logo.png").write_bytes(b"\x89PNG\r\n\x1a\n")
+
+        for text in (
+            "logo.png\nREADME.md",              # ls
+            "modified:   logo.png",             # git status
+            "docs/logo.png: matched",           # grep
+            "Deleted logo.png",
+        ):
+            assert _is_base64_image(text)[0] is False, text
+
+    def test_oversized_file_is_not_treated_as_an_image(self, tmp_path, monkeypatch):
+        """Guards against base64-ing something huge into the request."""
+        from importlib import import_module
+        fmt = import_module("connectonion.useful_plugins.image_result_formatter")
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / "big.png").write_bytes(b"x" * 64)
+        monkeypatch.setattr(fmt, "_MAX_IMAGE_BYTES", 10)
+
+        assert fmt._is_base64_image("Screenshot saved to: big.png")[0] is False
 
     def test_base64_still_wins_over_path_scanning(self):
         """In-process tools returning data URLs must keep working unchanged."""
