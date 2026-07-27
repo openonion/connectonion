@@ -271,6 +271,36 @@ See [gdrive.md](gdrive.md) for details.
 
 ---
 
+#### `co syno` - Synology NAS Files
+
+Your NAS from the terminal. Requires `co syno login` once (QuickConnect ID or
+`--url`; saved as `SYNOLOGY_*` in `~/.co/keys.env`).
+
+**Basic usage:**
+```bash
+co syno                                # your shared folders
+co syno ls /home/photos                # inside one
+co syno search invoice --in /home      # find by name
+co syno get 3 --to ~/Downloads         # download #3 from the listing
+co syno put report.pdf /home/docs      # upload
+```
+
+**Subcommands:**
+
+- `co syno login` - connect by QuickConnect ID, or directly with `--url`
+- `co syno` / `co syno ls [path]` - shared folders, or one folder (`--last/-n`)
+- `co syno search <query>` - find by file name (`--in` to scope)
+- `co syno get <#>` - download (`--to`)
+- `co syno put <path> <nas-folder>` - upload (`--overwrite`)
+- `co syno share <#>` - create a public sharing link
+
+There is deliberately no `co syno rm` — File Station's delete API is permanent,
+so unlike `co gdrive rm` it could not be made recoverable.
+
+See [synology.md](synology.md) for details.
+
+---
+
 #### `co outlook` - Manage Outlook Email & Contacts
 
 Your personal Outlook account from the terminal, via Microsoft Graph.
