@@ -2,6 +2,23 @@
 
 All notable changes to ConnectOnion will be documented in this file.
 
+## [1.5.0] - 2026-07-28
+
+### ✨ Features
+- **Agent Home pages.** An agent can keep a `dashboard.html` in its project root; the host reads it and pushes it over the existing agent WebSocket, so a chat client can render it beside the conversation. Sent on connect and after any run that changed the file, with a per-connection `(mtime, size)` check so an untouched Home costs nothing per turn. `host()` writes a polished starter on day zero and never clobbers yours. Buttons carrying `data-ochat-skill` run a skill as a visible chat turn. See [docs/network/dashboard.md](docs/network/dashboard.md).
+- **`co syno`** — drive your Synology NAS from the terminal.
+- **`co ai` YOLO mode** — skip the approval prompts when you want it to just go.
+- **Agents can declare how long they need a browser tab**, so a long job isn't cut off by tab contention.
+
+### ♻️ Changed
+- **`co ai` and the project templates drive the browser through `co browser`** rather than 40 in-process tools — one browser story instead of two.
+- **Deploy polls the full build window** and validates the project name locally before uploading, so a typo fails fast instead of halfway through a build.
+
+### 🐛 Bug Fixes
+- The `[env]` diagnostic only prints when stderr is a terminal, so it no longer pollutes piped output.
+- A live daemon's socket is no longer unlinked on a non-refusal `OSError`.
+- Unit tests are hermetic, and `send_email` works without a `.env` file.
+
 ## [1.2.1] - 2026-07-17
 
 ### ✨ Features
