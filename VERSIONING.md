@@ -26,7 +26,7 @@ Example: `0.0.2`
 - Reset MINOR and PATCH to 0
 - Reserved for major breaking changes or stable releases
 
-## Current Version: 1.4.0
+## Current Version: 1.5.0
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
@@ -40,6 +40,8 @@ Example: `0.0.2`
 - 1.2.1 (native Windows co browser via named-pipe transport; zero-setup chromium auto-install without admin; offline first-run hardening; windows-e2e CI)
 - 1.3.0 (remote tool execution: remote.call / co call; codex tool via native app-server; agent balance in ANNOUNCE profile + /info; humanized browser input + stealth; Gemini 3.6 Flash; bash description optional; browser-workflow-skill-builder; security: tightened default remote-exec whitelist)
 - 1.4.0 (co gmail and co gdrive: your own Gmail and Google Drive from the terminal, plus the GDrive tool; co skills link publishes bundled skills to Claude Code and Codex; Outlook contacts; OAuth fixes: both .env and ~/.co/keys.env are loaded, rotated tokens persist, Gmail refreshes every session; credentials no longer printed in CLI tracebacks; Gemini 3.6 Flash everywhere)
+
+- 1.5.0 (agent Home pages: the host pushes `dashboard.html` over the agent WebSocket and chat clients render it beside the conversation, with a built-in dashboard skill; `co syno` for Synology NAS; `co ai` YOLO mode; `co ai` and the templates drive the browser through `co browser` instead of 40 in-process tools; agents can declare how long they need a tab; deploy polls the full build window and validates project names locally; hermetic unit tests)
 
 ## Files to Update When Versioning
 
