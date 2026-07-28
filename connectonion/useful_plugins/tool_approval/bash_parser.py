@@ -91,9 +91,13 @@ def extract_commands_from_bash(command: str) -> list[str]:
         for attr in ('parts', 'list'):
             for child in getattr(node, attr, []) or []:
                 extract_from_node(child)
-        sub = getattr(node, 'command', None)
-        if sub is not None:
-            extract_from_node(sub)
+        # Descend into nested commands (command substitution) AND redirect
+        # targets. Process substitution in a redirect (e.g. `echo x > >(rm -rf /)`)
+        # or `cat < <(curl evil)` runs a real subcommand that must be checked.
+        for attr in ('command', 'output', 'input', 'heredoc'):
+            sub = getattr(node, attr, None)
+            if sub is not None and hasattr(sub, 'kind'):
+                extract_from_node(sub)
 
     for tree in parts:
         extract_from_node(tree)
@@ -137,9 +141,14 @@ def _extract_subcommands(command: str) -> list[tuple[str, str]]:
         for attr in ('parts', 'list'):
             for child in getattr(node, attr, []) or []:
                 extract_from_node(child)
-        sub = getattr(node, 'command', None)
-        if sub is not None:
-            extract_from_node(sub)
+        # Descend into nested commands (command substitution) AND redirect
+        # targets. Process substitution in a redirect (e.g. `echo x > >(rm -rf /)`)
+        # or `cat < <(curl evil)` runs a real subcommand that must be checked,
+        # otherwise it would bypass the per-command permission check entirely.
+        for attr in ('command', 'output', 'input', 'heredoc'):
+            sub = getattr(node, attr, None)
+            if sub is not None and hasattr(sub, 'kind'):
+                extract_from_node(sub)
 
     for tree in bashlex.parse(command):
         extract_from_node(tree)
