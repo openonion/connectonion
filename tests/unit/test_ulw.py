@@ -2,14 +2,23 @@
 
 from unittest.mock import Mock
 
+from connectonion import Agent
+from connectonion.core.llm import LLMResponse
+from connectonion.core.usage import TokenUsage
+from connectonion.useful_plugins.skills import skills
 from connectonion.useful_plugins.ulw import (
     ULW_CONTINUE_PROMPT,
     ULW_DEFAULT_TURNS,
+    YOLO_DEFAULT_TURNS,
+    enable_yolo,
     handle_ulw_mode_change,
+    handle_yolo_mode_change,
     inject_ulw_prompt,
     poll_prompt_update,
+    yolo,
     ulw_keep_working,
 )
+from tests.utils.mock_helpers import MockLLM
 
 
 class FakeAgent:
@@ -58,6 +67,123 @@ def test_mode_change_notifies_io_when_present():
 def test_mode_change_skips_notify_without_io():
     agent = FakeAgent(io=None)
     handle_ulw_mode_change(agent)  # should not raise
+
+
+def test_yolo_public_api_uses_ulw_compatibility_state():
+    agent = FakeAgent()
+
+    handle_yolo_mode_change(agent, turns=4)
+
+    assert YOLO_DEFAULT_TURNS == ULW_DEFAULT_TURNS
+    assert agent.current_session['mode'] == 'ulw'
+    assert agent.current_session['ulw_turns'] == 4
+    assert agent.current_session['skip_tool_approval'] is True
+    assert yolo
+
+
+def test_enable_yolo_before_first_input_activates_on_the_first_turn(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    skill_dir = tmp_path / '.claude' / 'skills' / 'deploy-oo-chat'
+    skill_dir.mkdir(parents=True)
+    (skill_dir / 'SKILL.md').write_text(
+        '---\n'
+        'name: deploy-oo-chat\n'
+        'description: Deploy oo-chat\n'
+        'tools:\n'
+        '  - Bash(pytest *)\n'
+        '---\n'
+        'Run the deployment checks without deploying.',
+        encoding='utf-8',
+    )
+    llm = MockLLM(responses=[
+        LLMResponse(
+            content='done',
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+    agent = Agent(
+        name='yolo-skill',
+        llm=llm,
+        plugins=[skills, yolo],
+        log=False,
+        quiet=True,
+    )
+
+    enable_yolo(agent, turns=1)
+    result = agent.input('/deploy-oo-chat')
+
+    assert result == 'done'
+    user_message = next(
+        message
+        for message in llm.last_call['messages']
+        if message['role'] == 'user'
+    )
+    assert user_message['content'] == (
+        'Run the deployment checks without deploying.'
+    )
+    assert agent.current_session['mode'] == 'ulw'
+    assert agent.current_session['skip_tool_approval'] is True
+    assert agent.current_session['ulw_turns'] == 1
+    assert agent.current_session['ulw_turns_used'] == 1
+
+
+def test_plain_ulw_plugin_does_not_enable_yolo_implicitly():
+    llm = MockLLM(responses=[
+        LLMResponse(
+            content='done',
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+    agent = Agent(
+        name='safe-by-default',
+        llm=llm,
+        plugins=[yolo],
+        log=False,
+        quiet=True,
+    )
+
+    agent.input('hello')
+
+    assert 'mode' not in agent.current_session
+    assert 'skip_tool_approval' not in agent.current_session
+
+
+def test_configured_yolo_activates_after_hosted_session_restore():
+    llm = MockLLM(responses=[
+        LLMResponse(
+            content='done',
+            tool_calls=[],
+            raw_response={},
+            usage=TokenUsage(),
+        )
+    ])
+    agent = Agent(
+        name='hosted-yolo',
+        llm=llm,
+        plugins=[yolo],
+        log=False,
+        quiet=True,
+    )
+    enable_yolo(agent, turns=1)
+
+    agent.input(
+        'continue',
+        session={
+            'session_id': 'session-1',
+            'messages': [{'role': 'system', 'content': 'system'}],
+            'trace': [],
+            'turn': 0,
+        },
+    )
+
+    assert agent.current_session['mode'] == 'ulw'
+    assert agent.current_session['skip_tool_approval'] is True
+    assert agent.current_session['ulw_turns'] == 1
+    assert agent.current_session['ulw_turns_used'] == 1
 
 
 # ---------- ulw_keep_working ----------
@@ -173,5 +299,3 @@ def test_inject_prompt_replaces_existing_prompt_section():
     agent.current_session['ulw_prompt'] = 'new goal'
     inject_ulw_prompt(agent)
     assert agent.current_session['messages'][0]['content'] == 'base\n\n[Prompt]\nnew goal'
-
-

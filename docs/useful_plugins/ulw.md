@@ -1,6 +1,8 @@
-# ulw (Ultra Light Work)
+# ulw (compatibility name)
 
-Autonomous agent mode: the agent keeps working turn after turn without asking for approval, until it reaches a checkpoint or declares itself "genuinely complete".
+ULW is the original name for the autonomous engine now exposed publicly as
+[YOLO](yolo.md). Existing imports, frontend messages, session fields, and
+checkpoint events remain supported.
 
 ## Usage
 
@@ -12,6 +14,16 @@ agent = Agent("worker", plugins=[tool_approval, ulw])
 ```
 
 Requires `tool_approval` — ULW mode works by setting a flag that tells `tool_approval` to skip all checks.
+
+New code can use `yolo` and configure it before the first input:
+
+```python
+from connectonion.useful_plugins import enable_yolo, tool_approval, yolo
+
+agent = Agent("worker", plugins=[tool_approval, yolo])
+enable_yolo(agent, turns=10)
+agent.input("Refactor the codebase")
+```
 
 ## What it does
 

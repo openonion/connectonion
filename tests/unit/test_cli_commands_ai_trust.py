@@ -32,13 +32,44 @@ def test_handle_ai_calls_start_server(monkeypatch):
     monkeypatch.setattr("connectonion.cli.co_ai.agent.create_coding_agent", fake_create_coding_agent)
     monkeypatch.setattr("connectonion.cli.co_ai.main.start_server", fake_start_server)
 
-    ai_mod.handle_ai(port=1111, model="m", max_iterations=3)
+    ai_mod.handle_ai(
+        port=1111,
+        model="m",
+        max_iterations=3,
+        yolo=True,
+        yolo_turns=7,
+    )
 
     assert called["port"] == 1111
     assert called["agent"] is created["agent"]
     assert created["model"] == "m"
     assert created["max_iterations"] == 3
     assert created["co_dir"] == GLOBAL_CO_DIR
+    assert created["yolo_turns"] == 7
+
+
+def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
+    created = {}
+
+    class FakeAgent:
+        def input(self, prompt):
+            created["prompt"] = prompt
+            return "done"
+
+    def fake_create_coding_agent(**kwargs):
+        created.update(kwargs)
+        return FakeAgent()
+
+    monkeypatch.setattr(
+        "connectonion.cli.co_ai.agent.create_coding_agent",
+        fake_create_coding_agent,
+    )
+
+    ai_mod.handle_ai(prompt="task", yolo=False, yolo_turns=9)
+
+    assert created["prompt"] == "task"
+    assert created["yolo_turns"] is None
+    assert capsys.readouterr().out.endswith("done\n")
 
 
 def test_trust_commands_list_and_actions(tmp_path, monkeypatch):

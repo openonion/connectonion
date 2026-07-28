@@ -12,6 +12,8 @@ def handle_ai(
     port: int = 8000,
     model: str = "co/claude-opus-4-5",
     max_iterations: int = 100,
+    yolo: bool = False,
+    yolo_turns: int = 100,
 ):
     """Start AI coding agent or run one-shot prompt.
 
@@ -20,6 +22,8 @@ def handle_ai(
         port: Port for web server
         model: LLM model to use
         max_iterations: Max tool iterations
+        yolo: Skip tool approvals and keep working across turns
+        yolo_turns: Maximum autonomous turns before a checkpoint
 
     Examples:
         co ai                                    # Start web server
@@ -30,6 +34,7 @@ def handle_ai(
         model=model,
         max_iterations=max_iterations,
         co_dir=GLOBAL_CO_DIR,
+        yolo_turns=yolo_turns if yolo else None,
     )
 
     if prompt:
