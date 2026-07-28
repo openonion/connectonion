@@ -11,6 +11,7 @@ Components under test:
 
 
 import asyncio
+import threading
 
 import pytest
 from unittest.mock import Mock, patch
@@ -220,6 +221,44 @@ class TestToolExecutor:
         )
         assert trace["status"] == "success"
         assert "hello" in str(trace["result"])
+
+    def test_nested_async_tool_does_not_deadlock(self):
+        """An async tool that drives another tool execution must not hang.
+
+        Real shape: an async sub-agent tool calls agent.input(), and the
+        sub-agent runs its own async tool. The inner call lands on the shared
+        loop's thread while that thread is blocked on the outer call.
+        """
+        async def inner() -> str:
+            return "inner-done"
+
+        async def outer() -> str:
+            inner_tools = ToolRegistry()
+            inner_tools.add(create_tool_from_function(inner))
+            inner_trace = execute_single_tool(
+                "inner", {}, "call_nested_inner", inner_tools,
+                FakeAgent(), Logger("test-agent", log=False),
+            )
+            return f"outer saw {inner_trace['result']}"
+
+        tools = ToolRegistry()
+        tools.add(create_tool_from_function(outer))
+
+        finished = threading.Event()
+        box = {}
+
+        def run():
+            box["trace"] = execute_single_tool(
+                "outer", {}, "call_nested_outer", tools,
+                FakeAgent(), Logger("test-agent", log=False),
+            )
+            finished.set()
+
+        threading.Thread(target=run, daemon=True).start()
+
+        assert finished.wait(timeout=10), "nested async tool deadlocked"
+        assert box["trace"]["status"] == "success"
+        assert "inner-done" in str(box["trace"]["result"])
 
 
 class TestAddAssistantMessage:
