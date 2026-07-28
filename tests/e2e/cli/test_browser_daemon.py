@@ -1026,3 +1026,89 @@ def test_permission_error_still_clears_a_dead_owners_socket(short_sock, monkeypa
     monkeypatch.setattr(socket.socket, "connect", denied)
     assert c._connect_posix(short_sock) is None
     assert not os.path.exists(short_sock), "stale socket should have been removed"
+
+
+GUARD = d.GUARD_WINDOW
+
+
+class TestDeclaredOccupancy:
+    """Many agents, one machine, one browser, all cooperative.
+
+    An agent says at `tab open` how long it needs the tab — something the
+    framework cannot infer, since a login handoff needs minutes and a scrape
+    needs an hour. Others leave it alone until then. Afterwards they may clean
+    up: a declaration that elapsed with the tab still open means the owner is
+    gone, not that it is still working.
+    """
+
+    def test_declared_window_protects_the_tab_from_others(self, short_sock):
+        daemon = make_daemon(short_sock)
+        daemon.dispatch(_env("tab open research --who scraper --needs 10m", caller="scraper"))
+
+        code, msg = daemon.dispatch(_env("tab close research", caller="other-agent"))
+
+        assert code == 4
+        assert "in use by scraper" in msg
+        assert "declared for" in msg
+
+    def test_others_may_clean_up_once_the_declaration_elapses(self, short_sock):
+        """The cooperative part: an elapsed declaration means the owner is gone."""
+        daemon = make_daemon(short_sock)
+        daemon.dispatch(_env("tab open research --who scraper --needs 30s", caller="scraper"))
+        meta = daemon.browser._tab_meta["research"]
+        meta["needs_until"] = time.time() - 1      # declaration has passed
+        meta["claim_at"] = time.time() - GUARD - 1  # and no fresh activity
+
+        ok, msg = daemon.dispatch(_env("tab close research", caller="other-agent"))
+
+        assert ok is True
+        assert "Closed tab research" in msg
+
+    def test_the_owner_can_always_close_its_own_tab(self, short_sock):
+        daemon = make_daemon(short_sock)
+        daemon.dispatch(_env("tab open research --who scraper --needs 10m", caller="scraper"))
+
+        ok, _ = daemon.dispatch(_env("tab close research", caller="scraper"))
+
+        assert ok is True
+
+    def test_a_long_declaration_outlives_the_claim_window(self, short_sock):
+        """The point of declaring: 120s of silence is not evidence a task ended.
+
+        Without a declaration the tab would be free to take after GUARD_WINDOW.
+        """
+        daemon = make_daemon(short_sock)
+        daemon.dispatch(_env("tab open slow --who scraper --needs 2h", caller="scraper"))
+        daemon.browser._tab_meta["slow"]["claim_at"] = time.time() - GUARD - 1
+
+        code, msg = daemon.dispatch(_env("tab close slow", caller="other-agent"))
+
+        assert code == 4, "an idle-but-declared tab must not be closable by others"
+        assert "declared for" in msg
+
+    def test_undeclared_tabs_keep_the_old_claim_behaviour(self, short_sock):
+        """No declaration -> the existing 120s claim window still governs."""
+        daemon = make_daemon(short_sock)
+        daemon.dispatch(_env("tab open quick --who scraper", caller="scraper"))
+        daemon.browser._tab_meta["quick"]["claim_at"] = time.time() - GUARD - 1
+
+        ok, _ = daemon.dispatch(_env("tab close quick", caller="other-agent"))
+
+        assert ok is True
+
+    def test_ls_shows_what_was_declared(self, short_sock):
+        daemon = make_daemon(short_sock)
+        daemon.dispatch(_env("tab open research --who scraper --needs 10m", caller="scraper"))
+
+        meta = daemon.browser._tab_meta["research"]
+        assert meta["needs_until"] > time.time()
+        assert meta["opened_by"] == "scraper"
+
+
+def test_duration_parsing():
+    assert d._parse_duration("30s") == 30
+    assert d._parse_duration("10m") == 600
+    assert d._parse_duration("2h") == 7200
+    assert d._parse_duration("90") == 90
+    assert d._parse_duration("") == 0
+    assert d._parse_duration("garbage") == 0
