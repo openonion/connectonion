@@ -33,8 +33,9 @@ Tool Classification:
 #   - 'plan': Read-only tools only, exit_plan_and_implement shows plan for approval
 #   - 'accept_edits': File edit tools auto-approved, other dangerous tools need approval
 #
-# Other modes (handled by separate plugins via skip_tool_approval flag):
-#   - 'ulw': Handled by ulw plugin - sets skip_tool_approval=True
+# Other modes (handled by the autonomous-work plugin):
+#   - 'yolo': Public CLI mode - sets skip_tool_approval=True
+#   - 'ulw': Backward-compatible frontend alias for yolo
 #
 # Mode can be changed by:
 #   - User: via WebSocket { type: 'mode_change', mode: '...' }

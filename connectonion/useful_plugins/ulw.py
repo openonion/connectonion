@@ -171,8 +171,11 @@ def ulw_keep_working(agent: 'Agent') -> None:
             # No IO, truly complete
             return
 
-    # Continue working - start another turn
-    agent.input(ULW_CONTINUE_PROMPT)
+    # Continue working — queue the next turn instead of calling input()
+    # recursively. Recursion returned the FIRST turn's result to the caller
+    # (a 3-turn YOLO run answered with turn 1), reversed log ordering, and
+    # eventually hit Python's recursion limit on long autonomous runs.
+    agent._queue_input(ULW_CONTINUE_PROMPT)
 
 
 @before_iteration

@@ -37,6 +37,15 @@ class FakeAgent:
     def input(self, text):
         self.input_calls.append(text)
 
+    def _queue_input(self, text):
+        """Mirrors Agent._queue_input: continuations are queued, not recursed.
+
+        Recorded in the same list so the existing assertions still describe
+        'the plugin asked for another turn' — which is the behaviour they were
+        always about, independent of how the turn is dispatched.
+        """
+        self.input_calls.append(text)
+
 
 # ---------- handle_ulw_mode_change ----------
 

@@ -126,6 +126,53 @@ class TestCliHelp:
         assert result.exit_code == 0
         assert "Usage:" in result.output
 
+    def test_ai_help_shows_yolo_options(self):
+        """The autonomous mode is discoverable from command help."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(cli, ['ai', '--help'])
+
+        assert result.exit_code == 0
+        assert "--yolo" in result.output
+        assert "--yolo-turns" in result.output
+
+    @pytest.mark.parametrize("turns", ["0", "-1"])
+    def test_ai_rejects_non_positive_yolo_turns(self, turns):
+        """Typer validates the bounded YOLO turn budget before agent startup."""
+        from connectonion.cli.main import cli
+
+        result = self.runner.invoke(
+            cli,
+            ['ai', '--yolo', '--yolo-turns', turns, 'task'],
+        )
+
+        assert result.exit_code != 0
+        assert result.exception is not None
+
+    def test_ai_cli_forwards_yolo_options(self, monkeypatch):
+        """The real Typer command forwards the parsed YOLO flag and budget."""
+        from connectonion.cli.main import cli
+
+        captured = {}
+
+        def fake_handle_ai(**kwargs):
+            captured.update(kwargs)
+
+        monkeypatch.setattr(
+            "connectonion.cli.commands.ai_commands.handle_ai",
+            fake_handle_ai,
+        )
+
+        result = self.runner.invoke(
+            cli,
+            ['ai', '--yolo', '--yolo-turns', '17', '/deploy-oo-chat'],
+        )
+
+        assert result.exit_code == 0
+        assert captured["prompt"] == "/deploy-oo-chat"
+        assert captured["yolo"] is True
+        assert captured["yolo_turns"] == 17
+
     def test_copy_help(self):
         """Test 'co copy --help' shows command-specific help."""
         from connectonion.cli.main import cli

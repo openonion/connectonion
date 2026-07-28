@@ -117,12 +117,12 @@ def evaluate_completion(agent: 'Agent') -> None:
     Generates expected outcome (if not set) and evaluates AFTER task completes.
     This avoids blocking the main workflow.
 
-    Skips evaluation in ULW mode since the agent is still working autonomously.
+    Skips evaluation in YOLO/ULW mode since the agent is still working autonomously.
     """
     import uuid
 
-    # Skip eval in ULW mode - agent is still working, not done yet
-    if agent.current_session.get('mode') == 'ulw':
+    # Skip eval in autonomous mode - agent is still working, not done yet
+    if agent.current_session.get('mode') in {'yolo', 'ulw'}:
         return
 
     user_prompt = agent.current_session.get('user_prompt', '')

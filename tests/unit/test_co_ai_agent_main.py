@@ -50,6 +50,37 @@ def test_create_coding_agent(monkeypatch, tmp_path):
     assert _bind_browser_session not in agent.events["before_each_tool"]
 
 
+def test_create_coding_agent_configures_yolo_activation(monkeypatch):
+    class FakeLLM:
+        model = "fake-model"
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", lambda *a, **k: "BASE")
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+
+    agent = agent_mod.create_coding_agent(model="fake", yolo_turns=9)
+    agent.current_session = {
+        "messages": [{"role": "user", "content": "task"}],
+        "trace": [],
+        "turn": 1,
+    }
+
+    # Assert the behaviour, not the handler's name: main configures YOLO through
+    # enable_yolo()/activate_configured_yolo, this branch used activate_yolo.
+    # Both must end the first turn in bounded autonomous mode — that is the
+    # contract worth pinning; the wiring is an implementation detail.
+    activators = [
+        handler
+        for handler in agent.events["after_user_input"]
+        if "yolo" in handler.__name__
+    ]
+    assert len(activators) == 1, f"expected one YOLO activator, got {[h.__name__ for h in activators]}"
+
+    activators[0](agent)
+    assert agent.current_session["mode"] == "ulw"
+    assert agent.current_session["ulw_turns"] == 9
+
+
 def test_start_server_hosts_provided_agent(monkeypatch):
     agent = SimpleNamespace(name="agent")
     called = {}

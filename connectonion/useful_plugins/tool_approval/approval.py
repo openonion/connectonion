@@ -43,7 +43,7 @@ Mode System (session['mode']):
         - Other dangerous tools: need approval (bash, send_email)
         - Used for: rapid editing with approval only for risky ops
 
-    ulw (handled by ulw plugin):
+    yolo / ulw (handled by the autonomous-work plugin):
         - Sets skip_tool_approval=True → bypasses all checks
         - Used for: unlimited write access (trusted scenarios)
 
@@ -202,7 +202,13 @@ File Relationships:
 from typing import TYPE_CHECKING
 from pathlib import Path
 
-from ...core.events import before_each_tool, before_iteration, after_iteration, after_user_input
+from ...core.events import (
+    after_iteration,
+    after_llm,
+    after_user_input,
+    before_each_tool,
+    before_iteration,
+)
 from .constants import VALID_MODES, DEFAULT_MODE, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS
 from .bash_parser import extract_commands_from_bash, check_bash_chain_permitted
 
@@ -431,7 +437,7 @@ def check_approval(agent: 'Agent') -> None:
                 # Check if ALL commands in chain are permitted
                 permitted, reason, source = check_bash_chain_permitted(tool_args['command'], permissions)
                 if permitted:
-                    if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                    if getattr(getattr(agent, 'logger', None), 'console', None):
                         agent.logger.console.log_permission_granted('bash', tool_args, source, reason)
                     return
 
@@ -460,19 +466,25 @@ def check_approval(agent: 'Agent') -> None:
                     # Pattern matched (and params matched if 'when' field exists)
                     reason = perm.get('reason', 'unknown')
                     source = perm.get('source', 'config')
-                    if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                    if getattr(getattr(agent, 'logger', None), 'console', None):
                         agent.logger.console.log_permission_granted(tool_name, tool_args, source, reason)
                     return
 
     # =================================================================
-    # Check if another plugin requested to skip approvals (e.g., ulw)
+    # Check if the bounded autonomous-work plugin requested to skip approvals.
     # =================================================================
-    if agent.current_session.get('mode') == 'ulw':
+    autonomous_mode = agent.current_session.get('mode')
+    if autonomous_mode in {'yolo', 'ulw'}:
         pending = agent.current_session.get('pending_tool')
         tool_name = pending['name'] if pending else 'unknown'
         tool_args = pending.get('arguments', {}) if pending else {}
-        if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
-            agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'ulw mode')
+        if getattr(getattr(agent, 'logger', None), 'console', None):
+            agent.logger.console.log_permission_granted(
+                tool_name,
+                tool_args,
+                'mode',
+                f'{autonomous_mode} mode',
+            )
         return
 
     # reject_hard was set by a previous tool in this batch — reject remaining
@@ -497,7 +509,7 @@ def check_approval(agent: 'Agent') -> None:
     # =================================================================
     if mode == 'accept_edits':
         if tool_name in FILE_EDIT_TOOLS:
-            if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+            if getattr(getattr(agent, 'logger', None), 'console', None):
                 agent.logger.console.log_permission_granted(tool_name, tool_args, 'mode', 'accept_edits mode')
             return
         # Other dangerous tools fall through to approval logic
@@ -762,7 +774,7 @@ def poll_mode_changes(agent: 'Agent') -> None:
     """Poll for mode_change signals at iteration start.
 
     Checks if client sent mode_change while agent was working.
-    Handles all modes: safe, plan, accept_edits, ulw.
+    Handles all modes: safe, plan, accept_edits, yolo, ulw.
     """
     if not agent.io:
         return
@@ -771,26 +783,37 @@ def poll_mode_changes(agent: 'Agent') -> None:
         new_mode = msg.get('mode')
         if new_mode in VALID_MODES:
             handle_mode_change(agent, new_mode)
-        elif new_mode == 'ulw':
-            from ..ulw import handle_ulw_mode_change
-            handle_ulw_mode_change(agent, msg.get('turns'))
+        elif new_mode in {'yolo', 'ulw'}:
+            from ..ulw import handle_ulw_mode_change, handle_yolo_mode_change
+            handler = handle_yolo_mode_change if new_mode == 'yolo' else handle_ulw_mode_change
+            handler(agent, msg.get('turns'))
+
+
+def _poll_interrupt(agent: 'Agent') -> None:
+    """Drain one pending interrupt into the Agent's standard stop signal."""
+    if agent.io and agent.io.receive_all('INTERRUPT'):
+        agent.current_session['stop_signal'] = 'user_interrupt'
 
 
 @after_iteration
 def poll_interrupt(agent: 'Agent') -> None:
-    """Stop the run at the iteration boundary when the client sent an INTERRUPT.
+    """Poll after a tool-call iteration so its current batch finishes first."""
+    _poll_interrupt(agent)
 
-    Graceful stop: drains an INTERRUPT frame and sets the existing stop_signal,
-    which the iteration loop already honors right after after_iteration (halts and
-    returns a closing message). Runs after_iteration so the current step (LLM call
-    + tools) finishes first — not a mid-flight abort. Same primitive and placement
-    as no_progress_guard; no core changes.
-    """
-    if not agent.io:
-        return
 
-    if agent.io.receive_all('INTERRUPT'):
-        agent.current_session['stop_signal'] = 'user_interrupt'
+@after_llm
+def poll_interrupt_after_text(agent: 'Agent') -> None:
+    """Poll after a terminal text response, which has no after_iteration event."""
+    llm_result = next(
+        (
+            entry
+            for entry in reversed(agent.current_session.get('trace', []))
+            if entry.get('type') == 'llm_result'
+        ),
+        None,
+    )
+    if llm_result and llm_result.get('tool_calls_count') == 0:
+        _poll_interrupt(agent)
 
 
 # =============================================================================
@@ -802,14 +825,14 @@ def handle_mode_change(agent: 'Agent', mode: str) -> None:
 
     Called when frontend sends { type: 'mode_change', mode: '...' }
     Only handles modes known to this plugin (safe, plan, accept_edits).
-    Other modes (e.g., ulw) should be handled by their respective plugins.
+    Other modes (for example yolo/ulw) are handled by their respective plugin.
 
     Args:
         agent: Agent instance
         mode: New mode ('safe', 'plan', 'accept_edits')
     """
     if mode not in VALID_MODES:
-        # Unknown mode - might be handled by another plugin (e.g., ulw)
+        # Unknown mode - might be handled by another plugin (for example yolo/ulw)
         return
 
     old_mode = _get_mode(agent)

@@ -56,6 +56,7 @@ PLUGINS = {
     "system_reminder": "system_reminder.py",
     "ui_stream": "ui_stream.py",
     "ulw": "ulw.py",
+    "yolo": "ulw.py",
 }
 
 # Registry of copyable plugin directories

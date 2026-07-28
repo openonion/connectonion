@@ -30,7 +30,8 @@ Mode System:
 - "safe" (default): Dangerous tools need approval
 - "plan": Read-only only, exit_plan_and_implement uses its own io.send/receive
 - "accept_edits": File edits auto-approved, other dangerous tools need approval
-- "ulw": Handled by ulw plugin - bypasses all approvals
+- "yolo": Public autonomous mode - bypasses all approvals
+- "ulw": Backward-compatible autonomous mode - bypasses all approvals
 
 Session Memory:
 - scope="once": Approve for this call only
@@ -166,7 +167,7 @@ Architecture - Unified Permission System Lifecycle:
 
 Integration with other plugins:
     - skills plugin: grants turn-scoped permissions, snapshots/restores
-    - ulw plugin: sets skip_tool_approval=True to bypass all checks
+    - yolo/ulw plugin: sets skip_tool_approval=True to bypass all checks
     - tool_approval: owns matches_permission_pattern() for validation
     - co_ai CLI: includes tool_approval by default for WebSocket agent
 
@@ -188,6 +189,7 @@ from .approval import (
     load_config_permissions,
     poll_mode_changes,
     poll_interrupt,
+    poll_interrupt_after_text,
     handle_mode_change,
     get_current_mode,
 )
@@ -195,7 +197,13 @@ from .constants import VALID_MODES, DEFAULT_MODE
 
 # Export as plugin (list of event handlers)
 # Usage: Agent("name", plugins=[tool_approval])
-tool_approval = [load_config_permissions, poll_mode_changes, poll_interrupt, check_approval]
+tool_approval = [
+    load_config_permissions,
+    poll_mode_changes,
+    poll_interrupt,
+    poll_interrupt_after_text,
+    check_approval,
+]
 
 # Export mode functions for external use
 __all__ = [

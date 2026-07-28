@@ -129,3 +129,49 @@ class TestNoProgressGuard:
         ])
         agent = Agent("test", llm=mock_llm, plugins=[no_progress_guard()], log=False)
         assert 'after_iteration' in agent.events
+
+    def test_terminal_text_does_not_recount_the_previous_tool_call(self):
+        """A successful text response is not another tool-call iteration."""
+        from connectonion import Agent
+        from connectonion.core.llm import LLMResponse, ToolCall
+        from connectonion.core.usage import TokenUsage
+        from tests.utils.mock_helpers import MockLLM
+
+        def check_status() -> str:
+            """Return a stable status."""
+            return "pending"
+
+        def repeated_call(call_id):
+            return LLMResponse(
+                content="",
+                tool_calls=[ToolCall(
+                    name="check_status",
+                    arguments={},
+                    id=call_id,
+                )],
+                raw_response={},
+                usage=TokenUsage(),
+            )
+        llm = MockLLM(responses=[
+            repeated_call("call-1"),
+            repeated_call("call-2"),
+            LLMResponse(
+                content="genuinely done",
+                tool_calls=[],
+                raw_response={},
+                usage=TokenUsage(),
+            ),
+        ])
+        agent = Agent(
+            "progress-final",
+            llm=llm,
+            tools=[check_status],
+            plugins=[no_progress_guard(max_repeats=3)],
+            log=False,
+            quiet=True,
+        )
+
+        result = agent.input("finish")
+
+        assert result == "genuinely done"
+        assert agent.current_session['_noprogress_count'] == 2
