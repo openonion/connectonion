@@ -157,10 +157,13 @@ def _build_agent_profile(agent_metadata: dict) -> dict:
     # claude-project (.claude/skills). user (~/.co/skills), claude-user (~/.claude/skills)
     # are the operator's personal toolboxes and builtin is framework noise; none may leak
     # into the public directory. Allowlist, so an unknown future category stays private.
+    # Every client-facing skill list (this profile, the starter dashboard) draws from it,
+    # so a dashboard button can't name a skill the client will refuse to run.
+    from ...useful_plugins.skills import PUBLISHED_SKILL_LOCATIONS
     profile["skills"] = [
         {"name": s["name"], "description": s.get("description", "")}
         for s in agent_metadata.get("skills", [])
-        if s.get("location") in ("project", "claude-project")
+        if s.get("location") in PUBLISHED_SKILL_LOCATIONS
     ]
     return profile
 
@@ -488,6 +491,10 @@ def host(
     agent_metadata['summary'] = summary
     agent_metadata['examples'] = examples
 
+    # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
+    from .ws_router.dashboard import ensure_dashboard
+    ensure_dashboard(agent_metadata)
+
     # Load whitelist/blacklist: code param (list) takes priority, else load from YAML file path
     if whitelist is None:
         whitelist = load_list_file(config.get('whitelist'))
@@ -605,6 +612,10 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     # Extract metadata once at startup
     agent_metadata, sample = _extract_agent_metadata(create_agent)
     agent_metadata["address"] = get_agent_address(sample)
+
+    # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
+    from .ws_router.dashboard import ensure_dashboard
+    ensure_dashboard(agent_metadata)
 
     # Create TrustAgent instance
     if isinstance(trust, TrustAgent):

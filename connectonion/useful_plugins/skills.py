@@ -85,6 +85,17 @@ class SkillInfo:
     location: str  # project | claude-project | user | claude-user | builtin
 
 
+# The only locations a hosted agent publishes to clients: the two that ship inside
+# the project tree. user (~/.co/skills) and claude-user are the operator's personal
+# toolboxes and builtin is framework noise — none may leak into the public directory.
+# An allowlist, so an unknown future category stays private by default.
+#
+# Anything a client is expected to *invoke* must be drawn from this same set: a
+# client validates skill names against the published profile and refuses the rest,
+# so offering a skill outside it produces a button that can never run.
+PUBLISHED_SKILL_LOCATIONS = ("project", "claude-project")
+
+
 # =============================================================================
 # SKILL DISCOVERY
 # =============================================================================

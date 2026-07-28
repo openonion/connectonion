@@ -95,6 +95,11 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         connected_msg["chat_items"] = session_to_chat_items(conn["session"])
     await send_msg(connected_msg)
 
+    # Push the current dashboard.html so Home paints immediately, before any input.
+    # This connection has seen nothing yet, so it always sends when a file exists.
+    from .dashboard import send_dashboard
+    await send_dashboard(send_msg, session_id, conn)
+
     if status == "running":
         active.io.rewind_to(data.get("last_msg_id"))
-        return resume_forwarding(send_msg, active, registry, session_id, storage)
+        return resume_forwarding(send_msg, active, registry, session_id, storage, conn)

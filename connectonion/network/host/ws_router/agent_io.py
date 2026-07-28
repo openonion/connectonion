@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [...io (WebSocketIO), ..session (session_to_chat_items via lazy import), asyncio, threading, rich.console] | imported by [.session (start_agent), .connect (resume_forwarding)]
   Data flow: start_agent: validate INPUT → create WebSocketIO → register in registry BEFORE thread.start (race-safe) → spawn _agent_thread_body (thread target running route_handlers["ws_input"]) → spawn forward_task = forward_agent_msgs_to_client → return (io, task) | resume_forwarding: same forward_task spawn but on existing active.io | forward_agent_msgs_to_client: read_msgs_from_agent → send_msg loop → on agent finish read result_holder → emit OUTPUT (success) / ERROR (exception)
   State/Effects: spawns daemon Thread + asyncio.Task | mutates registry (register / mark_session_running) | calls io.mark_agent_done() in finally
-  Integration: start_agent(data, send_msg, conn, route_handlers, storage, registry) → (io, forward_task) | None | resume_forwarding(send_msg, active, registry, session_id, storage) → (io, forward_task) | forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder, conn, storage) — async, runs until io marked done
+  Integration: start_agent(data, send_msg, conn, route_handlers, storage, registry) → (io, forward_task) | None | resume_forwarding(send_msg, active, registry, session_id, storage, conn) → (io, forward_task) | forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holder, conn, storage) — async, runs until io marked done
   Performance: thread-per-INPUT (worker isolation) | one forward_task per WS connection
   Errors: agent thread exceptions captured in result_holder[0]; surfaced as ERROR frame by the forwarder (threads don't propagate exceptions natively)
 """
@@ -67,8 +67,14 @@ async def forward_agent_msgs_to_client(send_msg, io, session_id, *, result_holde
     else:
         await send_msg({"type": "ERROR", "message": "Agent completed without result"})
 
+    # After the run, push the dashboard.html the agent may have rewritten. A run that
+    # didn't touch it sends nothing (send_dashboard compares against what this
+    # connection last saw), so an unchanged Home costs no bandwidth per turn.
+    from .dashboard import send_dashboard
+    await send_dashboard(send_msg, session_id, conn)
 
-def resume_forwarding(send_msg, active, registry, session_id, storage):
+
+def resume_forwarding(send_msg, active, registry, session_id, storage, conn=None):
     """Restart the forward task on an existing running session's io. Returns (io, forward_task).
 
     Called when a client reconnects to a session whose agent thread is still
@@ -79,7 +85,7 @@ def resume_forwarding(send_msg, active, registry, session_id, storage):
     io = active.io
     registry.update_ping(session_id)
     task = asyncio.create_task(
-        forward_agent_msgs_to_client(send_msg, io, session_id, storage=storage)
+        forward_agent_msgs_to_client(send_msg, io, session_id, storage=storage, conn=conn)
     )
     return io, task
 

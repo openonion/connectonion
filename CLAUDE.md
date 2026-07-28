@@ -165,6 +165,8 @@ connectonion/
 │   ├── network/                    # Multi-agent networking
 │   │   ├── connect.py              # Connect to remote agents
 │   │   ├── host/                   # Host agents (trust config lives here)
+│   │   │   └── ws_router/
+│   │   │       └── dashboard.py    # dashboard.html delivery (the agent's Home page)
 │   │   ├── relay.py                # Agent relay server
 │   │   ├── announce.py             # Service announcement
 │   │   └── trust/                  # Trust verification system
