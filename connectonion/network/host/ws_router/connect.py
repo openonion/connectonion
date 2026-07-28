@@ -102,4 +102,4 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
 
     if status == "running":
         active.io.rewind_to(data.get("last_msg_id"))
-        return resume_forwarding(send_msg, active, registry, session_id, storage)
+        return resume_forwarding(send_msg, active, registry, session_id, storage, conn)
