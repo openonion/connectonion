@@ -56,6 +56,14 @@ def _exports_asgi_app(entrypoint: str) -> bool:
 
     content = entrypoint_path.read_text(encoding="utf-8")
 
+    # Blank out single-line string literals first. The comment rule below is
+    # lexical, so without this a `#` inside a string would hide a real call
+    # later on the same line (`msg = "note: #1"; host(agent)`) and block a valid
+    # deploy. Triple-quoted strings are left alone — a `#` inside one followed
+    # by a host() call on the same physical line is not a real scenario, and a
+    # pre-flight check is not worth a tokenizer.
+    content = re.sub(r'"[^"\n]*"|\'[^\'\n]*\'', '""', content)
+
     # `[^#\n]*` keeps commented-out calls from counting. The lookbehind rules out
     # names that merely end in "host" (ghost(...), localhost(...)) but allows a
     # leading dot, so `connectonion.host(agent)` still counts — wrongly blocking
@@ -265,9 +273,13 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     # logged in.
     with open(host_yaml_path, 'r', encoding="utf-8") as f:
         config = yaml.safe_load(f) or {}
-    project_name = config.get("name", "unnamed-agent")
-    env_file = config.get("env", ".env")
-    entrypoint = config.get("entrypoint", "agent.py")
+    # host.yaml is hand-editable and YAML types values for you: an unquoted
+    # `name: 123` arrives as an int, and matching a regex against it raises
+    # TypeError — a traceback in place of the clear message below. Coerce to str
+    # so a hand-edited file fails cleanly, or works when the value is sensible.
+    project_name = str(config.get("name") or "unnamed-agent")
+    env_file = str(config.get("env") or ".env")
+    entrypoint = str(config.get("entrypoint") or "agent.py")
 
     # The name becomes a hostname and a Docker tag, so the backend rejects
     # anything outside this set. `co init` now normalizes it when writing
@@ -412,7 +424,10 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
 
         result = status_resp.json()
         final_status = result.get("status", "unknown")
-        remaining = int(deadline - time.monotonic())
+        # Clamp: a status call that returns near the deadline makes this
+        # negative, and -5 seconds formats as "-1m55s left" (// floors, % does
+        # not) rather than anything a reader can use.
+        remaining = max(0, int(deadline - time.monotonic()))
         console.print(f"  [{remaining // 60}m{remaining % 60:02d}s left] status: {final_status}")
 
         if final_status == "running":

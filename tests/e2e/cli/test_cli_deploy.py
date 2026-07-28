@@ -368,6 +368,47 @@ class TestDeployValidation:
                 Path(name).write_text(source)
                 assert _exports_asgi_app(name) is True, name
 
+    def test_host_export_check_ignores_a_hash_inside_a_string(self):
+        """The comment rule is lexical, so a `#` inside a string literal must
+        not hide a real host() call later on the same line — that would block a
+        valid deploy with an error the user cannot act on."""
+        from connectonion.cli.commands.deploy_commands import _exports_asgi_app
+
+        with self.runner.isolated_filesystem():
+            Path("hashy.py").write_text('msg = "note: #1"; host(agent)\n')
+            assert _exports_asgi_app("hashy.py") is True
+
+            Path("single.py").write_text("msg = 'issue #7'\nhost(agent)\n")
+            assert _exports_asgi_app("single.py") is True
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_deploy_survives_a_yaml_typed_project_name(self, mock_post):
+        """`name: 123` unquoted parses as an int, and matching a regex against
+        an int raises TypeError — a traceback instead of a clean message.
+
+        The upload is mocked out: this is about surviving the config read, and
+        a real POST would make the test slow and dependent on the network.
+        """
+        from connectonion.cli.main import cli
+
+        mock_post.return_value = MagicMock(
+            status_code=400, text='{"detail": "nope"}',
+            json=lambda: {"detail": "nope"},
+        )
+
+        with self.runner.isolated_filesystem():
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text("name: 123\nentrypoint: agent.py\n")
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                result = self.runner.invoke(cli, ['deploy'])
+
+            assert "Traceback" not in result.output
+            # "123" is a legal deploy name, so it gets past validation instead
+            # of raising, and the run ends at the mocked backend error.
+            assert "Invalid project name" not in result.output
+            assert "Project: 123" in result.output
 
 @SKIP_NO_GIT
 class TestDeploySkillsPackaging:
