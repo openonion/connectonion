@@ -41,7 +41,7 @@ Example: `0.0.2`
 - 1.3.0 (remote tool execution: remote.call / co call; codex tool via native app-server; agent balance in ANNOUNCE profile + /info; humanized browser input + stealth; Gemini 3.6 Flash; bash description optional; browser-workflow-skill-builder; security: tightened default remote-exec whitelist)
 - 1.4.0 (co gmail and co gdrive: your own Gmail and Google Drive from the terminal, plus the GDrive tool; co skills link publishes bundled skills to Claude Code and Codex; Outlook contacts; OAuth fixes: both .env and ~/.co/keys.env are loaded, rotated tokens persist, Gmail refreshes every session; credentials no longer printed in CLI tracebacks; Gemini 3.6 Flash everywhere)
 
-- 1.5.0 (agent Home pages: the host pushes `dashboard.html` over the agent WebSocket and chat clients render it beside the conversation, with a built-in dashboard skill; `co syno` for Synology NAS; `co ai` YOLO mode; `co ai` and the templates drive the browser through `co browser` instead of 40 in-process tools; agents can declare how long they need a tab; deploy polls the full build window and validates project names locally; hermetic unit tests)
+- 1.5.0 (security: three command-approval bypasses closed — shell control syntax, process substitutions, and unbounded `Bash(cmd *)` prefixes; agent Home pages: the host pushes `dashboard.html` over the agent WebSocket and chat clients render it beside the conversation, with a built-in dashboard skill; `co syno` for Synology NAS; `co ai` YOLO mode; `co ai` and the templates drive the browser through `co browser` instead of 40 in-process tools; agents can declare how long they need a tab; deploy polls the full build window and validates project names locally; hermetic unit tests)
 
 ## Files to Update When Versioning
 
