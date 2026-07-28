@@ -69,3 +69,17 @@ def test_prompts_do_not_reference_verbs_the_browser_lacks():
 
     assert "type_text(" not in text
     assert "type_text_by_selector" in verbs
+
+
+@pytest.mark.parametrize("template", CLI_BROWSER_TEMPLATES)
+def test_template_prompt_teaches_sharing_the_browser(template):
+    """One browser, several agents. A prompt that teaches the verbs but not the
+    tab protocol produces agents that navigate over each other's pages — and
+    `--needs` is useless if nobody knows to declare it."""
+    prompt_dir = TEMPLATES / template
+    prompts = list(prompt_dir.glob("prompt.md")) + list((prompt_dir / "prompts").glob("agent.md"))
+    text = "\n".join(p.read_text(encoding="utf-8") for p in prompts)
+
+    assert "tab open" in text
+    assert "--needs" in text
+    assert "tab ls" in text, "an agent must know where to look before touching a tab"

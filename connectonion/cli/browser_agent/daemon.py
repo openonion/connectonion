@@ -415,11 +415,15 @@ class BrowserDaemon:
 
     def _tab_usage(self) -> str:
         return (
-            "usage: co browser tab open [NAME] [--who <agent>] [--for \"<purpose>\"]   # register; prints the name\n"
+            "usage: co browser tab open [NAME] [--who <agent>] [--for \"<purpose>\"] [--needs 10m]\n"
             "       co browser tab ls [--json]                                        # who runs where\n"
             "       co browser tab close <NAME>                                       # release when done\n"
             "then target your tab on EVERY command, including do:\n"
-            "       co browser -t <NAME> <verb> [args]"
+            "       co browser -t <NAME> <verb> [args]\n\n"
+            "--needs is your estimate of how long you will hold the tab (30s / 10m / 2h).\n"
+            "Other agents leave it alone until then, and may close it afterwards — an\n"
+            "estimate that ran out with the tab still open reads as 'crashed', not 'busy'.\n"
+            "Without it, 120s of silence is enough for another agent to take the tab."
         )
 
     def _tab_busy(self, key, meta) -> str:

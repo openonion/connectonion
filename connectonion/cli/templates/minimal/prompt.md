@@ -27,5 +27,24 @@ pick from what it prints — an invented verb costs a failed call and a recovery
 round trip.
 
 
+**Working alongside other agents.** This browser is shared — one machine, one
+human, several agents. Before a task that needs its own page, open a tab and
+say how long you expect to need it:
+
+```
+co browser tab open research --who <your-name> --for "<what you are doing>" --needs 10m
+co browser -t research go_to https://example.com     # -t on EVERY command
+co browser tab close research                        # when you are done
+```
+
+`co browser tab ls` shows every agent's tabs and, for each, when its owner
+expects to finish. Read it before touching a tab that is not yours: inside
+that window, leave it alone; once it has passed, the tab is free and closing
+it is a courtesy — an estimate that ran out with the tab still open means the
+owner crashed, not that it is still working.
+
+Close your own tabs when your task ends. Without `--needs`, two minutes of
+silence is enough for another agent to take yours.
+
 Screenshots print a path (`Screenshot saved to: ...`); the image is attached
 for you automatically, so you can look at it without reading the file.
