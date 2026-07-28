@@ -28,6 +28,10 @@ from .tool_executor import execute_and_record_tools, execute_single_tool
 from .events import EventHandler
 
 
+# A well-behaved plugin stops queueing; this only catches one that doesn't.
+MAX_QUEUED_CONTINUATIONS = 1000
+
+
 class Agent:
     """Agent that can use tools to complete tasks."""
     
@@ -293,11 +297,16 @@ class Agent:
             file_list = "\n".join(f"- {p}" for p in saved_files)
             prompt += f"\n\n<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
 
+        # One budget for the whole call. A caller that bounds this request with
+        # max_iterations means the continuations too — otherwise a plugin could
+        # queue turns that quietly run at the agent's default instead.
+        turn_iterations = max_iterations or self.max_iterations
+
         self._pending_inputs.clear()
         try:
             result = self._run_input_turn(
                 prompt,
-                max_iterations=max_iterations or self.max_iterations,
+                max_iterations=turn_iterations,
                 images=images,
                 saved_files=saved_files,
             )
@@ -305,11 +314,22 @@ class Agent:
             # Drain plugin-requested continuations iteratively. Recursive
             # agent.input() calls used to return the first result, reverse log
             # ordering, and eventually hit Python's recursion limit.
+            continuations = 0
             while self._pending_inputs:
+                continuations += 1
+                if continuations > MAX_QUEUED_CONTINUATIONS:
+                    # Recursion used to be bounded, however crudely, by Python's
+                    # recursion limit. A queue has no such backstop, so a plugin
+                    # that enqueues every turn would spin here forever.
+                    raise RuntimeError(
+                        f"plugin queued more than {MAX_QUEUED_CONTINUATIONS} "
+                        f"continuations in one input() call — a plugin is not "
+                        f"terminating (last: {self._pending_inputs[0][:60]!r})"
+                    )
                 next_prompt = self._pending_inputs.pop(0)
                 result = self._run_input_turn(
                     next_prompt,
-                    max_iterations=self.max_iterations,
+                    max_iterations=turn_iterations,
                     images=None,
                     saved_files=[],
                 )

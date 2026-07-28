@@ -1,5 +1,6 @@
 """Unit tests for connectonion/useful_plugins/ulw.py"""
 
+import pytest
 from unittest.mock import Mock
 
 from connectonion import Agent
@@ -308,3 +309,80 @@ def test_inject_prompt_replaces_existing_prompt_section():
     agent.current_session['ulw_prompt'] = 'new goal'
     inject_ulw_prompt(agent)
     assert agent.current_session['messages'][0]['content'] == 'base\n\n[Prompt]\nnew goal'
+
+
+def _text(content):
+    """A minimal terminal LLM response (no tool calls)."""
+    return LLMResponse(content=content, tool_calls=[], raw_response={}, usage=TokenUsage())
+
+
+class TestContinuationQueueSafety:
+    """The queue replaced recursion, and inherited none of its accidental limits."""
+
+    def test_a_callers_max_iterations_bounds_the_continuations_too(self):
+        """Recursion passed the caller's bound only to the first turn.
+
+        A caller that says max_iterations=3 means the whole request. Letting
+        queued turns fall back to the agent's default (100 in co ai) would
+        silently ignore the bound the caller asked for.
+        """
+        from connectonion import Agent
+        from tests.utils.mock_helpers import MockLLM
+
+        seen = []
+        agent = Agent("q", llm=MockLLM(responses=[_text("a"), _text("b")]), log=False, quiet=True)
+        original = agent._run_input_turn
+
+        def spy(prompt, *, max_iterations, **kw):
+            seen.append(max_iterations)
+            if len(seen) == 1:
+                agent._queue_input("continue")
+            return original(prompt, max_iterations=max_iterations, **kw)
+
+        agent._run_input_turn = spy
+        agent.input("go", max_iterations=3)
+
+        assert seen == [3, 3], f"continuation ran with {seen[1:]}, not the caller's bound"
+
+    def test_a_plugin_that_never_stops_queueing_raises_instead_of_hanging(self):
+        """Recursion was bounded, crudely, by Python's recursion limit.
+
+        A queue has no such backstop: without a cap, a misbehaving plugin spins
+        forever with no error and no output.
+        """
+        import connectonion.core.agent as agent_mod
+        from connectonion import Agent
+        from tests.utils.mock_helpers import MockLLM
+
+        agent = Agent("q", llm=MockLLM(responses=[_text("x") for _ in range(50)]), log=False, quiet=True)
+        original = agent._run_input_turn
+
+        def never_stops(prompt, **kw):
+            agent._queue_input("again")
+            return original(prompt, **kw)
+
+        agent._run_input_turn = never_stops
+        limit = agent_mod.MAX_QUEUED_CONTINUATIONS
+        agent_mod.MAX_QUEUED_CONTINUATIONS = 3
+        try:
+            with pytest.raises(RuntimeError, match="not terminating"):
+                agent.input("go")
+        finally:
+            agent_mod.MAX_QUEUED_CONTINUATIONS = limit
+
+    def test_a_failed_turn_does_not_leak_continuations_into_the_next_request(self):
+        from connectonion import Agent
+        from tests.utils.mock_helpers import MockLLM
+
+        agent = Agent("q", llm=MockLLM(responses=[_text("a")]), log=False, quiet=True)
+        agent._queue_input("stale")
+        original = agent._run_input_turn
+
+        def boom(prompt, **kw):
+            raise RuntimeError("turn failed")
+
+        agent._run_input_turn = boom
+        with pytest.raises(RuntimeError, match="turn failed"):
+            agent.input("go")
+
+        assert agent._pending_inputs == []
