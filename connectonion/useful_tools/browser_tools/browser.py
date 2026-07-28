@@ -264,6 +264,28 @@ def _age(seconds: float) -> str:
     return f"{seconds // 86400}d"
 
 
+def _occupancy_note(meta) -> str:
+    """One line telling other agents when this tab becomes theirs to close.
+
+    Reads the owner's own estimate — `needs_until` from `tab open --needs`, or
+    the older `hours` passed to go_to(). This is what lets a peer tell "still
+    working" from "crashed and left it open", which idleness alone cannot say.
+    """
+    until = meta.get("needs_until") or 0
+    if not until:
+        hours, opened_at = meta.get("hours") or 0, meta.get("opened_at")
+        if hours > 0 and opened_at:
+            until = opened_at.timestamp() + hours * 3600
+    if not until:
+        return ""
+
+    left = until - time.time()
+    when = datetime.fromtimestamp(until).strftime("%H:%M")
+    if left > 0:
+        return f"owner expects to finish by {when} ({_age(left)} left) — leave it alone until then"
+    return f"owner expected to finish by {when} ({_age(-left)} ago) — free for another agent to close"
+
+
 @_public_methods_run_on_browser_thread
 class BrowserAutomation:
     """Browser automation with natural language support.
@@ -729,17 +751,18 @@ class BrowserAutomation:
             line = f"  {marker}[{name}] {where}  who={who}  purpose={purpose!r}"
             opened_at = meta.get("opened_at")
             if opened_at:
-                elapsed = (datetime.now() - opened_at).total_seconds()
-                line += f"  open {_age(elapsed)}"
-                hours = meta.get("hours") or 0
-                if hours > 0:
-                    line += f" · flagged {hours:g}h"
-                    if elapsed > hours * 3600:
-                        line += " — may be closed"
+                line += f"  open {_age((datetime.now() - opened_at).total_seconds())}"
             last_at = meta.get("last_at")
             if last_at:
                 last_line = (meta.get("last_line") or "")[:60]
                 line += f'\n      last: "{last_line}" · {_age(time.time() - last_at)} ago'
+            # What another agent needs in order to decide whether to help close
+            # this tab: when its owner said it would be done, and whether that
+            # moment has passed. Idleness alone cannot say it — an idle tab is
+            # not an abandoned one.
+            note = _occupancy_note(meta)
+            if note:
+                line += f"\n      {note}"
             lines.append(line)
         return "\n".join(lines)
 

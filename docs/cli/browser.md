@@ -127,6 +127,47 @@ co browser get_links_from_page | grep github | wc -l
 co browser go_to "$DEPLOY_URL" && co browser take_screenshot /tmp/deployed.png
 ```
 
+## Sharing the Browser With Other Agents
+
+One machine, one browser, often several agents. They stay out of each other's
+way through named tabs — and by saying how long they expect to need one.
+
+```bash
+co browser tab open scrape --who alice --for "scrape pricing" --needs 10m
+co browser -t scrape go_to example.com/pricing    # -t on EVERY command
+co browser -t scrape get_text
+co browser tab close scrape                        # release when done
+```
+
+`--needs` takes `30s`, `10m`, or `2h`. It is not a lock — it is the estimate
+other agents read before touching your tab:
+
+```bash
+co browser tab ls
+```
+
+```
+Tabs (2):
+   [scrape] https://example.com/pricing  who=alice  purpose='scrape pricing'  open 3m
+      last: "get_text" · 12s ago
+      owner expects to finish by 14:20 (7m left) — leave it alone until then
+   [stale] https://...  who=bob  purpose='check stock'  open 2h
+      owner expected to finish by 12:30 (1h ago) — free for another agent to close
+```
+
+**Inside the window, leave it alone** — open your own tab instead. **Once it has
+passed, the tab is free**, and closing it is a courtesy: an estimate that ran out
+with the tab still open means that agent crashed, not that it is still working.
+
+A tab opened without `--needs` frees up after ~2 minutes of silence, which is
+wrong whenever you are waiting on a slow page or a human. Say the number.
+
+Set `CO_WHO` so your commands carry your identity:
+
+```bash
+export CO_WHO=alice
+```
+
 ## Headless vs GUI
 
 By default the browser is **visible** (a real Chrome window you can watch). Add `--headless` for scripts/CI:

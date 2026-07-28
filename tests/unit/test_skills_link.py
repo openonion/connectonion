@@ -113,3 +113,30 @@ class TestSkillsLink:
         output = capsys.readouterr().out
         assert "claude" in output
         assert "codex" in output
+
+
+class TestCoBrowserSkillMatchesBehaviour:
+    """The skill is what Claude Code and Codex actually read.
+
+    It drifted once already: it told agents "a crashed agent's claim expires on
+    its own; open your own tab rather than closing theirs" — the opposite of
+    what the daemon now does once a declared window elapses. A skill that
+    contradicts the tool is worse than no skill.
+    """
+
+    def _skill(self):
+        return (BUNDLED_SKILLS / "co-browser" / "SKILL.md").read_text(encoding="utf-8")
+
+    def test_teaches_declaring_how_long_the_tab_is_needed(self):
+        text = self._skill()
+        assert "--needs" in text
+
+    def test_does_not_still_say_never_close_another_agents_tab(self):
+        """True inside the declared window, wrong once it has passed."""
+        text = self._skill()
+        assert "rather than closing theirs" not in text
+        assert "expires on its own" not in text
+
+    def test_points_agents_at_the_board_before_they_act(self):
+        text = self._skill()
+        assert "tab ls" in text

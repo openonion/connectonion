@@ -96,6 +96,13 @@ def list_functions() -> str:
 
 GUARD_WINDOW = 120  # seconds a tab's last claim keeps excluding other callers
 
+# Tabs are closed by the agent that opened them. This is only a janitor for tabs
+# whose opener is never coming back — a crashed process, a machine left running
+# for weeks. It is deliberately far longer than any real task: reclaiming early
+# would close a page someone is still using, which is exactly what owner-only
+# closing exists to prevent. Three days, not three minutes.
+ABANDONED_AFTER = 3 * 24 * 3600
+
 
 def _key(name):
     """Canonical session key — the shared main tab is stored as None."""
@@ -118,12 +125,52 @@ def _owner_alive(sock_path: str) -> bool:
     return transport.pid_alive(int(raw))
 
 
+def _parse_duration(text: str) -> float:
+    """'30s' '10m' '2h' or a bare number of seconds -> seconds. 0 when unparseable."""
+    text = (text or "").strip().lower()
+    if not text:
+        return 0.0
+    unit = {"s": 1, "m": 60, "h": 3600}.get(text[-1])
+    number = text[:-1] if unit else text
+    try:
+        return float(number) * (unit or 1)
+    except ValueError:
+        return 0.0
+
+
+def _fmt_duration(seconds: float) -> str:
+    seconds = int(seconds)
+    if seconds >= 3600:
+        return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
+    if seconds >= 60:
+        return f"{seconds // 60}m"
+    return f"{seconds}s"
+
+
+def _declared_hold(meta) -> float:
+    """Seconds left on the tab's declared occupancy, 0 once it has elapsed.
+
+    An agent that says at `tab open` how long it needs the tab is stating
+    something the framework cannot infer: a login handoff needs minutes, a
+    long scrape needs an hour. While that window is live the tab is its own.
+    Once it passes, another agent may clean up — everyone here is cooperative,
+    and a declaration that has elapsed with the tab still open means the owner
+    is gone, not that it is still working.
+    """
+    until = meta.get("needs_until") or 0
+    return max(0.0, until - time.time())
+
+
 def _held_by_other(meta, caller: str) -> bool:
     """True when this tab carries a live claim (within GUARD_WINDOW) by a DIFFERENT
     identity than `caller`. An anonymous request (caller="") is still held OUT of a
     named claim; two anonymous requests cannot be told apart, so they are not guarded."""
-    holder = meta.get("caller")
-    return bool(holder and holder != caller and time.time() - (meta.get("claim_at") or 0) < GUARD_WINDOW)
+    holder = meta.get("caller") or meta.get("opened_by")
+    if not holder or holder == caller:
+        return False
+    if _declared_hold(meta):
+        return True  # inside the window its owner asked for
+    return time.time() - (meta.get("claim_at") or 0) < GUARD_WINDOW
 
 
 class BrowserDaemon:
@@ -221,6 +268,12 @@ class BrowserDaemon:
         no ceremony, per docs). A named -t target was validated before this point."""
         return self.browser._tab_meta.setdefault(
             key, {"who": caller or "main",
+                  # `who` is the CURRENT occupant — _stamp_claim reassigns it when a
+                  # claim expires and someone else takes over. `opened_by` is who
+                  # created the tab and is never reassigned: it is what "your tab"
+                  # means. Anonymous callers cannot own anything, because two
+                  # anonymous callers are indistinguishable.
+                  "opened_by": caller or "",
                   "purpose": "shared main tab" if key is None else key,
                   "opened_at": datetime.now()}
         )
@@ -312,20 +365,24 @@ class BrowserDaemon:
 
     def _tab_open(self, rest, caller: str = "") -> tuple:
         """Register a named tab (page is created lazily on its first command). Prints ONLY the name."""
-        name, who, purpose = "", "", ""
+        name, who, purpose, needs = "", "", "", ""
         i = 0
         while i < len(rest):
             tok = rest[i]
-            if tok in ("--who", "--for") and i + 1 < len(rest):
+            if tok in ("--who", "--for", "--needs") and i + 1 < len(rest):
                 i += 1
                 if tok == "--who":
                     who = rest[i]
+                elif tok == "--needs":
+                    needs = rest[i]
                 else:
                     purpose = rest[i]
             elif tok.startswith("--who="):
                 who = tok.split("=", 1)[1]
             elif tok.startswith("--for="):
                 purpose = tok.split("=", 1)[1]
+            elif tok.startswith("--needs="):
+                needs = tok.split("=", 1)[1]
             elif not tok.startswith("-") and not name:
                 name = tok
             i += 1
@@ -341,23 +398,32 @@ class BrowserDaemon:
             if not _held_by_other(existing, caller):
                 # yours, or the previous owner's claim has expired → (re)claim the name
                 existing.update(who=who or caller or name, purpose=purpose or existing.get("purpose") or name,
-                                caller=caller, claim_at=time.time() if caller else 0)
+                                caller=caller, claim_at=time.time() if caller else 0,
+                                needs_until=time.time() + _parse_duration(needs) if needs else 0)
                 return True, name
             # A DIFFERENT agent is mid-task under this name: sharing would collide.
             return 4, self._tab_busy(name, existing) + "\n\nor pick a different name for your own tab."
         self.browser._tab_meta[name] = {
             "who": who or caller or name, "purpose": purpose or name,
+            "opened_by": caller or "",
             "opened_at": datetime.now(), "caller": caller, "claim_at": time.time() if caller else 0,
+            # How long the opener says it needs the tab. Other agents leave it
+            # alone until then, and may clean it up afterwards.
+            "needs_until": time.time() + _parse_duration(needs) if needs else 0,
         }
         return True, name
 
     def _tab_usage(self) -> str:
         return (
-            "usage: co browser tab open [NAME] [--who <agent>] [--for \"<purpose>\"]   # register; prints the name\n"
+            "usage: co browser tab open [NAME] [--who <agent>] [--for \"<purpose>\"] [--needs 10m]\n"
             "       co browser tab ls [--json]                                        # who runs where\n"
             "       co browser tab close <NAME>                                       # release when done\n"
             "then target your tab on EVERY command, including do:\n"
-            "       co browser -t <NAME> <verb> [args]"
+            "       co browser -t <NAME> <verb> [args]\n\n"
+            "--needs is your estimate of how long you will hold the tab (30s / 10m / 2h).\n"
+            "Other agents leave it alone until then, and may close it afterwards — an\n"
+            "estimate that ran out with the tab still open reads as 'crashed', not 'busy'.\n"
+            "Without it, 120s of silence is enough for another agent to take the tab."
         )
 
     def _tab_busy(self, key, meta) -> str:
@@ -365,13 +431,50 @@ class BrowserDaemon:
         who = meta.get("who") or meta.get("caller") or "someone"
         last = (meta.get("last_line") or "")[:60]
         ago = _ago(time.time() - (meta.get("claim_at") or meta.get("last_at") or time.time()))
+        left = _declared_hold(meta)
+        window = (f" · declared for {_fmt_duration(left)} more" if left
+                  else "")
         return (
-            f"tab '{_tab_label(key)}' is in use by {who} — last: \"{last}\" · {ago}\n\n"
+            f"tab '{_tab_label(key)}' is in use by {who} — last: \"{last}\" · {ago}{window}\n\n"
             f"You are a second agent on this browser. Two agents cannot share one tab.\n"
             f"Run your task in your own tab — three commands:\n"
             f"  1. co browser tab open <name> --who <your-name> --for \"<what you are doing>\"\n"
             f"  2. co browser -t <name> <verb> [args]      # add -t <name> to EVERY command, including do\n"
             f"  3. co browser tab close <name>             # when your task is done\n\n"
+            f"see who owns what:  co browser tab ls"
+        )
+
+    def _reap_abandoned_tabs(self) -> None:
+        """Close tabs whose opener never came back. Runs before tab listings.
+
+        Owner-only closing means a crashed agent's tab would otherwise live as
+        long as the daemon. This is the only path that closes someone else's
+        tab, so it is deliberately hard to trigger: no live claim, and untouched
+        for ABANDONED_AFTER (3 days). Every reclamation is logged, so the first
+        person surprised by one can find out why.
+        """
+        now = time.time()
+        for key, meta in list(self.browser._tab_meta.items()):
+            if key is None:  # main is shared and never reaped
+                continue
+            if _held_by_other(meta, ""):  # someone is actively driving it
+                continue
+            last = meta.get("last_at") or meta.get("claim_at")
+            if not last or now - last < ABANDONED_AFTER:
+                continue
+            owner = meta.get("opened_by") or meta.get("who") or "unknown"
+            self.browser.close_tab(_tab_label(key))
+            print(f"[reap] closed tab '{_tab_label(key)}' opened by {owner} — "
+                  f"idle {_ago(now - last)}", file=sys.stderr, flush=True)
+
+    def _tab_not_yours(self, key, owner: str) -> str:
+        """Error-as-documentation: you may close your own tabs, not other agents'."""
+        return (
+            f"tab '{_tab_label(key)}' was opened by {owner}, not you — only its "
+            f"opener closes it.\n\n"
+            f"This does not expire. An idle tab is not an abandoned one: the agent "
+            f"that opened it may be waiting on a login, a long page, or a human.\n"
+            f"Close your own tabs when your task ends; leave other agents' alone.\n\n"
             f"see who owns what:  co browser tab ls"
         )
 
@@ -416,8 +519,10 @@ class BrowserDaemon:
             if key is None:  # main always exists conceptually; nothing to release is fine
                 return True, "main is already free — nothing to close."
             return 3, self._unknown_tab(target)
-        # Closing someone's mid-task tab is the most destructive write there is —
-        # it gets the same guard as driving the page (and blocks anonymous callers too).
+        # Closing someone else's tab is fine once the time they asked for has
+        # passed — every agent here is cooperative, and a declaration that
+        # elapsed with the tab still open means its owner is gone, not busy.
+        # Before that, refuse: 120s of silence is not evidence a task ended.
         if meta and _held_by_other(meta, caller):
             return 4, self._tab_busy(key, meta)
         self.last_command = {"line": "closetab " + target, "at": time.time()}

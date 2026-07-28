@@ -557,7 +557,9 @@ def test_go_to_occupied_tab_navigates_without_flags():
 
 
 def test_tab_status_flags_may_be_closed():
-    """A tab past its --hours estimate is flagged 'may be closed' (informational only)."""
+    """A tab past the time its owner estimated is shown as free for another
+    agent to close — that is the signal a peer uses to tell 'still working'
+    from 'crashed and left it open', which idleness alone cannot express."""
     from datetime import datetime, timedelta
 
     p0 = FakePage(); p0.url = "https://x.com/home"
@@ -570,5 +572,55 @@ def test_tab_status_flags_may_be_closed():
     }
 
     out = browser.tab_status()
-    assert "flagged 2h" in out
-    assert "may be closed" in out
+    assert "free for another agent to close" in out
+    assert "owner expected to finish by" in out
+
+
+class TestOccupancyNote:
+    """What the board must tell a second agent.
+
+    Many agents share one browser on one machine. Deciding whether to help
+    close someone's tab needs more than idleness — an idle tab is not an
+    abandoned one. The owner's own estimate is the only signal that separates
+    'still working' from 'crashed and left it open'.
+    """
+
+    def test_inside_the_declared_window_says_leave_it_alone(self):
+        import time
+        from connectonion.useful_tools.browser_tools.browser import _occupancy_note
+
+        note = _occupancy_note({"needs_until": time.time() + 600})
+
+        assert "leave it alone" in note
+        assert "left)" in note, "a peer needs to know how long to wait"
+
+    def test_past_the_declared_window_says_free_to_close(self):
+        import time
+        from connectonion.useful_tools.browser_tools.browser import _occupancy_note
+
+        note = _occupancy_note({"needs_until": time.time() - 120})
+
+        assert "free for another agent to close" in note
+
+    def test_the_older_hours_estimate_still_works(self):
+        """go_to(hours=...) predates `tab open --needs`; both must render."""
+        from datetime import datetime, timedelta
+        from connectonion.useful_tools.browser_tools.browser import _occupancy_note
+
+        note = _occupancy_note({"hours": 2, "opened_at": datetime.now() - timedelta(hours=3)})
+
+        assert "free for another agent to close" in note
+
+    def test_an_undeclared_tab_says_nothing(self):
+        """No estimate, no claim about it — silence beats a guess."""
+        from connectonion.useful_tools.browser_tools.browser import _occupancy_note
+
+        assert _occupancy_note({}) == ""
+
+    def test_the_note_carries_a_wall_clock_time(self):
+        """'9m left' answers 'how long'; a clock time answers 'by when', which
+        is what a human reading the board over an agent's shoulder wants."""
+        import re, time
+        from connectonion.useful_tools.browser_tools.browser import _occupancy_note
+
+        assert re.search(r"by \d{2}:\d{2}", _occupancy_note({"needs_until": time.time() + 600}))
