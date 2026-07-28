@@ -3,8 +3,8 @@ Purpose: Shared utility functions for CLI project commands including validation,
 LLM-Note:
   Dependencies: imports from [os, re, sys, time, shutil, rich.console, rich.prompt, rich.progress, rich.table, rich.panel, datetime, pathlib, __version__, address] | imported by [cli/commands/init.py, cli/commands/create.py] | calls LLM APIs for custom template generation | tested indirectly via test_cli_init.py and test_cli_create.py
   Data flow: provides utility functions called by init.py and create.py → validate_project_name() checks regex patterns → check_environment_for_api_keys() scans env vars for OpenAI/Anthropic/Google/Groq/Grok/OpenRouter keys → detect_api_provider() inspects key format to identify provider → api_key_setup_menu() displays interactive menu for key selection → generate_custom_template_with_name() calls LLM API with custom prompt to generate agent.py code → show_progress() displays Rich spinner → LoadingAnimation context manager for long operations → get_special_directory_warning() warns about home/root dirs
-  State/Effects: no persistent state | reads from environment variables | writes to stdout via rich.Console | calls LLM APIs (OpenAI/Anthropic/Google) when generating custom templates | creates Rich UI elements (tables, panels, progress bars, prompts) | does NOT write files (caller handles that)
-  Integration: exposes 16+ utility functions and 1 class (LoadingAnimation) | used by init.py and create.py for shared logic | validate_project_name() enforces naming conventions (starts with letter, no spaces, max 50 chars) | check_environment_for_api_keys() scans OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY | detect_api_provider() identifies provider by key prefix (sk- for OpenAI, sk-ant- for Anthropic, AIzaSy for Google, gsk- for Groq, xai- for Grok, sk-or- for OpenRouter) | generate_custom_template_with_name() uses LLM to create agent.py from natural language description
+  State/Effects: no persistent state | reads from environment variables | writes to stdout via rich.Console | calls LLM APIs (OpenAI/Anthropic/Google) when generating custom templates | creates Rich UI elements (tables, panels, progress bars, prompts) | writes no files except create_host_yaml() (.co/host.yaml)
+  Integration: exposes 16+ utility functions and 1 class (LoadingAnimation) | used by init.py and create.py for shared logic | validate_project_name() enforces naming conventions for the project/directory name (starts with letter, no spaces, max 50 chars) | normalize_deploy_name()/DEPLOY_NAME_PATTERN cover the separate, stricter rule for the deploy name written into host.yaml (a DNS label and Docker tag: lowercase, digits, hyphens), applied by create_host_yaml() and re-checked by deploy_commands.py | check_environment_for_api_keys() scans OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY, GOOGLE_API_KEY, GROQ_API_KEY, XAI_API_KEY, OPENROUTER_API_KEY | detect_api_provider() identifies provider by key prefix (sk- for OpenAI, sk-ant- for Anthropic, AIzaSy for Google, gsk- for Groq, xai- for Grok, sk-or- for OpenRouter) | generate_custom_template_with_name() uses LLM to create agent.py from natural language description
   Performance: environment scanning is O(n) env vars | regex validation is fast (<1ms) | LLM API calls for custom templates (5-15s) | Rich UI rendering is lightweight | LoadingAnimation runs in main thread (non-blocking spinner)
   Errors: validate_project_name() returns (False, error_msg) for invalid names | detect_api_provider() returns ("unknown", "unknown") for unrecognized keys | generate_custom_template_with_name() may fail if LLM API unreachable | api_key_setup_menu() catches KeyboardInterrupt and returns ("", "", None) | no try-except blocks (follows fail-fast principle)
 """
@@ -901,6 +901,20 @@ def copy_docs(co_dir: Path) -> bool:
         return False
 
 
+# The name in host.yaml becomes a DNS label and a Docker image tag when the
+# project is deployed, so `co deploy` and the backend both reject anything
+# outside this set. Kept here because host.yaml is written here.
+DEPLOY_NAME_PATTERN = re.compile(r"^[a-z0-9][a-z0-9-]{0,38}$")
+
+
+def normalize_deploy_name(name: str) -> Optional[str]:
+    """Nearest deployable form of `name`, or None if nothing usable is left."""
+    if DEPLOY_NAME_PATTERN.match(name or ""):
+        return name
+    candidate = re.sub(r"[^a-z0-9]+", "-", (name or "").lower()).strip("-")[:39].rstrip("-")
+    return candidate if DEPLOY_NAME_PATTERN.match(candidate) else None
+
+
 def create_host_yaml(co_dir: Path, project_name: str) -> bool:
     """Create .co/host.yaml from template. Returns True if created, False if already exists."""
     host_yaml_path = co_dir / "host.yaml"
@@ -911,7 +925,18 @@ def create_host_yaml(co_dir: Path, project_name: str) -> bool:
     with open(template_path, "r", encoding="utf-8") as f:
         template_content = f.read()
 
-    project_header = f"""name: {project_name}
+    # A directory name is chosen for people, not for DNS — `co init` inside
+    # "My_Agent" would otherwise write a name that can never deploy. Adjust it
+    # here rather than refusing to create the project, and say so, since the
+    # folder keeps its own name either way.
+    deploy_name = normalize_deploy_name(project_name) or "agent"
+    if deploy_name != project_name:
+        console.print(
+            f"  [yellow]Deployment name set to[/yellow] {deploy_name} "
+            f"[dim](from '{project_name}'; must be lowercase letters, digits, and hyphens)[/dim]"
+        )
+
+    project_header = f"""name: {deploy_name}
 entrypoint: agent.py
 """
     with open(host_yaml_path, "w", encoding='utf-8') as f:
@@ -1088,6 +1113,8 @@ __all__ = [
     'PROVIDER_TO_ENV',
     'copy_docs',
     'create_host_yaml',
+    'normalize_deploy_name',
+    'DEPLOY_NAME_PATTERN',
     'setup_gitignore',
     'print_resources',
     'load_api_key',

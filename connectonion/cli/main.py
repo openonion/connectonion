@@ -89,6 +89,7 @@ def _show_help():
     console.print("  [green]email[/green]             Send and read agent email")
     console.print("  [green]gmail[/green]             Send and read Gmail (co auth google)")
     console.print("  [green]gdrive[/green]            List and transfer Google Drive files (co auth google)")
+    console.print("  [green]syno[/green]              Browse and transfer Synology NAS files (co syno login)")
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
@@ -214,10 +215,24 @@ def ai(
     port: int = typer.Option(8000, "--port", "-p", help="Port for web server"),
     model: str = typer.Option("co/gemini-3.6-flash", "--model", "-m", help="Model to use"),
     max_iterations: int = typer.Option(100, "--max-iterations", "-i", help="Max iterations"),
+    yolo: bool = typer.Option(False, "--yolo", help="Skip approvals and keep working autonomously"),
+    yolo_turns: int = typer.Option(
+        100,
+        "--yolo-turns",
+        min=1,
+        help="Autonomous turns before a checkpoint (requires --yolo)",
+    ),
 ):
     """Start AI coding agent or run one-shot prompt."""
     from .commands.ai_commands import handle_ai
-    handle_ai(prompt=prompt, port=port, model=model, max_iterations=max_iterations)
+    handle_ai(
+        prompt=prompt,
+        port=port,
+        model=model,
+        max_iterations=max_iterations,
+        yolo=yolo,
+        yolo_turns=yolo_turns,
+    )
 
 
 @app.command()
@@ -604,6 +619,80 @@ def gdrive_rm(
     """Move a file to the Drive trash (recoverable)."""
     from .commands.gdrive_commands import handle_gdrive_rm
     handle_gdrive_rm(file_id)
+
+
+# Synology command group. `co syno` (no args) lists your shared folders.
+# Uses the SYNOLOGY_* credentials saved to keys.env by `co syno login`.
+syno_app = typer.Typer(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
+app.add_typer(syno_app, name="syno")
+
+
+@syno_app.callback(invoke_without_command=True)
+def syno_callback(ctx: typer.Context):
+    """With no subcommand, list your NAS shared folders."""
+    if ctx.invoked_subcommand is None:
+        from .commands.synology_commands import handle_syno_list
+        handle_syno_list()
+
+
+@syno_app.command("login")
+def syno_login(
+    url: str = typer.Option(None, "--url", help="Connect directly, e.g. https://nas.local:5001 (skips QuickConnect)"),
+):
+    """Connect your NAS by QuickConnect ID, or directly with --url."""
+    from .commands.synology_commands import handle_syno_login
+    handle_syno_login(url=url)
+
+
+@syno_app.command("ls")
+def syno_ls(
+    path: str = typer.Argument(None, help="Folder path, e.g. /home/photos. Omit to list shared folders."),
+    last: int = typer.Option(20, "--last", "-n", help="How many entries to show"),
+):
+    """List shared folders, or the contents of one folder."""
+    from .commands.synology_commands import handle_syno_list
+    handle_syno_list(path=path, last=last)
+
+
+@syno_app.command("search")
+def syno_search(
+    query: str = typer.Argument(..., help="Text or glob to look for in file names"),
+    path: str = typer.Option("/", "--in", help="Folder to search under"),
+    last: int = typer.Option(20, "--last", "-n", help="How many matches to show"),
+):
+    """Search the NAS by file name."""
+    from .commands.synology_commands import handle_syno_search
+    handle_syno_search(query, path=path, last=last)
+
+
+@syno_app.command("get")
+def syno_get(
+    ref: str = typer.Argument(..., help="File # from the last listing, or a full NAS path"),
+    dest: str = typer.Option(".", "--to", help="Destination directory or file path"),
+):
+    """Download a file from the NAS."""
+    from .commands.synology_commands import handle_syno_get
+    handle_syno_get(ref, dest=dest)
+
+
+@syno_app.command("put")
+def syno_put(
+    local_path: str = typer.Argument(..., help="Local file to upload"),
+    path: str = typer.Argument(..., help="Destination NAS folder, e.g. /home/photos"),
+    overwrite: bool = typer.Option(False, "--overwrite", help="Replace an existing file of the same name"),
+):
+    """Upload a local file to the NAS."""
+    from .commands.synology_commands import handle_syno_put
+    handle_syno_put(local_path, path, overwrite=overwrite)
+
+
+@syno_app.command("share")
+def syno_share(
+    ref: str = typer.Argument(..., help="File # from the last listing, or a full NAS path"),
+):
+    """Create a public sharing link for a file or folder."""
+    from .commands.synology_commands import handle_syno_share
+    handle_syno_share(ref)
 
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.

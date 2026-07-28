@@ -92,8 +92,8 @@ class TestCliDeploy:
             mock_post.return_value = MagicMock(
                 status_code=200,
                 json=lambda: {
-                    "deployment_id": "abc123",
-                    "agent_url": "https://test-agent-abc123.agents.openonion.ai"
+                    "id": "abc123",
+                    "url": "https://test-agent-abc123.agents.openonion.ai"
                 }
             )
             mock_get.return_value = MagicMock(
@@ -278,6 +278,137 @@ class TestCliDeploy:
 
             assert "Deploy failed" in result.output
 
+
+class TestDeployValidation:
+    """Names and backend replies the CLI must reject before doing slow work."""
+
+    def setup_method(self):
+        self.runner = ArgparseCliRunner()
+
+    @pytest.mark.parametrize("project_name", [
+        "My-Agent",       # docker build rejects uppercase tags
+        "my_agent",       # not a legal DNS label
+        "x; rm -rf /",
+        "-leading-hyphen",
+    ])
+    def test_deploy_rejects_invalid_project_name(self, project_name):
+        """The name becomes a hostname and a Docker tag; fail before uploading."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.main import cli
+
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text(f'name: {project_name!r}\nentrypoint: agent.py\n')
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+            result = self.runner.invoke(cli, ['deploy'])
+            assert "Invalid project name" in result.output
+
+    def test_invalid_name_suggests_a_valid_one(self):
+        """host.yaml can still carry a bad name — written before `co init`
+        normalized it, or edited by hand — so the error says what to change
+        it to rather than only what is wrong."""
+        from connectonion.cli.main import cli
+
+        with self.runner.isolated_filesystem():
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text("name: My_Agent\nentrypoint: agent.py\n")
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+            result = self.runner.invoke(cli, ['deploy'])
+            assert "Invalid project name" in result.output
+            assert "my-agent" in result.output
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.get')
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_deploy_stops_when_backend_returns_no_id(self, mock_post, mock_get):
+        """Without an id there is nothing to poll — don't loop on /deploy/None/status."""
+        with self.runner.isolated_filesystem():
+            from connectonion.cli.commands.deploy_commands import _deploy_current_project
+
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text('name: test-agent\nentrypoint: agent.py\n')
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+            mock_post.return_value = MagicMock(status_code=200, json=lambda: {"url": "u"})
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                assert _deploy_current_project([]) is False
+
+            mock_get.assert_not_called()
+
+    def test_host_export_check_ignores_commented_out_calls(self):
+        """A commented-out host() call must not pass the pre-flight check."""
+        from connectonion.cli.commands.deploy_commands import _exports_asgi_app
+
+        with self.runner.isolated_filesystem():
+            Path("commented.py").write_text("# host(agent)\nprint('hi')\n")
+            assert _exports_asgi_app("commented.py") is False
+
+            Path("trailing.py").write_text("x = 1  # host(agent) goes here later\n")
+            assert _exports_asgi_app("trailing.py") is False
+
+            Path("similar.py").write_text("ghost(agent)\nurl = localhost(8000)\n")
+            assert _exports_asgi_app("similar.py") is False
+
+    def test_host_export_check_accepts_every_way_of_calling_host(self):
+        """Blocking a valid deploy is worse than letting one reach a clear
+        container error, so any real host(...) call counts — including the
+        module-qualified form."""
+        from connectonion.cli.commands.deploy_commands import _exports_asgi_app
+
+        with self.runner.isolated_filesystem():
+            for name, source in [
+                ("plain.py", "from connectonion import host\nhost(agent)\n"),
+                ("assigned.py", "app = host(agent)\n"),
+                ("kwargs.py", "host(agent, port=8000)\n"),
+                ("qualified.py", "import connectonion\nconnectonion.host(agent)\n"),
+                ("aliased.py", "import connectonion as co\nco.host(agent)\n"),
+                ("guarded.py", "if __name__ == '__main__': host(agent)\n"),
+            ]:
+                Path(name).write_text(source)
+                assert _exports_asgi_app(name) is True, name
+
+    def test_host_export_check_ignores_a_hash_inside_a_string(self):
+        """The comment rule is lexical, so a `#` inside a string literal must
+        not hide a real host() call later on the same line — that would block a
+        valid deploy with an error the user cannot act on."""
+        from connectonion.cli.commands.deploy_commands import _exports_asgi_app
+
+        with self.runner.isolated_filesystem():
+            Path("hashy.py").write_text('msg = "note: #1"; host(agent)\n')
+            assert _exports_asgi_app("hashy.py") is True
+
+            Path("single.py").write_text("msg = 'issue #7'\nhost(agent)\n")
+            assert _exports_asgi_app("single.py") is True
+
+    @patch('connectonion.cli.commands.deploy_commands.requests.post')
+    def test_deploy_survives_a_yaml_typed_project_name(self, mock_post):
+        """`name: 123` unquoted parses as an int, and matching a regex against
+        an int raises TypeError — a traceback instead of a clean message.
+
+        The upload is mocked out: this is about surviving the config read, and
+        a real POST would make the test slow and dependent on the network.
+        """
+        from connectonion.cli.main import cli
+
+        mock_post.return_value = MagicMock(
+            status_code=400, text='{"detail": "nope"}',
+            json=lambda: {"detail": "nope"},
+        )
+
+        with self.runner.isolated_filesystem():
+            os.makedirs(".co")
+            Path(".co/host.yaml").write_text("name: 123\nentrypoint: agent.py\n")
+            Path("agent.py").write_text("from connectonion import host\nhost(None)\n")
+
+            with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
+                result = self.runner.invoke(cli, ['deploy'])
+
+            assert "Traceback" not in result.output
+            # "123" is a legal deploy name, so it gets past validation instead
+            # of raising, and the run ends at the mocked backend error.
+            assert "Invalid project name" not in result.output
+            assert "Project: 123" in result.output
 
 @SKIP_NO_GIT
 class TestDeploySkillsPackaging:

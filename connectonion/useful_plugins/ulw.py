@@ -23,13 +23,16 @@ Usage:
 
 from typing import TYPE_CHECKING
 
-from ..core.events import on_complete, before_iteration, before_llm
+from ..core.events import after_user_input, on_complete, before_iteration, before_llm
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
 
 
 ULW_DEFAULT_TURNS = 100
+# Public vocabulary. The ULW names remain the wire/session compatibility
+# contract used by existing frontends and persisted sessions.
+YOLO_DEFAULT_TURNS = ULW_DEFAULT_TURNS
 
 ULW_CONTINUE_PROMPT = """Review what you've done so far. Consider:
 - Are there edge cases not handled?
@@ -38,6 +41,7 @@ ULW_CONTINUE_PROMPT = """Review what you've done so far. Consider:
 - Any obvious improvements?
 
 Continue improving, or say "genuinely complete" if nothing meaningful left to do."""
+YOLO_CONTINUE_PROMPT = ULW_CONTINUE_PROMPT
 
 
 def _log(agent: 'Agent', message: str) -> None:
@@ -61,11 +65,19 @@ def handle_ulw_mode_change(agent: 'Agent', turns: int = None) -> None:
         agent: Agent instance
         turns: Max turns before checkpoint (default: 100)
     """
+    turns = turns or ULW_DEFAULT_TURNS
+
+    # Preserve the documented pre-input activation path. The session does not
+    # exist until Agent.input(), so defer activation to after_user_input.
+    if agent.current_session is None:
+        agent._yolo_turns = turns
+        return
+
     old_mode = agent.current_session.get('mode', 'safe')
 
     # Set ULW state
     agent.current_session['mode'] = 'ulw'
-    agent.current_session['ulw_turns'] = turns or ULW_DEFAULT_TURNS
+    agent.current_session['ulw_turns'] = turns
     agent.current_session['ulw_turns_used'] = 0
     agent.current_session['skip_tool_approval'] = True
 
@@ -74,6 +86,31 @@ def handle_ulw_mode_change(agent: 'Agent', turns: int = None) -> None:
         agent.io.send({'type': 'mode_changed', 'mode': 'ulw', 'triggered_by': 'user'})
 
     _log(agent, f"[cyan]Mode changed: {old_mode} → ulw ({agent.current_session['ulw_turns']} turns)[/cyan]")
+
+
+def handle_yolo_mode_change(agent: 'Agent', turns: int = None) -> None:
+    """Activate YOLO mode using ULW's stable session and wire contract."""
+    handle_ulw_mode_change(agent, turns)
+
+
+def enable_yolo(agent: 'Agent', turns: int = None) -> None:
+    """Configure approval-free autonomous mode before the agent's first input."""
+    turns = YOLO_DEFAULT_TURNS if turns is None else turns
+    if isinstance(turns, bool) or turns <= 0:
+        raise ValueError("YOLO turns must be a positive integer")
+
+    agent._yolo_turns = turns
+    if agent.current_session is not None:
+        handle_yolo_mode_change(agent, turns)
+
+
+@after_user_input
+def activate_configured_yolo(agent: 'Agent') -> None:
+    """Enter configured YOLO mode before the first LLM or tool call."""
+    turns = getattr(agent, '_yolo_turns', None)
+    if turns is None or agent.current_session.get('mode') == 'ulw':
+        return
+    handle_yolo_mode_change(agent, turns)
 
 
 def _exit_ulw_mode(agent: 'Agent', new_mode: str = 'safe') -> None:
@@ -159,8 +196,24 @@ def inject_ulw_prompt(agent: 'Agent') -> None:
         messages[0]['content'] = f"{base}\n\n[Prompt]\n{prompt}"
 
 
-# Export as plugin
-ulw = [ulw_keep_working, poll_prompt_update, inject_ulw_prompt]
+# Export the new public name while retaining ULW as an exact plugin alias.
+ulw = [
+    activate_configured_yolo,
+    ulw_keep_working,
+    poll_prompt_update,
+    inject_ulw_prompt,
+]
+yolo = ulw
 
-# Export mode handler for external use
-__all__ = ['ulw', 'handle_ulw_mode_change', 'ULW_DEFAULT_TURNS']
+# Export mode handlers for external use.
+__all__ = [
+    'yolo',
+    'enable_yolo',
+    'handle_yolo_mode_change',
+    'YOLO_DEFAULT_TURNS',
+    'YOLO_CONTINUE_PROMPT',
+    'ulw',
+    'handle_ulw_mode_change',
+    'ULW_DEFAULT_TURNS',
+    'ULW_CONTINUE_PROMPT',
+]
