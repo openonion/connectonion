@@ -13,6 +13,7 @@ from .get_emails import get_emails, mark_read, mark_unread
 from .memory import Memory
 from .gmail import Gmail
 from .gdrive import GDrive
+from .synology import Synology
 from .google_calendar import GoogleCalendar
 from .outlook import Outlook
 from .microsoft_calendar import MicrosoftCalendar
@@ -48,6 +49,7 @@ __all__ = [
     "Memory",
     "Gmail",
     "GDrive",
+    "Synology",
     "GoogleCalendar",
     "Outlook",
     "MicrosoftCalendar",
