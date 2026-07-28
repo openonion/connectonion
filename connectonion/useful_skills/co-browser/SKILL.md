@@ -67,11 +67,17 @@ and add `-t <name>` to EVERY command, including `do`. Pick an explicit literal t
 name — a `NAME=$(...)` capture is lost between tool calls:
 
 ```bash
-CO_WHO=alice co browser tab open scrape --for "scrape pricing"
+CO_WHO=alice co browser tab open scrape --for "scrape pricing" --needs 10m
 CO_WHO=alice co browser -t scrape go_to example.com/pricing
 CO_WHO=alice co browser -t scrape do "extract every plan and its monthly price"
 CO_WHO=alice co browser tab close scrape       # release when done
 ```
+
+`--needs` is your estimate of how long you will hold the tab (`30s`, `10m`, `2h`).
+Say it: other agents leave your tab alone until then, and `co browser tab ls`
+shows them when you expect to finish. Without it, two minutes of silence is
+enough for another agent to take your tab — which is wrong when you are waiting
+on a slow page or a human.
 
 When delegating browser work to subagents, write each subagent's tab name into its
 prompt — parallel agents share the one logged-in browser through separate tabs.
@@ -164,9 +170,21 @@ Exit codes cover the daemon-level contract; the output text covers the action it
 | exit `4` | tab busy — another agent is mid-task there | do NOT retry the same command — the error prints the exact commands to run instead; follow them |
 
 The exit-3/4 error messages ARE the documentation — they always carry the current
-recovery steps, so trust them over this table. A crashed agent's tab claim
-expires on its own; if a stale claim blocks you, open your own tab rather than
-closing theirs.
+recovery steps, so trust them over this table.
+
+When a tab blocks you, read `co browser tab ls` before deciding. Each tab shows
+when its owner expects to finish:
+
+```
+[scrape] https://...  who=alice  purpose='scrape pricing'  open 3m
+   owner expects to finish by 14:20 (7m left) — leave it alone until then
+```
+
+Inside that window, open your own tab instead. Once it has passed, the tab is
+free and closing it is a courtesy — an estimate that ran out with the tab still
+open means that agent crashed, not that it is still working. Every agent here is
+cooperative; tidying up after a dead peer is expected, taking a live agent's page
+is not.
 
 ## Logging in
 

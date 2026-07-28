@@ -137,7 +137,7 @@ parsing prose:
 ```
 co browser [-t TAB] <function> [args]    run a browser function (bare = the shared 'main' tab)
 co browser [-t TAB] do "<instruction>"   let the AI agent do it — same targeting grammar
-co browser tab open [NAME] [--who <agent>] [--for "<purpose>"]   register a tab; prints its name
+co browser tab open [NAME] [--who <agent>] [--for "<purpose>"] [--needs 10m]   register a tab; prints its name
 co browser tab ls [--json]               the board: every tab, who runs it, last command
 co browser tab close <NAME>              release your tab when the task is done
 co browser status                        browser state, stealth-driver health, last command, the board
@@ -199,6 +199,11 @@ own flags (`co browser status` shows `headless=true/false`). To switch modes,
 
 - **Solo work:** just use bare commands. Don't reach for `-t` until a second agent
   or a second concurrent task actually exists.
+- **Say how long you need it:** `tab open ... --needs 10m` (`30s`/`10m`/`2h`).
+  Other agents leave your tab alone until then, and the board shows them when
+  you expect to be done. Without it, two minutes of silence is enough for
+  someone else to take the tab — wrong when you are waiting on a slow page or
+  a human.
 - **Concurrent agents:** each `tab open`s once, adds `-t <name>` to **every**
   command (including `do`), and `tab close`s when finished. Set `CO_WHO`.
 - **On an exit-4:** don't retry the same bare command — open your own tab (the error
@@ -232,8 +237,11 @@ exactly one daemon — the loser exits and its command is served by the winner.
   `co browser status` says `headless=true`, some earlier command started the
   daemon with `--headless`. Run `co browser close`, then rerun without the flag.
 - **"tab 'X' is in use by …" (exit 4)** — another agent is mid-task there. Open
-  your own tab (the error shows the three commands). A crashed agent's claim
-  expires on its own in ~2 minutes.
+  your own tab (the error shows the three commands). `co browser tab ls` says
+  when its owner expects to finish; once that has passed the tab is free and
+  closing it is a courtesy, since an estimate that ran out with the tab still
+  open means that agent crashed rather than that it is still working. A tab
+  opened without `--needs` frees up after ~2 minutes of silence.
 - **"Chrome failed to start"** — usually running over ssh/cron without a desktop
   session (start from a logged-in Terminal, or use `--headless`), or a leftover
   Chrome still holds the profile. The full launch log is in `~/.co/browser.log`.
