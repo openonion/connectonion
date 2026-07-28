@@ -35,3 +35,4 @@ A button that runs something MUST be a real, user-invocable skill, wired like th
 - Keep the responsive layout and `prefers-color-scheme` dark mode intact.
 - Do not add `<script>` tags or inline `onclick` handlers — OChat strips all scripting; only the `data-ochat-skill` button contract works.
 - Keep styles inline in the file (external URLs are blocked in the sandbox).
+- **No links out.** A Home page is one self-contained page. Don't add `<a href="https://…">` — the client cancels those clicks, so the link renders as dead text. Same-page anchors (`href="#section"`) work fine. If you want the user to *do* something, that's what a `data-ochat-skill` button is for.

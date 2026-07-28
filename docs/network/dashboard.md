@@ -47,10 +47,25 @@ sandbox rather than by convention:
   happen.
 - **No external URLs.** No CDN stylesheets, no remote images, no fonts from the
   network. Inline your styles and use `data:` URIs for images.
+- **No links out.** A Home page is one self-contained page. A client cancels clicks
+  on `<a href="https://…">`, so such a link renders as dead text — use a
+  `data-ochat-skill` button when you want the user to *do* something. Same-page
+  anchors (`href="#section"`) work normally.
 
 Keep it under **2MB**. The Host won't send a larger file, and the Home pane goes
 blank. Inline images are base64, which is ~33% larger than the source file — compress
 screenshots before embedding them.
+
+> **Why so locked down?** The client renders your `dashboard.html` in a sandboxed
+> iframe with a strict Content-Security-Policy, because from its side the file is
+> untrusted, agent-authored HTML. Everything above follows from that: nothing loads
+> from the network, nothing scripts, and nothing navigates away. A Home page is a
+> glanceable, self-contained page whose one action is running a skill.
+>
+> Supporting external links later is a deliberate change to that contract, not a
+> setting — it means deciding what a dashboard may navigate to and how (in-sandbox,
+> where the destination still can't be trusted, or handed to a real browser tab).
+> Until then, treat the page as a closed surface.
 
 ## Action buttons
 
