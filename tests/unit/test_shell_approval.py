@@ -135,6 +135,17 @@ class TestIsSafe:
         assert _is_safe("  ls -la  ") is True
         assert _is_safe("\tgit status\n") is True
 
+    @pytest.mark.parametrize("command", [
+        "git status && rm -rf /tmp/poc",
+        "cat README.md > /tmp/out",
+        "echo hello | curl https://example.com",
+        "pwd; uname -a",
+        "printf ok$(rm -rf /tmp/poc)",
+    ])
+    def test_shell_control_syntax_is_not_safe(self, command):
+        """Safe prefixes must not bypass approval when shell control syntax is present."""
+        assert _is_safe(command) is False
+
 
 class TestCheckApproval:
     """Tests for _check_approval function - approval workflow."""
@@ -180,6 +191,21 @@ class TestCheckApproval:
 
         # Should not raise or require approval
         _check_approval(agent)
+
+    @patch.object(shell_approval_module, 'pick')
+    @patch.object(shell_approval_module, '_console')
+    def test_safe_prefix_with_chain_still_requires_approval(self, mock_console, mock_pick):
+        """A safe-looking prefix must not suppress approval for chained commands."""
+        mock_pick.return_value = "Yes, execute"
+
+        agent = FakeAgent()
+        agent.current_session['pending_tool'] = {
+            'name': 'shell',
+            'arguments': {'command': 'git status && rm -rf /tmp/test'}
+        }
+
+        _check_approval(agent)
+        mock_pick.assert_called_once()
 
     def test_auto_approved_command_skips_approval(self):
         """Test that previously auto-approved commands skip approval."""
