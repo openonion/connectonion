@@ -338,23 +338,23 @@ class TestDeployValidation:
 
     def test_host_export_check_ignores_commented_out_calls(self):
         """A commented-out host() call must not pass the pre-flight check."""
-        from connectonion.cli.commands.deploy_commands import _check_host_export
+        from connectonion.cli.commands.deploy_commands import _exports_asgi_app
 
         with self.runner.isolated_filesystem():
             Path("commented.py").write_text("# host(agent)\nprint('hi')\n")
-            assert _check_host_export("commented.py") is False
+            assert _exports_asgi_app("commented.py") is False
 
             Path("trailing.py").write_text("x = 1  # host(agent) goes here later\n")
-            assert _check_host_export("trailing.py") is False
+            assert _exports_asgi_app("trailing.py") is False
 
             Path("similar.py").write_text("ghost(agent)\nurl = localhost(8000)\n")
-            assert _check_host_export("similar.py") is False
+            assert _exports_asgi_app("similar.py") is False
 
     def test_host_export_check_accepts_every_way_of_calling_host(self):
         """Blocking a valid deploy is worse than letting one reach a clear
         container error, so any real host(...) call counts — including the
         module-qualified form."""
-        from connectonion.cli.commands.deploy_commands import _check_host_export
+        from connectonion.cli.commands.deploy_commands import _exports_asgi_app
 
         with self.runner.isolated_filesystem():
             for name, source in [
@@ -366,7 +366,7 @@ class TestDeployValidation:
                 ("guarded.py", "if __name__ == '__main__': host(agent)\n"),
             ]:
                 Path(name).write_text(source)
-                assert _check_host_export(name) is True, name
+                assert _exports_asgi_app(name) is True, name
 
 
 @SKIP_NO_GIT

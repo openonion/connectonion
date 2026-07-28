@@ -2,7 +2,7 @@
 Purpose: Deploy agent projects to ConnectOnion Cloud with local packaging and env vars
 LLM-Note:
   Dependencies: imports from [fnmatch, json, os, re, shutil, subprocess, tarfile, tempfile, time, yaml, requests, pathlib, rich.console, dotenv] | imported by [cli/main.py via handle_deploy()] | calls backend at [https://oo.openonion.ai/api/v1/deploy]
-  Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → reads host.yaml for project name, entrypoint, env file path → checks the name against DEPLOY_NAME_PATTERN (same rule the backend enforces) and the entrypoint's host() export → load_api_key() loads OPENONION_API_KEY → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
+  Data flow: handle_deploy() → optionally creates a temporary template project via co create (named by --name, default {template}-agent) → validates .co/host.yaml → reads host.yaml for project name, entrypoint, env file path → checks the name against DEPLOY_NAME_PATTERN (same rule the backend enforces) and _exports_asgi_app() on the entrypoint → load_api_key() loads OPENONION_API_KEY → dotenv_values() loads env vars from .env → packages git-tracked files or initialized folder into tarball, merging each --skills path into .co/skills/ (a path that is itself a skill nests under its dirname) → POST to /api/v1/deploy with tarball + project_name + env_vars → polls /api/v1/deploy/{id}/status until running/error → displays agent URL
   State/Effects: creates temporary tarball file in tempdir | template deploy creates/deletes a temporary project on success | reads .co/host.yaml, .env files | makes network POST request | prints progress to stdout via rich.Console | normal deploy does not modify project files
   Integration: exposes handle_deploy(template, skills, name) for CLI | expects .co/host.yaml (name, entrypoint, env) unless --template is used | --name only valid with --template (otherwise the name comes from host.yaml) | uses Bearer token auth | returns bool success
   Performance: packaging is local file I/O | network timeout 600s for upload, 30s for status checks | polls every 3s for up to 20 min, covering the backend's own build budget (rsync 120s + docker build 900s + run 60s)
@@ -42,7 +42,7 @@ DEPLOY_POLL_SECONDS = 3
 DEPLOY_TIMEOUT_SECONDS = 20 * 60
 
 
-def _check_host_export(entrypoint: str) -> bool:
+def _exports_asgi_app(entrypoint: str) -> bool:
     """Check if entrypoint file exports an ASGI app via host().
 
     Looks for patterns like:
@@ -294,7 +294,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
         return False
 
     # Validate entrypoint exports ASGI app via host()
-    if not _check_host_export(str(entrypoint_path)):
+    if not _exports_asgi_app(str(entrypoint_path)):
         console.print(f"[red]Entrypoint '{entrypoint}' does not export an ASGI app.[/red]")
         console.print()
         console.print("[yellow]To deploy, your agent must call host():[/yellow]")
