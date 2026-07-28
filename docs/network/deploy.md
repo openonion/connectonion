@@ -96,7 +96,7 @@ the same `co create` template logic, not by a separate deploy allowlist.
 
 ```yaml
 # .co/host.yaml
-name: my-agent          # Project name (used in URL)
+name: my-agent          # Project name (used in URL) — see the rule below
 entrypoint: agent.py    # Script to run in container
 trust: careful          # Trust level for incoming requests
 
@@ -106,6 +106,17 @@ examples:
   - "Example prompt 1"
   - "Example prompt 2"
 ```
+
+**Naming rule.** `name` becomes a hostname and a Docker image tag, so it must be
+1–39 characters of lowercase letters, digits, and hyphens, starting with a
+letter or digit. `co create` and `co init` write a conforming name for you — a
+project created in a folder called `My_Project` gets `name: my-project`, and the
+adjustment is printed — so this only matters if you edit `host.yaml` by hand.
+`co deploy` checks it before uploading and suggests the corrected form.
+
+Two projects whose names reduce to the same thing (`My_Agent` and `my-agent`)
+share one deployment URL, and deploying one replaces the other. Set `name`
+explicitly if you want them kept apart.
 
 ### Environment Variables
 

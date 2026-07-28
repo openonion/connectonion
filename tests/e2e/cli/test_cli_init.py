@@ -491,3 +491,61 @@ class TestCliInit:
 
             # docs README should only be in .co/docs/, not project root
             assert os.path.exists(".co/docs/README.md")
+
+    def test_init_writes_a_deployable_name_from_an_awkward_directory(self):
+        """A directory is named for people, not for DNS.
+
+        The name in host.yaml becomes a hostname and a Docker tag at deploy
+        time, so `co init` inside "My_Project" must not bake in a name that can
+        never deploy — and must say what it used instead.
+        """
+        from connectonion.cli.main import cli
+        from connectonion.cli.commands.project_cmd_lib import DEPLOY_NAME_PATTERN
+
+        with self.runner.isolated_filesystem():
+            os.makedirs("My_Project")
+            os.chdir("My_Project")
+
+            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            name = yaml.safe_load(Path(".co/host.yaml").read_text())["name"]
+            assert name == "my-project"
+            assert DEPLOY_NAME_PATTERN.match(name)
+            assert "Deployment name set to" in result.output
+
+    def test_init_keeps_an_already_valid_directory_name_untouched(self):
+        """No notice and no rewriting when the directory name is already fine."""
+        from connectonion.cli.main import cli
+
+        with self.runner.isolated_filesystem():
+            os.makedirs("my-project")
+            os.chdir("my-project")
+
+            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
+            assert result.exit_code == 0
+
+            name = yaml.safe_load(Path(".co/host.yaml").read_text())["name"]
+            assert name == "my-project"
+            assert "Deployment name set to" not in result.output
+
+    def test_init_falls_back_when_the_directory_name_has_nothing_reusable(self):
+        """A directory named entirely in non-ASCII leaves no usable deploy name.
+
+        It must still produce a project that can deploy — CI runs `co init` in a
+        CJK-named folder on Windows — rather than an empty or invalid name.
+        """
+        from connectonion.cli.main import cli
+        from connectonion.cli.commands.project_cmd_lib import DEPLOY_NAME_PATTERN
+
+        with self.runner.isolated_filesystem():
+            os.makedirs("我的 项目")
+            os.chdir("我的 项目")
+
+            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
+            assert result.exit_code == 0
+            assert "Traceback" not in result.output
+
+            name = yaml.safe_load(Path(".co/host.yaml").read_text())["name"]
+            assert name == "agent"
+            assert DEPLOY_NAME_PATTERN.match(name)
