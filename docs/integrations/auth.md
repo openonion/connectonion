@@ -81,13 +81,24 @@ What it does:
 4. Calls the OpenOnion auth API.
 5. Saves `OPENONION_API_KEY`, `AGENT_EMAIL`, and `AGENT_ADDRESS` to the appropriate env files.
 
-### `co status` — check account and deployment status
+### `co status` — check credentials, account, and deployments
 
 ```bash
 co status
+co status --reveal  # intentionally print full provider credential values
 ```
 
-Use this after `co auth` to confirm the CLI can load your API key and reach the backend.
+The default output lists supported credential variable names, whether each one is
+configured, discovered-but-not-loaded, conflicting, or missing, and its privacy-safe
+source such as `process environment`, `<project>/.env`, or `~/.co/keys.env`. It never
+prints any raw, partial, hashed, or fingerprinted secret material by default.
+
+Pass `--reveal` (or `-r`) only when you deliberately need the full provider values.
+This prints every discovered value and its source, including conflicts. Avoid using
+it in shared terminals, logs, recordings, screenshots, or support messages.
+
+Use this after `co auth` to confirm the CLI can load your API key and reach the backend,
+or to diagnose why a provider key in `.env` is not visible to the current process.
 
 ### `co keys` — inspect local credentials
 

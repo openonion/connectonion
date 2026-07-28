@@ -2,9 +2,9 @@
 Purpose: Entry point for ConnectOnion CLI application using Typer framework with Rich formatting
 LLM-Note:
   Dependencies: imports from [typer, rich.console, typing, __version__] | imported by [setup.py entry_points, __main__.py] | loads commands from [cli/commands/{init, create, deploy, auth, status, reset, doctor, browser}_commands.py] | tested by [tests/e2e/cli/test_cli_help.py]
-  Data flow: cli() entry point → creates Typer app → registers command callbacks (init, create, deploy, auth, status, reset, doctor, browser) → Typer parses args → invokes corresponding handle_*() function from commands module → command outputs via rich.Console
+  Data flow: cli() entry point → creates Typer app → registers command callbacks (init, create, deploy, auth, status, reset, doctor, browser) → Typer parses args (including status --reveal/-r) → invokes corresponding handle_*() function from commands module → command outputs via rich.Console
   State/Effects: no persistent state | writes to stdout via rich.Console | lazy imports command handlers on invocation | registers typer.Option and typer.Argument decorators | uses typer.Exit() for early termination
-  Integration: exposes cli() entry point registered in setup.py as 'co' command | app() is the Typer instance | commands: init, create, deploy (-t/--template, --skills repeatable, --name for template deploys), auth [google|microsoft], status, reset, doctor, browser | --version flag shows version | -b/--browser flag shortcuts browser command | no args shows custom help via _show_help()
+  Integration: exposes cli() entry point registered in setup.py as 'co' command | app() is the Typer instance | commands: init, create, deploy (-t/--template, --skills repeatable, --name for template deploys), auth [google|microsoft], status (--reveal/-r), reset, doctor, browser | --version flag shows version | -b/--browser flag shortcuts browser command | no args shows custom help via _show_help()
   Performance: fast startup (lazy imports) | Typer arg parsing is O(n) args | Rich console initialization is lightweight
   Errors: typer.Exit() on --version or --browser | invalid commands show Typer error with suggestions | command-specific errors handled in respective handlers
 """
@@ -21,11 +21,12 @@ if sys.platform == "win32":
         if hasattr(_stream, "reconfigure"):
             _stream.reconfigure(encoding="utf-8", errors="replace")
 
-import typer
 from pathlib import Path
-from rich.console import Console
-from typing import Optional, List
+from typing import List, Optional
+
+import typer
 from dotenv import load_dotenv
+from rich.console import Console
 
 from .. import __version__
 
@@ -93,7 +94,7 @@ def _show_help():
     console.print("  [green]outlook[/green]           Manage Outlook email and contacts (co auth microsoft)")
     console.print("  [green]browser[/green]           Drive a browser (run: co browser help)")
     console.print("  [green]keys[/green]              Show agent keys and credentials")
-    console.print("  [green]status[/green]            Check account balance")
+    console.print("  [green]status[/green]            Check credentials, account, and deployments")
     console.print("  [green]doctor[/green]            Diagnose installation")
     console.print()
     console.print("[bold]Docs:[/bold] https://docs.connectonion.com")
@@ -162,10 +163,17 @@ def keys(
 
 
 @app.command()
-def status():
-    """Check account status."""
+def status(
+    reveal: bool = typer.Option(
+        False,
+        "--reveal",
+        "-r",
+        help="Show full provider credential values",
+    ),
+):
+    """Check credential sources, account status, and deployments."""
     from .commands.status_commands import handle_status
-    handle_status()
+    handle_status(reveal=reveal)
 
 
 @app.command()
