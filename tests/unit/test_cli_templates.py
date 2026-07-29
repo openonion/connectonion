@@ -85,3 +85,49 @@ def test_template_passes_a_role_the_sdk_can_load():
         assert role is None or role in available, f"unknown role {role!r}, have {available}"
 
     assert "role" in inspect.signature(create_agent).parameters
+
+
+def test_unknown_template_exits_nonzero_and_says_where_it_went():
+    """Passing a retired template used to print an error and exit 0, so a script
+    doing `co create x --template minimal && cd x` reported success and produced
+    nothing. Five names were retired at once, so this is the path stale scripts
+    and old blog posts land on."""
+    from connectonion.cli.commands.project_cmd_lib import unknown_template_message
+
+    message = unknown_template_message("minimal")
+
+    assert "not found" in message
+    assert "co-ai" in message, "must name a template that does exist"
+    assert "retired" in message, "a retired name needs more than 'not found'"
+    assert ".co/skills/" in message, "say what to do instead"
+
+    # A name that was never a template gets the available list, without
+    # claiming it used to exist.
+    other = unknown_template_message("banana")
+    assert "co-ai" in other
+    assert "retired" not in other
+
+
+def test_unknown_template_is_rejected_before_any_network_or_mkdir(tmp_path, monkeypatch):
+    """The check used to sit after authenticate() and after the project
+    directory was created, so a typo cost a network round trip and a
+    mkdir/rmtree. Validate the name first."""
+    import typer
+    from connectonion.cli.commands import create as create_mod
+
+    def fail(*args, **kwargs):
+        raise AssertionError("authenticate() ran before the template was validated")
+
+    monkeypatch.setattr(create_mod, "authenticate", fail)
+    monkeypatch.setattr(create_mod, "ensure_global_config", lambda *a, **k: None)
+    monkeypatch.chdir(tmp_path)
+
+    import pytest
+    with pytest.raises(typer.Exit) as excinfo:
+        create_mod.handle_create(
+            name="doomed", ai=None, key=None,
+            template="minimal", description=None, yes=True,
+        )
+
+    assert excinfo.value.exit_code == 1
+    assert not (tmp_path / "doomed").exists(), "no directory should be left behind"

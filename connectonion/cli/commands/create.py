@@ -39,6 +39,8 @@ from .project_cmd_lib import (
 
 console = Console()
 
+TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
+
 
 def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                   template: Optional[str], description: Optional[str], yes: bool,
@@ -52,7 +54,14 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # One template: co-ai. `custom` still generates an agent.py from a description.
     if not template:
         template = 'co-ai'
-    # Silent - no verbose messages
+
+    # Check the name here, not after the work. This used to be validated only
+    # once we had already authenticated over the network and created the project
+    # directory, so a typo — or a script still passing a retired template — paid
+    # for a round trip and a mkdir/rmtree before being told the name was wrong.
+    if template != 'custom' and not (TEMPLATES_DIR / template).exists():
+        console.print(unknown_template_message(template))
+        raise typer.Exit(1)
 
     # Auto-detect API keys from environment (no menu, just detect)
     detected_keys = {}
@@ -255,9 +264,9 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # Create project directory
     project_dir.mkdir(parents=True, exist_ok=True)
 
-    # Get template files
-    cli_dir = Path(__file__).parent.parent
-    template_dir = cli_dir / "templates" / template
+    # Get template files. The name was validated before any network or
+    # filesystem work; this stays as a guard for a template deleted mid-run.
+    template_dir = TEMPLATES_DIR / template
 
     if not template_dir.exists() and template != 'custom':
         console.print(unknown_template_message(template))

@@ -65,3 +65,52 @@ def test_start_server_hosts_provided_agent(monkeypatch):
     assert called["trust"] == "careful"
     assert called["relay_url"] is None
     assert called["agent"] is agent
+
+
+def test_role_reaches_the_assembler(monkeypatch, tmp_path):
+    """The factory→assembler hop was untested: assemble_prompt(role=) had tests
+    and the template's role string had tests, but nothing checked that
+    create_agent actually passes one to the other. A dropped kwarg would leave
+    every agent domain-neutral with no test turning red."""
+    class FakeLLM:
+        model = "fake-model"
+
+    seen = {}
+
+    def fake_assemble(*args, **kwargs):
+        seen["role"] = kwargs.get("role", "<not passed>")
+        return "BASE"
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "assemble_prompt", fake_assemble)
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+    monkeypatch.setattr(agent_mod, "GLOBAL_CO_DIR", tmp_path / ".co")
+
+    agent_mod.create_agent(model="fake", max_iterations=1)
+    assert seen["role"] == "coding", "`co ai` must stay a coding agent by default"
+
+    agent_mod.create_agent(model="fake", max_iterations=1, role=None)
+    assert seen["role"] is None, "a deployed agent must be able to drop the domain"
+
+    agent_mod.create_agent(model="fake", max_iterations=1, role="support")
+    assert seen["role"] == "support"
+
+
+def test_the_real_prompt_differs_with_and_without_a_role(tmp_path, monkeypatch):
+    """End of the chain, unmocked: a role must actually change what the agent
+    is told, and the no-role prompt must not call it a coding agent."""
+    class FakeLLM:
+        model = "fake-model"
+
+    monkeypatch.setattr("connectonion.core.agent.create_llm", lambda *a, **k: FakeLLM())
+    monkeypatch.setattr(agent_mod, "load_project_context", lambda *a, **k: "")
+    monkeypatch.setattr(agent_mod, "GLOBAL_CO_DIR", tmp_path / ".co")
+
+    coding = agent_mod.create_agent(model="fake", max_iterations=1).system_prompt
+    plain = agent_mod.create_agent(model="fake", max_iterations=1, role=None).system_prompt
+
+    assert len(coding) > len(plain)
+    assert "you are a coding agent" not in plain.lower()
+    # Behaviour that every agent needs survives dropping the role.
+    for prompt in (coding, plain):
+        assert "Executing Actions with Care" in prompt
