@@ -3,7 +3,7 @@
 <div align="center">
 
 [![Production Ready](https://img.shields.io/badge/Status-Production_Ready-success?style=flat-square)](https://connectonion.com)
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg?style=flat-square)](https://opensource.org/licenses/MIT)
+[![License: Apache 2.0](https://img.shields.io/badge/License-Apache_2.0-blue.svg?style=flat-square)](https://opensource.org/licenses/Apache-2.0)
 [![Python 3.10+](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square&logo=python)](https://python.org)
 [![PyPI Downloads](https://static.pepy.tech/personalized-badge/connectonion?period=total&units=international_system&left_color=black&right_color=green&left_text=downloads)](https://pepy.tech/projects/connectonion)
 [![GitHub stars](https://img.shields.io/github/stars/openonion/connectonion?style=flat-square)](https://github.com/openonion/connectonion)
@@ -887,7 +887,7 @@ See our [Contributing Guide](http://docs.connectonion.com/website-maintenance) f
 
 ## 📄 License
 
-MIT License - Use it anywhere, even commercially. See [LICENSE](LICENSE) file for details.
+Apache License 2.0 - Use it anywhere, even commercially. See [LICENSE](LICENSE) file for details.
 
 ---
 
@@ -974,7 +974,7 @@ Python 3.10+
 
 ### License
 
-MIT
+Apache-2.0
 
 ### Help Resources
 
