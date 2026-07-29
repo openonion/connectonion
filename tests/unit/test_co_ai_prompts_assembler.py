@@ -147,6 +147,17 @@ def test_generic_prompt_covers_irreversible_and_outward_facing_actions():
     assert "hard to reverse" in prompt.lower()
 
 
+def test_being_asked_to_send_is_not_approval_of_the_wording():
+    """Caught live on gemini-3.6-flash: "Announce the v2 release to the
+    company" was read as authorising the post, so the agent wrote its own
+    copy and fired it at #general without showing anyone. Instructing the
+    action is not approving the words."""
+    prompt = flatten(assemble_prompt(prompts_dir=str(PROMPTS_DIR), tools=[ask_user]))
+
+    assert "Being told to do it is not approval of what you write" in prompt
+    assert "show the exact text" in prompt
+
+
 def test_generic_prompt_requires_reporting_what_actually_happened():
     """Persistence without honesty pushes an agent toward reporting success it
     does not have. The two have to ship together."""

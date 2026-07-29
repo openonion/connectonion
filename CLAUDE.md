@@ -100,15 +100,16 @@ python -m pytest tests/unit/test_agent.py::test_specific_function
 ### CLI Commands
 ```bash
 # Create new agent project
-co create my-agent                    # Minimal template (default)
-co create my-bot --template browser       # Browser automation
-co create coder --template coder          # Coding agent
+co create my-agent                    # The co-ai template (default)
+co create my-agent --template custom --description "..."   # AI writes agent.py
 
-# Available templates: minimal, browser, hosted-browser, coder, co-ai, web-research, custom
+# Available templates: co-ai (default), custom
+# One template on purpose: it is the same agent `co ai` runs, and you
+# specialise it with skills in .co/skills/ rather than a different skeleton.
 
 # Initialize in existing directory
 co init                               # Add .co folder only
-co init --template minimal           # Add full template
+co init --template co-ai             # Add full template
 
 # Authentication (for managed keys)
 co auth login                         # Interactive login
@@ -187,13 +188,8 @@ connectonion/
 │   │   ├── commands/               # CLI command implementations
 │   │   ├── browser_agent/          # co browser agent
 │   │   ├── co_ai/                  # co ai agent
-│   │   └── templates/              # Agent templates
-│   │       ├── minimal/
-│   │       ├── browser/
-│   │       ├── hosted-browser/
-│   │       ├── coder/
-│   │       ├── co-ai/
-│   │       └── web-research/
+│   │   └── templates/              # Agent template (one: co-ai)
+│   │       └── co-ai/
 │   ├── useful_tools/               # Built-in tools
 │   ├── useful_plugins/             # Built-in plugins (re_act, image_result_formatter, ...)
 │   ├── useful_skills/              # Built-in skills (co-browser, install-connectonion, ship-feature)
@@ -384,11 +380,22 @@ git push
 2. Import in `connectonion/cli/main.py`
 3. Add to CLI group with `@cli.command()`
 
-### Adding a CLI Template
-1. Create folder in `connectonion/cli/templates/{template-name}/`
-2. Add `agent.py`, `.env.example`, prompt files
-3. Ensure template files are included in the package (`pyproject.toml` / MANIFEST.in)
-4. Test: `co create test-project --template {template-name}`
+### Adding a Role or a Skill (instead of a template)
+
+There is one template on purpose. To make an agent behave differently, add a
+role or a skill — not a new starting point.
+
+**Role** — what kind of agent it is. `prompts/main.md` holds domain-neutral
+behaviour and is always loaded; a role is appended on top.
+1. Write `connectonion/cli/co_ai/prompts/roles/{role}.md`
+2. Use it: `create_agent(role="{role}")`, or `role=None` for no domain
+3. Test: it must not duplicate what main.md already says
+
+**Skill** — a procedure the agent follows on demand.
+1. Write `SKILL.md` with `name` and `description` frontmatter
+2. Put it in `.co/skills/{name}/` (project), `~/.co/skills/` (user), or
+   `connectonion/cli/co_ai/skills/builtin/{name}/` (bundled)
+3. `co deploy --skills PATH` bundles external ones into a deployment
 
 ### Adding LLM Provider Support
 1. Implement class inheriting from `LLM` in `connectonion/core/llm.py`

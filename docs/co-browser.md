@@ -277,5 +277,5 @@ saved screenshot) comes back. Gated by the remote's `.co/host.yaml` whitelist �
 
 - `co browser help` — the live list of every function you can call directly.
 - [cli/call.md](cli/call.md) — `co call`, the remote twin of this command.
-- The `browser` and `hosted-browser` project templates (`co create --template browser`)
+- The `co-ai` project template (`co create`), whose agent drives this CLI
   for building agents on top of the same browser automation.

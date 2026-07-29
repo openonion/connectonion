@@ -101,15 +101,16 @@ python -m pytest tests/unit/test_agent.py::test_specific_function
 ### CLI Commands
 ```bash
 # Create new agent project
-co create my-agent                    # Minimal template (default)
-co create my-bot --template browser       # Browser automation
-co create coder --template coder          # Coding agent
+co create my-agent                    # The co-ai template (default)
+co create my-agent --template custom --description "..."   # AI writes agent.py
 
-# Available templates: minimal, coder, browser, web-research
+# Available templates: co-ai (default), custom
+# One template on purpose: it is the same agent `co ai` runs, and you
+# specialise it with skills in .co/skills/ rather than a different skeleton.
 
 # Initialize in existing directory
 co init                               # Add .co folder only
-co init --template minimal           # Add full template
+co init --template co-ai             # Add full template
 
 # Authentication (for managed keys)
 co auth login                         # Interactive login

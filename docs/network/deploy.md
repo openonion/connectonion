@@ -134,11 +134,30 @@ BROWSER_PROXY=http://user:pass@host:port  # Optional browser proxy
 
 ---
 
-## co-ai agent (skills + browser)
+## The agent you deploy (skills + browser)
 
-`co init --template co-ai` scaffolds a hosted coding agent — the same agent as
-the `co ai` command, wrapped in `host()`, plus a `Dockerfile` that ships a real
+`co create` and `co init --template co-ai` scaffold the same agent the `co ai`
+command runs, wrapped in `host()`, plus a `Dockerfile` that ships a real
 Chrome + Xvfb browser runtime so browser tools work out of the box.
+
+There is one template. `agent.py` is about five lines, and you specialise it
+with skills in `.co/skills/` rather than by starting from a different skeleton:
+
+```python
+from connectonion import host
+from connectonion.cli.co_ai.agent import create_agent
+
+agent = create_agent(role="coding")
+
+host(agent)
+```
+
+`role` picks what kind of agent it is. `"coding"` adds software-engineering
+doctrine — read before editing, match the surrounding style, `file:line`
+references, git. An agent that posts to LinkedIn or answers support tickets
+wants none of that, so pass `role=None`. Everything else — how it plans, asks,
+reports, and handles actions it cannot take back — is shared, and improves when
+the SDK does.
 
 ```bash
 co init --template co-ai

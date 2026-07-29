@@ -159,29 +159,25 @@ assistant.input("What's in greeting.txt?")
 
 ## CLI Templates
 
-ConnectOnion provides different templates for common use cases:
+There is one template: the same agent `co ai` runs. You specialise it with
+skills, not by picking a different skeleton.
 
 ```bash
-# Create with minimal template (default - includes file tools + browser)
+# Create an agent — files, shell, browser, planning, sub-agents
 co create my-agent
 
-# Create with coder template (bash + file editing, no browser)
-co create my-coder --template coder
-
-# Create with browser template (dedicated browser automation)
-co create my-browser-bot --template browser
+# Specialise it with skills rather than a different starting point
+co skills copy commit
+co deploy --skills ~/skills/linkedin-post-submit
 
 # Or drive one persistent, logged-in browser straight from the shell — no project:
 #   co browser go_to example.com
 #   co browser do "log in and download my invoices"
 # See co-browser.md for the full command reference and multi-agent tabs.
 
-# Create with web-research template
-co create my-researcher --template web-research
-
 # Initialize in existing directory
-co init  # Adds .co folder only
-co init --template coder  # Adds full template
+co init                    # Adds .co folder only
+co init --template co-ai   # Adds the full project
 ```
 
 ## Your Own Mail and Files

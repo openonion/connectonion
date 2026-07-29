@@ -62,7 +62,7 @@ co init
 # Create web automation agent
 mkdir browser-agent
 cd browser-agent
-co init --template browser
+co init --template co-ai
 ```
 
 ### CLI Options

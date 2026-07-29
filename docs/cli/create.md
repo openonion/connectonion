@@ -140,10 +140,13 @@ All projects use the global identity (address + email) from `~/.co`. Run `co sta
 
 ### Available Templates
 
-1. **minimal** - Basic agent with simple tools
-2. **coder** - Filesystem + shell access for coding tasks
-3. **browser** - Browser automation with Playwright
-4. **web-research** - Web scraping and research capabilities
+1. **co-ai** (default) - the same agent as `co ai`, hosted. Files, shell,
+   browser, planning, todos, sub-agents. Specialise it with skills in
+   `.co/skills/` rather than by picking a different starting point.
+2. **custom** - an LLM writes `agent.py` from your `--description`.
+
+`minimal`, `coder`, `browser`, `hosted-browser`, and `web-research` were
+retired; passing one exits 1 and says so.
 5. **custom** - AI-generated based on your description
 
 ### Template Selection
@@ -154,7 +157,7 @@ $ co create
 ✔ Choose a template: ›
 
 # Direct specification
-$ co create my-bot --template minimal
+$ co create my-bot --template co-ai
 
 # Custom with description
 $ co create assistant --template custom --description "Slack integration bot"
@@ -167,7 +170,7 @@ co create [name] [options]
 
 Options:
   [name]                    Project name (optional, will prompt)
-  --template, -t            Template to use (minimal/coder/browser/hosted-browser/co-ai/web-research/custom)
+  --template, -t            Template to use (co-ai/custom)
   --description             Description for custom template
   --key                     API key to use (overrides global)
   --yes, -y                 Accept all defaults
@@ -213,7 +216,7 @@ $ co create
 $ co create my-bot
 
 # With template - uses global identity
-$ co create my-bot --template web-research
+$ co create my-bot --template co-ai
 
 # Accept all defaults
 $ co create quickbot -y

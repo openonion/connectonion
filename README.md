@@ -481,25 +481,22 @@ The function-based approach is simpler, more Pythonic, and easier to test!
 ConnectOnion CLI provides templates to get you started quickly:
 
 ```bash
-# Create a minimal agent (default)
+# Create an agent (the co-ai template)
 co create my-agent
 
-# Create with specific template
-co create my-browser-bot --template browser
-
 # Initialize in existing directory
-co init  # Adds .co folder only
-co init --template browser  # Adds full template
+co init                # Adds .co folder only
+co init --template co-ai   # Adds the full project
 ```
 
 **Available Templates:**
-- `minimal` (default) - Simple agent starter
-- `browser` - Web automation with browser tools
-- `hosted-browser` - Hosted browser sessions
-- `coder` - Coding agent
-- `co-ai` - AI assistant with web UI
-- `web-research` - Web research and data extraction
-- `custom` - AI generates a template based on your needs
+- `co-ai` (default) - the same agent as `co ai`, hosted: files, shell, browser,
+  planning, todos, sub-agents. Specialise it with skills in `.co/skills/`.
+- `custom` - an LLM writes `agent.py` from your description.
+
+`minimal`, `browser`, `hosted-browser`, `coder`, and `web-research` were
+retired — six skeletons that drifted apart, four of which never called
+`host()` so they could not be deployed. One agent plus skills replaces them.
 
 Each template includes:
 - Pre-configured agent ready to run
@@ -564,13 +561,8 @@ connectonion/
 │   └── cli/                # CLI module
 │       ├── main.py         # CLI commands
 │       ├── commands/       # Command implementations
-│       └── templates/      # Agent templates
-│           ├── minimal/
-│           ├── browser/
-│           ├── hosted-browser/
-│           ├── coder/
-│           ├── co-ai/
-│           └── web-research/
+│       └── templates/      # Agent template (one: co-ai)
+│           └── co-ai/
 ├── docs/                   # Documentation
 │   ├── quickstart.md
 │   ├── concepts/           # Core concepts
