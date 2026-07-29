@@ -101,7 +101,20 @@ co browser get_current_url
 
 `co browser help` prints the live list of every function with its arguments —
 trust it over any example here. Calling a function with wrong arguments returns
-its usage line: self-correct from that. (The verb is `scroll`, not `scroll_down`;
+its usage line: self-correct from that.
+
+**Typing into whatever already has focus** — after a `mouse_click` into a field
+that no selector reaches cleanly — is `keyboard_type`, and pressing keys is
+`keyboard_press`. There is **no `type_text`**; that name returns
+"unknown command" and costs a round trip. Use `type_text_by_selector` when a
+selector works, `keyboard_type` when only focus is available.
+
+`keyboard_type` **appends** — it does not replace. To overwrite a field: click
+into it, then `keyboard_press "Meta+a"` (macOS) and `keyboard_press "Backspace"`
+before typing, or you get `1:15 AM09:00 AM`. And confirm the click actually landed
+inside the input: if it missed, `Meta+a` selects the **entire page** instead and
+your text goes nowhere while the screen turns blue. The screenshot after typing is
+the only way to tell those two outcomes apart. (The verb is `scroll`, not `scroll_down`;
 guessing a plausible name costs a round trip.)
 
 **Never hunt for an item by scrolling a feed.** Infinite lists re-render as they
