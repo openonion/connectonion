@@ -330,6 +330,96 @@ class TestProviderErrorBubbling:
                 llm.complete([{"role": "user", "content": "test"}])
 
 
+class TestAnthropicSystemPrompt:
+    """The system prompt must reach Claude as the top-level `system` argument.
+
+    Anthropic does not accept a system message inside `messages`, so
+    _convert_messages drops it. If the caller does not put it back into
+    api_kwargs["system"], the agent runs with no system prompt and nothing
+    reports it — no error, no warning, just an agent with no instructions.
+    """
+
+    def _mock_response(self):
+        response = Mock()
+        block = Mock()
+        block.type = "text"
+        block.text = "ok"
+        response.content = [block]
+        response.usage.input_tokens = 1
+        response.usage.output_tokens = 1
+        response.usage.cache_read_input_tokens = 0
+        response.usage.cache_creation_input_tokens = 0
+        return response
+
+    def test_complete_sends_system_prompt(self):
+        """complete() passes the system message as the `system` argument."""
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            llm = AnthropicLLM(model="claude-3-5-sonnet-20241022")
+            llm.client.messages.create = Mock(return_value=self._mock_response())
+
+            llm.complete([
+                {"role": "system", "content": "You are a helpful pirate."},
+                {"role": "user", "content": "hi"},
+            ])
+
+            kwargs = llm.client.messages.create.call_args.kwargs
+            assert kwargs.get("system") == "You are a helpful pirate."
+            # and it must not leak into messages, which Anthropic would reject
+            assert all(m["role"] != "system" for m in kwargs["messages"])
+
+    def test_structured_complete_sends_system_prompt(self):
+        """structured_complete() passes it too — same bug, second call site."""
+        from pydantic import BaseModel
+
+        class Out(BaseModel):
+            answer: str
+
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            llm = AnthropicLLM(model="claude-3-5-sonnet-20241022")
+            response = Mock()
+            block = Mock()
+            block.type = "tool_use"
+            block.name = "return_structured_output"
+            block.input = {"answer": "yes"}
+            response.content = [block]
+            llm.client.messages.create = Mock(return_value=response)
+
+            llm.structured_complete(
+                [
+                    {"role": "system", "content": "Answer in one word."},
+                    {"role": "user", "content": "ok?"},
+                ],
+                Out,
+            )
+
+            kwargs = llm.client.messages.create.call_args.kwargs
+            assert kwargs.get("system") == "Answer in one word."
+
+    def test_multiple_system_messages_are_joined(self):
+        """Several system messages arrive as one block, in order."""
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            llm = AnthropicLLM(model="claude-3-5-sonnet-20241022")
+            llm.client.messages.create = Mock(return_value=self._mock_response())
+
+            llm.complete([
+                {"role": "system", "content": "First."},
+                {"role": "system", "content": "Second."},
+                {"role": "user", "content": "hi"},
+            ])
+
+            assert llm.client.messages.create.call_args.kwargs["system"] == "First.\n\nSecond."
+
+    def test_no_system_message_sends_no_system_key(self):
+        """Without a system message, `system` is absent — not None, not empty."""
+        with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
+            llm = AnthropicLLM(model="claude-3-5-sonnet-20241022")
+            llm.client.messages.create = Mock(return_value=self._mock_response())
+
+            llm.complete([{"role": "user", "content": "hi"}])
+
+            assert "system" not in llm.client.messages.create.call_args.kwargs
+
+
 class TestOpenAICompatibleProviders:
     """Test Groq/OpenRouter OpenAI-compatible behavior."""
 

@@ -334,6 +334,10 @@ class AnthropicLLM(LLM):
             **kwargs  # User can override max_tokens via kwargs
         }
 
+        system = self._extract_system(messages)
+        if system:
+            api_kwargs["system"] = system
+
         # Add tools if provided
         if tools:
             api_kwargs["tools"] = self._convert_tools(tools)
@@ -400,6 +404,10 @@ class AnthropicLLM(LLM):
             **kwargs  # User can override max_tokens, temperature, etc.
         }
 
+        system = self._extract_system(messages)
+        if system:
+            api_kwargs["system"] = system
+
         # Force the model to use this tool
         response = self.client.messages.create(**api_kwargs)
 
@@ -411,15 +419,31 @@ class AnthropicLLM(LLM):
 
         raise ValueError("No structured output received from Claude")
 
+    def _extract_system(self, messages: List[Dict[str, Any]]) -> Optional[str]:
+        """Pull the system prompt out for Anthropic's top-level `system` parameter.
+
+        Anthropic takes the system prompt as its own argument, not as a message in
+        the list — which is why _convert_messages drops system messages. Whoever
+        builds api_kwargs has to put it back, or the agent runs with no system
+        prompt at all and nothing reports it.
+        """
+        parts = [msg["content"] for msg in messages
+                 if msg.get("role") == "system" and msg.get("content")]
+        return "\n\n".join(parts) if parts else None
+
     def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-        """Convert OpenAI-style messages to Anthropic format."""
+        """Convert OpenAI-style messages to Anthropic format.
+
+        System messages are dropped here on purpose — they travel as the top-level
+        `system` argument instead. Use _extract_system() to get them.
+        """
         anthropic_messages = []
         i = 0
-        
+
         while i < len(messages):
             msg = messages[i]
-            
-            # Skip system messages (will be handled separately)
+
+            # Dropped here, carried by _extract_system() into api_kwargs["system"]
             if msg["role"] == "system":
                 i += 1
                 continue
