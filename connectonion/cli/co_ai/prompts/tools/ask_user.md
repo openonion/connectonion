@@ -18,7 +18,9 @@ Ask the user questions to clarify requirements or get decisions.
 ## Guidelines
 
 - Ask **specific** questions, not vague ones
-- **Always provide options** - the `options` parameter is required
+- **Prefer options** - the user picks with an arrow key instead of typing.
+  `options` is a required parameter, but pass `options=[]` when the answer is
+  genuinely free-form (a name, a URL, a credential) and use `fields` for it.
 - Include a recommended option first when one is clearly better
 - Don't ask multiple questions at once - focus on one decision
 
@@ -55,7 +57,7 @@ ask_user(
 </good-example>
 
 <bad-example>
-# No options provided (options is required!)
+# options omitted entirely — it is a required parameter
 ask_user("What do you want?")
 
 # Could find this in codebase

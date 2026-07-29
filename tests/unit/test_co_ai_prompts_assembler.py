@@ -109,6 +109,17 @@ def test_login_prompt_uses_ask_user_and_screenshot():
     assert "Leave the browser open" in prompt
 
 
+def test_prompt_does_not_forbid_the_empty_options_the_login_flow_needs():
+    """browser.md drives username/password login with `options=[]` plus
+    `fields`. tools/ask_user.md used to say "Always provide options", so two
+    always-loaded files disagreed about whether that call is allowed — and the
+    one that forbids it is the one attached to the tool schema."""
+    prompt = flatten(assemble_prompt(prompts_dir=str(PROMPTS_DIR), tools=[ask_user]))
+
+    assert "Always provide options" not in prompt
+    assert "options=[]" in prompt
+
+
 def test_main_prompt_does_not_claim_the_agent_writes_code():
     """main.md is every agent's prompt, including the ones deployed as a
     support bot or a poster. Telling those they are a coding agent puts the

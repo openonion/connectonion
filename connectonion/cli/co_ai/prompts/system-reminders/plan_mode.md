@@ -27,15 +27,13 @@ evals:
     output: "<example response>"
 ```
 
-## Available templates:
-- `minimal` — bash + file tools + browser (default)
-- `coder` — full coding agent (bash, files, planning)
-- `browser` — web automation with Playwright
-- `web-research` — web scraping and research
+## Scaffolding:
+`co create <name>` — one template, the same agent `co ai` runs. Specialise it
+with skills in `.co/skills/`, not with a different template.
 
 ## Rules:
 - `scaffold` line is REQUIRED — this is the first command run after approval
-- After user approves: run `bash("co create <name> --template <template>")` then edit `agent.py`
+- After user approves: run `bash("co create <name>")` then add skills / edit `agent.py`
 - NEVER use `write` to create agent files manually
 - Only use glob/grep/read_file to explore if needed, then write_plan(), then exit_plan_and_implement()
 </system-reminder>

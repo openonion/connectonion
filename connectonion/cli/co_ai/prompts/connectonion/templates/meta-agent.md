@@ -1,1 +1,0 @@
-../../../../../../docs/templates/meta-agent.md

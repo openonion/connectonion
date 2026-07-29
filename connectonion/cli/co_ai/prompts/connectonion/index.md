@@ -145,10 +145,7 @@ Use `load_guide(path)` to load detailed documentation.
 
 | Guide | Description |
 |-------|-------------|
-| `templates/minimal` | Bash + file tools + browser (default) |
-| `templates/coder` | Full coding agent (bash, files, planning) |
-| `templates/browser` | Web automation with Playwright |
-| `templates/web-research` | Research and data extraction |
+| `templates/README` | The one template, and how to specialise it with skills |
 
 ### Integrations
 

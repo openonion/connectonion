@@ -33,28 +33,46 @@ def test_no_dangling_symlinks_in_the_package():
     )
 
 
+def test_prompts_do_not_teach_a_template_that_no_longer_exists():
+    """The agent reads these, not just the humans. `tools/enter_plan_mode.md` is
+    always in the system prompt and told the agent to scaffold with
+    `--template browser/coder/web-research`; every one of those now exits 1.
 
-def test_prompts_only_name_templates_that_exist():
-    """The agent reads these prompts and runs the commands in them verbatim.
-
-    `agent-design.md` taught `--template playwright` and `--template
-    email-agent`; neither has ever existed in this tree. An agent following the
-    prompt confidently ran a command that could not work — and `co create`
-    exited 0 while doing it, so nothing downstream noticed either.
+    Docs were updated when the templates were retired and the prompts were not,
+    which is a quieter failure: the agent confidently runs a dead command.
     """
-    import re
-    from pathlib import Path
-
-    root = Path(__file__).resolve().parents[2] / "connectonion" / "cli"
-    available = {p.name for p in (root / "templates").iterdir() if p.is_dir()} | {"custom"}
+    prompts = PACKAGE / "cli" / "co_ai" / "prompts"
+    retired = ["minimal", "coder", "browser", "hosted-browser", "web-research",
+               "playwright", "email-agent", "meta-agent"]
 
     offenders = []
-    for md in (root / "co_ai" / "prompts").rglob("*.md"):
-        for name in re.findall(r"--template\s+([a-z0-9-]+)", md.read_text(encoding="utf-8")):
-            if name not in available:
-                offenders.append(f"{md.name}: --template {name}")
+    for path in prompts.rglob("*.md"):
+        if path.is_symlink():
+            continue  # mirrors docs/, covered by the docs' own review
+        text = path.read_text(encoding="utf-8")
+        for name in retired:
+            if f"--template {name}" in text:
+                offenders.append(f"{path.relative_to(prompts)}: --template {name}")
 
     assert not offenders, (
-        "prompts name templates that do not exist; the agent will run a command "
-        f"that fails: {offenders}"
+        "prompts instruct the agent to use a retired template; these commands "
+        f"exit 1: {offenders}"
     )
+
+
+def test_guide_index_does_not_advertise_the_retired_templates():
+    """`load_guide(name)` is `GUIDES_DIR / f"{name}.md"` with no fallback, so a
+    guide listed in index.md but absent from disk is a tool call that fails at
+    runtime — the agent is told it can read something it cannot.
+
+    Scoped to the templates this change retired. index.md advertises 11 other
+    guides that have never existed; that is pre-existing and tracked separately.
+    """
+    guides = PACKAGE / "cli" / "co_ai" / "prompts" / "connectonion"
+    listed = (guides / "index.md").read_text(encoding="utf-8")
+
+    for retired in ["templates/minimal", "templates/coder",
+                    "templates/browser", "templates/web-research"]:
+        assert f"`{retired}`" not in listed, (
+            f"index.md still offers {retired}, whose docs page was deleted"
+        )
