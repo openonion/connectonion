@@ -1,151 +1,87 @@
-"""Tests for CLI template modules with stubbed connectonion API."""
-"""
-LLM-Note: Tests for cli templates
+"""The template is `co ai`, wrapped in host() — and must stay that way.
 
-What it tests:
-- Cli Templates functionality
-
-Components under test:
-- Module: cli_templates
+There used to be six templates that drifted apart: each carried its own tool
+list, its own prompt, and its own idea of what an agent was. Now there is one,
+and its whole job is to be the same agent the CLI runs. These tests pin that,
+because the failure mode is silent — rename the factory and the template still
+*looks* fine until someone runs `co create`.
 """
 
-
-import importlib.util
-import sys
-import types
+import ast
+import inspect
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[2]
-TEMPLATE_ROOT = ROOT / "connectonion" / "cli" / "templates"
-
-# Keep explicit module paths for coverage tracking
-TEMPLATE_MODULES = [
-    "connectonion.cli.templates.minimal.agent",
-    "connectonion.cli.templates.browser.agent",
-    "connectonion.cli.templates.web-research.agent",
-]
+ROOT = Path(__file__).resolve().parents[2] / "connectonion"
+TEMPLATE_ROOT = ROOT / "cli" / "templates"
+TEMPLATE = TEMPLATE_ROOT / "co-ai"
 
 
-class StubAgent:
-    def __init__(self, *args, **kwargs):
-        self.args = args
-        self.kwargs = kwargs
+def test_there_is_exactly_one_template():
+    templates = sorted(p.name for p in TEMPLATE_ROOT.iterdir() if p.is_dir())
 
-    def input(self, prompt):
-        return "stub-response"
-
-    def list_tools(self):
-        return []
+    assert templates == ["co-ai"], (
+        f"expected only the co-ai template, found {templates}. A second template "
+        "is a second definition of what an agent is — specialise with skills instead."
+    )
 
 
-class StubXray:
-    messages = []
-
-    def __call__(self, func=None, *args, **kwargs):
-        return func
+def test_template_ships_what_a_deploy_needs():
+    for name in ["agent.py", "Dockerfile", "requirements.txt"]:
+        assert (TEMPLATE / name).exists(), f"template is missing {name}"
 
 
-class StubBrowserAutomation:
-    def __init__(self, *args, **kwargs):
-        pass
+def test_template_uses_the_sdk_factory_rather_than_building_its_own_agent():
+    tree = ast.parse((TEMPLATE / "agent.py").read_text(encoding="utf-8"))
+    called = {
+        node.func.id
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)
+    }
+
+    assert "create_agent" in called
+    assert "host" in called, "the template has to serve, or `co deploy` gets nothing"
+    assert "Agent" not in called, (
+        "the template constructs its own Agent — that is how templates drift out "
+        "of sync with `co ai`"
+    )
 
 
-def _load_with_stub(path: Path):
-    # Create stub modules
-    stub = types.ModuleType("connectonion")
-    stub.Agent = StubAgent
-    stub.llm_do = lambda *a, **k: "llm"
-    stub.xray = StubXray()
-    # Add all file tools the templates import
-    stub.bash = lambda *a, **k: "bash"
-    stub.read_file = lambda *a, **k: "content"
-    stub.edit = lambda *a, **k: "edited"
-    stub.glob = lambda *a, **k: []
-    stub.grep = lambda *a, **k: []
-    stub.write = lambda *a, **k: "wrote"
+def test_the_factory_the_template_imports_actually_exists():
+    """The regression this file exists for: renaming the factory in the SDK
+    without updating the template, which only surfaces on `co create`."""
+    from connectonion.cli.co_ai import agent as co_ai_agent
 
-    # Stub submodules
-    stub_useful_plugins = types.ModuleType("connectonion.useful_plugins")
-    stub_useful_plugins.image_result_formatter = []
-    stub_useful_plugins.tool_approval = []
-    stub_useful_plugins.ui_stream = []
-
-    stub_useful_tools = types.ModuleType("connectonion.useful_tools")
-    stub_browser_tools = types.ModuleType("connectonion.useful_tools.browser_tools")
-    stub_browser_tools.BrowserAutomation = StubBrowserAutomation
-
-    # Save originals
-    originals = {}
-    modules_to_stub = [
-        "connectonion",
-        "connectonion.useful_plugins",
-        "connectonion.useful_tools",
-        "connectonion.useful_tools.browser_tools",
+    tree = ast.parse((TEMPLATE / "agent.py").read_text(encoding="utf-8"))
+    imported = [
+        (node.module, alias.name)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.ImportFrom)
+        for alias in node.names
     ]
-    for mod_name in modules_to_stub:
-        originals[mod_name] = sys.modules.get(mod_name)
 
-    # Install stubs
-    sys.modules["connectonion"] = stub
-    sys.modules["connectonion.useful_plugins"] = stub_useful_plugins
-    sys.modules["connectonion.useful_tools"] = stub_useful_tools
-    sys.modules["connectonion.useful_tools.browser_tools"] = stub_browser_tools
-
-    name = f"_template_{path.stem}_{abs(hash(str(path)))}"
-    spec = importlib.util.spec_from_file_location(name, path)
-    module = importlib.util.module_from_spec(spec)
-
-    try:
-        spec.loader.exec_module(module)  # type: ignore[union-attr]
-    finally:
-        # Restore originals
-        for mod_name in modules_to_stub:
-            if originals[mod_name] is not None:
-                sys.modules[mod_name] = originals[mod_name]
-            else:
-                sys.modules.pop(mod_name, None)
-    return module
+    for module, name in imported:
+        if module == "connectonion.cli.co_ai.agent":
+            assert hasattr(co_ai_agent, name), f"template imports missing {name}"
 
 
-def test_template_minimal_loads():
-    path = TEMPLATE_ROOT / "minimal" / "agent.py"
-    module = _load_with_stub(path)
-    assert isinstance(module.agent, StubAgent)
-    # Note: result is only defined inside if __name__ == "__main__" block
+def test_template_passes_a_role_the_sdk_can_load():
+    """`role=` selects roles/{role}.md. A typo here produces an agent that
+    raises at construction, which for a deployed agent means a dead container."""
+    from connectonion.cli.co_ai.agent import create_agent
 
+    tree = ast.parse((TEMPLATE / "agent.py").read_text(encoding="utf-8"))
+    roles = [
+        kw.value.value
+        for node in ast.walk(tree)
+        if isinstance(node, ast.Call)
+        for kw in node.keywords
+        if kw.arg == "role" and isinstance(kw.value, ast.Constant)
+    ]
 
-def test_template_browser_loads():
-    path = TEMPLATE_ROOT / "browser" / "agent.py"
-    module = _load_with_stub(path)
-    # Browser template uses create_agent() factory function
-    assert callable(module.create_agent)
-    agent = module.create_agent()
-    assert isinstance(agent, StubAgent)
+    assert roles, "template should pass role= explicitly so it is obvious what to change"
 
+    available = {p.stem for p in (ROOT / "cli" / "co_ai" / "prompts" / "roles").glob("*.md")}
+    for role in roles:
+        assert role is None or role in available, f"unknown role {role!r}, have {available}"
 
-def test_template_web_research_functions(tmp_path, monkeypatch):
-    path = TEMPLATE_ROOT / "web-research" / "agent.py"
-    module = _load_with_stub(path)
-
-    assert "Searching for" in module.search_web("topic")
-
-    # Patch requests.get in module using monkeypatch (auto-restored after test)
-    class Resp:
-        status_code = 200
-        text = "hello world"
-
-        def raise_for_status(self):
-            return None
-
-    monkeypatch.setattr(module.requests, "get", lambda *a, **k: Resp())
-
-    data = module.extract_data("http://example.com")
-    assert data["status"] == 200
-
-    analysis = module.analyze_data("data", analysis_type="summary")
-    assert analysis == "llm"
-
-    out_file = tmp_path / "research.json"
-    msg = module.save_research("topic", ["a", "b"], filename=str(out_file))
-    assert out_file.exists()
-    assert "Research saved" in msg
+    assert "role" in inspect.signature(create_agent).parameters

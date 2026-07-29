@@ -1,10 +1,10 @@
 """
 Purpose: Create new ConnectOnion project in new directory with template files, authentication, and configuration
 LLM-Note:
-  Dependencies: imports from [os, signal, sys, shutil, yaml, datetime, pathlib, rich.console, rich.prompt, rich.panel, __version__, address, auth_commands.authenticate, project_cmd_lib] | imported by [cli/main.py via handle_create()] | uses templates from [cli/templates/{minimal,browser,hosted-browser,coder,co-ai,web-research}] | tested by [tests/e2e/cli/test_cli_create.py]
+  Dependencies: imports from [os, signal, sys, shutil, yaml, datetime, pathlib, rich.console, rich.prompt, rich.panel, __version__, address, auth_commands.authenticate, project_cmd_lib] | imported by [cli/main.py via handle_create()] | uses templates from [cli/templates/co-ai] | tested by [tests/e2e/cli/test_cli_create.py]
   Data flow: receives args (name, ai, key, template, description, yes) from CLI parser → validate_project_name() checks name validity → ensure_global_config() creates ~/.co/ with master keypair if needed → check_environment_for_api_keys() detects existing keys → interactive_menu() or api_key_setup_menu() gets user choices → generate_custom_template_with_name() if template='custom' → create new directory with project name → copy template files from cli/templates/{template}/ to new dir → authenticate() to get OPENONION_API_KEY → create .env with API keys → create .co/host.yaml with project metadata and global identity → copy vibe coding docs → create .gitignore → display success message with next steps
   State/Effects: modifies ~/.co/ (host.yaml, keys.env, keys/, logs/) on first run | creates new directory {name}/ in current dir | writes to {name}/: .co/host.yaml, .env, agent.py (if template), .gitignore | calls authenticate() which writes OPENONION_API_KEY to ~/.co/keys.env | copies template files | writes to stdout via rich.Console
-  Integration: exposes handle_create(name, ai, key, template, description, yes) | similar to init.py but creates new directory first | calls ensure_global_config() for global identity | calls authenticate(global_co_dir, save_to_project=False) for managed keys | uses template files from cli/templates/ | relies on project_cmd_lib for shared functions | uses address.generate() for Ed25519 keypair | template options: 'minimal' (default), 'browser', 'hosted-browser', 'coder', 'co-ai', 'web-research', 'custom'
+  Integration: exposes handle_create(name, ai, key, template, description, yes) | similar to init.py but creates new directory first | calls ensure_global_config() for global identity | calls authenticate(global_co_dir, save_to_project=False) for managed keys | uses template files from cli/templates/ | relies on project_cmd_lib for shared functions | uses address.generate() for Ed25519 keypair | template options: 'co-ai' (default), 'custom'
   Performance: authenticate() makes network call (2-5s) | generate_custom_template_with_name() calls LLM API if template='custom' | directory creation is O(1) | template file copying is O(n) files
   Errors: fails if project name invalid (spaces, special chars) | fails if directory already exists | fails if cli/templates/{template}/ not found | fails if API key invalid during authenticate() | catches KeyboardInterrupt during interactive menus (cleans up partial state)
 """
@@ -13,6 +13,7 @@ import os
 import shutil
 from pathlib import Path
 from typing import Optional
+import typer
 from rich.console import Console
 from rich.prompt import Prompt, IntPrompt
 from rich.syntax import Syntax
@@ -32,6 +33,8 @@ from .project_cmd_lib import (
     check_environment_for_api_keys,
     detect_api_provider,
     generate_custom_template_with_name,
+    get_template_suggested_name,
+    unknown_template_message,
 )
 
 console = Console()
@@ -46,9 +49,9 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
 
     # Header removed for cleaner output
 
-    # Template selection - default to minimal unless --template provided
+    # One template: co-ai. `custom` still generates an agent.py from a description.
     if not template:
-        template = 'minimal'
+        template = 'co-ai'
     # Silent - no verbose messages
 
     # Auto-detect API keys from environment (no menu, just detect)
@@ -206,8 +209,8 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                 # No AI suggestion, ask for name
                 name = Prompt.ask("\n[cyan]Project name[/cyan]", default="custom-agent")
         else:
-            # For non-custom templates, use template name directly
-            name = f"{template}-agent"
+            # One template, so its name says nothing useful about the project.
+            name = get_template_suggested_name(template)
 
         # Validate project name
         is_valid, error_msg = validate_project_name(name)
@@ -216,9 +219,9 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             name = Prompt.ask("[cyan]Project name[/cyan]", default="my-agent")
             is_valid, error_msg = validate_project_name(name)
     elif not name:
-        # Auto mode - use template name for non-custom, AI suggestion for custom
+        # Auto mode - suggested name for the template, AI suggestion for custom
         if template != 'custom':
-            name = f"{template}-agent"
+            name = get_template_suggested_name(template)
         elif ai_suggested_name:
             # Use AI-suggested name for custom template
             name = ai_suggested_name
@@ -257,14 +260,9 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     template_dir = cli_dir / "templates" / template
 
     if not template_dir.exists() and template != 'custom':
-        # Naming a template that does not exist printed this and exited 0, so a
-        # script that asked for one got "success" and an empty directory. Say
-        # what is available and let the caller fail.
-        available = sorted(p.name for p in (cli_dir / "templates").iterdir() if p.is_dir())
-        console.print(f"[red]❌ Template '{template}' not found![/red]")
-        console.print(f"   [dim]Available: {', '.join(available + ['custom'])}[/dim]")
+        console.print(unknown_template_message(template))
         shutil.rmtree(project_dir)
-        return False
+        raise typer.Exit(1)
 
     # Copy template files
     files_created = []

@@ -15,7 +15,7 @@ What it tests:
 
 Components under test:
 - connectonion.cli.main.cli (init command)
-- connectonion.cli.templates (minimal and other templates)
+- connectonion.cli.templates (the co-ai template)
 """
 
 import os
@@ -41,7 +41,7 @@ class TestCliInit:
             from connectonion.cli.main import cli
 
             # Run init with template to create agent.py
-            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
+            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # Check core files exist
@@ -54,8 +54,9 @@ class TestCliInit:
                 code = f.read()
                 compile(code, 'agent.py', 'exec')
 
-            # Check agent.py references ConnectOnion
-            assert 'from connectonion import Agent' in code
+            # Check agent.py wires a ConnectOnion agent
+            assert 'from connectonion' in code
+            assert 'create_agent' in code
 
             # Check host.yaml has correct structure
             import yaml
@@ -70,14 +71,15 @@ class TestCliInit:
             from connectonion.cli.main import cli
 
             # Test with a template
-            result = self.runner.invoke(cli, ['init', '--template', 'minimal'])
+            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             with open('agent.py') as f:
                 content = f.read()
 
             # Should have basic agent structure
-            assert 'from connectonion import Agent' in content
+            assert 'from connectonion' in content
+            assert 'host(' in content
 
     def test_init_in_non_empty_directory(self):
         """Test that init asks for confirmation in non-empty directories."""
@@ -95,7 +97,7 @@ class TestCliInit:
                 assert not os.path.exists('agent.py') or result.exit_code != 0
 
             # Should proceed when user confirms
-            result = self.runner.invoke(cli, ['init', '--template', 'minimal'], input='y\n')
+            result = self.runner.invoke(cli, ['init', '--template', 'co-ai'], input='y\n')
             assert result.exit_code == 0
             assert os.path.exists('agent.py')
             assert os.path.exists('existing.txt')  # Preserves existing files

@@ -47,7 +47,7 @@ class TestCliCreate:
 
             # Create project with name
             result = self.runner.invoke(cli, ['create', 'my-agent'],
-                                        input='n\nminimal\n')  # No AI, minimal template
+                                        input='n\nco-ai\n')  # No AI, default template
             assert result.exit_code == 0
 
             # Check directory was created
@@ -62,12 +62,12 @@ class TestCliCreate:
 
             # Create project without name - auto-generates name from template
             result = self.runner.invoke(cli, ['create'],
-                                        input='minimal\n')
+                                        input='co-ai\n')
             assert result.exit_code == 0
 
             # Check directory was created with auto-generated name
-            assert os.path.exists('minimal-agent')
-            assert os.path.exists('minimal-agent/agent.py')
+            assert os.path.exists('my-agent')
+            assert os.path.exists('my-agent/agent.py')
 
     def test_create_ai_enabled_shows_custom_option(self):
         """Test that enabling AI shows custom template option."""
@@ -88,7 +88,7 @@ class TestCliCreate:
 
             # Create without AI
             result = self.runner.invoke(cli, ['create', 'no-ai-agent'],
-                                        input='n\nminimal\n')
+                                        input='n\nco-ai\n')
 
             # Should create project without AI features
             assert os.path.exists('no-ai-agent')
@@ -102,7 +102,7 @@ class TestCliCreate:
             # Set OpenAI API key in environment
             with patch.dict(os.environ, {'OPENAI_API_KEY': 'sk-test123'}):
                 result = self.runner.invoke(cli, ['create', 'openai-agent'],
-                                            input='minimal\n')
+                                            input='co-ai\n')
 
                 # Should detect and use OpenAI key
                 if result.exit_code == 0:
@@ -116,7 +116,7 @@ class TestCliCreate:
             # Set Anthropic API key
             with patch.dict(os.environ, {'ANTHROPIC_API_KEY': 'sk-ant-test123'}):
                 result = self.runner.invoke(cli, ['create', 'anthropic-agent'],
-                                            input='minimal\n')
+                                            input='co-ai\n')
 
                 if result.exit_code == 0:
                     assert os.path.exists('anthropic-agent')
@@ -129,7 +129,7 @@ class TestCliCreate:
             # Set Google API key
             with patch.dict(os.environ, {'GOOGLE_API_KEY': 'test-google-key'}):
                 result = self.runner.invoke(cli, ['create', 'google-agent'],
-                                            input='minimal\n')
+                                            input='co-ai\n')
 
                 if result.exit_code == 0:
                     assert os.path.exists('google-agent')
@@ -142,7 +142,7 @@ class TestCliCreate:
             # Set Groq API key
             with patch.dict(os.environ, {'GROQ_API_KEY': 'test-groq-key'}):
                 result = self.runner.invoke(cli, ['create', 'groq-agent'],
-                                            input='minimal\n')
+                                            input='co-ai\n')
 
                 if result.exit_code == 0:
                     assert os.path.exists('groq-agent')
@@ -155,7 +155,7 @@ class TestCliCreate:
 
             with patch.dict(os.environ, {'XAI_API_KEY': 'xai-test-key'}):
                 result = self.runner.invoke(cli, ['create', 'grok-agent'],
-                                            input='minimal\n')
+                                            input='co-ai\n')
 
                 if result.exit_code == 0:
                     assert os.path.exists('grok-agent')
@@ -167,7 +167,7 @@ class TestCliCreate:
 
             with patch.dict(os.environ, {'OPENROUTER_API_KEY': 'sk-or-v1-test-key'}):
                 result = self.runner.invoke(cli, ['create', 'openrouter-agent'],
-                                            input='minimal\n')
+                                            input='co-ai\n')
 
                 if result.exit_code == 0:
                     assert os.path.exists('openrouter-agent')
@@ -182,7 +182,7 @@ class TestCliCreate:
 
             # Try to create project with same name
             result = self.runner.invoke(cli, ['create', 'existing-agent'],
-                                        input='minimal\n')
+                                        input='co-ai\n')
 
             # Should handle gracefully (either fail or ask for confirmation)
             # The exact behavior depends on implementation
@@ -195,7 +195,7 @@ class TestCliCreate:
 
             result = self.runner.invoke(cli, ['create', 'described-agent',
                                               '--description', 'A helpful assistant'],
-                                        input='minimal\n')
+                                        input='co-ai\n')
 
             if result.exit_code == 0:
                 assert os.path.exists('described-agent')
@@ -207,7 +207,7 @@ class TestCliCreate:
 
             result = self.runner.invoke(cli, ['create', 'keyed-agent',
                                               '--key', 'sk-test-key'],
-                                        input='minimal\n')
+                                        input='co-ai\n')
 
             if result.exit_code == 0:
                 assert os.path.exists('keyed-agent')
@@ -218,7 +218,7 @@ class TestCliCreate:
             from connectonion.cli.main import cli
 
             result = self.runner.invoke(cli, ['create', 'template-agent',
-                                              '--template', 'minimal'])
+                                              '--template', 'co-ai'])
 
             assert result.exit_code == 0
             assert os.path.exists('template-agent')
@@ -230,7 +230,7 @@ class TestCliCreate:
 
             result = self.runner.invoke(cli, ['create', 'auto-agent',
                                               '--yes',
-                                              '--template', 'minimal'])
+                                              '--template', 'co-ai'])
 
             assert result.exit_code == 0
             assert os.path.exists('auto-agent')
@@ -242,7 +242,7 @@ class TestCliCreate:
 
             result = self.runner.invoke(cli, ['create', 'complete-agent',
                                               '--yes',
-                                              '--template', 'minimal'])
+                                              '--template', 'co-ai'])
 
             assert result.exit_code == 0
 
@@ -259,7 +259,7 @@ class TestCliCreate:
 
             result = self.runner.invoke(cli, ['create', 'config-test-agent',
                                               '--yes',
-                                              '--template', 'minimal'])
+                                              '--template', 'co-ai'])
 
             assert result.exit_code == 0
 
@@ -279,7 +279,7 @@ class TestCliCreate:
 
             result = self.runner.invoke(cli, ['create', 'model-test-agent',
                                               '--yes',
-                                              '--template', 'minimal'])
+                                              '--template', 'co-ai'])
 
             assert result.exit_code == 0
 
@@ -306,7 +306,7 @@ class TestCliCreate:
 
                     result = self.runner.invoke(cli, ['create', 'explain-test-agent',
                                                       '--yes',
-                                                      '--template', 'minimal'])
+                                                      '--template', 'co-ai'])
 
                     assert result.exit_code == 0
 
@@ -329,7 +329,7 @@ class TestCliCreate:
             from connectonion.cli.main import cli
 
             result = self.runner.invoke(cli, ['create', 'tmpl-agent',
-                                                '--yes', '--template', 'minimal'])
+                                                '--yes', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             with open("tmpl-agent/.co/host.yaml") as f:
@@ -352,7 +352,7 @@ class TestCliCreate:
             from connectonion.cli.main import cli
 
             result = self.runner.invoke(cli, ['create', 'perm-agent',
-                                                '--yes', '--template', 'minimal'])
+                                                '--yes', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             config = yaml.safe_load(open("perm-agent/.co/host.yaml"))
@@ -368,7 +368,7 @@ class TestCliCreate:
 
             result = self.runner.invoke(cli, ['create', 'docs-test-agent',
                                               '--yes',
-                                              '--template', 'minimal'])
+                                              '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # Check that .co/docs/ directory exists
@@ -392,7 +392,7 @@ class TestCliCreate:
 
             result = self.runner.invoke(cli, ['create', 'archive-test-agent',
                                               '--yes',
-                                              '--template', 'minimal'])
+                                              '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # archive folder should NOT exist in .co/docs/
@@ -405,7 +405,7 @@ class TestCliCreate:
 
             result = self.runner.invoke(cli, ['create', 'readme-test-agent',
                                               '--yes',
-                                              '--template', 'minimal'])
+                                              '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # docs README should be in .co/docs/
@@ -421,7 +421,7 @@ class TestCliCreate:
 
         with self.runner.isolated_filesystem():
             result = self.runner.invoke(cli, ['create', 'My_Agent',
-                                              '--yes', '--template', 'minimal'])
+                                              '--yes', '--template', 'co-ai'])
             assert result.exit_code == 0
 
             # The directory keeps the name the user asked for.

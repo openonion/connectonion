@@ -12,6 +12,8 @@ Components under test:
 
 from pathlib import Path
 
+import pytest
+
 from connectonion.cli.co_ai.tools import ask_user
 from connectonion.cli.co_ai.prompts.assembler import (
     PromptContext,
@@ -23,6 +25,15 @@ from connectonion.cli.co_ai.prompts.assembler import (
 
 
 PROMPTS_DIR = Path(__file__).resolve().parents[2] / "connectonion" / "cli" / "co_ai" / "prompts"
+
+
+def flatten(text: str) -> str:
+    """Collapse whitespace so phrase assertions survive markdown re-wrapping.
+
+    The prompts are hard-wrapped at ~78 columns; without this, reflowing a
+    paragraph fails tests that have nothing to do with the change.
+    """
+    return " ".join(text.split())
 
 
 def test_interpolate_basic_and_defaults():
@@ -72,14 +83,16 @@ def test_prompt_context_and_assemble(tmp_path):
 
 
 def test_login_prompt_uses_ask_user_and_screenshot():
-    prompt = assemble_prompt(
+    prompt = flatten(assemble_prompt(
         prompts_dir=str(PROMPTS_DIR),
         tools=[
             ask_user,
         ],
-    )
+    ))
 
-    assert "Do not refuse explicit user login requests" in prompt
+    # Login instructions live with the browser, not with the coding role — an
+    # agent that only posts to a website still has to be able to log in.
+    assert "Do not refuse" in prompt
     assert "help me login" in prompt
     assert "log in" in prompt
     assert "sign in" in prompt
@@ -91,6 +104,63 @@ def test_login_prompt_uses_ask_user_and_screenshot():
     assert "ask_user" in prompt
     assert 'fields=[{"name": "username"' in prompt
     assert "2FA" in prompt
-    assert "same tool loop" in prompt
-    assert "Do not repeat credentials in assistant messages" in prompt
-    assert "Leave the browser open after login succeeds" in prompt
+    assert "same turn" in prompt
+    assert "Do not repeat credentials" in prompt
+    assert "Leave the browser open" in prompt
+
+
+def test_main_prompt_does_not_claim_the_agent_writes_code():
+    """main.md is every agent's prompt, including the ones deployed as a
+    support bot or a poster. Telling those they are a coding agent puts the
+    prompt at war with the skills they were shipped with."""
+    prompt = flatten(assemble_prompt(prompts_dir=str(PROMPTS_DIR), tools=[ask_user]))
+
+    lowered = prompt.lower()
+    assert "you are a coding agent" not in lowered
+    assert "software engineering" not in lowered
+    # ...and the coding doctrine went with it
+    assert "Avoid Over-Engineering" not in prompt
+    assert "ALWAYS read existing files before modifying" not in prompt
+
+
+def test_role_adds_the_domain_back():
+    plain = flatten(assemble_prompt(prompts_dir=str(PROMPTS_DIR), tools=[ask_user]))
+    coding = flatten(assemble_prompt(prompts_dir=str(PROMPTS_DIR), tools=[ask_user], role="coding"))
+
+    assert len(coding) > len(plain)
+    assert "Avoid Over-Engineering" in coding
+    assert "file_path:line_number" in coding
+    # Whatever the role, the generic half is always there.
+    for prompt in (plain, coding):
+        assert "Executing Actions with Care" in prompt
+        assert "Delivering Work" in prompt
+
+
+def test_generic_prompt_covers_irreversible_and_outward_facing_actions():
+    """A deployed agent can post publicly, send mail, and deploy. Warning it
+    about SQL injection while saying nothing about actions it cannot take back
+    is the wrong half of "security" for anything but a coding agent."""
+    prompt = flatten(assemble_prompt(prompts_dir=str(PROMPTS_DIR), tools=[ask_user]))
+
+    assert "Executing Actions with Care" in prompt
+    assert "confirm" in prompt.lower()
+    assert "hard to reverse" in prompt.lower()
+
+
+def test_generic_prompt_requires_reporting_what_actually_happened():
+    """Persistence without honesty pushes an agent toward reporting success it
+    does not have. The two have to ship together."""
+    prompt = flatten(assemble_prompt(prompts_dir=str(PROMPTS_DIR), tools=[ask_user]))
+
+    assert "Report what actually happened" in prompt
+    assert "Finish the whole thing" in prompt
+
+
+def test_unknown_role_fails_loudly():
+    """A deployed agent with a typo'd role should die at construction with a
+    readable message, not silently serve a prompt missing its domain."""
+    with pytest.raises(FileNotFoundError) as excinfo:
+        assemble_prompt(prompts_dir=str(PROMPTS_DIR), tools=[ask_user], role="nonexistent")
+
+    assert "Available roles" in str(excinfo.value)
+    assert "coding" in str(excinfo.value)

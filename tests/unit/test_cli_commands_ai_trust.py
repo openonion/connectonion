@@ -19,7 +19,7 @@ def test_handle_ai_calls_start_server(monkeypatch):
     called = {}
     created = {}
 
-    def fake_create_coding_agent(**kwargs):
+    def fake_create_agent(**kwargs):
         agent = object()
         created.update(kwargs)
         created["agent"] = agent
@@ -29,7 +29,7 @@ def test_handle_ai_calls_start_server(monkeypatch):
         called.update(kwargs)
         called["agent"] = agent
 
-    monkeypatch.setattr("connectonion.cli.co_ai.agent.create_coding_agent", fake_create_coding_agent)
+    monkeypatch.setattr("connectonion.cli.co_ai.agent.create_agent", fake_create_agent)
     monkeypatch.setattr("connectonion.cli.co_ai.main.start_server", fake_start_server)
 
     ai_mod.handle_ai(
@@ -56,13 +56,13 @@ def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
             created["prompt"] = prompt
             return "done"
 
-    def fake_create_coding_agent(**kwargs):
+    def fake_create_agent(**kwargs):
         created.update(kwargs)
         return FakeAgent()
 
     monkeypatch.setattr(
-        "connectonion.cli.co_ai.agent.create_coding_agent",
-        fake_create_coding_agent,
+        "connectonion.cli.co_ai.agent.create_agent",
+        fake_create_agent,
     )
 
     ai_mod.handle_ai(prompt="task", yolo=False, yolo_turns=9)

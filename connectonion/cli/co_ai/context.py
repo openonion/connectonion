@@ -19,7 +19,7 @@ Architecture:
 - README truncation prevents token bloat
 
 Used by:
-- create_coding_agent() in agent.py
+- create_agent() in agent.py
 - Provides project-aware context for AI coding assistance
 """
 

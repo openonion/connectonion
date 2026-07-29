@@ -19,6 +19,7 @@ import tempfile
 import time
 import yaml
 import requests
+import typer
 from pathlib import Path
 from rich.console import Console
 from dotenv import dotenv_values
@@ -222,15 +223,21 @@ def _deploy_template_project(template: str, skills: list[str], name: str | None 
 
     # Reuse the normal project creation path so template deploy stays in sync
     # with `co create --template <name> -y` and does not mutate cwd.
-    handle_create(
-        name=project_name,
-        ai=None,
-        key=None,
-        template=template,
-        description=None,
-        yes=True,
-        parent_dir=temp_root,
-    )
+    # `co create` reports an unknown template by exiting 1; deploy reports it by
+    # returning False, so the two conventions have to be translated here.
+    try:
+        handle_create(
+            name=project_name,
+            ai=None,
+            key=None,
+            template=template,
+            description=None,
+            yes=True,
+            parent_dir=temp_root,
+        )
+    except typer.Exit:
+        shutil.rmtree(temp_root, ignore_errors=True)
+        return False
 
     if not (project_dir / ".co" / "host.yaml").exists():
         console.print(f"[red]Template project creation did not produce a deployable project: {project_dir}[/red]")
