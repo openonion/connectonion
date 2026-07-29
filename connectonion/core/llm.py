@@ -325,7 +325,7 @@ class AnthropicLLM(LLM):
     def complete(self, messages: List[Dict[str, Any]], tools: Optional[List[Dict[str, Any]]] = None, **kwargs) -> LLMResponse:
         """Complete a conversation with optional tool support."""
         # Convert messages to Anthropic format
-        anthropic_messages = self._convert_messages(messages)
+        anthropic_messages, system = self._convert_messages(messages)
 
         api_kwargs = {
             "model": self.model,
@@ -333,6 +333,9 @@ class AnthropicLLM(LLM):
             "max_tokens": self.max_tokens,  # Required by Anthropic
             **kwargs  # User can override max_tokens via kwargs
         }
+
+        if system:
+            api_kwargs["system"] = system
 
         # Add tools if provided
         if tools:
@@ -381,7 +384,7 @@ class AnthropicLLM(LLM):
         workaround: create a dummy tool with the Pydantic schema and force its use.
         """
         # Convert messages to Anthropic format
-        anthropic_messages = self._convert_messages(messages)
+        anthropic_messages, system = self._convert_messages(messages)
 
         # Create a tool with the Pydantic schema as input_schema
         tool = {
@@ -400,6 +403,9 @@ class AnthropicLLM(LLM):
             **kwargs  # User can override max_tokens, temperature, etc.
         }
 
+        if system:
+            api_kwargs["system"] = system
+
         # Force the model to use this tool
         response = self.client.messages.create(**api_kwargs)
 
@@ -411,16 +417,19 @@ class AnthropicLLM(LLM):
 
         raise ValueError("No structured output received from Claude")
 
-    def _convert_messages(self, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    def _convert_messages(self, messages: List[Dict[str, Any]]) -> tuple[List[Dict[str, Any]], Optional[str]]:
         """Convert OpenAI-style messages to Anthropic format."""
         anthropic_messages = []
+        system_parts = []
         i = 0
         
         while i < len(messages):
             msg = messages[i]
             
-            # Skip system messages (will be handled separately)
+            # Anthropic accepts system instructions as a top-level request parameter.
             if msg["role"] == "system":
+                if msg.get("content"):
+                    system_parts.append(msg["content"])
                 i += 1
                 continue
             
@@ -513,7 +522,8 @@ class AnthropicLLM(LLM):
             else:
                 i += 1
         
-        return anthropic_messages
+        system = "\n\n".join(system_parts)
+        return anthropic_messages, system or None
     
     def _convert_tools(self, tools: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Convert OpenAI-style tools to Anthropic format."""
