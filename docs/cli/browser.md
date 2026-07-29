@@ -258,4 +258,4 @@ co auth
 
 - [`co auth`](auth.md) — managed keys for the `do` agent
 - [Browser tools library](../useful_tools/browser_tools.md) — `BrowserAutomation` used in your own agents
-- [`browser` template](../templates/browser.md) — scaffold a browser agent project
+- [Templates](../templates/README.md) — scaffold a project whose agent drives this CLI

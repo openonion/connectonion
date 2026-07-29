@@ -62,7 +62,7 @@ Only the ~70-byte `/img` URL enters the message history — never the base64 —
 
 **Why a plugin, and not `read_file` itself?** A tool's return value can only become a *text* tool-message. Putting an image into the conversation means mutating the message list, which is only safe on the `after_tools` event — so a plugin does it. This is the exact path browser screenshots use. Keeping `read_file` to "return the image data" and letting the plugin handle presentation keeps each piece single-purpose.
 
-**Consequence:** images only reach the model if the agent has the [`image_result_formatter`](../useful_plugins/image_result_formatter.md) plugin. The [`minimal`](../templates/minimal.md) template enables it by default; a bare `Agent(...)` does not — add `plugins=[image_result_formatter]`. Supported image types match the plugin: PNG, JPEG, GIF, WebP.
+**Consequence:** images only reach the model if the agent has the [`image_result_formatter`](../useful_plugins/image_result_formatter.md) plugin. The [co-ai](../templates/README.md) template enables it by default; a bare `Agent(...)` does not — add `plugins=[image_result_formatter]`. Supported image types match the plugin: PNG, JPEG, GIF, WebP.
 
 ## Dependencies
 
