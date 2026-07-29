@@ -145,11 +145,10 @@ def session_to_chat_items(session: dict) -> list[dict]:
             if isinstance(content, str) and content.startswith(RUNTIME_INPUT_FRAME_PREFIX):
                 content = content[len(RUNTIME_INPUT_FRAME_PREFIX):]
             content = _strip_system_reminders(content)
-            if not content:
-                # Entire message was just a <system-reminder> block — suppress the bubble.
-                user_count += 1
-                continue
-            items_ui.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
+            # A message that was nothing but a <system-reminder> gets no bubble, but it
+            # still opened a turn — its trace entries below must render either way.
+            if content:
+                items_ui.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
             user_count += 1
             if user_count < len(turn_entries):
                 for trace_idx, entry in turn_entries[user_count]:

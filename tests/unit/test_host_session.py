@@ -798,6 +798,36 @@ class TestSessionToChatItems:
         assert items[0]['type'] == 'tool_call'
         assert items[0]['result'] == 'file content'
 
+    def test_suppressed_user_bubble_still_renders_its_tool_calls(self):
+        """A reminder-only message loses its bubble, never the turn's tool calls.
+
+        The message still opened a turn, so its trace entries have to render —
+        otherwise stripping the reminder silently deletes the tool calls from
+        the transcript, which is worse than the stray bubble it replaced.
+        """
+        session = {
+            'messages': [
+                {'role': 'user', 'content': '<system-reminder>injected</system-reminder>'},
+                {'role': 'assistant', 'content': 'done'},
+            ],
+            'trace': [
+                {'type': 'user_input', 'content': 'x'},
+                {
+                    'type': 'tool_result',
+                    'tool_id': 't1',
+                    'name': 'bash',
+                    'result': 'ls output',
+                    'status': 'success',
+                    'timing_ms': 10,
+                },
+            ],
+        }
+
+        items = session_to_chat_items(session)
+
+        assert [i['type'] for i in items] == ['tool_call', 'agent']
+        assert items[0]['name'] == 'bash'
+
     def test_generates_unique_ids(self):
         """Generates unique IDs for each item."""
         session = {
