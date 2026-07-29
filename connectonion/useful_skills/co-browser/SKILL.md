@@ -101,7 +101,27 @@ co browser get_current_url
 
 `co browser help` prints the live list of every function with its arguments —
 trust it over any example here. Calling a function with wrong arguments returns
-its usage line: self-correct from that.
+its usage line: self-correct from that. (The verb is `scroll`, not `scroll_down`;
+guessing a plausible name costs a round trip.)
+
+**Never hunt for an item by scrolling a feed.** Infinite lists re-render as they
+lazy-load, so scroll position is not reproducible: the same `scroll 6` lands
+somewhere different each time, `Home`/`Meta+Home` do not return you to the top,
+and the card you were aiming at moves between screenshots. Worse, clicking a
+per-item menu you located by eye can hit a *neighbouring* item — on a destructive
+action that is the wrong row deleted.
+
+Extract the item's id once, then address it directly:
+
+```bash
+# 1. one script over the whole list, returning ids -- not screenshots
+co browser -t mytab run_page_script /abs/find-id.js     # match on text, return data-urn/data-id
+# 2. open that item alone, where its controls cannot be confused with anything else
+co browser -t mytab go_to "https://example.com/item/<id>/"
+```
+
+Six scroll-and-screenshot round trips became one script plus one `go_to` this way,
+and the per-item menu became unambiguous because the page held exactly one item.
 
 **`do "<instruction>"`** (natural language — an AI agent sees the page and works out
 the steps). Use for judgment, not for steps you already know:
