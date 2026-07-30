@@ -307,3 +307,143 @@ def sign(address_data: Dict[str, Any], message: bytes) -> bytes:
         
     signed = address_data["signing_key"].sign(message)
     return signed.signature
+
+# ---------------------------------------------------------------------------
+# SSH access key
+#
+# The agent identity above uses only the first 32 of the seed's 64 bytes. The
+# same recovery phrase can therefore also back the operator's SSH key, so there
+# is still exactly one thing to write down.
+#
+# The agent key is deliberately left on its original derivation — bare
+# seed[:32]. Deriving it through HKDF instead would change every existing
+# agent's address and void every trust relationship keyed to it. Only the new
+# SSH key is derived with a label, so a third purpose can be added later
+# without disturbing either of the first two.
+#
+#     agent identity : SigningKey(seed[:32])                     (unchanged)
+#     ssh access     : HKDF(seed, info="connectonion:ssh:v1")
+#
+# Two keys, not one used twice: a signing oracle in the agent protocol must not
+# be usable against SSH login.
+# ---------------------------------------------------------------------------
+
+SSH_DERIVATION_INFO = b"connectonion:ssh:v1"
+
+
+def _hkdf_sha512(seed: bytes, info: bytes, length: int = 32) -> bytes:
+    """RFC 5869 HKDF with SHA-512, no salt. Enough for one 32-byte output."""
+    import hashlib
+    import hmac
+
+    prk = hmac.new(b"\x00" * hashlib.sha512().digest_size, seed, hashlib.sha512).digest()
+
+    out = b""
+    block = b""
+    counter = 1
+    while len(out) < length:
+        block = hmac.new(prk, block + info + bytes([counter]), hashlib.sha512).digest()
+        out += block
+        counter += 1
+    return out[:length]
+
+
+def derive_ssh_key(seed_phrase: str) -> Dict[str, str]:
+    """Derive an Ed25519 SSH keypair from a recovery phrase.
+
+    Ed25519 is a native OpenSSH type, so the public half is an ordinary
+    `ssh-ed25519 AAAA…` line that needs nothing custom on any server.
+
+    Args:
+        seed_phrase: The 12-word BIP39 recovery phrase
+
+    Returns:
+        {"public_line": "ssh-ed25519 AAAA… connectonion", "private_key": "-----BEGIN…"}
+
+    Example:
+        >>> keys = derive_ssh_key("legal winner thank year wave …")
+        >>> keys["public_line"].startswith("ssh-ed25519 ")
+        True
+    """
+    if Mnemonic is None or SigningKey is None:
+        raise ImportError(
+            "Missing dependencies. Install with:\n"
+            "  pip install pynacl mnemonic"
+        )
+
+    mnemo = Mnemonic("english")
+    if not mnemo.check(seed_phrase):
+        raise ValueError("Invalid recovery phrase")
+
+    seed = mnemo.to_seed(seed_phrase)
+    ssh_seed = _hkdf_sha512(seed, SSH_DERIVATION_INFO)
+    signing_key = SigningKey(ssh_seed)
+
+    return {
+        "public_line": _openssh_public_line(bytes(signing_key.verify_key)),
+        "private_key": _openssh_private_key(bytes(signing_key), bytes(signing_key.verify_key)),
+    }
+
+
+def _ssh_string(data: bytes) -> bytes:
+    """SSH wire format: 4-byte big-endian length, then the bytes."""
+    return len(data).to_bytes(4, "big") + data
+
+
+def _openssh_public_line(public_key: bytes, comment: str = "connectonion") -> str:
+    """Encode an Ed25519 public key as an authorized_keys line."""
+    import base64
+
+    blob = _ssh_string(b"ssh-ed25519") + _ssh_string(public_key)
+    return f"ssh-ed25519 {base64.b64encode(blob).decode()} {comment}"
+
+
+def _openssh_private_key(private_key: bytes, public_key: bytes,
+                         comment: str = "connectonion") -> str:
+    """Encode an Ed25519 keypair in the unencrypted OPENSSH private key format.
+
+    Written by hand rather than pulled from `cryptography`: the format is a
+    handful of length-prefixed strings, and this keeps the dependency list as it
+    is. Unencrypted because the recovery phrase is the thing being protected —
+    the file can always be re-derived from it.
+    """
+    import base64
+
+    # OpenSSH stores the private half as private||public (64 bytes)
+    key_pair = private_key + public_key
+
+    pub_blob = _ssh_string(b"ssh-ed25519") + _ssh_string(public_key)
+
+    # The checkint appears twice so a decrypting client can tell it got the
+    # passphrase right. With no passphrase any value works; zero is honest.
+    checkint = (0).to_bytes(4, "big")
+    private_blob = (
+        checkint + checkint
+        + _ssh_string(b"ssh-ed25519")
+        + _ssh_string(public_key)
+        + _ssh_string(key_pair)
+        + _ssh_string(comment.encode())
+    )
+    # Pad to the cipher block size (8 for "none") with 1,2,3…
+    pad = 0
+    while len(private_blob) % 8 != 0:
+        pad += 1
+        private_blob += bytes([pad])
+
+    body = (
+        b"openssh-key-v1\x00"
+        + _ssh_string(b"none")        # cipher
+        + _ssh_string(b"none")        # kdf
+        + _ssh_string(b"")            # kdf options
+        + (1).to_bytes(4, "big")      # number of keys
+        + _ssh_string(pub_blob)
+        + _ssh_string(private_blob)
+    )
+
+    b64 = base64.b64encode(body).decode()
+    lines = [b64[i:i + 70] for i in range(0, len(b64), 70)]
+    return (
+        "-----BEGIN OPENSSH PRIVATE KEY-----\n"
+        + "\n".join(lines)
+        + "\n-----END OPENSSH PRIVATE KEY-----\n"
+    )
