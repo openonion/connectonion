@@ -40,6 +40,20 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
             # INPUT resumes. Cleared on pop; a failed onboard leaves it for a retry.
             conn["pending_connect"] = data
             await send_msg({"type": "ONBOARD_REQUIRED", "identity": agent_address, **onboard_info})
+
+            # Then the Home page, so the visitor can see what they are being asked to
+            # join. dashboard.html is the agent's front door: gating it behind the
+            # onboard it is meant to introduce leaves a first-time visitor staring at a
+            # bare prompt, which is what happened on the default `careful` trust level —
+            # the snapshot only ever went out from establish_connection() below.
+            #
+            # ONBOARD_REQUIRED goes first so the client learns it is gated before any
+            # content arrives and cannot read a snapshot as a successful connect.
+            # send_dashboard stamps conn, so the resend after a successful onboard is
+            # skipped as an unchanged file rather than shipping the page twice.
+            if route_handlers.get("public_home", True):
+                from .dashboard import send_dashboard
+                await send_dashboard(send_msg, data.get("session_id"), conn)
             return
 
     if err:

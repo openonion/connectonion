@@ -305,3 +305,81 @@ def test_ensure_dashboard_warns_instead_of_crashing_on_an_unwritable_dir(in_tmp,
 
     assert "Could not write" in capsys.readouterr().err
     assert read_dashboard_snapshot() is None
+
+
+# --- Home is reachable before onboarding -------------------------------------
+# A dashboard that only ships from establish_connection() is invisible on the default
+# `careful` trust level: the gate answers ONBOARD_REQUIRED and returns, so a first-time
+# visitor never sees the page whose job is to invite them in.
+
+def _gated_handlers(public_home=True):
+    """route_handlers whose auth refuses with 'forbidden' so the onboard gate fires."""
+    return {
+        "auth": Mock(return_value=(None, "0xvisitor", True, "forbidden: must onboard")),
+        "trust_agent": Mock(),
+        "public_home": public_home,
+    }
+
+
+async def _connect_gated(handlers, sent):
+    from connectonion.network.host.ws_router import connect as connect_module
+    send_msg = AsyncMock(side_effect=lambda m: sent.append(m))
+    conn = {}
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(connect_module, "get_onboard_requirements",
+                   lambda _ta: {"methods": ["invite_code"]})
+        await connect_module.handle_connect(
+            {}, send_msg, conn, handlers, Mock(), Mock(), "careful", None, None
+        )
+    return conn
+
+
+@_pytest.mark.asyncio
+async def test_gated_connect_still_sends_home(in_tmp):
+    (in_tmp / "dashboard.html").write_text("<h1>home</h1>", encoding="utf-8")
+    sent = []
+    await _connect_gated(_gated_handlers(), sent)
+
+    types = [m["type"] for m in sent]
+    assert "ONBOARD_REQUIRED" in types, "the gate must still ask for onboarding"
+    assert "DASHBOARD_SNAPSHOT" in types, "Home must be visible before onboarding"
+    # State before content: the client learns it is gated before any page arrives, so a
+    # snapshot can never be mistaken for a successful connect.
+    assert types.index("ONBOARD_REQUIRED") < types.index("DASHBOARD_SNAPSHOT")
+    assert next(m for m in sent if m["type"] == "DASHBOARD_SNAPSHOT")["html"] == "<h1>home</h1>"
+
+
+@_pytest.mark.asyncio
+async def test_gated_connect_respects_public_home_false(in_tmp):
+    (in_tmp / "dashboard.html").write_text("<h1>private</h1>", encoding="utf-8")
+    sent = []
+    await _connect_gated(_gated_handlers(public_home=False), sent)
+
+    types = [m["type"] for m in sent]
+    assert types == ["ONBOARD_REQUIRED"], "a dashboard written for the operator stays private"
+
+
+@_pytest.mark.asyncio
+async def test_gated_connect_without_a_dashboard_file(in_tmp):
+    sent = []
+    await _connect_gated(_gated_handlers(), sent)
+    assert [m["type"] for m in sent] == ["ONBOARD_REQUIRED"]
+
+
+@_pytest.mark.asyncio
+async def test_home_is_not_shipped_twice_across_the_onboard(in_tmp):
+    """The pre-auth send stamps conn, so the post-onboard establish_connection is a no-op."""
+    from connectonion.network.host.ws_router.connect import establish_connection
+    (in_tmp / "dashboard.html").write_text("<h1>home</h1>", encoding="utf-8")
+
+    sent = []
+    conn = await _connect_gated(_gated_handlers(), sent)
+    assert [m["type"] for m in sent].count("DASHBOARD_SNAPSHOT") == 1
+
+    storage = Mock(); storage.get.return_value = None
+    registry = Mock(); registry.get.return_value = None
+    await establish_connection({}, "0xvisitor", AsyncMock(side_effect=lambda m: sent.append(m)),
+                               conn, storage, registry)
+
+    assert [m["type"] for m in sent].count("DASHBOARD_SNAPSHOT") == 1, \
+        "the same file must not be shipped again after onboarding"

@@ -219,6 +219,11 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         "admin_sessions": admin_sessions_handler,
         # TrustAgent instance for direct access in http.py/websocket.py
         "trust_agent": trust_agent,
+        # Whether dashboard.html may be shown to a visitor who has not onboarded yet.
+        # A Home page that only appears after you are let in cannot invite anyone in, so
+        # this defaults to True; set `public_home: false` in .co/host.yaml when the
+        # dashboard is written for the operator rather than for visitors.
+        "public_home": config.get("public_home", True),
         # Admin trust routes (partial injects trust_agent as first arg)
         "admin_trust_promote": partial(admin_trust_promote_handler, trust_agent),
         "admin_trust_demote": partial(admin_trust_demote_handler, trust_agent),
