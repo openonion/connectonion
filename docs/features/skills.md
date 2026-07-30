@@ -89,6 +89,26 @@ Skills are discovered from three locations (priority order):
 
 Skills are loaded once at agent creation, descriptions injected into system prompt.
 
+### Which of them survive a deploy
+
+Only what is inside the project tree, plus what ships with ConnectOnion itself:
+
+| Location | Deploys? | Why |
+|---|---|---|
+| `.co/skills/` | ✓ | in the project — packaged and rsynced |
+| `.claude/skills/` | ✓ | same |
+| `builtin/` | ✓ | installed with the `connectonion` package |
+| `~/.co/skills/` | ✗ | your machine, not the agent's |
+| `~/.claude/skills/` | ✗ | same |
+
+A user-level skill is usually a symlink into a separate repo, so it can look
+installed, work perfectly for months, and simply not exist on the server — the
+agent then behaves differently for a reason nothing in its output explains.
+
+`co skills list` marks each one, `co doctor` counts them per tier, and both deploy
+paths name the ones being left behind. **To make a skill travel, move it into the
+project's `.co/skills/`** (or pass it with `co deploy --skills PATH`).
+
 ### 2. Invocation
 
 **Two ways to invoke:**

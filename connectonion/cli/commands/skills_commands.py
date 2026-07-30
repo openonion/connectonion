@@ -300,32 +300,51 @@ def handle_skills_manifest(
 
 
 def handle_skills_list():
-    """List skills currently materialized in ~/.co/skills/."""
-    if not SKILLS_DIR.exists():
-        console.print("[dim]~/.co/skills/ is empty.[/dim]")
-        return
-    rows = []
-    for child in sorted(SKILLS_DIR.iterdir()):
-        if not child.is_dir():
-            continue
-        skill_file = child / "SKILL.md"
-        if not skill_file.exists():
-            continue
-        fm = parse_frontmatter(skill_file.read_text(encoding="utf-8", errors="replace"))
-        rows.append((fm.get("name") or child.name, fm.get("description") or ""))
+    """List every skill the agent can see, and say which of them travel.
 
-    if not rows:
-        console.print("[dim]No skills installed in ~/.co/skills/.[/dim]")
-        return
+    Used to list only ~/.co/skills/, which is the one tier that does NOT survive a
+    deploy — so the command showing you your skills was showing you exactly the ones
+    the deployed agent would not have.
+    """
+    from ...useful_plugins.skills import (
+        _discover_all_skills, find_skill_problems, TRAVELS_ON_DEPLOY,
+    )
 
-    table = Table(title=f"~/.co/skills ({len(rows)})")
-    table.add_column("Name", style="cyan")
-    table.add_column("Description", style="dim", overflow="fold")
-    for name, desc in rows:
-        if len(desc) > 100:
-            desc = desc[:97] + "..."
-        table.add_row(name, desc)
-    console.print(table)
+    skills = _discover_all_skills()
+    problems = find_skill_problems()
+
+    if not skills:
+        console.print("[dim]No skills found.[/dim]")
+    else:
+        table = Table(title=f"Skills ({len(skills)})")
+        table.add_column("Name", style="cyan")
+        table.add_column("Where", style="magenta")
+        table.add_column("Deploys", justify="center")
+        table.add_column("Description", style="dim", overflow="fold")
+        for skill in skills:
+            travels = skill.location in TRAVELS_ON_DEPLOY
+            desc = skill.description or ""
+            if len(desc) > 80:
+                desc = desc[:77] + "..."
+            table.add_row(
+                skill.name,
+                skill.location,
+                "[green]✓[/green]" if travels else "[yellow]✗[/yellow]",
+                desc,
+            )
+        console.print(table)
+
+        staying = [s for s in skills if s.location not in TRAVELS_ON_DEPLOY]
+        if staying:
+            console.print(
+                f"\n[yellow]{len(staying)} skill(s) stay on this machine.[/yellow] "
+                "[dim]Move one into .co/skills/ to make it travel.[/dim]"
+            )
+
+    if problems:
+        console.print(f"\n[red]{len(problems)} broken link(s):[/red]")
+        for location, name, reason in problems:
+            console.print(f"  [dim]{location}[/dim]  {name} — {reason}")
 
 
 # Write direction: publish the skills bundled with ConnectOnion into the

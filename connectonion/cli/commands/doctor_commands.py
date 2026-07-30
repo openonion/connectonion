@@ -147,6 +147,36 @@ def handle_doctor():
     console.print(Panel(browser_table, title="[bold]Browser[/bold]", border_style="cyan"))
     console.print()
 
+    # Skills — which tier each came from, because that decides whether it survives
+    # a deploy. A user-tier skill works for months and is simply absent everywhere
+    # else, and nothing in the agent's output ever says so.
+    from ...useful_plugins.skills import (
+        _discover_all_skills, find_skill_problems, TRAVELS_ON_DEPLOY,
+    )
+
+    skills = _discover_all_skills()
+    problems = find_skill_problems()
+
+    skills_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))
+    skills_table.add_column("Check", style="cyan")
+    skills_table.add_column("Status")
+
+    counts = {}
+    for skill in skills:
+        counts[skill.location] = counts.get(skill.location, 0) + 1
+    for location, count in sorted(counts.items()):
+        mark = "[green]✓[/green]" if location in TRAVELS_ON_DEPLOY else "[yellow]○[/yellow]"
+        note = "" if location in TRAVELS_ON_DEPLOY else "  [dim]stays on this machine[/dim]"
+        skills_table.add_row(location, f"{mark} {count}{note}")
+    if not counts:
+        skills_table.add_row("Skills", "[dim]none found[/dim]")
+
+    for location, name, reason in problems:
+        skills_table.add_row(f"{location}/{name}", f"[red]✗[/red] {reason}")
+
+    console.print(Panel(skills_table, title="[bold]Skills[/bold]", border_style="yellow"))
+    console.print()
+
     # Connectivity checks (only if API key exists)
     if api_key:
         connectivity_table = Table(show_header=False, box=box.SIMPLE, padding=(0, 1))

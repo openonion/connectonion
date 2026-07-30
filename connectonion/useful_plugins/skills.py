@@ -95,6 +95,16 @@ class SkillInfo:
 # so offering a skill outside it produces a button that can never run.
 PUBLISHED_SKILL_LOCATIONS = ("project", "claude-project")
 
+# The locations that survive a deploy. Both packaging paths carry the project tree
+# and nothing outside it, so a skill in ~/.co/skills or ~/.claude/skills is simply
+# absent on the server — those two are the operator's laptop, not the agent.
+#
+# builtin is here and NOT in PUBLISHED_SKILL_LOCATIONS: it ships inside the installed
+# connectonion package, so a deployed agent has it, but it is framework noise nobody
+# should see in a public directory. That divergence is why these are two constants
+# and not one — travelling and being publishable are different questions.
+TRAVELS_ON_DEPLOY = ("project", "claude-project", "builtin")
+
 
 # =============================================================================
 # SKILL DISCOVERY
@@ -187,6 +197,26 @@ def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
     return frontmatter, instructions
 
 
+def _skill_search_paths(co_dir: Optional[Path] = None,
+                        project_dir: Optional[Path] = None) -> List[tuple]:
+    """The five (location, directory) pairs, in priority order.
+
+    One definition, so discovery and any diagnosis of it look in the same places —
+    a second copy would eventually report on directories the loader no longer reads.
+    """
+    base = project_dir or (co_dir.parent if co_dir else Path.cwd())
+    co_base = co_dir or (base / '.co')
+    builtin_base = Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin'
+
+    return [
+        ('project', co_base / 'skills'),
+        ('claude-project', base / '.claude' / 'skills'),
+        ('user', Path.home() / '.co' / 'skills'),
+        ('claude-user', Path.home() / '.claude' / 'skills'),
+        ('builtin', builtin_base),
+    ]
+
+
 def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Path] = None) -> List['SkillInfo']:
     """Discover all available skills from ConnectOnion and Claude Code directories.
 
@@ -197,22 +227,10 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
     Returns:
         List of SkillInfo with 'name', 'description', 'location'
     """
-    base = project_dir or (co_dir.parent if co_dir else Path.cwd())
-    co_base = co_dir or (base / '.co')
-    builtin_base = Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin'
-
     seen = set()
     result = []
 
-    search_paths = [
-        ('project', co_base / 'skills'),
-        ('claude-project', base / '.claude' / 'skills'),
-        ('user', Path.home() / '.co' / 'skills'),
-        ('claude-user', Path.home() / '.claude' / 'skills'),
-        ('builtin', builtin_base),
-    ]
-
-    for location, skills_dir in search_paths:
+    for location, skills_dir in _skill_search_paths(co_dir, project_dir):
         if not skills_dir.exists():
             continue
 
@@ -237,6 +255,64 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
             result.append(SkillInfo(name=name, description=description, location=location))
 
     return result
+
+
+def find_skill_problems(co_dir: Optional[Path] = None,
+                        project_dir: Optional[Path] = None) -> List[tuple]:
+    """Entries that look like skills but can never load. Returns (location, name, reason).
+
+    Discovery is deliberately forgiving — it skips anything without a readable
+    SKILL.md and says nothing. That is right for loading and wrong for diagnosing:
+    most of our own skills are symlinks into a separate repo, so a dangling link
+    looks exactly like "no skill here" and the agent quietly behaves differently.
+
+    Reported, not raised: a broken link is a thing to tell the operator about, not
+    a reason to refuse to run.
+    """
+    problems = []
+
+    for location, skills_dir in _skill_search_paths(co_dir, project_dir):
+        if not skills_dir.exists():
+            continue
+
+        for entry in skills_dir.iterdir():
+            if entry.name.startswith('.'):
+                continue
+
+            if not entry.is_symlink():
+                # A plain directory without a SKILL.md is not a broken skill — people
+                # keep notes, scratch dirs and shared assets in here. Only links are
+                # checked: a link is a claim that a skill lives somewhere, and that
+                # claim can be false.
+                continue
+
+            # exists() follows the link, so False here means the target is gone.
+            if not entry.exists():
+                problems.append((location, entry.name, 'broken symlink'))
+                continue
+
+            resolved = entry.resolve()
+            if resolved == skills_dir.resolve() or resolved in skills_dir.resolve().parents:
+                problems.append((location, entry.name, 'symlink points at its own ancestor'))
+                continue
+
+            if entry.is_dir() and not (entry / 'SKILL.md').exists():
+                problems.append((location, entry.name, 'linked directory has no SKILL.md'))
+
+    return problems
+
+
+def skills_that_will_not_travel(co_dir: Optional[Path] = None,
+                                project_dir: Optional[Path] = None) -> List[SkillInfo]:
+    """Discovered skills that exist only on this machine.
+
+    A user-tier skill works perfectly for months and is simply absent the moment the
+    agent runs anywhere else — deployed, in CI, on a teammate's checkout. Naming them
+    before the deploy is the whole point: afterwards the agent just behaves differently
+    for a reason nothing in the output explains.
+    """
+    return [s for s in _discover_all_skills(co_dir, project_dir)
+            if s.location not in TRAVELS_ON_DEPLOY]
 
 
 # =============================================================================

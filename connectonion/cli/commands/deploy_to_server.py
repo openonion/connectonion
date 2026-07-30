@@ -76,6 +76,28 @@ def _read_project(project_dir: Path) -> Optional[dict]:
     return {"name": name, "entrypoint": str(config.get("entrypoint") or "agent.py")}
 
 
+def _warn_about_skills_left_behind(project_dir: Path) -> None:
+    """Name the skills that work here and will not exist on the server.
+
+    The rsync carries the project tree, so ~/.co/skills and ~/.claude/skills — usually
+    symlinks into a separate repo — are simply absent there. The agent then behaves
+    differently for a reason nothing in its output explains.
+    """
+    from ...useful_plugins.skills import skills_that_will_not_travel, find_skill_problems
+
+    staying = skills_that_will_not_travel(project_dir=project_dir)
+    if staying:
+        console.print(
+            f"  [yellow]![/yellow] {len(staying)} skill(s) stay on this machine: "
+            + ", ".join(s.name for s in staying[:5])
+            + (f" (+{len(staying) - 5} more)" if len(staying) > 5 else "")
+        )
+        console.print("    [dim]co skills list  ·  move one into .co/skills/ to ship it[/dim]")
+
+    for location, name, reason in find_skill_problems(project_dir=project_dir):
+        console.print(f"  [red]✗[/red] {location}/{name} — {reason}")
+
+
 def _read_provision(target: str, agent: str) -> dict:
     """Read the convergence marker. A missing or unreadable one means schema 0."""
     result = _ssh(target, f"cat {SRV}/{agent}/.co/provision.json 2>/dev/null", timeout=60)
@@ -338,6 +360,7 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
         return False
 
     console.print(f"\n[bold]{agent}[/bold] → [cyan]{server}[/cyan] [dim]({target})[/dim]")
+    _warn_about_skills_left_behind(project_dir)
 
     provision = _read_provision(target, agent)
     ssh_public_line = _derive_ssh_public_line()
