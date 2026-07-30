@@ -281,3 +281,163 @@ class TestServerForget:
         out = capsys.readouterr().out.lower()
         assert "untouched" in out
         assert "billed" in out
+
+
+PRICING = {
+    "term_months": 12,
+    "region": "asia-southeast1",
+    "default": "e2-small",
+    "machine_types": {"e2-small": {"usd_12mo": 180.0, "description": "2 vCPU, 2 GB"}},
+}
+
+
+class TestServerNewSpendsNothingWithoutConsent:
+    """This is the first co command that spends a large discrete amount.
+
+    Every guard below is about that: nothing may be charged before the operator
+    has seen the price and said yes.
+    """
+
+    def test_declining_the_prompt_creates_nothing(self, servers_file):
+        with patch.object(sc, "load_api_key", create=True), \
+             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing", return_value=PRICING), \
+             patch.object(sc, "_fetch_balance", return_value=500.0), \
+             patch.object(sc, "_confirm", return_value=False), \
+             patch("requests.post") as post:
+            assert sc.handle_server_new("prod") is False
+
+        post.assert_not_called()
+        assert not servers_file.exists()
+
+    def test_no_api_key_stops_before_the_prompt(self, servers_file):
+        """Do not show a price to someone who cannot be charged anyway."""
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value=None), \
+             patch.object(sc, "_fetch_pricing") as pricing, \
+             patch("requests.post") as post:
+            assert sc.handle_server_new("prod") is False
+
+        pricing.assert_not_called()
+        post.assert_not_called()
+
+    def test_a_missing_ssh_key_stops_before_charging(self, servers_file):
+        """A server created with no way in is worse than no server."""
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_derive_ssh_public_line", return_value=None), \
+             patch("requests.post") as post:
+            assert sc.handle_server_new("prod") is False
+
+        post.assert_not_called()
+
+    def test_an_invalid_name_is_rejected_locally(self, servers_file):
+        with patch("requests.post") as post:
+            assert sc.handle_server_new("Not A Name") is False
+        post.assert_not_called()
+
+    def test_a_name_already_registered_is_rejected_before_spending(self, servers_file):
+        """Otherwise you pay for a second machine and cannot address it."""
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        with patch("requests.post") as post:
+            assert sc.handle_server_new("prod") is False
+        post.assert_not_called()
+
+    def test_unreachable_pricing_endpoint_does_not_guess_a_price(self, servers_file):
+        """Showing a made-up number and then charging a different one is worse
+        than refusing."""
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing", return_value=None), \
+             patch("requests.post") as post:
+            assert sc.handle_server_new("prod") is False
+
+        post.assert_not_called()
+
+
+class TestServerNewSuccess:
+    def test_a_created_server_is_registered_so_no_ip_is_ever_typed(self, servers_file):
+        response = Mock(status_code=200)
+        response.json.return_value = {
+            "ssh_target": "co@1.2.3.4", "expires_at": "2027-07-31T00:00:00+00:00",
+            "charged_usd": 180.0,
+        }
+
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing", return_value=PRICING), \
+             patch.object(sc, "_fetch_balance", return_value=500.0), \
+             patch.object(sc, "_confirm", return_value=True), \
+             patch("requests.post", return_value=response):
+            assert sc.handle_server_new("prod") is True
+
+        assert sc.load_server("prod")["ssh"] == "co@1.2.3.4"
+
+    def test_the_derived_key_is_what_gets_sent(self, servers_file):
+        """The server must trust the key the operator already has."""
+        line = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAtest connectonion"
+        response = Mock(status_code=200)
+        response.json.return_value = {"ssh_target": "co@1.2.3.4",
+                                      "expires_at": "2027-07-31T00:00:00+00:00",
+                                      "charged_usd": 180.0}
+
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_derive_ssh_public_line", return_value=line), \
+             patch.object(sc, "_fetch_pricing", return_value=PRICING), \
+             patch.object(sc, "_fetch_balance", return_value=500.0), \
+             patch.object(sc, "_confirm", return_value=True), \
+             patch("requests.post", return_value=response) as post:
+            sc.handle_server_new("prod")
+
+        assert post.call_args.kwargs["json"]["ssh_public_key"] == line
+
+
+class TestServerNewFailureReporting:
+    def test_insufficient_credit_says_nothing_was_charged(self, servers_file, capsys):
+        response = Mock(status_code=402)
+        response.json.return_value = {"detail": {
+            "error": "insufficient_credits", "balance": 5.0, "required": 180.0,
+            "shortfall": 175.0}}
+
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing", return_value=PRICING), \
+             patch.object(sc, "_fetch_balance", return_value=5.0), \
+             patch.object(sc, "_confirm", return_value=True), \
+             patch("requests.post", return_value=response):
+            assert sc.handle_server_new("prod") is False
+
+        out = capsys.readouterr().out.lower()
+        assert "nothing was created or charged" in out
+
+    def test_a_failed_refund_is_shown_in_red_not_buried(self, servers_file, capsys):
+        response = Mock(status_code=502)
+        response.json.return_value = {"detail": {
+            "error": "provisioning_failed", "refunded": False, "amount": 180.0,
+            "message": "charged for a machine that does not exist — contact support"}}
+
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing", return_value=PRICING), \
+             patch.object(sc, "_fetch_balance", return_value=500.0), \
+             patch.object(sc, "_confirm", return_value=True), \
+             patch("requests.post", return_value=response):
+            sc.handle_server_new("prod")
+
+        assert "contact support" in capsys.readouterr().out.lower()
+
+    def test_a_failed_creation_registers_nothing_locally(self, servers_file):
+        response = Mock(status_code=502)
+        response.json.return_value = {"detail": {"error": "provisioning_failed",
+                                                 "refunded": True, "amount": 180.0,
+                                                 "message": "zone full, refunded"}}
+
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing", return_value=PRICING), \
+             patch.object(sc, "_fetch_balance", return_value=500.0), \
+             patch.object(sc, "_confirm", return_value=True), \
+             patch("requests.post", return_value=response):
+            sc.handle_server_new("prod")
+
+        assert sc.load_server("prod") is None
