@@ -133,8 +133,21 @@ def deploy(
     template: Optional[str] = typer.Option(None, "-t", "--template", help="Create and deploy a template project"),
     skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skill directory (contains SKILL.md) or directory of skills to bundle into .co/skills/ (repeatable: --skills a --skills b)"),
     name: Optional[str] = typer.Option(None, "--name", help="Project name for template deploys (default: {template}-agent)"),
+    to: Optional[str] = typer.Option(None, "--to", help="Deploy onto a server you own (see: co server ls)"),
 ):
-    """Deploy to ConnectOnion Cloud."""
+    """Deploy to ConnectOnion Cloud, or with --to onto a server you own."""
+    if to:
+        # A different destination, not a variant of the same one: this path holds
+        # no container and never touches the server's .co/ state.
+        if template or skills or name:
+            console.print("[red]--to cannot be combined with --template, --skills or --name.[/red]")
+            console.print("[dim]Those belong to the cloud deploy. --to syncs the project you are in.[/dim]")
+            raise typer.Exit(2)
+        from .commands.deploy_to_server import handle_deploy_to
+        if not handle_deploy_to(server=to):
+            raise typer.Exit(1)
+        return
+
     from .commands.deploy_commands import handle_deploy
     handle_deploy(template=template, skills=skills, name=name)
 
