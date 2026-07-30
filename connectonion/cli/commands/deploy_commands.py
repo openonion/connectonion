@@ -14,6 +14,7 @@ import json
 import re
 import shutil
 import subprocess
+import io
 import tarfile
 import tempfile
 import time
@@ -171,6 +172,43 @@ def _add_directory_to_tarball(
         tar.add(path, arcname=str(rel), recursive=False)
 
 
+def _add_deployer_as_admin(tar: tarfile.TarFile) -> None:
+    """Ship the deployer's address as the agent's one admin.
+
+    A deployed agent generates its own keypair on first boot, and ADMIN_ADD is gated
+    on super-admin — which is that same address, whose private key never leaves the
+    server. So nobody could ever become admin: the only account that could grant it
+    is the one nobody can sign as.
+
+    The public address is enough to break that: the agent recognises it in its admin
+    list and grants the role to whoever signs as it. Nothing secret travels, and
+    revoking is deleting a line. Same idea as ssh-copy-id, one layer up.
+
+    Written into the package on every deploy so the list self-heals, and synthesized
+    here rather than read from disk because .co/ is excluded from the package.
+
+    The identity resolved is the one `co call` signs with — project .co/ first, then
+    ~/.co/ — and deliberately not `project_dir/.co`: a --template deploy builds a
+    throwaway project whose address is deleted with it, so seeding that would name an
+    admin nobody can ever be.
+    """
+    from ... import address
+    from .keys_commands import _find_co_dir
+
+    co_dir = _find_co_dir()
+    if not co_dir:
+        return
+    data = address.load(co_dir)
+    if not data or not data.get("address"):
+        return
+
+    payload = f"{data['address']}\n".encode()
+    info = tarfile.TarInfo(name=".co/admins.txt")
+    info.size = len(payload)
+    info.mode = 0o600
+    tar.addfile(info, io.BytesIO(payload))
+
+
 def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
     """Package git-tracked files when available, otherwise the initialized folder.
 
@@ -206,6 +244,7 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                 arc_prefix,
                 _load_deploy_ignore_patterns(skills_path),
             )
+        _add_deployer_as_admin(tar)
     return tarball
 
 

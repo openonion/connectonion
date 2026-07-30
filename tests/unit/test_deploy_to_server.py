@@ -305,3 +305,40 @@ class TestHandleDeployTo:
             assert dts.handle_deploy_to("prod", project) is True
 
         mark.assert_called_once()
+
+
+class TestAdminSeeding:
+    """The deploying key must be able to command the agent it just deployed.
+
+    Without this the agent has no reachable admin at all: ADMIN_ADD is gated on
+    super-admin, super-admin is the agent's OWN address, and that private key only
+    ever exists on the server.
+    """
+
+    ADDR = "0x" + "ab" * 32
+
+    def test_the_deployer_is_written_into_the_agents_admin_list(self):
+        with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
+            dts._ensure_setup("user@host", "myagent", "agent.py",
+                              dts.PROVISION_SCHEMA, None, self.ADDR)
+
+        script = ssh.call_args.args[1]
+        assert "/srv/myagent/.co/admins.txt" in script
+        assert self.ADDR in script
+
+    def test_it_is_ensured_every_deploy_and_appended_only_once(self):
+        """Same reasoning as authorized_keys: it self-heals, and a deploy loop must
+        not grow the file by one line every time."""
+        with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
+            dts._ensure_setup("user@host", "myagent", "agent.py",
+                              dts.PROVISION_SCHEMA, None, self.ADDR)
+
+        assert "grep -qxF" in ssh.call_args.args[1]
+
+    def test_no_local_identity_means_no_admin_line(self):
+        """Not an error — the deploy proceeds, the agent just has no admin, which
+        is the state before this existed."""
+        with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
+            dts._ensure_setup("user@host", "myagent", "agent.py", 0, None, None)
+
+        assert "admins.txt" not in ssh.call_args.args[1]
