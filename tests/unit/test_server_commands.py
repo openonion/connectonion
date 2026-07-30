@@ -464,3 +464,28 @@ class TestThePriceIsQuotedAgainstSpendableCredit:
     def test_a_failed_lookup_shows_no_balance_rather_than_a_wrong_one(self):
         with patch("requests.get", return_value=_response(500)):
             assert sc._fetch_balance("k") is None
+
+class TestAServerNameIsNotRewritten:
+    """The name you type is the name of the machine.
+
+    GCE instance names must start with a letter, so `co server new 1prod` used to
+    pass validation, take the $180 charge, and fail at the API. Refusing it here
+    is one rule; rewriting it into something GCE accepts would mean the name you
+    typed and the machine you got differ, and only for some names.
+    """
+
+    def test_a_leading_digit_is_refused_before_anything_is_charged(self):
+        with patch("requests.post") as post:
+            assert sc.handle_server_new("1prod") is False
+        post.assert_not_called()
+
+    def test_the_message_says_what_is_wrong(self, capsys):
+        sc.handle_server_new("1prod")
+        # Rich wraps to the terminal width, so a phrase can arrive split across
+        # lines — collapse the whitespace before looking for it.
+        printed = " ".join(capsys.readouterr().out.split())
+        assert "starting with a letter" in printed
+
+    def test_ordinary_names_still_pass_the_check(self):
+        for name in ["prod", "a", "my-agent-2"]:
+            assert sc.SERVER_NAME_PATTERN.match(name), name
