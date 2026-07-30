@@ -380,6 +380,17 @@ def server_forget(
         raise typer.Exit(1)
 
 
+@server_app.command("destroy")
+def server_destroy(
+    name: str = typer.Argument(..., help="Server to tear down"),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
+):
+    """Destroy the machine and stop the billing. Not reversible, not refunded."""
+    from .commands.server_commands import handle_server_destroy
+    if not handle_server_destroy(name=name, yes=yes):
+        raise typer.Exit(1)
+
+
 # Skills command group
 skills_app = typer.Typer(help="Discover, copy, and list SKILL.md files from agent tool directories")
 app.add_typer(skills_app, name="skills")

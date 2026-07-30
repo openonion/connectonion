@@ -444,7 +444,9 @@ class TestServerNewFailureReporting:
 
 
 def _response(status, payload=None):
-    return Mock(status_code=status, json=Mock(return_value=payload or {}))
+    # content is set because handle_server_destroy checks it before parsing.
+    return Mock(status_code=status, content=b"{}",
+                json=Mock(return_value=payload or {}))
 
 
 class TestThePriceIsQuotedAgainstSpendableCredit:
@@ -464,3 +466,116 @@ class TestThePriceIsQuotedAgainstSpendableCredit:
     def test_a_failed_lookup_shows_no_balance_rather_than_a_wrong_one(self):
         with patch("requests.get", return_value=_response(500)):
             assert sc._fetch_balance("k") is None
+
+class TestServerLsReconcilesWithBilling:
+    """The local file is a cache; the backend is the ledger. The row that only
+    the backend can produce — billed for, not registered here — is somebody
+    paying for a machine `co` would otherwise never show them."""
+
+    def test_a_server_you_pay_for_but_never_registered_is_surfaced(self, servers_file, capsys):
+        with patch.object(sc, "_fetch_billed_servers", return_value=[
+            {"name": "ghost", "expires_at": "2027-07-30T00:00:00", "ssh_target": "co@1.2.3.4"},
+        ]):
+            assert sc.handle_server_list() is True
+
+        out = capsys.readouterr().out
+        assert "ghost" in out
+        assert "not registered here" in out
+
+    def test_it_names_the_command_that_stops_the_billing(self, servers_file, capsys):
+        with patch.object(sc, "_fetch_billed_servers", return_value=[
+            {"name": "ghost", "expires_at": "2027-07-30T00:00:00", "ssh_target": None},
+        ]):
+            sc.handle_server_list()
+
+        assert "co server destroy" in capsys.readouterr().out
+
+    def test_being_offline_still_lists_local_targets(self, servers_file, capsys):
+        """The billing lookup is best-effort. Not being able to reach the API must
+        not stop you seeing your own deploy targets."""
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        with patch.object(sc, "_fetch_billed_servers", return_value=None):
+            assert sc.handle_server_list() is True
+
+        out = capsys.readouterr().out
+        assert "prod" in out
+        assert "not registered here" not in out
+
+    def test_unknown_and_empty_are_not_the_same_answer(self, servers_file, capsys):
+        """None is 'we could not ask', [] is 'you own nothing'. Only the second
+        justifies showing a BILLING column at all."""
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        with patch.object(sc, "_fetch_billed_servers", return_value=[]):
+            sc.handle_server_list()
+        assert "not ours" in capsys.readouterr().out
+
+    def test_a_failed_lookup_reads_as_unknown_not_as_empty(self, servers_file):
+        """A 500 or a timeout must not be reported as 'you own no servers' — that
+        is the one answer that would hide a machine you are paying for."""
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch("requests.get", return_value=_response(500)):
+            assert sc._fetch_billed_servers() is None
+
+
+class TestServerDestroy:
+    def test_a_mistyped_confirmation_destroys_nothing(self, servers_file):
+        """It asks for the name back rather than y/N: a reflex 'y' is exactly how
+        someone deletes production while meaning to tidy their config."""
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch("questionary.text") as text, \
+             patch("requests.delete") as delete:
+            text.return_value.ask.return_value = "prd"
+            assert sc.handle_server_destroy("prod") is False
+
+        delete.assert_not_called()
+
+    def test_the_typed_name_must_match_exactly(self, servers_file):
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch("questionary.text") as text, \
+             patch("requests.delete", return_value=_response(200, {"refunded": False})) as delete:
+            text.return_value.ask.return_value = "prod"
+            assert sc.handle_server_destroy("prod") is True
+
+        delete.assert_called_once()
+
+    def test_no_api_key_stops_before_the_request(self, servers_file):
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value=None), \
+             patch("requests.delete") as delete:
+            assert sc.handle_server_destroy("prod", yes=True) is False
+
+        delete.assert_not_called()
+
+    def test_a_failed_delete_keeps_the_local_entry(self, servers_file):
+        """Removing it would hide a server that is still running and still billing
+        — the exact state this whole change exists to make visible."""
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch("requests.delete", return_value=_response(502, {"detail": "boom"})):
+            assert sc.handle_server_destroy("prod", yes=True) is False
+
+        assert "prod" in yaml.safe_load(servers_file.read_text())["servers"]
+
+    def test_a_successful_delete_drops_the_local_entry(self, servers_file):
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch("requests.delete", return_value=_response(200, {"refunded": False})):
+            assert sc.handle_server_destroy("prod", yes=True) is True
+
+        assert "prod" not in yaml.safe_load(servers_file.read_text())["servers"]
+
+    def test_a_404_points_at_forget_instead(self, servers_file, capsys):
+        """A local-only entry has nothing to destroy, and telling the user to
+        retry destroy would leave them stuck."""
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch("requests.delete", return_value=_response(404)):
+            assert sc.handle_server_destroy("prod", yes=True) is False
+
+        assert "co server forget" in capsys.readouterr().out
