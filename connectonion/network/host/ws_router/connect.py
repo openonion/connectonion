@@ -47,14 +47,20 @@ async def handle_connect(data, send_msg, conn, route_handlers, storage, registry
         await send_msg({"type": "ERROR", "message": err})
         return
 
-    return await establish_connection(data, agent_address, send_msg, conn, storage, registry)
+    return await establish_connection(
+        data, agent_address, send_msg, conn, storage, registry, route_handlers
+    )
 
 
-async def establish_connection(data, agent_address, send_msg, conn, storage, registry):
+async def establish_connection(data, agent_address, send_msg, conn, storage, registry,
+                               route_handlers=None):
     """Post-auth half of CONNECT: populate conn, merge sessions, send CONNECTED.
 
     Called by handle_connect and, after a successful onboard, with the stashed
     pending CONNECT — the agent_address is then the one verified on ONBOARD_SUBMIT.
+
+    ``route_handlers`` is optional so a caller that only needs the session half can
+    omit it; without it no AGENT_PROFILE is sent.
     """
     conn["authenticated"] = True
     conn["agent_address"] = agent_address
@@ -94,6 +100,26 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         connected_msg["session"] = conn["session"]
         connected_msg["chat_items"] = session_to_chat_items(conn["session"])
     await send_msg(connected_msg)
+
+    # This socket is now past signature verification and the trust gate, so it is the
+    # one channel entitled to the agent's full picture. /info and the relay directory
+    # are unauthenticated and deliberately carry the published subset; everything the
+    # agent actually has — including skills that live only on the operator's machine —
+    # goes here and nowhere else.
+    if route_handlers is not None:
+        metadata = route_handlers.get("agent_metadata")
+        if metadata:
+            await send_msg({
+                "type": "AGENT_PROFILE",
+                "session_id": session_id,
+                "name": metadata.get("name"),
+                "address": metadata.get("address"),
+                "model": metadata.get("model"),
+                "tools": metadata.get("tools", []),
+                "skills": metadata.get("skills", []),
+                **({"balance_usd": metadata["balance_usd"]}
+                   if metadata.get("balance_usd") is not None else {}),
+            })
 
     # Push the current dashboard.html so Home paints immediately, before any input.
     # This connection has seen nothing yet, so it always sends when a file exists.

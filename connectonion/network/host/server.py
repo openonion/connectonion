@@ -228,6 +228,10 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         # Super admin routes
         "admin_admins_add": partial(admin_admins_add_handler, trust_agent),
         "admin_admins_remove": partial(admin_admins_remove_handler, trust_agent),
+        # Full metadata for the AGENT_PROFILE frame. /info and the relay directory are
+        # unauthenticated and carry the published subset only; this is the copy a client
+        # gets after CONNECT has passed the trust gate.
+        "agent_metadata": agent_metadata,
     }
 
 
