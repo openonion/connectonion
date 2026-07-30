@@ -536,7 +536,7 @@ class TestServerDestroy:
     def test_the_typed_name_must_match_exactly(self, servers_file):
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
              patch("questionary.text") as text, \
-             patch("requests.delete", return_value=_response(200, {"refunded": False})) as delete:
+             patch("requests.delete", return_value=_response(200, {"refunded_usd": 0})) as delete:
             text.return_value.ask.return_value = "prod"
             assert sc.handle_server_destroy("prod") is True
 
@@ -566,10 +566,29 @@ class TestServerDestroy:
             sc.handle_server_add("prod", "user@1.2.3.4")
 
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
-             patch("requests.delete", return_value=_response(200, {"refunded": False})):
+             patch("requests.delete", return_value=_response(200, {"refunded_usd": 0})):
             assert sc.handle_server_destroy("prod", yes=True) is True
 
         assert "prod" not in yaml.safe_load(servers_file.read_text())["servers"]
+
+    def test_the_refund_is_reported_as_an_amount_not_a_policy(self, servers_file, capsys):
+        """"Prorated" tells the user nothing they can check. A number against what
+        they paid does."""
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch("requests.delete", return_value=_response(
+                 200, {"refunded_usd": 150.41, "charged_usd": 180.0})):
+            assert sc.handle_server_destroy("prod", yes=True) is True
+
+        out = capsys.readouterr().out
+        assert "$150.41" in out
+        assert "$180.00" in out
+
+    def test_an_expired_server_says_nothing_was_refunded(self, servers_file, capsys):
+        with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
+             patch("requests.delete", return_value=_response(200, {"refunded_usd": 0.0})):
+            sc.handle_server_destroy("prod", yes=True)
+
+        assert "Nothing refunded" in capsys.readouterr().out
 
     def test_a_404_points_at_forget_instead(self, servers_file, capsys):
         """A local-only entry has nothing to destroy, and telling the user to

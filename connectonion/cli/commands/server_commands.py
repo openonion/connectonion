@@ -381,7 +381,7 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
         console.print(f"\n[red]This destroys the machine '{name}' and everything on it.[/red]")
         console.print("[dim]The disk, the agent's identity, its logs — none of it is "
                       "recoverable.[/dim]")
-        console.print("[yellow]The remaining months of the term are not refunded.[/yellow]")
+        console.print("[dim]The unused part of the term is refunded to your credit.[/dim]")
         console.print()
 
         import questionary
@@ -421,7 +421,18 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
         _save(servers)
 
     console.print(f"[green]✓ {name} destroyed[/green]")
-    console.print("[dim]Not refunded — the term was charged up front.[/dim]\n")
+
+    # State the amount, not the policy. "Prorated" tells the user nothing they
+    # can check; a number against what they paid does.
+    result = response.json() if response.content else {}
+    refunded = result.get("refunded_usd")
+    if refunded:
+        charged = result.get("charged_usd")
+        against = f" of ${charged:.2f}" if charged else ""
+        console.print(f"[dim]${refunded:.2f}{against} refunded to your credit — "
+                      f"the unused part of the term.[/dim]\n")
+    else:
+        console.print("[dim]Nothing refunded — the term had already run out.[/dim]\n")
     return True
 
 
