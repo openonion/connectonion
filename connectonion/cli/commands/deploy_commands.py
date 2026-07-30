@@ -209,6 +209,35 @@ def _add_deployer_as_admin(tar: tarfile.TarFile) -> None:
     tar.addfile(info, io.BytesIO(payload))
 
 
+def _warn_about_skills_left_behind(project_dir: Path, skills_paths: list[Path]) -> None:
+    """Name the skills that work here and will not exist on the server.
+
+    A user-tier skill (~/.co/skills, ~/.claude/skills) is usually a symlink into a
+    separate repo, which is invisible to anything that packages a project. So it can
+    look installed, work for months, and be absent everywhere else — and the agent
+    then behaves differently for a reason nothing in its output explains.
+
+    A warning, not a failure: leaving a personal skill behind is often exactly what
+    the operator wants. The cost is only that it happens silently.
+    """
+    from ...useful_plugins.skills import skills_that_will_not_travel, find_skill_problems
+
+    bundled = {path.name for path in skills_paths}
+    staying = [s for s in skills_that_will_not_travel(project_dir=project_dir)
+               if s.name not in bundled]
+
+    if staying:
+        console.print(
+            f"  [yellow]![/yellow] {len(staying)} skill(s) stay on this machine: "
+            + ", ".join(s.name for s in staying[:5])
+            + (f" (+{len(staying) - 5} more)" if len(staying) > 5 else "")
+        )
+        console.print("    [dim]co skills list  ·  move one into .co/skills/ to ship it[/dim]")
+
+    for location, name, reason in find_skill_problems(project_dir=project_dir):
+        console.print(f"  [red]✗[/red] {location}/{name} — {reason}")
+
+
 def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
     """Package git-tracked files when available, otherwise the initialized folder.
 
@@ -385,6 +414,7 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     # contents; non-git projects upload the initialized folder. Either way .env is
     # sent as secrets below, never included in the tarball, and --skills merge in.
     tarball_path = _build_tarball(project_dir, skills_paths)
+    _warn_about_skills_left_behind(project_dir, skills_paths)
 
     tarball_size = tarball_path.stat().st_size
     size_str = _format_bytes(tarball_size)
