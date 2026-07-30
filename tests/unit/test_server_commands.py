@@ -441,3 +441,26 @@ class TestServerNewFailureReporting:
             sc.handle_server_new("prod")
 
         assert sc.load_server("prod") is None
+
+
+def _response(status, payload=None):
+    return Mock(status_code=status, json=Mock(return_value=payload or {}))
+
+
+class TestThePriceIsQuotedAgainstSpendableCredit:
+    """`co server new` is the one command that shows someone their balance before
+    spending a large amount of it. Showing the wrong number there is worse than
+    showing none: they say yes to a purchase they cannot afford."""
+
+    def test_it_reads_balance_not_lifetime_topups(self):
+        """credits_usd ignores everything already spent — an account that added
+        $315 and spent $291 reads as $315 of headroom. The backend then correctly
+        refuses with 402, for a purchase the prompt just said they could afford."""
+        payload = {"credits_usd": 315.0, "total_cost_usd": 291.0, "balance_usd": 24.0}
+
+        with patch("requests.get", return_value=_response(200, payload)):
+            assert sc._fetch_balance("k") == 24.0
+
+    def test_a_failed_lookup_shows_no_balance_rather_than_a_wrong_one(self):
+        with patch("requests.get", return_value=_response(500)):
+            assert sc._fetch_balance("k") is None
