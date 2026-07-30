@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "connectonion"
-version = "1.5.1"
+version = "1.5.2"
 description = "A simple Python framework for creating AI agents with behavior tracking"
 readme = "README.md"
 license = {text = "Apache-2.0"}
@@ -94,6 +94,28 @@ packages = ["connectonion"]
 exclude = [
     "connectonion/docs/archive/**",
 ]
+
+# Ship the repo-root docs/ inside the package as connectonion/docs/.
+#
+# It was never shipped before: `packages = ["connectonion"]` only picks up what
+# lives under connectonion/, and docs/ is at the root — so every wheel went out
+# without it while `co init` still reported ".co/docs/ (full documentation)" over
+# an empty folder. get_docs_source() already expects connectonion/docs/ to exist
+# ("via force-include", says its comment); this is that force-include, finally
+# written.
+#
+# The whole directory is mapped rather than a list of subpaths on purpose: an
+# explicit list would silently omit any docs folder added later, which is the same
+# class of bug this line fixes.
+#
+# Caveat, measured: force-include runs after exclusion rules, so the `exclude`
+# above does NOT reach these files. docs/archive/ stays out only because it is in
+# .gitignore (hatch honours VCS ignores); docs/design-decisions/ (26 files,
+# 0.28 MB) does ship despite docs/.package-ignore asking otherwise. Accepted —
+# copy_docs() keeps archive out of the user's .co/docs/, and design notes are
+# harmless to ship. To actually exclude it, .gitignore is the lever that works.
+[tool.hatch.build.targets.wheel.force-include]
+"docs" = "connectonion/docs"
 
 [tool.hatch.build.targets.sdist]
 include = [

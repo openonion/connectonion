@@ -26,7 +26,7 @@ Example: `0.0.2`
 - Reset MINOR and PATCH to 0
 - Reserved for major breaking changes or stable releases
 
-## Current Version: 1.5.1
+## Current Version: 1.5.2
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
@@ -43,6 +43,7 @@ Example: `0.0.2`
 
 - 1.5.0 (agent Home pages: the host pushes `dashboard.html` over the agent WebSocket and chat clients render it beside the conversation, with a built-in dashboard skill; `co syno` for Synology NAS; `co ai` YOLO mode; `co ai` and the templates drive the browser through `co browser` instead of 40 in-process tools; agents can declare how long they need a tab; deploy polls the full build window and validates project names locally; hermetic unit tests)
 - 1.5.1 (`co status` says where every API key comes from and flags keys defined in more than one place, with an opt-in `--reveal`; the project states Apache-2.0 everywhere, matching the LICENSE file)
+- 1.5.2 (Claude calls carry the system prompt again — Anthropic requests had been dropping it entirely and silently; `.co/docs/` is no longer empty on a PyPI install, the 194 docs files now ship inside the wheel)
 
 ## Files to Update When Versioning
 
