@@ -179,3 +179,50 @@ class TestIntegration:
 
         assert is_blocked("new-agent") is True
         assert "blocked" in check_blocklist("new-agent").lower()
+
+
+class TestAdminListIsPerAgent:
+    """admins.txt lives beside the agent's identity, not in $HOME.
+
+    It used to be the single global ~/.co/admins.txt while the self address it is
+    compared against came from the project's .co/ — so every agent on one machine
+    shared one set of admins, and making someone admin of one deployed agent made
+    them admin of all of them.
+    """
+
+    def test_add_admin_writes_beside_the_identity(self, tmp_path):
+        co_dir = tmp_path / "agent-a" / ".co"
+        co_dir.mkdir(parents=True)
+
+        tools.add_admin("0xdeadbeef", co_dir)
+
+        assert (co_dir / "admins.txt").read_text().strip() == "0xdeadbeef"
+        assert tools._admins_file(co_dir) != Path.home() / ".co" / "admins.txt"
+
+    def test_two_agents_on_one_machine_have_separate_admins(self, tmp_path):
+        a = tmp_path / "agent-a" / ".co"
+        b = tmp_path / "agent-b" / ".co"
+        a.mkdir(parents=True)
+        b.mkdir(parents=True)
+
+        tools.add_admin("0xalice", a)
+
+        assert tools.is_admin("0xalice", a) is True
+        assert tools.is_admin("0xalice", b) is False
+
+    def test_remove_admin_targets_the_same_file_add_wrote(self, tmp_path):
+        co_dir = tmp_path / "agent" / ".co"
+        co_dir.mkdir(parents=True)
+
+        tools.add_admin("0xalice", co_dir)
+        tools.remove_admin("0xalice", co_dir)
+
+        assert tools.is_admin("0xalice", co_dir) is False
+
+    def test_a_seeded_admins_file_is_honoured(self, tmp_path):
+        """This is the file a deploy ships: the operator's address, one line."""
+        co_dir = tmp_path / "agent" / ".co"
+        co_dir.mkdir(parents=True)
+        (co_dir / "admins.txt").write_text("0xdeployer\n")
+
+        assert tools.is_admin("0xdeployer", co_dir) is True

@@ -111,7 +111,8 @@ WantedBy=multi-user.target
 
 
 def _ensure_setup(target: str, agent: str, entrypoint: str, schema: int,
-                  ssh_public_line: Optional[str]) -> bool:
+                  ssh_public_line: Optional[str],
+                  deployer_address: Optional[str] = None) -> bool:
     """Bring the server to the state a deploy assumes. Idempotent.
 
     Runs on every deploy, and is a no-op once the schema matches — which is why
@@ -140,6 +141,22 @@ dpkg -s python3-venv >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
 touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
 grep -qxF {quoted} ~/.ssh/authorized_keys || echo {quoted} >> ~/.ssh/authorized_keys
+""")
+
+    if deployer_address:
+        # The same idea one layer up: authorized_keys is who may enter the machine,
+        # admins.txt is who may command the agent. Without this nobody can — ADMIN_ADD
+        # is gated on super-admin, super-admin is the agent's OWN address, and that
+        # private key exists only on the server. The one account that could grant admin
+        # is the one nobody can sign as.
+        #
+        # Written every deploy, like the SSH key, so it self-heals. It lives in .co/,
+        # which the rsync excludes, so it has to be written over ssh rather than shipped.
+        quoted_admin = shlex.quote(deployer_address)
+        admins = f"{SRV}/{agent}/.co/admins.txt"
+        steps.append(f"""
+touch {admins}
+grep -qxF {quoted_admin} {admins} || echo {quoted_admin} >> {admins}
 """)
 
     if not steps:
@@ -324,8 +341,10 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
 
     provision = _read_provision(target, agent)
     ssh_public_line = _derive_ssh_public_line()
+    deployer_address = _deployer_address()
 
-    if not _ensure_setup(target, agent, entrypoint, provision.get("schema", 0), ssh_public_line):
+    if not _ensure_setup(target, agent, entrypoint, provision.get("schema", 0),
+                         ssh_public_line, deployer_address):
         return False
     if not _sync_code(target, agent, project_dir):
         return False
@@ -340,8 +359,28 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
 
     console.print(f"\n[green]✓ {agent} is running on {server}[/green]")
     console.print(f"[dim]  logs:  co server ssh {server} 'journalctl -u {agent} -f'[/dim]")
-    console.print(f"[dim]  state: {SRV}/{agent}/.co/  — untouched by deploys[/dim]\n")
+    console.print(f"[dim]  state: {SRV}/{agent}/.co/  — untouched by deploys[/dim]")
+    if deployer_address:
+        console.print(f"[dim]  admin: {deployer_address[:16]}…  (your key)[/dim]")
+    console.print()
     return True
+
+
+def _deployer_address() -> Optional[str]:
+    """The operator's own agent address — the public half only, never the key.
+
+    This is what the deployed agent will accept admin commands from. Returns None
+    when there is no local identity; the deploy proceeds, and the agent simply has
+    no reachable admin, which is the state before this existed.
+    """
+    from ... import address
+    from .keys_commands import _find_co_dir
+
+    co_dir = _find_co_dir()
+    if not co_dir:
+        return None
+    data = address.load(co_dir)
+    return data.get("address") if data else None
 
 
 def _derive_ssh_public_line() -> Optional[str]:

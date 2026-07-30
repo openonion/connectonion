@@ -21,6 +21,17 @@ from typing import List, Callable
 CO_DIR = Path.home() / ".co"
 
 
+def _admins_file(co_dir: Path = None) -> Path:
+    """Where this agent's admin list lives — beside its identity, not in $HOME.
+
+    The list used to be the single global ~/.co/admins.txt while the address it is
+    compared against came from the project's .co/, so every agent on one machine
+    shared one set of admins: making someone admin of one deployed agent made them
+    admin of all of them. Scope it the same way the identity is scoped.
+    """
+    return (co_dir or Path.cwd() / ".co") / "admins.txt"
+
+
 def _check_list(list_name: str, agent_id: str) -> bool:
     """Check if agent_id is in a list file. Supports wildcards."""
     list_path = CO_DIR / f"{list_name}.txt"
@@ -269,7 +280,7 @@ def get_trust_verification_tools() -> List[Callable]:
 
 def load_admins(co_dir: Path = None) -> set:
     """
-    Load admins list: self address (default) + ~/.co/admins.txt.
+    Load admins list: self address (default) + the agent's .co/admins.txt.
 
     Args:
         co_dir: Project .co directory (for self address). Defaults to cwd/.co
@@ -294,8 +305,8 @@ def load_admins(co_dir: Path = None) -> set:
         except Exception:
             pass
 
-    # Additional admins from ~/.co/admins.txt
-    admins_file = CO_DIR / "admins.txt"
+    # Additional admins from this agent's own admins.txt
+    admins_file = _admins_file(co_dir)
     if admins_file.exists():
         try:
             for line in admins_file.read_text(encoding='utf-8').splitlines():
@@ -335,10 +346,10 @@ def is_super_admin(client_id: str, co_dir: Path = None) -> bool:
     return client_id == get_self_address(co_dir)
 
 
-def add_admin(admin_id: str) -> str:
-    """Add an admin to ~/.co/admins.txt. Super admin only."""
-    CO_DIR.mkdir(parents=True, exist_ok=True)
-    admins_file = CO_DIR / "admins.txt"
+def add_admin(admin_id: str, co_dir: Path = None) -> str:
+    """Add an admin to this agent's .co/admins.txt. Super admin only."""
+    admins_file = _admins_file(co_dir)
+    admins_file.parent.mkdir(parents=True, exist_ok=True)
 
     # Check if already admin
     existing = set()
@@ -355,9 +366,9 @@ def add_admin(admin_id: str) -> str:
     return f"{admin_id} added as admin."
 
 
-def remove_admin(admin_id: str) -> str:
-    """Remove an admin from ~/.co/admins.txt. Super admin only."""
-    admins_file = CO_DIR / "admins.txt"
+def remove_admin(admin_id: str, co_dir: Path = None) -> str:
+    """Remove an admin from this agent's .co/admins.txt. Super admin only."""
+    admins_file = _admins_file(co_dir)
 
     if not admins_file.exists():
         return f"{admin_id} is not an admin."

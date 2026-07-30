@@ -776,3 +776,63 @@ class TestDeployPackaging:
         assert project_dir.name == "co-ai-agent"
         assert project_dir.parent.exists()
         shutil.rmtree(project_dir.parent)
+
+
+class TestDeployerSeededAsAdmin:
+    """The package carries the deployer's address so the agent has an admin.
+
+    A deployed agent generates its own keypair on first boot, and ADMIN_ADD is gated
+    on super-admin — which is that same address, whose private key only ever exists
+    on the server. Without a seeded list nobody can ever administer it.
+    """
+
+    def _make_repo(self, root: Path):
+        subprocess.run(['git', 'init'], cwd=root, capture_output=True)
+        subprocess.run(['git', 'config', 'user.email', 'test@test.com'], cwd=root, capture_output=True)
+        subprocess.run(['git', 'config', 'user.name', 'Test'], cwd=root, capture_output=True)
+        (root / ".co").mkdir()
+        (root / ".co" / "host.yaml").write_text("name: demo\nentrypoint: agent.py\n")
+        (root / "agent.py").write_text("from connectonion import host\nhost(None)\n")
+        subprocess.run(['git', 'add', '.'], cwd=root, capture_output=True)
+        subprocess.run(['git', 'commit', '-m', 'init'], cwd=root, capture_output=True)
+
+    def test_package_carries_the_deployers_address(self, tmp_path, monkeypatch):
+        import tarfile
+        from connectonion import address
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._make_repo(repo)
+
+        # A real identity, not a mock: the point of the test is that the address
+        # the operator actually signs with is the one that lands in the package.
+        identity = tmp_path / "identity" / ".co"
+        identity.mkdir(parents=True)
+        keys = address.generate()
+        address.save(keys, identity)
+        monkeypatch.setattr(
+            "connectonion.cli.commands.keys_commands._find_co_dir", lambda: identity
+        )
+
+        tarball = _build_tarball(repo, [])
+        with tarfile.open(tarball) as tar:
+            assert ".co/admins.txt" in tar.getnames()
+            shipped = tar.extractfile(".co/admins.txt").read().decode().strip()
+        assert shipped == keys["address"]
+
+    def test_no_identity_ships_no_admin_file(self, tmp_path, monkeypatch):
+        """Not an error — the agent simply has no admin, as before this existed."""
+        import tarfile
+        from connectonion.cli.commands.deploy_commands import _build_tarball
+
+        repo = tmp_path / "repo"
+        repo.mkdir()
+        self._make_repo(repo)
+
+        monkeypatch.setattr(
+            "connectonion.cli.commands.keys_commands._find_co_dir", lambda: None
+        )
+
+        tarball = _build_tarball(repo, [])
+        assert ".co/admins.txt" not in tarfile.open(tarball).getnames()
