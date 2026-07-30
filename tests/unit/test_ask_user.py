@@ -132,6 +132,28 @@ class TestAskUserTool:
 
         assert result == ""
 
+    def test_unanswered_question_is_not_treated_as_approval(self):
+        """With no io there is nobody to answer — one-shot runs and every
+        deployed agent. This used to reply "decide from the request context",
+        which reads as yes: an agent that correctly stopped to confirm an
+        irreversible outward-facing action was told to go ahead anyway.
+
+        Caught live — `co ai` drafted a company-wide Slack announcement, called
+        ask_user for approval, got that string back, and posted it."""
+        agent = FakeAgent()
+        assert agent.io is None
+
+        result = ask_user(agent, "Post this to #general?", options=["Yes", "No"])
+
+        lowered = result.lower()
+        assert "not approval" in lowered
+        assert "not answered" in lowered
+        # Must not hand the decision back to the model.
+        assert "decide from the request context" not in lowered
+        # Names the actions it is gating, so the model knows what "this" covers.
+        for action in ["send", "post", "delete", "overwrite", "deploy"]:
+            assert action in lowered
+
 
 class TestAskUserSchema:
     """Test that ask_user schema excludes agent parameter."""

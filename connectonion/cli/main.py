@@ -125,7 +125,11 @@ def create(
 ):
     """Create new project."""
     from .commands.create import handle_create
-    handle_create(name=name, ai=None, key=key, template=template, description=description, yes=yes)
+    # An explicit False means the project was not created — exit non-zero so a
+    # script can tell. Other return values keep the previous behaviour.
+    if handle_create(name=name, ai=None, key=key, template=template,
+                     description=description, yes=yes) is False:
+        raise typer.Exit(1)
 
 
 @app.command()

@@ -257,9 +257,14 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     template_dir = cli_dir / "templates" / template
 
     if not template_dir.exists() and template != 'custom':
+        # Naming a template that does not exist printed this and exited 0, so a
+        # script that asked for one got "success" and an empty directory. Say
+        # what is available and let the caller fail.
+        available = sorted(p.name for p in (cli_dir / "templates").iterdir() if p.is_dir())
         console.print(f"[red]❌ Template '{template}' not found![/red]")
+        console.print(f"   [dim]Available: {', '.join(available + ['custom'])}[/dim]")
         shutil.rmtree(project_dir)
-        return
+        return False
 
     # Copy template files
     files_created = []

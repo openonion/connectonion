@@ -31,8 +31,19 @@ def ask_user(
         The user's answer (or comma-separated answers if multi_select)
     """
     if not agent.io:
-        # One-shot mode (co ai "prompt") runs without io — let the model decide.
-        return "No interactive input available (one-shot mode); decide from the request context."
+        # One-shot mode (co ai "prompt", and every deployed agent) has nobody to
+        # answer. This used to say "decide from the request context", which read
+        # as approval: an agent that correctly stopped to confirm an irreversible
+        # or outward-facing action was told to go ahead anyway. Unanswered is not
+        # yes — proceed with reversible work, report back on the rest.
+        return (
+            "NOT ANSWERED — nobody is available to reply. This is not approval. "
+            "Do not send, post, publish, delete, overwrite, deploy, or spend "
+            "anything that this question was gating. Continue with any part of "
+            "the task that does not depend on the answer, then end your turn by "
+            "stating the question and what you would have done, so the user can "
+            "decide."
+        )
 
     event = {
         "type": "ask_user",
