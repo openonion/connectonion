@@ -481,7 +481,10 @@ class TestAServerNameIsNotRewritten:
 
     def test_the_message_says_what_is_wrong(self, capsys):
         sc.handle_server_new("1prod")
-        assert "starting with a letter" in capsys.readouterr().out
+        # Rich wraps to the terminal width, so a phrase can arrive split across
+        # lines — collapse the whitespace before looking for it.
+        printed = " ".join(capsys.readouterr().out.split())
+        assert "starting with a letter" in printed
 
     def test_ordinary_names_still_pass_the_check(self):
         for name in ["prod", "a", "my-agent-2"]:
