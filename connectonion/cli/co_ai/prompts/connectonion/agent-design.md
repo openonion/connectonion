@@ -156,8 +156,7 @@ co create my-agent
 cd my-agent
 
 # With template
-co create my-browser --template playwright
-co create my-emailer --template email-agent
+co create my-browser --template browser
 co create my-researcher --template web-research
 ```
 
