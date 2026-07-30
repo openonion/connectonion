@@ -196,3 +196,88 @@ class TestLoadServer:
             sc.handle_server_add("prod", "user@1.2.3.4")
 
         assert sc.load_server("prod")["ssh"] == "user@1.2.3.4"
+
+
+class TestServerSSH:
+    def test_unknown_name_is_rejected(self, servers_file):
+        assert sc.handle_server_ssh("nope") is False
+
+    def test_opens_a_shell_on_the_registered_target(self, servers_file):
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        with patch.object(sc.subprocess, "run",
+                          return_value=subprocess.CompletedProcess([], 0)) as run:
+            assert sc.handle_server_ssh("prod") is True
+
+        argv = run.call_args.args[0]
+        assert argv[0] == "ssh"
+        assert argv[-1] == "user@1.2.3.4"
+
+    def test_runs_one_command_when_given_one(self, servers_file):
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        with patch.object(sc.subprocess, "run",
+                          return_value=subprocess.CompletedProcess([], 0)) as run:
+            sc.handle_server_ssh("prod", command="uptime")
+
+        assert run.call_args.args[0][-1] == "uptime"
+
+    def test_does_not_capture_output(self, servers_file):
+        """An interactive shell needs the terminal.
+
+        Capturing would hang with no prompt visible, which reads as the command
+        being broken rather than waiting.
+        """
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        with patch.object(sc.subprocess, "run",
+                          return_value=subprocess.CompletedProcess([], 0)) as run:
+            sc.handle_server_ssh("prod")
+
+        assert "capture_output" not in run.call_args.kwargs
+
+
+class TestServerForget:
+    def test_unknown_name_is_rejected(self, servers_file):
+        assert sc.handle_server_forget("nope") is False
+
+    def test_removes_only_the_named_entry(self, servers_file):
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+            sc.handle_server_add("staging", "user@5.6.7.8")
+
+        assert sc.handle_server_forget("prod") is True
+
+        remaining = yaml.safe_load(servers_file.read_text())["servers"]
+        assert "prod" not in remaining
+        assert "staging" in remaining
+
+    def test_never_contacts_the_machine(self, servers_file):
+        """forget is local-only. Touching the host would blur it into destroy.
+
+        This is the guard that keeps the two commands honest: if forget ever
+        starts reaching out, the difference between 'stop tracking it' and
+        'stop paying for it' has been lost.
+        """
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        with patch.object(sc, "_ssh") as ssh, \
+             patch.object(sc.subprocess, "run") as run:
+            sc.handle_server_forget("prod")
+
+        ssh.assert_not_called()
+        run.assert_not_called()
+
+    def test_says_the_machine_keeps_billing(self, servers_file, capsys):
+        """The warning is the whole safety story — assert it is actually printed."""
+        with patch.object(sc, "_ssh", return_value=_ok("ok")):
+            sc.handle_server_add("prod", "user@1.2.3.4")
+
+        sc.handle_server_forget("prod")
+        out = capsys.readouterr().out.lower()
+        assert "untouched" in out
+        assert "billed" in out

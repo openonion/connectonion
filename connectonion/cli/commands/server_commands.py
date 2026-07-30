@@ -242,3 +242,49 @@ def _record(name: str, outcome: str) -> None:
     if name in servers:
         servers[name]["last_check"] = outcome
         _save(servers)
+
+
+def handle_server_ssh(name: str, command: Optional[str] = None) -> bool:
+    """Open a shell on a registered server, or run one command there.
+
+    We already hold the target. Making the operator retype an IP defeats the
+    point of having registered it.
+    """
+    entry = load_server(name)
+    if not entry:
+        console.print(f"\n[red]No server named '{name}'.[/red]")
+        console.print("[cyan]co server ls[/cyan] to see what is registered.\n")
+        return False
+
+    argv = ["ssh", "-o", "StrictHostKeyChecking=accept-new", entry["ssh"]]
+    if command:
+        argv.append(command)
+
+    # Hand the terminal over rather than capturing: an interactive shell needs a
+    # tty, and a captured one would hang with no prompt visible.
+    return subprocess.run(argv).returncode == 0
+
+
+def handle_server_forget(name: str) -> bool:
+    """Drop the local entry. The machine is untouched.
+
+    Deliberately not merged with `destroy`. One of these stops you paying and
+    the other does not, and a single verb would mean either a user who thinks
+    they stopped the billing and did not, or a user tidying their config who
+    deletes a live machine.
+    """
+    servers = _load()
+    if name not in servers:
+        console.print(f"\n[red]No server named '{name}'.[/red]\n")
+        return False
+
+    target = servers[name].get("ssh", "?")
+    del servers[name]
+    _save(servers)
+
+    console.print(f"[green]✓[/green] Forgot [cyan]{name}[/cyan] ({target})")
+    console.print("\n[yellow]The machine itself is untouched — it keeps running, and if we "
+                  "created it, it keeps being billed.[/yellow]")
+    console.print("[dim]Tearing one down needs the server API (openonion/oo-api#36); until "
+                  "then, delete it where it lives.[/dim]\n")
+    return True
