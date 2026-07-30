@@ -80,7 +80,8 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                             # Finish the CONNECT the trust gate interrupted: the client
                             # is a contact now and resumes its input once CONNECTED lands.
                             result = await establish_connection(
-                                pending_connect, agent_address, send_msg, conn, storage, registry
+                                pending_connect, agent_address, send_msg, conn, storage, registry,
+                                route_handlers
                             )
                             if result:
                                 active_io, forward_task = result

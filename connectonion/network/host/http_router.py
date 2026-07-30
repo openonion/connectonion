@@ -167,6 +167,18 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
 
     file_config = host_config or DEFAULT_FILE_LIMITS
 
+    # /info is unauthenticated: anyone who can reach the agent can read it, and on a
+    # deployed agent that is the whole internet. Publish the same skill subset the
+    # relay directory does, from the same constant, so the two answers to "what is
+    # public" cannot drift apart. The operator's own toolboxes — user (~/.co/skills)
+    # and claude-user (~/.claude/skills) — are not shipped with the agent and must not
+    # be advertised by it; a full list here leaks which tools, SaaS accounts and
+    # internal workflows the operator has on their machine.
+    #
+    # The complete list goes to authenticated clients over the WebSocket instead, in
+    # the AGENT_PROFILE frame sent once CONNECT has passed the trust gate.
+    from ...useful_plugins.skills import PUBLISHED_SKILL_LOCATIONS
+
     result = {
         "name": agent_metadata["name"],
         "address": agent_metadata["address"],
@@ -174,7 +186,10 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
         "model": agent_metadata.get("model", "unknown"),
         "trust": trust.trust,
         "version": __version__,
-        "skills": agent_metadata.get("skills", []),
+        "skills": [
+            s for s in agent_metadata.get("skills", [])
+            if s.get("location") in PUBLISHED_SKILL_LOCATIONS
+        ],
         "accepted_inputs": {
             "text": True,
             "images": True,
