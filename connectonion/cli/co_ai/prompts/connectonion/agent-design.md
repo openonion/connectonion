@@ -9,9 +9,8 @@ User wants an agent
         │
         ▼
 ┌─────────────────────────────────┐
-│ Does a template exist?          │
-│ (playwright, email-agent,       │
-│  web-research, meta-agent)      │
+│ Does a skill already cover it?  │
+│ (.co/skills, co skills copy)    │
 └───────────┬─────────────────────┘
             │
     ┌───────┴───────┐
@@ -155,9 +154,9 @@ co --help
 co create my-agent
 cd my-agent
 
-# With template
-co create my-browser --template browser
-co create my-researcher --template web-research
+# Specialise with skills, not with another template
+co skills copy commit
+co deploy --skills ~/skills/linkedin-post-submit
 ```
 
 **Project structure:**

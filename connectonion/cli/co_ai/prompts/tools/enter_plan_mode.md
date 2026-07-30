@@ -22,7 +22,7 @@ After user approves the spec, scaffold with `co create`, then edit `agent.py`.
 
 ```yaml
 agent: duplicate-cleaner
-scaffold: co create duplicate-cleaner  # or --template browser/coder/web-research
+scaffold: co create duplicate-cleaner
 
 tools:
   - name: list_files

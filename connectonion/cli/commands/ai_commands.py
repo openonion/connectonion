@@ -29,8 +29,8 @@ def handle_ai(
         co ai                                    # Start web server
         co ai "Create a calculator agent"        # One-shot
     """
-    from ..co_ai.agent import GLOBAL_CO_DIR, create_coding_agent
-    agent = create_coding_agent(
+    from ..co_ai.agent import GLOBAL_CO_DIR, create_agent
+    agent = create_agent(
         model=model,
         max_iterations=max_iterations,
         co_dir=GLOBAL_CO_DIR,

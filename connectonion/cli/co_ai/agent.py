@@ -1,8 +1,9 @@
 """
-LLM-Note: Factory function for creating the 'co ai' coding agent with all tools and plugins.
+LLM-Note: Factory function for creating the 'co ai' agent with all tools and plugins.
 
 Key function:
-- create_coding_agent(): Creates Agent with full tool suite and intelligent defaults
+- create_agent(): Creates Agent with full tool suite and intelligent defaults
+- create_coding_agent: back-compat alias for create_agent
 
 Tools included:
 - File operations: glob, grep, read_file, edit, FileWriter
@@ -21,14 +22,15 @@ Plugins included:
 - yolo: Approval-free autonomous N-turn sessions with continuation
 
 Architecture:
-- Uses prompt assembly from prompts/assembler.py
+- Uses prompt assembly from prompts/assembler.py: main.md (domain-neutral) +
+  roles/{role}.md (what this agent works on; 'coding' for `co ai`)
 - Tool name must match prompts/tools/{tool_name}.md for the doc to be included
 - Loads project context from CLAUDE.md, NIGHT_RUNNER_PROGRESS.md, etc.
 - Global .co directory at ~/.co for consistent logs/evals
 - MODE_AUTO vs MODE_NORMAL for FileWriter (web vs CLI)
 
 Debug:
-- To inspect the assembled system prompt: python tests/cli/show_co_ai_prompt.py
+- To inspect the assembled system prompt: python tests/e2e/cli/show_co_ai_prompt.py
 """
 
 from pathlib import Path
@@ -64,12 +66,19 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 GLOBAL_CO_DIR = Path.home() / ".co"
 
 
-def create_coding_agent(
+def create_agent(
     model: str = "co/gemini-3.6-flash",
     max_iterations: int = 100,
     co_dir: Path = Path(".co"),
     yolo_turns: int | None = None,
+    role: str | None = "coding",
 ) -> Agent:
+    """Build the co-ai agent.
+
+    `role` picks which roles/{role}.md is appended to the domain-neutral
+    main.md. `co ai` keeps the default "coding"; a deployed agent that is a
+    support bot or a poster passes its own role, or None for no role at all.
+    """
     todo = TodoList()
     file_tools = FileTools()
 
@@ -92,6 +101,7 @@ def create_coding_agent(
     base_prompt = assemble_prompt(
         prompts_dir=str(PROMPTS_DIR),
         tools=tools,
+        role=role,
     )
 
     project_context = load_project_context()
@@ -135,3 +145,8 @@ def create_coding_agent(
         enable_yolo(agent, turns=yolo_turns)
 
     return agent
+
+
+# Older name, from when co-ai was coding-only. Kept so existing imports keep
+# working; new code should call create_agent().
+create_coding_agent = create_agent

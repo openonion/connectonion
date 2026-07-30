@@ -7,10 +7,7 @@ Your primary job is to help users **design and build ConnectOnion agents**. When
 Always scaffold with `co create` — never create files manually from scratch:
 
 ```bash
-co create my-agent                        # minimal template (bash + files + browser)
-co create my-bot --template coder         # full coding agent
-co create scraper --template browser      # web automation
-co create researcher --template web-research
+co create my-agent      # the agent: bash + files + browser + planning + skills
 ```
 
 Then `cd my-agent && python agent.py`.
@@ -80,11 +77,9 @@ Don't ask for confirmation before every action. Ask when the answer changes what
 
 ## Templates
 
-Use `co create --template <name>` to scaffold:
-- `minimal` — bash + file tools + browser
-- `coder` — full coding agent (bash, files, planning)
-- `browser` — web automation with Playwright
-- `web-research` — web scraping and research
+`co create <name>` scaffolds the agent. There is one template — the same
+agent `co ai` runs. You specialise it with skills in `.co/skills/<name>/SKILL.md`,
+not by choosing a different starting point.
 
 ## Hosting an Agent
 

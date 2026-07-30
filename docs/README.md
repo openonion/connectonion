@@ -83,21 +83,17 @@ pip install connectonion
 ### Initialize a Project
 
 ```bash
-# Create a minimal agent (default)
+# Create an agent
 mkdir my-agent
 cd my-agent
-co init
-
-# Create web automation agent
-mkdir browser-agent
-cd browser-agent
-co init --template browser
+co init                    # .co folder only
+co init --template co-ai   # the full project
 ```
 
 ### CLI Options
 
 - `co init` - Initialize a new agent project
-  - `--template, -t` - Choose template: `minimal` (default), `browser`, `hosted-browser`, `coder`, `co-ai`, `web-research`, `custom`
+  - `--template, -t` - Choose template: `co-ai` or `custom`
   - `--key` - API key
   - `--description` - Description for custom template
   - `--yes, -y` - Skip prompts
@@ -107,9 +103,10 @@ co init --template browser
 
 ```
 my-project/
-├── agent.py           # Main agent implementation
-├── prompt.md          # System prompt (markdown)
-├── .env.example       # Environment variables template
+├── agent.py           # create_agent() + host()
+├── Dockerfile         # Chrome under Xvfb, for browser skills when deployed
+├── requirements.txt
+├── .env               # API keys
 ├── .co/               # ConnectOnion metadata
 │   ├── host.yaml      # Project configuration
 │   └── docs/
@@ -119,23 +116,16 @@ my-project/
 
 ### Available Templates
 
-**minimal (Default)** - General-purpose agent with file tools and browser automation:
-- `bash` - Run shell commands
-- `read_file`, `edit`, `glob`, `grep`, `write` - Filesystem tools
-- `BrowserAutomation` - Full browser control (navigate, click, screenshot, etc.)
-- Plugins: `image_result_formatter`, `tool_approval`
+**co-ai (Default)** - the same agent `co ai` runs, wrapped in `host()`:
+- `bash`, `read_file`, `edit`, `glob`, `grep`, `write` - files and shell
+- browser via the `co browser` CLI, plus a Dockerfile that ships Chrome under Xvfb
+- planning, todos, sub-agents, skills
+- `agent.py` is ~5 lines; you specialise it with skills in `.co/skills/`
 
-**coder** - Coding assistant with filesystem and shell access:
-- `bash`, `read_file`, `edit`, `glob`, `grep`, `write`
-- `max_iterations=50` for complex multi-step coding tasks
+**custom** - an LLM writes `agent.py` from your `--description`.
 
-**browser** - Dedicated browser automation agent:
-- `BrowserAutomation` (headless, max_iterations=200)
-- Plugins: `image_result_formatter`, `ui_stream`
-- Note: requires `pip install patchright && patchright install chrome`
-
-**web-research** - Web research and data extraction:
-- `search_web`, `extract_data`, `analyze_data`, `save_research`
+`minimal`, `coder`, `browser`, `hosted-browser`, and `web-research` were
+retired. See [Templates](templates/) for why.
 
 ### Interactive Features
 

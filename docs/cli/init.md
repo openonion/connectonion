@@ -195,7 +195,7 @@ $ co init  # After global config exists
 co init [options]
 
 Options:
-  --template, -t          Template to use (minimal/coder/browser/hosted-browser/co-ai/web-research/custom)
+  --template, -t          Template to use (co-ai/custom)
   --yes, -y               Accept all defaults, skip prompts
   --key                   API key to use (saves to global config)
   --description           Description for the custom template
@@ -206,9 +206,8 @@ Options:
 
 Same templates as `co create`:
 
-1. **minimal** - Basic agent with simple tools
-2. **web-research** - Web scraping and research
-3. **browser** - Browser automation
+1. **co-ai** - the same agent as `co ai`, hosted
+2. **custom** - an LLM writes `agent.py` from your `--description`
 4. **custom** - AI-generated based on description
 
 ## Special Directory Warnings
@@ -233,7 +232,7 @@ $ co init
 $ co init -y
 
 # With specific template
-$ co init --template web-research
+$ co init --template co-ai
 ```
 
 ### Adding to Django Project
@@ -400,19 +399,17 @@ co init
 
 ## Templates
 
-- minimal: basic agent
-- browser: browser automation
+- co-ai: the same agent as `co ai`, hosted
 - custom: describe it, we generate it with AI
 
 ```bash
-co init -t minimal
-co init -t browser
+co init -t co-ai
 co init -t custom --description "Monitor a site and alert me"
 ```
 
 ## Options (the useful bits)
 
-- `--template, -t`: `minimal` | `browser` | `custom`
+- `--template, -t`: `co-ai` | `custom`
 - `--key`: paste an API key (auto-detects provider and appends to `.env`)
 - `--force`: continue in non-empty/special directories
 - `--yes, -y`: accept defaults and skip prompts

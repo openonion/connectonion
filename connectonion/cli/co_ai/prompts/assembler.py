@@ -7,7 +7,7 @@ tool-based conditional sections, and context-aware prompt assembly.
 Key components:
 - PromptContext: Manages variables, tool registry, and interpolation context
 - interpolate(): Handles ${VAR}, ${VAR or "default"}, ${condition ? "yes" : "no"}
-- assemble_prompt(): Loads and combines main.md, workflow.md, tools/*.md based on available tools
+- assemble_prompt(): Combines main.md + roles/{role}.md + browser.md + tools/*.md
 - load_reminder(): Loads system reminders with <system-reminder> tags for runtime injection
 - load_agent_prompt(): Loads sub-agent prompts from agents/ directory
 
@@ -15,7 +15,8 @@ Architecture:
 - Variable syntax: ${VAR_NAME} for simple substitution
 - Tool conditionals: ${has_tool("name") ? "include" : "exclude"}
 - Default values: ${VAR or "fallback text"}
-- Modular structure: main.md + workflow.md + connectonion/index.md + tool-specific .md files
+- Modular structure: main.md (how to work) + roles/{role}.md (what to work on)
+  + browser.md + tool-specific .md files; guides load on demand
 - Context propagation: Variables and tool registry flow through all interpolation stages
 - Regex-based interpolation with recursive pattern matching for nested expressions
 
@@ -158,6 +159,7 @@ def assemble_prompt(
     tools: Optional[List[Any]] = None,
     context: Optional[PromptContext] = None,
     extra_vars: Optional[Dict[str, Any]] = None,
+    role: Optional[str] = None,
 ) -> str:
     """
     Assemble a system prompt from modular files with variable interpolation.
@@ -167,6 +169,9 @@ def assemble_prompt(
         tools: List of tool objects/functions (loads matching .md files)
         context: Optional PromptContext with pre-configured variables
         extra_vars: Additional variables to inject
+        role: Optional role name, loading roles/{role}.md. main.md says how to
+            work; the role says what the agent works on. `co ai` passes
+            "coding"; a deployed agent passes its own role or none at all.
 
     Returns:
         Assembled and interpolated prompt string
@@ -196,23 +201,34 @@ def assemble_prompt(
     for name in context.get_tool_names():
         ctx_dict[f"{name.upper()}_TOOL_NAME"] = name
     
-    # 1. Main prompt (required)
+    # 1. Main prompt (required) — domain-neutral agent behaviour
     main_file = prompts_path / "main.md"
     if main_file.exists():
         content = main_file.read_text(encoding="utf-8")
         parts.append(interpolate(content, ctx_dict))
 
-    # 2. Browser usage. The browser is driven through the `co browser` CLI rather
+    # 2. Role. What this agent works on, kept out of main.md so a deployed
+    # agent isn't told it is a coding agent when it is a support bot.
+    if role:
+        role_file = prompts_path / "roles" / f"{role}.md"
+        if not role_file.exists():
+            available = sorted(p.stem for p in (prompts_path / "roles").glob("*.md"))
+            raise FileNotFoundError(
+                f"No role prompt {role_file}. Available roles: {', '.join(available) or 'none'}"
+            )
+        parts.append(interpolate(role_file.read_text(encoding="utf-8"), ctx_dict))
+
+    # 3. Browser usage. The browser is driven through the `co browser` CLI rather
     # than in-process tools, so nothing in the tool list would pull this section
     # in — it has to be loaded by name.
     browser_file = prompts_path / "browser.md"
     if browser_file.exists():
         parts.append(interpolate(browser_file.read_text(encoding="utf-8"), ctx_dict))
 
-    # 3. Workflow, ConnectOnion index, and examples are loaded on-demand
+    # 4. Workflow, ConnectOnion index, and examples are loaded on-demand
     # by the system_reminder plugin when intent is "build agent"
 
-    # 4. Tool descriptions (for each available tool)
+    # 5. Tool descriptions (for each available tool)
     tools_dir = prompts_path / "tools"
     if tools_dir.exists() and tools:
         for tool in tools:

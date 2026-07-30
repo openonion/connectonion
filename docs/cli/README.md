@@ -125,7 +125,7 @@ cd my-django-app
 co init
 
 # With template
-co init --template browser
+co init --template co-ai
 
 # Update docs only
 co init  # Refreshes .co/docs/ to latest version
@@ -989,7 +989,7 @@ co init
 ```bash
 # Fully automated
 export OPENAI_API_KEY=sk-proj-xxx
-co create prod-agent --yes --template minimal
+co create prod-agent --yes --template co-ai
 cd prod-agent
 python agent.py --test
 ```

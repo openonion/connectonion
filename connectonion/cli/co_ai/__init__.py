@@ -5,7 +5,7 @@ This package implements the `co ai` command that starts an intelligent
 coding assistant with file operations, planning, and background task execution.
 
 Main export:
-- create_coding_agent(): Factory function for agent with full tool suite
+- create_agent(): Factory function for agent with full tool suite
 
 Package structure:
 - agent.py: Agent factory with tools/plugins
@@ -23,7 +23,7 @@ Used by:
 - Web interface: chat.openonion.ai
 """
 
-from connectonion.cli.co_ai.agent import create_coding_agent
+from connectonion.cli.co_ai.agent import create_agent, create_coding_agent
 
 __version__ = "0.1.0"
-__all__ = ["create_coding_agent"]
+__all__ = ["create_agent", "create_coding_agent"]
