@@ -34,7 +34,11 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY }}
+          # A fork PR gets no repository secrets, so this expands to an empty
+          # string — and an empty key reads as "not authenticated", which makes
+          # the auth CLI bail before it reaches the code these tests exercise.
+          # Unset would be fine; empty is not. Fall back to a placeholder.
+          OPENONION_API_KEY: ${{ secrets.OPENONION_API_KEY || 'test-key' }}
         run: |
           pytest tests/ -v --tb=short -m "not slow and not real_api and not network"
 
