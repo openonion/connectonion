@@ -156,10 +156,12 @@ def auth(service: Optional[str] = typer.Argument(None, help="Service: google, mi
 @app.command()
 def keys(
     reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full key values"),
+    ssh: bool = typer.Option(False, "--ssh", help="Print the SSH public key derived from your recovery phrase"),
+    write: bool = typer.Option(False, "--write", help="With --ssh, also write the private half to ~/.ssh/"),
 ):
     """Show agent keys and credentials."""
     from .commands.keys_commands import handle_keys
-    handle_keys(reveal=reveal)
+    handle_keys(reveal=reveal, ssh=ssh, write=write)
 
 
 @app.command()

@@ -81,11 +81,13 @@ def _source_label(co_dir: Path) -> str:
     return f"{co_dir} (project)"
 
 
-def handle_keys(reveal: bool = False):
+def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
     """Show all agent keys and credentials.
 
     Args:
         reveal: If True, show full values instead of masked
+        ssh: If True, print the SSH public key derived from the recovery phrase
+        write: With ssh, also write the private half to ~/.ssh/
     """
     from ... import address
 
@@ -98,6 +100,10 @@ def handle_keys(reveal: bool = False):
     addr_data = address.load(co_dir)
     if not addr_data:
         console.print("\n[red]Failed to load keys.[/red]\n")
+        return
+
+    if ssh:
+        _show_ssh_key(addr_data, write=write)
         return
 
     env_vars = _load_env_vars()
@@ -187,3 +193,51 @@ def handle_keys(reveal: bool = False):
     else:
         console.print("[yellow]⚠ Secrets shown in full. Do not share these values.[/yellow]")
     console.print()
+
+
+def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
+    """Print the SSH public key derived from the recovery phrase.
+
+    Same phrase as the agent identity, different derivation — so there is still
+    one thing to write down, and the operator can reach a provisioned server
+    without a second secret to manage.
+    """
+    from pathlib import Path
+    from ... import address
+
+    seed = addr_data.get("seed_phrase")
+    if not seed:
+        console.print("\n[red]No recovery phrase available.[/red]")
+        console.print("[dim]The SSH key is derived from it, so it cannot be rebuilt without it.[/dim]")
+        console.print("[cyan]It lives in .co/keys/recovery.txt — restore that file, or run 'co init' in a new project.[/cyan]\n")
+        return
+
+    keys = address.derive_ssh_key(seed)
+
+    console.print()
+    console.print(keys["public_line"])
+    console.print()
+
+    if not write:
+        console.print("[dim]Add that line to ~/.ssh/authorized_keys on any server you want to reach.[/dim]")
+        console.print("[dim]Use [bold]--write[/bold] to also write the private half to ~/.ssh/.[/dim]\n")
+        return
+
+    ssh_dir = Path.home() / ".ssh"
+    ssh_dir.mkdir(mode=0o700, exist_ok=True)
+    private_path = ssh_dir / "connectonion_ed25519"
+    public_path = ssh_dir / "connectonion_ed25519.pub"
+
+    if private_path.exists():
+        console.print(f"[yellow]{private_path} already exists — not overwriting.[/yellow]")
+        console.print("[dim]Delete it first if you want it rewritten; the key is derived, so nothing is lost.[/dim]\n")
+        return
+
+    private_path.write_text(keys["private_key"])
+    private_path.chmod(0o600)
+    public_path.write_text(keys["public_line"] + "\n")
+    public_path.chmod(0o644)
+
+    console.print(f"[green]✓[/green] wrote {private_path} [dim](0600)[/dim]")
+    console.print(f"[green]✓[/green] wrote {public_path}")
+    console.print(f"\n[dim]Use it with:[/dim] ssh -i {private_path} user@host\n")
