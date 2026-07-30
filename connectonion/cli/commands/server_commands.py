@@ -9,6 +9,7 @@ LLM-Note:
   Errors: an unreachable host fails with ssh's own message and a short timeout, never a hang | a missing requirement is named
 """
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -292,6 +293,12 @@ def handle_server_forget(name: str) -> bool:
 
 API_BASE = "https://oo.openonion.ai"
 
+# Stricter than DEPLOY_NAME_PATTERN, which allows a leading digit: a server name
+# becomes the machine's own name, and those must start with a letter. Checked
+# here so the answer arrives before the confirmation prompt rather than after the
+# charge. The backend enforces the same rule — this only saves the round trip.
+SERVER_NAME_PATTERN = re.compile(r"^[a-z]([-a-z0-9]{0,37}[a-z0-9])?$")
+
 
 def _derive_ssh_public_line() -> Optional[str]:
     """The operator's SSH key, so a new server is reachable with no second secret."""
@@ -357,12 +364,12 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
     """Have a server created for you, and register it locally."""
     import requests
 
-    from .project_cmd_lib import DEPLOY_NAME_PATTERN, load_api_key
+    from .project_cmd_lib import load_api_key
 
-    if not DEPLOY_NAME_PATTERN.match(name):
+    if not SERVER_NAME_PATTERN.match(name):
         console.print(f"\n[red]Invalid server name: {name}[/red]")
         console.print("[dim]1-39 lowercase letters, digits and hyphens, starting with a "
-                      "letter or digit — it becomes a DNS label.[/dim]\n")
+                      "letter — it becomes the machine's name.[/dim]\n")
         return False
 
     if load_server(name):
