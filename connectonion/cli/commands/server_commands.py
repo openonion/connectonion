@@ -436,14 +436,24 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
 
 
 def _fetch_balance(api_key: str) -> Optional[float]:
-    """Best effort — the prompt is more useful with it and still works without."""
+    """What is actually left to spend. Best effort — the prompt is more useful
+    with it and still works without.
+
+    `balance_usd`, not `credits_usd`. The latter is lifetime top-ups and ignores
+    everything already spent, so an account that had added $315 and spent $291
+    reads as $315 of headroom. The prompt would then tell someone a $180 server
+    leaves them $135, they say yes, and the backend correctly refuses with 402 —
+    a purchase they were just told they could afford. The same confusion is what
+    openonion/oo-api#42 fixed inside the balance check; this is the display side
+    of it, and `co status` and `co auth` already read the right field.
+    """
     import requests
 
     try:
         response = requests.get(f"{API_BASE}/api/v1/auth/me",
                                 headers={"Authorization": f"Bearer {api_key}"}, timeout=15)
         if response.status_code == 200:
-            value = response.json().get("credits_usd")
+            value = response.json().get("balance_usd")
             return float(value) if value is not None else None
     except (requests.RequestException, ValueError, TypeError):
         pass
