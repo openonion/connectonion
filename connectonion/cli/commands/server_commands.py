@@ -288,3 +288,190 @@ def handle_server_forget(name: str) -> bool:
     console.print("[dim]Tearing one down needs the server API (openonion/oo-api#36); until "
                   "then, delete it where it lives.[/dim]\n")
     return True
+
+
+API_BASE = "https://oo.openonion.ai"
+
+
+def _derive_ssh_public_line() -> Optional[str]:
+    """The operator's SSH key, so a new server is reachable with no second secret."""
+    from ... import address
+    from .keys_commands import _find_co_dir
+
+    co_dir = _find_co_dir()
+    if not co_dir:
+        return None
+    data = address.load(co_dir)
+    if not data or not data.get("seed_phrase"):
+        return None
+    return address.derive_ssh_key(data["seed_phrase"])["public_line"]
+
+
+def _fetch_pricing() -> Optional[dict]:
+    import requests
+
+    try:
+        response = requests.get(f"{API_BASE}/api/v1/servers/pricing", timeout=15)
+    except requests.RequestException:
+        return None
+    return response.json() if response.status_code == 200 else None
+
+
+def _confirm(name: str, machine_type: str, pricing: dict, balance: Optional[float]) -> bool:
+    """Show what this costs and what is left, then ask.
+
+    Every other `co` command is either free or spends metered credit in
+    fractions of a cent. This is the first one that spends a large discrete
+    amount, and the verb cannot carry that — `new` is honest about the machine
+    and says nothing about the money. The prompt has to.
+
+    Balance-after is shown rather than just the price: what decides whether
+    someone can afford it is what is left, not what it costs.
+    """
+    from datetime import datetime, timedelta
+
+    entry = pricing["machine_types"][machine_type]
+    price = entry["usd_12mo"]
+    months = pricing["term_months"]
+    expires = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
+
+    console.print()
+    console.print(f"  [cyan]name[/cyan]          {name}")
+    console.print(f"  [cyan]region[/cyan]        {pricing['region']}")
+    console.print(f"  [cyan]machine[/cyan]       {machine_type} [dim]— {entry['description']}[/dim]")
+    console.print(f"  [cyan]cost[/cyan]          [bold]${price:.2f}[/bold] "
+                  f"[dim]({months} months, charged now)[/dim]")
+    if balance is not None:
+        console.print(f"  [cyan]your balance[/cyan]  ${balance:.2f} → "
+                      f"[bold]${balance - price:.2f}[/bold] after")
+    console.print(f"  [cyan]expires[/cyan]       {expires} "
+                  f"[dim]— the server stops on that date unless renewed[/dim]")
+    console.print()
+
+    import questionary
+    return bool(questionary.confirm("Create it?", default=False).ask())
+
+
+def handle_server_new(name: str, machine_type: Optional[str] = None,
+                      yes: bool = False) -> bool:
+    """Have a server created for you, and register it locally."""
+    import requests
+
+    from .project_cmd_lib import DEPLOY_NAME_PATTERN, load_api_key
+
+    if not DEPLOY_NAME_PATTERN.match(name):
+        console.print(f"\n[red]Invalid server name: {name}[/red]")
+        console.print("[dim]1-39 lowercase letters, digits and hyphens, starting with a "
+                      "letter or digit — it becomes a DNS label.[/dim]\n")
+        return False
+
+    if load_server(name):
+        console.print(f"\n[red]'{name}' is already registered locally.[/red]")
+        console.print(f"[dim]co server ls  ·  or pick another name[/dim]\n")
+        return False
+
+    api_key = load_api_key()
+    if not api_key:
+        console.print("\n[red]Not authenticated.[/red]")
+        console.print("[cyan]co auth[/cyan] first — creating a server spends credit.\n")
+        return False
+
+    ssh_public_line = _derive_ssh_public_line()
+    if not ssh_public_line:
+        console.print("\n[red]No SSH key to install.[/red]")
+        console.print("[dim]The key is derived from your recovery phrase; without it the "
+                      "server would be created with no way in.[/dim]")
+        console.print("[cyan]co keys --ssh[/cyan] to check.\n")
+        return False
+
+    pricing = _fetch_pricing()
+    if not pricing:
+        console.print(f"\n[red]Could not reach {API_BASE} for pricing.[/red]")
+        console.print("[dim]Nothing was created or charged.[/dim]\n")
+        return False
+
+    machine_type = machine_type or pricing["default"]
+    if machine_type not in pricing["machine_types"]:
+        console.print(f"\n[red]Unknown machine type: {machine_type}[/red]")
+        console.print(f"[dim]Available: {', '.join(sorted(pricing['machine_types']))}[/dim]\n")
+        return False
+
+    if not yes:
+        if not _confirm(name, machine_type, pricing, _fetch_balance(api_key)):
+            console.print("[dim]Nothing was created or charged.[/dim]\n")
+            return False
+
+    console.print(f"\n[dim]Creating {name} … this takes about a minute.[/dim]")
+    try:
+        response = requests.post(
+            f"{API_BASE}/api/v1/servers",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"name": name, "ssh_public_key": ssh_public_line,
+                  "machine_type": machine_type},
+            timeout=300,
+        )
+    except requests.RequestException as exc:
+        console.print(f"[red]Request failed: {exc}[/red]")
+        console.print("[dim]If the server was created you will see it in "
+                      "[bold]co server ls[/bold].[/dim]\n")
+        return False
+
+    if response.status_code != 200:
+        _report_failure(response)
+        return False
+
+    server = response.json()
+
+    # Register it ourselves so the operator never types an IP.
+    servers = _load()
+    servers[name] = {"ssh": server["ssh_target"], "last_check": None}
+    _save(servers)
+
+    console.print(f"\n[green]✓ {name} is ready[/green]")
+    console.print(f"  [cyan]{server['ssh_target']}[/cyan]")
+    console.print(f"  [dim]expires {server['expires_at'][:10]} — "
+                  f"${server['charged_usd']:.2f} charged[/dim]")
+    console.print(f"\n[dim]Next:[/dim] co server check {name}  ·  co deploy --to {name}\n")
+    return True
+
+
+def _fetch_balance(api_key: str) -> Optional[float]:
+    """Best effort — the prompt is more useful with it and still works without."""
+    import requests
+
+    try:
+        response = requests.get(f"{API_BASE}/api/v1/auth/me",
+                                headers={"Authorization": f"Bearer {api_key}"}, timeout=15)
+        if response.status_code == 200:
+            value = response.json().get("credits_usd")
+            return float(value) if value is not None else None
+    except (requests.RequestException, ValueError, TypeError):
+        pass
+    return None
+
+
+def _report_failure(response) -> None:
+    """Say what happened to the money, first."""
+    try:
+        detail = response.json().get("detail", {})
+    except ValueError:
+        detail = {}
+
+    if isinstance(detail, str):
+        console.print(f"\n[red]{detail}[/red]\n")
+        return
+
+    error = detail.get("error")
+    if error == "insufficient_credits":
+        console.print(f"\n[red]Not enough credit.[/red]")
+        console.print(f"  have      ${detail.get('balance', 0):.2f}")
+        console.print(f"  need      ${detail.get('required', 0):.2f}")
+        console.print(f"  short by  [bold]${detail.get('shortfall', 0):.2f}[/bold]")
+        console.print("\n[dim]Nothing was created or charged.[/dim]")
+        console.print("[dim]https://discord.gg/4xfD9k8AUF to top up.[/dim]\n")
+    elif error == "provisioning_failed":
+        colour = "yellow" if detail.get("refunded") else "red"
+        console.print(f"\n[{colour}]{detail.get('message', 'Provisioning failed.')}[/{colour}]\n")
+    else:
+        console.print(f"\n[red]Server creation failed ({response.status_code}).[/red]")
+        console.print(f"[dim]{detail or response.text[:300]}[/dim]\n")
