@@ -187,17 +187,29 @@ sudo systemctl enable {agent} >/dev/null 2>&1
 
 
 def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
-    """rsync the project, excluding the state directory.
+    """rsync the project, excluding the state directory but carrying skills.
 
     `--delete` removes code files deleted locally, which is wanted. `.co/` is
     excluded so the agent's identity, logs and evals survive — that exclusion is
     the whole reason a redeploy no longer reissues the agent's address.
+
+    `.co/skills/` is the exception, and it has to be: skills are *what the agent
+    is*, not state it accumulated. Excluding all of `.co/` shipped an agent with
+    none of its skills — the deploy succeeded and the agent ran without them,
+    which is worse than failing. So skills are included, and `--delete` applies
+    inside that directory too so a removed skill actually goes away.
+
+    Order matters to rsync: the include must precede the exclude that would
+    otherwise swallow it, and `.co/` itself must be included for rsync to
+    descend into it at all.
     """
     console.print("[dim]  syncing code …[/dim]")
     result = subprocess.run(
         [
             "rsync", "-az", "--delete",
-            "--exclude", ".co/",
+            "--include", ".co/",
+            "--include", ".co/skills/***",
+            "--exclude", ".co/*",
             "--exclude", ".venv/",
             "--exclude", ".git/",
             "--exclude", "__pycache__/",
