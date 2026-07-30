@@ -287,6 +287,47 @@ def announce(
     handle_announce(relay=relay, dry_run=dry_run)
 
 
+# Server command group — the machines `co deploy --to` can target
+server_app = typer.Typer(help="Register, list and preflight the servers you can deploy to")
+app.add_typer(server_app, name="server")
+
+
+@server_app.callback(invoke_without_command=True)
+def server_callback(ctx: typer.Context):
+    """Deploy targets."""
+    if ctx.invoked_subcommand is None:
+        from .commands.server_commands import handle_server_list
+        handle_server_list()
+
+
+@server_app.command("add")
+def server_add(
+    name: str = typer.Argument(..., help="Short name you will pass to co deploy --to"),
+    ssh: str = typer.Option(..., "--ssh", help="ssh target, e.g. user@1.2.3.4 or a Host from ~/.ssh/config"),
+):
+    """Register a machine. Stores a name → ssh target mapping, no credential."""
+    from .commands.server_commands import handle_server_add
+    if not handle_server_add(name=name, ssh_target=ssh):
+        raise typer.Exit(1)
+
+
+@server_app.command("ls")
+def server_ls():
+    """Show what you can deploy to."""
+    from .commands.server_commands import handle_server_list
+    handle_server_list()
+
+
+@server_app.command("check")
+def server_check(
+    name: str = typer.Argument(..., help="Registered server name"),
+):
+    """Preflight a target and name the requirement that failed."""
+    from .commands.server_commands import handle_server_check
+    if not handle_server_check(name=name):
+        raise typer.Exit(1)
+
+
 # Skills command group
 skills_app = typer.Typer(help="Discover, copy, and list SKILL.md files from agent tool directories")
 app.add_typer(skills_app, name="skills")
