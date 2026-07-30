@@ -330,6 +330,27 @@ def server_check(
         raise typer.Exit(1)
 
 
+@server_app.command("ssh")
+def server_ssh(
+    name: str = typer.Argument(..., help="Registered server name"),
+    command: Optional[str] = typer.Argument(None, help="Command to run instead of opening a shell"),
+):
+    """Open a shell on a registered server, or run one command there."""
+    from .commands.server_commands import handle_server_ssh
+    if not handle_server_ssh(name=name, command=command):
+        raise typer.Exit(1)
+
+
+@server_app.command("forget")
+def server_forget(
+    name: str = typer.Argument(..., help="Registered server name"),
+):
+    """Drop the local entry. Does NOT touch the machine or stop any billing."""
+    from .commands.server_commands import handle_server_forget
+    if not handle_server_forget(name=name):
+        raise typer.Exit(1)
+
+
 # Skills command group
 skills_app = typer.Typer(help="Discover, copy, and list SKILL.md files from agent tool directories")
 app.add_typer(skills_app, name="skills")
