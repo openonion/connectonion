@@ -308,8 +308,14 @@ class TestServeLoop:
             assert error_printed
 
     @pytest.mark.asyncio
-    async def test_serve_loop_heartbeat_on_timeout(self):
-        """Test that heartbeat ANNOUNCE is sent after timeout."""
+    async def test_serve_loop_heartbeat_without_a_key_sends_nothing(self):
+        """Without addr_data there is no private key in this process, so the
+        heartbeat cannot produce a signed frame.
+
+        This used to re-stamp the original ANNOUNCE and send it, which the relay
+        rejects every time — the signature covers every field. The test asserted
+        that send, treating the bug as the contract. openonion/connectonion#429
+        """
         mock_ws = AsyncMock()
         announce_msg = {
             "type": "ANNOUNCE",
@@ -331,12 +337,15 @@ class TestServeLoop:
                 mock_loop.return_value.time.return_value = 99999
                 await relay.serve_loop(mock_ws, announce_msg, heartbeat_interval=1, session_handler=AsyncMock())
 
-        # Should have sent at least 2 ANNOUNCEs (initial + heartbeat)
+        # The initial ANNOUNCE, and nothing from the heartbeat: a frame that
+        # cannot be signed is a frame the relay is certain to refuse.
         announce_count = sum(
             1 for call in mock_ws.send.call_args_list
             if json.loads(call[0][0]).get("type") == "ANNOUNCE"
         )
-        assert announce_count >= 2, "Should send initial ANNOUNCE + heartbeat ANNOUNCE"
+        assert announce_count == 1, (
+            f"sent {announce_count} ANNOUNCEs; the heartbeat should send none "
+            f"without a signing key")
 
     @pytest.mark.asyncio
     async def test_serve_loop_exits_on_connection_closed(self):
