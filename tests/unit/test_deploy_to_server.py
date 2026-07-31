@@ -239,10 +239,12 @@ class TestSystemdUnit:
         with patch.object(dts, "_ssh", return_value=_ok(wanted)) as ssh:
             assert dts._write_unit_if_changed("user@host", "myagent", "agent.py") is True
 
-        assert ssh.call_count == 1  # the read only
+        assert ssh.call_count == 2  # the read, plus asking which port is free
 
     def test_a_changed_unit_is_written_and_reloaded(self):
-        with patch.object(dts, "_ssh", side_effect=[_ok("old content"), _ok()]) as ssh:
+        # read the current unit, ask which port is free, then write
+        with patch.object(dts, "_ssh",
+                          side_effect=[_ok("old content"), _ok("---\n"), _ok()]) as ssh:
             assert dts._write_unit_if_changed("user@host", "myagent", "agent.py") is True
 
         script = ssh.call_args_list[-1].args[1]
@@ -637,3 +639,40 @@ class TestAMissingBinaryIsNotATraceback:
         with patch.object(dts.shutil, "which", return_value="/usr/bin/x"), \
              patch.object(dts, "load_server", return_value=None):
             dts.handle_deploy_to("prod", project)  # falls through to the unknown-server path
+
+
+class TestPortAllocation:
+    """One server, several agents. The port was the only thing not per-agent, so
+    a second agent bound 8000, lost, and crash-looped — while Restart=always kept
+    `systemctl is-active` answering "active" and the deploy reporting success."""
+
+    def test_the_lowest_free_port_is_taken(self):
+        probe = _ok("---\n8000\n8001\n22\n")
+        with patch.object(dts, "_ssh", return_value=probe):
+            assert dts._free_port("user@host", "newagent") == 8002
+
+    def test_an_agents_existing_port_is_kept_across_redeploys(self):
+        """Moving it would break whatever Caddy and clients already point at."""
+        probe = _ok("8042\n---\n8000\n8042\n")
+        with patch.object(dts, "_ssh", return_value=probe):
+            assert dts._free_port("user@host", "myagent") == 8042
+
+    def test_a_clean_server_gets_the_first_port(self):
+        with patch.object(dts, "_ssh", return_value=_ok("---\n")):
+            assert dts._free_port("user@host", "myagent") == 8000
+
+    def test_ports_reserved_by_other_units_are_not_reused(self):
+        """A stopped agent still owns its port — it comes back on restart."""
+        probe = _ok("---\n8000\n")          # 8001 only in another unit's Environment
+        with patch.object(dts, "_ssh", return_value=_ok("---\n8000\n8001\n")):
+            assert dts._free_port("user@host", "newagent") == 8002
+
+    def test_a_full_range_raises_instead_of_guessing(self):
+        taken = "---\n" + "\n".join(str(p) for p in range(8000, 8100))
+        with patch.object(dts, "_ssh", return_value=_ok(taken)):
+            with pytest.raises(RuntimeError, match="no free port"):
+                dts._free_port("user@host", "myagent")
+
+    def test_the_unit_carries_the_port(self):
+        unit = dts._unit_text("myagent", "agent.py", port=8042)
+        assert "Environment=PORT=8042" in unit

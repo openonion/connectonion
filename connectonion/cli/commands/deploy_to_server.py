@@ -172,7 +172,7 @@ def _read_provision(target: str, agent: str) -> dict:
         return {"schema": 0}
 
 
-def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
+def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None, port: int = 8000,
                user: str = "root") -> str:
     """The systemd unit. Restart=always and enable are what the container was for.
 
@@ -199,6 +199,13 @@ def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
                   f"/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
     if hostname:
         environment += f"Environment=AGENT_PUBLIC_DOMAIN={hostname}\n"
+    # One server can host several agents — /srv/<agent>/ and the unit are both
+    # per-agent. The port was the only thing that was not, so a second agent
+    # bound 8000, lost, and crash-looped. Restart=always then kept
+    # `systemctl is-active` answering "active" for a process dying every few
+    # seconds, so the deploy reported success for an agent that never served a
+    # request.
+    environment += f"Environment=PORT={port}\n"
     return f"""[Unit]
 Description=ConnectOnion agent {agent}
 After=network-online.target
@@ -282,6 +289,37 @@ grep -qxF {quoted_admin} {admins} || echo {quoted_admin} >> {admins}
     return True
 
 
+def _free_port(target: str, agent: str, first: int = 8000, last: int = 8099) -> int:
+    """A port this agent can actually bind on that server.
+
+    One ssh round trip: this agent's current port, then everything taken. Keeps
+    the port already in this agent's unit so a redeploy does not move one that
+    clients and Caddy point at; otherwise takes the lowest free one. Asked of the
+    machine, because only the machine knows what is listening.
+    """
+    probe = _ssh(
+        target,
+        f"grep -h '^Environment=PORT=' /etc/systemd/system/{agent}.service 2>/dev/null "
+        f"| cut -d= -f3; echo ---; "
+        f"ss -ltnH 2>/dev/null | awk '{{print $4}}' | sed 's/.*://'; "
+        f"grep -h '^Environment=PORT=' /etc/systemd/system/*.service 2>/dev/null | cut -d= -f3",
+        timeout=60,
+    ).stdout
+    mine, _, rest = probe.partition("---")
+    if mine.strip().isdigit():
+        return int(mine.strip())
+
+    used = {int(v) for v in rest.split() if v.isdigit()}
+    for port in range(first, last + 1):
+        if port not in used:
+            return port
+    # Guessing would produce the crash loop this function exists to prevent.
+    raise RuntimeError(
+        f"no free port between {first} and {last} on {target}. "
+        f"Something is already using all of them."
+    )
+
+
 def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
                            hostname: Optional[str] = None) -> bool:
     """Write the systemd unit only when its content differs.
@@ -292,7 +330,8 @@ def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
     # The ssh target's user owns everything under /srv/<agent> — it is the user
     # rsync wrote as — so it is the one the service should run as.
     user = target.split("@")[0]
-    wanted = _unit_text(agent, entrypoint, hostname, user=user)
+    wanted = _unit_text(agent, entrypoint, hostname,
+                        port=_free_port(target, agent), user=user)
     unit_path = f"/etc/systemd/system/{agent}.service"
 
     current = _ssh(target, f"cat {unit_path} 2>/dev/null", timeout=60)
