@@ -748,3 +748,20 @@ class TestUnitUser:
 
         written = " ".join(str(call.args[1]) for call in ssh.call_args_list)
         assert "User=co" in written
+
+
+class TestPortPinIsVerified:
+    def test_a_write_that_does_not_land_is_reported(self, capsys):
+        """The whole failure mode here is silence: a port that is not set gives
+        an agent that cannot bind, a unit systemd calls active because
+        Restart=always, and a deploy that says it succeeded."""
+        with patch.object(dts, "_ssh", return_value=_ok("")):
+            dts._pin_port("user@host", "myagent", 8042)
+
+        assert "could not set the port" in capsys.readouterr().out
+
+    def test_a_write_that_lands_says_nothing(self, capsys):
+        with patch.object(dts, "_ssh", return_value=_ok("port: 8042\n")):
+            dts._pin_port("user@host", "myagent", 8042)
+
+        assert capsys.readouterr().out == ""

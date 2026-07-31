@@ -328,14 +328,27 @@ def _pin_port(target: str, agent: str, port: int) -> None:
     server can decide.
     """
     config = f"{SRV}/{agent}/.co/host.yaml"
-    _ssh(
+    result = _ssh(
         target,
         f"mkdir -p {SRV}/{agent}/.co && touch {config} && "
         f"if grep -q '^port:' {config}; then "
         f"  sed -i 's/^port:.*/port: {port}/' {config}; "
-        f"else printf 'port: {port}\\n' >> {config}; fi",
+        f"else printf 'port: {port}\\n' >> {config}; fi; "
+        f"grep '^port:' {config}",
         timeout=60,
     )
+    # Read it back in the same round trip. A write that silently does not land
+    # gives an agent that cannot bind its port, a unit systemd reports as
+    # active because Restart=always, and a deploy that says it succeeded — the
+    # exact failure this function exists to prevent, made invisible.
+    if f"port: {port}" not in result.stdout:
+        console.print(
+            f"[yellow]  could not set the port in {config}[/yellow]"
+        )
+        console.print(
+            f"[dim]  the agent will try 8000 and fail if another agent "
+            f"holds it. Set 'port: {port}' there by hand.[/dim]"
+        )
 
 
 def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
