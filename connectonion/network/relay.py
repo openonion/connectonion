@@ -230,10 +230,23 @@ async def serve_loop(
                     addr_data, summary, endpoints=endpoints, relay=relay_url
                 )
                 await send_announce(websocket, fresh_announce)
+                console.print(f"{prefix} [red]♥[/red]")
             else:
-                announce_message["timestamp"] = int(asyncio.get_event_loop().time())
-                await send_announce(websocket, announce_message)
-            console.print(f"{prefix} [red]♥[/red]")
+                # Nothing is sent. The fallback used to re-stamp the original
+                # frame and send it again, which could only ever be rejected:
+                # the relay verifies the signature over every field, so a
+                # changed timestamp invalidates it — and the value written was
+                # a monotonic clock rather than epoch seconds, off by decades
+                # from what the freshness check expects.
+                #
+                # Re-signing is not possible here either: without addr_data
+                # there is no private key in this process. A frame that cannot
+                # be signed cannot be sent, so the honest move is to say the
+                # registration will lapse rather than to send something the
+                # relay is certain to refuse.
+                console.print(f"{prefix} [yellow]♥ cannot refresh — no signing "
+                              f"key in this process; registration will lapse"
+                              f"[/yellow]")
 
         except websockets.exceptions.ConnectionClosed:
             # Relay WS closed cleanly (relay redeployed, network blip, NAT idle
