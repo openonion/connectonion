@@ -234,17 +234,30 @@ class TestSystemdUnit:
 
     def test_an_unchanged_unit_is_not_rewritten(self):
         """Rewriting every deploy would mean a daemon-reload for no reason."""
-        # Same user the target implies — the unit runs as whoever owns the files.
-        wanted = dts._unit_text("myagent", "agent.py", user="user")
-        with patch.object(dts, "_ssh", return_value=_ok(wanted)) as ssh:
+        wanted = dts._unit_text("myagent", "agent.py", port=8000, user="user")
+
+        # Keyed on the command, not on call order: the function asks the machine
+        # three things now (who owns the files, which port is free, what the
+        # unit says), and a positional list of answers breaks whenever one moves.
+        def answer(target, command, **kwargs):
+            if "id -un" in command:
+                return _ok("user\n")
+            if "Environment=PORT=" in command:
+                return _ok("---\n")
+            return _ok(wanted)
+
+        with patch.object(dts, "_ssh", side_effect=answer) as ssh:
             assert dts._write_unit_if_changed("user@host", "myagent", "agent.py") is True
 
-        assert ssh.call_count == 2  # the read, plus asking which port is free
+        assert not any("daemon-reload" in str(c.args[1]) for c in ssh.call_args_list), \
+            "an unchanged unit was rewritten"
 
     def test_a_changed_unit_is_written_and_reloaded(self):
-        # read the current unit, ask which port is free, then write
+        # read the current unit, ask who rsync wrote as, ask which port is free,
+        # then write
         with patch.object(dts, "_ssh",
-                          side_effect=[_ok("old content"), _ok("---\n"), _ok()]) as ssh:
+                          side_effect=[_ok("old content"), _ok("deployer\n"),
+                                       _ok("---\n"), _ok()]) as ssh:
             assert dts._write_unit_if_changed("user@host", "myagent", "agent.py") is True
 
         script = ssh.call_args_list[-1].args[1]
@@ -676,3 +689,35 @@ class TestPortAllocation:
     def test_the_unit_carries_the_port(self):
         unit = dts._unit_text("myagent", "agent.py", port=8042)
         assert "Environment=PORT=8042" in unit
+
+
+class TestUnitUser:
+    """#451: the unit's User= came from splitting the ssh target on "@"."""
+
+    def test_the_user_is_asked_of_the_machine(self):
+        """A server registered by ssh alias has no "user@" to split. Splitting it
+        put the alias in User=, and systemd answered 217/USER — after a deploy
+        that copied every file and reported success."""
+        with patch.object(dts, "_ssh",
+                          side_effect=[_ok("old"), _ok("deployer\n"), _ok("---\n"), _ok()]):
+            dts._write_unit_if_changed("my-alias", "myagent", "agent.py")
+
+        unit = dts._unit_text("myagent", "agent.py", user="deployer")
+        assert "User=deployer" in unit
+        assert "User=my-alias" not in unit
+
+    def test_it_falls_back_to_the_target_when_the_machine_says_nothing(self):
+        """An empty answer must not produce `User=` with nothing after it, which
+        systemd rejects outright."""
+        def answer(target, command, **kwargs):
+            if "id -un" in command:
+                return _ok("")                 # machine says nothing
+            if "Environment=PORT=" in command:
+                return _ok("---\n")
+            return _ok("a different unit")     # forces a write
+
+        with patch.object(dts, "_ssh", side_effect=answer) as ssh:
+            dts._write_unit_if_changed("co@1.2.3.4", "myagent", "agent.py")
+
+        written = " ".join(str(call.args[1]) for call in ssh.call_args_list)
+        assert "User=co" in written

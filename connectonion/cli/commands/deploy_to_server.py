@@ -327,9 +327,19 @@ def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
     Rewriting it every deploy would mean a daemon-reload every deploy for no
     reason, and would hide whether a restart came from new code or a new unit.
     """
-    # The ssh target's user owns everything under /srv/<agent> — it is the user
-    # rsync wrote as — so it is the one the service should run as.
-    user = target.split("@")[0]
+    # The user rsync wrote as owns everything under /srv/<agent>, so it is the
+    # one the service must run as. Ask the machine rather than splitting the
+    # target on "@": ssh does not require that form. A server registered with
+    # `co server add <name> --ssh <alias>` has a config alias as its target, and
+    # splitting it yielded the alias as a username —
+    #
+    #   User=nw-e2e
+    #   Failed to determine user credentials: No such process
+    #   status=217/USER
+    #
+    # a deploy that copied every file, wrote the unit, reported success, and
+    # produced a service that could never start.
+    user = _ssh(target, "id -un", timeout=60).stdout.strip() or target.split("@")[0]
     wanted = _unit_text(agent, entrypoint, hostname,
                         port=_free_port(target, agent), user=user)
     unit_path = f"/etc/systemd/system/{agent}.service"
