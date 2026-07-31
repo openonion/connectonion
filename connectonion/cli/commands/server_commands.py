@@ -431,11 +431,20 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
 
     # Register it ourselves so the operator never types an IP.
     servers = _load()
-    servers[name] = {"ssh": server["ssh_target"], "last_check": None}
+    entry = {"ssh": server["ssh_target"], "last_check": None}
+    # The hostname the backend created a DNS record for. Stored rather than
+    # derived: the naming rule lives in one place (the backend), and a CLI that
+    # reconstructed it would be a second copy that has to agree forever.
+    if server.get("hostname"):
+        entry["hostname"] = server["hostname"]
+    servers[name] = entry
     _save(servers)
 
     console.print(f"\n[green]✓ {name} is ready[/green]")
     console.print(f"  [cyan]{server['ssh_target']}[/cyan]")
+    if server.get("hostname"):
+        console.print(f"  [cyan]https://{server['hostname']}[/cyan] "
+                      f"[dim]— once you deploy something to it[/dim]")
     console.print(f"  [dim]expires {server['expires_at'][:10]} — "
                   f"${server['charged_usd']:.2f} charged[/dim]")
     console.print(f"\n[dim]Next:[/dim] co server check {name}  ·  co deploy --to {name}\n")

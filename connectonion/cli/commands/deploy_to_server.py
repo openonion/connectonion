@@ -26,7 +26,7 @@ console = Console()
 # Bumped when a setup step is added or changes shape. A server reporting an
 # older schema runs the missing steps; one reporting this schema goes straight
 # to rsync and restart.
-PROVISION_SCHEMA = 1
+PROVISION_SCHEMA = 2
 
 SRV = "/srv"
 
@@ -73,7 +73,13 @@ def _read_project(project_dir: Path) -> Optional[dict]:
             console.print(f"[dim]Try:  name: {suggestion}[/dim]")
         return None
 
-    return {"name": name, "entrypoint": str(config.get("entrypoint") or "agent.py")}
+    return {
+        "name": name,
+        "entrypoint": str(config.get("entrypoint") or "agent.py"),
+        # host() defaults to 8000; a project that moved it has to say so here, or
+        # Caddy would proxy to a port nothing is listening on.
+        "port": int(config.get("port") or 8000),
+    }
 
 
 def _warn_about_skills_left_behind(project_dir: Path) -> None:
@@ -111,8 +117,16 @@ def _read_provision(target: str, agent: str) -> dict:
         return {"schema": 0}
 
 
-def _unit_text(agent: str, entrypoint: str) -> str:
-    """The systemd unit. Restart=always and enable are what the container was for."""
+def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None) -> str:
+    """The systemd unit. Restart=always and enable are what the container was for.
+
+    AGENT_PUBLIC_DOMAIN is what makes the agent reachable to anything but ssh.
+    Without it announce.py publishes `http://<ip>:8000` to the relay, and 8000 is
+    closed on a provisioned server — so every client probes an endpoint that can
+    never answer. With it the agent announces `https://<hostname>`, which is what
+    Caddy is listening on.
+    """
+    environment = f"Environment=AGENT_PUBLIC_DOMAIN={hostname}\n" if hostname else ""
     return f"""[Unit]
 Description=ConnectOnion agent {agent}
 After=network-online.target
@@ -121,7 +135,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 WorkingDirectory={SRV}/{agent}
-ExecStart={SRV}/{agent}/.venv/bin/python {entrypoint}
+{environment}ExecStart={SRV}/{agent}/.venv/bin/python {entrypoint}
 Restart=always
 RestartSec=3
 StandardOutput=journal
@@ -194,13 +208,14 @@ grep -qxF {quoted_admin} {admins} || echo {quoted_admin} >> {admins}
     return True
 
 
-def _write_unit_if_changed(target: str, agent: str, entrypoint: str) -> bool:
+def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
+                           hostname: Optional[str] = None) -> bool:
     """Write the systemd unit only when its content differs.
 
     Rewriting it every deploy would mean a daemon-reload every deploy for no
     reason, and would hide whether a restart came from new code or a new unit.
     """
-    wanted = _unit_text(agent, entrypoint)
+    wanted = _unit_text(agent, entrypoint, hostname)
     unit_path = f"/etc/systemd/system/{agent}.service"
 
     current = _ssh(target, f"cat {unit_path} 2>/dev/null", timeout=60)
@@ -223,6 +238,76 @@ sudo systemctl enable {agent} >/dev/null 2>&1
             console.print(f"  [dim]{line}[/dim]")
         return False
     return True
+
+
+def _caddyfile_text(hostname: str, port: int) -> str:
+    """One hostname, proxied to the agent on loopback.
+
+    Caddy gets and renews the certificate itself over HTTP-01, which is why 80
+    has to be open even though nothing is served on it. `reverse_proxy` passes
+    WebSocket upgrades through unchanged, so /ws needs no separate stanza — the
+    agent's chat, dashboard pushes and remote exec all ride that one connection.
+
+    One agent per hostname. A second agent deployed to the same server takes the
+    name from the first, because there is one name and one :443. Several agents
+    on one machine is still an open question (openonion/connectonion#309); when
+    it is answered this file grows a stanza per agent rather than being replaced.
+    """
+    return f"""{hostname} {{
+	reverse_proxy 127.0.0.1:{port}
+}}
+"""
+
+
+def _ensure_caddy(target: str, hostname: str, port: int) -> bool:
+    """Install Caddy if absent, and point it at this agent.
+
+    Installed here rather than by provisioning for the reason #318 settled: a
+    machine registered by hand with `co server add` never went through
+    provisioning, so this has to exist anyway — and doing it in both places is
+    two implementations of one thing, reachable only by two differently-created
+    machines.
+
+    The config is written only when it differs, like the systemd unit: a reload
+    on every deploy would hide whether the certificate work was actually caused
+    by a change.
+    """
+    wanted = _caddyfile_text(hostname, port)
+
+    current = _ssh(target, "cat /etc/caddy/Caddyfile 2>/dev/null", timeout=60)
+    if current.returncode == 0 and current.stdout == wanted and _caddy_running(target):
+        return True
+
+    console.print("[dim]  configuring https …[/dim]")
+    script = f"""
+set -e
+if ! command -v caddy >/dev/null; then
+  sudo apt-get install -y -qq debian-keyring debian-archive-keyring apt-transport-https curl
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/gpg.key' \
+    | sudo gpg --batch --yes --dearmor -o /usr/share/keyrings/caddy-stable-archive-keyring.gpg
+  curl -1sLf 'https://dl.cloudsmith.io/public/caddy/stable/debian.deb.txt' \
+    | sudo tee /etc/apt/sources.list.d/caddy-stable.list >/dev/null
+  sudo apt-get update -qq
+  sudo apt-get install -y -qq caddy
+fi
+sudo mkdir -p /etc/caddy
+cat > /tmp/Caddyfile <<'CADDYEOF'
+{wanted}CADDYEOF
+sudo mv /tmp/Caddyfile /etc/caddy/Caddyfile
+sudo systemctl enable caddy >/dev/null 2>&1
+sudo systemctl reload caddy 2>/dev/null || sudo systemctl restart caddy
+"""
+    result = _ssh(target, script, timeout=600)
+    if result.returncode != 0:
+        console.print("[red]Could not set up https.[/red]")
+        for line in (result.stderr or result.stdout).strip().splitlines()[-8:]:
+            console.print(f"  [dim]{line}[/dim]")
+        return False
+    return True
+
+
+def _caddy_running(target: str) -> bool:
+    return _ssh(target, "systemctl is-active caddy", timeout=60).stdout.strip() == "active"
 
 
 def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
@@ -353,6 +438,11 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
 
     target = entry["ssh"]
     agent, entrypoint = project["name"], project["entrypoint"]
+    # Recorded by `co server new`. A server registered by hand with
+    # `co server add` has none, and then the deploy simply does not set up https
+    # — there is no name to get a certificate for, and inventing one would fail
+    # the challenge rather than fail honestly.
+    hostname = entry.get("hostname")
 
     if not (project_dir / entrypoint).exists():
         console.print(f"[red]Entrypoint not found: {entrypoint}[/red]")
@@ -373,7 +463,9 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
         return False
     if not _install_deps_if_changed(target, agent, project_dir):
         return False
-    if not _write_unit_if_changed(target, agent, entrypoint):
+    if hostname and not _ensure_caddy(target, hostname, project["port"]):
+        return False
+    if not _write_unit_if_changed(target, agent, entrypoint, hostname):
         return False
     if not _restart(target, agent):
         return False
@@ -381,6 +473,9 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
     _mark_provisioned(target, agent)
 
     console.print(f"\n[green]✓ {agent} is running on {server}[/green]")
+    if hostname:
+        console.print(f"  [cyan]https://{hostname}[/cyan] "
+                      f"[dim]— the certificate lands within a minute of first boot[/dim]")
     console.print(f"[dim]  logs:  co server ssh {server} 'journalctl -u {agent} -f'[/dim]")
     console.print(f"[dim]  state: {SRV}/{agent}/.co/  — untouched by deploys[/dim]")
     if deployer_address:
