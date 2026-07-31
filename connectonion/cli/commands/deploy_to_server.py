@@ -172,8 +172,52 @@ def _read_provision(target: str, agent: str) -> dict:
         return {"schema": 0}
 
 
+# 8000 is what host() defaults to and what a lone agent keeps; a second agent on
+# the same machine gets the next free port, so the common case reads exactly as
+# it always did.
+DEFAULT_PORT = 8000
+PORT_LIMIT = 8100
+
+
+def _port_for(target: str, agent: str, wanted: int) -> int:
+    """The port this agent will bind on this machine.
+
+    A server can host more than one agent — `/srv/<agent>/` is per-agent and so
+    is the unit — and only the port stopped it. Two agents defaulting to 8000
+    means the second dies on "address already in use" while `Restart=always`
+    keeps it flapping, so `systemctl is-active` answers `active` and the deploy
+    reports success for an agent that has never served a request.
+
+    The choice is made on the server, because that is where the answer lives.
+    Recorded in `.co/port` so a redeploy keeps the same one: the Caddyfile
+    points at it, and a port that moved would leave the hostname proxying to
+    nothing.
+
+    A port the project asked for explicitly is honoured — if it collides, that
+    is the operator's own arrangement and not ours to reroute.
+    """
+    recorded = _ssh(target, f"cat {SRV}/{agent}/.co/port 2>/dev/null", timeout=60)
+    if recorded.returncode == 0 and recorded.stdout.strip().isdigit():
+        return int(recorded.stdout.strip())
+
+    if wanted != DEFAULT_PORT:
+        return wanted
+
+    # `ss -ltn` lists listening TCP sockets; the first port in range that none
+    # of them holds is ours. Asked once, then written down.
+    probe = _ssh(target, (
+        f"used=$(ss -ltnH 2>/dev/null | grep -oE ':[0-9]+' | tr -d ':' | sort -u)\n"
+        f"for p in $(seq {DEFAULT_PORT} {PORT_LIMIT}); do\n"
+        f"  echo \"$used\" | grep -qx \"$p\" || {{ echo $p; exit 0; }}\n"
+        f"done\n"
+        f"echo none"
+    ), timeout=60)
+    chosen = probe.stdout.strip()
+    return int(chosen) if chosen.isdigit() else wanted
+
+
 def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
-               user: str = "root") -> str:
+               user: str = "root", port: Optional[int] = None) -> str:
     """The systemd unit. Restart=always and enable are what the container was for.
 
     AGENT_PUBLIC_DOMAIN is what makes the agent reachable to anything but ssh.
@@ -199,6 +243,11 @@ def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
                   f"/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
     if hostname:
         environment += f"Environment=AGENT_PUBLIC_DOMAIN={hostname}\n"
+    if port:
+        # host() reads this when neither code nor host.yaml names a port, which
+        # is how a second agent on this machine avoids 8000 without its author
+        # knowing anything about what else runs here.
+        environment += f"Environment=AGENT_PORT={port}\n"
     return f"""[Unit]
 Description=ConnectOnion agent {agent}
 After=network-online.target
@@ -317,7 +366,8 @@ def _remote_user(target: str) -> str:
 
 def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
                            hostname: Optional[str] = None,
-                           user: Optional[str] = None) -> bool:
+                           user: Optional[str] = None,
+                           port: Optional[int] = None) -> bool:
     """Write the systemd unit only when its content differs.
 
     Rewriting it every deploy would mean a daemon-reload every deploy for no
@@ -329,7 +379,7 @@ def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
     # working for direct callers.
     if user is None:
         user = _remote_user(target)
-    wanted = _unit_text(agent, entrypoint, hostname, user=user)
+    wanted = _unit_text(agent, entrypoint, hostname, user=user, port=port)
     unit_path = f"/etc/systemd/system/{agent}.service"
 
     current = _ssh(target, f"cat {unit_path} 2>/dev/null", timeout=60)
@@ -750,12 +800,21 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
         return False
     if not _install_deps_if_changed(target, agent, project_dir):
         return False
-    if hostname and not _ensure_caddy(target, hostname, project["port"]):
+    # Decided on the server, where the answer lives, and recorded so a redeploy
+    # keeps it — the Caddyfile points at this number.
+    port = _port_for(target, agent, project["port"])
+    if port != project["port"]:
+        console.print(f"  [dim]port {port} — 8000 is taken on this machine[/dim]")
+    _ssh(target, f"mkdir -p {SRV}/{agent}/.co && echo {port} > {SRV}/{agent}/.co/port",
+         timeout=60)
+
+    if hostname and not _ensure_caddy(target, hostname, port):
         return False
     # Once per deploy: the unit and the ownership fix-up both need it, and it
     # costs an ssh round trip.
     user = _remote_user(target)
-    if not _write_unit_if_changed(target, agent, entrypoint, hostname, user=user):
+    if not _write_unit_if_changed(target, agent, entrypoint, hostname, user=user,
+                                  port=port):
         return False
     if not _restart(target, agent):
         return False
