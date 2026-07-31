@@ -14,6 +14,7 @@ Trust Levels (stored in ~/.co/):
   - blocked: In blocklist.txt (denied access)
 """
 
+import fnmatch
 from pathlib import Path
 from typing import List, Callable
 
@@ -33,22 +34,30 @@ def _admins_file(co_dir: Path = None) -> Path:
 
 
 def _check_list(list_name: str, agent_id: str) -> bool:
-    """Check if agent_id is in a list file. Supports wildcards."""
+    """Check if agent_id is in a list file. Supports `*` wildcards.
+
+    A line matches the whole identifier, not part of it. `trusted-*` used to be
+    implemented as `line.replace('*', '') in agent_id` — an unanchored substring
+    test that let `un-trusted-hacker` satisfy a whitelist entry meant to grant a
+    prefix. On the whitelist that fails open, which is the direction that costs
+    something: `is_whitelisted()` is built on this, so the grant is real.
+
+    Comparison folds case. Addresses are generated lowercase (address.py:64),
+    but an admin pastes what a UI showed them, and `block("0xABCDEF…")` that
+    silently blocks nobody is worse than one that errors — it reported success.
+    """
     list_path = CO_DIR / f"{list_name}.txt"
     if not list_path.exists():
         return False
     try:
         content = list_path.read_text(encoding='utf-8')
+        agent_id = agent_id.strip().lower()
         for line in content.strip().split('\n'):
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
-            if line == agent_id:
+            if fnmatch.fnmatchcase(agent_id, line.lower()):
                 return True
-            if '*' in line:
-                pattern = line.replace('*', '')
-                if pattern in agent_id:
-                    return True
         return False
     except Exception:
         return False
