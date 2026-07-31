@@ -21,12 +21,23 @@ Example: `0.0.2`
   - 0.0.9 → 0.1.0
   - 0.9.9 → 1.0.0
 
-### 3. **MAJOR Version (X.0.0)**
+### 3. **`X.Y.0` is the stable release**
+
+A minor is not just where the patch counter rolls over — it is the version people are
+meant to sit on. So features do **not** ship straight into one:
+
+- while a feature is being stabilised it ships in **patch** releases (1.5.3, 1.5.4, …)
+- `X.Y.0` is cut once that work has actually been exercised end to end
+
+Merged features on `main` therefore do not force the next release to be a minor bump.
+That is semver's rule, not this project's.
+
+### 4. **MAJOR Version (X.0.0)**
 - Increment when MINOR reaches 10
 - Reset MINOR and PATCH to 0
 - Reserved for major breaking changes or stable releases
 
-## Current Version: 1.5.2
+## Current Version: 1.5.3
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
@@ -43,6 +54,7 @@ Example: `0.0.2`
 
 - 1.5.0 (agent Home pages: the host pushes `dashboard.html` over the agent WebSocket and chat clients render it beside the conversation, with a built-in dashboard skill; `co syno` for Synology NAS; `co ai` YOLO mode; `co ai` and the templates drive the browser through `co browser` instead of 40 in-process tools; agents can declare how long they need a tab; deploy polls the full build window and validates project names locally; hermetic unit tests)
 - 1.5.1 (`co status` says where every API key comes from and flags keys defined in more than one place, with an opt-in `--reveal`; the project states Apache-2.0 everywhere, matching the LICENSE file)
+- 1.5.3 (servers you own: `co server new/add/ls/check/ssh/forget/destroy` and `co deploy --to`, with an SSH key derived from the same recovery phrase; a deploy no longer reissues the agent's address, keeps its logs, seeds the deploying key as admin, and serves it over https on its own hostname; the agent's full picture now travels over the authenticated socket instead of the open `/info`, which had been publishing the operator's personal skills to anyone; `co skills list` and `co doctor` say which tier a skill came from and which ones will not survive a deploy)
 - 1.5.2 (Claude calls carry the system prompt again — Anthropic requests had been dropping it entirely and silently; `.co/docs/` is no longer empty on a PyPI install, the 194 docs files now ship inside the wheel)
 
 ## Files to Update When Versioning
