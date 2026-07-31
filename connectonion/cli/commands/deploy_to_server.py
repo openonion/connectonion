@@ -9,6 +9,7 @@ LLM-Note:
   Errors: an unreachable or unprepared server fails before anything is changed | a failed unit start surfaces journalctl output rather than a bare exit code
 """
 
+import base64
 import hashlib
 import json
 import shlex
@@ -18,6 +19,7 @@ from pathlib import Path
 from typing import Optional
 
 import yaml
+from dotenv import dotenv_values
 from rich.console import Console
 
 from .server_commands import SSH_TIMEOUT_SECONDS, load_server
@@ -27,7 +29,12 @@ console = Console()
 # Bumped when a setup step is added or changes shape. A server reporting an
 # older schema runs the missing steps; one reporting this schema goes straight
 # to rsync and restart.
-PROVISION_SCHEMA = 2
+PROVISION_SCHEMA = 3
+
+# Secrets live outside the rsync root on purpose. Inside `/srv/<agent>/` the
+# next deploy's `--delete` would overwrite them with the laptop's copy, so a key
+# rotated in production could not stay rotated.
+ENV_FILE_TEMPLATE = "/etc/connectonion/{agent}.env"
 
 # How long a unit has to stay up before we call the deploy good, and how long we
 # are willing to wait for it. A single sleep-then-look is not enough: `systemctl
@@ -189,6 +196,7 @@ Wants=network-online.target
 Type=simple
 User={user}
 WorkingDirectory={SRV}/{agent}
+EnvironmentFile=-{ENV_FILE_TEMPLATE.format(agent=agent)}
 {environment}ExecStart={SRV}/{agent}/.venv/bin/python {entrypoint}
 Restart=always
 RestartSec=3
@@ -383,6 +391,11 @@ def _caddy_running(target: str) -> bool:
 # carry config is invisible: the deploy succeeds and a different agent runs.
 RSYNC_FILTERS = [
     "--filter", "P .co/**",
+    # `.env` is a secret, not source. It reaches the server through
+    # _sync_env(), as a root-owned 0600 file systemd reads — not as a
+    # world-readable file that happens to land in the working directory.
+    "--exclude", ".env",
+    "--exclude", ".env.*",
     # Generated on the server, or written there over ssh by the deploy itself.
     # The protect rule above keeps them from being deleted; these keep a local
     # copy from overwriting them, which is the other half of the same rule.
@@ -401,6 +414,69 @@ RSYNC_FILTERS = [
     "--exclude", ".git/",
     "--exclude", "__pycache__/",
 ]
+
+
+def _env_for_server(env_vars: dict, agent: str) -> dict:
+    """The project's `.env`, corrected for the machine it is going to.
+
+    `AGENT_CONFIG_PATH` is written by `co init` as an absolute path to the
+    author's own `~/.co`. Shipped verbatim it names a directory that does not
+    exist on the server, and `useful_tools/gmail.py`, `outlook.py`, `gdrive.py`
+    and `google_calendar.py` all build their `keys.env` path from it — so those
+    tools fail there rather than falling back. The Cloud path already rewrites
+    it to `/app/.co`; this is the same correction for `/srv/<agent>/.co`.
+    """
+    out = dict(env_vars)
+    if out.get("AGENT_CONFIG_PATH"):
+        out["AGENT_CONFIG_PATH"] = f"{SRV}/{agent}/.co"
+    return out
+
+
+def _sync_env(target: str, agent: str, project_dir: Path) -> bool:
+    """Write the project's secrets where systemd can read them and nobody else.
+
+    Sent over ssh rather than rsync, to a path outside the rsync root: the file
+    is owned by root at 0600, so `co call`'s remote exec — which runs as the
+    service user — cannot read it back out, and `--delete` cannot overwrite a
+    key that was rotated on the server.
+    """
+    env_path = project_dir / ".env"
+    if not env_path.exists():
+        return True
+
+    env_vars = _env_for_server(dotenv_values(env_path), agent)
+
+    # A newline inside a value would end the KEY=VALUE line and turn the rest
+    # into junk entries. Say so rather than write a file that looks fine.
+    multiline = [k for k, v in env_vars.items() if v is not None and "\n" in v]
+    for key in multiline:
+        console.print(f"[yellow]  skipping {key}: multi-line values are not "
+                      f"supported in an EnvironmentFile[/yellow]")
+    env_vars = {k: v for k, v in env_vars.items()
+                if v is not None and k not in multiline}
+    if not env_vars:
+        return True
+
+    body = "".join(f"{k}={v}\n" for k, v in env_vars.items())
+    dest = ENV_FILE_TEMPLATE.format(agent=agent)
+
+    # base64 over the wire so no value is ever shell syntax. A heredoc would be
+    # terminated early by a value that happened to equal the delimiter, and the
+    # remainder of the file would then run as commands — under sudo.
+    payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
+
+    console.print(f"[dim]  writing secrets … ({len(env_vars)} keys)[/dim]")
+    result = _ssh(target, f"""
+sudo mkdir -p {shlex.quote(str(Path(dest).parent))}
+printf %s {shlex.quote(payload)} | base64 -d | sudo tee {shlex.quote(dest)} >/dev/null
+sudo chmod 600 {shlex.quote(dest)}
+""", timeout=120)
+    if result.returncode != 0:
+        console.print("[red]Could not write the env file.[/red]")
+        for line in (result.stderr or result.stdout).strip().splitlines()[-5:]:
+            console.print(f"  [dim]{line}[/dim]")
+        return False
+    return True
 
 
 def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
@@ -609,6 +685,8 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
                          ssh_public_line, deployer_address):
         return False
     if not _sync_code(target, agent, project_dir):
+        return False
+    if not _sync_env(target, agent, project_dir):
         return False
     if not _install_deps_if_changed(target, agent, project_dir):
         return False
