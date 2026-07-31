@@ -23,6 +23,19 @@ Every step here is one that shipped broken and passed the unit tests anyway:
 
 The unit tests could not have caught any of them. They all live between our code
 and ssh, and the only way to see them is to talk to a real box.
+
+If a run fails with `Permission denied (publickey)`, check where you are before
+suspecting the code. Compare the host key the address presents to you against
+the machine's own, reaching it out of band:
+
+    ssh-keyscan -t ed25519 <ip> | ssh-keygen -lf -
+    gcloud compute ssh <instance> --zone=<zone> --tunnel-through-iap \
+      --command="sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub"
+
+Different fingerprints mean you are not talking to that machine, and nothing on
+it is wrong. That cost an afternoon once: an address that failed from one
+laptop, worked from a GCE box, and had our key correctly installed the whole
+time.
 """
 
 import os
