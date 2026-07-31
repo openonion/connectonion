@@ -87,6 +87,25 @@ def _load_deploy_ignore_patterns(project_dir: Path) -> list[str]:
     return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
 
 
+def _load_skill_ignore_patterns(skill_dir: Path) -> list[str]:
+    """What to leave out of a skill, which is not a project.
+
+    A skill's `build/` is a compiled helper it shells out to; its `todo.md` may
+    be a document it reads. The project defaults call both of those noise, so a
+    skill bundled with them lost files silently — the deploy succeeded and the
+    skill failed later, on the server, reaching for something that was never
+    sent.
+
+    Only a `.gitignore` the skill's own author wrote applies here, plus the
+    caches nobody means to ship.
+    """
+    lines = ["__pycache__/", "*.py[cod]", ".DS_Store", ".git/"]
+    gitignore = skill_dir / ".gitignore"
+    if gitignore.exists():
+        lines.extend(gitignore.read_text(encoding="utf-8").splitlines())
+    return [line.strip() for line in lines if line.strip() and not line.lstrip().startswith("#")]
+
+
 def _path_matches_ignore_pattern(rel: Path, pattern: str) -> bool:
     rel_text = rel.as_posix()
     pattern = pattern.lstrip("/")
@@ -271,7 +290,7 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                 tar,
                 skills_path,
                 arc_prefix,
-                _load_deploy_ignore_patterns(skills_path),
+                _load_skill_ignore_patterns(skills_path),
             )
         _add_deployer_as_admin(tar)
     return tarball
