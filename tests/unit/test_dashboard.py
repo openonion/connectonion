@@ -15,6 +15,24 @@ from connectonion.network.host.ws_router.dashboard import (
 )
 
 
+@pytest.fixture(autouse=True)
+def no_personal_starter(tmp_path, monkeypatch):
+    """Keep the operator's own ~/.co/starter.html out of this suite.
+
+    It is a real feature, and one this file tests — so a developer who actually
+    uses it would otherwise have every render here come from their page. A
+    starter without a $body placeholder fails nine of these tests, and one with a
+    script tag fails two, for no reason connected to the change being made.
+
+    Tests that want an override set STARTER_OVERRIDE themselves; monkeypatch
+    applies in order, so theirs wins.
+    """
+    monkeypatch.setattr(dashboard_module, "STARTER_OVERRIDE", tmp_path / "absent-starter.html")
+    dashboard_module._starter_templates.cache_clear()
+    yield
+    dashboard_module._starter_templates.cache_clear()
+
+
 @pytest.fixture
 def in_tmp(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
@@ -462,11 +480,9 @@ def test_a_personal_starter_template_replaces_the_bundled_one(in_tmp, monkeypatc
     override.write_text("<h1>$name</h1><p>$subtitle</p>\n$body\n", encoding="utf-8")
     monkeypatch.setattr(dashboard_module, "STARTER_OVERRIDE", override)
     dashboard_module._starter_templates.cache_clear()
-
     html = render_starter({"name": "Mine", "model": "co/x", "skills": [
         {"name": "daily-brief", "description": "d", "location": "project"},
     ]})
-    dashboard_module._starter_templates.cache_clear()
 
     assert "<h1>Mine</h1>" in html
     assert "co/x" in html
