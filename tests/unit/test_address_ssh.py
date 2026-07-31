@@ -17,33 +17,39 @@ from connectonion import address
 # expected outputs be hardcoded.
 PHRASE = "legal winner thank year wave sausage worth useful legal winner thank yellow"
 
-EXPECTED_ADDRESS = "0xc6f2ac5598970c79633714d3eb5c34d7bfc3e92da58c7354b37996d9a4af3ab2"
+# The address this phrase produced before #404 retired seed[:32]. Kept as the
+# thing we must NOT derive any more, not as a target.
+PRE_SLIP10_ADDRESS = "0xc6f2ac5598970c79633714d3eb5c34d7bfc3e92da58c7354b37996d9a4af3ab2"
 EXPECTED_SSH_LINE = (
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBs9N4V0K4pXPZNr5XPKmSJusfyalyjdi4xN36gqLt8U"
     " connectonion"
 )
 
 
-class TestAgentAddressIsUnchanged:
-    """The agent identity must not move. This is the whole risk of the change."""
+class TestAgentAddressMovedOnPurpose:
+    """These two tests used to assert the opposite, and were right to.
 
-    def test_known_phrase_produces_the_same_address(self):
-        assert address.recover(PHRASE)["address"] == EXPECTED_ADDRESS
+    #310 pinned the agent address precisely so that a later "tidy-up" could not
+    reissue every identity by accident. #404 is that change made on purpose: the
+    bare seed[:32] slice is retired for SLIP-0010, every address moves once, and
+    it happened while the user base made that affordable.
 
-    def test_agent_key_still_uses_the_bare_first_half_of_the_seed(self):
-        """Explicitly pin the derivation, not just its output.
+    So the guard is kept and inverted. It still fails loudly if the derivation
+    moves again — just in the other direction.
+    """
 
-        The SSH key uses HKDF; the agent key deliberately does not. If someone
-        "tidies up" by routing both through HKDF, this fails immediately instead
-        of silently reissuing every address.
-        """
+    def test_the_phrase_no_longer_derives_the_old_address(self):
+        assert address.recover(PHRASE)["address"] != PRE_SLIP10_ADDRESS
+
+    def test_the_agent_key_no_longer_uses_the_bare_first_half_of_the_seed(self):
         from mnemonic import Mnemonic
         from nacl.signing import SigningKey
 
         seed = Mnemonic("english").to_seed(PHRASE)
-        expected = "0x" + bytes(SigningKey(seed[:32]).verify_key).hex()
+        old_style = "0x" + bytes(SigningKey(seed[:32]).verify_key).hex()
 
-        assert address.recover(PHRASE)["address"] == expected
+        assert old_style == PRE_SLIP10_ADDRESS  # the old scheme, for the record
+        assert address.recover(PHRASE)["address"] != old_style
 
 
 class TestDeriveSSHKey:

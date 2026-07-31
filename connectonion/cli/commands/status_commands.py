@@ -325,6 +325,25 @@ def handle_status(reveal: bool = False):
         console.print("[yellow]Run 'co auth' first.[/yellow]\n")
         return
 
+    # This key predates the SLIP-0010 switch, so the phrase saved beside it now
+    # derives a different address. The key itself is fine and stays in use — the
+    # warning is that recovering from those words lands somewhere else, which is
+    # only discoverable at the moment someone tries it, on a new machine, with no
+    # way back.
+    if addr_data.get("legacy_derivation"):
+        console.print(
+            "\n[yellow]⚠ This identity was created before ConnectOnion adopted "
+            "SLIP-0010 key derivation.[/yellow]"
+        )
+        console.print(
+            "[dim]  It keeps working. But your recovery phrase now derives a "
+            "different address,\n"
+            "  so 'co auth recover' with those words gives you a new, empty "
+            "agent — not this one.\n"
+            "  Keep .co/keys/agent.key backed up; the phrase alone no longer "
+            "restores it.[/dim]"
+        )
+
     public_key = addr_data["address"]
     timestamp = int(time.time())
     message = f"ConnectOnion-Auth-{public_key}-{timestamp}"

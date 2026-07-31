@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
+from .derive import ACCOUNT_URI, derive_path, slip13_path
+
 try:
     from nacl.signing import SigningKey, VerifyKey
     from mnemonic import Mnemonic
@@ -23,6 +25,44 @@ except ImportError:
     VerifyKey = None
     Mnemonic = None
     
+
+# ---------------------------------------------------------------------------
+# Where the identity key comes from
+#
+# BIP-39 gives the phrase and the seed; SLIP-0010 turns that seed into a tree
+# (connectonion/derive.py), and this is the account leaf of it:
+#
+#     twelve words ──BIP-39──▶ seed ──SLIP-0010/SLIP-0013──▶ m/13'/…
+#
+# It used to be `SigningKey(seed[:32])` — a bare slice matching no BIP, no SLIP
+# and no path, so the twelve words meant something only inside this software.
+# Retiring it re-keys every address at once, which is why it happened while the
+# user base made that affordable rather than later, when it would not (#404).
+#
+# Existing installs are unaffected until they recover: load() reads
+# .co/keys/agent.key, and that file still holds whatever key wrote it. The break
+# is that a phrase now derives a *different* key than the one on disk beside it —
+# which load() detects and says out loud rather than leaving you with two
+# identities and no hint of it.
+# ---------------------------------------------------------------------------
+
+
+def _account_key(seed: bytes) -> "SigningKey":
+    """The Ed25519 key at the account's SLIP-0013 path."""
+    return SigningKey(derive_path(seed, slip13_path(ACCOUNT_URI)))
+
+
+def derives_from(seed_phrase: str, signing_key) -> bool:
+    """Does this phrase produce this key under the current derivation?
+
+    False for a key minted before the SLIP-0010 switch — that is the whole
+    reason this exists.
+    """
+    mnemo = Mnemonic("english")
+    if not mnemo.check(seed_phrase):
+        return False
+    return bytes(_account_key(mnemo.to_seed(seed_phrase))) == bytes(signing_key)
+
 
 def generate() -> Dict[str, Any]:
     """
@@ -55,9 +95,9 @@ def generate() -> Dict[str, Any]:
     
     # Derive seed from phrase
     seed = mnemo.to_seed(seed_phrase)
-    
-    # Create Ed25519 signing key from first 32 bytes
-    signing_key = SigningKey(seed[:32])
+
+    # SLIP-0010 down the SLIP-0013 account path. See _account_key().
+    signing_key = _account_key(seed)
     
     # Create address (hex-encoded public key with 0x prefix)
     public_key_bytes = bytes(signing_key.verify_key)
@@ -111,9 +151,9 @@ def recover(seed_phrase: str) -> Dict[str, Any]:
     
     # Derive seed from phrase
     seed = mnemo.to_seed(seed_phrase)
-    
-    # Recreate signing key
-    signing_key = SigningKey(seed[:32])
+
+    # Must match generate() exactly, or a phrase recovers a different agent.
+    signing_key = _account_key(seed)
     
     # Recreate address
     public_key_bytes = bytes(signing_key.verify_key)
@@ -219,6 +259,16 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
         seed_phrase = None
         if recovery_file.exists():
             seed_phrase = recovery_file.read_text(encoding='utf-8').strip()
+
+        # A key minted before the SLIP-0010 switch still works — it is right here
+        # on disk and this is the identity the agent has been using. What has
+        # changed is that the phrase beside it now derives a *different* key, so
+        # `co auth recover` with those same words lands on another address.
+        #
+        # Saying nothing would leave two identities for one phrase and no hint of
+        # it, which is how someone recovers onto a fresh agent and wonders where
+        # their credits went. Say it once, here, where both halves are in hand.
+        legacy_derivation = bool(seed_phrase) and not derives_from(seed_phrase, signing_key)
         
         # Load email and activation status from environment
         email = os.getenv("AGENT_EMAIL", f"{address[:10]}@mail.openonion.ai")
@@ -229,6 +279,7 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
             "short_address": short_address,
             "email": email,
             "email_active": email_active,
+            "legacy_derivation": legacy_derivation,
             "signing_key": signing_key
         }
         
