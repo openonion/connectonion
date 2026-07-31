@@ -50,8 +50,18 @@ def _sidecar_dir() -> Path:
         base = Path(os.environ.get("LOCALAPPDATA") or tempfile.gettempdir()) / "co"
         base.mkdir(parents=True, exist_ok=True)
     else:
-        runtime = os.environ.get("XDG_RUNTIME_DIR") or tempfile.gettempdir()
-        base = Path(runtime) / "co"
+        runtime = os.environ.get("XDG_RUNTIME_DIR")
+        if runtime:
+            # Already per-user; the kernel gives each session its own.
+            base = Path(runtime) / "co"
+        else:
+            # The shared temp dir is not. Combined with the 0700 below, whoever
+            # created it first owns it and every other user on the box gets
+            # `PermissionError: [Errno 1] Operation not permitted: '/tmp/co'` —
+            # which is what a deployed agent hit after it stopped running as
+            # root and found root's directory in its way. Scoped by username,
+            # for the same reason the Windows pipe name is.
+            base = Path(tempfile.gettempdir()) / f"co-{_current_user()}"
         base.mkdir(parents=True, exist_ok=True)
         # This dir is the POSIX trust boundary (any local user who can reach the
         # socket can drive the browser) — a failed chmod must be loud, not skipped.

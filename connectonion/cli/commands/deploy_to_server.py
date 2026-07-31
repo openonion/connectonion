@@ -28,10 +28,14 @@ console = Console()
 # to rsync and restart.
 PROVISION_SCHEMA = 2
 
-# Long enough for an agent that dies on import to have done so. An agent that is
-# merely slow to become useful is still "active" and still has zero automatic
-# restarts, so this does not punish a slow start.
-STARTUP_GRACE_SECONDS = 8
+# How long a unit has to stay up before we call the deploy good, and how long we
+# are willing to wait for it. A single sleep-then-look is not enough: `systemctl
+# restart` resets NRestarts, and an agent that fails on import can take ten
+# seconds to get there — long enough to look healthy to a probe that only waits
+# eight. So we watch, fail the moment it restarts itself, and otherwise wait for
+# it to have been continuously up.
+STARTUP_STABLE_SECONDS = 15
+STARTUP_TIMEOUT_SECONDS = 45
 
 SRV = "/srv"
 
@@ -125,7 +129,8 @@ def _read_provision(target: str, agent: str) -> dict:
         return {"schema": 0}
 
 
-def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None) -> str:
+def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None,
+               user: str = "root") -> str:
     """The systemd unit. Restart=always and enable are what the container was for.
 
     AGENT_PUBLIC_DOMAIN is what makes the agent reachable to anything but ssh.
@@ -133,8 +138,24 @@ def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None) -> s
     closed on a provisioned server — so every client probes an endpoint that can
     never answer. With it the agent announces `https://<hostname>`, which is what
     Caddy is listening on.
+
+    It runs as the same user that owns the files, not as root. `co call` executes
+    whatever the admin sends, so running as root hands out more than ssh to this
+    box would: the operator logs in as an ordinary user, and their agent had a
+    superset of their own privileges. It also gives the process a real HOME —
+    as root it was /root, which is why the browser looked for its cache there and
+    could never have found one.
+
+    PATH puts the project's venv first, which is what activating it would do.
+    Without it the agent inherits systemd's default PATH and `co` — installed in
+    that venv — is not on it, so `co call <address> co status`, the example in
+    `co call`'s own help, answers "co: command not found". It reaches every
+    command the agent shells out to, not just remote exec.
     """
-    environment = f"Environment=AGENT_PUBLIC_DOMAIN={hostname}\n" if hostname else ""
+    environment = f"Environment=PATH={SRV}/{agent}/.venv/bin:/usr/local/sbin:" \
+                  f"/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
+    if hostname:
+        environment += f"Environment=AGENT_PUBLIC_DOMAIN={hostname}\n"
     return f"""[Unit]
 Description=ConnectOnion agent {agent}
 After=network-online.target
@@ -142,6 +163,7 @@ Wants=network-online.target
 
 [Service]
 Type=simple
+User={user}
 WorkingDirectory={SRV}/{agent}
 {environment}ExecStart={SRV}/{agent}/.venv/bin/python {entrypoint}
 Restart=always
@@ -223,7 +245,10 @@ def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
     Rewriting it every deploy would mean a daemon-reload every deploy for no
     reason, and would hide whether a restart came from new code or a new unit.
     """
-    wanted = _unit_text(agent, entrypoint, hostname)
+    # The ssh target's user owns everything under /srv/<agent> — it is the user
+    # rsync wrote as — so it is the one the service should run as.
+    user = target.split("@")[0]
+    wanted = _unit_text(agent, entrypoint, hostname, user=user)
     unit_path = f"/etc/systemd/system/{agent}.service"
 
     current = _ssh(target, f"cat {unit_path} 2>/dev/null", timeout=60)
@@ -357,6 +382,14 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
         text=True,
         timeout=600,
     )
+    if result.returncode == 0:
+        # Every deploy, not only when the unit changes: the files have to belong
+        # to the user the service runs as. An agent that ran as root before left
+        # root-owned logs and state behind, and the first thing the unprivileged
+        # process does is fail to write its own log —
+        # PermissionError: [Errno 13] Permission denied: '.co/logs/oo.log'
+        _ssh(target, f"sudo chown -R {target.split('@')[0]}: {SRV}/{agent}", timeout=120)
+
     if result.returncode != 0:
         console.print("[red]rsync failed.[/red]")
         for line in (result.stderr or result.stdout).strip().splitlines()[-8:]:
@@ -386,8 +419,14 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool
     console.print("[dim]  installing dependencies …[/dim]")
     result = _ssh(
         target,
+        # From the project directory, because a requirements.txt is allowed to
+        # name things relative to itself — a local wheel, `-e .`, a nested
+        # `-r requirements-dev.txt`. Run from the login shell's home instead and
+        # pip resolves those against /home/<user> and reports a file that is
+        # plainly there as missing.
         f"set -e\n"
-        f"{SRV}/{agent}/.venv/bin/pip install -q -r {SRV}/{agent}/requirements.txt\n"
+        f"cd {SRV}/{agent}\n"
+        f"{SRV}/{agent}/.venv/bin/pip install -q -r requirements.txt\n"
         f"printf '%s' {shlex.quote(digest)} > {stamp}",
         timeout=900,
     )
@@ -414,22 +453,38 @@ def _restart(target: str, agent: str) -> bool:
             console.print(f"  [dim]{line}[/dim]")
         return False
 
-    # Asking immediately is not a test. Restart=always means a unit that dies on
-    # import is "active" for the moment right after the restart and again after
-    # every crash, so an agent looping on a traceback reported a clean deploy.
-    # NRestarts is reset by an explicit restart and counts only the automatic
-    # ones, so anything above zero here means it has already died at least once.
-    status = _ssh(target, f"sleep {STARTUP_GRACE_SECONDS}; "
-                          f"echo active=$(systemctl is-active {agent}); "
-                          f"echo restarts=$(systemctl show -p NRestarts --value {agent})",
-                  timeout=120)
-    facts = dict(line.split("=", 1) for line in status.stdout.split() if "=" in line)
-    crashed = facts.get("restarts", "0") not in ("0", "")
+    # Asking once is not a test. Restart=always means a unit that dies on import
+    # is "active" in the moment right after the restart and again after every
+    # crash, so an agent looping on a traceback reported a clean deploy. The
+    # restart also resets NRestarts, so a single delayed look is a race against
+    # however long the agent takes to fail — ten seconds, for one that dies on
+    # an import.
+    #
+    # Watch instead: fail the moment it restarts itself, and call it good only
+    # once it has been continuously up. Both answers arrive as early as they
+    # honestly can.
+    watch = (
+        f"for i in $(seq 1 {STARTUP_TIMEOUT_SECONDS}); do\n"
+        f"  state=$(systemctl is-active {agent})\n"
+        f"  restarts=$(systemctl show -p NRestarts --value {agent})\n"
+        f'  if [ "$restarts" != "0" ] || [ "$state" = failed ]; then\n'
+        f'    echo "verdict=crashed restarts=$restarts state=$state"; exit 0\n'
+        f"  fi\n"
+        f'  if [ "$state" = active ] && [ "$i" -ge {STARTUP_STABLE_SECONDS} ]; then\n'
+        f'    echo "verdict=up"; exit 0\n'
+        f"  fi\n"
+        f"  sleep 1\n"
+        f"done\n"
+        f'echo "verdict=never-started state=$(systemctl is-active {agent})"'
+    )
+    status = _ssh(target, watch, timeout=STARTUP_TIMEOUT_SECONDS + 60)
+    facts = dict(f.split("=", 1) for f in status.stdout.split() if "=" in f)
 
-    if facts.get("active") != "active" or crashed:
-        why = (f"crashed and is being restarted ({facts.get('restarts')} times "
-               f"in {STARTUP_GRACE_SECONDS}s)" if crashed
-               else f"is not running ({facts.get('active') or 'unknown'})")
+    if facts.get("verdict") != "up":
+        why = {"crashed": f"crashed and is being restarted "
+                          f"({facts.get('restarts')} time(s) so far)",
+               "never-started": f"never came up ({facts.get('state') or 'unknown'})"
+               }.get(facts.get("verdict"), "did not start")
         console.print(f"[red]{agent} {why}.[/red]")
         logs = _ssh(target, f"sudo journalctl -u {agent} -n 20 --no-pager", timeout=60)
         for line in logs.stdout.strip().splitlines()[-20:]:

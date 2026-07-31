@@ -246,3 +246,39 @@ def test_wire_stalled_handshake_cannot_wedge_the_acceptor():
     server2.join(timeout=5)
     listener.close()
     assert hold2["conn"] is not None
+
+
+class TestTheRuntimeDirIsPerUser:
+    """The docstring says per-user runtime dir. On POSIX without
+    XDG_RUNTIME_DIR it was `/tmp/co` — machine-global, and chmod 0700 — so
+    whoever created it first owned it and everyone else got
+
+        PermissionError: [Errno 1] Operation not permitted: '/tmp/co'
+
+    which is exactly what a deployed agent hit after it stopped running as root
+    and found root's directory in its way.
+    """
+
+    def test_the_shared_temp_dir_is_scoped_by_user(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        monkeypatch.setattr(tp.tempfile, "gettempdir", lambda: str(tmp_path))
+        monkeypatch.setattr(tp, "_current_user", lambda: "alice")
+
+        assert tp._sidecar_dir().name == "co-alice"
+
+    def test_two_users_do_not_collide(self, tmp_path, monkeypatch):
+        monkeypatch.delenv("XDG_RUNTIME_DIR", raising=False)
+        monkeypatch.setattr(tp.tempfile, "gettempdir", lambda: str(tmp_path))
+
+        monkeypatch.setattr(tp, "_current_user", lambda: "alice")
+        alice = tp._sidecar_dir()
+        monkeypatch.setattr(tp, "_current_user", lambda: "bob")
+        bob = tp._sidecar_dir()
+
+        assert alice != bob
+
+    def test_a_session_runtime_dir_is_left_alone(self, tmp_path, monkeypatch):
+        """XDG_RUNTIME_DIR is already per-user; scoping it again would be noise."""
+        monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+
+        assert tp._sidecar_dir().name == "co"

@@ -10,6 +10,7 @@ LLM-Note:
 """
 
 import os
+import platform
 import sys
 import time
 import socket
@@ -173,6 +174,23 @@ def _held_by_other(meta, caller: str) -> bool:
     return time.time() - (meta.get("claim_at") or 0) < GUARD_WINDOW
 
 
+def launch_failure_advice(first_line: str) -> str:
+    """What to tell someone whose browser would not start.
+
+    Two different failures wear the same exception and the advice for one is
+    nonsense for the other. A deployed agent on a Linux server was told to run
+    `co browser` from a desktop Terminal, when what it needed was the browser
+    installed — the executable was simply not on disk.
+    """
+    if "xecutable doesn't exist" in first_line:
+        return ("No browser is installed for this user.\n"
+                "Install it with:  patchright install chromium")
+    if platform.system() == "Darwin":
+        return ("Run `co browser` from a desktop Terminal (a logged-in window "
+                "session), not over ssh/cron/detached.")
+    return "Full log at ~/.co/browser.log."
+
+
 class BrowserDaemon:
     """Single-threaded server owning one BrowserAutomation, dispatching verbs to it."""
 
@@ -311,9 +329,7 @@ class BrowserDaemon:
                 first = str(exc).strip().splitlines()[0] if str(exc).strip() else ""
                 return False, (
                     f"{type(exc).__name__}: {first}\n"
-                    f"Chrome failed to start — full log at ~/.co/browser.log.\n"
-                    f"On macOS, run `co browser` from a desktop Terminal (a logged-in "
-                    f"window session), not over ssh/cron/detached."
+                    f"Chrome failed to start. {launch_failure_advice(first)}"
                 )
             # On wrong arguments, show the expected signature so an agent can self-correct.
             hint = f"\nusage: {verb}{signature_str(method)}" if isinstance(exc, TypeError) else ""

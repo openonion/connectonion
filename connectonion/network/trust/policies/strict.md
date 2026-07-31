@@ -3,6 +3,7 @@
 
 # Only whitelisted users have access
 allow:
+  - admin        # the operator of this agent — their key is in .co/admins.txt
   - whitelisted
 
 # Blocked users denied

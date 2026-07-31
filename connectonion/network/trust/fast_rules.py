@@ -21,7 +21,7 @@ Config format:
 
 import yaml
 from typing import Optional
-from .tools import is_whitelisted, is_blocked, is_contact, promote_to_contact
+from .tools import is_whitelisted, is_blocked, is_contact, is_admin, promote_to_contact
 
 
 def parse_policy(policy_text: str) -> tuple[dict, str]:
@@ -79,6 +79,13 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
     # 2. Check allow list (whitelisted, contacts)
     allow_list = config.get('allow', [])
     for condition in allow_list:
+        # An admin is the agent's operator — the person who deployed it and whose
+        # key `co deploy` wrote into .co/admins.txt. They were the one identity
+        # never consulted here, so a freshly deployed agent answered its own
+        # owner with "requires onboarding", for a machine they had just paid for
+        # and installed their key on.
+        if condition == 'admin' and is_admin(client_id):
+            return 'allow'
         if condition == 'whitelisted' and is_whitelisted(client_id):
             return 'allow'
         if condition == 'contact' and is_contact(client_id):
