@@ -165,7 +165,7 @@ class TestGroqLLMComplete:
         assert result.usage.input_tokens == 100
         assert result.usage.output_tokens == 50
 
-    def test_complete_api_error_raises_value_error(self):
+    def test_complete_api_error_raises_the_shared_provider_type(self):
         """complete() converts openai.APIError into ValueError with context."""
         llm = self._make_llm()
 
@@ -182,10 +182,20 @@ class TestGroqLLMComplete:
 
         llm.client.chat.completions.create = Mock(side_effect=api_error)
 
-        with pytest.raises(ValueError) as exc_info:
+        # Was: pytest.raises(ValueError), asserting on "Groq API Error".
+        #
+        # That is the behaviour #372 removed. A ValueError says nothing about
+        # what failed — a caller could not tell a rate limit from a bad argument
+        # — and it was Groq's alone, so no handler worked across providers. A
+        # 429 is now LLMRateLimitError here exactly as it is on gpt-* and
+        # claude-*, with the original chained as __cause__.
+        from connectonion.core.exceptions import LLMProviderError, LLMRateLimitError
+
+        with pytest.raises(LLMRateLimitError) as exc_info:
             llm.complete([{"role": "user", "content": "test"}])
 
-        assert "Groq API Error" in str(exc_info.value)
+        assert isinstance(exc_info.value, LLMProviderError)
+        assert exc_info.value.__cause__ is api_error
 
     def test_complete_parses_dict_tool_arguments(self):
         """complete() handles tool arguments that are already dicts (not JSON strings)."""

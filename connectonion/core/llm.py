@@ -189,7 +189,14 @@ class ToolCall:
 
 # Import TokenUsage from usage module
 from .usage import TokenUsage, calculate_cost
-from .exceptions import InsufficientCreditsError, LLMConnectionError, ProviderServiceError
+from .exceptions import (
+    InsufficientCreditsError,
+    LLMAuthenticationError,
+    LLMConnectionError,
+    LLMProviderError,
+    LLMRateLimitError,
+    ProviderServiceError,
+)
 
 
 @dataclass
@@ -203,6 +210,48 @@ class LLMResponse:
 
 class LLM(ABC):
     """Abstract base class for LLM providers."""
+
+    def _call_provider(self, send, base_url: str = ""):
+        """Run one provider request and translate its failure to a shared type.
+
+        The same auth failure used to surface three different ways depending on
+        the model prefix — openai.AuthenticationError on gpt-*,
+        anthropic.AuthenticationError on claude-*, and a bare
+        ValueError("Groq API Error: ...") on groq/* — so the only portable
+        handler was `except Exception`, which also swallows bugs.
+
+        Every provider goes through here, so `except LLMAuthenticationError`
+        means the same thing whichever model was used.
+
+        Translating never costs the original: it is chained as __cause__, so the
+        traceback still says what the SDK actually reported.
+        """
+        model = getattr(self, "model", "unknown")
+        try:
+            return send()
+        except LLMProviderError:
+            # Already translated, and by something that knew more than we do
+            # here — OpenOnionLLM maps 402 to InsufficientCreditsError. Wrapping
+            # it again would bury the specific type under a vaguer one.
+            raise
+        except (openai.AuthenticationError, openai.PermissionDeniedError,
+                anthropic.AuthenticationError, anthropic.PermissionDeniedError) as e:
+            raise LLMAuthenticationError(e, model=model) from e
+        except (openai.RateLimitError, anthropic.RateLimitError) as e:
+            raise LLMRateLimitError(e, model=model) from e
+        except (openai.APITimeoutError, openai.APIConnectionError,
+                anthropic.APITimeoutError, anthropic.APIConnectionError) as e:
+            raise LLMConnectionError(e, model=model, base_url=base_url) from e
+        except (openai.APIStatusError, anthropic.APIStatusError) as e:
+            # A status the SDK did not give its own class to is still a provider
+            # failure. Map the two that matter and let the rest surface as-is
+            # rather than inventing a category for them.
+            status = getattr(e, "status_code", None)
+            if status == 429:
+                raise LLMRateLimitError(e, model=model) from e
+            if status in (401, 403):
+                raise LLMAuthenticationError(e, model=model) from e
+            raise
 
     @abstractmethod
     def complete(self, messages: List[Dict[str, str]], tools: Optional[List[Dict[str, Any]]] = None) -> LLMResponse:
@@ -249,7 +298,8 @@ class OpenAILLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        response = self.client.chat.completions.create(**api_kwargs)
+        response = self._call_provider(
+            lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
         # Parse tool calls if present
@@ -341,7 +391,8 @@ class AnthropicLLM(LLM):
         if tools:
             api_kwargs["tools"] = self._convert_tools(tools)
 
-        response = self.client.messages.create(**api_kwargs)
+        response = self._call_provider(
+            lambda: self.client.messages.create(**api_kwargs))
         
         # Parse tool calls if present
         tool_calls = []
@@ -407,7 +458,8 @@ class AnthropicLLM(LLM):
             api_kwargs["system"] = system
 
         # Force the model to use this tool
-        response = self.client.messages.create(**api_kwargs)
+        response = self._call_provider(
+            lambda: self.client.messages.create(**api_kwargs))
 
         # Extract structured data from tool call
         for block in response.content:
@@ -572,7 +624,8 @@ class GeminiLLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        response = self.client.chat.completions.create(**api_kwargs)
+        response = self._call_provider(
+            lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
         # Parse tool calls if present
@@ -613,12 +666,12 @@ class GeminiLLM(LLM):
 
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
         """Get structured Pydantic output using Gemini's OpenAI-compatible endpoint with beta.chat.completions.parse."""
-        completion = self.client.beta.chat.completions.parse(
+        completion = self._call_provider(lambda: self.client.beta.chat.completions.parse(
             model=self.model,
             messages=messages,
             response_format=output_schema,
             **kwargs
-        )
+        ))
         return completion.choices[0].message.parsed
 
 
@@ -648,10 +701,8 @@ class GroqLLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        try:
-            response = self.client.chat.completions.create(**api_kwargs)
-        except openai.APIError as e:
-            raise ValueError(f"Groq API Error: {str(e)}") from e
+        response = self._call_provider(
+            lambda: self.client.chat.completions.create(**api_kwargs))
 
         message = response.choices[0].message
 
@@ -691,12 +742,12 @@ class GroqLLM(LLM):
 
         structured_messages = [{"role": "system", "content": schema_instruction}, *messages]
 
-        completion = self.client.chat.completions.create(
+        completion = self._call_provider(lambda: self.client.chat.completions.create(
             model=self.model,
             messages=structured_messages,
             response_format={"type": "json_object"},
             **kwargs,
-        )
+        ))
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -727,7 +778,8 @@ class GrokLLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        response = self.client.chat.completions.create(**api_kwargs)
+        response = self._call_provider(
+            lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
         tool_calls = []
@@ -762,12 +814,12 @@ class GrokLLM(LLM):
 
         structured_messages = [{"role": "system", "content": schema_instruction}, *messages]
 
-        completion = self.client.chat.completions.create(
+        completion = self._call_provider(lambda: self.client.chat.completions.create(
             model=self.model,
             messages=structured_messages,
             response_format={"type": "json_object"},
             **kwargs,
-        )
+        ))
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -810,7 +862,8 @@ class OpenRouterLLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        response = self.client.chat.completions.create(**api_kwargs)
+        response = self._call_provider(
+            lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
         tool_calls = []
@@ -849,12 +902,12 @@ class OpenRouterLLM(LLM):
 
         structured_messages = [{"role": "system", "content": schema_instruction}, *messages]
 
-        completion = self.client.chat.completions.create(
+        completion = self._call_provider(lambda: self.client.chat.completions.create(
             model=self.model,
             messages=structured_messages,
             response_format={"type": "json_object"},
             **kwargs,
-        )
+        ))
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 
@@ -885,7 +938,8 @@ class MistralLLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        response = self.client.chat.completions.create(**api_kwargs)
+        response = self._call_provider(
+            lambda: self.client.chat.completions.create(**api_kwargs))
         message = response.choices[0].message
 
         tool_calls = []
@@ -924,12 +978,12 @@ class MistralLLM(LLM):
 
         structured_messages = [{"role": "system", "content": schema_instruction}, *messages]
 
-        completion = self.client.chat.completions.create(
+        completion = self._call_provider(lambda: self.client.chat.completions.create(
             model=self.model,
             messages=structured_messages,
             response_format={"type": "json_object"},
             **kwargs,
-        )
+        ))
         content = completion.choices[0].message.content or "{}"
         return output_schema.model_validate_json(content)
 

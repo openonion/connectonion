@@ -12,7 +12,49 @@ LLM-Note:
 """
 
 
-class InsufficientCreditsError(Exception):
+class LLMProviderError(Exception):
+    """Base for every failure that came from an LLM provider.
+
+    Exists so `except LLMProviderError` means "the model call failed" regardless
+    of which provider handled it. Before this, the same auth failure surfaced as
+    openai.AuthenticationError on gpt-*, anthropic.AuthenticationError on
+    claude-*, and a bare ValueError("Groq API Error: ...") on groq/* — so the
+    only portable handler was `except Exception`, which also swallows bugs.
+
+    The original SDK exception is always chained as __cause__: translating must
+    not cost the traceback that says what actually happened.
+    """
+
+
+class LLMAuthenticationError(LLMProviderError):
+    """The provider rejected the credentials (401/403)."""
+
+    def __init__(self, original_error, model: str = "unknown"):
+        self.model = model
+        self.status_code = getattr(original_error, "status_code", None)
+        super().__init__(
+            f"Authentication failed for {model}. Check the API key for this "
+            f"provider — the key that works for one provider is not the key for "
+            f"another. Original: {type(original_error).__name__}: {original_error}"
+        )
+        self.__cause__ = original_error
+
+
+class LLMRateLimitError(LLMProviderError):
+    """The provider is rate limiting or the quota is exhausted (429)."""
+
+    def __init__(self, original_error, model: str = "unknown"):
+        self.model = model
+        self.status_code = getattr(original_error, "status_code", 429)
+        super().__init__(
+            f"Rate limited by the provider for {model}. Retry after a pause, or "
+            f"check the plan's quota. Original: "
+            f"{type(original_error).__name__}: {original_error}"
+        )
+        self.__cause__ = original_error
+
+
+class InsufficientCreditsError(LLMProviderError):
     """
     Raised when an LLM request fails due to insufficient ConnectOnion credits.
 
@@ -74,7 +116,7 @@ class InsufficientCreditsError(Exception):
         )
 
 
-class LLMConnectionError(Exception):
+class LLMConnectionError(LLMProviderError):
     """
     Raised when the LLM API request times out or fails to connect.
 
@@ -115,7 +157,7 @@ class LLMConnectionError(Exception):
         )
 
 
-class ProviderServiceError(Exception):
+class ProviderServiceError(LLMProviderError):
     """Raised when the LLM provider API returns a service error (503)."""
 
     def __init__(self, original_error):
