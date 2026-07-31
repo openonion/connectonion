@@ -13,7 +13,12 @@ LLM-Note:
 import inspect
 import functools
 import enum
+import warnings
 from typing import Callable, Dict, Any, Literal, get_type_hints, List, get_origin, get_args, Union
+
+class UnannotatedParameterWarning(UserWarning):
+    """A tool parameter has no type hint, so its schema type was guessed."""
+
 
 # Map Python types to JSON Schema types
 TYPE_MAP = {
@@ -152,6 +157,32 @@ def create_tool_from_function(func: Callable) -> Callable:
             f"{owner}.{func.__name__} is an unbound method — pass an instance, "
             f"not the class: tools=[{owner}().{func.__name__}] "
             f"instead of tools=[{owner}.{func.__name__}]"
+        )
+
+    # Ordered deliberately: an unbound method is a mistake to refuse, so it is
+    # refused before we bother warning about annotations on a function that was
+    # never going to work anyway.
+    #
+    # Named before the loop so the developer gets one line listing all of them,
+    # rather than one warning per parameter buried in startup output.
+    unannotated = [
+        p.name for p in sig.parameters.values()
+        if p.name not in ("self", "agent") and p.name not in type_hints
+    ]
+    if unannotated:
+        # A guess is not a crash, so it survives: `def add(a, b)` types both as
+        # string, the model correctly sends "2" and "3" per that schema, and
+        # a + b evaluates to "23" — a wrong answer with no exception anywhere.
+        #
+        # Warned rather than refused. Refusing would break every agent whose
+        # tools work today, for a defect that is about visibility: the schema is
+        # unchanged, and the developer is now told which parameters it guessed.
+        warnings.warn(
+            f"Tool '{name}' has unannotated parameter(s): {', '.join(unannotated)}. "
+            f"Their schema type was guessed as string, so a model may send "
+            f"\"2\" where the function expects 2. Add type hints.",
+            UnannotatedParameterWarning,
+            stacklevel=2,
         )
 
     properties = {}
