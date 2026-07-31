@@ -15,6 +15,7 @@ import pytest
 import yaml
 
 from connectonion.cli.commands import deploy_to_server as dts
+from connectonion.cli.commands import server_commands as sc
 
 
 @pytest.fixture
@@ -280,7 +281,7 @@ class TestHandleDeployTo:
         """A marker written too early would let a later deploy skip setup that
         never actually completed."""
         with patch.object(dts, "load_server", return_value={"ssh": "user@host"}), \
-             patch.object(dts, "_derive_ssh_public_line", return_value=None), \
+             patch.object(sc, "_ensure_ssh_key", return_value=None), \
              patch.object(dts, "_read_provision", return_value={"schema": 0}), \
              patch.object(dts, "_ensure_setup", return_value=True), \
              patch.object(dts, "_sync_code", return_value=True), \
@@ -294,7 +295,7 @@ class TestHandleDeployTo:
 
     def test_a_successful_deploy_marks_the_schema(self, project):
         with patch.object(dts, "load_server", return_value={"ssh": "user@host"}), \
-             patch.object(dts, "_derive_ssh_public_line", return_value=None), \
+             patch.object(sc, "_ensure_ssh_key", return_value=None), \
              patch.object(dts, "_read_provision", return_value={"schema": 0}), \
              patch.object(dts, "_ensure_setup", return_value=True), \
              patch.object(dts, "_sync_code", return_value=True), \

@@ -34,12 +34,15 @@ SRV = "/srv"
 def _ssh(target: str, command: str, timeout: int = 300) -> subprocess.CompletedProcess:
     """Run one command on the server. Longer default timeout than a preflight:
     apt and pip are slow, and killing them halfway leaves a half-installed box."""
+    from .server_commands import _identity
+
     return subprocess.run(
         [
             "ssh",
             "-o", "BatchMode=yes",
             "-o", f"ConnectTimeout={SSH_TIMEOUT_SECONDS}",
             "-o", "StrictHostKeyChecking=accept-new",
+            *_identity(),
             target,
             command,
         ],
@@ -242,6 +245,8 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     otherwise swallow it, and `.co/` itself must be included for rsync to
     descend into it at all.
     """
+    from .server_commands import _identity as _ssh_identity
+
     console.print("[dim]  syncing code …[/dim]")
     result = subprocess.run(
         [
@@ -252,7 +257,9 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
             "--exclude", ".venv/",
             "--exclude", ".git/",
             "--exclude", "__pycache__/",
-            "-e", f"ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new",
+            "-e", " ".join(["ssh", "-o", "BatchMode=yes",
+                            "-o", "StrictHostKeyChecking=accept-new",
+                            *_ssh_identity()]),
             f"{project_dir}/",
             f"{target}:{SRV}/{agent}/",
         ],
@@ -363,7 +370,9 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
     _warn_about_skills_left_behind(project_dir)
 
     provision = _read_provision(target, agent)
-    ssh_public_line = _derive_ssh_public_line()
+    from .server_commands import _ensure_ssh_key
+
+    ssh_public_line = _ensure_ssh_key()
     deployer_address = _deployer_address()
 
     if not _ensure_setup(target, agent, entrypoint, provision.get("schema", 0),
@@ -405,20 +414,3 @@ def _deployer_address() -> Optional[str]:
     data = address.load(co_dir)
     return data.get("address") if data else None
 
-
-def _derive_ssh_public_line() -> Optional[str]:
-    """The operator's derived public key, so access self-heals every deploy.
-
-    Returns None when there is no local identity to derive from; the deploy
-    still proceeds, since the operator evidently already has access.
-    """
-    from ... import address
-    from .keys_commands import _find_co_dir
-
-    co_dir = _find_co_dir()
-    if not co_dir:
-        return None
-    data = address.load(co_dir)
-    if not data or not data.get("seed_phrase"):
-        return None
-    return address.derive_ssh_key(data["seed_phrase"])["public_line"]
