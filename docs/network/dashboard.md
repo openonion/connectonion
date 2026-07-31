@@ -18,7 +18,8 @@ on. There's no extra endpoint, no build step, and no sidecar JSON.
 ## It starts working on its own
 
 The first time you run `host()`, if there's no `dashboard.html`, ConnectOnion writes a
-starter one: your agent's name, and up to four of its skills as one-click buttons.
+starter one: your agent's name, what it runs on, and **every** skill it publishes as a
+one-click button with its description underneath.
 
 ```python
 from connectonion import Agent
@@ -29,6 +30,56 @@ host(lambda: Agent("lisa", tools=[...]))
 ```
 
 After that the file is yours. ConnectOnion never overwrites it.
+
+### Where it lives, and why there
+
+`dashboard.html` sits at the **project root**, next to `agent.py`. Not in `.co/`, and
+that is not cosmetic:
+
+- `co deploy --to` rsyncs the project tree **excluding `.co/`**. A dashboard under
+  `.co/` would silently not travel, and the deployed agent would look like it had no
+  Home.
+- The template Dockerfile does `COPY . .`, so the root is in the image.
+- The `.gitignore` `co create` writes does not ignore it, so it gets committed — a
+  dashboard you edited is part of your agent, like its prompt.
+
+**`co create` and `co init` deliberately do not scaffold one.** At create time the
+project has no skills yet, and `ensure_dashboard` never overwrites an existing file —
+scaffolding then would freeze an empty Home forever. It is written on the first
+`host()`, which is the first moment the agent's skills are actually known.
+
+On a deployed agent the same rule applies on the server: `host()` writes a starter
+there if the rsync carried none. That means an agent deployed without a dashboard gets
+one built from the skills that actually made it onto the server, which is the honest
+answer rather than a copy of what your laptop had.
+
+### It scales with the agent
+
+A dozen skills or fewer are listed flat — collapsing six items hides them behind a
+click for nothing. Past that they're grouped by the family already in their names
+(`lark-base`, `lark-doc`, `lark-sheets` → **lark**), with the count on each group and
+the first one open. Names that share no prefix with two others land in **other**. A
+115-skill agent is one screen you can scan instead of a list you have to scroll.
+
+Skill names are shown verbatim, because that's what you type to run one — `/lark-base`,
+not "Lark Base".
+
+### Where the markup lives
+
+One file: `connectonion/network/host/ws_router/starter.html`. It is a complete page —
+open it in a browser and you see what a starter dashboard looks like — followed by a
+`<!--FRAGMENTS` marker and the repeated pieces (a skill row, a group, a flat list, the
+empty state) as `<template>` tags. Python splits on the marker, fills in the
+placeholders, and contains no HTML of its own. Everything below the marker, including
+its notes, is stripped before anything is written.
+
+Edit that file to change how a starter dashboard looks.
+
+Anything you write there has to survive the client's contract: **no JavaScript** (the
+CSP runs only the client's own bridge script, so an agent's script tag or inline
+handler never executes), images only as `data:` URIs, and no links out. The starter is
+CSS-only for exactly that reason — the disclosure groups are `<details>`/`<summary>`,
+which is the one thing that works without scripting.
 
 ## Editing it
 
@@ -132,7 +183,9 @@ See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.
 | `read_dashboard_snapshot(session_id=None)` | Build the frame, or `None` if the file is missing, too large, unreadable, or not UTF-8 |
 | `send_dashboard(send_msg, session_id, conn=None)` | Send it unless this connection already has the current file; reads off the event loop |
 | `ensure_dashboard(agent_metadata, project_dir=None)` | Write the starter if absent, and anchor the directory later reads resolve against |
-| `render_starter(agent_metadata)` | The day-zero HTML |
+| `render_starter(agent_metadata)` | The day-zero HTML, from `starter.html` |
+| `published_skills(skills)` | The project-tree skills a starter may offer as buttons |
+| `group_skills(skills)` | `(families, loose)` split by name prefix, for long lists |
 | `MAX_DASHBOARD_BYTES` | 2MB size cap |
 
 The path is resolved against the project directory captured at host startup, not the
