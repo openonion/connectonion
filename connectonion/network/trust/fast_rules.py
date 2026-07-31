@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: calls tools.py functions (is_blocked, is_whitelisted, is_contact, promote_to_contact) which read/write .co/trust/ files | no direct file I/O in this module
   Integration: exposes parse_policy(policy_text), evaluate_request(config, client_id, request) | used by TrustAgent to parse policies and execute zero-cost fast rules before LLM | returns None when LLM needed (default: ask)
   Performance: zero LLM tokens for fast rules | O(n) checks against allow/deny lists | promote_to_contact() writes to file but rare (onboarding only) | YAML parsing is fast
-  Errors: yaml.safe_load() errors propagate | gracefully handles missing frontmatter (returns empty config)
+  Errors: malformed YAML frontmatter raises an actionable ValueError | gracefully handles missing frontmatter (returns empty config)
 
 Parse YAML config from trust policy files and execute fast rules.
 
@@ -30,6 +30,9 @@ def parse_policy(policy_text: str) -> tuple[dict, str]:
 
     Returns:
         (config_dict, markdown_body)
+
+    Raises:
+        ValueError: If the YAML frontmatter is malformed.
     """
     if not policy_text.startswith('---'):
         return {}, policy_text
@@ -41,7 +44,24 @@ def parse_policy(policy_text: str) -> tuple[dict, str]:
     yaml_content = policy_text[3:end].strip()
     markdown_body = policy_text[end + 3:].strip()
 
-    config = yaml.safe_load(yaml_content) or {}
+    try:
+        config = yaml.safe_load(yaml_content) or {}
+    except yaml.YAMLError as exc:
+        problem = getattr(exc, 'problem', None)
+        mark = getattr(exc, 'problem_mark', None)
+
+        location = (
+            f' at line {mark.line + 1}, column {mark.column + 1}'
+            if mark is not None
+            else ''
+        )
+        detail = f': {problem}' if problem else ''
+
+        raise ValueError(
+            f'Malformed YAML frontmatter in trust policy{location}{detail}. '
+            'Fix the YAML syntax before starting the agent host.'
+        ) from None
+
     return config, markdown_body
 
 

@@ -79,6 +79,23 @@ default: ask
         assert config == {}
         assert "Body" in body
 
+    def test_parse_malformed_yaml_raises_actionable_error(self):
+        """Report malformed YAML frontmatter as a clear config error."""
+        policy = """---
+allow: [whitelisted, contact
+---
+# Body
+"""
+
+        with pytest.raises(ValueError) as exc_info:
+            parse_policy(policy)
+
+        message = str(exc_info.value)
+        assert "Malformed YAML frontmatter in trust policy" in message
+        assert "line" in message
+        assert "column" in message
+        assert "Fix the YAML syntax before starting the agent host." in message
+
 
 class TestEvaluateRequestOpenMode:
     """Test evaluate_request with default: allow config."""
