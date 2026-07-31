@@ -13,6 +13,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Optional
@@ -599,6 +600,19 @@ def _confirm(name: str, machine_type: str, pricing: dict, balance: Optional[floa
     console.print(f"  [cyan]expires[/cyan]       {expires} "
                   f"[dim]— the server stops on that date unless renewed[/dim]")
     console.print()
+
+    # Nothing can be answered on a stdin that is not a terminal, and the prompt
+    # library does not decline politely — it registers the descriptor with
+    # asyncio and raises OSError: [Errno 22]. On the one command that spends
+    # money, a bare traceback also leaves the reader unable to tell whether the
+    # charge went through.
+    if not sys.stdin.isatty():
+        console.print(
+            f"[red]Cannot confirm: stdin is not a terminal.[/red]\n"
+            f"  ${price:.2f} would be charged now. "
+            f"Re-run with [bold]--yes[/bold] to confirm without being asked."
+        )
+        return False
 
     import questionary
     return bool(questionary.confirm("Create it?", default=False).ask())
