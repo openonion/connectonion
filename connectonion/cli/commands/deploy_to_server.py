@@ -731,6 +731,23 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool
         # through `pip install -r`, and moved to 1.5.6 only with -U. Without it
         # the reinstall this function just decided to do would change nothing.
         f"{SRV}/{agent}/.venv/bin/pip install -q -U -r requirements.txt\n"
+        # Then the runtime, by name and version.
+        #
+        # -U asks the index for "newest", which is a race with our own release:
+        # a deploy run minutes after 1.5.7 was published installed 1.5.6, because
+        # that is what the index served at that moment. Measured, not theorised —
+        # the same server took 1.5.7 when asked for it directly a minute later.
+        #
+        # The pin also fixes the reverse skew: an older CLI deploying onto a
+        # server that resolves a *newer* connectonion than the one writing the
+        # systemd unit and the .co/ layout it will read.
+        f"{SRV}/{agent}/.venv/bin/pip install -q "
+        f"{shlex.quote('connectonion==' + __version__)}\n"
+        # Last, and only if everything above succeeded — `set -e` is what makes
+        # that true. The stamp is the claim "this server is current for this
+        # CLI", and a deploy that could not converge must not leave that claim
+        # behind: the next deploy would match it, skip the install, and freeze
+        # the mismatch for good.
         f"printf '%s' {shlex.quote(digest)} > {stamp}",
         timeout=900,
     )
