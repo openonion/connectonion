@@ -3,7 +3,17 @@
 Skipped unless CO_E2E_SERVERS=1: a run creates a GCE instance, spends credit and
 takes several minutes.
 
-    CO_E2E_SERVERS=1 pytest tests/e2e/real_api/test_server_lifecycle.py -v -s
+    CO_E2E_SERVERS=1 pytest tests/e2e/real_api/test_server_lifecycle.py -m real_api -v -s
+
+`-m real_api` is not optional. pytest.ini carries `-m "not real_api and not
+network"` in addopts, and this directory is marked real_api automatically, so
+without it pytest deselects all of this and reports
+
+    collected 11 items / 11 deselected / 0 selected
+
+in a tenth of a second. No failure, no red — a run that looks like it passed and
+tested nothing. The env var above is what gates the cost; the marker filter is
+just in the way.
 
 Every step here is one that shipped broken and passed the unit tests anyway:
 
@@ -227,3 +237,88 @@ def test_the_remote_browser_answers(server, project):
 
     assert "Permission denied" not in result.stderr, result.stderr[:300]
     assert "Stealth driver" in result.stdout, result.stdout[:300]
+
+
+# --- The Home page, which has never been checked against a real deploy ---
+#
+# The dashboard moved into .co/ (#405), and .co/* is excluded from the deploy
+# rsync with a handful of paths included back by name. Whether the include
+# actually fires is not something a unit test can answer: it is an rsync filter
+# argument, and the only way to know is to look on the machine.
+
+
+def test_an_authored_dashboard_travels_with_the_deploy(server, project):
+    """A Home page the author wrote must arrive intact.
+
+    If the rsync filter misses it, the deploy still succeeds and the agent still
+    starts — it just writes a fresh starter over the top on first boot and looks
+    entirely healthy while the operator's page is gone. That is the failure this
+    catches, and it is silent by construction.
+    """
+    dashboard = project / ".co" / "dashboard.html"
+    dashboard.write_text(
+        "<!DOCTYPE html><html><body><h1>DASHBOARD_MARKER_ONE</h1></body></html>",
+        encoding="utf-8",
+    )
+
+    subprocess.run(["co", "deploy", "--to", server], cwd=project, check=True,
+                   capture_output=True, timeout=900)
+
+    remote = co("server", "ssh", server, f"cat /srv/{AGENT}/.co/dashboard.html").stdout
+    assert "DASHBOARD_MARKER_ONE" in remote, "the authored dashboard did not travel"
+
+
+def test_a_redeploy_does_not_overwrite_the_authored_dashboard(server, project):
+    """The agent owns the file after it exists. A redeploy carries the author's
+    new version; nothing on the server may regenerate over it."""
+    dashboard = project / ".co" / "dashboard.html"
+    dashboard.write_text(
+        "<!DOCTYPE html><html><body><h1>DASHBOARD_MARKER_TWO</h1></body></html>",
+        encoding="utf-8",
+    )
+
+    subprocess.run(["co", "deploy", "--to", server], cwd=project, check=True,
+                   capture_output=True, timeout=900)
+
+    remote = co("server", "ssh", server, f"cat /srv/{AGENT}/.co/dashboard.html").stdout
+    assert "DASHBOARD_MARKER_TWO" in remote
+    assert "DASHBOARD_MARKER_ONE" not in remote
+
+
+def test_the_deployed_dashboard_offers_the_deployed_skill(server, project):
+    """The starter lists the agent's skills as one-click buttons, and a client
+    refuses any button naming a skill the agent did not publish. So a starter
+    generated on the server has to name the skill that actually shipped there —
+    otherwise Home is a page of buttons that silently do nothing."""
+    co("server", "ssh", server, f"rm -f /srv/{AGENT}/.co/dashboard.html")
+    co("server", "ssh", server, f"systemctl restart {AGENT}")
+    _wait_for_dashboard(server)
+
+    remote = co("server", "ssh", server, f"cat /srv/{AGENT}/.co/dashboard.html").stdout
+    assert 'data-ochat-skill="greet-visitor"' in remote, (
+        "the starter written on the server does not offer the skill that was deployed"
+    )
+
+
+def test_the_starter_lands_in_the_co_directory_on_the_server(server):
+    """Not the project root. The unit under systemd runs with WorkingDirectory
+    set to the project, so a starter resolved against the bare cwd would land
+    beside agent.py and be excluded from the next deploy's rsync."""
+    listing = co("server", "ssh", server, f"ls /srv/{AGENT}/").stdout
+    assert "dashboard.html" not in listing.split(), (
+        "a dashboard was written to the project root, not into .co/"
+    )
+
+
+def _wait_for_dashboard(server, attempts=12):
+    """host() writes the starter at startup; systemctl returns before that."""
+    import time
+
+    for _ in range(attempts):
+        result = co("server", "ssh", server,
+                    f"test -f /srv/{AGENT}/.co/dashboard.html && echo yes || echo no",
+                    check=False)
+        if "yes" in result.stdout:
+            return
+        time.sleep(5)
+    raise AssertionError("no dashboard.html appeared on the server after restart")
