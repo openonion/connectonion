@@ -8,7 +8,8 @@ from connectonion.network.host.ws_router.dashboard import (
     MAX_DASHBOARD_BYTES,
     read_dashboard_snapshot,
     ensure_dashboard,
-    featured_skills,
+    group_skills,
+    published_skills,
     render_starter,
     send_dashboard,
 )
@@ -52,7 +53,7 @@ def test_ensure_dashboard_creates_starter(in_tmp):
     assert "Lisa" in html
     assert 'data-ochat-skill="daily-brief"' in html
     assert 'data-ochat-skill="meeting_prep"' in html
-    assert "Daily Brief" in html          # label prettified
+    assert ">daily-brief<" in html        # the name you actually type
     assert "<script" not in html.lower()  # no scripting in agent HTML
 
 
@@ -65,13 +66,63 @@ def test_ensure_dashboard_does_not_clobber_existing(in_tmp):
 def test_render_starter_empty_skills_has_no_invalid_buttons():
     html = render_starter({"name": "Bare", "skills": []})
     assert "data-ochat-skill" not in html
-    assert "Quick actions" in html
+    assert ".co/skills/" in html  # tells the operator how to get one
 
 
-def test_render_starter_features_at_most_four_skills():
-    skills = [{"name": f"skill-{i}", "description": "", "location": "project"} for i in range(9)]
+def test_every_published_skill_is_reachable():
+    """The old starter showed 4 and dropped the rest, which on a real agent meant
+    111 skills the Home page silently pretended did not exist."""
+    skills = [{"name": f"skill-{i:03d}", "description": "", "location": "project"} for i in range(115)]
     html = render_starter({"name": "Many", "skills": skills})
-    assert html.count("data-ochat-skill") == 4
+    assert html.count("data-ochat-skill") == 115
+
+
+def test_a_short_list_is_not_hidden_behind_a_disclosure():
+    skills = [{"name": f"skill-{i}", "description": "", "location": "project"} for i in range(6)]
+    html = render_starter({"name": "Few", "skills": skills})
+    assert "<details" not in html
+
+
+def test_a_long_list_is_grouped_and_opens_on_something():
+    skills = [{"name": f"lark-{i}", "description": "", "location": "project"} for i in range(20)]
+    skills += [{"name": f"x-{i}", "description": "", "location": "project"} for i in range(5)]
+    html = render_starter({"name": "Many", "skills": skills})
+    assert "<details" in html
+    assert "<details class=\"card group\" open>" in html  # never a wall of shut drawers
+
+
+def test_skill_rows_carry_their_description():
+    html = render_starter({"name": "D", "skills": [
+        {"name": "ship-feature", "description": "release a version", "location": "project"},
+    ]})
+    assert "release a version" in html
+
+
+def test_skill_names_are_shown_verbatim():
+    """Title-casing turned nano-banana-us into "Nano Banana Us", which names nothing
+    and is not what you type to run it."""
+    html = render_starter({"name": "N", "skills": [
+        {"name": "nano-banana-us", "description": "", "location": "project"},
+    ]})
+    assert ">nano-banana-us<" in html
+    assert "Nano Banana Us" not in html
+
+
+def test_the_starter_carries_no_javascript():
+    """The client's CSP runs only its own bridge script; an agent <script> is blocked,
+    so anything this page relies on JS for is simply dead on arrival."""
+    skills = [{"name": f"lark-{i}", "description": "d", "location": "project"} for i in range(20)]
+    html = render_starter({"name": "Many", "skills": skills})
+    assert "<script" not in html
+    assert "onclick" not in html
+
+
+def test_render_starter_escapes_a_hostile_skill_name():
+    html = render_starter({"name": "X", "skills": [
+        {"name": "<img src=x>", "description": "<script>y</script>", "location": "project"},
+    ]})
+    assert "<img src=x>" not in html
+    assert "<script>y</script>" not in html
 
 
 def test_render_starter_escapes_agent_name():
@@ -224,7 +275,7 @@ async def test_send_dashboard_sends_nothing_when_there_is_no_file(in_tmp):
 # --- Only publishable skills become buttons, or they render and can never run ---
 
 
-def test_featured_skills_excludes_unpublished_locations():
+def test_published_skills_excludes_unpublished_locations():
     skills = [
         {"name": "daily-brief", "description": "", "location": "project"},
         {"name": "my-notes", "description": "", "location": "user"},
@@ -232,7 +283,7 @@ def test_featured_skills_excludes_unpublished_locations():
         {"name": "review", "description": "", "location": "claude-project"},
         {"name": "future", "description": "", "location": "something-new"},
     ]
-    assert [s["name"] for s in featured_skills(skills)] == ["daily-brief", "review"]
+    assert [s["name"] for s in published_skills(skills)] == ["daily-brief", "review"]
 
 
 def test_starter_has_no_buttons_for_unpublished_skills(in_tmp):
@@ -244,15 +295,41 @@ def test_starter_has_no_buttons_for_unpublished_skills(in_tmp):
     ]})
     html = (in_tmp / "dashboard.html").read_text(encoding="utf-8")
     assert "data-ochat-skill" not in html
-    assert "Quick actions" in html  # falls back to the empty state
+    assert ".co/skills/" in html  # falls back to the empty state
 
 
-def test_starter_features_four_published_skills_past_unpublished_ones():
+def test_starter_lists_published_skills_past_unpublished_ones():
     skills = [{"name": f"personal-{i}", "description": "", "location": "user"} for i in range(5)]
     skills += [{"name": f"shipped-{i}", "description": "", "location": "project"} for i in range(6)]
     html = render_starter({"name": "Many", "skills": skills})
-    assert html.count("data-ochat-skill") == 4
+    assert html.count("data-ochat-skill") == 6
     assert "personal-" not in html
+
+
+def test_group_skills_needs_a_third_member_to_form_a_family():
+    """Two lark-* skills behind a group of two is a click that buys nothing."""
+    skills = [{"name": n} for n in ["lark-base", "lark-doc", "lark-im", "x-api", "x-write", "tweet"]]
+    families, loose = group_skills(skills)
+
+    assert [(p, [s["name"] for s in m]) for p, m in families] == [
+        ("lark", ["lark-base", "lark-doc", "lark-im"]),
+    ]
+    assert [s["name"] for s in loose] == ["tweet", "x-api", "x-write"]
+
+
+def test_group_skills_splits_colon_prefixes_too():
+    skills = [{"name": n} for n in ["vercel:deploy", "vercel:env", "vercel:nextjs"]]
+    families, loose = group_skills(skills)
+
+    assert families[0][0] == "vercel"
+    assert loose == []
+
+
+def test_the_subtitle_omits_what_it_does_not_know():
+    """"0 tools" reads as a broken agent; a missing count reads as a quiet one."""
+    html = render_starter({"name": "Quiet", "skills": [], "tools": [], "model": None})
+    assert "0 tool" not in html
+    assert "0 skill" not in html
 
 
 def test_starter_skill_names_match_what_the_profile_publishes():
@@ -305,3 +382,19 @@ def test_ensure_dashboard_warns_instead_of_crashing_on_an_unwritable_dir(in_tmp,
 
     assert "Could not write" in capsys.readouterr().err
     assert read_dashboard_snapshot() is None
+
+
+def test_the_starter_template_ships_in_the_wheel():
+    """The markup lives in starter.html beside the module; a wheel that drops it
+    turns every `co ai` startup into a FileNotFoundError."""
+    assert (Path(dashboard_module.__file__).parent / "starter.html").is_file()
+
+
+def test_the_fragment_templates_do_not_leak_into_the_page():
+    """<template> tags are lifted out and dropped — a browser would ignore them
+    anyway, but shipping them means shipping an unsubstituted $name."""
+    html = render_starter({"name": "X", "skills": [
+        {"name": "a-skill", "description": "d", "location": "project"},
+    ]})
+    assert "<template" not in html
+    assert "$" not in html

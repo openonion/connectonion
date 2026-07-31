@@ -12,8 +12,11 @@ changed since this connection last saw it.
 """
 
 import asyncio
+import re
 from html import escape
 from pathlib import Path
+from functools import lru_cache
+from string import Template
 
 from ....console import Console
 
@@ -122,86 +125,154 @@ def ensure_dashboard(agent_metadata, project_dir=None):
     Console().print(f"[dim]Created {DASHBOARD_FILE} — your agent's Home page.[/dim]")
 
 
-def featured_skills(skills, limit=4):
-    """Pick the skills the starter dashboard offers as one-click actions.
+def published_skills(skills):
+    """The skills the starter dashboard may offer as one-click actions.
 
     Only published (project-tree) skills qualify. A client validates every button
     against the agent's published profile, which carries exactly these — so a button
     for a user or builtin skill would render and then silently refuse to run.
     """
     from ....useful_plugins.skills import PUBLISHED_SKILL_LOCATIONS
-    return [s for s in skills if s.get("location") in PUBLISHED_SKILL_LOCATIONS][:limit]
+    return [s for s in skills if s.get("location") in PUBLISHED_SKILL_LOCATIONS]
+
+
+# A flat list stays readable to about a dozen rows in a 440px pane. Past that it is
+# a wall, and the honest structure to impose is the one already in the names: skills
+# ship in families (lark-base, lark-doc, lark-sheets; vercel:deploy, vercel:env), and
+# an author who names three things alike has told you they belong together.
+FLAT_MAX = 12
+FAMILY_MIN = 3
+
+
+def group_skills(skills):
+    """Split skills into ``(families, loose)`` by the prefix in their names.
+
+    A family is a prefix with at least ``FAMILY_MIN`` members, so two lark-* skills
+    stay in the open rather than hiding behind a group of two. Both halves come back
+    sorted: a Home page that reorders itself between runs is one you have to re-read
+    every time.
+    """
+    families = {}
+    for s in skills:
+        families.setdefault(re.split(r"[-:]", s["name"], 1)[0], []).append(s)
+
+    grouped = sorted(
+        (prefix, sorted(members, key=lambda s: s["name"]))
+        for prefix, members in families.items()
+        if len(members) >= FAMILY_MIN
+    )
+    loose = sorted(
+        (s for members in families.values() if len(members) < FAMILY_MIN for s in members),
+        key=lambda s: s["name"],
+    )
+    return grouped, loose
+
+
+@lru_cache(maxsize=1)
+def _starter_templates():
+    """``(page, fragments)`` from ``starter.html`` — the one file the starter lives in.
+
+    The file is a complete page, then a ``<!--FRAGMENTS`` marker, then the repeated
+    pieces as ``<template id="...">`` tags. Splitting on the marker rather than on
+    the tags means the authoring notes below it never reach an agent's
+    dashboard.html — and that anything written there is free to mention ``$`` or a
+    template tag without being substituted or half-stripped into the output.
+
+    ``string.Template`` rather than ``str.format``: the page is mostly CSS, and every
+    rule in it is a pair of braces that ``format`` would read as a field.
+    """
+    raw = (Path(__file__).parent / "starter.html").read_text(encoding="utf-8")
+    page, _, scaffolding = raw.partition("<!--FRAGMENTS")
+    fragments = re.findall(r'<template id="([^"]+)">(.*?)</template>', scaffolding, re.DOTALL)
+    return Template(page.rstrip() + "\n"), {name: Template(body) for name, body in fragments}
+
+
+def _skill_row(skill):
+    """One skill as a button: its real name, and what it does underneath.
+
+    The name is shown verbatim — it is what you type (``/lark-base``), and
+    title-casing it turns ``nano-banana-us`` into "Nano Banana Us", which names
+    nothing. The description is what makes a list of 115 names usable at all.
+    """
+    _, fragments = _starter_templates()
+    return fragments["skill"].substitute(
+        name=escape(str(skill.get("name", "")), quote=True),
+        description=escape(str(skill.get("description") or "").strip()),
+    ).strip()
+
+
+def _skill_sections(skills):
+    """The body of the starter dashboard: every published skill, reachable.
+
+    Three shapes, because "a few skills" and "a hundred skills" are different pages:
+    nothing at all gets a note saying so; a short list is shown flat, because
+    collapsing six items hides them behind a click for no reason; a long one is
+    grouped, with the first family open so the page opens on something to click
+    rather than a row of shut drawers.
+    """
+    _, fragments = _starter_templates()
+    if not skills:
+        return "  " + fragments["empty"].template.strip()
+
+    def rows(members, indent):
+        return "\n".join(indent + _skill_row(s) for s in members)
+
+    if len(skills) <= FLAT_MAX:
+        listing = fragments["list"].substitute(
+            rows=rows(sorted(skills, key=lambda s: s["name"]), "      ")
+        )
+        return "  " + listing.strip()
+
+    families, loose = group_skills(skills)
+    if loose:
+        families.append(("other", loose))
+
+    group = fragments["group"]
+    return "\n".join(
+        "  " + group.substitute(
+            open="open" if i == 0 else "",
+            prefix=escape(prefix),
+            count=len(members),
+            rows=rows(members, "        "),
+        ).strip()
+        for i, (prefix, members) in enumerate(families)
+    )
+
+
+def _subtitle(agent_metadata, skill_count):
+    """Model, skills, tools — the three facts that say what this agent can do.
+
+    Each part is dropped when it is unknown rather than printed as "0 tools", which
+    reads as a broken agent instead of an unreported number.
+    """
+    parts = []
+    if agent_metadata.get("model"):
+        parts.append(escape(str(agent_metadata["model"])))
+    if skill_count:
+        parts.append(f"{skill_count} skill{'s' if skill_count != 1 else ''}")
+    tools = agent_metadata.get("tools") or []
+    if tools:
+        parts.append(f"{len(tools)} tool{'s' if len(tools) != 1 else ''}")
+    return " · ".join(parts)
 
 
 def render_starter(agent_metadata):
-    """Build the day-zero dashboard HTML: an empty-first, visual-over-textual Home
-    with the agent name and up to four of its skills as one-click actions."""
-    name = escape(str(agent_metadata.get("name") or "Agent"))
-    featured = featured_skills(agent_metadata.get("skills") or [])
+    """Build the day-zero dashboard HTML: who this agent is, and every skill it
+    publishes as a one-click action.
 
-    if featured:
-        buttons = "\n".join(
-            f'      <button class="action" data-ochat-skill="{escape(s["name"], quote=True)}">'
-            f'{escape(s["name"].replace("-", " ").replace("_", " ").title())}</button>'
-            for s in featured
-        )
-        actions = f'    <section class="card">\n      <h2>Quick actions</h2>\n{buttons}\n    </section>'
-    else:
-        actions = (
-            '    <section class="card empty">\n'
-            '      <h2>Quick actions</h2>\n'
-            '      <p>Add skills to your agent and they show up here as one-click actions.</p>\n'
-            '    </section>'
-        )
+    Written once, then owned by the agent — so it has to be worth keeping, and it
+    has to hold up at both ends of the range. The pane it renders into is ~440px
+    wide (oo-chat's Home column), full-width on mobile, and occasionally a whole
+    browser window, which is why the layout is a single centred column with a
+    max-width rather than anything that stretches.
 
-    return f"""<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<style>
-  :root {{ color-scheme: light dark; }}
-  * {{ box-sizing: border-box; margin: 0; }}
-  body {{
-    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
-    background: #fafafa; color: #171717; padding: 40px 28px; line-height: 1.5;
-    -webkit-font-smoothing: antialiased;
-  }}
-  header {{ margin-bottom: 28px; }}
-  h1 {{ font-size: 28px; font-weight: 650; letter-spacing: -0.02em; }}
-  .sub {{ color: #737373; font-size: 14px; margin-top: 4px; }}
-  .card {{
-    background: #fff; border: 1px solid #e5e5e5; border-radius: 12px;
-    padding: 22px 24px; margin-bottom: 16px;
-  }}
-  .card h2 {{
-    font-size: 12px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
-    color: #a3a3a3; margin-bottom: 14px;
-  }}
-  .action {{
-    display: block; width: 100%; text-align: left; font: inherit; font-size: 15px; font-weight: 550;
-    padding: 14px 16px; margin-bottom: 8px; cursor: pointer;
-    background: #fff; color: #171717; border: 1px solid #d4d4d4; border-radius: 8px;
-    transition: border-color .15s, transform .15s;
-  }}
-  .action:last-child {{ margin-bottom: 0; }}
-  .action:hover {{ border-color: #16a34a; transform: translateY(-1px); }}
-  .empty p {{ color: #a3a3a3; font-size: 14px; }}
-  @media (prefers-color-scheme: dark) {{
-    body {{ background: #121212; color: #ededed; }}
-    .sub {{ color: #a3a3a3; }}
-    .card {{ background: #1b1b1b; border-color: #2e2e2e; }}
-    .action {{ background: #1b1b1b; color: #ededed; border-color: #3f3f3f; }}
-    .action:hover {{ border-color: #1eae54; }}
-  }}
-</style>
-</head>
-<body>
-  <header>
-    <h1>{name}</h1>
-    <p class="sub">Home</p>
-  </header>
-{actions}
-</body>
-</html>
-"""
+    The markup and CSS live in ``starter/*.html`` — this function only decides what
+    goes in them. Design notes are in those files, next to the rules they explain.
+    """
+    skills = published_skills(agent_metadata.get("skills") or [])
+    page, _ = _starter_templates()
+    return page.substitute(
+        name=escape(str(agent_metadata.get("name") or "Agent")),
+        subtitle=_subtitle(agent_metadata, len(skills)),
+        body=_skill_sections(skills),
+    )

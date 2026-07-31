@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<style>
+  /* No JavaScript anywhere in this file, by contract: the client renders a
+     dashboard under a CSP that runs only its own bridge script, so an agent's
+     own script tag or inline handler is dropped. Every affordance here — the
+     disclosure groups, the hover states — is CSS or plain HTML. Images would
+     have to be inlined as data: URIs, so there are none. */
+  :root {
+    color-scheme: light dark;
+    --bg: #fbfbfa; --fg: #171717; --muted: #737373; --faint: #a3a3a3;
+    --card: #fff; --line: #e7e7e5; --hover: #fafaf9; --accent: #16a34a;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #131313; --fg: #ededed; --muted: #9a9a9a; --faint: #6f6f6f;
+      --card: #1a1a1a; --line: #2b2b2b; --hover: #212121; --accent: #22c55e;
+    }
+  }
+  * { box-sizing: border-box; margin: 0; }
+  body {
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    background: var(--bg); color: var(--fg); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    padding: 28px 20px 48px;
+  }
+  /* The Home pane is ~440px wide in oo-chat, full-width on mobile, and sometimes a
+     whole browser window. One centred column with a max-width covers all three;
+     anything that stretches turns an eight-character button into a 1400px bar. */
+  main { max-width: 680px; margin: 0 auto; }
+
+  header { margin-bottom: 20px; }
+  h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
+  .sub {
+    color: var(--muted); font-size: 12.5px; margin-top: 3px;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    margin-bottom: 10px; overflow: hidden;
+  }
+  .empty { padding: 20px 18px; }
+  .empty p { color: var(--muted); font-size: 13.5px; }
+  .empty code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
+    background: var(--hover); padding: 1px 5px; border-radius: 4px;
+  }
+
+  /* <summary> is the only disclosure that works without JS, so the whole
+     many-skills layout hangs off it. */
+  summary {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    padding: 12px 16px; font-size: 13px; font-weight: 600;
+    letter-spacing: 0.02em; color: var(--fg); list-style: none;
+  }
+  summary::-webkit-details-marker { display: none; }
+  summary::before {
+    content: ""; width: 0; height: 0; flex: none;
+    border-left: 4px solid var(--faint); border-top: 3.5px solid transparent;
+    border-bottom: 3.5px solid transparent;
+    transition: transform .15s;
+  }
+  details[open] > summary::before { transform: rotate(90deg); }
+  summary:hover { background: var(--hover); }
+  .count {
+    margin-left: auto; font-size: 11.5px; font-weight: 550; color: var(--faint);
+    font-variant-numeric: tabular-nums;
+  }
+  details[open] > summary { border-bottom: 1px solid var(--line); }
+
+  /* Rows, not cards: a hundred bordered boxes is noise. One hairline between each. */
+  .skill {
+    display: block; width: 100%; text-align: left; font: inherit; cursor: pointer;
+    background: none; border: 0; border-top: 1px solid var(--line);
+    padding: 11px 16px; color: var(--fg);
+    transition: background .12s;
+  }
+  .rows > .skill:first-child { border-top: 0; }
+  .skill:hover { background: var(--hover); }
+  .skill .name {
+    display: block; font-size: 13.5px; font-weight: 550;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    letter-spacing: -0.01em;
+  }
+  .skill:hover .name { color: var(--accent); }
+  .skill .desc {
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
+    overflow: hidden; margin-top: 2px;
+    font-size: 12.5px; line-height: 1.45; color: var(--muted);
+  }
+  /* Undescribed skills are common; an empty span must not leave a gap. */
+  .skill .desc:empty { display: none; }
+</style>
+</head>
+<body>
+  <main>
+    <header>
+      <h1>$name</h1>
+      <p class="sub">$subtitle</p>
+    </header>
+$body
+  </main>
+</body>
+</html>
+
+<!--FRAGMENTS
+
+Everything below this marker is authoring scaffolding, not part of the page: the
+repeated pieces the body is built from. Python splits the file here, so none of
+this reaches an agent's dashboard.html.
+
+They live in this file rather than in Python or in files of their own — one file
+to keep in sync, and a browser never renders template content, so the page above
+still opens and previews as the thing it renders.
+
+Placeholders are $name-style (string.Template). Do not use $ for anything else.
+
+-->
+
+<template id="skill"><button class="skill" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span></button></template>
+
+<template id="list"><section class="card">
+    <div class="rows">
+$rows
+    </div>
+  </section></template>
+
+<template id="group"><details class="card group" $open>
+    <summary>$prefix<span class="count">$count</span></summary>
+    <div class="rows">
+$rows
+    </div>
+  </details></template>
+
+<template id="empty"><section class="card empty">
+    <p>No skills yet. Add one to <code>.co/skills/</code> and it shows up here as a one-click action.</p>
+  </section></template>
