@@ -124,7 +124,17 @@ def session_to_chat_items(session: dict) -> list[dict]:
             content = msg.get('content', '')
             if isinstance(content, str) and content.startswith(RUNTIME_INPUT_FRAME_PREFIX):
                 content = content[len(RUNTIME_INPUT_FRAME_PREFIX):]
-            items_ui.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
+
+            # Structural, not a regex over content: a message the system injected
+            # carries `internal`, and a user who literally types
+            # "<system-reminder>" must see their own words back unchanged.
+            if not msg.get('internal'):
+                items_ui.append({'id': f"msg-{msg_idx}", 'type': 'user', 'content': content})
+
+            # Counted either way. The bubble is suppressed; the TURN is not — an
+            # internal message still opened one, and skipping the increment drops
+            # every tool call that turn made from the transcript. That is the
+            # regression #144's first cut shipped.
             user_count += 1
             if user_count < len(turn_entries):
                 for trace_idx, entry in turn_entries[user_count]:

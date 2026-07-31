@@ -111,3 +111,25 @@ def inject_reminder(agent: 'Agent') -> None:
 
 # Export plugin
 system_reminder = [inject_reminder]
+
+
+def reminder_message(text: str) -> dict:
+    """A reminder carried as its own message, marked so the UI can skip it.
+
+    Reminders are context *about* the turn, not part of what the user said. They
+    used to be appended as ordinary `role: user` messages, so the renderer had no
+    way to tell them from typed input and the raw tags showed up as chat bubbles.
+
+    `internal` is the whole point: the render rule is structural. Stripping the
+    tags from content instead — the approach closed in #144 — cannot tell an
+    injected tag from one the user typed, so someone asking "why does
+    <system-reminder> show up in my chat?" gets their own words rewritten.
+
+    Stripped, because trailing whitespace around the block left a stray blank
+    line wherever the content did get rendered.
+    """
+    return {
+        "role": "user",
+        "content": f"<system-reminder>\n{text.strip()}\n</system-reminder>",
+        "internal": True,
+    }
