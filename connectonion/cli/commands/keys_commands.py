@@ -195,6 +195,35 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
     console.print()
 
 
+# Our copy of the derived key, in a directory we own. Not ~/.ssh: a file there
+# may be the operator's, and writing only the half that happened to be missing
+# once left a private key from one phrase beside a public key from another —
+# ssh reports that as "contents do not match public" and refuses, which is a
+# confusing way to learn that a server you just paid for is unreachable.
+SSH_PRIVATE_KEY = Path.home() / ".co" / "ssh" / "id_ed25519"
+SSH_PUBLIC_KEY = Path.home() / ".co" / "ssh" / "id_ed25519.pub"
+
+
+def write_derived_ssh_key(seed_phrase: str) -> Path:
+    """Write the derived key pair where our own ssh calls look for it.
+
+    Both halves, always together, overwriting whatever was there. Overwriting
+    is safe precisely because the key is derived: the phrase is the original,
+    the files are a cache of it. Writing one half and keeping the other is what
+    produces a pair that cannot authenticate.
+    """
+    from ... import address
+
+    keys = address.derive_ssh_key(seed_phrase)
+
+    SSH_PRIVATE_KEY.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    SSH_PRIVATE_KEY.write_text(keys["private_key"])
+    SSH_PRIVATE_KEY.chmod(0o600)
+    SSH_PUBLIC_KEY.write_text(keys["public_line"] + "\n")
+    SSH_PUBLIC_KEY.chmod(0o644)
+    return SSH_PRIVATE_KEY
+
+
 def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
     """Print the SSH public key derived from the recovery phrase.
 
@@ -223,6 +252,8 @@ def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
         console.print("[dim]Use [bold]--write[/bold] to also write the private half to ~/.ssh/.[/dim]\n")
         return
 
+    # A human-facing export into ~/.ssh, which the operator owns. Our own copy
+    # lives in ~/.co/ssh and is managed by write_derived_ssh_key().
     ssh_dir = Path.home() / ".ssh"
     ssh_dir.mkdir(mode=0o700, exist_ok=True)
     private_path = ssh_dir / "connectonion_ed25519"
