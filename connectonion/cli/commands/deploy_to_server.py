@@ -22,7 +22,7 @@ import yaml
 from dotenv import dotenv_values
 from rich.console import Console
 
-from .server_commands import SSH_TIMEOUT_SECONDS, load_server
+from .server_commands import SSH_TIMEOUT_SECONDS, derived_agent_identity, load_server
 
 console = Console()
 
@@ -222,7 +222,8 @@ WantedBy=multi-user.target
 
 def _ensure_setup(target: str, agent: str, entrypoint: str, schema: int,
                   ssh_public_line: Optional[str],
-                  deployer_address: Optional[str] = None) -> bool:
+                  deployer_address: Optional[str] = None,
+                  agent_identity: Optional[dict] = None) -> bool:
     """Bring the server to the state a deploy assumes. Idempotent.
 
     Runs on every deploy, and is a no-op once the schema matches — which is why
@@ -267,6 +268,25 @@ grep -qxF {quoted} ~/.ssh/authorized_keys || echo {quoted} >> ~/.ssh/authorized_
         steps.append(f"""
 touch {admins}
 grep -qxF {quoted_admin} {admins} || echo {quoted_admin} >> {admins}
+""")
+
+    if agent_identity:
+        # The identity the operator's phrase says this agent has. Written only
+        # when the server has none: an agent that was given its own key — by
+        # `--own-identity`, or by an older deploy that let it mint one — keeps
+        # it, because overwriting an identity is not a thing a deploy may do.
+        #
+        # `keys/` sits under `.co/`, which the rsync excludes, so it travels
+        # over ssh like admins.txt rather than in the tarball.
+        key_b64 = base64.b64encode(agent_identity["key_bytes"]).decode()
+        keys_dir = f"{SRV}/{agent}/.co/keys"
+        steps.append(f"""
+mkdir -p {keys_dir}
+if [ ! -f {keys_dir}/agent.key ]; then
+  umask 077
+  echo {shlex.quote(key_b64)} | base64 -d > {keys_dir}/agent.key
+  chmod 600 {keys_dir}/agent.key
+fi
 """)
 
     if not steps:
@@ -662,7 +682,8 @@ def _mark_provisioned(target: str, agent: str) -> None:
          timeout=60)
 
 
-def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
+def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
+                     own_identity: bool = False) -> bool:
     """co deploy --to <server>:  ensure(setup) → sync code → restart."""
     project_dir = (project_dir or Path.cwd()).resolve()
 
@@ -710,8 +731,18 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
     ssh_public_line = _ensure_ssh_key()
     deployer_address = _deployer_address()
 
+    # An agent that will be handed to a customer must have an identity its author
+    # cannot derive — otherwise the author holds the customer's private key,
+    # whatever they intend. `--own-identity` means "mint it on the machine, and
+    # I accept that only this machine can ever be it."
+    agent_identity = None if own_identity else derived_agent_identity(agent)
+    if agent_identity:
+        console.print(f"  [dim]identity {agent_identity['address'][:16]}… "
+                      f"(derived from your recovery phrase)[/dim]")
+
     if not _ensure_setup(target, agent, entrypoint, provision.get("schema", 0),
-                         ssh_public_line, deployer_address):
+                         ssh_public_line, deployer_address,
+                         agent_identity=agent_identity):
         return False
     if not _sync_code(target, agent, project_dir):
         return False

@@ -604,6 +604,42 @@ def _wait_until_it_accepts_your_key(ssh_target: str) -> bool:
     return False
 
 
+def derived_agent_identity(name: str) -> Optional[dict]:
+    """The identity `name` will have, derived from the operator's phrase.
+
+    The same name always returns the same key, so an agent's address can be
+    printed before it is deployed and recomputed after its machine is gone —
+    which is the whole of #396. Letting the server mint one on first boot gives
+    an address nobody can know in advance and nobody can recover once the disk
+    is gone: #306's failure mode moved up a level, from "changes every deploy"
+    to "changes every machine", which is rarer and therefore worse.
+
+    Derived from ~/.co rather than from the project, for the same reason the SSH
+    key is: a server belongs to the operator, as does the account charged for it.
+    """
+    from mnemonic import Mnemonic
+    from nacl.signing import SigningKey
+
+    from ... import address as address_mod
+    from ...derive import derive_path, identity_uri, slip13_path
+    from .keys_commands import _find_co_dir
+
+    for co_dir in (Path.home() / ".co", _find_co_dir()):
+        if not co_dir or not co_dir.exists():
+            continue
+        data = address_mod.load(co_dir)
+        if not (data and data.get("seed_phrase")):
+            continue
+
+        seed = Mnemonic("english").to_seed(data["seed_phrase"])
+        signing_key = SigningKey(derive_path(seed, slip13_path(identity_uri(name))))
+        return {
+            "address": "0x" + bytes(signing_key.verify_key).hex(),
+            "key_bytes": bytes(signing_key),
+        }
+    return None
+
+
 def handle_server_new(name: str, machine_type: Optional[str] = None,
                       yes: bool = False) -> bool:
     """Have a server created for you, and register it locally."""
