@@ -626,7 +626,7 @@ def _forget_host_key(ssh_target: str) -> None:
 KEY_INSTALL_TIMEOUT_SECONDS = 120
 
 
-def _wait_until_it_accepts_your_key(ssh_target: str) -> bool:
+def _wait_until_it_accepts_your_key(ssh_target: str, name: str = "<name>") -> bool:
     """Block until the machine actually lets you in.
 
     The API returns as soon as the instance has an address, which is before the
@@ -647,8 +647,10 @@ def _wait_until_it_accepts_your_key(ssh_target: str) -> bool:
         time.sleep(3)
 
     console.print("[yellow]It is not accepting your key yet.[/yellow]")
-    console.print("[dim]The machine exists and is charged for; this is usually a "
-                  "slow first boot. Try [bold]co server check[/bold] in a minute.[/dim]")
+    console.print("[dim]The machine exists and is charged for. Usually a slow first "
+                  "boot — try [bold]co server check[/bold] in a minute.[/dim]")
+    console.print(f"[dim]If it still refuses: [bold]co server fix-key {name}[/bold] "
+                  f"reinstalls the key on the machine you already paid for.[/dim]")
     return False
 
 
@@ -686,6 +688,67 @@ def derived_agent_identity(name: str) -> Optional[dict]:
             "key_bytes": bytes(signing_key),
         }
     return None
+
+
+def handle_server_fix_key(name: str) -> bool:
+    """Reinstall the derived key on a server you already own.
+
+    The route out of a machine that was charged for and never accepted the key.
+    Before this the only repair was destroy and pay again — the wait said "try
+    again in a minute", and trying again did the same thing.
+
+    Also the repair after rotating: the derived key changes and the machine
+    should follow it, without losing what is on the disk.
+    """
+    import requests
+
+    from .project_cmd_lib import load_api_key
+
+    entry = load_server(name)
+    if not entry:
+        console.print(f"\n[red]No server named '{name}'.[/red]")
+        console.print("[cyan]co server ls[/cyan] to see what is registered.\n")
+        return False
+
+    api_key = load_api_key()
+    if not api_key:
+        console.print("\n[red]Not authenticated.[/red]")
+        console.print("[cyan]co auth[/cyan] first — the key is reinstalled through "
+                      "the server API.\n")
+        return False
+
+    ssh_public_line = _ensure_ssh_key()
+    if not ssh_public_line:
+        console.print("\n[red]No SSH key to install.[/red]")
+        console.print("[dim]It is derived from your recovery phrase. "
+                      "[bold]co keys --ssh[/bold] to check.[/dim]\n")
+        return False
+
+    console.print(f"\n[dim]Reinstalling your key on {name} …[/dim]")
+    try:
+        response = requests.post(
+            f"{API_BASE}/api/v1/servers/{name}/key",
+            headers={"Authorization": f"Bearer {api_key}"},
+            json={"ssh_public_key": ssh_public_line},
+            timeout=120,
+        )
+    except requests.RequestException as exc:
+        console.print(f"[red]Request failed: {exc}[/red]\n")
+        return False
+
+    if response.status_code != 200:
+        _report_failure(response)
+        return False
+
+    _forget_host_key(entry["ssh"])
+    if _wait_until_it_accepts_your_key(entry["ssh"], name):
+        console.print(f"[green]✓ {name} accepts your key[/green]")
+        console.print(f"\n[dim]Next:[/dim] co server check {name}\n")
+        return True
+
+    console.print("[dim]The key was reinstalled but the machine has not picked it "
+                  "up yet. It is charged for either way — try again shortly.[/dim]\n")
+    return False
 
 
 def handle_server_new(name: str, machine_type: Optional[str] = None,
@@ -771,7 +834,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
     _update(lambda servers: servers.update({name: entry}))
 
     _forget_host_key(server["ssh_target"])
-    _wait_until_it_accepts_your_key(server["ssh_target"])
+    _wait_until_it_accepts_your_key(server["ssh_target"], name)
 
     console.print(f"\n[green]✓ {name} is ready[/green]")
     console.print(f"  [cyan]{server['ssh_target']}[/cyan]")

@@ -23,7 +23,8 @@ def _do_not_wait_for_a_real_machine(monkeypatch):
     """`co server new` blocks until the box accepts the key. A unit test has no
     box, so it would block for the full timeout. TestReadyMeansYouCanLogIn
     patches this itself and asserts the call, so the behaviour stays covered."""
-    monkeypatch.setattr(sc, "_wait_until_it_accepts_your_key", lambda target: True)
+    monkeypatch.setattr(sc, "_wait_until_it_accepts_your_key",
+                        lambda target, name="": True)
 
 
 @pytest.fixture
@@ -885,14 +886,14 @@ class TestReadyMeansYouCanLogIn:
             return _ok("ok") if len(attempts) >= 3 else _fail("Permission denied (publickey)")
 
         with patch.object(sc, "_ssh", side_effect=flaky), patch("time.sleep"):
-            assert _REAL_WAIT_UNTIL_IT_ACCEPTS_YOUR_KEY("co@1.2.3.4") is True
+            assert _REAL_WAIT_UNTIL_IT_ACCEPTS_YOUR_KEY("co@1.2.3.4", "prod") is True
 
         assert len(attempts) == 3
 
     def test_a_machine_that_never_opens_says_so_instead_of_hanging(self, capsys):
         with patch.object(sc, "_ssh", return_value=_fail("Permission denied (publickey)")), \
              patch.object(sc, "KEY_INSTALL_TIMEOUT_SECONDS", 0):
-            assert _REAL_WAIT_UNTIL_IT_ACCEPTS_YOUR_KEY("co@1.2.3.4") is False
+            assert _REAL_WAIT_UNTIL_IT_ACCEPTS_YOUR_KEY("co@1.2.3.4", "prod") is False
 
         out = " ".join(capsys.readouterr().out.split())
         assert "charged for" in out, "the operator has paid; say so"
@@ -912,7 +913,7 @@ class TestReadyMeansYouCanLogIn:
              patch("requests.post", return_value=_response(200, server)), \
              patch.object(sc, "_forget_host_key"), \
              patch.object(sc, "_wait_until_it_accepts_your_key",
-                          side_effect=lambda t: waited.append(t) or True):
+                          side_effect=lambda t, name="": waited.append(t) or True):
             assert sc.handle_server_new("prod", yes=True) is True
 
         assert waited == ["co@203.0.113.7"]
