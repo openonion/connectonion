@@ -80,6 +80,17 @@ def co(*args, timeout=900, check=True):
 @pytest.fixture(scope="module")
 def server():
     co("server", "new", SERVER, "--yes", timeout=900)
+
+    # Immediately, before anything else can touch it: was the machine we were
+    # just charged for actually registered? #445 — `co server new` prints
+    # "✓ ready … $360.00 charged" and the next command answers "No server named".
+    # Reading the file here separates "never written" from "written then
+    # removed", which is the one thing the source cannot tell us.
+    registry = Path.home() / ".co" / "servers.yaml"
+    print(f"\n[registry] exists={registry.exists()} "
+          f"mtime={registry.stat().st_mtime if registry.exists() else None}")
+    print(f"[registry] contents:\n{registry.read_text() if registry.exists() else '(none)'}")
+
     try:
         yield SERVER
     finally:
