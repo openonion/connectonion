@@ -12,7 +12,8 @@ LLM-Note:
 
 import inspect
 import functools
-from typing import Callable, Dict, Any, get_type_hints, List, get_origin, get_args, Union
+import enum
+from typing import Callable, Dict, Any, Literal, get_type_hints, List, get_origin, get_args, Union
 
 # Map Python types to JSON Schema types
 TYPE_MAP = {
@@ -25,17 +26,53 @@ TYPE_MAP = {
 }
 
 
+def _enum_schema(values) -> dict:
+    """A closed set of values, typed by what is in it.
+
+    The type matters as much as the list: calling Literal[1, 2] a string makes
+    every valid value invalid on arrival.
+    """
+    json_type = "string"
+    if values and all(isinstance(v, bool) for v in values):
+        json_type = "boolean"
+    elif values and all(isinstance(v, int) and not isinstance(v, bool) for v in values):
+        json_type = "integer"
+    elif values and all(isinstance(v, float) for v in values):
+        json_type = "number"
+    return {"type": json_type, "enum": list(values)}
+
+
 def get_json_schema_type(param_type) -> dict:
-    """Convert a Python type hint to JSON Schema type, handling generics."""
+    """Convert a Python type hint to JSON Schema type, handling generics.
+
+    The schema is the only thing telling the model what a tool accepts, so a
+    constraint the function enforces and the schema omits costs a round trip:
+    the model sends a plausible value, the tool rejects it, and nothing in the
+    schema had said it would.
+    """
     origin = get_origin(param_type)
 
-    # Handle Optional[X] which is Union[X, None]
+    # Literal["fast", "slow"] — the values ARE the constraint.
+    if origin is Literal:
+        return _enum_schema(get_args(param_type))
+
+    # An Enum class publishes its VALUES, not its member names: the model has to
+    # send "fast", not "FAST".
+    if isinstance(param_type, type) and issubclass(param_type, enum.Enum):
+        return _enum_schema([member.value for member in param_type])
+
     if origin is Union:
         args = get_args(param_type)
         # Filter out NoneType to get the actual type
         non_none_args = [a for a in args if a is not type(None)]
-        if non_none_args:
+        if len(non_none_args) == 1:
+            # Optional[X] — a nullable X is still an X, not a one-branch union.
             return get_json_schema_type(non_none_args[0])
+        if non_none_args:
+            # A real multi-type union. Taking the first arm silently made every
+            # other type unrepresentable: Union[str, int] said "string", so int
+            # was never a legal value as far as the model could tell.
+            return {"anyOf": [get_json_schema_type(a) for a in non_none_args]}
         return {"type": "string"}
 
     # Handle List[X]
