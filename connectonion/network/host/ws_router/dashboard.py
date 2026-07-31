@@ -313,7 +313,25 @@ def _subtitle(agent_metadata, skill_count):
     tools = agent_metadata.get("tools") or []
     if tools:
         parts.append(f"{len(tools)} tool{'s' if len(tools) != 1 else ''}")
+    if agent_metadata.get("trust"):
+        # Who this agent will talk to. The operator set it in code and cannot
+        # otherwise see what the running agent actually resolved it to.
+        parts.append(f"trust: {escape(str(agent_metadata['trust']))}")
     return " · ".join(parts)
+
+
+def _address_line(agent_metadata):
+    """The agent's address, in full, or nothing.
+
+    In full because a truncated address is decoration: a deployed agent's address
+    cannot be known before its first boot (#396), so learning it today means
+    opening an ssh session and reading the logs. Half of it does not save that
+    trip. It wraps rather than shrinks, so it stays selectable in a 440px pane.
+    """
+    address = agent_metadata.get("address")
+    if not address:
+        return ""
+    return '<p class="addr">' + escape(str(address)) + '</p>'
 
 
 def render_starter(agent_metadata):
@@ -331,8 +349,9 @@ def render_starter(agent_metadata):
     """
     skills = published_skills(agent_metadata.get("skills") or [])
     page, _ = _starter_templates()
-    return page.substitute(
+    return page.safe_substitute(
         name=escape(str(agent_metadata.get("name") or "Agent")),
         subtitle=_subtitle(agent_metadata, len(skills)),
+        address=_address_line(agent_metadata),
         body=_skill_sections(skills),
     )
