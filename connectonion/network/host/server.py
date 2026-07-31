@@ -28,6 +28,7 @@ don't interfere between concurrent requests.
 import asyncio
 import random
 from functools import partial
+import os
 from pathlib import Path
 from typing import Callable, Union
 
@@ -467,6 +468,15 @@ def host(
     # Resolve co_dir: explicit > cwd/.co (project default)
     if co_dir is None:
         co_dir = Path.cwd() / '.co'
+
+    # A server can host more than one agent, and only the port stops it: two of
+    # them defaulting to 8000 means the second dies on "address already in use"
+    # while systemd keeps restarting it. `co deploy --to` picks a free port on
+    # the machine and passes it here, so the operator's agent.py needs no change
+    # and no knowledge of what else lives on that box. An explicit port in code
+    # or host.yaml still wins — this only replaces the default.
+    if port is None and os.getenv("AGENT_PORT"):
+        port = int(os.environ["AGENT_PORT"])
 
     # Load config: host.yaml (optional) → code param overrides
     config = load_host_config(
