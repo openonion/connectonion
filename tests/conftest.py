@@ -44,6 +44,28 @@ from dotenv import load_dotenv
 load_dotenv()
 
 
+@pytest.fixture(autouse=True)
+def _never_touch_the_real_home(monkeypatch, tmp_path_factory):
+    """No test may read or write the operator's real ~/.co.
+
+    `CliRunner.isolated_filesystem()` isolates the working directory and
+    nothing else, so a test that ran `co auth microsoft` against mocked HTTP
+    still wrote its fake tokens into the real ~/.co/keys.env — overwriting a
+    live Outlook session with `access_token='eyJ0eXAi.test'`. The failure
+    surfaced days later as "Microsoft session expired", which is the last thing
+    anyone would trace back to a test run.
+
+    Isolating HOME is the only guard that holds: the paths are resolved deep
+    inside the commands, from Path.home() and from AGENT_CONFIG_PATH, and a
+    per-test patch has to be remembered by every future test.
+    """
+    home = tmp_path_factory.mktemp("home")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("USERPROFILE", str(home))       # Windows
+    monkeypatch.setenv("AGENT_CONFIG_PATH", str(home / ".co"))
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
+
+
 @pytest.fixture
 def temp_dir():
     """Create a temporary directory for tests."""
