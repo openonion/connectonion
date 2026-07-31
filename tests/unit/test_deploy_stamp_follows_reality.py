@@ -11,6 +11,7 @@ became a permanent one, silently.
 from types import SimpleNamespace
 from unittest.mock import patch
 
+from connectonion import __version__
 from connectonion.cli.commands import deploy_to_server as dts
 
 
@@ -18,7 +19,16 @@ def run(stdout="", returncode=0):
     return SimpleNamespace(stdout=stdout, stderr="", returncode=returncode)
 
 
-def install_script(tmp_path, version="1.5.7"):
+def install_script(tmp_path):
+    """The pip script a deploy would run, against a fake server.
+
+    The version is not injected. `_install_deps_if_changed` imports
+    `__version__` inside the function body, so patching the module attribute
+    does nothing — an earlier version of this test did exactly that and passed
+    only because the machine running it happened to be on the version it had
+    hardcoded. It failed the moment the release branch bumped to 1.5.8, which
+    is the one place it could not be ignored.
+    """
     (tmp_path / "requirements.txt").write_text("connectonion\npymupdf>=1.28\n")
     scripts = []
 
@@ -28,9 +38,8 @@ def install_script(tmp_path, version="1.5.7"):
             return run("stale")
         return run()
 
-    with patch.object(dts, "__version__", version, create=True):
-        with patch.object(dts, "_ssh", side_effect=fake_ssh):
-            dts._install_deps_if_changed("user@host", "billing", tmp_path)
+    with patch.object(dts, "_ssh", side_effect=fake_ssh):
+        dts._install_deps_if_changed("user@host", "billing", tmp_path)
 
     return next(s for s in scripts if "pip install" in s)
 
@@ -39,9 +48,9 @@ def test_the_runtime_is_pinned_to_the_deploying_cli():
     """`-U` asks for 'newest'. Only a pin asks for 'the one that is deploying'."""
     import tempfile, pathlib
     with tempfile.TemporaryDirectory() as d:
-        script = install_script(pathlib.Path(d), version="1.5.7")
+        script = install_script(pathlib.Path(d))
 
-    assert "connectonion==1.5.7" in script, (
+    assert f"connectonion=={__version__}" in script, (
         "the deploy asks the index for whatever is newest, so a deploy run "
         "just after a release lands the previous version"
     )
