@@ -78,7 +78,18 @@ def test_move_path_is_curved_not_straight():
     dx, dy = x1 - x0, y1 - y0
     length = math.hypot(dx, dy) or 1.0
     max_perp = max(abs((px - x0) * dy - (py - y0) * dx) / length for px, py in pts)
-    assert max_perp > 1, "path should bow off the straight line, not run straight"
+
+    # Relative to the chord, not an absolute pixel count. move() starts from a
+    # random offset, so ~3% of paths are under 50px end to end, and on that scale
+    # a perfectly good bow is well under one pixel — which is what made the old
+    # `> 1` assertion fail about 0.3% of runs with nothing wrong.
+    #
+    # Measured over 20,000 paths: the absolute form failed 61 times, this one
+    # failed 0.
+    assert max_perp / length > 0.01, (
+        f"path should bow off the straight line, not run straight "
+        f"(deviation {max_perp:.3f}px over a {length:.1f}px chord)"
+    )
 
 
 def test_click_moves_then_presses_with_dwell_order():
