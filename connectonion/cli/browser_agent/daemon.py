@@ -182,13 +182,14 @@ def launch_failure_advice(first_line: str) -> str:
     `co browser` from a desktop Terminal, when what it needed was the browser
     installed — the executable was simply not on disk.
     """
+    log = "Full log at ~/.co/browser.log."
     if "xecutable doesn't exist" in first_line:
         return ("No browser is installed for this user.\n"
-                "Install it with:  patchright install chromium")
+                f"Install it with:  patchright install chromium\n{log}")
     if platform.system() == "Darwin":
         return ("Run `co browser` from a desktop Terminal (a logged-in window "
-                "session), not over ssh/cron/detached.")
-    return "Full log at ~/.co/browser.log."
+                f"session), not over ssh/cron/detached.\n{log}")
+    return log
 
 
 class BrowserDaemon:

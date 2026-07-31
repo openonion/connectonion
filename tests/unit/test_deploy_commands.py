@@ -47,3 +47,29 @@ class TestASkillIsNotAProject:
         assert "secrets.env" in patterns
         assert "scratch/" in patterns
         assert not any(p.startswith("#") for p in patterns)
+
+
+class TestASkillStillKeepsItsSecrets:
+    """Letting a skill ship its own files must not let it ship its own keys.
+
+    The first cut of #380 dropped the project defaults wholesale, and `.env.local`
+    — which those defaults had been excluding — started travelling to the server
+    inside the tarball. That is a worse bug than the one being fixed.
+    """
+
+    def test_env_files_never_travel(self, tmp_path):
+        patterns = dc._load_skill_ignore_patterns(tmp_path)
+
+        assert ".env*" in patterns
+
+    def test_private_keys_never_travel(self, tmp_path):
+        patterns = dc._load_skill_ignore_patterns(tmp_path)
+
+        for name in ("*.pem", "id_rsa", "id_ed25519", ".co/keys/"):
+            assert name in patterns, name
+
+    def test_the_files_the_fix_was_about_still_travel(self, tmp_path):
+        patterns = dc._load_skill_ignore_patterns(tmp_path)
+
+        assert not any(p.startswith("build") for p in patterns)
+        assert not any("node_modules" in p for p in patterns)

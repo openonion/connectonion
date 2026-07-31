@@ -97,9 +97,12 @@ def _load_skill_ignore_patterns(skill_dir: Path) -> list[str]:
     sent.
 
     Only a `.gitignore` the skill's own author wrote applies here, plus the
-    caches nobody means to ship.
+    caches nobody means to ship — and secrets, which are the one thing the
+    project defaults were right about. `.env*` and `.co/keys/` leave the machine
+    over a network to a server, so they never travel, whatever the skill wants.
     """
-    lines = ["__pycache__/", "*.py[cod]", ".DS_Store", ".git/"]
+    lines = ["__pycache__/", "*.py[cod]", ".DS_Store", ".git/",
+             ".env*", ".co/keys/", "*.pem", "id_rsa", "id_ed25519"]
     gitignore = skill_dir / ".gitignore"
     if gitignore.exists():
         lines.extend(gitignore.read_text(encoding="utf-8").splitlines())
