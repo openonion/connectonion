@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: calls tools.py functions (is_blocked, is_whitelisted, is_contact, promote_to_contact) which read/write .co/trust/ files | no direct file I/O in this module
   Integration: exposes parse_policy(policy_text), evaluate_request(config, client_id, request) | used by TrustAgent to parse policies and execute zero-cost fast rules before LLM | returns None when LLM needed (default: ask)
   Performance: zero LLM tokens for fast rules | O(n) checks against allow/deny lists | promote_to_contact() writes to file but rare (onboarding only) | YAML parsing is fast
-  Errors: yaml.safe_load() errors propagate | gracefully handles missing frontmatter (returns empty config)
+  Errors: yaml.safe_load() errors propagate, naming the policy file when the caller passed one | gracefully handles missing frontmatter (returns empty config)
 
 Parse YAML config from trust policy files and execute fast rules.
 
@@ -19,12 +19,14 @@ Config format:
     default: deny                   # allow | deny | ask
 """
 
+import io
+
 import yaml
 from typing import Optional
 from .tools import is_whitelisted, is_blocked, is_contact, is_admin, promote_to_contact
 
 
-def parse_policy(policy_text: str) -> tuple[dict, str]:
+def parse_policy(policy_text: str, source: str = None) -> tuple[dict, str]:
     """
     Parse YAML frontmatter from markdown policy file.
 
@@ -41,7 +43,20 @@ def parse_policy(policy_text: str) -> tuple[dict, str]:
     yaml_content = policy_text[3:end].strip()
     markdown_body = policy_text[end + 3:].strip()
 
-    config = yaml.safe_load(yaml_content) or {}
+    # Handed to PyYAML as a named stream rather than a bare string. A typo in a
+    # policy still stops the host — that is the right outcome for a config file
+    # it cannot understand — but the parser's own error then reads
+    #
+    #   in ".co/trust/custom.md", line 3, column 29
+    #       allow: [whitelisted, contact
+    #                                   ^
+    #
+    # instead of naming "<unicode string>". Which file, which line, and the text
+    # itself, from the library, with nothing caught and re-raised.
+    stream = io.StringIO(yaml_content)
+    if source:
+        stream.name = source
+    config = yaml.safe_load(stream) or {}
     return config, markdown_body
 
 
