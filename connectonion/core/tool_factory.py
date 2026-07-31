@@ -95,6 +95,38 @@ def get_json_schema_type(param_type) -> dict:
     # Default to string
     return {"type": "string"}
 
+def _unbound_method_owner(func):
+    """The class name if `func` is a method accessed off the class, else None.
+
+    `MyTools.do_thing` and `MyTools().do_thing` are both callable, so the wrong
+    one is easy to pass — and in Python 3 the first is a plain function, so
+    inspect.ismethod() cannot tell them apart.
+
+    __qualname__ can: a method carries its owner ("Calculator.add"), while a
+    plain function does not, and one defined inside another scope carries
+    "<locals>" instead of a class. A function that merely names its first
+    parameter `self` is unusual but legal, and must keep working.
+    """
+    if inspect.ismethod(func):
+        return None
+
+    try:
+        params = list(inspect.signature(func).parameters)
+    except (TypeError, ValueError):
+        return None
+    if not params or params[0] != "self":
+        return None
+
+    parts = getattr(func, "__qualname__", "").split(".")
+    if len(parts) < 2 or parts[-2] == "<locals>":
+        return None
+
+    owner = getattr(inspect.getmodule(func), parts[-2], None)
+    if owner is not None and not isinstance(owner, type):
+        return None
+    return parts[-2]
+
+
 def create_tool_from_function(func: Callable) -> Callable:
     """
     Converts a Python function into a tool that is compatible with the Agent,
@@ -109,6 +141,19 @@ def create_tool_from_function(func: Callable) -> Callable:
     sig = inspect.signature(func)
     type_hints = get_type_hints(func)
     
+    owner = _unbound_method_owner(func)
+    if owner:
+        # Refused here rather than at call time. Stripping `self` made the schema
+        # look correct, so the mistake surfaced later as
+        # "add() missing 1 required positional argument: 'self'" — raised inside
+        # the agent loop, describing the symptom, nowhere near the line that
+        # registered the tool.
+        raise TypeError(
+            f"{owner}.{func.__name__} is an unbound method — pass an instance, "
+            f"not the class: tools=[{owner}().{func.__name__}] "
+            f"instead of tools=[{owner}.{func.__name__}]"
+        )
+
     properties = {}
     required = []
 
