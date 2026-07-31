@@ -287,10 +287,19 @@ class Agent:
             names = [Path(p).name for p in saved_files]
             self.logger.console.print(f"  [dim]↑ {len(saved_files)} file(s): {', '.join(names)}[/dim]")
 
-        # Append file paths to prompt so the agent knows about uploaded files
+        # The upload notice is context ABOUT the turn, not part of what the user
+        # typed. It used to be concatenated onto `prompt`, which is the string
+        # that becomes the user message, the stored user_prompt AND the
+        # user_input trace — so the raw tags showed up in the chat bubble, in
+        # xray, and in the transcript. Carried as its own internal message below.
+        upload_notice = None
         if saved_files:
             file_list = "\n".join(f"- {p}" for p in saved_files)
-            prompt += f"\n\n<system-reminder>The user uploaded the following files:\n{file_list}\nUse your read_file tool or other available tools to read the file contents before responding. Do not assume or guess the contents.</system-reminder>"
+            upload_notice = (
+                f"The user uploaded the following files:\n{file_list}\n"
+                f"Use your read_file tool or other available tools to read the file "
+                f"contents before responding. Do not assume or guess the contents."
+            )
 
         # Add user message to conversation (multimodal if images provided)
         if images:
@@ -300,6 +309,10 @@ class Agent:
             self.current_session['messages'].append({"role": "user", "content": content})
         else:
             self.current_session['messages'].append({"role": "user", "content": prompt})
+
+        if upload_notice:
+            from ..useful_plugins.system_reminder import reminder_message
+            self.current_session['messages'].append(reminder_message(upload_notice))
 
         # Track this turn
         self.current_session['turn'] += 1

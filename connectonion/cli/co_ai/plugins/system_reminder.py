@@ -225,10 +225,8 @@ def detect_intent(agent: 'Agent') -> None:
     if analysis.is_build:
         build_context = _load_build_context()
         if build_context:
-            agent.current_session['messages'].append({
-                'role': 'user',
-                'content': f"<system-reminder>\n{build_context}\n</system-reminder>"
-            })
+            from ....useful_plugins.system_reminder import reminder_message
+            agent.current_session['messages'].append(reminder_message(build_context))
 
 
 @after_each_tool

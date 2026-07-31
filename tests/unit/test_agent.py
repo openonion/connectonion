@@ -620,15 +620,19 @@ def test_agent_input_with_files(tmp_path):
     assert len(saved_files) == 1
     assert saved_files[0].read_bytes() == b"%PDF-1.4\n"
 
-    # Verify system reminder was appended to prompt with file path
+    # The model must still learn about the file — but not by having the notice
+    # concatenated onto what the user typed (#308). It arrives as its own
+    # internal message, which the UI skips and the model still reads.
     messages = mock_llm.last_call["messages"]
-    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+    user_messages = [msg for msg in messages if msg['role'] == 'user']
 
-    content = user_message['content']
-    assert isinstance(content, str)
-    assert "Analyze this document" in content
-    assert "<system-reminder>" in content
-    assert "report.pdf" in content
+    typed = next(m for m in user_messages if not m.get('internal'))
+    assert typed['content'] == "Analyze this document", "the user's words, unmodified"
+    assert "<system-reminder>" not in typed['content']
+
+    notice = next(m for m in user_messages if m.get('internal'))
+    assert "report.pdf" in notice['content']
+    assert "<system-reminder>" in notice['content']
 
 
 def test_agent_input_with_images_and_files(tmp_path):
@@ -650,15 +654,19 @@ def test_agent_input_with_images_and_files(tmp_path):
     agent.input("Analyze these", images=[test_image], files=[test_file])
 
     messages = mock_llm.last_call["messages"]
-    user_message = [msg for msg in messages if msg['role'] == 'user'][-1]
+    user_messages = [msg for msg in messages if msg['role'] == 'user']
 
-    content = user_message['content']
-    assert isinstance(content, list)
-    # Images make it multimodal; file reminder is appended to prompt text
-    assert content[0]['type'] == 'text'
-    assert "data.csv" in content[0]['text']
-    assert "<system-reminder>" in content[0]['text']
-    assert content[1]['type'] == 'image_url'
+    # Images still make the typed message multimodal, and it still carries only
+    # what the user typed — the file notice is a separate internal message (#308).
+    typed = next(m for m in user_messages if not m.get('internal'))
+    assert isinstance(typed['content'], list)
+    assert typed['content'][0]['type'] == 'text'
+    assert typed['content'][0]['text'] == "Analyze these"
+    assert "<system-reminder>" not in typed['content'][0]['text']
+
+    notice = next(m for m in user_messages if m.get('internal'))
+    assert "data.csv" in notice['content']
+    assert typed['content'][1]['type'] == 'image_url', "the image is still attached"
 
     # Verify file saved (with timestamp prefix)
     uploads_dir = tmp_path / ".co" / "uploads"
