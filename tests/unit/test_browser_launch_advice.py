@@ -39,3 +39,17 @@ class TestTheAdviceMatchesTheFailure:
 
         assert "desktop Terminal" not in advice
         assert "browser.log" in advice
+
+
+class TestTheLogIsAlwaysNamed:
+    """Whatever else is wrong, the full log is where the rest of it is. A rewrite
+    of this message dropped the pointer from two of the three branches, and a
+    test that had asserted it since before the rewrite caught it."""
+
+    def test_every_branch_names_the_log(self):
+        for system in ("Darwin", "Linux"):
+            with patch.object(daemon.platform, "system", return_value=system):
+                for line in ("Executable doesn't exist at /x",
+                             "Target page or browser has been closed"):
+                    assert "~/.co/browser.log" in daemon.launch_failure_advice(line), \
+                        (system, line)
