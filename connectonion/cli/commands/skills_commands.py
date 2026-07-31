@@ -148,11 +148,11 @@ def _load_index() -> Optional[dict]:
 SOURCE_PRIORITY = {src: i for i, (src, _, _) in enumerate(SOURCES)}
 
 
-def _copy_entry(entry: dict, force: bool) -> bool:
-    """Copy a single index entry into ~/.co/skills/<name>/. Returns True if copied."""
+def _copy_entry(entry: dict, force: bool, skills_dir: Optional[Path] = None) -> bool:
+    """Copy a single index entry into <skills_dir>/<name>/. Returns True if copied."""
     name = entry["name"]
     src_path = Path(entry["path"])
-    dest_dir = SKILLS_DIR / name
+    dest_dir = (skills_dir or SKILLS_DIR) / name
     dest_file = dest_dir / "SKILL.md"
 
     if src_path.resolve() == dest_file.resolve():
@@ -185,14 +185,22 @@ def handle_skills_copy(
     source: Optional[str] = None,
     force: bool = False,
     all_: bool = False,
+    to_project: bool = False,
 ):
-    """Copy one or more discovered skills into ~/.co/skills/<name>/."""
+    """Copy one or more discovered skills into a skills directory.
+
+    Which directory is the whole question. ~/.co/skills is the operator's
+    library and does not travel — `co skills list` marks it `Deploys ✗`. Only
+    the project's .co/skills reaches a server, which is what every deploy tells
+    you ("move one into .co/skills/ to ship it") and what no command did.
+    """
     index = _load_index()
     if not index:
         console.print("[yellow]No index found. Run `co skills discover` first.[/yellow]")
         return
 
-    SKILLS_DIR.mkdir(parents=True, exist_ok=True)
+    skills_dir = (Path.cwd() / ".co" / "skills") if to_project else SKILLS_DIR
+    skills_dir.mkdir(parents=True, exist_ok=True)
 
     by_name: dict = {}
     for s in index["skills"]:
@@ -209,13 +217,13 @@ def handle_skills_copy(
 
         copied = skipped = 0
         for entry in chosen.values():
-            if _copy_entry(entry, force):
+            if _copy_entry(entry, force, skills_dir):
                 copied += 1
             else:
                 skipped += 1
         console.print(f"\n[bold]Copied {copied} skill(s)[/bold]"
                       + (f", skipped {skipped}" if skipped else "")
-                      + f" → {SKILLS_DIR}")
+                      + f" → {skills_dir}")
         return
 
     if not names:
@@ -233,7 +241,7 @@ def handle_skills_copy(
             sources = ", ".join(m["source"] for m in matches)
             console.print(f"[yellow]{name} exists in: {sources}. Use --source to pick one.[/yellow]")
             continue
-        _copy_entry(matches[0], force)
+        _copy_entry(matches[0], force, skills_dir)
 
 
 def handle_skills_manifest(

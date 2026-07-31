@@ -111,7 +111,7 @@ def _warn_about_skills_left_behind(project_dir: Path) -> None:
             + ", ".join(s.name for s in staying[:5])
             + (f" (+{len(staying) - 5} more)" if len(staying) > 5 else "")
         )
-        console.print("    [dim]co skills list  ·  move one into .co/skills/ to ship it[/dim]")
+        console.print("    [dim]co skills copy <name> --to-project   to ship one[/dim]")
 
     for location, name, reason in find_skill_problems(project_dir=project_dir):
         console.print(f"  [red]✗[/red] {location}/{name} — {reason}")
