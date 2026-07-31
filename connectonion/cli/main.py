@@ -421,10 +421,12 @@ def skills_copy(
     source: Optional[str] = typer.Option(None, "--source", "-s", help="Restrict to a specific source (claude, codex, cursor, kiro, co-user, co-project)"),
     force: bool = typer.Option(False, "--force", "-f", help="Overwrite existing skill"),
     all_: bool = typer.Option(False, "--all", "-a", help="Copy every discovered skill (dedupe by SOURCES priority)"),
+    to_project: bool = typer.Option(False, "--to-project", help="Copy into this project's .co/skills/ — the only tier that deploys"),
 ):
-    """Copy a discovered skill into ~/.co/skills/<name>/."""
+    """Copy a discovered skill into ~/.co/skills/<name>/, or --to-project to ship it."""
     from .commands.skills_commands import handle_skills_copy
-    handle_skills_copy(names=names or [], source=source, force=force, all_=all_)
+    handle_skills_copy(names=names or [], source=source, force=force, all_=all_,
+                       to_project=to_project)
 
 
 @skills_app.command("manifest")
