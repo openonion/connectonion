@@ -566,6 +566,37 @@ def _forget_host_key(ssh_target: str) -> None:
     subprocess.run(["ssh-keygen", "-R", host], capture_output=True, text=True)
 
 
+# The machine answers on 22 before the guest agent has copied our key into
+# authorized_keys — about ten seconds, in practice.
+KEY_INSTALL_TIMEOUT_SECONDS = 120
+
+
+def _wait_until_it_accepts_your_key(ssh_target: str) -> bool:
+    """Block until the machine actually lets you in.
+
+    The API returns as soon as the instance has an address, which is before the
+    key works. Printing "✓ ready" then suggesting `co server check` next meant
+    the very next command answered "Permission denied (publickey)" — the most
+    alarming way to say "wait ten seconds", on a machine just paid for.
+
+    Returns False on timeout rather than failing the command: the server exists
+    and is charged for either way, so the honest thing is to say what is true
+    and let the operator retry.
+    """
+    import time
+
+    deadline = time.monotonic() + KEY_INSTALL_TIMEOUT_SECONDS
+    while time.monotonic() < deadline:
+        if _ssh(ssh_target, "echo ok").returncode == 0:
+            return True
+        time.sleep(3)
+
+    console.print("[yellow]It is not accepting your key yet.[/yellow]")
+    console.print("[dim]The machine exists and is charged for; this is usually a "
+                  "slow first boot. Try [bold]co server check[/bold] in a minute.[/dim]")
+    return False
+
+
 def handle_server_new(name: str, machine_type: Optional[str] = None,
                       yes: bool = False) -> bool:
     """Have a server created for you, and register it locally."""
@@ -648,6 +679,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
     _save(servers)
 
     _forget_host_key(server["ssh_target"])
+    _wait_until_it_accepts_your_key(server["ssh_target"])
 
     console.print(f"\n[green]✓ {name} is ready[/green]")
     console.print(f"  [cyan]{server['ssh_target']}[/cyan]")
