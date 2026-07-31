@@ -165,12 +165,30 @@ class TestConvergence:
 
     def test_a_corrupt_marker_reads_as_schema_zero(self):
         """A truncated or hand-edited marker means converge again, not crash."""
-        with patch.object(dts, "_ssh", return_value=_ok("{not json")):
+        with patch.object(dts, "_ssh", return_value=_ok("{not json\nVENV_PRESENT")):
             assert dts._read_provision("user@host", "myagent") == {"schema": 0}
 
     def test_a_valid_marker_is_parsed(self):
-        with patch.object(dts, "_ssh", return_value=_ok(json.dumps({"schema": 1}))):
+        probe = json.dumps({"schema": 1}) + "\nVENV_PRESENT"
+        with patch.object(dts, "_ssh", return_value=_ok(probe)):
             assert dts._read_provision("user@host", "myagent")["schema"] == 1
+
+    def test_a_marker_without_the_venv_it_speaks_for_reads_as_schema_zero(self):
+        """The marker records what *was* true. A venv removed by a disk cleanup
+        or a restored snapshot leaves it standing, and the deploy then skipped
+        creating one — pip short-circuited on an unchanged requirements hash, and
+        the restart failed naming a python that is not there. openonion/connectonion#376
+        """
+        with patch.object(dts, "_ssh", return_value=_ok(json.dumps({"schema": 2}))):
+            assert dts._read_provision("user@host", "myagent") == {"schema": 0}
+
+    def test_the_interpreter_is_checked_in_the_same_round_trip(self):
+        """Not a second ssh call: the marker read already costs one."""
+        with patch.object(dts, "_ssh", return_value=_ok("{}\nVENV_PRESENT")) as ssh:
+            dts._read_provision("user@host", "myagent")
+
+        assert ssh.call_count == 1
+        assert ".venv/bin/python" in ssh.call_args.args[1]
 
 
 class TestDependencyInstall:
@@ -590,3 +608,35 @@ class TestTheAgentDoesNotRunAsRoot:
             dts._sync_code("co@1.2.3.4", "my-agent", tmp_path)
 
         assert any(f"chown -R co: {dts.SRV}/my-agent" in c for c in commands), commands
+
+
+class TestAMissingBinaryIsNotATraceback:
+    """`co server add` has always checked for ssh. This path did not — and it is
+    the one that runs after the server is already paid for, so the failure it
+    produced was a raw FileNotFoundError traceback for the single problem a
+    person can fix in one sentence. openonion/connectonion#377
+    """
+
+    def test_no_ssh_says_so_and_changes_nothing(self, capsys, project):
+        with patch.object(dts.shutil, "which", side_effect=lambda b: None if b == "ssh" else "/usr/bin/rsync"), \
+             patch.object(dts, "_ssh") as ssh:
+            assert dts.handle_deploy_to("prod", project) is False
+
+        ssh.assert_not_called()
+        out = " ".join(capsys.readouterr().out.split())
+        assert "No ssh binary found" in out
+
+    def test_no_rsync_says_so_too(self, capsys, project):
+        """The sync is rsync, not scp — a box with ssh but no rsync fails halfway."""
+        with patch.object(dts.shutil, "which", side_effect=lambda b: None if b == "rsync" else "/usr/bin/ssh"), \
+             patch.object(dts, "_ssh") as ssh:
+            assert dts.handle_deploy_to("prod", project) is False
+
+        ssh.assert_not_called()
+        assert "No rsync binary found" in " ".join(capsys.readouterr().out.split())
+
+    def test_both_present_proceeds(self, project):
+        """The check must not become the thing that blocks a working deploy."""
+        with patch.object(dts.shutil, "which", return_value="/usr/bin/x"), \
+             patch.object(dts, "load_server", return_value=None):
+            dts.handle_deploy_to("prod", project)  # falls through to the unknown-server path
