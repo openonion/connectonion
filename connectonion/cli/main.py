@@ -138,6 +138,7 @@ def deploy(
     skills: Optional[List[str]] = typer.Option(None, "--skills", help="Skill directory (contains SKILL.md) or directory of skills to bundle into .co/skills/ (repeatable: --skills a --skills b)"),
     name: Optional[str] = typer.Option(None, "--name", help="Project name for template deploys (default: {template}-agent)"),
     to: Optional[str] = typer.Option(None, "--to", help="Deploy onto a server you own (see: co server ls)"),
+    own_identity: bool = typer.Option(False, "--own-identity", help="With --to, let the agent mint its own identity instead of deriving it from your recovery phrase — for an agent you are handing to someone else"),
 ):
     """Deploy to ConnectOnion Cloud, or with --to onto a server you own."""
     if to:
@@ -148,9 +149,14 @@ def deploy(
             console.print("[dim]Those belong to the cloud deploy. --to syncs the project you are in.[/dim]")
             raise typer.Exit(2)
         from .commands.deploy_to_server import handle_deploy_to
-        if not handle_deploy_to(server=to):
+        if not handle_deploy_to(server=to, own_identity=own_identity):
             raise typer.Exit(1)
         return
+
+    if own_identity:
+        console.print("[red]--own-identity only applies with --to.[/red]")
+        console.print("[dim]A Cloud deploy does not carry an identity you derived.[/dim]")
+        raise typer.Exit(2)
 
     from .commands.deploy_commands import handle_deploy
     handle_deploy(template=template, skills=skills, name=name)
@@ -173,10 +179,23 @@ def auth(service: Optional[str] = typer.Argument(None, help="Service: google, mi
 @app.command()
 def keys(
     reveal: bool = typer.Option(False, "--reveal", "-r", help="Show full key values"),
+    agent: Optional[str] = typer.Option(None, "--agent", help="Print the address an agent of this name will have, before it is deployed"),
     ssh: bool = typer.Option(False, "--ssh", help="Print the SSH public key derived from your recovery phrase"),
     write: bool = typer.Option(False, "--write", help="With --ssh, also write the private half to ~/.ssh/"),
 ):
     """Show agent keys and credentials."""
+    if agent:
+        from .commands.server_commands import derived_agent_identity
+        identity = derived_agent_identity(agent)
+        if not identity:
+            console.print("\n[red]No recovery phrase to derive from.[/red]")
+            console.print("[cyan]co init[/cyan] first.\n")
+            raise typer.Exit(1)
+        console.print(f"\n[cyan]{identity['address']}[/cyan]")
+        console.print(f"[dim]agent://{agent} — the address this name will have, "
+                      f"on any machine, before or after it exists[/dim]\n")
+        return
+
     from .commands.keys_commands import handle_keys
     handle_keys(reveal=reveal, ssh=ssh, write=write)
 
