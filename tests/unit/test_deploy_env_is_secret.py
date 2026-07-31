@@ -9,11 +9,16 @@ because `co init` copies the whole of `~/.co/keys.env` into a new project's
 
 import shutil
 import subprocess
+from unittest.mock import patch
 
 import pytest
 
 from connectonion.cli.commands import deploy_to_server as dts
 from connectonion.cli.commands.deploy_to_server import RSYNC_FILTERS
+
+
+def _ok():
+    return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
 
 needs_rsync = pytest.mark.skipif(
@@ -72,3 +77,51 @@ def test_local_config_path_is_rewritten_for_the_server():
 def test_a_project_without_config_path_gains_nothing():
     """Only rewrite what is there — do not invent the variable."""
     assert "AGENT_CONFIG_PATH" not in dts._env_for_server({"X": "1"}, "myagent")
+
+
+class TestAValueIsNeverShellSyntax:
+    """A `.env` value is attacker-influenced input in the general case, and it
+    is written to the server under sudo. The first version of this sent it in a
+    heredoc, so a value equal to the delimiter would close the heredoc early and
+    hand the rest of the file to the shell — as root.
+    """
+
+    @staticmethod
+    def _ssh_script(project, env_text):
+        (project / ".env").write_text(env_text)
+        with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
+            dts._sync_env("user@host", "myagent", project)
+        return ssh.call_args.args[1] if ssh.call_args else ""
+
+    def test_a_value_equal_to_a_heredoc_delimiter_is_inert(self, tmp_path):
+        script = self._ssh_script(tmp_path, "K=CO_ENV_EOF\n")
+        assert "K=CO_ENV_EOF" not in script, "the value reached the shell verbatim"
+
+    def test_a_value_with_a_command_substitution_is_inert(self, tmp_path):
+        script = self._ssh_script(tmp_path, "K=$(touch /tmp/pwned)\n")
+        assert "touch /tmp/pwned" not in script
+
+    def test_the_values_still_arrive(self, tmp_path):
+        """Inert must not mean lost — decode what the server would decode."""
+        import base64
+        import re
+
+        script = self._ssh_script(tmp_path, "A=1\nB=two words\n")
+        payload = re.search(r"printf %s \'?([A-Za-z0-9+/=]+)\'?", script).group(1)
+        assert base64.b64decode(payload).decode() == "A=1\nB=two words\n"
+
+
+def test_a_multiline_value_is_skipped_not_silently_mangled(tmp_path):
+    """A newline inside a value ends the KEY=VALUE line, so the remainder
+    becomes junk entries. systemd would read the file without complaint."""
+    import base64
+    import re
+
+    (tmp_path / ".env").write_text('PEM="line1\nline2"\nOK=fine\n')
+    with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
+        dts._sync_env("user@host", "myagent", tmp_path)
+
+    payload = re.search(r"printf %s \'?([A-Za-z0-9+/=]+)\'?", ssh.call_args.args[1]).group(1)
+    written = base64.b64decode(payload).decode()
+    assert "OK=fine" in written
+    assert "PEM" not in written

@@ -9,6 +9,7 @@ LLM-Note:
   Errors: an unreachable or unprepared server fails before anything is changed | a failed unit start surfaces journalctl output rather than a bare exit code
 """
 
+import base64
 import hashlib
 import json
 import shlex
@@ -444,17 +445,30 @@ def _sync_env(target: str, agent: str, project_dir: Path) -> bool:
         return True
 
     env_vars = _env_for_server(dotenv_values(env_path), agent)
+
+    # A newline inside a value would end the KEY=VALUE line and turn the rest
+    # into junk entries. Say so rather than write a file that looks fine.
+    multiline = [k for k, v in env_vars.items() if v is not None and "\n" in v]
+    for key in multiline:
+        console.print(f"[yellow]  skipping {key}: multi-line values are not "
+                      f"supported in an EnvironmentFile[/yellow]")
+    env_vars = {k: v for k, v in env_vars.items()
+                if v is not None and k not in multiline}
     if not env_vars:
         return True
 
-    body = "".join(f"{k}={v}\n" for k, v in env_vars.items() if v is not None)
+    body = "".join(f"{k}={v}\n" for k, v in env_vars.items())
     dest = ENV_FILE_TEMPLATE.format(agent=agent)
+
+    # base64 over the wire so no value is ever shell syntax. A heredoc would be
+    # terminated early by a value that happened to equal the delimiter, and the
+    # remainder of the file would then run as commands — under sudo.
+    payload = base64.b64encode(body.encode("utf-8")).decode("ascii")
 
     console.print(f"[dim]  writing secrets … ({len(env_vars)} keys)[/dim]")
     result = _ssh(target, f"""
 sudo mkdir -p {shlex.quote(str(Path(dest).parent))}
-sudo tee {shlex.quote(dest)} >/dev/null <<'CO_ENV_EOF'
-{body}CO_ENV_EOF
+printf %s {shlex.quote(payload)} | base64 -d | sudo tee {shlex.quote(dest)} >/dev/null
 sudo chmod 600 {shlex.quote(dest)}
 """, timeout=120)
     if result.returncode != 0:
