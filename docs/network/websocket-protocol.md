@@ -362,6 +362,16 @@ entitled to see.
 TypeScript SDK: `agent.profile` and `useAgentForHuman().profile`, `null` until the frame
 lands.
 
+**There is a third profile surface, and it is not this one.** `host()` also sends a
+profile to the relay inside its `ANNOUNCE` frame — that is what registers the agent and
+puts it in the public directory, and it is built separately by
+`_build_agent_profile()` in `network/host/server.py`. Same public skill subset as
+`/info`, different code path, different size limits, enforced by the relay rather than
+by the agent. If an agent starts cleanly but reads as offline, that is the surface to
+look at: the relay rejects the whole ANNOUNCE when the profile fails validation, and
+`host()` prints the reason as `Relay error: <reason>` and keeps heartbeating. The
+contract is documented in `oo-api/docs/relay-announce-profile.md`.
+
 #### DASHBOARD_SNAPSHOT
 
 The agent's `dashboard.html` — its Home page — for the client to render beside the
