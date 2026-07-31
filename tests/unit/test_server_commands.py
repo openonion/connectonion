@@ -917,3 +917,70 @@ class TestReadyMeansYouCanLogIn:
             assert sc.handle_server_new("prod", yes=True) is True
 
         assert waited == ["co@203.0.113.7"]
+
+
+class TestThePerServerKeyMigration:
+    """#427: a second key, derived per server, installed beside the old one.
+
+    The one rule the migration has to obey is that no step removes the only key
+    a machine holds. Every server provisioned to date carries the shared key and
+    nothing else, and the way back into a box we own is that key.
+    """
+
+    PHRASE = ("legal winner thank year wave sausage worth useful legal "
+              "winner thank yellow")
+
+    @pytest.fixture
+    def phrase_on_disk(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("HOME", str(tmp_path))
+        monkeypatch.setattr(Path, "home", lambda: tmp_path)
+        co_dir = tmp_path / ".co"
+        co_dir.mkdir()
+        from connectonion import address
+        keys = address.generate()
+        keys["seed_phrase"] = self.PHRASE
+        address.save(keys, co_dir)
+        return co_dir
+
+    def test_a_deploy_installs_the_new_key_without_dropping_the_old_one(
+            self, phrase_on_disk, servers_file):
+        """Both lines, or a machine that only has the old key is orphaned the
+        moment we stop offering it."""
+        lines = sc._ssh_public_lines("prod")
+
+        assert len(lines) == 2, lines
+        assert all(l.startswith("ssh-ed25519 ") for l in lines), lines
+        assert lines[0] != lines[1], "the per-server key is the shared key"
+
+        from connectonion import address
+        assert lines[1] == address.derive_ssh_key(self.PHRASE)["public_line"], \
+            "the shared key is no longer among the lines a deploy installs"
+
+    def test_each_server_gets_its_own_key(self, phrase_on_disk, servers_file):
+        """The point of the tree: a key leaked off one box does not open the
+        next one."""
+        assert sc._ssh_public_lines("prod")[0] != sc._ssh_public_lines("staging")[0]
+
+    def test_ssh_offers_the_server_its_own_key_first(self, phrase_on_disk,
+                                                     servers_file):
+        """Offered, not forced — the old key stays in the list so a machine that
+        has not been redeployed since the migration still opens."""
+        from connectonion.cli.commands.keys_commands import (SSH_PRIVATE_KEY,
+                                                             per_host_key_path)
+        sc._ssh_public_lines("prod")          # a deploy, which caches both keys
+        sc._update(lambda servers: servers.update(
+            {"prod": {"ssh": "co@1.2.3.4", "hostname": "prod.example"}}))
+
+        for handle in ("prod", "co@1.2.3.4"):
+            assert sc._identity(handle) == ["-i", str(per_host_key_path("prod")),
+                                            "-i", str(SSH_PRIVATE_KEY)], handle
+
+    def test_a_server_we_have_never_seen_still_gets_the_old_key(
+            self, phrase_on_disk, servers_file):
+        """A box added by hand with `co server add`, or one whose deploy has not
+        run yet, has only the shared key on it. Offering nothing would be worse
+        than offering the wrong key."""
+        from connectonion.cli.commands.keys_commands import SSH_PRIVATE_KEY
+        sc._ensure_ssh_key()
+
+        assert sc._identity("root@5.6.7.8") == ["-i", str(SSH_PRIVATE_KEY)]

@@ -58,7 +58,7 @@ def _ssh(target: str, command: str, timeout: int = 300) -> subprocess.CompletedP
         "-o", "BatchMode=yes",
         "-o", f"ConnectTimeout={SSH_TIMEOUT_SECONDS}",
         "-o", "StrictHostKeyChecking=accept-new",
-        *_identity(),
+        *_identity(target),
         target,
         command,
     ]
@@ -270,7 +270,7 @@ WantedBy=multi-user.target
 
 
 def _ensure_setup(target: str, agent: str, entrypoint: str, schema: int,
-                  ssh_public_line: Optional[str],
+                  ssh_public_lines: Optional[list],
                   deployer_address: Optional[str] = None,
                   agent_identity: Optional[dict] = None) -> bool:
     """Bring the server to the state a deploy assumes. Idempotent.
@@ -293,10 +293,15 @@ dpkg -s python3-venv >/dev/null 2>&1 || (sudo apt-get update -qq && sudo apt-get
 [ -x {SRV}/{agent}/.venv/bin/python ] || python3 -m venv {SRV}/{agent}/.venv
 """)
 
-    if ssh_public_line:
+    # A list during the #427 migration: the per-server key from the tree, and
+    # the older single key that is already in authorized_keys on every machine
+    # provisioned before it. Appending the new line on every deploy is the
+    # backfill — no box is left reachable only by the key we are retiring, and
+    # it happens without the operator being asked to do anything.
+    for line in ssh_public_lines or []:
         # Ensured every deploy, not once: authorized_keys is the only way back
         # in, so it self-heals rather than needing a rescue path.
-        quoted = shlex.quote(ssh_public_line)
+        quoted = shlex.quote(line)
         steps.append(f"""
 mkdir -p ~/.ssh && chmod 700 ~/.ssh
 touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys
@@ -657,7 +662,7 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
             *RSYNC_FILTERS,
             "-e", " ".join(["ssh", "-o", "BatchMode=yes",
                             "-o", "StrictHostKeyChecking=accept-new",
-                            *_ssh_identity()]),
+                            *_ssh_identity(target)]),
             f"{project_dir}/",
             f"{target}:{SRV}/{agent}/",
         ],
@@ -844,9 +849,12 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
     _warn_about_skills_left_behind(project_dir)
 
     provision = _read_provision(target, agent)
-    from .server_commands import _ensure_ssh_key
+    from .server_commands import _ssh_public_lines
 
-    ssh_public_line = _ensure_ssh_key()
+    # Both keys, so this deploy is also the backfill: a machine provisioned
+    # before the per-server key existed gets that line appended here, without
+    # the operator having to run anything.
+    ssh_public_lines = _ssh_public_lines(server)
     deployer_address = _deployer_address()
 
     # An agent that will be handed to a customer must have an identity its author
@@ -859,7 +867,7 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
                       f"(derived from your recovery phrase)[/dim]")
 
     if not _ensure_setup(target, agent, entrypoint, provision.get("schema", 0),
-                         ssh_public_line, deployer_address,
+                         ssh_public_lines, deployer_address,
                          agent_identity=agent_identity):
         return False
     if not _sync_code(target, agent, project_dir):

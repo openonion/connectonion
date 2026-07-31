@@ -104,21 +104,53 @@ def load_server(name: str) -> Optional[dict]:
     return _load().get(name)
 
 
-def _identity() -> list:
-    """`-i <derived key>` when it is on disk, otherwise nothing.
+def _identity(target: str = None) -> list:
+    """The keys to offer for this target, most specific first.
 
-    A machine from `co server new` has only the derived key installed, so
-    without this our own commands cannot reach a server we just sold. Offered
-    rather than forced — no IdentitiesOnly — so a box registered by hand with
+    A machine from `co server new` has only a derived key installed, so without
+    this our own commands cannot reach a server we just sold. Offered rather
+    than forced — no IdentitiesOnly — so a box registered by hand with
     `co server add` still opens with whichever key already worked.
 
-    Every path that reaches a server goes through here: preflight, deploy,
-    rsync, and the interactive shell. `co server ssh` was the one that did not,
-    and it was the one command whose whole purpose is getting you onto the box.
-    """
-    from .keys_commands import SSH_PRIVATE_KEY
+    Two are offered during the migration in #427: the per-server key from the
+    SLIP-0010 tree, and the older single key that is in `authorized_keys` on
+    every machine provisioned before it. Dropping the old one before every
+    server carries the new line would lock us out of boxes we own, and the way
+    back in *is* the key. ssh tries them in order and stops at the first that
+    works, so a machine holding either is reachable.
 
-    return ["-i", str(SSH_PRIVATE_KEY)] if SSH_PRIVATE_KEY.exists() else []
+    Every path that reaches a server goes through here: preflight, deploy,
+    rsync, and the interactive shell.
+    """
+    from .keys_commands import SSH_PRIVATE_KEY, per_host_key_path
+
+    keys = []
+    name = _server_name(target)
+    if name and per_host_key_path(name).exists():
+        keys += ["-i", str(per_host_key_path(name))]
+    if SSH_PRIVATE_KEY.exists():
+        keys += ["-i", str(SSH_PRIVATE_KEY)]
+    return keys
+
+
+def _server_name(target: str = None) -> Optional[str]:
+    """The registered name for a server, given its name or its ssh target.
+
+    Callers hold one or the other — `co server ssh` has the name, the deploy
+    helpers have `root@<ip>` — and the per-server key is derived from the name.
+    The name and not the address, because the address does not exist yet at the
+    moment the key has to be chosen: it is sent in the request that creates the
+    machine, and GCE only answers with an IP afterwards.
+    """
+    if not target:
+        return None
+    servers = _load()
+    if target in servers:
+        return target
+    for name, entry in servers.items():
+        if entry.get("ssh") == target:
+            return name
+    return None
 
 
 def _ssh(target: str, command: str) -> subprocess.CompletedProcess:
@@ -133,7 +165,7 @@ def _ssh(target: str, command: str) -> subprocess.CompletedProcess:
         "-o", "BatchMode=yes",                    # never prompt; fail instead
         "-o", f"ConnectTimeout={SSH_TIMEOUT_SECONDS}",
         "-o", "StrictHostKeyChecking=accept-new",
-        *_identity(),
+        *_identity(target),
         target,
         command,
     ]
@@ -404,7 +436,8 @@ def handle_server_ssh(name: str, command: Optional[str] = None) -> bool:
         console.print("[cyan]co server ls[/cyan] to see what is registered.\n")
         return False
 
-    argv = ["ssh", "-o", "StrictHostKeyChecking=accept-new", *_identity(), entry["ssh"]]
+    argv = ["ssh", "-o", "StrictHostKeyChecking=accept-new",
+            *_identity(entry["ssh"]), entry["ssh"]]
     if command:
         argv.append(command)
 
@@ -520,7 +553,7 @@ API_BASE = "https://oo.openonion.ai"
 SERVER_NAME_PATTERN = re.compile(r"^[a-z]([-a-z0-9]{0,37}[a-z0-9])?$")
 
 
-def _ensure_ssh_key() -> Optional[str]:
+def _ensure_ssh_key(name: str = None) -> Optional[str]:
     """The public line to install, having put the private half where ssh looks.
 
     Both halves, because only installing the public one produces a machine
@@ -536,16 +569,44 @@ def _ensure_ssh_key() -> Optional[str]:
     second one was locked out of the machine the first had just bought.
     """
     from ... import address
-    from .keys_commands import _find_co_dir, write_derived_ssh_key
+    from .keys_commands import (_find_co_dir, write_derived_ssh_key,
+                                write_per_host_ssh_key)
 
     for co_dir in (Path.home() / ".co", _find_co_dir()):
         if not co_dir or not co_dir.exists():
             continue
         data = address.load(co_dir)
         if data and data.get("seed_phrase"):
+            if name:
+                write_per_host_ssh_key(data["seed_phrase"], name)
             write_derived_ssh_key(data["seed_phrase"])
             return address.derive_ssh_key(data["seed_phrase"])["public_line"]
     return None
+
+
+def _ssh_public_lines(name: str = None) -> list:
+    """Every public line to put in a server's authorized_keys.
+
+    Both keys during the #427 migration, so a machine carries the per-server key
+    from the tree *and* the older shared one. Installing only the new key would
+    lock us out of every server provisioned before it, and there is no way back
+    in that does not go through a key already on the box.
+    """
+    from ... import address
+    from .keys_commands import _find_co_dir
+
+    shared = _ensure_ssh_key(name)
+    if not shared or not name:
+        return [shared] if shared else []
+
+    for co_dir in (Path.home() / ".co", _find_co_dir()):
+        if not co_dir or not co_dir.exists():
+            continue
+        data = address.load(co_dir)
+        if data and data.get("seed_phrase"):
+            per_server = address.derive_ssh_key(data["seed_phrase"], host=name)
+            return [per_server["public_line"], shared]
+    return [shared]
 
 
 def _fetch_pricing() -> Optional[dict]:
