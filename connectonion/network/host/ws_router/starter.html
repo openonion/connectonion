@@ -29,7 +29,21 @@
   }
   /* The Home pane is ~440px wide in oo-chat, full-width on mobile, and sometimes a
      whole browser window. One centred column with a max-width covers all three;
-     anything that stretches turns an eight-character button into a 1400px bar. */
+     anything that stretches turns an eight-character button into a 1400px bar.
+
+     A media query here measures THE PANE, not the browser window. The client
+     renders this page inside its own iframe, and a media query inside an iframe
+     evaluates against that frame's viewport — so `@media (max-width: 560px)` in a
+     dashboard means "when the pane is narrower than 560px", which is the question
+     you actually wanted to ask. Verified: with the pane at 320px the frame reports
+     innerWidth 319 and the query matches; dragged to 900px it reports 899 and does
+     not. No container queries needed — the isolation already gives you one.
+
+     This matters more now that the pane is resizable: one dashboard has to hold up
+     across the whole 320–900px range, not at the two or three widths the client
+     used to pick. Design for the narrow end first; a four-column table needs about
+     500px, so give it a stacked form below that or the column you care about ends
+     up off the right edge behind a scrollbar. */
   main { max-width: 680px; margin: 0 auto; }
 
   header { margin-bottom: 20px; }

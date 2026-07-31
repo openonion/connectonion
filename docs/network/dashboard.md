@@ -140,6 +140,27 @@ Keep it under **2MB**. The Host won't send a larger file, and the Home pane goes
 blank. Inline images are base64, which is ~33% larger than the source file — compress
 screenshots before embedding them.
 
+### A media query here measures the pane, not the window
+
+The same sandbox that locks the page down also gives you something useful for free.
+Your page renders inside its own iframe, and a media query inside an iframe evaluates
+against **that frame's** viewport — so this means "when the Home pane is narrower than
+560px", which is the question you actually wanted to ask:
+
+```css
+@media (max-width: 560px) { /* pane is narrow — stack the rows */ }
+```
+
+Measured, not assumed: with the pane at 320px the frame reports `innerWidth` 319 and
+the query matches; dragged out to 900px it reports 899 and it does not. You do not
+need container queries — the isolation already is one.
+
+This matters because the pane is **resizable**: one dashboard has to hold up anywhere
+from 320px to 900px, not at the two or three widths a client used to pick. Design for
+the narrow end first. A four-column table needs roughly 500px, so below that give it a
+stacked form — otherwise the column the table exists for ends up off the right edge
+behind a horizontal scrollbar, which nobody scrolls to find a number they came for.
+
 > **Why so locked down?** The client renders your `dashboard.html` in a sandboxed
 > iframe with a strict Content-Security-Policy, because from its side the file is
 > untrusted, agent-authored HTML. Everything above follows from that: nothing loads
