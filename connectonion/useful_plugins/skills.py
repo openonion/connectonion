@@ -496,14 +496,32 @@ def _inject_skills_to_system_prompt(agent: 'Agent') -> None:
     if not skills_list:
         return
 
-    # Build skills section
+    # Project skills first: with dozens installed, the one that lives in this
+    # repository is the one meant to win when several could apply, and order is
+    # a signal the model reads.
+    priority = {loc: i for i, loc in enumerate(
+        ("project", "claude-project", "user", "claude-user", "builtin"))}
+    skills_list = sorted(skills_list, key=lambda s: priority.get(s.location, 99))
+
+    # An instruction, not a description of a capability. This used to end with
+    # "you can call the skill() tool", and the agent did not — asked in a
+    # skill's own trigger words it ran glob, then glob again, then `find`,
+    # hunting for a file it could never see, because skills live under dot
+    # directories.
     skills_text = "\n\n# Available Skills\n\n"
-    skills_text += "Pre-packaged workflows you can invoke:\n\n"
+    skills_text += (
+        "Pre-packaged workflows. When a request matches a skill's description, "
+        "**your first action is `skill(name=...)`** to load its full "
+        "instructions — before planning, and before touching any files.\n\n"
+        "Do not use glob/grep/find to locate a skill. They live under dot "
+        "directories and file search will not find them; the list below is the "
+        "whole set.\n\n"
+    )
 
     for skill in skills_list:
-        skills_text += f"- `/{skill.name}`: {skill.description}\n"
+        skills_text += f"- `/{skill.name}` ({skill.location}): {skill.description}\n"
 
-    skills_text += "\nUser can type `/skill-name` or you can call the skill() tool.\n"
+    skills_text += "\nA user can also type `/skill-name` directly.\n"
 
     # Find system message and append
     messages = agent.current_session.get('messages', [])
