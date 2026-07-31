@@ -9,9 +9,11 @@ LLM-Note:
   Errors: an unreachable host fails with ssh's own message and a short timeout, never a hang | a missing requirement is named
 """
 
+import os
 import re
 import shutil
 import subprocess
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -42,8 +44,58 @@ def _load() -> Dict[str, dict]:
 
 
 def _save(servers: Dict[str, dict]) -> None:
+    """Replace the whole registry. Prefer _update() unless you mean to."""
     SERVERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SERVERS_FILE.write_text(yaml.safe_dump({"servers": servers}, sort_keys=True))
+    _write_atomically(SERVERS_FILE, yaml.safe_dump({"servers": servers}, sort_keys=True))
+
+
+def _write_atomically(path: Path, text: str) -> None:
+    """Write via a temporary file in the same directory, then rename.
+
+    `write_text` truncates before it writes, so a process killed in between —
+    or two writing at once — leaves a file that parses as an empty registry.
+    A rename on the same filesystem is atomic: readers see the old file or the
+    new one, never half of either.
+    """
+    tmp = path.with_suffix(path.suffix + f".{os.getpid()}.tmp")
+    tmp.write_text(text)
+    os.replace(tmp, path)
+
+
+@contextmanager
+def _registry_lock():
+    """Hold the registry while reading and writing it.
+
+    `co server new` reads the file, spends a minute creating a machine, and
+    writes it back. Anything else that registered in that minute was silently
+    dropped — including by another session on the same laptop, which is the
+    normal case here rather than an exotic one. The operator is charged either
+    way, and the entry that vanishes is the one nothing points at.
+    """
+    SERVERS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = SERVERS_FILE.with_suffix(".lock")
+    with open(lock_path, "w") as handle:
+        try:
+            import fcntl
+            fcntl.flock(handle, fcntl.LOCK_EX)
+        except (ImportError, OSError):
+            # Windows, or a filesystem without flock. Losing an entry is worse
+            # than not locking, but crashing here would be worse than both.
+            pass
+        yield
+
+
+def _update(mutate) -> Dict[str, dict]:
+    """Read, change and write the registry without losing a concurrent change.
+
+    The read happens inside the lock, so `co server new` picks up anything that
+    landed while it was waiting on the API rather than overwriting it.
+    """
+    with _registry_lock():
+        servers = _load()
+        mutate(servers)
+        _save(servers)
+        return servers
 
 
 def load_server(name: str) -> Optional[dict]:
@@ -124,10 +176,9 @@ def handle_server_add(name: str, ssh_target: str) -> bool:
                       f"authorized_keys on that host.[/dim]\n")
         return False
 
-    servers = _load()
-    existed = name in servers
-    servers[name] = {"ssh": ssh_target, "last_check": None}
-    _save(servers)
+    existed = name in _load()
+    _update(lambda servers: servers.update(
+        {name: {"ssh": ssh_target, "last_check": None}}))
 
     verb = "Updated" if existed else "Added"
     console.print(f"[green]✓[/green] {verb} [cyan]{name}[/cyan] → {ssh_target}")
@@ -333,10 +384,11 @@ def handle_server_check(name: str) -> bool:
 
 
 def _record(name: str, outcome: str) -> None:
-    servers = _load()
-    if name in servers:
-        servers[name]["last_check"] = outcome
-        _save(servers)
+    def note(servers):
+        if name in servers:
+            servers[name]["last_check"] = outcome
+
+    _update(note)
 
 
 def handle_server_ssh(name: str, command: Optional[str] = None) -> bool:
@@ -374,8 +426,7 @@ def handle_server_forget(name: str) -> bool:
         return False
 
     target = servers[name].get("ssh", "?")
-    del servers[name]
-    _save(servers)
+    _update(lambda s: s.pop(name, None))
 
     console.print(f"[green]✓[/green] Forgot [cyan]{name}[/cyan] ({target})")
     console.print("\n[yellow]The machine itself is untouched — it keeps running, and if we "
@@ -441,10 +492,7 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
 
     # Only now drop the local entry: while the machine existed the entry was
     # true, and removing it on a failed delete would hide a server still billing.
-    servers = _load()
-    if name in servers:
-        del servers[name]
-        _save(servers)
+    _update(lambda servers: servers.pop(name, None))
 
     console.print(f"[green]✓ {name} destroyed[/green]")
 
@@ -710,16 +758,17 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
 
     server = response.json()
 
-    # Register it ourselves so the operator never types an IP.
-    servers = _load()
+    # Register it ourselves so the operator never types an IP. Under a lock,
+    # with the read inside it: this is the write that follows a minute-long API
+    # call, so anything another session registered meanwhile would otherwise be
+    # overwritten — and the operator was charged for both.
     entry = {"ssh": server["ssh_target"], "last_check": None}
     # The hostname the backend created a DNS record for. Stored rather than
     # derived: the naming rule lives in one place (the backend), and a CLI that
     # reconstructed it would be a second copy that has to agree forever.
     if server.get("hostname"):
         entry["hostname"] = server["hostname"]
-    servers[name] = entry
-    _save(servers)
+    _update(lambda servers: servers.update({name: entry}))
 
     _forget_host_key(server["ssh_target"])
     _wait_until_it_accepts_your_key(server["ssh_target"])
