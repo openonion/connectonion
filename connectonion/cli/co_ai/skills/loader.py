@@ -105,6 +105,13 @@ def discover_skills(base_path: Optional[Path] = None) -> List[SkillInfo]:
     if builtin_skills.exists():
         search_paths.append(builtin_skills)
 
+    # search_paths is in priority order, so the FIRST match for a name wins and
+    # later tiers are skipped. Dropping the duplicate here, rather than letting a
+    # later one overwrite it, is what makes the documented precedence real: the
+    # registry is built with `{s.name: s for s in skills}`, and last-write-wins
+    # hands every contested name to builtin, which is appended last.
+    seen = set()
+
     for skills_dir in search_paths:
         if not skills_dir.exists():
             continue
@@ -115,13 +122,15 @@ def discover_skills(base_path: Optional[Path] = None) -> List[SkillInfo]:
                 skill_file = skill_dir / "SKILL.md"
                 if skill_file.exists():
                     skill_info = _read_skill_or_skip(skill_file)
-                    if skill_info:
+                    if skill_info and skill_info.name not in seen:
+                        seen.add(skill_info.name)
                         skills.append(skill_info)
 
             # Also support single .md files
             elif skill_dir.suffix == ".md" and skill_dir.stem != "SKILL":
                 skill_info = _read_skill_or_skip(skill_dir)
-                if skill_info:
+                if skill_info and skill_info.name not in seen:
+                    seen.add(skill_info.name)
                     skills.append(skill_info)
 
     return skills
