@@ -443,10 +443,18 @@ class TestModelInference:
             llm = create_llm("gpt-unknown-model")
             assert isinstance(llm, OpenAILLM)
 
-    def test_infer_openai_from_o_prefix(self):
-        """Test that o* models are inferred as OpenAI."""
+    def test_infer_openai_from_a_known_o_series_prefix(self):
+        """An o-series *family* is inferred, so the registry does not need an
+        entry per variant OpenAI ships.
+
+        This used to assert on "o99-preview", i.e. that any name starting with
+        the letter o is an OpenAI model — which routed orca-2-13b and olmo-7b
+        there too (#379). The trade is deliberate: a new family costs one line
+        here, and in exchange an unknown model is named as unknown instead of
+        producing an OpenAI 404 about a model nobody asked OpenAI for.
+        """
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            llm = create_llm("o99-preview")
+            llm = create_llm("o3-preview")
             assert isinstance(llm, OpenAILLM)
 
     def test_infer_anthropic_from_claude_prefix(self):

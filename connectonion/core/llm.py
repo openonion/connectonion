@@ -1144,6 +1144,16 @@ class OpenOnionLLM(LLM):
         return None
 
 
+# OpenAI's reasoning models, matched by explicit prefix.
+#
+# A bare startswith("o") sent every unprefixed model beginning with the letter o
+# to OpenAI — "orca-2-13b" and "olmo" are real open-model names, and the caller
+# got an OpenAI 404 for a model they never asked OpenAI about, with nothing
+# pointing at the routing as the cause. Naming the families keeps a new one a
+# one-line addition here, which is the only place it should need to be made.
+OPENAI_REASONING_PREFIXES = ("o1", "o3", "o4")
+
+
 def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     """Factory function to create the appropriate LLM based on model name.
     
@@ -1177,7 +1187,7 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     
     if not provider:
         # Try to infer provider from model name
-        if model.startswith("gpt") or model.startswith("o"):
+        if model.startswith("gpt") or model.startswith(OPENAI_REASONING_PREFIXES):
             provider = "openai"
         elif model.startswith("claude"):
             provider = "anthropic"
