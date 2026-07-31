@@ -204,6 +204,36 @@ SSH_PRIVATE_KEY = Path.home() / ".co" / "ssh" / "id_ed25519"
 SSH_PUBLIC_KEY = Path.home() / ".co" / "ssh" / "id_ed25519.pub"
 
 
+def per_host_key_path(host: str) -> Path:
+    """Where this machine's own key is cached.
+
+    One file per server, named after it. The private key is derived from the
+    phrase, so these are a cache and not the original — losing them costs a
+    re-derivation, not access.
+    """
+    safe = "".join(c if c.isalnum() or c in "-._" else "_" for c in host)
+    return SSH_PRIVATE_KEY.parent / f"id_ed25519_{safe}"
+
+
+def write_per_host_ssh_key(seed_phrase: str, host: str, user: str = "root") -> Path:
+    """Cache the key that opens one particular server.
+
+    Same rules as the shared key: both halves together, overwritten from the
+    phrase, because a pair where one half is stale cannot authenticate.
+    """
+    from ... import address
+
+    keys = address.derive_ssh_key(seed_phrase, host=host, user=user)
+    path = per_host_key_path(host)
+
+    path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+    path.write_text(keys["private_key"])
+    path.chmod(0o600)
+    path.with_suffix(".pub").write_text(keys["public_line"] + "\n")
+    path.with_suffix(".pub").chmod(0o644)
+    return path
+
+
 def write_derived_ssh_key(seed_phrase: str) -> Path:
     """Write the derived key pair where our own ssh calls look for it.
 
