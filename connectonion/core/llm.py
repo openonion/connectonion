@@ -1037,20 +1037,7 @@ class OpenOnionLLM(LLM):
             api_kwargs["tools"] = [{"type": "function", "function": tool} for tool in tools]
             api_kwargs["tool_choice"] = "auto"
 
-        try:
-            response = self.client.chat.completions.create(**api_kwargs)
-        except openai.APIStatusError as e:
-            if e.status_code == 402:
-                raise InsufficientCreditsError(e) from e
-            elif e.status_code == 503:
-                raise ProviderServiceError(e) from e
-            logger.error(f"APIStatusError: status={e.status_code}, message={e.message}, body={getattr(e, 'body', None)}")
-            raise
-        except (openai.APITimeoutError, openai.APIConnectionError) as e:
-            raise LLMConnectionError(e, model=f"co/{self.model}", base_url=self.base_url) from e
-        except Exception as e:
-            logger.error(f"LLM error: {type(e).__name__}: {e}")
-            raise
+        response = self._call(lambda: self.client.chat.completions.create(**api_kwargs))
 
         message = response.choices[0].message
 
@@ -1091,18 +1078,46 @@ class OpenOnionLLM(LLM):
             usage=usage,
         )
 
+    def _call(self, send):
+        """Make one request and translate the failures callers are written against.
+
+        Shared by complete() and structured_complete(), because a depleted
+        balance is a depleted balance whichever one you called. structured_complete()
+        had no handling at all, so the documented InsufficientCreditsError — the
+        one carrying balance, required, shortfall and address — surfaced as a raw
+        openai.APIStatusError, and every `except InsufficientCreditsError` written
+        against the documented behaviour missed it.
+
+        One helper rather than a copied block: two copies of a translation table
+        drift, and the half that drifts is the half nobody tested.
+        """
+        try:
+            return send()
+        except openai.APIStatusError as e:
+            if e.status_code == 402:
+                raise InsufficientCreditsError(e) from e
+            elif e.status_code == 503:
+                raise ProviderServiceError(e) from e
+            logger.error(f"APIStatusError: status={e.status_code}, message={e.message}, body={getattr(e, 'body', None)}")
+            raise
+        except (openai.APITimeoutError, openai.APIConnectionError) as e:
+            raise LLMConnectionError(e, model=f"co/{self.model}", base_url=self.base_url) from e
+        except Exception as e:
+            logger.error(f"LLM error: {type(e).__name__}: {e}")
+            raise
+
     def structured_complete(self, messages: List[Dict], output_schema: Type[BaseModel], **kwargs) -> BaseModel:
         """Get structured Pydantic output using OpenAI-compatible chat completions API.
 
         Uses beta.chat.completions.parse() which routes through /v1/chat/completions,
         allowing proper provider routing for Gemini, OpenAI, and other models.
         """
-        completion = self.client.beta.chat.completions.parse(
+        completion = self._call(lambda: self.client.beta.chat.completions.parse(
             model=self.model,
             messages=messages,
             response_format=output_schema,
             **kwargs
-        )
+        ))
         return completion.choices[0].message.parsed
 
     def get_balance(self) -> Optional[float]:
