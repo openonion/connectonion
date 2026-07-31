@@ -383,21 +383,21 @@ class TestHttps:
     8000. Without Caddy in front, nothing a browser can reach ever answers."""
 
     def test_the_hostname_is_proxied_to_the_agent_on_loopback(self):
-        text = dts._caddyfile_text("prod-abc.agents.openonion.ai", 8000)
+        text = dts._caddyfile_with("", "myagent", "prod-abc.agents.openonion.ai", 8000)
 
-        assert text.startswith("prod-abc.agents.openonion.ai {")
+        assert "prod-abc.agents.openonion.ai {" in text
         assert "reverse_proxy 127.0.0.1:8000" in text
 
     def test_a_project_that_moved_its_port_is_proxied_there(self):
         """Caddy pointing at 8000 when the agent listens elsewhere is a 502 that
         looks like the agent crashed."""
-        assert "reverse_proxy 127.0.0.1:9100" in dts._caddyfile_text("x.example", 9100)
+        assert "reverse_proxy 127.0.0.1:9100" in dts._caddyfile_with("", "a", "x.example", 9100)
 
     def test_websockets_need_no_stanza_of_their_own(self):
         """reverse_proxy passes upgrades through unchanged, and chat, dashboard
         pushes and remote exec all ride that one connection. A separate /ws block
         would be a second thing to keep correct."""
-        assert "/ws" not in dts._caddyfile_text("x.example", 8000)
+        assert "/ws" not in dts._caddyfile_with("", "a", "x.example", 8000)
 
     def test_the_unit_publishes_the_domain_so_the_agent_announces_a_reachable_url(self):
         """Without it announce.py publishes http://<ip>:8000 to the relay, and
@@ -417,17 +417,17 @@ class TestHttps:
     def test_an_unchanged_caddyfile_on_a_running_caddy_is_not_rewritten(self):
         """A reload every deploy would hide whether certificate work was actually
         caused by a change."""
-        wanted = dts._caddyfile_text("x.example", 8000)
+        wanted = dts._caddyfile_with("", "myagent", "x.example", 8000)
         with patch.object(dts, "_ssh") as ssh:
             ssh.side_effect = [_ok(wanted), _ok("active")]
-            assert dts._ensure_caddy("user@host", "x.example", 8000) is True
+            assert dts._ensure_caddy("user@host", "myagent", "x.example", 8000) is True
 
         assert ssh.call_count == 2  # read the file, check the service. No write.
 
     def test_a_changed_caddyfile_is_written_and_reloaded(self):
         with patch.object(dts, "_ssh") as ssh:
             ssh.side_effect = [_ok("something else"), _ok("")]
-            assert dts._ensure_caddy("user@host", "x.example", 8000) is True
+            assert dts._ensure_caddy("user@host", "myagent", "x.example", 8000) is True
 
         script = ssh.call_args.args[1]
         assert "/etc/caddy/Caddyfile" in script
@@ -437,7 +437,7 @@ class TestHttps:
         """apt on every deploy would add a minute to a code-only change."""
         with patch.object(dts, "_ssh") as ssh:
             ssh.side_effect = [_ok("something else"), _ok("")]
-            dts._ensure_caddy("user@host", "x.example", 8000)
+            dts._ensure_caddy("user@host", "myagent", "x.example", 8000)
 
         assert "command -v caddy" in ssh.call_args.args[1]
 

@@ -404,26 +404,65 @@ sudo systemctl enable {agent} >/dev/null 2>&1
     return True
 
 
-def _caddyfile_text(hostname: str, port: int) -> str:
-    """One hostname, proxied to the agent on loopback.
+CADDY_MARK = "# connectonion:"
+
+
+def _caddy_stanza(agent: str, hostname: str, port: int) -> str:
+    """One agent's block, tagged so a later deploy can find and replace it.
 
     Caddy gets and renews the certificate itself over HTTP-01, which is why 80
     has to be open even though nothing is served on it. `reverse_proxy` passes
     WebSocket upgrades through unchanged, so /ws needs no separate stanza — the
     agent's chat, dashboard pushes and remote exec all ride that one connection.
-
-    One agent per hostname. A second agent deployed to the same server takes the
-    name from the first, because there is one name and one :443. Several agents
-    on one machine is still an open question (openonion/connectonion#309); when
-    it is answered this file grows a stanza per agent rather than being replaced.
     """
-    return f"""{hostname} {{
+    return f"""{CADDY_MARK}{agent}
+{hostname} {{
 	reverse_proxy 127.0.0.1:{port}
 }}
 """
 
 
-def _ensure_caddy(target: str, hostname: str, port: int) -> bool:
+def _caddyfile_with(current: str, agent: str, hostname: str, port: int) -> str:
+    """The Caddyfile with this agent's block set, and everyone else's kept.
+
+    It used to hold exactly one block and be replaced wholesale, so deploying a
+    second agent to a machine silently took the first one's hostname: the first
+    agent kept running, on its own port, unreachable by the name it had been
+    published under, with nothing said about it.
+
+    Blocks are keyed by the marker comment rather than by the hostname, because
+    the agent is the thing that owns a block — a hostname that changed hands
+    would otherwise leave two blocks claiming it and Caddy serving whichever it
+    read last.
+    """
+    kept, skipping = [], False
+    for line in current.splitlines():
+        if line.startswith(CADDY_MARK):
+            skipping = line[len(CADDY_MARK):].strip() == agent
+            if skipping:
+                continue
+        if skipping:
+            if line.strip() == "}":
+                skipping = False
+            continue
+        kept.append(line)
+
+    body = "\n".join(kept).strip()
+    return (body + "\n\n" if body else "") + _caddy_stanza(agent, hostname, port)
+
+
+def _caddy_owner_of(caddyfile: str, hostname: str) -> Optional[str]:
+    """Which agent's block already claims this hostname, if any."""
+    agent = None
+    for line in caddyfile.splitlines():
+        if line.startswith(CADDY_MARK):
+            agent = line[len(CADDY_MARK):].strip()
+        elif line.strip().startswith(hostname + " ") or line.strip() == hostname + " {":
+            return agent
+    return None
+
+
+def _ensure_caddy(target: str, agent: str, hostname: str, port: int) -> bool:
     """Install Caddy if absent, and point it at this agent.
 
     Installed here rather than by provisioning for the reason #318 settled: a
@@ -436,9 +475,22 @@ def _ensure_caddy(target: str, hostname: str, port: int) -> bool:
     on every deploy would hide whether the certificate work was actually caused
     by a change.
     """
-    wanted = _caddyfile_text(hostname, port)
-
     current = _ssh(target, "cat /etc/caddy/Caddyfile 2>/dev/null", timeout=60)
+    existing = current.stdout if current.returncode == 0 else ""
+
+    # The hostname belongs to the server, and a server has one. Whichever agent
+    # claimed it keeps it: taking it silently is what used to happen, and it
+    # left the first agent running and unreachable under the name it had been
+    # published under.
+    owner = _caddy_owner_of(existing, hostname)
+    if owner and owner != agent:
+        console.print(f"[yellow]  {hostname} already serves '{owner}'.[/yellow]")
+        console.print(f"[dim]  '{agent}' is deployed and running on port {port}, "
+                      f"reachable over ssh, but has no public name of its own — "
+                      f"a server has one hostname. See openonion/connectonion#309.[/dim]")
+        return True
+
+    wanted = _caddyfile_with(existing, agent, hostname, port)
     if current.returncode == 0 and current.stdout == wanted and _caddy_running(target):
         return True
 
@@ -808,7 +860,7 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
     _ssh(target, f"mkdir -p {SRV}/{agent}/.co && echo {port} > {SRV}/{agent}/.co/port",
          timeout=60)
 
-    if hostname and not _ensure_caddy(target, hostname, port):
+    if hostname and not _ensure_caddy(target, agent, hostname, port):
         return False
     # Once per deploy: the unit and the ownership fix-up both need it, and it
     # costs an ssh round trip.
