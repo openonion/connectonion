@@ -385,7 +385,7 @@ def server_destroy(
     name: str = typer.Argument(..., help="Server to tear down"),
     yes: bool = typer.Option(False, "--yes", "-y", help="Skip the confirmation"),
 ):
-    """Destroy the machine and stop the billing. Not reversible, not refunded."""
+    """Destroy the machine and stop the billing. The unused term is refunded."""
     from .commands.server_commands import handle_server_destroy
     if not handle_server_destroy(name=name, yes=yes):
         raise typer.Exit(1)
