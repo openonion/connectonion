@@ -512,20 +512,32 @@ def _confirm(name: str, machine_type: str, pricing: dict, balance: Optional[floa
 
     Balance-after is shown rather than just the price: what decides whether
     someone can afford it is what is left, not what it costs.
+
+    The monthly figure leads. A server is a monthly thing in everybody's head,
+    and "$360" alone is a number nobody can compare to anything they already pay
+    for — while "$30 a month" places it immediately. The year is how we charge,
+    so it is said too, right next to it, and never instead of it.
     """
     from datetime import datetime, timedelta
 
     entry = pricing["machine_types"][machine_type]
     price = entry["usd_12mo"]
     months = pricing["term_months"]
+    # Published by the backend rather than divided here: one price, one place,
+    # and no chance of the CLI rounding its way to a different number than the
+    # one on the website. Older backends do not send it — fall back rather than
+    # crash, since the yearly price is the one actually charged.
+    monthly = entry.get("usd_month")
+    if monthly is None:
+        monthly = price / months
     expires = (datetime.now() + timedelta(days=365)).strftime("%Y-%m-%d")
 
     console.print()
     console.print(f"  [cyan]name[/cyan]          {name}")
     console.print(f"  [cyan]region[/cyan]        {pricing['region']}")
     console.print(f"  [cyan]machine[/cyan]       {machine_type} [dim]— {entry['description']}[/dim]")
-    console.print(f"  [cyan]cost[/cyan]          [bold]${price:.2f}[/bold] "
-                  f"[dim]({months} months, charged now)[/dim]")
+    console.print(f"  [cyan]cost[/cyan]          [bold]${monthly:.0f} / month[/bold] "
+                  f"[dim]— ${price:.2f} for {months} months, charged now[/dim]")
     if balance is not None:
         console.print(f"  [cyan]your balance[/cyan]  ${balance:.2f} → "
                       f"[bold]${balance - price:.2f}[/bold] after")
