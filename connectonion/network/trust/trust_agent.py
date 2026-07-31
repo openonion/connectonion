@@ -278,8 +278,10 @@ Should this client be allowed access?"""
         try:
             import httpx
         except ImportError:
-            # httpx not available, fall back to simple amount check
-            return True
+            # Fails closed. This used to return True — a missing dependency
+            # admitted anyone who claimed to have paid, which is the one
+            # direction this check must never fail in.
+            return False
 
         # Load agent's keys for signing the request
         from ... import address as addr
@@ -296,14 +298,17 @@ Should this client be allowed access?"""
 
         # Create signed auth request
         timestamp = int(time.time())
-        message = f"ConnectOnion-Auth-{keys['public_key']}-{timestamp}"
+        message = f"ConnectOnion-Auth-{keys['address']}-{timestamp}"
         signature = addr.sign(keys, message.encode()).hex()
 
         # Get JWT token
         auth_response = httpx.post(
-            f"{base_url}/auth",
+            f"{base_url}/api/v1/auth",
             json={
-                "public_key": keys['public_key'],
+                # `address.load` has never returned a "public_key"; this raised
+                # KeyError on the line below before it could reach the 404 that
+                # `/auth` answers. Both had to be wrong for either to hide.
+                "public_key": keys['address'],
                 "message": message,
                 "signature": signature
             },

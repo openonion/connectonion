@@ -226,3 +226,81 @@ class TestAdminListIsPerAgent:
         (co_dir / "admins.txt").write_text("0xdeployer\n")
 
         assert tools.is_admin("0xdeployer", co_dir) is True
+
+
+class TestThePaymentAddressAPaidOnboardingShows:
+    """openonion/oo-chat#28. The card says "Transfer $X to:" — and the address it
+    shows is `get_self_address()`, which is also the address `verify_payment`
+    checks the transfer arrived at. Both read it from the same place on purpose:
+    an onboarding where the displayed address and the verified address can
+    disagree sends somebody's money somewhere nobody is watching.
+    """
+
+    def _project(self, tmp_path):
+        """A project as `co create` leaves it: keys under .co/keys/, and no
+        .co/address.json, which is the file this used to read."""
+        from connectonion import address
+
+        co_dir = tmp_path / ".co"
+        co_dir.mkdir()
+        keys = address.generate()
+        address.save(keys, co_dir)
+        assert not (co_dir / "address.json").exists(), \
+            "the fixture no longer reflects what co create writes"
+        return co_dir, keys["address"]
+
+    def test_a_project_made_by_co_create_has_a_payment_address(self, tmp_path):
+        from connectonion.network.trust.tools import get_self_address
+
+        co_dir, expected = self._project(tmp_path)
+
+        assert get_self_address(co_dir) == expected
+
+    def test_an_older_project_still_answers_from_address_json(self, tmp_path):
+        """Nothing rewrites these on upgrade, so the old file stays readable."""
+        import json
+
+        from connectonion.network.trust.tools import get_self_address
+
+        co_dir = tmp_path / ".co"
+        co_dir.mkdir()
+        (co_dir / "address.json").write_text(json.dumps({"address": "0xold"}))
+
+        assert get_self_address(co_dir) == "0xold"
+
+    def test_the_card_and_the_check_are_given_the_same_address(self, tmp_path):
+        """ONBOARD_REQUIRED tells the payer where to send it; verify_payment
+        decides whether it arrived. One value, read once."""
+        from types import SimpleNamespace
+
+        from connectonion.network.trust.tools import get_self_address
+        from connectonion.network.trust.ws_admin import get_onboard_requirements
+
+        co_dir, expected = self._project(tmp_path)
+        trust_agent = SimpleNamespace(
+            config={"onboard": {"payment": 5}},
+            get_self_address=lambda: get_self_address(co_dir),
+        )
+
+        assert get_onboard_requirements(trust_agent)["payment_address"] == expected
+
+
+class TestPaymentVerificationFailsClosed:
+    def test_a_missing_dependency_does_not_admit_the_payer(self, monkeypatch):
+        """It returned True — a machine without httpx let anyone in who claimed
+        to have paid. This is the one direction the check must never fail in."""
+        import builtins
+
+        from connectonion.network.trust.trust_agent import TrustAgent
+
+        real_import = builtins.__import__
+
+        def no_httpx(name, *args, **kwargs):
+            if name == "httpx":
+                raise ImportError("no httpx here")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", no_httpx)
+
+        agent = TrustAgent.__new__(TrustAgent)
+        assert agent._verify_transfer_via_api("0xpayer", "0xagent", 5.0) is False

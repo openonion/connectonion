@@ -348,11 +348,30 @@ def is_admin(client_id: str, co_dir: Path = None) -> bool:
 
 
 def get_self_address(co_dir: Path = None) -> str | None:
-    """Get self address (super admin) from .co/address.json."""
+    """The agent's own address — who a payment onboarding is paid to.
+
+    Read the same way every other part of the codebase reads it. It used to be
+    read straight out of ``.co/address.json``, a file `co create` has not
+    written for some time: keys live in ``.co/keys/``. So this answered None for
+    every project made since, which is not a visible error anywhere —
+    ONBOARD_REQUIRED simply goes out with no payment address for the card to
+    show, and `verify_payment` returns False before it asks anything. Paid
+    onboarding could not succeed, and the card could not say where to send the
+    money (openonion/oo-chat#28).
+
+    ``address.json`` is still honoured, because a project created before the
+    move has one and nothing else.
+    """
     import json
 
     if co_dir is None:
         co_dir = Path.cwd() / ".co"
+
+    from ... import address
+
+    keys = address.load(co_dir)
+    if keys and keys.get("address"):
+        return keys["address"]
 
     addr_file = co_dir / "address.json"
     if addr_file.exists():
