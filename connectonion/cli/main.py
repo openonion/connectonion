@@ -389,6 +389,16 @@ def server_ssh(
         raise typer.Exit(1)
 
 
+@server_app.command("fix-key")
+def server_fix_key(
+    name: str = typer.Argument(..., help="Registered server name"),
+):
+    """Reinstall your SSH key on a server you own, without recreating it."""
+    from .commands.server_commands import handle_server_fix_key
+    if not handle_server_fix_key(name=name):
+        raise typer.Exit(1)
+
+
 @server_app.command("forget")
 def server_forget(
     name: str = typer.Argument(..., help="Registered server name"),
