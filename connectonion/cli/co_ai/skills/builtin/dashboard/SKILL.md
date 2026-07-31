@@ -5,11 +5,11 @@ description: Update the agent's Home dashboard. Use when the user says "update m
 
 # Dashboard Skill
 
-The agent's Home is a single file, `dashboard.html`, in the project root. OChat renders it in a sandboxed iframe beside the chat and re-reads it after every run. You edit it with your normal file tools (Read, Edit, Write, Bash) — there is no special API.
+The agent's Home is a single file, `.co/dashboard.html`, beside `.co/skills/`. (Older agents keep theirs in the project root — if `dashboard.html` is there, that is the one being served: edit it where it is, don't create a second one.) OChat renders it in a sandboxed iframe beside the chat and re-reads it after every run. You edit it with your normal file tools (Read, Edit, Write, Bash) — there is no special API.
 
 ## Instructions
 
-1. **Read `dashboard.html` first** so you preserve its structure and styles before changing anything.
+1. **Read the file first** — `.co/dashboard.html`, or the root `dashboard.html` if that is where this agent's already is — so you preserve its structure and styles before changing anything.
 2. **Make the smallest edit that satisfies the request** — change the data or add a section; don't rewrite the whole file unless the user asks for a redesign.
 3. **Keep it visual, not textual.** Lead with big numbers, generous whitespace, and clear action buttons. A dashboard is a glanceable Home, not a document.
 4. **Write the file** and stop. OChat picks up the change automatically after the run.
@@ -30,7 +30,7 @@ A button that runs something MUST be a real, user-invocable skill, wired like th
 
 ## Rules
 
-- One file: `dashboard.html`. No sidecar JSON, no build step.
+- One file: `.co/dashboard.html`. No sidecar JSON, no build step.
 - Keep it under 2MB — the host won't send a larger file, and the Home pane goes blank. Inline images are base64, which is ~33% bigger than the source file, so compress screenshots before embedding them.
 - Keep the responsive layout and `prefers-color-scheme` dark mode intact.
 - Do not add `<script>` tags or inline `onclick` handlers — OChat strips all scripting; only the `data-ochat-skill` button contract works.

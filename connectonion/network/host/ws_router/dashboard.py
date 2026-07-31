@@ -21,6 +21,10 @@ from string import Template
 from ....console import Console
 
 DASHBOARD_FILE = "dashboard.html"
+CO_DIR = ".co"
+# An operator's own starting point for every agent they host. Optional; the bundled
+# template is used when it isn't there.
+STARTER_OVERRIDE = Path.home() / CO_DIR / "starter.html"
 
 # Generous on purpose: the client's CSP allows images only as `data:` URIs, so the one
 # way to put a chart or logo on a dashboard is to inline it, and base64 adds ~33%. A
@@ -33,15 +37,47 @@ DASHBOARD_FILE = "dashboard.html"
 # — a log accidentally named dashboard.html, or an agent dumping a dataset into it.
 MAX_DASHBOARD_BYTES = 2 * 1024 * 1024
 
-# Where dashboard.html lives, captured at host startup. Resolving cwd per read
-# would follow any later os.chdir (a tool, a plugin) and start serving whatever
-# file happened to be in the new directory.
+# The project directory, resolved once at host startup. Resolving it per read would
+# follow any later os.chdir (a tool, a plugin) and start serving whatever file
+# happened to be in the new directory.
 _project_dir = None
 
 
+def project_root(start=None):
+    """The directory that owns ``.co/`` — the project, not wherever you ran from.
+
+    Walks up from ``start``. Everything else the agent is made of is found this way
+    (``.co/skills``, ``.co/host.yaml``), and the Home page had no such notion: it
+    resolved against the bare cwd, so running the agent from a subdirectory created
+    a second dashboard.html there and served that one instead.
+
+    Falls back to ``start`` when there is no ``.co/`` above it — an agent hosted
+    outside a project still gets a Home, it just lives where it was started.
+    """
+    start = Path(start or Path.cwd()).resolve()
+    for directory in (start, *start.parents):
+        if (directory / CO_DIR).is_dir():
+            return directory
+    return start
+
+
 def dashboard_path():
-    """Path to ``dashboard.html`` in the agent's project directory."""
-    return (_project_dir or Path.cwd()) / DASHBOARD_FILE
+    """Where this agent's Home page lives.
+
+    ``.co/dashboard.html``, beside ``.co/skills/`` — both are what the agent *is*,
+    as opposed to the logs and evals it accumulates.
+
+    A ``dashboard.html`` in the project root is the older location. One that is
+    already there is still served, and never moved or overwritten: an agent whose
+    Home silently disappeared on upgrade would be a worse bug than an inconsistent
+    path. New ones are written to ``.co/``.
+    """
+    root = _project_dir or project_root()
+    preferred = root / CO_DIR / DASHBOARD_FILE
+    if preferred.exists():
+        return preferred
+    legacy = root / DASHBOARD_FILE
+    return legacy if legacy.exists() else preferred
 
 
 def read_dashboard_snapshot(session_id=None):
@@ -110,12 +146,13 @@ def ensure_dashboard(agent_metadata, project_dir=None):
     owns it after that). Gives every agent a polished Home on day zero.
     """
     global _project_dir
-    _project_dir = Path(project_dir) if project_dir else Path.cwd()
+    _project_dir = Path(project_dir) if project_dir else project_root()
 
     path = dashboard_path()
     if path.exists():
         return
     try:
+        path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text(render_starter(agent_metadata), encoding="utf-8")
     except OSError as e:
         # A read-only or missing project dir is a fine reason to have no dashboard;
@@ -168,9 +205,8 @@ def group_skills(skills):
     return grouped, loose
 
 
-@lru_cache(maxsize=1)
-def _starter_templates():
-    """``(page, fragments)`` from ``starter.html`` — the one file the starter lives in.
+def _parse_starter(path):
+    """``(page, fragments)`` from a starter file.
 
     The file is a complete page, then a ``<!--FRAGMENTS`` marker, then the repeated
     pieces as ``<template id="...">`` tags. Splitting on the marker rather than on
@@ -181,10 +217,34 @@ def _starter_templates():
     ``string.Template`` rather than ``str.format``: the page is mostly CSS, and every
     rule in it is a pair of braces that ``format`` would read as a field.
     """
-    raw = (Path(__file__).parent / "starter.html").read_text(encoding="utf-8")
+    raw = path.read_text(encoding="utf-8")
     page, _, scaffolding = raw.partition("<!--FRAGMENTS")
-    fragments = re.findall(r'<template id="([^"]+)">(.*?)</template>', scaffolding, re.DOTALL)
-    return Template(page.rstrip() + "\n"), {name: Template(body) for name, body in fragments}
+    found = re.findall(r'<template id="([^"]+)">(.*?)</template>', scaffolding, re.DOTALL)
+    return Template(page.rstrip() + "\n"), {name: Template(body) for name, body in found}
+
+
+# maxsize=1 caches the parse for the process; tests that swap the override call
+# _starter_templates.cache_clear().
+@lru_cache(maxsize=1)
+def _starter_templates():
+    """The starter to render from — the bundled one, or the operator's.
+
+    ``~/.co/starter.html`` replaces it when present, so "all my agents start from my
+    styling" needs no per-project copy. It replaces the *template*, not the page:
+    every agent still renders its own name and its own skills, which a shared
+    finished page could not do — the client validates each button against that
+    agent's published skills, so someone else's Home renders as dead buttons.
+
+    An override only has to carry the parts it wants to change. Its fragments are
+    layered over the bundled ones, so restyling the page shell — the common case —
+    does not mean copying the skill row and the group markup along with it, or
+    silently losing them.
+    """
+    page, fragments = _parse_starter(Path(__file__).parent / "starter.html")
+    if STARTER_OVERRIDE.is_file():
+        override_page, override_fragments = _parse_starter(STARTER_OVERRIDE)
+        page, fragments = override_page, {**fragments, **override_fragments}
+    return page, fragments
 
 
 def _skill_row(skill):

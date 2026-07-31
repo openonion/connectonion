@@ -49,7 +49,7 @@ def test_ensure_dashboard_creates_starter(in_tmp):
         {"name": "meeting_prep", "description": "d", "location": "project"},
     ]}
     ensure_dashboard(meta)
-    html = (in_tmp / "dashboard.html").read_text(encoding="utf-8")
+    html = (in_tmp / ".co" / "dashboard.html").read_text(encoding="utf-8")
     assert "Lisa" in html
     assert 'data-ochat-skill="daily-brief"' in html
     assert 'data-ochat-skill="meeting_prep"' in html
@@ -293,7 +293,7 @@ def test_starter_has_no_buttons_for_unpublished_skills(in_tmp):
         {"name": "my-notes", "description": "", "location": "user"},
         {"name": "dashboard", "description": "", "location": "builtin"},
     ]})
-    html = (in_tmp / "dashboard.html").read_text(encoding="utf-8")
+    html = (in_tmp / ".co" / "dashboard.html").read_text(encoding="utf-8")
     assert "data-ochat-skill" not in html
     assert ".co/skills/" in html  # falls back to the empty state
 
@@ -370,7 +370,7 @@ def test_ensure_dashboard_takes_an_explicit_project_dir(tmp_path, monkeypatch):
 
     ensure_dashboard({"name": "Explicit", "skills": []}, project_dir=project)
 
-    assert (project / "dashboard.html").exists()
+    assert (project / ".co" / "dashboard.html").exists()
 
 
 def test_ensure_dashboard_warns_instead_of_crashing_on_an_unwritable_dir(in_tmp, monkeypatch, capsys):
@@ -398,3 +398,88 @@ def test_the_fragment_templates_do_not_leak_into_the_page():
     ]})
     assert "<template" not in html
     assert "$" not in html
+
+
+# --- Where the Home page lives: .co/, found from the project root ---
+
+
+def test_the_starter_is_written_into_the_co_directory(in_tmp):
+    (in_tmp / ".co").mkdir()
+    ensure_dashboard({"name": "Lisa", "skills": []})
+
+    assert (in_tmp / ".co" / "dashboard.html").is_file()
+    assert not (in_tmp / "dashboard.html").exists()
+
+
+def test_the_project_is_found_from_a_subdirectory(in_tmp, monkeypatch):
+    """Resolving against the bare cwd meant running the agent from a subdirectory
+    created a second dashboard.html there and served that one."""
+    (in_tmp / ".co").mkdir()
+    nested = in_tmp / "src" / "deep"
+    nested.mkdir(parents=True)
+    monkeypatch.chdir(nested)
+
+    ensure_dashboard({"name": "Lisa", "skills": []})
+
+    assert (in_tmp / ".co" / "dashboard.html").is_file()
+    assert not (nested / "dashboard.html").exists()
+    assert dashboard_module.dashboard_path() == in_tmp / ".co" / "dashboard.html"
+
+
+def test_an_existing_root_dashboard_is_still_served(in_tmp):
+    """Agents written before the move keep their Home. Silently dropping it on
+    upgrade would be worse than an inconsistent path."""
+    (in_tmp / ".co").mkdir()
+    (in_tmp / "dashboard.html").write_text("<h1>mine</h1>", encoding="utf-8")
+
+    ensure_dashboard({"name": "Lisa", "skills": []})
+
+    assert dashboard_module.dashboard_path() == in_tmp / "dashboard.html"
+    assert read_dashboard_snapshot()["html"] == "<h1>mine</h1>"
+    assert not (in_tmp / ".co" / "dashboard.html").exists()  # not moved, not copied
+
+
+def test_the_co_copy_wins_when_both_exist(in_tmp):
+    (in_tmp / ".co").mkdir()
+    (in_tmp / "dashboard.html").write_text("<h1>old</h1>", encoding="utf-8")
+    (in_tmp / ".co" / "dashboard.html").write_text("<h1>current</h1>", encoding="utf-8")
+
+    assert read_dashboard_snapshot()["html"] == "<h1>current</h1>"
+
+
+def test_an_agent_outside_a_project_still_gets_a_home(in_tmp):
+    """No .co/ anywhere above: the Home lands where the agent was started."""
+    ensure_dashboard({"name": "Loose", "skills": []})
+
+    assert (in_tmp / ".co" / "dashboard.html").is_file()
+
+
+def test_a_personal_starter_template_replaces_the_bundled_one(in_tmp, monkeypatch, tmp_path):
+    """~/.co/starter.html is a template, not a finished page — the agent's own name
+    and skills still get rendered into it."""
+    override = tmp_path / "home" / ".co" / "starter.html"
+    override.parent.mkdir(parents=True)
+    override.write_text("<h1>$name</h1><p>$subtitle</p>\n$body\n", encoding="utf-8")
+    monkeypatch.setattr(dashboard_module, "STARTER_OVERRIDE", override)
+    dashboard_module._starter_templates.cache_clear()
+
+    html = render_starter({"name": "Mine", "model": "co/x", "skills": [
+        {"name": "daily-brief", "description": "d", "location": "project"},
+    ]})
+    dashboard_module._starter_templates.cache_clear()
+
+    assert "<h1>Mine</h1>" in html
+    assert "co/x" in html
+    # Restyling the shell must not mean copying — or losing — the row markup.
+    assert 'data-ochat-skill="daily-brief"' in html
+
+
+def test_the_deploy_rsync_carries_the_dashboard():
+    """.co/* is excluded to protect identity and logs; the Home page is not state,
+    and a deploy that drops it silently regenerates a starter over your page."""
+    import inspect
+    from connectonion.cli.commands import deploy_to_server
+
+    source = inspect.getsource(deploy_to_server._sync_code)
+    assert '".co/dashboard.html"' in source
+    assert source.index('".co/dashboard.html"') < source.index('".co/*"')
