@@ -198,7 +198,13 @@ class TestDependencyInstall:
         """A code-only change should take seconds, not minutes."""
         (project / "requirements.txt").write_text("requests\n")
         import hashlib
-        digest = hashlib.sha256((project / "requirements.txt").read_bytes()).hexdigest()
+
+        from connectonion import __version__
+        # Same file AND same CLI version — the stamp carries both, so that a
+        # released fix reaches the server on the next deploy (#460).
+        digest = hashlib.sha256(
+            (project / "requirements.txt").read_bytes() + b"\ncli:" + __version__.encode()
+        ).hexdigest()
 
         with patch.object(dts, "_ssh", return_value=_ok(digest)) as ssh:
             assert dts._install_deps_if_changed("user@host", "myagent", project) is True

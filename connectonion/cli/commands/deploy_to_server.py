@@ -682,17 +682,29 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
 
 
 def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool:
-    """pip install only when requirements.txt actually changed.
+    """pip install when requirements.txt changed, or when this CLI is a new
+    version of connectonion than the one that last installed.
 
-    The hash of the file we just synced is compared against the hash recorded
-    after the last successful install. Reinstalling every deploy would make a
-    code-only change take minutes instead of seconds.
+    Reinstalling every deploy would make a one-line code change take minutes,
+    so the file's hash decides. But `connectonion` in requirements.txt is an
+    unpinned line that never changes, so its hash never changed either — and a
+    server kept whatever version it was first deployed with, forever. 1.5.6 went
+    out fixing every agent that called itself `oo`, and a redeploy from a 1.5.6
+    laptop left 1.5.5 running on the box.
+
+    So the stamp carries the CLI's version too. Upgrading the CLI and
+    redeploying is what an operator does to ship a fix, and now that is what it
+    does.
     """
+    from ... import __version__
+
     requirements = project_dir / "requirements.txt"
     if not requirements.exists():
         return True
 
-    digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
+    digest = hashlib.sha256(
+        requirements.read_bytes() + b"\ncli:" + __version__.encode()
+    ).hexdigest()
     stamp = f"{SRV}/{agent}/.co/requirements.sha256"
 
     current = _ssh(target, f"cat {stamp} 2>/dev/null", timeout=60)
@@ -709,7 +721,11 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool
         # plainly there as missing.
         f"set -e\n"
         f"cd {SRV}/{agent}\n"
-        f"{SRV}/{agent}/.venv/bin/pip install -q -r requirements.txt\n"
+        # -U, because pip leaves an already-satisfied requirement alone.
+        # Measured: a venv on 1.5.4 with `connectonion` unpinned stayed on 1.5.4
+        # through `pip install -r`, and moved to 1.5.6 only with -U. Without it
+        # the reinstall this function just decided to do would change nothing.
+        f"{SRV}/{agent}/.venv/bin/pip install -q -U -r requirements.txt\n"
         f"printf '%s' {shlex.quote(digest)} > {stamp}",
         timeout=900,
     )
