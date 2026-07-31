@@ -282,16 +282,33 @@ grep -qxF {quoted_admin} {admins} || echo {quoted_admin} >> {admins}
     return True
 
 
+def _remote_user(target: str) -> str:
+    """The account the ssh session lands as, according to the server.
+
+    Falls back to parsing the target only if the server cannot be asked, which
+    keeps the `user@host` form working even on a machine without `id`.
+    """
+    result = _ssh(target, "id -un", timeout=30)
+    name = (result.stdout or "").strip()
+    if result.returncode == 0 and name:
+        return name
+    return target.split("@")[0]
+
+
 def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
-                           hostname: Optional[str] = None) -> bool:
+                           hostname: Optional[str] = None,
+                           user: Optional[str] = None) -> bool:
     """Write the systemd unit only when its content differs.
 
     Rewriting it every deploy would mean a daemon-reload every deploy for no
     reason, and would hide whether a restart came from new code or a new unit.
     """
     # The ssh target's user owns everything under /srv/<agent> — it is the user
-    # rsync wrote as — so it is the one the service should run as.
-    user = target.split("@")[0]
+    # rsync wrote as — so it is the one the service should run as. The caller
+    # resolves it once per deploy; falling back here keeps the old signature
+    # working for direct callers.
+    if user is None:
+        user = _remote_user(target)
     wanted = _unit_text(agent, entrypoint, hostname, user=user)
     unit_path = f"/etc/systemd/system/{agent}.service"
 
@@ -532,7 +549,7 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
         # root-owned logs and state behind, and the first thing the unprivileged
         # process does is fail to write its own log —
         # PermissionError: [Errno 13] Permission denied: '.co/logs/oo.log'
-        _ssh(target, f"sudo chown -R {target.split('@')[0]}: {SRV}/{agent}", timeout=120)
+        _ssh(target, f"sudo chown -R {_remote_user(target)}: {SRV}/{agent}", timeout=120)
 
     if result.returncode != 0:
         console.print("[red]rsync failed.[/red]")
@@ -704,7 +721,10 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
         return False
     if hostname and not _ensure_caddy(target, hostname, project["port"]):
         return False
-    if not _write_unit_if_changed(target, agent, entrypoint, hostname):
+    # Once per deploy: the unit and the ownership fix-up both need it, and it
+    # costs an ssh round trip.
+    user = _remote_user(target)
+    if not _write_unit_if_changed(target, agent, entrypoint, hostname, user=user):
         return False
     if not _restart(target, agent):
         return False

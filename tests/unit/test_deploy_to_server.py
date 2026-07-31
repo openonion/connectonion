@@ -237,13 +237,19 @@ class TestSystemdUnit:
         # Same user the target implies — the unit runs as whoever owns the files.
         wanted = dts._unit_text("myagent", "agent.py", user="user")
         with patch.object(dts, "_ssh", return_value=_ok(wanted)) as ssh:
-            assert dts._write_unit_if_changed("user@host", "myagent", "agent.py") is True
+            # The deploy flow resolves the account once and passes it down, so
+            # this call counts only the ssh the unit write itself does.
+            assert dts._write_unit_if_changed(
+                "user@host", "myagent", "agent.py", user="user"
+            ) is True
 
         assert ssh.call_count == 1  # the read only
 
     def test_a_changed_unit_is_written_and_reloaded(self):
         with patch.object(dts, "_ssh", side_effect=[_ok("old content"), _ok()]) as ssh:
-            assert dts._write_unit_if_changed("user@host", "myagent", "agent.py") is True
+            assert dts._write_unit_if_changed(
+                "user@host", "myagent", "agent.py", user="user"
+            ) is True
 
         script = ssh.call_args_list[-1].args[1]
         assert "daemon-reload" in script
