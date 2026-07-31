@@ -328,6 +328,40 @@ Keep-alive. Sent every 30 seconds.
 | `plan_review` | Plan ready for review |
 | `compact` | Context compaction |
 
+#### AGENT_PROFILE
+
+What the agent is — name, model, tools, **every** skill, and the account balance for
+managed-key agents. Sent once, right after `CONNECTED`.
+
+```json
+{
+  "type": "AGENT_PROFILE",
+  "session_id": "550e8400-...",
+  "name": "my-agent",
+  "address": "0x3d4017c3...",
+  "model": "co/gemini-3.6-flash",
+  "tools": ["search", "shell"],
+  "skills": [
+    {"name": "co-browser", "description": "drive a browser", "location": "project"},
+    {"name": "my-notes", "description": "personal", "location": "user"}
+  ],
+  "balance_usd": 25.34
+}
+```
+
+**This is the authenticated answer, and it is deliberately larger than the public one.**
+`GET /info` and the relay directory are reachable by anyone and publish only skills from
+the project tree (`project`, `claude-project`); the operator's personal skills in
+`~/.co/skills` and `~/.claude/skills` stay private there. This frame arrives past the
+signature check and the trust gate, so it carries all of them.
+
+A client that has not connected — or has not passed onboarding — should show the public
+answer and not treat it as an incomplete version of this one. It is what that viewer is
+entitled to see.
+
+TypeScript SDK: `agent.profile` and `useAgentForHuman().profile`, `null` until the frame
+lands.
+
 #### DASHBOARD_SNAPSHOT
 
 The agent's `dashboard.html` — its Home page — for the client to render beside the
