@@ -65,6 +65,35 @@ class TestAddressCaseIsIgnored:
         assert tools._check_list("whitelist", "trusted-alice")
 
 
+class TestOnlyStarIsSpecial:
+    """`*` is the whole wildcard vocabulary — everything else is literal.
+
+    Caught reviewing the first version of this fix, which used `fnmatch`.
+    fnmatch also gives meaning to `?` and `[seq]`, and it breaks both ways: a
+    blocklist entry containing brackets stops matching itself (fails open), and
+    a `?` in a whitelist line starts matching identifiers nobody wrote down
+    (fails open again). Same class of defect as the one being fixed.
+    """
+
+    def test_brackets_are_literal(self, listfile):
+        listfile("blocklist", "agent[1]")
+        assert tools._check_list("blocklist", "agent[1]")
+
+    def test_a_bracket_entry_is_not_a_character_class(self, listfile):
+        listfile("whitelist", "agent[abc]")
+        assert not tools._check_list("whitelist", "agenta")
+
+    def test_question_mark_is_literal(self, listfile):
+        listfile("whitelist", "agent?")
+        assert tools._check_list("whitelist", "agent?")
+        assert not tools._check_list("whitelist", "agentX")
+
+    def test_a_dot_does_not_match_any_character(self, listfile):
+        """Regex metacharacters must not leak in either."""
+        listfile("whitelist", "a.example")
+        assert not tools._check_list("whitelist", "axexample")
+
+
 class TestUnchanged:
     """Behaviour the fix must not disturb."""
 

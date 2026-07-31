@@ -14,7 +14,7 @@ Trust Levels (stored in ~/.co/):
   - blocked: In blocklist.txt (denied access)
 """
 
-import fnmatch
+import re
 from pathlib import Path
 from typing import List, Callable
 
@@ -56,11 +56,25 @@ def _check_list(list_name: str, agent_id: str) -> bool:
             line = line.strip()
             if not line or line.startswith('#'):
                 continue
-            if fnmatch.fnmatchcase(agent_id, line.lower()):
+            if _matches(agent_id, line.lower()):
                 return True
         return False
     except Exception:
         return False
+
+
+def _matches(agent_id: str, pattern: str) -> bool:
+    """Whole-string match where `*` is the only metacharacter.
+
+    Deliberately not `fnmatch`: it also gives meaning to `?` and `[seq]`, which
+    were literal here before. That cuts both ways and both ways are wrong — a
+    blocklist entry like `agent[1]` would stop matching itself, and a `?`
+    anywhere in a whitelist line would start matching identifiers its author
+    never wrote down. Escaping everything but `*` keeps the vocabulary exactly
+    as documented.
+    """
+    expr = ".*".join(re.escape(part) for part in pattern.split("*"))
+    return re.fullmatch(expr, agent_id) is not None
 
 
 def check_whitelist(agent_id: str) -> str:
