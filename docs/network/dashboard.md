@@ -1,14 +1,15 @@
 # Dashboard — your agent's Home page
 
-Every hosted agent can have a **Home page**: a single file, `dashboard.html`, in the
-project root. A chat client renders it beside the conversation, so opening your agent
-shows something useful before you type anything.
+Every hosted agent can have a **Home page**: a single file, `.co/dashboard.html`. A
+chat client renders it beside the conversation, so opening your agent shows something
+useful before you type anything.
 
 ```
 my-agent/
 ├── agent.py
-├── dashboard.html      ← the Home page
 └── .co/
+    ├── dashboard.html   ← the Home page
+    └── skills/          ← and the skills it offers
 ```
 
 The browser can't read a file inside your agent's container, so the Host reads
@@ -31,27 +32,59 @@ host(lambda: Agent("lisa", tools=[...]))
 
 After that the file is yours. ConnectOnion never overwrites it.
 
-### Where it lives, and why there
+### Where it lives, and how it's found
 
-`dashboard.html` sits at the **project root**, next to `agent.py`. Not in `.co/`, and
-that is not cosmetic:
+`.co/dashboard.html`, beside `.co/skills/`. Both are **what the agent is**, as opposed
+to the logs and evals it accumulates — and that distinction is what `.co/` is sorted
+by, not "config vs content".
 
-- `co deploy --to` rsyncs the project tree **excluding `.co/`**. A dashboard under
-  `.co/` would silently not travel, and the deployed agent would look like it had no
-  Home.
-- The template Dockerfile does `COPY . .`, so the root is in the image.
-- The `.gitignore` `co create` writes does not ignore it, so it gets committed — a
-  dashboard you edited is part of your agent, like its prompt.
+The project is located by walking up for a `.co/` directory, the same way skills are
+found. So it doesn't matter which directory you start the agent from:
 
-**`co create` and `co init` deliberately do not scaffold one.** At create time the
-project has no skills yet, and `ensure_dashboard` never overwrites an existing file —
-scaffolding then would freeze an empty Home forever. It is written on the first
-`host()`, which is the first moment the agent's skills are actually known.
+```
+my-agent/           ← found, because .co/ is here
+├── .co/dashboard.html
+└── src/
+    └── run.py      ← `python run.py` from in here still serves the same Home
+```
 
-On a deployed agent the same rule applies on the server: `host()` writes a starter
-there if the rsync carried none. That means an agent deployed without a dashboard gets
-one built from the skills that actually made it onto the server, which is the honest
-answer rather than a copy of what your laptop had.
+With no `.co/` above you, the Home lands where the agent was started.
+
+**An older `dashboard.html` in the project root still works.** If one is there it is
+the file being served, and nothing moves, copies, or overwrites it — an agent whose
+Home vanished on upgrade would be a worse bug than an inconsistent path. Move it to
+`.co/` yourself when you feel like it. If both exist, `.co/` wins.
+
+#### It travels
+
+`co deploy --to` rsyncs the project **excluding `.co/*`**, because that directory
+holds the agent's identity, logs and evals — that exclusion is why a redeploy doesn't
+reissue your agent's address. Two things are included back in: `.co/skills/` and
+`.co/dashboard.html`. Same reason for both. A deploy that dropped your Home page would
+regenerate a starter over it, and the agent would look fine.
+
+#### It isn't scaffolded
+
+`co create` and `co init` deliberately do not write one. At create time the project has
+no skills yet, and the starter is never written over an existing file — scaffolding
+then would freeze an empty Home forever. It is written on the first `host()`, the first
+moment the agent's skills are actually known. On a server the same rule applies: an
+agent deployed without a dashboard gets one built from the skills that actually made it
+onto the server, rather than a copy of what your laptop had.
+
+### One starter for all your agents
+
+Write `~/.co/starter.html` and every agent you host starts from that instead of the
+bundled template.
+
+It replaces the **template**, not the page: each agent still renders its own name and
+its own skills. That matters — a client validates every button against the skills
+*that* agent published, so serving one agent's finished Home for another gives a page
+of buttons that silently do nothing.
+
+An override only needs the parts you want to change. Its `<template>` fragments are
+layered over the bundled ones, so restyling the page shell doesn't mean copying the
+skill-row and group markup along with it.
 
 ### It scales with the agent
 
@@ -83,7 +116,7 @@ which is the one thing that works without scripting.
 
 ## Editing it
 
-`dashboard.html` is a plain HTML file — edit it with any editor. Or ask the agent: the
+`.co/dashboard.html` is a plain HTML file — edit it with any editor. Or ask the agent: the
 built-in `dashboard` skill teaches it the file's contract.
 
 ```
@@ -155,10 +188,10 @@ The Host sends the file at two moments:
 
 The post-run send is skipped when the file hasn't changed since that connection last
 saw it, so an unchanged Home costs nothing per turn. Nothing is polled and nothing
-watches the filesystem — if you edit `dashboard.html` by hand while a client is
+watches the filesystem — if you edit it by hand while a client is
 connected, the change shows up after the next run.
 
-An agent with no `dashboard.html` sends nothing, and clients simply show no Home pane.
+An agent with no dashboard file sends nothing, and clients simply show no Home pane.
 
 ## Wire format
 
@@ -183,6 +216,8 @@ See [websocket-protocol.md](websocket-protocol.md) for the full frame reference.
 | `read_dashboard_snapshot(session_id=None)` | Build the frame, or `None` if the file is missing, too large, unreadable, or not UTF-8 |
 | `send_dashboard(send_msg, session_id, conn=None)` | Send it unless this connection already has the current file; reads off the event loop |
 | `ensure_dashboard(agent_metadata, project_dir=None)` | Write the starter if absent, and anchor the directory later reads resolve against |
+| `project_root(start=None)` | Walk up for `.co/`; the project, not the cwd |
+| `dashboard_path()` | `.co/dashboard.html`, or a legacy root one if that is what exists |
 | `render_starter(agent_metadata)` | The day-zero HTML, from `starter.html` |
 | `published_skills(skills)` | The project-tree skills a starter may offer as buttons |
 | `group_skills(skills)` | `(families, loose)` split by name prefix, for long lists |

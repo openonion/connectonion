@@ -380,6 +380,10 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     which is worse than failing. So skills are included, and `--delete` applies
     inside that directory too so a removed skill actually goes away.
 
+    `.co/dashboard.html` is included for the same reason: the Home page you wrote
+    is part of the agent. Left out, a deploy silently replaces it with a generated
+    starter — the agent looks fine and your dashboard is gone.
+
     Order matters to rsync: the include must precede the exclude that would
     otherwise swallow it, and `.co/` itself must be included for rsync to
     descend into it at all.
@@ -392,6 +396,7 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
             "rsync", "-az", "--delete",
             "--include", ".co/",
             "--include", ".co/skills/***",
+            "--include", ".co/dashboard.html",
             "--exclude", ".co/*",
             "--exclude", ".venv/",
             "--exclude", ".git/",
