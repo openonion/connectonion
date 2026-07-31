@@ -9,6 +9,7 @@ LLM-Note:
   Errors: an unreachable host fails with ssh's own message and a short timeout, never a hang | a missing requirement is named
 """
 
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -50,6 +51,23 @@ def load_server(name: str) -> Optional[dict]:
     return _load().get(name)
 
 
+def _identity() -> list:
+    """`-i <derived key>` when it is on disk, otherwise nothing.
+
+    A machine from `co server new` has only the derived key installed, so
+    without this our own commands cannot reach a server we just sold. Offered
+    rather than forced — no IdentitiesOnly — so a box registered by hand with
+    `co server add` still opens with whichever key already worked.
+
+    Every path that reaches a server goes through here: preflight, deploy,
+    rsync, and the interactive shell. `co server ssh` was the one that did not,
+    and it was the one command whose whole purpose is getting you onto the box.
+    """
+    from .keys_commands import SSH_PRIVATE_KEY
+
+    return ["-i", str(SSH_PRIVATE_KEY)] if SSH_PRIVATE_KEY.exists() else []
+
+
 def _ssh(target: str, command: str) -> subprocess.CompletedProcess:
     """Run one command on the target through the system ssh binary.
 
@@ -63,6 +81,7 @@ def _ssh(target: str, command: str) -> subprocess.CompletedProcess:
             "-o", "BatchMode=yes",                    # never prompt; fail instead
             "-o", f"ConnectTimeout={SSH_TIMEOUT_SECONDS}",
             "-o", "StrictHostKeyChecking=accept-new",
+            *_identity(),
             target,
             command,
         ],
@@ -325,7 +344,7 @@ def handle_server_ssh(name: str, command: Optional[str] = None) -> bool:
         console.print("[cyan]co server ls[/cyan] to see what is registered.\n")
         return False
 
-    argv = ["ssh", "-o", "StrictHostKeyChecking=accept-new", entry["ssh"]]
+    argv = ["ssh", "-o", "StrictHostKeyChecking=accept-new", *_identity(), entry["ssh"]]
     if command:
         argv.append(command)
 
@@ -438,19 +457,39 @@ def handle_server_destroy(name: str, yes: bool = False) -> bool:
 
 API_BASE = "https://oo.openonion.ai"
 
+# Stricter than DEPLOY_NAME_PATTERN, which allows a leading digit: a server name
+# becomes the machine's own name, and those must start with a letter. Checked
+# here so the answer arrives before the confirmation prompt rather than after the
+# charge. The backend enforces the same rule — this only saves the round trip.
+SERVER_NAME_PATTERN = re.compile(r"^[a-z]([-a-z0-9]{0,37}[a-z0-9])?$")
 
-def _derive_ssh_public_line() -> Optional[str]:
-    """The operator's SSH key, so a new server is reachable with no second secret."""
+
+def _ensure_ssh_key() -> Optional[str]:
+    """The public line to install, having put the private half where ssh looks.
+
+    Both halves, because only installing the public one produces a machine
+    nobody can open: the private key is written by `co keys --ssh --write`,
+    which nobody has run at this point. Writing it here is not a second secret
+    to manage — it is derived from the recovery phrase the operator already has.
+
+    Derived from the operator's identity in ~/.co, not from the nearest project.
+    A server belongs to the person who paid for it: the account charged for it
+    is the global one, and its key must be too. Deriving from whichever project
+    directory you happened to stand in meant `co server new` here and
+    `co deploy --to` from another project produced two different keys, and the
+    second one was locked out of the machine the first had just bought.
+    """
     from ... import address
-    from .keys_commands import _find_co_dir
+    from .keys_commands import _find_co_dir, write_derived_ssh_key
 
-    co_dir = _find_co_dir()
-    if not co_dir:
-        return None
-    data = address.load(co_dir)
-    if not data or not data.get("seed_phrase"):
-        return None
-    return address.derive_ssh_key(data["seed_phrase"])["public_line"]
+    for co_dir in (Path.home() / ".co", _find_co_dir()):
+        if not co_dir or not co_dir.exists():
+            continue
+        data = address.load(co_dir)
+        if data and data.get("seed_phrase"):
+            write_derived_ssh_key(data["seed_phrase"])
+            return address.derive_ssh_key(data["seed_phrase"])["public_line"]
+    return None
 
 
 def _fetch_pricing() -> Optional[dict]:
@@ -503,12 +542,12 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
     """Have a server created for you, and register it locally."""
     import requests
 
-    from .project_cmd_lib import DEPLOY_NAME_PATTERN, load_api_key
+    from .project_cmd_lib import load_api_key
 
-    if not DEPLOY_NAME_PATTERN.match(name):
+    if not SERVER_NAME_PATTERN.match(name):
         console.print(f"\n[red]Invalid server name: {name}[/red]")
         console.print("[dim]1-39 lowercase letters, digits and hyphens, starting with a "
-                      "letter or digit — it becomes a DNS label.[/dim]\n")
+                      "letter — it becomes the machine's name.[/dim]\n")
         return False
 
     if load_server(name):
@@ -522,7 +561,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
         console.print("[cyan]co auth[/cyan] first — creating a server spends credit.\n")
         return False
 
-    ssh_public_line = _derive_ssh_public_line()
+    ssh_public_line = _ensure_ssh_key()
     if not ssh_public_line:
         console.print("\n[red]No SSH key to install.[/red]")
         console.print("[dim]The key is derived from your recovery phrase; without it the "

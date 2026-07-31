@@ -300,7 +300,7 @@ class TestServerNewSpendsNothingWithoutConsent:
 
     def test_declining_the_prompt_creates_nothing(self, servers_file):
         with patch.object(sc, "load_api_key", create=True), \
-             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
              patch.object(sc, "_fetch_pricing", return_value=PRICING), \
              patch.object(sc, "_fetch_balance", return_value=500.0), \
              patch.object(sc, "_confirm", return_value=False), \
@@ -323,7 +323,7 @@ class TestServerNewSpendsNothingWithoutConsent:
     def test_a_missing_ssh_key_stops_before_charging(self, servers_file):
         """A server created with no way in is worse than no server."""
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
-             patch.object(sc, "_derive_ssh_public_line", return_value=None), \
+             patch.object(sc, "_ensure_ssh_key", return_value=None), \
              patch("requests.post") as post:
             assert sc.handle_server_new("prod") is False
 
@@ -347,7 +347,7 @@ class TestServerNewSpendsNothingWithoutConsent:
         """Showing a made-up number and then charging a different one is worse
         than refusing."""
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
-             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
              patch.object(sc, "_fetch_pricing", return_value=None), \
              patch("requests.post") as post:
             assert sc.handle_server_new("prod") is False
@@ -364,7 +364,7 @@ class TestServerNewSuccess:
         }
 
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
-             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
              patch.object(sc, "_fetch_pricing", return_value=PRICING), \
              patch.object(sc, "_fetch_balance", return_value=500.0), \
              patch.object(sc, "_confirm", return_value=True), \
@@ -382,7 +382,7 @@ class TestServerNewSuccess:
                                       "charged_usd": 180.0}
 
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
-             patch.object(sc, "_derive_ssh_public_line", return_value=line), \
+             patch.object(sc, "_ensure_ssh_key", return_value=line), \
              patch.object(sc, "_fetch_pricing", return_value=PRICING), \
              patch.object(sc, "_fetch_balance", return_value=500.0), \
              patch.object(sc, "_confirm", return_value=True), \
@@ -400,7 +400,7 @@ class TestServerNewFailureReporting:
             "shortfall": 175.0}}
 
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
-             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
              patch.object(sc, "_fetch_pricing", return_value=PRICING), \
              patch.object(sc, "_fetch_balance", return_value=5.0), \
              patch.object(sc, "_confirm", return_value=True), \
@@ -417,7 +417,7 @@ class TestServerNewFailureReporting:
             "message": "charged for a machine that does not exist — contact support"}}
 
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
-             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
              patch.object(sc, "_fetch_pricing", return_value=PRICING), \
              patch.object(sc, "_fetch_balance", return_value=500.0), \
              patch.object(sc, "_confirm", return_value=True), \
@@ -433,7 +433,7 @@ class TestServerNewFailureReporting:
                                                  "message": "zone full, refunded"}}
 
         with patch("connectonion.cli.commands.project_cmd_lib.load_api_key", return_value="k"), \
-             patch.object(sc, "_derive_ssh_public_line", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
              patch.object(sc, "_fetch_pricing", return_value=PRICING), \
              patch.object(sc, "_fetch_balance", return_value=500.0), \
              patch.object(sc, "_confirm", return_value=True), \
@@ -598,3 +598,170 @@ class TestServerDestroy:
             assert sc.handle_server_destroy("prod", yes=True) is False
 
         assert "co server forget" in capsys.readouterr().out
+
+class TestAServerNameIsNotRewritten:
+    """The name you type is the name of the machine.
+
+    GCE instance names must start with a letter, so `co server new 1prod` used to
+    pass validation, take the $180 charge, and fail at the API. Refusing it here
+    is one rule; rewriting it into something GCE accepts would mean the name you
+    typed and the machine you got differ, and only for some names.
+    """
+
+    def test_a_leading_digit_is_refused_before_anything_is_charged(self):
+        with patch("requests.post") as post:
+            assert sc.handle_server_new("1prod") is False
+        post.assert_not_called()
+
+    def test_the_message_says_what_is_wrong(self, capsys):
+        sc.handle_server_new("1prod")
+        # Rich wraps to the terminal width, so a phrase can arrive split across
+        # lines — collapse the whitespace before looking for it.
+        printed = " ".join(capsys.readouterr().out.split())
+        assert "starting with a letter" in printed
+
+    def test_ordinary_names_still_pass_the_check(self):
+        for name in ["prod", "a", "my-agent-2"]:
+            assert sc.SERVER_NAME_PATTERN.match(name), name
+
+
+class TestWeCanReachTheServerWeJustCreated:
+    """A machine from `co server new` has only the derived key installed.
+
+    ssh does not offer that key unless told to, so `co server check` on a
+    freshly created server answered `Permission denied (publickey)` — for a
+    machine the account had just been charged $180 for. Found by running it.
+    """
+
+    def test_ssh_offers_the_derived_key_when_it_is_on_disk(self, tmp_path):
+        key = tmp_path / "connectonion_ed25519"
+        key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
+
+        with patch("connectonion.cli.commands.keys_commands.SSH_PRIVATE_KEY", key), \
+             patch.object(sc.subprocess, "run", return_value=_ok("ok")) as run:
+            sc._ssh("co@1.2.3.4", "echo ok")
+
+        argv = run.call_args.args[0]
+        assert "-i" in argv and str(key) in argv
+
+    def test_the_operators_own_keys_still_work(self, tmp_path):
+        """No IdentitiesOnly: a box registered by hand opens with whichever key
+        already worked, and adding ours must not take that away."""
+        key = tmp_path / "connectonion_ed25519"
+        key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
+
+        with patch("connectonion.cli.commands.keys_commands.SSH_PRIVATE_KEY", key), \
+             patch.object(sc.subprocess, "run", return_value=_ok("ok")) as run:
+            sc._ssh("user@host", "echo ok")
+
+        assert "IdentitiesOnly=yes" not in run.call_args.args[0]
+
+    def test_no_derived_key_on_disk_changes_nothing(self, tmp_path):
+        with patch("connectonion.cli.commands.keys_commands.SSH_PRIVATE_KEY",
+                   tmp_path / "absent"), \
+             patch.object(sc.subprocess, "run", return_value=_ok("ok")) as run:
+            sc._ssh("user@host", "echo ok")
+
+        assert "-i" not in run.call_args.args[0]
+
+    def test_creating_a_server_writes_the_private_half_first(self, tmp_path):
+        """Only installing the public half produces a machine nobody can open."""
+        written = []
+
+        with patch("connectonion.cli.commands.keys_commands._find_co_dir",
+                   return_value=tmp_path), \
+             patch("connectonion.address.load",
+                   return_value={"seed_phrase": "abandon ability able"}), \
+             patch("connectonion.address.derive_ssh_key",
+                   return_value={"public_line": "ssh-ed25519 AAAA x",
+                                 "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n"}), \
+             patch("connectonion.cli.commands.keys_commands.write_derived_ssh_key",
+                   side_effect=lambda seed: written.append(seed)):
+            line = sc._ensure_ssh_key()
+
+        assert line == "ssh-ed25519 AAAA x"
+        assert written, "the private half was never written"
+
+
+class TestTheKeyBelongsToTheOperatorNotTheProject:
+    """A server belongs to the person who paid for it.
+
+    The key was derived from the nearest project's recovery phrase, so
+    `co server new` run in one project and `co deploy --to` run in another
+    produced two different keys — and the second was locked out of the machine
+    the first had just bought. The account charged for the server is the global
+    one in ~/.co; its key has to be the same one.
+    """
+
+    def _identity(self, tmp_path, seed):
+        co = tmp_path / ".co"
+        co.mkdir(parents=True, exist_ok=True)
+        return co, {"seed_phrase": seed}
+
+    def test_two_projects_derive_the_same_key(self, tmp_path, monkeypatch):
+        home, global_data = self._identity(tmp_path, "operator phrase")
+        monkeypatch.setattr(sc.Path, "home", staticmethod(lambda: tmp_path))
+
+        seen = []
+
+        def fake_load(co_dir):
+            return global_data if co_dir == home else {"seed_phrase": "project phrase"}
+
+        with patch("connectonion.address.load", side_effect=fake_load), \
+             patch("connectonion.address.derive_ssh_key",
+                   side_effect=lambda s: seen.append(s) or {"public_line": f"key-for-{s}",
+                                                            "private_key": "x"}), \
+             patch("connectonion.cli.commands.keys_commands.write_derived_ssh_key"), \
+             patch("connectonion.cli.commands.keys_commands._find_co_dir",
+                   return_value=tmp_path / "project" / ".co"):
+            first = sc._ensure_ssh_key()
+            second = sc._ensure_ssh_key()
+
+        assert first == second == "key-for-operator phrase"
+        assert "project phrase" not in seen
+
+    def test_it_falls_back_to_the_project_when_there_is_no_global_identity(self, tmp_path,
+                                                                          monkeypatch):
+        """A machine with only a project identity should still get a key."""
+        monkeypatch.setattr(sc.Path, "home", staticmethod(lambda: tmp_path / "empty"))
+        project = tmp_path / "project" / ".co"
+        project.mkdir(parents=True)
+
+        with patch("connectonion.address.load",
+                   return_value={"seed_phrase": "project phrase"}), \
+             patch("connectonion.address.derive_ssh_key",
+                   return_value={"public_line": "project-key", "private_key": "x"}), \
+             patch("connectonion.cli.commands.keys_commands.write_derived_ssh_key"), \
+             patch("connectonion.cli.commands.keys_commands._find_co_dir",
+                   return_value=project):
+            assert sc._ensure_ssh_key() == "project-key"
+
+
+class TestTheKeyPairOnDiskAlwaysMatches:
+    """Writing one half and keeping the other produces a pair that cannot
+    authenticate — ssh calls it "contents do not match public" and refuses,
+    which is a confusing way to learn a server you paid for is unreachable."""
+
+    def test_both_halves_are_rewritten_together(self, tmp_path, monkeypatch):
+        from connectonion.cli.commands import keys_commands as kc
+
+        priv, pub = tmp_path / "id_ed25519", tmp_path / "id_ed25519.pub"
+        priv.write_text("an older key from another phrase")
+        pub.write_text("ssh-ed25519 STALE stale\n")
+        monkeypatch.setattr(kc, "SSH_PRIVATE_KEY", priv)
+        monkeypatch.setattr(kc, "SSH_PUBLIC_KEY", pub)
+
+        with patch("connectonion.address.derive_ssh_key",
+                   return_value={"private_key": "FRESH PRIVATE",
+                                 "public_line": "ssh-ed25519 FRESH fresh"}):
+            kc.write_derived_ssh_key("some phrase")
+
+        assert priv.read_text() == "FRESH PRIVATE"
+        assert pub.read_text().strip() == "ssh-ed25519 FRESH fresh"
+
+    def test_it_does_not_live_in_the_operators_ssh_directory(self):
+        """~/.ssh belongs to the operator; overwriting a file there is not ours
+        to do, and this file is overwritten by design."""
+        from connectonion.cli.commands import keys_commands as kc
+
+        assert ".ssh" not in kc.SSH_PRIVATE_KEY.parts
