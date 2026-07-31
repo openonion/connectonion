@@ -1045,6 +1045,23 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 
 > **Beta**: This feature is in beta. See [Deploy Guide](../network/deploy.md) for details.
 
+#### `co server` - Servers You Own
+
+A server a deploy goes *onto*, so the agent keeps its address, its logs and any fix you
+made by hand — and answers on its own https hostname.
+
+```bash
+co server new prod                       # have one created ($30/month, charged yearly)
+co server add prod --ssh you@1.2.3.4     # or register one you already have
+co server ls                             # reconciled against what you are billed for
+co deploy --to prod
+```
+
+`co server forget` drops the local entry and the machine keeps billing;
+`co server destroy` tears it down and refunds the unused term. Two commands on purpose.
+
+See [server.md](server.md).
+
 ---
 
 ## Command Reference Summary
@@ -1060,6 +1077,7 @@ Agent URL: https://my-agent-abc123.agents.openonion.ai
 | `co auth` | Get managed keys | No | ✅ Yes |
 | `co status` | Check balance and deployments | No | ✅ Yes |
 | `co deploy` | Deploy to cloud | No | ✅ Yes |
+| `co server` | Servers you own, and deploy targets | No | ✅ Yes (except `destroy`) |
 | `co reset` | Reset account | Yes | ⚠️ Destructive |
 | `co doctor` | Diagnose issues | No | ✅ Yes |
 | `co browser` | Browser command (local) | No | ✅ Yes |

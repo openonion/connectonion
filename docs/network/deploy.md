@@ -6,12 +6,17 @@ Get your agent running in production.
 
 ---
 
-## Two Options
+## Three Options
 
-| Option | Best For |
-|--------|----------|
-| **`co deploy`** | Quick deployment, managed hosting |
-| **Self-host** | Full control, your own infrastructure |
+| Option | Best For | Identity survives a redeploy |
+|--------|----------|------------------------------|
+| **`co deploy`** | Quick deployment, managed hosting | no — a fresh container each time |
+| **`co deploy --to <server>`** | A server you own, that you can ssh into | yes |
+| **Self-host** | Full control, your own infrastructure | yours to arrange |
+
+Pick the middle one when you want the agent to keep its address, its logs and any fix
+you made by hand — and to answer on `https://<name>.agents.openonion.ai`. See
+[co server](../cli/server.md).
 
 ---
 
@@ -261,6 +266,74 @@ curl -X POST https://my-agent-0x7a9f3b2c.agents.openonion.ai/input \
 
 ---
 
+## co deploy --to (a server you own)
+
+```bash
+co server new prod          # or: co server add prod --ssh you@1.2.3.4
+co deploy --to prod
+```
+
+```
+myagent → prod (co@1.2.3.4)
+  converging server …
+  syncing code …
+  installing dependencies …
+  configuring https …
+  restarting …
+
+✓ myagent is running on prod
+  https://prod-abc.agents.openonion.ai — the certificate lands within a minute
+  logs:  co server ssh prod 'journalctl -u myagent -f'
+  state: /srv/myagent/.co/  — untouched by deploys
+```
+
+### What a deploy does
+
+```
+ensure(setup) → sync code → install deps if changed → write unit if changed → restart
+```
+
+`ensure(setup)` is idempotent and a no-op once the server is converged, which is why a
+machine registered by hand needs no separate path: its **first** deploy is the one that
+sets it up. A marker at `/srv/<agent>/.co/provision.json` is read in one ssh call to
+decide whether to spend seconds or tens of seconds.
+
+### What survives, and what does not
+
+The rsync carries the project tree and **excludes `.co/`**, with one exception:
+
+| | |
+|---|---|
+| `.co/keys/` | **kept** — the agent's address, so its email and every trust relationship hold |
+| `.co/logs/`, `.co/evals/` | **kept** — history a dashboard can actually show |
+| `.co/skills/` | **synced** — skills are what the agent *is*, not state it accumulated |
+| everything else in the project | synced, with `--delete`, so a deleted file goes away |
+
+A change you make over ssh survives the next deploy, as long as it is not a file the
+sync owns.
+
+### https and the hostname
+
+A server created by `co server new` gets a DNS record of its own, and the deploy
+installs Caddy in front of the agent. `AGENT_PUBLIC_DOMAIN` goes into the systemd unit
+so the agent announces `https://<hostname>` to the relay rather than an IP and a port
+that is closed — without it clients probe an endpoint that can never answer.
+
+A hand-registered machine gets no https: there is no name of ours to get a certificate
+for, and inventing one would fail the challenge rather than fail honestly.
+
+One agent per hostname — there is one name and one `:443`.
+
+### Admin
+
+The deploy writes your **public address** into the agent's `.co/admins.txt`, every
+time. A deployed agent generates its own keypair, and admin actions are gated on it,
+so without this nobody could ever administer it — the only account that could grant
+admin is the one nobody can sign as. Same idea as `ssh-copy-id`, one layer up: nothing
+secret travels, and revoking is deleting a line.
+
+---
+
 ## Self-Host
 
 Deploy to your own VPS or infrastructure using `host()`.
@@ -298,6 +371,12 @@ For full API reference, see [host()](host.md).
 
 ## When to Use Which
 
-**Use `co deploy`:** Fastest path to production, no infrastructure management.
+**Use `co deploy`:** Fastest path to production, no infrastructure management. Right
+until you need the agent to keep its address across deploys.
+
+**Use `co deploy --to <server>`:** The agent keeps its identity, its logs and any fix
+you made by hand, and it answers on its own https hostname. You can `ssh` in. Costs a
+server ($30/month for the small one, charged yearly) — or nothing, if you point it at a
+machine you already have.
 
 **Use self-hosting:** Full control, custom domains, compliance requirements.
