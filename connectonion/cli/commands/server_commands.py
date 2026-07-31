@@ -129,18 +129,34 @@ def handle_server_add(name: str, ssh_target: str) -> bool:
 
 
 def handle_server_list() -> bool:
-    """Show what you can deploy to."""
-    servers = _load()
+    """Show what you can deploy to, reconciled against what you are billed for.
 
-    if not servers:
+    ~/.co/servers.yaml is a cache, not the ledger. Once a server costs money the
+    backend is the truth, and the row that matters is the one the local file
+    cannot produce: **billed for, not registered here**. That is someone paying
+    for a machine `co` would otherwise never show them — created on another
+    laptop, or dropped with `co server forget`.
+
+    The billing lookup is best-effort. Being offline, or not authenticated, must
+    not stop you listing your own deploy targets.
+    """
+    servers = _load()
+    billed = _fetch_billed_servers()
+
+    if not servers and not billed:
         console.print("\n[dim]No servers registered.[/dim]")
-        console.print("[cyan]co server add prod --ssh user@host[/cyan]\n")
+        console.print("[cyan]co server new prod[/cyan]  or  "
+                      "[cyan]co server add prod --ssh user@host[/cyan]\n")
         return True
 
     table = Table(box=None, padding=(0, 2))
     table.add_column("NAME", style="cyan")
     table.add_column("TARGET")
     table.add_column("LAST CHECK")
+    if billed is not None:
+        table.add_column("BILLING")
+
+    billed_by_name = {s["name"]: s for s in (billed or [])}
 
     for name in sorted(servers):
         entry = servers[name] or {}
@@ -151,12 +167,65 @@ def handle_server_list() -> bool:
             shown = "[green]ok[/green]"
         else:
             shown = f"[red]{last}[/red]"
-        table.add_row(name, entry.get("ssh", "[red]?[/red]"), shown)
+
+        row = [name, entry.get("ssh", "[red]?[/red]"), shown]
+        if billed is not None:
+            record = billed_by_name.get(name)
+            row.append(f"[dim]until {record['expires_at'][:10]}[/dim]" if record
+                       else "[dim]not ours[/dim]")
+        table.add_row(*row)
+
+    # The expensive row: charged for, absent locally.
+    unregistered = [s for s in (billed or []) if s["name"] not in servers]
+    for record in unregistered:
+        table.add_row(
+            f"[yellow]{record['name']}[/yellow]",
+            f"[dim]{record.get('ssh_target') or '—'}[/dim]",
+            "[yellow]not registered here[/yellow]",
+            f"[yellow]until {record['expires_at'][:10]}[/yellow]",
+        )
 
     console.print()
     console.print(table)
+
+    if unregistered:
+        names = ", ".join(s["name"] for s in unregistered)
+        console.print(f"\n[yellow]{len(unregistered)} server(s) you are billed for are not "
+                      f"registered on this machine:[/yellow] {names}")
+        console.print("[dim]co server add <name> --ssh <target>   to use one from here[/dim]")
+        console.print("[dim]co server destroy <name>              to stop paying for one[/dim]")
+
     console.print(f"\n[dim]{_short(SERVERS_FILE)}[/dim]\n")
     return True
+
+
+def _fetch_billed_servers():
+    """What the backend says this account owns, or None if we could not ask.
+
+    None and [] mean different things and the caller depends on it: [] is "you
+    own nothing", None is "we do not know", and only the first justifies telling
+    someone their registry is complete.
+    """
+    import requests
+
+    from .project_cmd_lib import load_api_key
+
+    api_key = load_api_key()
+    if not api_key:
+        return None
+
+    try:
+        response = requests.get(f"{API_BASE}/api/v1/servers",
+                                headers={"Authorization": f"Bearer {api_key}"}, timeout=15)
+    except requests.RequestException:
+        return None
+
+    if response.status_code != 200:
+        return None
+    try:
+        return response.json().get("servers", [])
+    except ValueError:
+        return None
 
 
 def _short(p: Path) -> str:
@@ -304,8 +373,85 @@ def handle_server_forget(name: str) -> bool:
     console.print(f"[green]✓[/green] Forgot [cyan]{name}[/cyan] ({target})")
     console.print("\n[yellow]The machine itself is untouched — it keeps running, and if we "
                   "created it, it keeps being billed.[/yellow]")
-    console.print("[dim]Tearing one down needs the server API (openonion/oo-api#36); until "
-                  "then, delete it where it lives.[/dim]\n")
+    console.print(f"[dim]To stop paying for it:  co server destroy {name}[/dim]\n")
+    return True
+
+
+def handle_server_destroy(name: str, yes: bool = False) -> bool:
+    """Tear the machine down for real, and drop the local entry with it.
+
+    The opposite of `forget` in the only way that matters: this one stops the
+    billing and cannot be undone. So it asks for the name back rather than a
+    y/N — a reflex "y" is exactly how someone deletes production while meaning
+    to tidy their config, and typing the name cannot be done by reflex.
+    """
+    import requests
+
+    from .project_cmd_lib import load_api_key
+
+    api_key = load_api_key()
+    if not api_key:
+        console.print("\n[red]Not authenticated.[/red]")
+        console.print("[cyan]co auth[/cyan] first — destroying a server is a billing "
+                      "operation.\n")
+        return False
+
+    if not yes:
+        console.print(f"\n[red]This destroys the machine '{name}' and everything on it.[/red]")
+        console.print("[dim]The disk, the agent's identity, its logs — none of it is "
+                      "recoverable.[/dim]")
+        console.print("[dim]The unused part of the term is refunded to your credit.[/dim]")
+        console.print()
+
+        import questionary
+        typed = questionary.text(f"Type the server name to confirm ({name}):").ask()
+        if typed != name:
+            console.print("[dim]Nothing was destroyed.[/dim]\n")
+            return False
+
+    console.print(f"\n[dim]Destroying {name} …[/dim]")
+    try:
+        response = requests.delete(
+            f"{API_BASE}/api/v1/servers/{name}",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=300,
+        )
+    except requests.RequestException as exc:
+        console.print(f"[red]Request failed: {exc}[/red]")
+        console.print("[dim]The server may still exist. Check with "
+                      "[bold]co server ls[/bold].[/dim]\n")
+        return False
+
+    if response.status_code == 404:
+        console.print(f"[red]No server named '{name}' on your account.[/red]")
+        console.print("[dim]If it is only a local entry, use "
+                      f"[bold]co server forget {name}[/bold].[/dim]\n")
+        return False
+
+    if response.status_code != 200:
+        _report_failure(response)
+        return False
+
+    # Only now drop the local entry: while the machine existed the entry was
+    # true, and removing it on a failed delete would hide a server still billing.
+    servers = _load()
+    if name in servers:
+        del servers[name]
+        _save(servers)
+
+    console.print(f"[green]✓ {name} destroyed[/green]")
+
+    # State the amount, not the policy. "Prorated" tells the user nothing they
+    # can check; a number against what they paid does.
+    result = response.json() if response.content else {}
+    refunded = result.get("refunded_usd")
+    if refunded:
+        charged = result.get("charged_usd")
+        against = f" of ${charged:.2f}" if charged else ""
+        console.print(f"[dim]${refunded:.2f}{against} refunded to your credit — "
+                      f"the unused part of the term.[/dim]\n")
+    else:
+        console.print("[dim]Nothing refunded — the term had already run out.[/dim]\n")
     return True
 
 
