@@ -266,3 +266,50 @@ class TestEvaluateRequestPriority:
         }
         result = evaluate_request(config, "trusted", {})
         assert result == "allow"
+
+
+class TestAnAdminIsNotAStranger:
+    """`co deploy --to` writes the operator's key into .co/admins.txt and prints
+    "admin: 0x… (your key)". The trust gate then never consulted that list, so a
+    freshly deployed agent answered its own owner with "agent requires
+    onboarding" — for a machine they had just paid for and installed their key
+    on. Found by running `co call` against a server created minutes earlier.
+    """
+
+    def test_an_admin_is_allowed(self, monkeypatch):
+        config = {"allow": ["admin", "whitelisted", "contact"], "deny": ["blocked"]}
+        monkeypatch.setattr("connectonion.network.trust.fast_rules.is_admin",
+                            lambda cid: cid == "0xadmin")
+        monkeypatch.setattr("connectonion.network.trust.fast_rules.is_blocked",
+                            lambda cid: False)
+
+        assert evaluate_request(config, "0xadmin", {}) == "allow"
+
+    def test_a_stranger_is_still_not(self, monkeypatch):
+        config = {"allow": ["admin"], "deny": ["blocked"], "default": "deny"}
+        monkeypatch.setattr("connectonion.network.trust.fast_rules.is_admin",
+                            lambda cid: cid == "0xadmin")
+        monkeypatch.setattr("connectonion.network.trust.fast_rules.is_blocked",
+                            lambda cid: False)
+
+        assert evaluate_request(config, "0xstranger", {}) == "deny"
+
+    def test_a_blocked_admin_is_still_blocked(self, monkeypatch):
+        """Deny is evaluated first, and being the operator does not undo it."""
+        config = {"allow": ["admin"], "deny": ["blocked"]}
+        monkeypatch.setattr("connectonion.network.trust.fast_rules.is_admin",
+                            lambda cid: True)
+        monkeypatch.setattr("connectonion.network.trust.fast_rules.is_blocked",
+                            lambda cid: True)
+
+        assert evaluate_request(config, "0xadmin", {}) == "deny"
+
+    def test_the_shipped_policies_let_the_operator_in(self):
+        """A policy that omits `admin` puts the operator back outside."""
+        from connectonion.network.trust.fast_rules import parse_policy
+
+        for level in ("careful", "strict"):
+            path = (Path(__file__).parent.parent.parent / "connectonion" / "network" /
+                    "trust" / "policies" / f"{level}.md")
+            config, _ = parse_policy(path.read_text())
+            assert "admin" in config.get("allow", []), level

@@ -40,12 +40,20 @@ def _fail(stderr="boom"):
 class TestSyncNeverTouchesState:
     """The invariant. If these fail, a deploy destroys the agent's identity."""
 
+    @staticmethod
+    def _rsync_argv(run):
+        """The rsync call specifically — the sync also shells out to chown."""
+        for call in run.call_args_list:
+            argv = call.args[0]
+            if argv and argv[0] == "rsync":
+                return argv
+        raise AssertionError(f"no rsync call in {run.call_args_list}")
+
     def test_rsync_excludes_the_state_directory(self, project):
         with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
             dts._sync_code("user@host", "myagent", project)
 
-        argv = run.call_args.args[0]
-        assert argv[0] == "rsync"
+        argv = self._rsync_argv(run)
         # --exclude and its value are separate argv entries. The pattern is
         # `.co/*` rather than `.co/` so rsync still descends far enough for the
         # skills include to match — see the skills test below.
@@ -61,7 +69,7 @@ class TestSyncNeverTouchesState:
         with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
             dts._sync_code("user@host", "myagent", project)
 
-        assert "--delete" in run.call_args.args[0]
+        assert "--delete" in self._rsync_argv(run)
 
     def test_skills_are_carried_but_the_rest_of_state_is_not(self, project):
         """Skills live in .co/skills/ — excluding all of .co/ shipped an agent
@@ -75,7 +83,7 @@ class TestSyncNeverTouchesState:
         with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
             dts._sync_code("user@host", "myagent", project)
 
-        argv = run.call_args.args[0]
+        argv = self._rsync_argv(run)
         # rsync applies the first matching rule, so the includes must come
         # before the exclude that would otherwise swallow them, and `.co/`
         # itself must be included for rsync to descend into it.
@@ -91,7 +99,7 @@ class TestSyncNeverTouchesState:
         with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
             dts._sync_code("user@host", "myagent", project)
 
-        argv = run.call_args.args[0]
+        argv = self._rsync_argv(run)
         pairs = [(argv[i], argv[i + 1]) for i in range(len(argv) - 1)]
         assert ("--exclude", ".co/") not in pairs
 
@@ -100,7 +108,7 @@ class TestSyncNeverTouchesState:
         with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
             dts._sync_code("user@host", "myagent", project)
 
-        argv = run.call_args.args[0]
+        argv = self._rsync_argv(run)
         pairs = [(argv[i], argv[i + 1]) for i in range(len(argv) - 1)]
         assert ("--exclude", ".venv/") in pairs
         assert ("--exclude", ".git/") in pairs
@@ -211,7 +219,8 @@ class TestSystemdUnit:
 
     def test_an_unchanged_unit_is_not_rewritten(self):
         """Rewriting every deploy would mean a daemon-reload for no reason."""
-        wanted = dts._unit_text("myagent", "agent.py")
+        # Same user the target implies — the unit runs as whoever owns the files.
+        wanted = dts._unit_text("myagent", "agent.py", user="user")
         with patch.object(dts, "_ssh", return_value=_ok(wanted)) as ssh:
             assert dts._write_unit_if_changed("user@host", "myagent", "agent.py") is True
 
@@ -234,18 +243,18 @@ class TestRestart:
         is the worst possible outcome for a deploy command.
         """
         with patch.object(dts, "_ssh",
-                          side_effect=[_ok(), _ok("active=failed\nrestarts=0"), _ok("traceback…")]):
+                          side_effect=[_ok(), _ok("verdict=never-started state=failed"), _ok("traceback…")]):
             assert dts._restart("user@host", "myagent") is False
 
     def test_an_active_unit_passes(self):
         with patch.object(dts, "_ssh",
-                          side_effect=[_ok(), _ok("active=active\nrestarts=0")]):
+                          side_effect=[_ok(), _ok("verdict=up")]):
             assert dts._restart("user@host", "myagent") is True
 
     def test_journal_is_shown_when_the_unit_does_not_come_up(self, capsys):
         """The traceback is what the operator needs, not an exit code."""
         with patch.object(dts, "_ssh",
-                          side_effect=[_ok(), _ok("active=failed\nrestarts=0"),
+                          side_effect=[_ok(), _ok("verdict=never-started state=failed"),
                                        _ok("ModuleNotFoundError: no foo")]):
             dts._restart("user@host", "myagent")
 
@@ -414,55 +423,170 @@ class TestHttps:
 
 class TestACrashLoopIsNotASuccessfulDeploy:
     """`Restart=always` means a unit that dies on import is "active" in the
-    moment right after the restart, and again after every crash. Asking
-    immediately therefore always says yes — a real deploy reported success for
-    an agent looping on an ImportError, and the operator's first hint was a 502.
+    moment right after the restart, and again after every crash. Asking once
+    therefore always says yes — a real deploy reported success for an agent
+    looping on an ImportError, and the operator's first hint was a 502.
+
+    A single delayed look is not enough either: the restart resets NRestarts, so
+    an eight-second probe called a healthy deploy on an agent that took ten
+    seconds to fail. That happened too, on the fix for the first bug.
     """
 
     def _ssh(self, stdout):
         return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
 
-    def test_an_agent_that_keeps_dying_fails_the_deploy(self, capsys):
+    def _run(self, verdict_line, capsys=None):
         def fake_ssh(target, command, timeout=300):
-            if "NRestarts" in command:
-                return self._ssh("active=active\nrestarts=3\n")
+            if "verdict" in command:
+                return self._ssh(verdict_line)
             if "journalctl" in command:
                 return self._ssh("ImportError: cannot import name 'create_agent'")
             return self._ssh("")
 
         with patch.object(dts, "_ssh", side_effect=fake_ssh):
-            assert dts._restart("co@host", "my-agent") is False
+            return dts._restart("co@host", "my-agent")
 
+    def test_an_agent_that_keeps_dying_fails_the_deploy(self, capsys):
+        assert self._run("verdict=crashed restarts=3 state=activating") is False
         out = capsys.readouterr().out
         assert "crashed" in out
         assert "ImportError" in out, "the traceback is what the operator needs"
 
     def test_an_agent_that_stays_up_passes(self):
+        assert self._run("verdict=up") is True
+
+    def test_an_agent_that_never_comes_up_fails(self, capsys):
+        assert self._run("verdict=never-started state=activating") is False
+        assert "never came up" in capsys.readouterr().out
+
+    def test_the_watch_waits_for_a_stable_period_rather_than_looking_once(self):
+        """The bug in the first fix: one look, eight seconds in, on an agent
+        that takes ten seconds to fail."""
+        sent = []
+
         def fake_ssh(target, command, timeout=300):
-            if "NRestarts" in command:
-                return self._ssh("active=active\nrestarts=0\n")
-            return self._ssh("")
+            sent.append(command)
+            return self._ssh("verdict=up")
 
         with patch.object(dts, "_ssh", side_effect=fake_ssh):
-            assert dts._restart("co@host", "my-agent") is True
+            dts._restart("co@host", "my-agent")
 
-    def test_a_slow_start_is_not_treated_as_a_crash(self):
-        """Zero automatic restarts means it has not died, however slow it is."""
+        watch = next(c for c in sent if "verdict" in c)
+        assert "NRestarts" in watch
+        assert str(dts.STARTUP_STABLE_SECONDS) in watch
+        assert dts.STARTUP_STABLE_SECONDS >= 15,             "shorter than the time a Python agent takes to fail on an import"
+
+class TestDependenciesInstallFromTheProjectDirectory:
+    """A requirements.txt may name things relative to itself — a local wheel,
+    `-e .`, a nested `-r requirements-dev.txt`. pip ran from the login shell's
+    home, so those resolved against /home/<user>:
+
+        WARNING: Requirement './connectonion-1.5.2-py3-none-any.whl' looks like
+        a filename, but the file does not exist
+        ERROR: No such file or directory: '/home/co/connectonion-…whl'
+
+    while the wheel sat in /srv/e2e-agent/ the whole time.
+    """
+
+    def test_pip_is_run_from_the_project_directory(self, tmp_path):
+        commands = []
+
         def fake_ssh(target, command, timeout=300):
-            if "NRestarts" in command:
-                return self._ssh("active=active\nrestarts=\n")
-            return self._ssh("")
+            commands.append(command)
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+        (tmp_path / "requirements.txt").write_text("./local-wheel.whl\n")
 
         with patch.object(dts, "_ssh", side_effect=fake_ssh):
-            assert dts._restart("co@host", "my-agent") is True
+            dts._install_deps_if_changed("co@host", "my-agent", tmp_path)
 
-    def test_a_dead_unit_still_fails(self):
+        install = next(c for c in commands if "pip install" in c)
+        assert f"cd {dts.SRV}/my-agent" in install
+        assert "-r requirements.txt" in install, \
+            "an absolute -r path does not help; the relative entries inside it are the problem"
+
+
+class TestTheAgentCanFindItsOwnCommands:
+    """`co call <address> co status` — the example in `co call`'s own help —
+    answered "co: command not found" on a deployed agent. The unit set no PATH,
+    so the process inherited systemd's default, and `co` lives in the project's
+    venv. It reaches every command the agent shells out to, not just remote exec.
+    """
+
+    def test_the_unit_puts_the_project_venv_first_on_path(self):
+        unit = dts._unit_text("my-agent", "agent.py")
+
+        path = next(l for l in unit.splitlines() if l.startswith("Environment=PATH="))
+        assert path.partition("PATH=")[2].split(":")[0] == f"{dts.SRV}/my-agent/.venv/bin"
+
+    def test_the_system_directories_are_still_there(self):
+        """Prepending, not replacing: the agent still needs git, ssh and the rest."""
+        unit = dts._unit_text("my-agent", "agent.py")
+
+        path = next(l for l in unit.splitlines() if l.startswith("Environment=PATH="))
+        assert "/usr/bin" in path and "/bin" in path
+
+    def test_the_hostname_is_still_set_alongside_it(self):
+        unit = dts._unit_text("my-agent", "agent.py", "host.example.com")
+
+        assert "Environment=AGENT_PUBLIC_DOMAIN=host.example.com" in unit
+        assert "Environment=PATH=" in unit
+
+
+class TestTheAgentDoesNotRunAsRoot:
+    """`co call` runs whatever the admin sends, so the unit's user is the
+    privilege the remote-exec path hands out. With no `User=` the agent ran as
+    root — a superset of what the operator gets by sshing in themselves, on a
+    machine where they log in as an ordinary user.
+
+    It also gave the process HOME=/root, which is where the browser went looking
+    for a cache it could never have.
+    """
+
+    def test_the_unit_runs_as_the_user_that_owns_the_files(self):
+        unit = dts._unit_text("my-agent", "agent.py", user="co")
+        assert "User=co" in unit
+
+    def test_the_user_comes_from_the_ssh_target(self):
+        written = {}
+
         def fake_ssh(target, command, timeout=300):
-            if "NRestarts" in command:
-                return self._ssh("active=failed\nrestarts=0\n")
-            if "journalctl" in command:
-                return self._ssh("some traceback")
-            return self._ssh("")
+            if command.startswith("cat /etc/systemd"):
+                return subprocess.CompletedProcess(args=[], returncode=0,
+                                                   stdout="old", stderr="")
+            written["script"] = command
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
 
         with patch.object(dts, "_ssh", side_effect=fake_ssh):
-            assert dts._restart("co@host", "my-agent") is False
+            dts._write_unit_if_changed("deployer@1.2.3.4", "my-agent", "agent.py")
+
+        assert "User=deployer" in written["script"]
+
+    def test_the_files_are_handed_to_that_user(self, tmp_path):
+        """An agent that ran as root before left root-owned logs behind, and the
+        first thing the unprivileged process does is fail to write its own log:
+
+            PermissionError: [Errno 13] Permission denied: '.co/logs/oo.log'
+        """
+        written = {}
+
+        def fake_ssh(target, command, timeout=300):
+            if command.startswith("cat /etc/systemd"):
+                return subprocess.CompletedProcess(args=[], returncode=0,
+                                                   stdout="old", stderr="")
+            written["script"] = command
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+        commands = []
+
+        def record(target, command, timeout=300):
+            commands.append(command)
+            return subprocess.CompletedProcess(args=[], returncode=0, stdout="", stderr="")
+
+        with patch.object(dts, "_ssh", side_effect=record), \
+             patch.object(dts.subprocess, "run",
+                          return_value=subprocess.CompletedProcess(args=[], returncode=0,
+                                                                   stdout="", stderr="")):
+            dts._sync_code("co@1.2.3.4", "my-agent", tmp_path)
+
+        assert any(f"chown -R co: {dts.SRV}/my-agent" in c for c in commands), commands

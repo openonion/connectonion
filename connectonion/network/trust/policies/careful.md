@@ -3,6 +3,7 @@
 
 # Who has access
 allow:
+  - admin        # the operator of this agent — their key is in .co/admins.txt
   - whitelisted
   - contact
 
