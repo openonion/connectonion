@@ -199,13 +199,7 @@ def _unit_text(agent: str, entrypoint: str, hostname: Optional[str] = None, port
                   f"/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n"
     if hostname:
         environment += f"Environment=AGENT_PUBLIC_DOMAIN={hostname}\n"
-    # One server can host several agents — /srv/<agent>/ and the unit are both
-    # per-agent. The port was the only thing that was not, so a second agent
-    # bound 8000, lost, and crash-looped. Restart=always then kept
-    # `systemctl is-active` answering "active" for a process dying every few
-    # seconds, so the deploy reported success for an agent that never served a
-    # request.
-    environment += f"Environment=PORT={port}\n"
+
     return f"""[Unit]
 Description=ConnectOnion agent {agent}
 After=network-online.target
@@ -320,6 +314,30 @@ def _free_port(target: str, agent: str, first: int = 8000, last: int = 8099) -> 
     )
 
 
+def _pin_port(target: str, agent: str, port: int) -> None:
+    """Record the agent's port where host() actually looks for it.
+
+    `host()` resolves it as `config.get('port', 8000)` from .co/host.yaml — not
+    from the environment — and the template's agent.py calls `host(agent)` with
+    no port, so a systemd Environment= line is read by nothing. Writing the
+    number anywhere else is writing it nowhere.
+
+    The file lives on the server: `.co/*` is excluded from the deploy rsync, so
+    this survives every redeploy rather than being overwritten by the operator's
+    local copy — which is what makes it the right place to keep a value only the
+    server can decide.
+    """
+    config = f"{SRV}/{agent}/.co/host.yaml"
+    _ssh(
+        target,
+        f"mkdir -p {SRV}/{agent}/.co && touch {config} && "
+        f"if grep -q '^port:' {config}; then "
+        f"  sed -i 's/^port:.*/port: {port}/' {config}; "
+        f"else printf 'port: {port}\\n' >> {config}; fi",
+        timeout=60,
+    )
+
+
 def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
                            hostname: Optional[str] = None) -> bool:
     """Write the systemd unit only when its content differs.
@@ -340,8 +358,9 @@ def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
     # a deploy that copied every file, wrote the unit, reported success, and
     # produced a service that could never start.
     user = _ssh(target, "id -un", timeout=60).stdout.strip() or target.split("@")[0]
-    wanted = _unit_text(agent, entrypoint, hostname,
-                        port=_free_port(target, agent), user=user)
+    port = _free_port(target, agent)
+    _pin_port(target, agent, port)
+    wanted = _unit_text(agent, entrypoint, hostname, port=port, user=user)
     unit_path = f"/etc/systemd/system/{agent}.service"
 
     current = _ssh(target, f"cat {unit_path} 2>/dev/null", timeout=60)

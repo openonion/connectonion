@@ -253,11 +253,14 @@ class TestSystemdUnit:
             "an unchanged unit was rewritten"
 
     def test_a_changed_unit_is_written_and_reloaded(self):
-        # read the current unit, ask who rsync wrote as, ask which port is free,
-        # then write
-        with patch.object(dts, "_ssh",
-                          side_effect=[_ok("old content"), _ok("deployer\n"),
-                                       _ok("---\n"), _ok()]) as ssh:
+        def answer(target, command, **kwargs):
+            if "id -un" in command:
+                return _ok("deployer\n")
+            if "Environment=PORT=" in command:
+                return _ok("---\n")
+            return _ok("old content")
+
+        with patch.object(dts, "_ssh", side_effect=answer) as ssh:
             assert dts._write_unit_if_changed("user@host", "myagent", "agent.py") is True
 
         script = ssh.call_args_list[-1].args[1]
@@ -686,9 +689,26 @@ class TestPortAllocation:
             with pytest.raises(RuntimeError, match="no free port"):
                 dts._free_port("user@host", "myagent")
 
-    def test_the_unit_carries_the_port(self):
-        unit = dts._unit_text("myagent", "agent.py", port=8042)
-        assert "Environment=PORT=8042" in unit
+    def test_the_port_is_written_where_host_reads_it(self):
+        """host() takes the port from .co/host.yaml — `config.get('port', 8000)`
+        — not from the environment, and the template calls host(agent) with no
+        port. A systemd Environment= line is read by nothing."""
+        with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
+            dts._pin_port("user@host", "myagent", 8042)
+
+        command = ssh.call_args.args[1]
+        assert "/srv/myagent/.co/host.yaml" in command
+        assert "port: 8042" in command
+
+    def test_pinning_replaces_an_existing_port_rather_than_appending(self):
+        """Appending a second `port:` would leave the old one winning or the
+        file invalid, depending on the parser — either way not 8042."""
+        with patch.object(dts, "_ssh", return_value=_ok()) as ssh:
+            dts._pin_port("user@host", "myagent", 8042)
+
+        command = ssh.call_args.args[1]
+        assert "grep -q '^port:'" in command
+        assert "sed -i" in command
 
 
 class TestUnitUser:
@@ -698,8 +718,14 @@ class TestUnitUser:
         """A server registered by ssh alias has no "user@" to split. Splitting it
         put the alias in User=, and systemd answered 217/USER — after a deploy
         that copied every file and reported success."""
-        with patch.object(dts, "_ssh",
-                          side_effect=[_ok("old"), _ok("deployer\n"), _ok("---\n"), _ok()]):
+        def answer(target, command, **kwargs):
+            if "id -un" in command:
+                return _ok("deployer\n")
+            if "Environment=PORT=" in command:
+                return _ok("---\n")
+            return _ok("old")
+
+        with patch.object(dts, "_ssh", side_effect=answer):
             dts._write_unit_if_changed("my-alias", "myagent", "agent.py")
 
         unit = dts._unit_text("myagent", "agent.py", user="deployer")
@@ -715,6 +741,7 @@ class TestUnitUser:
             if "Environment=PORT=" in command:
                 return _ok("---\n")
             return _ok("a different unit")     # forces a write
+
 
         with patch.object(dts, "_ssh", side_effect=answer) as ssh:
             dts._write_unit_if_changed("co@1.2.3.4", "myagent", "agent.py")
