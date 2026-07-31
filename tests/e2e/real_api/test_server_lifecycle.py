@@ -65,8 +65,44 @@ pytestmark = [
                        reason="creates a real server and spends credit"),
 ]
 
+# Captured at import — by the time a fixture runs, tests/conftest.py has already
+# repointed Path.home() and HOME at a throwaway directory.
+REAL_HOME = Path(os.environ.get("HOME") or Path.home())
+
 SERVER = "e2e-" + uuid.uuid4().hex[:6]
 AGENT = "e2e-agent"
+
+
+@pytest.fixture(autouse=True)
+def _use_the_real_home(request):
+    """Opt this module out of the per-test HOME isolation in tests/conftest.py.
+
+    That fixture is right for every other test — it exists because a mocked
+    `co auth microsoft` once wrote fake tokens into the operator's real
+    keys.env. But it hands **each test its own fresh home**, and this module
+    drives the real `co` binary across a series of subprocesses that have to
+    agree on one:
+
+    - `co server new` registers the machine in that test's ~/.co/servers.yaml
+    - the next test gets a different home, so `co server check <name>` reads an
+      empty registry and answers "No server named" — for a machine it just paid
+      $360 for
+
+    That is #445, and it is entirely an artefact of the harness: run the same
+    two commands by hand and they work. It also cost three provisioned servers
+    to find, because the symptom looks exactly like a registration bug.
+
+    This module needs the real home for a second reason anyway: it spends real
+    credit and opens a real ssh session, so it needs the operator's actual API
+    key and derived key. There is nothing here to protect them from — every
+    write it makes is to a server it created and destroys.
+    """
+    monkeypatch = request.getfixturevalue("monkeypatch")
+    monkeypatch.setenv("HOME", str(REAL_HOME))
+    monkeypatch.setenv("USERPROFILE", str(REAL_HOME))
+    monkeypatch.delenv("AGENT_CONFIG_PATH", raising=False)
+    monkeypatch.setattr(Path, "home", classmethod(lambda cls: REAL_HOME))
+    yield
 
 
 def co(*args, timeout=900, check=True):
