@@ -58,6 +58,10 @@ permissions:
 
 The `keys/` directory contains your agent's cryptographic identity. **This directory should NEVER be committed to version control.**
 
+> **Keys are derived through SLIP-0010** from your BIP-39 phrase — see
+> [key-derivation.md](key-derivation.md). If your identity predates that change,
+> `agent.key` is the only copy of it: the phrase alone no longer restores it.
+
 ### agent.key
 - **Format**: Binary Ed25519 private key (32 bytes)
 - **Purpose**: Signs messages for agent-to-agent communication
