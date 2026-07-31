@@ -53,20 +53,32 @@ def _ssh(target: str, command: str, timeout: int = 300) -> subprocess.CompletedP
     apt and pip are slow, and killing them halfway leaves a half-installed box."""
     from .server_commands import _identity
 
-    return subprocess.run(
-        [
-            "ssh",
-            "-o", "BatchMode=yes",
-            "-o", f"ConnectTimeout={SSH_TIMEOUT_SECONDS}",
-            "-o", "StrictHostKeyChecking=accept-new",
-            *_identity(),
-            target,
-            command,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    argv = [
+        "ssh",
+        "-o", "BatchMode=yes",
+        "-o", f"ConnectTimeout={SSH_TIMEOUT_SECONDS}",
+        "-o", "StrictHostKeyChecking=accept-new",
+        *_identity(),
+        target,
+        command,
+    ]
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
+        # A hung resolver or a box that stops answering mid-deploy raises here.
+        # Uncaught it printed a Python traceback, which tells the operator we
+        # crashed — when what happened is that their server went quiet.
+        #
+        # Returned as a failed CompletedProcess rather than raised, because every
+        # caller already treats a non-zero return as a failed step and reports it
+        # with the server name. One shape of failure, one place that renders it.
+        return subprocess.CompletedProcess(
+            argv, returncode=124,          # the conventional exit code for a timeout
+            stdout="",
+            stderr=f"ssh to {target} timed out after {timeout}s — the server did "
+                   f"not answer. Check it is running and reachable: "
+                   f"co server check <name>",
+        )
 
 
 def _read_project(project_dir: Path) -> Optional[dict]:
