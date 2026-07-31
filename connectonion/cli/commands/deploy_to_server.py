@@ -12,6 +12,7 @@ LLM-Note:
 import hashlib
 import json
 import shlex
+import shutil
 import subprocess
 from pathlib import Path
 from typing import Optional
@@ -117,12 +118,35 @@ def _warn_about_skills_left_behind(project_dir: Path) -> None:
 
 
 def _read_provision(target: str, agent: str) -> dict:
-    """Read the convergence marker. A missing or unreadable one means schema 0."""
-    result = _ssh(target, f"cat {SRV}/{agent}/.co/provision.json 2>/dev/null", timeout=60)
-    if result.returncode != 0 or not result.stdout.strip():
+    """Read the convergence marker, and check the one thing it claims.
+
+    The marker survives every rsync, by design — it is the record of work that
+    does not need doing again. But it records what *was* true, and the venv it
+    speaks for can be gone: a disk cleanup, a restored snapshot, an `rm -rf`
+    during debugging. The marker knows nothing about that, so the deploy skipped
+    creating the venv, pip short-circuited on an unchanged requirements hash,
+    and the restart failed with a systemd error naming a python that is not
+    there — the one cause never mentioned.
+
+    So the interpreter is checked in the same round trip that reads the marker.
+    Not a re-verification of everything it implies; one test for the file the
+    systemd unit will execute.
+    """
+    result = _ssh(target,
+                  f"cat {SRV}/{agent}/.co/provision.json 2>/dev/null; "
+                  f"echo; test -x {SRV}/{agent}/.venv/bin/python && echo VENV_PRESENT",
+                  timeout=60)
+    if result.returncode != 0:
+        return {"schema": 0}
+
+    marker, _, tail = result.stdout.rpartition("\n")
+    if "VENV_PRESENT" not in result.stdout:
+        # Whatever the marker says, the work has to be done again.
+        return {"schema": 0}
+    if not marker.strip():
         return {"schema": 0}
     try:
-        return json.loads(result.stdout)
+        return json.loads(marker)
     except json.JSONDecodeError:
         # A truncated or hand-edited marker should mean "converge again", not
         # crash the deploy.
@@ -504,6 +528,17 @@ def _mark_provisioned(target: str, agent: str) -> None:
 def handle_deploy_to(server: str, project_dir: Optional[Path] = None) -> bool:
     """co deploy --to <server>:  ensure(setup) → sync code → restart."""
     project_dir = (project_dir or Path.cwd()).resolve()
+
+    # Checked here rather than discovered inside subprocess.run, which raises
+    # FileNotFoundError and prints a traceback — for the one failure a person can
+    # fix in a sentence. `co server add` has always checked; this path did not,
+    # and it is the one that runs after the server is already paid for.
+    for binary in ("ssh", "rsync"):
+        if not shutil.which(binary):
+            console.print(f"\n[red]No {binary} binary found on PATH.[/red]")
+            console.print(f"[dim]co deploys through your own {binary}, so it needs "
+                          f"one installed.[/dim]\n")
+            return False
 
     entry = load_server(server)
     if not entry:
