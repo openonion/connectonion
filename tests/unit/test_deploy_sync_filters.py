@@ -90,6 +90,33 @@ def test_deleted_code_still_goes_away(synced):
     assert not (synced / "stale.py").exists()
 
 
+@pytest.mark.parametrize("relpath, server_value", [
+    (".co/address.json", '{"address": "0xSERVER"}'),   # decides super-admin
+    (".co/admins.txt", "0xSERVER\n"),                  # decides who may command
+    (".co/provision.json", '{"schema": 3}'),
+    (".co/requirements.sha256", "server-digest"),
+])
+def test_a_local_copy_cannot_overwrite_what_the_server_owns(
+        tmp_path, relpath, server_value):
+    """Protection stops `--delete`; it does not stop a *transfer*. These four
+    are generated on the server or written there over ssh, so a stale local
+    copy — `add_admin()` writes `.co/admins.txt` in the cwd when run locally —
+    would silently change who is in charge of the deployed agent.
+    """
+    local, server = tmp_path / "local", tmp_path / "server"
+    (local / ".co").mkdir(parents=True)
+    (server / ".co").mkdir(parents=True)
+    (local / relpath).write_text("LOCAL")
+    (server / relpath).write_text(server_value)
+
+    subprocess.run(
+        ["rsync", "-a", "--delete", *RSYNC_FILTERS, f"{local}/", f"{server}/"],
+        check=True, capture_output=True,
+    )
+
+    assert (server / relpath).read_text() == server_value
+
+
 def test_a_local_key_cannot_take_over_the_server(tmp_path):
     """A project that has ever run `host()` locally has its own `.co/keys/`.
     That key must not be able to replace the server's identity."""

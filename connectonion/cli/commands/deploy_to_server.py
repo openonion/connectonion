@@ -383,7 +383,17 @@ def _caddy_running(target: str) -> bool:
 # carry config is invisible: the deploy succeeds and a different agent runs.
 RSYNC_FILTERS = [
     "--filter", "P .co/**",
+    # Generated on the server, or written there over ssh by the deploy itself.
+    # The protect rule above keeps them from being deleted; these keep a local
+    # copy from overwriting them, which is the other half of the same rule.
+    # `address.json` decides super-admin (trust/tools.py:328) and `admins.txt`
+    # decides who may command the agent — a stale local copy of either is a
+    # change of who is in charge, made silently by a deploy.
     "--exclude", ".co/keys/",
+    "--exclude", ".co/address.json",
+    "--exclude", ".co/admins.txt",
+    "--exclude", ".co/provision.json",
+    "--exclude", ".co/requirements.sha256",
     "--exclude", ".co/logs/",
     "--exclude", ".co/evals/",
     "--exclude", ".co/sessions/",
