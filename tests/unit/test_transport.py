@@ -248,6 +248,8 @@ def test_wire_stalled_handshake_cannot_wedge_the_acceptor():
     assert hold2["conn"] is not None
 
 
+@pytest.mark.skipif(sys.platform == "win32",
+                    reason="Windows uses LOCALAPPDATA, which is already per-user")
 class TestTheRuntimeDirIsPerUser:
     """The docstring says per-user runtime dir. On POSIX without
     XDG_RUNTIME_DIR it was `/tmp/co` — machine-global, and chmod 0700 — so
