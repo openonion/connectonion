@@ -11,6 +11,7 @@ Components under test:
 
 
 import pytest
+import yaml
 from pathlib import Path
 
 from connectonion.network.trust.fast_rules import parse_policy, evaluate_request
@@ -313,3 +314,47 @@ class TestAnAdminIsNotAStranger:
                     "trust" / "policies" / f"{level}.md")
             config, _ = parse_policy(path.read_text())
             assert "admin" in config.get("allow", []), level
+
+
+class TestAYamlErrorNamesThePolicyFile:
+    """A typo in a policy still stops the host — that is the right outcome for a
+    config file it cannot understand. What was missing is *which* file: PyYAML
+    names the stream it was given, and a bare string is named "<unicode
+    string>", so an operator with several policies and the built-in ones had a
+    line number and no way to know where to look. openonion/connectonion#381
+    """
+
+    def test_the_error_names_the_file_when_the_caller_knows_it(self):
+        bad = "---\nallow: [whitelisted, contact\n---\n# Body\n"
+
+        with pytest.raises(yaml.YAMLError) as exc:
+            parse_policy(bad, source=".co/trust/custom.md")
+
+        assert ".co/trust/custom.md" in str(exc.value)
+
+    def test_it_is_still_the_parsers_own_error(self):
+        """Not caught and re-raised: the parser says what is wrong, and it says
+        it better than a message we would write, including the offending line."""
+        bad = "---\nallow: [whitelisted, contact\n---\n# Body\n"
+
+        with pytest.raises(yaml.YAMLError) as exc:
+            parse_policy(bad, source="p.md")
+
+        assert "expected ',' or ']'" in str(exc.value)
+
+    def test_inline_policy_text_still_parses(self):
+        """Not every caller has a file — inline policies are passed as text."""
+        config, body = parse_policy("---\nallow: [admin]\n---\n# Body")
+
+        assert config == {"allow": ["admin"]}
+
+    def test_loading_a_policy_file_names_that_file(self, tmp_path):
+        from connectonion.network.trust.trust_agent import TrustAgent
+
+        policy = tmp_path / "custom.md"
+        policy.write_text("---\nallow: [whitelisted, contact\n---\n# Body\n")
+
+        with pytest.raises(yaml.YAMLError) as exc:
+            TrustAgent(str(policy))
+
+        assert "custom.md" in str(exc.value)
