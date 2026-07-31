@@ -37,7 +37,7 @@ That is semver's rule, not this project's.
 - Reset MINOR and PATCH to 0
 - Reserved for major breaking changes or stable releases
 
-## Current Version: 1.5.6
+## Current Version: 1.5.7
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
