@@ -136,3 +136,60 @@ class TestOpenSSHEncoding:
         priv_len = int.from_bytes(body[offset:offset + 4], "big")
 
         assert priv_len % 8 == 0
+
+
+def _openssh_b64(verify_key) -> str:
+    """The base64 blob inside an `ssh-ed25519 AAAA…` line, for comparing keys."""
+    import base64
+    import struct
+
+    def field(b: bytes) -> bytes:
+        return struct.pack(">I", len(b)) + b
+
+    return base64.b64encode(field(b"ssh-ed25519") + field(bytes(verify_key))).decode()
+
+
+class TestPerHostSSHKeys:
+    """Step 1 of #427: the tree-derived key exists beside the old one.
+
+    Nothing is wired into provisioning yet — that needs the API to accept two
+    keys, and a decision to key on the server's name rather than its address.
+    """
+
+    def test_a_host_derives_from_the_tree_not_the_hkdf_label(self):
+        from mnemonic import Mnemonic
+        from nacl.signing import SigningKey
+
+        from connectonion.derive import derive_path, slip13_path, ssh_uri
+
+        seed = Mnemonic("english").to_seed(PHRASE)
+        expected = SigningKey(derive_path(seed, slip13_path(ssh_uri("root", "box-1"))))
+        line = address.derive_ssh_key(PHRASE, host="box-1")["public_line"]
+
+        assert line.split()[1] == _openssh_b64(expected.verify_key)
+
+    def test_each_host_gets_its_own_key(self):
+        """A snapshot of one box must not yield the key that opens the others —
+        which is the whole reason for going per-host."""
+        a = address.derive_ssh_key(PHRASE, host="box-1")["public_line"]
+        b = address.derive_ssh_key(PHRASE, host="box-2")["public_line"]
+
+        assert a != b
+
+    def test_the_user_is_part_of_the_identity(self):
+        assert (address.derive_ssh_key(PHRASE, host="box-1", user="root")
+                != address.derive_ssh_key(PHRASE, host="box-1", user="deploy"))
+
+    def test_a_host_name_is_canonicalised(self):
+        assert (address.derive_ssh_key(PHRASE, host="Box-1")
+                == address.derive_ssh_key(PHRASE, host="box-1"))
+
+    def test_derivation_is_stable_per_host(self):
+        assert (address.derive_ssh_key(PHRASE, host="box-1")
+                == address.derive_ssh_key(PHRASE, host="box-1"))
+
+    def test_the_legacy_key_is_untouched(self):
+        """Every server provisioned so far has this line in authorized_keys. If
+        this moves, we are locked out of machines we own — #427 step 4 is where
+        it goes, after they are backfilled."""
+        assert address.derive_ssh_key(PHRASE)["public_line"] == EXPECTED_SSH_LINE
