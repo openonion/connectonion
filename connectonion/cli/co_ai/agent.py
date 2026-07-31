@@ -66,6 +66,30 @@ PROMPTS_DIR = Path(__file__).parent / "prompts"
 GLOBAL_CO_DIR = Path.home() / ".co"
 
 
+def agent_name(co_dir: Path = Path(".co")) -> str:
+    """What this agent is called, according to its own host.yaml.
+
+    co-ai is the only template, so a hardcoded name meant every agent anyone
+    deployed announced itself identically. The author already wrote the name
+    they chose, in `.co/host.yaml`, in a field called `name` — it just was not
+    being read.
+
+    Falls back to "oo" when there is no host.yaml, no `name` in it, or it does
+    not parse. A name is not worth failing a startup over; a broken host.yaml
+    is reported for what it is elsewhere.
+    """
+    host_yaml = co_dir / "host.yaml"
+    if not host_yaml.exists():
+        return "oo"
+    try:
+        import yaml
+        config = yaml.safe_load(host_yaml.read_text(encoding="utf-8")) or {}
+    except Exception:
+        return "oo"
+    name = config.get("name") if isinstance(config, dict) else None
+    return name if isinstance(name, str) and name.strip() else "oo"
+
+
 def create_agent(
     model: str = "co/gemini-3.6-flash",
     max_iterations: int = 100,
@@ -128,7 +152,7 @@ def create_agent(
     ]
 
     agent = Agent(
-        name="oo",
+        name=agent_name(co_dir),
         tools=tools,
         plugins=plugins,
         on_events=[],
