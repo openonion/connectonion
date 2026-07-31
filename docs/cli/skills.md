@@ -11,6 +11,9 @@ co skills discover
 # Pull a discovered skill into ~/.co/skills/
 co skills copy ship-feature
 
+# Or into this project, which is the tier a deploy carries
+co skills copy ship-feature --to-project
+
 # See what's already imported
 co skills list
 
@@ -38,6 +41,28 @@ Skills you've written for one tool (for example Claude Code) are usually stored 
                                                       ~/.co/skills/<name>/SKILL.md
                                                       (now visible to co ai, skills plugin, publishing)
 ```
+
+## Which tier travels
+
+`~/.co/skills/` is your library — every project on this machine can use what is in it,
+and none of it leaves the machine. A deploy carries the **project's** `.co/skills/` and
+nothing else. That is what the `Deploys` column means:
+
+```
+Name           Where     Deploys
+ship-feature   user         ✗      in your library, stays here
+greet-visitor  project      ✓      in .co/skills/, goes with the deploy
+```
+
+`--to-project` copies into the one that travels:
+
+```bash
+co skills copy ship-feature --to-project    # → ./.co/skills/ship-feature/
+```
+
+The skill's own files come with it — a skill is a directory, not a single markdown
+file — but `.env*` and private keys never travel, whatever a skill's own `.gitignore`
+says.
 
 The generated `index.json` records where skills came from, while `agent.json.skills` records the skill metadata that publishing needs.
 
