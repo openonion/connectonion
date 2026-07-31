@@ -75,20 +75,27 @@ def _ssh(target: str, command: str) -> subprocess.CompletedProcess:
     `~/.ssh/config`, jump hosts and key selection all keep working — the same
     principle as `co browser` driving a real browser.
     """
-    return subprocess.run(
-        [
-            "ssh",
-            "-o", "BatchMode=yes",                    # never prompt; fail instead
-            "-o", f"ConnectTimeout={SSH_TIMEOUT_SECONDS}",
-            "-o", "StrictHostKeyChecking=accept-new",
-            *_identity(),
-            target,
-            command,
-        ],
-        capture_output=True,
-        text=True,
-        timeout=SSH_TIMEOUT_SECONDS + 20,
-    )
+    argv = [
+        "ssh",
+        "-o", "BatchMode=yes",                    # never prompt; fail instead
+        "-o", f"ConnectTimeout={SSH_TIMEOUT_SECONDS}",
+        "-o", "StrictHostKeyChecking=accept-new",
+        *_identity(),
+        target,
+        command,
+    ]
+    limit = SSH_TIMEOUT_SECONDS + 20
+    try:
+        return subprocess.run(argv, capture_output=True, text=True, timeout=limit)
+    except subprocess.TimeoutExpired:
+        # ConnectTimeout covers a refused connection; this covers one that is
+        # accepted and then never answers. Same shape as any other failed probe,
+        # so `co server check` reports it instead of crashing.
+        return subprocess.CompletedProcess(
+            argv, returncode=124,
+            stdout="",
+            stderr=f"ssh to {target} timed out after {limit}s — the server did not answer.",
+        )
 
 
 def handle_server_add(name: str, ssh_target: str) -> bool:
