@@ -53,6 +53,16 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* The address is 66 characters and this pane can be 440px wide. It wraps
+     rather than shrinking or truncating: it is here to be read and copied, and
+     an ellipsis would defeat the only reason it is on the page. */
+  .addr {
+    color: var(--muted); opacity: .75; margin-top: 6px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 11px; line-height: 1.45; word-break: break-all;
+    user-select: all;
+  }
+
   .card {
     background: var(--card); border: 1px solid var(--line); border-radius: 12px;
     margin-bottom: 10px; overflow: hidden;
@@ -115,6 +125,7 @@
     <header>
       <h1>$name</h1>
       <p class="sub">$subtitle</p>
+$address
     </header>
 $body
   </main>

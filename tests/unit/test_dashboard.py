@@ -517,3 +517,70 @@ def test_the_deploy_rsync_carries_the_dashboard(tmp_path):
     )
 
     assert (server / ".co" / "dashboard.html").read_text() == "<h1>mine</h1>"
+
+
+ADDRESS = "0x" + "9f" * 32
+
+
+def test_the_home_page_shows_the_agents_address():
+    """The one fact that otherwise costs an ssh session.
+
+    A deployed agent's address cannot be known before its first boot (#396), so
+    today you learn it by opening a shell and reading the logs — while the Home
+    pane has been receiving it in agent_metadata and rendering it nowhere.
+    """
+    html = render_starter({"name": "A", "address": ADDRESS, "skills": []})
+
+    assert ADDRESS in html
+
+
+def test_the_address_is_shown_in_full():
+    """A truncated address is decoration: half of it does not save the trip."""
+    html = render_starter({"name": "A", "address": ADDRESS, "skills": []})
+
+    assert "…" not in html and "..." not in html
+    assert html.count(ADDRESS) == 1
+
+
+def test_an_agent_with_no_address_gets_no_empty_line():
+    html = render_starter({"name": "A", "skills": []})
+
+    assert 'class="addr"' not in html
+
+
+def test_the_subtitle_says_who_the_agent_will_talk_to():
+    """`trust` was also arriving and being dropped. It is the difference between
+    an agent strangers can reach and one they cannot."""
+    html = render_starter({"name": "A", "trust": "careful", "skills": []})
+
+    assert "trust: careful" in html
+
+
+def test_a_hostile_address_is_escaped():
+    html = render_starter({"name": "A", "skills": [],
+                           "address": '"><script>alert(1)</script>'})
+
+    assert "<script>alert(1)</script>" not in html
+    assert "&lt;script&gt;" in html
+
+
+def test_an_operator_override_without_the_new_field_still_renders(tmp_path,
+                                                                  monkeypatch):
+    """~/.co/starter.html replaces the bundled template. One written before this
+    change has no $address in it, and must keep working — losing the address is
+    their layout's business; raising KeyError is ours."""
+    from connectonion.network.host.ws_router import dashboard
+
+    home = tmp_path / "home"
+    (home / ".co").mkdir(parents=True)
+    (home / ".co" / "starter.html").write_text(
+        "<html><body><h1>$name</h1><p>$subtitle</p>$body</body></html>",
+        encoding="utf-8")
+    monkeypatch.setattr(Path, "home", lambda: home)
+    dashboard._starter_templates.cache_clear()
+    try:
+        html = render_starter({"name": "A", "address": ADDRESS, "skills": []})
+    finally:
+        dashboard._starter_templates.cache_clear()
+
+    assert "<h1>A</h1>" in html
