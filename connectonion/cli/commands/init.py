@@ -170,8 +170,11 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     global_dir = Path.home() / ".co"
     global_keys_env = global_dir / "keys.env"
 
-    # Identity keys: always overwrite from global (co reset must propagate)
-    IDENTITY_KEYS = {'AGENT_CONFIG_PATH', 'AGENT_ADDRESS', 'OPENONION_API_KEY',
+    # Identity keys: always overwrite from global (co reset must propagate).
+    # AGENT_CONFIG_PATH is not one of them — it describes the machine, not the
+    # identity, and copying an absolute home directory into a file that travels
+    # is what made a project only work where it was made (#438).
+    IDENTITY_KEYS = {'AGENT_ADDRESS', 'OPENONION_API_KEY',
                      'AGENT_EMAIL', 'IS_EMAIL_ACTIVE'}
 
     # Read global keys.env into a dict
@@ -214,8 +217,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Write .env
     if not env_existed:
         if keys_to_add or global_keys:
-            env_content = f"AGENT_CONFIG_PATH={Path.home() / '.co'}\n"
-            env_content += "# Default model: co/gemini-3.6-flash (managed keys with free credits)\n\n"
+            env_content = "# Default model: co/gemini-3.6-flash (managed keys with free credits)\n\n"
             # Add all global keys + detected keys
             all_keys = list(global_keys.values()) + [k for k in keys_to_add if k not in global_keys.values()]
             env_content += '\n'.join(all_keys) + '\n'
