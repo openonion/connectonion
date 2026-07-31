@@ -198,7 +198,13 @@ class TestDependencyInstall:
         """A code-only change should take seconds, not minutes."""
         (project / "requirements.txt").write_text("requests\n")
         import hashlib
-        digest = hashlib.sha256((project / "requirements.txt").read_bytes()).hexdigest()
+        from connectonion import __version__
+        # The stamp covers the deploying CLI's version too, so that upgrading it
+        # carries the new runtime to the server (#460). Unchanged here means
+        # unchanged in both.
+        digest = hashlib.sha256(
+            (project / "requirements.txt").read_bytes() + __version__.encode()
+        ).hexdigest()
 
         with patch.object(dts, "_ssh", return_value=_ok(digest)) as ssh:
             assert dts._install_deps_if_changed("user@host", "myagent", project) is True

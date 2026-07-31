@@ -22,6 +22,7 @@ import yaml
 from dotenv import dotenv_values
 from rich.console import Console
 
+from ... import __version__
 from .server_commands import SSH_TIMEOUT_SECONDS, derived_agent_identity, load_server
 
 console = Console()
@@ -692,7 +693,20 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool
     if not requirements.exists():
         return True
 
-    digest = hashlib.sha256(requirements.read_bytes()).hexdigest()
+    # The deploying CLI's version is part of what makes an install current.
+    #
+    # Comparing the requirements text alone froze every unpinned line at the
+    # version resolved on first install — and the template pins nothing, so
+    # `connectonion` itself never moved. Upgrading the CLI and redeploying, the
+    # mechanism by which a released fix reaches production, reported success at
+    # every stage and left the old runtime in place.
+    #
+    # It also let the two halves of a deploy drift apart: this CLI writes the
+    # systemd unit, the .co/ layout and the secrets file, and a runtime of some
+    # older version reads them.
+    digest = hashlib.sha256(
+        requirements.read_bytes() + __version__.encode()
+    ).hexdigest()
     stamp = f"{SRV}/{agent}/.co/requirements.sha256"
 
     current = _ssh(target, f"cat {stamp} 2>/dev/null", timeout=60)
@@ -710,6 +724,15 @@ def _install_deps_if_changed(target: str, agent: str, project_dir: Path) -> bool
         f"set -e\n"
         f"cd {SRV}/{agent}\n"
         f"{SRV}/{agent}/.venv/bin/pip install -q -r requirements.txt\n"
+        # …and then the runtime, at this CLI's version.
+        #
+        # `pip install -r` leaves an already-satisfied unpinned requirement
+        # alone, and the template names the framework without a version. So the
+        # install above ran, reported success, and left 1.5.5 in place while
+        # 1.5.6 was doing the deploying. Naming the version is the only way the
+        # two halves of a deploy stay the same software.
+        f"{SRV}/{agent}/.venv/bin/pip install -q "
+        f"{shlex.quote('connectonion==' + __version__)}\n"
         f"printf '%s' {shlex.quote(digest)} > {stamp}",
         timeout=900,
     )
