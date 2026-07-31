@@ -227,9 +227,13 @@ class XrayDecorator:
             return
 
         # Get trace data from agent session
+        # 'tool_result' is what tool_executor writes. This filtered for
+        # 'tool_execution', which nothing has ever written, so trace() always
+        # took the "no history" branch below — even when called from inside a
+        # tool. The vocabulary was renamed and this was not renamed with it.
         execution_history = [
             entry for entry in target_agent.current_session.get('trace', [])
-            if entry.get('type') == 'tool_execution'
+            if entry.get('type') == 'tool_result'
         ]
         user_prompt = target_agent.current_session.get('user_prompt', '')
 
@@ -246,7 +250,9 @@ class XrayDecorator:
         # Display each tool execution with visual formatting
         for i, entry in enumerate(execution_history, 1):
             # Format timing with appropriate precision (timing is in milliseconds)
-            timing = entry.get('timing', 0)
+            # 'timing_ms' is the written field; 'timing' is kept as a fallback
+            # so a trace captured by an older build still renders.
+            timing = entry.get('timing_ms', entry.get('timing', 0))
             if timing >= 1000:
                 timing_str = f"{timing/1000:.1f}s"  # Show seconds for long operations
             elif timing >= 1:
@@ -255,9 +261,9 @@ class XrayDecorator:
                 timing_str = f"{timing:.2f}ms"      # Sub-millisecond precision
 
             # Format function call
-            func_name = entry.get('tool_name', 'unknown')
+            func_name = entry.get('name', entry.get('tool_name', 'unknown'))
             # Check both 'arguments' (new format) and 'parameters' (old format)
-            params = entry.get('arguments', entry.get('parameters', {}))
+            params = entry.get('args', entry.get('arguments', entry.get('parameters', {})))
 
             # Build parameter preview for function signature
             # Shows first 2 params inline to keep the main line readable
