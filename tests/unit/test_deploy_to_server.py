@@ -233,17 +233,20 @@ class TestRestart:
         Trusting the exit code would report a broken deploy as a success, which
         is the worst possible outcome for a deploy command.
         """
-        with patch.object(dts, "_ssh", side_effect=[_ok(), _ok("failed"), _ok("traceback…")]):
+        with patch.object(dts, "_ssh",
+                          side_effect=[_ok(), _ok("active=failed\nrestarts=0"), _ok("traceback…")]):
             assert dts._restart("user@host", "myagent") is False
 
     def test_an_active_unit_passes(self):
-        with patch.object(dts, "_ssh", side_effect=[_ok(), _ok("active")]):
+        with patch.object(dts, "_ssh",
+                          side_effect=[_ok(), _ok("active=active\nrestarts=0")]):
             assert dts._restart("user@host", "myagent") is True
 
     def test_journal_is_shown_when_the_unit_does_not_come_up(self, capsys):
         """The traceback is what the operator needs, not an exit code."""
         with patch.object(dts, "_ssh",
-                          side_effect=[_ok(), _ok("failed"), _ok("ModuleNotFoundError: no foo")]):
+                          side_effect=[_ok(), _ok("active=failed\nrestarts=0"),
+                                       _ok("ModuleNotFoundError: no foo")]):
             dts._restart("user@host", "myagent")
 
         assert "ModuleNotFoundError" in capsys.readouterr().out
@@ -407,3 +410,59 @@ class TestHttps:
             dts._ensure_caddy("user@host", "x.example", 8000)
 
         assert "command -v caddy" in ssh.call_args.args[1]
+
+
+class TestACrashLoopIsNotASuccessfulDeploy:
+    """`Restart=always` means a unit that dies on import is "active" in the
+    moment right after the restart, and again after every crash. Asking
+    immediately therefore always says yes — a real deploy reported success for
+    an agent looping on an ImportError, and the operator's first hint was a 502.
+    """
+
+    def _ssh(self, stdout):
+        return subprocess.CompletedProcess(args=[], returncode=0, stdout=stdout, stderr="")
+
+    def test_an_agent_that_keeps_dying_fails_the_deploy(self, capsys):
+        def fake_ssh(target, command, timeout=300):
+            if "NRestarts" in command:
+                return self._ssh("active=active\nrestarts=3\n")
+            if "journalctl" in command:
+                return self._ssh("ImportError: cannot import name 'create_agent'")
+            return self._ssh("")
+
+        with patch.object(dts, "_ssh", side_effect=fake_ssh):
+            assert dts._restart("co@host", "my-agent") is False
+
+        out = capsys.readouterr().out
+        assert "crashed" in out
+        assert "ImportError" in out, "the traceback is what the operator needs"
+
+    def test_an_agent_that_stays_up_passes(self):
+        def fake_ssh(target, command, timeout=300):
+            if "NRestarts" in command:
+                return self._ssh("active=active\nrestarts=0\n")
+            return self._ssh("")
+
+        with patch.object(dts, "_ssh", side_effect=fake_ssh):
+            assert dts._restart("co@host", "my-agent") is True
+
+    def test_a_slow_start_is_not_treated_as_a_crash(self):
+        """Zero automatic restarts means it has not died, however slow it is."""
+        def fake_ssh(target, command, timeout=300):
+            if "NRestarts" in command:
+                return self._ssh("active=active\nrestarts=\n")
+            return self._ssh("")
+
+        with patch.object(dts, "_ssh", side_effect=fake_ssh):
+            assert dts._restart("co@host", "my-agent") is True
+
+    def test_a_dead_unit_still_fails(self):
+        def fake_ssh(target, command, timeout=300):
+            if "NRestarts" in command:
+                return self._ssh("active=failed\nrestarts=0\n")
+            if "journalctl" in command:
+                return self._ssh("some traceback")
+            return self._ssh("")
+
+        with patch.object(dts, "_ssh", side_effect=fake_ssh):
+            assert dts._restart("co@host", "my-agent") is False

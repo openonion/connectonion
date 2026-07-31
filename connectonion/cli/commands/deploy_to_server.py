@@ -28,6 +28,11 @@ console = Console()
 # to rsync and restart.
 PROVISION_SCHEMA = 2
 
+# Long enough for an agent that dies on import to have done so. An agent that is
+# merely slow to become useful is still "active" and still has zero automatic
+# restarts, so this does not punish a slow start.
+STARTUP_GRACE_SECONDS = 8
+
 SRV = "/srv"
 
 
@@ -409,10 +414,23 @@ def _restart(target: str, agent: str) -> bool:
             console.print(f"  [dim]{line}[/dim]")
         return False
 
-    active = _ssh(target, f"systemctl is-active {agent}", timeout=60)
-    if active.stdout.strip() != "active":
-        console.print(f"[red]{agent} is not running after restart "
-                      f"({active.stdout.strip() or 'unknown'}).[/red]")
+    # Asking immediately is not a test. Restart=always means a unit that dies on
+    # import is "active" for the moment right after the restart and again after
+    # every crash, so an agent looping on a traceback reported a clean deploy.
+    # NRestarts is reset by an explicit restart and counts only the automatic
+    # ones, so anything above zero here means it has already died at least once.
+    status = _ssh(target, f"sleep {STARTUP_GRACE_SECONDS}; "
+                          f"echo active=$(systemctl is-active {agent}); "
+                          f"echo restarts=$(systemctl show -p NRestarts --value {agent})",
+                  timeout=120)
+    facts = dict(line.split("=", 1) for line in status.stdout.split() if "=" in line)
+    crashed = facts.get("restarts", "0") not in ("0", "")
+
+    if facts.get("active") != "active" or crashed:
+        why = (f"crashed and is being restarted ({facts.get('restarts')} times "
+               f"in {STARTUP_GRACE_SECONDS}s)" if crashed
+               else f"is not running ({facts.get('active') or 'unknown'})")
+        console.print(f"[red]{agent} {why}.[/red]")
         logs = _ssh(target, f"sudo journalctl -u {agent} -n 20 --no-pager", timeout=60)
         for line in logs.stdout.strip().splitlines()[-20:]:
             console.print(f"  [dim]{line}[/dim]")

@@ -810,3 +810,43 @@ class TestThePromptLeadsWithTheMonthlyPrice:
         self._prompt(pricing)
 
         assert "$30 / month" in " ".join(capsys.readouterr().out.split())
+
+class TestARecreatedServerDoesNotLookLikeAnAttack:
+    """Cloud providers reuse addresses.
+
+    When one comes back attached to a machine we just created, the key in
+    known_hosts belongs to a machine that no longer exists and ssh refuses with
+    a warning about a possible attack — accept-new covers a host never seen, not
+    one whose key changed. The operator's first command after paying for a
+    server failed exactly this way.
+    """
+
+    def test_creating_a_server_drops_the_old_host_key_for_its_address(self):
+        with patch.object(sc.subprocess, "run", return_value=_ok("")) as run:
+            sc._forget_host_key("co@203.0.113.7")
+
+        assert run.call_args.args[0] == ["ssh-keygen", "-R", "203.0.113.7"]
+
+    def test_it_uses_the_host_not_the_whole_target(self):
+        with patch.object(sc.subprocess, "run", return_value=_ok("")) as run:
+            sc._forget_host_key("someuser@example.com")
+
+        assert run.call_args.args[0][-1] == "example.com"
+
+    def test_a_created_server_forgets_its_addresss_old_key(self, servers_file):
+        """The point is that it happens on create, without being asked."""
+        forgotten = []
+        server = {"ssh_target": "co@203.0.113.7", "expires_at": "2027-07-31T00:00:00",
+                  "charged_usd": 180.0}
+
+        with patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing",
+                          return_value={"default": "e2-small",
+                                        "machine_types": {"e2-small": {"usd_12mo": 180.0}}}), \
+             patch("connectonion.cli.commands.project_cmd_lib.load_api_key",
+                   return_value="k"), \
+             patch("requests.post", return_value=_response(200, server)), \
+             patch.object(sc, "_forget_host_key", side_effect=forgotten.append):
+            assert sc.handle_server_new("prod", yes=True) is True
+
+        assert forgotten == ["co@203.0.113.7"]
