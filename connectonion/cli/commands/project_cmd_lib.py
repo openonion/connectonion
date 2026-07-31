@@ -9,6 +9,9 @@ LLM-Note:
   Errors: validate_project_name() returns (False, error_msg) for invalid names | detect_api_provider() returns ("unknown", "unknown") for unrecognized keys | generate_custom_template_with_name() may fail if LLM API unreachable | api_key_setup_menu() catches KeyboardInterrupt and returns ("", "", None) | no try-except blocks (follows fail-fast principle)
 """
 
+import base64
+import binascii
+import json
 import os
 import re
 import sys
@@ -978,8 +981,61 @@ def load_api_key() -> Optional[str]:
         if env_path.exists():
             load_dotenv(env_path)
             if api_key := os.getenv("OPENONION_API_KEY"):
-                return api_key
+                return _token_for_this_account(api_key)
     return None
+
+
+def account_in_token(token: str) -> Optional[str]:
+    """The public key a JWT claims, read without verifying it.
+
+    Not authentication — the server does that. This is only to notice that the
+    token in hand names a different account than the key on disk, which the
+    server cannot tell us until we have already asked it the wrong question.
+    """
+    parts = token.split(".")
+    if len(parts) != 3:
+        return None
+    payload = parts[1]
+    payload += "=" * (-len(payload) % 4)          # base64url, padding stripped
+    try:
+        return json.loads(base64.urlsafe_b64decode(payload)).get("public_key")
+    except (ValueError, binascii.Error):
+        return None
+
+
+def _token_for_this_account(token: str) -> str:
+    """Re-authenticate when the stored token names an account we are not.
+
+    `co server new` and `co deploy` bill whatever the token says; `co status`
+    signs fresh and reads the key on disk. After `co account migrate` those are
+    two different accounts, and nothing fails — `/api/v1/auth` creates an
+    account for any key that authenticates, so the old address quietly becomes a
+    fresh, empty, working one. The operator sees a balance that is not theirs
+    and spends credit they did not migrate. One $180 server was bought that way.
+
+    The CLI holds the signing key, so it can see the mismatch itself rather than
+    waiting for a balance to look wrong. Cheap: a local decode, and a network
+    call only when the two disagree.
+    """
+    from .auth_commands import authenticate
+
+    co_dir = Path.home() / ".co"
+    identity = address.load(co_dir)
+    if not identity:
+        return token
+
+    claimed = account_in_token(token)
+    if not claimed or claimed == identity["address"]:
+        return token
+
+    console.print(f"[dim]Your saved token is for {claimed[:16]}…, but this "
+                  f"machine is {identity['address'][:16]}…. "
+                  f"Authenticating again.[/dim]")
+    if authenticate(co_dir, save_to_project=False, quiet=True):
+        from dotenv import load_dotenv
+        load_dotenv(co_dir / "keys.env", override=True)
+        return os.getenv("OPENONION_API_KEY", token)
+    return token
 
 
 def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> None:

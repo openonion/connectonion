@@ -52,3 +52,74 @@ class TestUpsertEnv:
 
         if sys.platform != "win32":
             assert env_file.stat().st_mode & 0o777 == 0o600
+
+
+class TestATokenThatNamesAnotherAccount:
+    """oo-api#67. After `co account migrate` the stored token names the address
+    the account left. Nothing errors: `/api/v1/auth` creates an account for any
+    key that authenticates, so the old address becomes a fresh, empty, working
+    one and every command keeps succeeding against the wrong row. `co status`
+    read the migrated balance while `co server new` spent $180 of an account the
+    operator did not know existed.
+    """
+
+    MINE = "0x" + "a" * 64
+    THEIRS = "0x" + "b" * 64
+
+    def _token(self, public_key):
+        import base64
+        import json
+
+        body = base64.urlsafe_b64encode(
+            json.dumps({"public_key": public_key, "iat": 1}).encode()).rstrip(b"=")
+        return "header." + body.decode() + ".signature"
+
+    def _patched(self, monkeypatch, identity_address, refreshed_to=None):
+        from connectonion.cli.commands import project_cmd_lib as lib
+
+        calls = []
+
+        def fake_authenticate(co_dir, save_to_project=True, quiet=False):
+            calls.append(co_dir)
+            if refreshed_to:
+                monkeypatch.setenv("OPENONION_API_KEY", refreshed_to)
+                return True
+            return False
+
+        monkeypatch.setattr(lib.address, "load",
+                            lambda co_dir: {"address": identity_address})
+        monkeypatch.setattr(
+            "connectonion.cli.commands.auth_commands.authenticate", fake_authenticate)
+        monkeypatch.setattr("dotenv.load_dotenv", lambda *a, **k: True)
+        return lib, calls
+
+    def test_the_token_is_refreshed_when_it_names_a_different_account(
+            self, monkeypatch):
+        fresh = self._token(self.MINE)
+        lib, calls = self._patched(monkeypatch, self.MINE, refreshed_to=fresh)
+
+        assert lib._token_for_this_account(self._token(self.THEIRS)) == fresh
+        assert calls, "a token for another account was used as-is"
+
+    def test_a_token_for_this_account_costs_no_network_call(self, monkeypatch):
+        lib, calls = self._patched(monkeypatch, self.MINE)
+        token = self._token(self.MINE)
+
+        assert lib._token_for_this_account(token) == token
+        assert not calls, "re-authenticated for no reason"
+
+    def test_an_unreadable_token_is_left_alone(self, monkeypatch):
+        """It may be a shape we do not know. The server is the authority on
+        whether a token is valid — guessing here would lock somebody out of a
+        working setup."""
+        lib, calls = self._patched(monkeypatch, self.MINE)
+
+        assert lib._token_for_this_account("not-a-jwt") == "not-a-jwt"
+        assert not calls
+
+    def test_the_claim_is_read_without_verifying_it(self):
+        from connectonion.cli.commands.project_cmd_lib import account_in_token
+
+        assert account_in_token(self._token(self.THEIRS)) == self.THEIRS
+        assert account_in_token("garbage") is None
+        assert account_in_token("a.b.c") is None
