@@ -319,10 +319,16 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
         with open(global_keys_env, 'r', encoding='utf-8') as f:
             env_content = f.read()
 
-        # Add config path and default model comment if not already present
+        # AGENT_CONFIG_PATH is deliberately not written here. Every tool that
+        # reads it already falls back to ~/.co on the machine it is running on
+        # (gmail.py, outlook.py, gdrive.py, synology.py and both calendars all
+        # spell the same default), so writing it buys nothing — and it is an
+        # absolute path in a file that gets copied. Deployed, cloned or handed to
+        # a colleague, it names a home directory that does not exist there, and
+        # every one of those tools then looks for keys.env somewhere it can never
+        # be. `co deploy --to` still sets it in the unit's environment, where it
+        # describes the machine it is on rather than the one that made the file.
         lines_to_add = []
-        if "AGENT_CONFIG_PATH=" not in env_content:
-            lines_to_add.append(f"AGENT_CONFIG_PATH={Path.home() / '.co'}\n")
         if "# Default model:" not in env_content:
             lines_to_add.append("# Default model: co/gemini-3.6-flash (managed keys with free credits)\n")
 
@@ -333,7 +339,6 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     else:
         # Fallback - create minimal .env with detected keys
         env_lines = [
-            f"AGENT_CONFIG_PATH={Path.home() / '.co'}",
             "# Default model: co/gemini-3.6-flash (managed keys with free credits)",
             "",
         ]

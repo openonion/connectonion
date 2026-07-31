@@ -95,14 +95,19 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
                 "AGENT_EMAIL": agent_email,
                 "IS_EMAIL_ACTIVE": "true",
             })
-            # Ensure AGENT_ADDRESS and AGENT_CONFIG_PATH exist (append-only, don't overwrite)
+            # Ensure AGENT_ADDRESS exists (append-only, don't overwrite).
+            #
+            # AGENT_CONFIG_PATH is not written. It used to be, and `co create`
+            # copies this whole file into every new project's .env — so an
+            # absolute home directory travelled with the project and named a
+            # path that does not exist on any other machine (#438). Every tool
+            # that reads it already defaults to ~/.co on the machine it is
+            # running on, so the line only ever did harm.
             if global_keys_env.exists():
                 existing = global_keys_env.read_text(encoding="utf-8")
                 append_lines = []
                 if 'AGENT_ADDRESS=' not in existing:
                     append_lines.append(f"AGENT_ADDRESS={public_key}\n")
-                if 'AGENT_CONFIG_PATH=' not in existing:
-                    append_lines.append(f"AGENT_CONFIG_PATH={co_dir}\n")
                 if append_lines:
                     with open(global_keys_env, 'a', encoding='utf-8') as f:
                         f.writelines(append_lines)
