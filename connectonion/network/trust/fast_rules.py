@@ -82,13 +82,23 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
     """
     import logging
     logger = logging.getLogger("connectonion.trust.fast_rules")
-    logger.warning(f"[FAST_RULES] Evaluating client_id={client_id[:20]}... config={config}")
+
+    # The id goes out whole. The operator's next move after reading this line is to
+    # paste it into admins.txt or whitelist.txt, and a prefix cannot be pasted — one
+    # that reads like a complete short id even less so.
+    #
+    # The config does not go out at all: it carries the agent's invite codes, and it
+    # was being printed at warning level on every single request.
+    logger.warning(
+        f"[FAST_RULES] Evaluating client_id={client_id} "
+        f"allow={config.get('allow', [])} default={config.get('default', 'deny')}"
+    )
 
     # 1. Check deny list first (blocked users)
     deny_list = config.get('deny', ['blocked'])
     for condition in deny_list:
         if condition == 'blocked' and is_blocked(client_id):
-            logger.warning(f"[FAST_RULES] Client {client_id[:20]}... is BLOCKED, returning 'deny'")
+            logger.warning(f"[FAST_RULES] Client {client_id} is BLOCKED, returning 'deny'")
             return 'deny'
 
     # 2. Check allow list (whitelisted, contacts)
@@ -99,11 +109,18 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
         # never consulted here, so a freshly deployed agent answered its own
         # owner with "requires onboarding", for a machine they had just paid for
         # and installed their key on.
+        #
+        # Each of these says so on the way out. A log that recorded only the denials
+        # left "did not grow" meaning either *allowed* or *never asked*, and those are
+        # the two states an operator debugging a silent client most needs to separate.
         if condition == 'admin' and is_admin(client_id):
+            logger.warning(f"[FAST_RULES] Returning 'allow' — {client_id} is admin")
             return 'allow'
         if condition == 'whitelisted' and is_whitelisted(client_id):
+            logger.warning(f"[FAST_RULES] Returning 'allow' — {client_id} is whitelisted")
             return 'allow'
         if condition == 'contact' and is_contact(client_id):
+            logger.warning(f"[FAST_RULES] Returning 'allow' — {client_id} is contact")
             return 'allow'
 
     # 3. Try onboarding (stranger → contact)
@@ -114,6 +131,13 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
     request_code = request.get('invite_code')
     if request_code and request_code in valid_codes:
         promote_to_contact(client_id)
+        # Promotion is durable — this client is a contact from now on. That is a
+        # change to who can reach the agent, so it belongs in the record. The code
+        # itself does not.
+        logger.warning(
+            f"[FAST_RULES] Returning 'allow' — {client_id} onboarded by invite code, "
+            f"promoted to contact"
+        )
         return 'allow'
 
     # Check payment
@@ -121,6 +145,10 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
     request_payment = request.get('payment', 0)
     if required_payment and request_payment >= required_payment:
         promote_to_contact(client_id)
+        logger.warning(
+            f"[FAST_RULES] Returning 'allow' — {client_id} onboarded by payment, "
+            f"promoted to contact"
+        )
         return 'allow'
 
     # 4. Default action for strangers without onboarding
