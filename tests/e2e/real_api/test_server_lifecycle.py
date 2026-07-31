@@ -105,13 +105,65 @@ def _use_the_real_home(request):
     yield
 
 
-def co(*args, timeout=900, check=True):
-    result = subprocess.run(["co", *args], capture_output=True, text=True, timeout=timeout)
-    print(f"\n$ co {' '.join(args)}\n{result.stdout}{result.stderr}")
+# sshd drops connections while it is still coming up, and again for a while
+# after a deploy restarts the unit. The signature is always the same, and it is
+# the transport refusing before authentication — nothing to do with our keys.
+SSH_NOT_READY = ("kex_exchange_identification", "Connection closed by remote host",
+                 "Connection reset by peer")
+
+
+def co(*args, timeout=900, check=True, attempts=4):
+    """Run `co`, retrying only a connection the far end closed before auth.
+
+    Deliberately narrow. Retrying anything else would turn a real failure into a
+    slow real failure, and this suite exists to catch real failures. Each retry
+    is printed: if a run needs them routinely, that is a product bug — a deploy
+    that leaves the machine unreachable for a while is worth fixing rather than
+    waiting out — and the printout is the evidence.
+    """
+    import time
+
+    for attempt in range(1, attempts + 1):
+        result = subprocess.run(["co", *args], capture_output=True, text=True, timeout=timeout)
+        output = result.stdout + result.stderr
+        print(f"\n$ co {' '.join(args)}\n{output}")
+        if result.returncode == 0 or attempt == attempts:
+            break
+        if not any(marker in output for marker in SSH_NOT_READY):
+            break
+        delay = 10 * attempt
+        print(f"[retry {attempt}/{attempts - 1}] ssh closed before auth; waiting {delay}s")
+        time.sleep(delay)
+
     if check:
         assert result.returncode == 0, result.stdout + result.stderr
     return result
 
+
+def deploy(project, server, attempts=4):
+    """`co deploy --to`, with the same narrow retry as co().
+
+    Deploy is the call that opens the most ssh sessions — preflight, rsync,
+    unit write, restart — so it is where a machine that is not accepting
+    connections yet shows up first.
+    """
+    import time
+
+    for attempt in range(1, attempts + 1):
+        result = subprocess.run(["co", "deploy", "--to", server], cwd=project,
+                                capture_output=True, text=True, timeout=900)
+        output = result.stdout + result.stderr
+        print(f"\n$ co deploy --to {server}\n{output}")
+        if result.returncode == 0 or attempt == attempts:
+            break
+        if not any(marker in output for marker in SSH_NOT_READY):
+            break
+        delay = 10 * attempt
+        print(f"[retry {attempt}/{attempts - 1}] ssh closed before auth; waiting {delay}s")
+        time.sleep(delay)
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    return result
 
 @pytest.fixture(scope="module")
 def server():
@@ -188,8 +240,7 @@ def test_a_created_server_passes_its_own_preflight(server):
 def test_the_skill_travels_with_the_deploy(server, project):
     """.co/skills/ has to reach the server while the rest of .co/ stays put:
     the skills are code, and everything else in there is the agent's state."""
-    subprocess.run(["co", "deploy", "--to", server], cwd=project, check=True,
-                   capture_output=True, timeout=900)
+    deploy(project, server)
 
     remote = co("server", "ssh", server,
                 f"cat /srv/{AGENT}/.co/skills/greet-visitor/SKILL.md").stdout
@@ -211,8 +262,7 @@ def test_a_second_deploy_updates_the_skill_and_keeps_the_state(server, project):
     (project / "agent.py").write_text(
         (project / "agent.py").read_text() + "\n# second deploy\n")
 
-    subprocess.run(["co", "deploy", "--to", server], cwd=project, check=True,
-                   capture_output=True, timeout=900)
+    deploy(project, server)
 
     remote = co("server", "ssh", server,
                 f"cat /srv/{AGENT}/.co/skills/greet-visitor/SKILL.md").stdout
@@ -308,8 +358,7 @@ def test_an_authored_dashboard_travels_with_the_deploy(server, project):
         encoding="utf-8",
     )
 
-    subprocess.run(["co", "deploy", "--to", server], cwd=project, check=True,
-                   capture_output=True, timeout=900)
+    deploy(project, server)
 
     remote = co("server", "ssh", server, f"cat /srv/{AGENT}/.co/dashboard.html").stdout
     assert "DASHBOARD_MARKER_ONE" in remote, "the authored dashboard did not travel"
@@ -324,8 +373,7 @@ def test_a_redeploy_does_not_overwrite_the_authored_dashboard(server, project):
         encoding="utf-8",
     )
 
-    subprocess.run(["co", "deploy", "--to", server], cwd=project, check=True,
-                   capture_output=True, timeout=900)
+    deploy(project, server)
 
     remote = co("server", "ssh", server, f"cat /srv/{AGENT}/.co/dashboard.html").stdout
     assert "DASHBOARD_MARKER_TWO" in remote
