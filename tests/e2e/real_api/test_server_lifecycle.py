@@ -15,15 +15,23 @@ Every step here is one that shipped broken and passed the unit tests anyway:
   refuses with "contents do not match public"
 - a skill in .co/skills/ never reached the server, because the rsync filter
   excluded all of .co/
+- the agent ran as root, so `co call` handed out more than ssh to the box would
+- `co` was not on the unit's PATH, so `co call <address> co status` — the example
+  in `co call`'s own help — answered "co: command not found"
+- the operator was a stranger to their own agent: their key was written into
+  .co/admins.txt and the trust gate never looked at that list
 
 The unit tests could not have caught any of them. They all live between our code
 and ssh, and the only way to see them is to talk to a real box.
 """
 
 import os
+import shutil
 import subprocess
+import sys
 import textwrap
 import uuid
+from pathlib import Path
 
 import pytest
 
@@ -57,10 +65,26 @@ def server():
 
 @pytest.fixture(scope="module")
 def project(tmp_path_factory):
-    """An agent carrying a skill, because a skill is the thing that did not ship."""
+    """An agent carrying a skill, because a skill is the thing that did not ship.
+
+    It installs the working tree, not the last release. `co deploy --to` reads
+    requirements.txt, and a bare `connectonion` there means the server runs
+    whatever PyPI has today — so this test would exercise the previous release
+    while claiming to test the change in front of you. The template is generated
+    by the CLI under test and can reference an API that has not shipped yet;
+    against PyPI that is a crash loop, and the failure says nothing about
+    versions.
+    """
     root = tmp_path_factory.mktemp("e2e")
     subprocess.run(["co", "create", AGENT], cwd=root, check=True, capture_output=True)
     path = root / AGENT
+
+    wheel = _build_wheel(tmp_path_factory.mktemp("wheel"))
+    shutil.copy(wheel, path / wheel.name)
+    requirements = path / "requirements.txt"
+    kept = [l for l in requirements.read_text().splitlines()
+            if not l.strip().startswith("connectonion")]
+    requirements.write_text("\n".join([f"./{wheel.name}", *kept]) + "\n")
 
     skill = path / ".co" / "skills" / "greet-visitor"
     skill.mkdir(parents=True, exist_ok=True)
@@ -73,6 +97,16 @@ def project(tmp_path_factory):
         VERSION_MARKER_ONE
         """))
     return path
+
+
+def _build_wheel(into: Path) -> Path:
+    """A wheel of the working tree, for the server to install."""
+    repo = Path(__file__).resolve().parents[3]
+    subprocess.run([sys.executable, "-m", "build", "--wheel", "-o", str(into)],
+                   cwd=repo, check=True, capture_output=True, timeout=900)
+    wheels = sorted(into.glob("connectonion-*.whl"))
+    assert wheels, f"no wheel built into {into}"
+    return wheels[-1]
 
 
 def test_a_created_server_passes_its_own_preflight(server):
@@ -129,3 +163,54 @@ def test_the_server_is_listed_with_what_it_costs(server):
     """`co server ls` reconciles against billing, so a machine you are paying
     for cannot be invisible."""
     assert server in co("server", "ls").stdout
+
+
+def _agent_address(server: str) -> str:
+    """The deployed agent's address, read off its own logs."""
+    import re
+
+    logs = co("server", "ssh", server,
+              f"journalctl -u {AGENT} --no-pager -n 200").stdout
+    found = re.findall(r"0x[0-9a-f]{64}", logs)
+    assert found, "the agent never printed its address"
+    return found[0]
+
+
+def test_the_agent_does_not_run_as_root(server, project):
+    """`co call` runs whatever the admin sends, so the unit's user is the
+    privilege the remote-exec path hands out. As root that was more than the
+    operator gets by sshing in themselves."""
+    user = co("server", "ssh", server,
+              f"ps -o user= -p $(systemctl show -p MainPID --value {AGENT})").stdout
+
+    assert user.strip() and user.strip() != "root", user
+
+
+def test_the_operator_can_run_a_command_on_their_own_agent(server, project):
+    """The whole point of `co call`, and the example in its own help.
+
+    It failed twice over: the trust gate never consulted .co/admins.txt, so the
+    owner was a stranger; and once past that, `co` was not on the unit's PATH.
+    """
+    address = _agent_address(server)
+
+    result = co("call", address, "co", "status", timeout=300)
+
+    assert "onboarding" not in result.stdout + result.stderr, \
+        "the operator was treated as a stranger by their own agent"
+    assert "command not found" not in result.stdout + result.stderr, \
+        "the agent could not find co on its own PATH"
+    assert "Credential Sources" in result.stdout, result.stdout[:400]
+
+
+def test_the_remote_browser_answers(server, project):
+    """`co browser` over `co call` is the remote twin of the local command.
+
+    A shared /tmp/co owned by another user used to stop it before it started.
+    """
+    address = _agent_address(server)
+
+    result = co("call", address, "co", "browser", "status", timeout=300)
+
+    assert "Permission denied" not in result.stderr, result.stderr[:300]
+    assert "Stealth driver" in result.stdout, result.stdout[:300]

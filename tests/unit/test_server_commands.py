@@ -15,6 +15,17 @@ import yaml
 from connectonion.cli.commands import server_commands as sc
 
 
+_REAL_WAIT_UNTIL_IT_ACCEPTS_YOUR_KEY = sc._wait_until_it_accepts_your_key
+
+
+@pytest.fixture(autouse=True)
+def _do_not_wait_for_a_real_machine(monkeypatch):
+    """`co server new` blocks until the box accepts the key. A unit test has no
+    box, so it would block for the full timeout. TestReadyMeansYouCanLogIn
+    patches this itself and asserts the call, so the behaviour stays covered."""
+    monkeypatch.setattr(sc, "_wait_until_it_accepts_your_key", lambda target: True)
+
+
 @pytest.fixture
 def servers_file(tmp_path, monkeypatch):
     """Point the registry at a temp file so tests never touch ~/.co."""
@@ -850,3 +861,58 @@ class TestARecreatedServerDoesNotLookLikeAnAttack:
             assert sc.handle_server_new("prod", yes=True) is True
 
         assert forgotten == ["co@203.0.113.7"]
+
+
+class TestReadyMeansYouCanLogIn:
+    """The API returns as soon as the instance has an address, which is before
+    the guest agent has copied the key into authorized_keys — about ten seconds.
+    `co server new` printed "✓ ready" and suggested `co server check` next, and
+    that command answered "Permission denied (publickey)": the most alarming
+    possible way to say "wait ten seconds", on a machine just paid for.
+    """
+
+    @pytest.fixture(autouse=True)
+    def _use_the_real_wait(self, monkeypatch):
+        """This class is the one testing it, so it opts out of the module fixture."""
+        monkeypatch.setattr(sc, "_wait_until_it_accepts_your_key",
+                            _REAL_WAIT_UNTIL_IT_ACCEPTS_YOUR_KEY)
+
+    def test_it_waits_until_ssh_succeeds(self):
+        attempts = []
+
+        def flaky(target, command):
+            attempts.append(target)
+            return _ok("ok") if len(attempts) >= 3 else _fail("Permission denied (publickey)")
+
+        with patch.object(sc, "_ssh", side_effect=flaky), patch("time.sleep"):
+            assert _REAL_WAIT_UNTIL_IT_ACCEPTS_YOUR_KEY("co@1.2.3.4") is True
+
+        assert len(attempts) == 3
+
+    def test_a_machine_that_never_opens_says_so_instead_of_hanging(self, capsys):
+        with patch.object(sc, "_ssh", return_value=_fail("Permission denied (publickey)")), \
+             patch.object(sc, "KEY_INSTALL_TIMEOUT_SECONDS", 0):
+            assert _REAL_WAIT_UNTIL_IT_ACCEPTS_YOUR_KEY("co@1.2.3.4") is False
+
+        out = " ".join(capsys.readouterr().out.split())
+        assert "charged for" in out, "the operator has paid; say so"
+        assert "co server check" in out
+
+    def test_creating_a_server_waits_before_calling_it_ready(self, servers_file):
+        waited = []
+        server = {"ssh_target": "co@203.0.113.7", "expires_at": "2027-07-31T00:00:00",
+                  "charged_usd": 180.0}
+
+        with patch.object(sc, "_ensure_ssh_key", return_value="ssh-ed25519 AAAA x"), \
+             patch.object(sc, "_fetch_pricing",
+                          return_value={"default": "e2-small",
+                                        "machine_types": {"e2-small": {"usd_12mo": 180.0}}}), \
+             patch("connectonion.cli.commands.project_cmd_lib.load_api_key",
+                   return_value="k"), \
+             patch("requests.post", return_value=_response(200, server)), \
+             patch.object(sc, "_forget_host_key"), \
+             patch.object(sc, "_wait_until_it_accepts_your_key",
+                          side_effect=lambda t: waited.append(t) or True):
+            assert sc.handle_server_new("prod", yes=True) is True
+
+        assert waited == ["co@203.0.113.7"]
