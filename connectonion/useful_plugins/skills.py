@@ -246,9 +246,19 @@ def _discover_all_skills(co_dir: Optional[Path] = None, project_dir: Optional[Pa
             if name in seen:
                 continue
 
+            # Named and skipped rather than allowed to escape. This runs during
+            # agent construction, so one file saved as Windows-1252 — or a
+            # compiled asset copied in by accident — would otherwise stop the
+            # agent from being created at all, saying nothing about which of the
+            # user's skills did it.
+            try:
+                content = skill_file.read_text(encoding="utf-8")
+            except (OSError, UnicodeDecodeError) as exc:
+                print(f"Skipping unreadable skill {skill_file}: {type(exc).__name__}: {exc}")
+                continue
+
             seen.add(name)
 
-            content = skill_file.read_text(encoding="utf-8")
             frontmatter, _ = _parse_skill_content(content)
             description = frontmatter.get('description', 'No description')
 

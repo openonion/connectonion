@@ -114,17 +114,37 @@ def discover_skills(base_path: Optional[Path] = None) -> List[SkillInfo]:
             if skill_dir.is_dir():
                 skill_file = skill_dir / "SKILL.md"
                 if skill_file.exists():
-                    skill_info = _parse_skill_file(skill_file)
+                    skill_info = _read_skill_or_skip(skill_file)
                     if skill_info:
                         skills.append(skill_info)
 
             # Also support single .md files
             elif skill_dir.suffix == ".md" and skill_dir.stem != "SKILL":
-                skill_info = _parse_skill_file(skill_dir)
+                skill_info = _read_skill_or_skip(skill_dir)
                 if skill_info:
                     skills.append(skill_info)
 
     return skills
+
+
+def _read_skill_or_skip(path: Path) -> Optional[SkillInfo]:
+    """Parse one skill, or report it and move on.
+
+    This loop runs inside create_agent(), before the CLI is usable, so an
+    exception escaping here is not "that skill failed to load" — it is "co ai
+    does not start", with nothing said about which of the user's skills caused
+    it. One file saved as Windows-1252, or a compiled asset copied in by
+    accident, is enough.
+
+    The failure is named rather than swallowed: skipping silently trades a crash
+    for a mystery, where the agent behaves differently and nothing points at the
+    cause.
+    """
+    try:
+        return _parse_skill_file(path)
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        print(f"Skipping unreadable skill {path}: {type(exc).__name__}: {exc}")
+        return None
 
 
 def _parse_skill_file(path: Path) -> Optional[SkillInfo]:
