@@ -15,6 +15,9 @@ import subprocess
 from pathlib import Path
 from typing import Dict, Optional
 
+import os
+from contextlib import contextmanager
+
 import yaml
 from rich.console import Console
 from rich.table import Table
@@ -42,8 +45,63 @@ def _load() -> Dict[str, dict]:
 
 
 def _save(servers: Dict[str, dict]) -> None:
+    """Replace the file in one step.
+
+    write_text truncates first and writes second, so an interrupted save leaves
+    an empty or half-written registry — and this file is how the operator
+    reaches machines they have already paid for. Writing a sibling and renaming
+    means a reader sees either the old file or the new one, never a partial.
+    """
     SERVERS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    SERVERS_FILE.write_text(yaml.safe_dump({"servers": servers}, sort_keys=True))
+    body = yaml.safe_dump({"servers": servers}, sort_keys=True)
+    tmp = SERVERS_FILE.with_suffix(f".yaml.{os.getpid()}.tmp")
+    tmp.write_text(body)
+    os.replace(tmp, SERVERS_FILE)
+
+
+@contextmanager
+def _registry_lock(timeout: float = 10.0):
+    """Hold the registry across a read-modify-write.
+
+    Every caller here does _load(), changes one entry, then _save() — which
+    writes back the whole file. Two `co` commands overlapping means the slower
+    one saves a copy that predates the other's change, and the entry that
+    disappears can be a server that was just charged for. Seen for real: a
+    `co server new` that printed "✓ ready … $360.00 charged" and then could not
+    be found by name a second later, because a `co server ls` was running.
+
+    O_EXCL on a lock file rather than fcntl, because this has to work on Windows
+    too. A stale lock from a killed process is broken after `timeout` rather
+    than wedging the CLI forever — losing a registration is bad, refusing to run
+    at all is worse.
+    """
+    import time
+
+    lock = SERVERS_FILE.with_suffix(".yaml.lock")
+    lock.parent.mkdir(parents=True, exist_ok=True)
+    deadline = time.monotonic() + timeout
+    handle = None
+    while handle is None:
+        try:
+            handle = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+        except FileExistsError:
+            if time.monotonic() > deadline:
+                lock.unlink(missing_ok=True)   # stale: whoever held it is gone
+                continue
+            time.sleep(0.05)
+    try:
+        yield
+    finally:
+        os.close(handle)
+        lock.unlink(missing_ok=True)
+
+
+def _register(name: str, entry: dict) -> None:
+    """Add or replace one server, without dropping anyone else's changes."""
+    with _registry_lock():
+        servers = _load()
+        servers[name] = entry
+        _save(servers)
 
 
 def load_server(name: str) -> Optional[dict]:
@@ -675,15 +733,13 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
     server = response.json()
 
     # Register it ourselves so the operator never types an IP.
-    servers = _load()
     entry = {"ssh": server["ssh_target"], "last_check": None}
     # The hostname the backend created a DNS record for. Stored rather than
     # derived: the naming rule lives in one place (the backend), and a CLI that
     # reconstructed it would be a second copy that has to agree forever.
     if server.get("hostname"):
         entry["hostname"] = server["hostname"]
-    servers[name] = entry
-    _save(servers)
+    _register(name, entry)
 
     _forget_host_key(server["ssh_target"])
     _wait_until_it_accepts_your_key(server["ssh_target"])
