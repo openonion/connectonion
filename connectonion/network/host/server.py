@@ -76,14 +76,15 @@ def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
     if trust.lower() in TRUST_LEVELS:
         policy_path = PROMPTS_DIR / f"{trust.lower()}.md"
         if policy_path.exists():
-            config, _ = parse_policy(policy_path.read_text(encoding='utf-8'))
+            config, _ = parse_policy(policy_path.read_text(encoding='utf-8'),
+                                     source=str(policy_path))
             return config
         return None
 
     # Check if it's a file path
     path = Path(trust)
     if path.exists() and path.is_file():
-        config, _ = parse_policy(path.read_text(encoding='utf-8'))
+        config, _ = parse_policy(path.read_text(encoding='utf-8'), source=str(path))
         return config
 
     # Inline policy text

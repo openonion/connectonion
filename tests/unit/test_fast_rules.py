@@ -330,3 +330,39 @@ class TestAnAdminIsNotAStranger:
                     "trust" / "policies" / f"{level}.md")
             config, _ = parse_policy(path.read_text())
             assert "admin" in config.get("allow", []), level
+
+
+class TestTheErrorNamesTheFile:
+    """A line number is half an answer. An operator has their own policies and
+    the built-in ones, and "line 1, column 29" does not say which file to open.
+    """
+
+    def test_the_source_is_named_when_given(self):
+        bad = "---\nallow: [whitelisted, contact\n---\n# Body\n"
+
+        with pytest.raises(ValueError) as exc:
+            parse_policy(bad, source=".co/trust/custom.md")
+
+        assert ".co/trust/custom.md" in str(exc.value)
+
+    def test_it_still_reads_sensibly_without_a_source(self):
+        """Inline policy text has no file to name."""
+        bad = "---\nallow: [whitelisted, contact\n---\n# Body\n"
+
+        with pytest.raises(ValueError) as exc:
+            parse_policy(bad)
+
+        assert "trust policy" in str(exc.value)
+
+    def test_loading_a_policy_file_names_that_file(self, tmp_path):
+        """The path is known by the loader, which is the one that has it."""
+        from connectonion.network.trust.trust_agent import TrustAgent
+
+        policy = tmp_path / "custom.md"
+        policy.write_text("---\nallow: [whitelisted, contact\n---\n# Body\n")
+
+        with pytest.raises(ValueError) as exc:
+            TrustAgent(str(policy))
+
+        assert "custom.md" in str(exc.value)
+        assert "line" in str(exc.value)

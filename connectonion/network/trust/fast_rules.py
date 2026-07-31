@@ -24,12 +24,18 @@ from typing import Optional
 from .tools import is_whitelisted, is_blocked, is_contact, is_admin, promote_to_contact
 
 
-def parse_policy(policy_text: str) -> tuple[dict, str]:
+def parse_policy(policy_text: str, source: str = None) -> tuple[dict, str]:
     """
     Parse YAML frontmatter from markdown policy file.
 
     Returns:
         (config_dict, markdown_body)
+
+    Args:
+        policy_text: The policy file's contents.
+        source: Where it came from, named in the error. A line number is only
+            half an answer when an operator has several policies and the
+            built-in ones as well.
 
     Raises:
         ValueError: If the YAML frontmatter is malformed.
@@ -57,8 +63,9 @@ def parse_policy(policy_text: str) -> tuple[dict, str]:
         )
         detail = f': {problem}' if problem else ''
 
+        where = f' in {source}' if source else ' in trust policy'
         raise ValueError(
-            f'Malformed YAML frontmatter in trust policy{location}{detail}. '
+            f'Malformed YAML frontmatter{where}{location}{detail}. '
             'Fix the YAML syntax before starting the agent host.'
         ) from None
 

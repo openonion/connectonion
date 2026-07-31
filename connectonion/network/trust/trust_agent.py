@@ -135,14 +135,14 @@ class TrustAgent:
             policy_path = PROMPTS_DIR / f"{trust.lower()}.md"
             if policy_path.exists():
                 text = policy_path.read_text(encoding='utf-8')
-                return parse_policy(text)
+                return parse_policy(text, source=str(policy_path))
             return {}, ""
 
         # File path
         path = Path(trust)
         if path.exists() and path.is_file():
             text = path.read_text(encoding='utf-8')
-            return parse_policy(text)
+            return parse_policy(text, source=str(path))
 
         # Inline policy text
         if trust.startswith('---'):
