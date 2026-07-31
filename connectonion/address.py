@@ -14,7 +14,7 @@ import sys
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from .derive import ACCOUNT_URI, derive_path, slip13_path
+from .derive import ACCOUNT_URI, derive_path, slip13_path, ssh_uri
 
 try:
     from nacl.signing import SigningKey, VerifyKey
@@ -399,8 +399,18 @@ def _hkdf_sha512(seed: bytes, info: bytes, length: int = 32) -> bytes:
     return out[:length]
 
 
-def derive_ssh_key(seed_phrase: str) -> Dict[str, str]:
+def derive_ssh_key(seed_phrase: str, host: str = None, user: str = "root") -> Dict[str, str]:
     """Derive an Ed25519 SSH keypair from a recovery phrase.
+
+    With a ``host``, the key comes off the SLIP-0010 tree at the SLIP-0013 path
+    for ``ssh://<user>@<host>`` — one key per server, and rotatable by bumping
+    the URI's index. That is where this is going (#427).
+
+    Without one, it is the original HKDF key: a single key shared by every
+    server. That key cannot simply be dropped, because it is the line sitting in
+    ``authorized_keys`` on every machine provisioned to date, and it is the way
+    back into them. It stays derivable until those are backfilled, and goes in
+    1.6.
 
     Ed25519 is a native OpenSSH type, so the public half is an ordinary
     `ssh-ed25519 AAAA…` line that needs nothing custom on any server.
@@ -427,8 +437,12 @@ def derive_ssh_key(seed_phrase: str) -> Dict[str, str]:
         raise ValueError("Invalid recovery phrase")
 
     seed = mnemo.to_seed(seed_phrase)
-    ssh_seed = _hkdf_sha512(seed, SSH_DERIVATION_INFO)
-    signing_key = SigningKey(ssh_seed)
+    if host is None:
+        # The pre-tree key. Still derived because it is in authorized_keys on
+        # every server provisioned so far — see derive_ssh_key's docstring.
+        signing_key = SigningKey(_hkdf_sha512(seed, SSH_DERIVATION_INFO))
+    else:
+        signing_key = SigningKey(derive_path(seed, slip13_path(ssh_uri(user, host))))
 
     return {
         "public_line": _openssh_public_line(bytes(signing_key.verify_key)),
