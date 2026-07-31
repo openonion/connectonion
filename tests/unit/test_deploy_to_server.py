@@ -49,16 +49,17 @@ class TestSyncNeverTouchesState:
                 return argv
         raise AssertionError(f"no rsync call in {run.call_args_list}")
 
-    def test_rsync_excludes_the_state_directory(self, project):
+    def test_rsync_never_sends_a_local_identity(self, project):
+        """The one rule that must never regress: a local `.co/keys/` cannot be
+        pushed over the server's. What the filters *achieve* is asserted against
+        a real rsync in test_deploy_sync_filters.py; this only pins the argv so
+        the exclusion cannot be dropped by accident."""
         with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
             dts._sync_code("user@host", "myagent", project)
 
         argv = self._rsync_argv(run)
-        # --exclude and its value are separate argv entries. The pattern is
-        # `.co/*` rather than `.co/` so rsync still descends far enough for the
-        # skills include to match — see the skills test below.
         pairs = [(argv[i], argv[i + 1]) for i in range(len(argv) - 1)]
-        assert ("--exclude", ".co/*") in pairs
+        assert ("--exclude", ".co/keys/") in pairs
 
     def test_rsync_uses_delete_so_removed_code_goes_away(self, project):
         """--delete is wanted for code; the .co/ exclusion is what protects state.
@@ -71,27 +72,23 @@ class TestSyncNeverTouchesState:
 
         assert "--delete" in self._rsync_argv(run)
 
-    def test_skills_are_carried_but_the_rest_of_state_is_not(self, project):
-        """Skills live in .co/skills/ — excluding all of .co/ shipped an agent
-        with none of its skills.
+    def test_nothing_under_co_is_ever_deleted_on_the_server(self, project):
+        """`--delete` must not reach inside `.co/`. admins.txt, provision.json
+        and the agent's own keys exist only there, and no include-list can
+        anticipate what a future version writes beside them.
 
-        Found by review after the first version excluded `.co/` wholesale: the
-        deploy succeeded and the agent ran without its skills, which is worse
-        than failing. The rule is order-sensitive in rsync, so this asserts the
-        exact sequence rather than mere membership.
+        This replaced a test that asserted an include-list carried `.co/skills/`
+        past a `.co/*` exclude. That assertion held while the same rule was
+        dropping `host.yaml`, `OO.md` and `commands/` — which is why the
+        outcome, not the argv, is now the thing under test
+        (test_deploy_sync_filters.py).
         """
         with patch.object(dts.subprocess, "run", return_value=_ok()) as run:
             dts._sync_code("user@host", "myagent", project)
 
         argv = self._rsync_argv(run)
-        # rsync applies the first matching rule, so the includes must come
-        # before the exclude that would otherwise swallow them, and `.co/`
-        # itself must be included for rsync to descend into it.
-        assert argv.index("--include") < argv.index("--exclude")
         pairs = [(argv[i], argv[i + 1]) for i in range(len(argv) - 1)]
-        assert ("--include", ".co/") in pairs
-        assert ("--include", ".co/skills/***") in pairs
-        assert ("--exclude", ".co/*") in pairs
+        assert ("--filter", "P .co/**") in pairs
 
     def test_the_state_exclusion_is_not_a_blanket_co_exclusion(self, project):
         """`--exclude .co/` would prune the directory before the skills include

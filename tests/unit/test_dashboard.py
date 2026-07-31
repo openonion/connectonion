@@ -490,12 +490,30 @@ def test_a_personal_starter_template_replaces_the_bundled_one(in_tmp, monkeypatc
     assert 'data-ochat-skill="daily-brief"' in html
 
 
-def test_the_deploy_rsync_carries_the_dashboard():
-    """.co/* is excluded to protect identity and logs; the Home page is not state,
-    and a deploy that drops it silently regenerates a starter over your page."""
-    import inspect
-    from connectonion.cli.commands import deploy_to_server
+def test_the_deploy_rsync_carries_the_dashboard(tmp_path):
+    """The Home page is not state, and a deploy that drops it silently
+    regenerates a starter over your page.
 
-    source = inspect.getsource(deploy_to_server._sync_code)
-    assert '".co/dashboard.html"' in source
-    assert source.index('".co/dashboard.html"') < source.index('".co/*"')
+    Asserted by running the filters rather than by reading the argv: the
+    previous version of this test checked that `.co/dashboard.html` appeared
+    before `.co/*` in the source, which stayed true while `host.yaml` and
+    `OO.md` were being dropped by the same rule.
+    """
+    import shutil
+    import subprocess
+    from connectonion.cli.commands.deploy_to_server import RSYNC_FILTERS
+
+    if shutil.which("rsync") is None:
+        pytest.skip("needs rsync on PATH")
+
+    local, server = tmp_path / "local", tmp_path / "server"
+    (local / ".co").mkdir(parents=True)
+    (server / ".co").mkdir(parents=True)
+    (local / ".co" / "dashboard.html").write_text("<h1>mine</h1>")
+
+    subprocess.run(
+        ["rsync", "-a", "--delete", *RSYNC_FILTERS, f"{local}/", f"{server}/"],
+        check=True, capture_output=True,
+    )
+
+    assert (server / ".co" / "dashboard.html").read_text() == "<h1>mine</h1>"

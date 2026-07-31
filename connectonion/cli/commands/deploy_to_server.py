@@ -367,26 +367,59 @@ def _caddy_running(target: str) -> bool:
     return _ssh(target, "systemctl is-active caddy", timeout=60).stdout.strip() == "active"
 
 
+# Everything the author wrote ships, and `--delete` removes what they deleted.
+# `.co/` gets two carve-outs, both because the server owns that data:
+#
+#   P .co/**       nothing under .co/ is ever *deleted* on the server. Identity,
+#                  logs, admins.txt, provision.json and anything a future
+#                  version writes there survive a deploy without being listed.
+#   --exclude ...  identity and accumulated state are never *sent*, so a stale
+#                  local copy cannot overwrite the live one.
+#
+# This replaced an include-list that named the `.co/` files worth carrying.
+# That default — exclude unless remembered — lost `.co/skills/` in its first
+# version and `.co/dashboard.html` in its second, and was silently dropping
+# `host.yaml`, `OO.md` and `commands/` when this was written. Forgetting to
+# carry config is invisible: the deploy succeeds and a different agent runs.
+RSYNC_FILTERS = [
+    "--filter", "P .co/**",
+    # Generated on the server, or written there over ssh by the deploy itself.
+    # The protect rule above keeps them from being deleted; these keep a local
+    # copy from overwriting them, which is the other half of the same rule.
+    # `address.json` decides super-admin (trust/tools.py:328) and `admins.txt`
+    # decides who may command the agent — a stale local copy of either is a
+    # change of who is in charge, made silently by a deploy.
+    "--exclude", ".co/keys/",
+    "--exclude", ".co/address.json",
+    "--exclude", ".co/admins.txt",
+    "--exclude", ".co/provision.json",
+    "--exclude", ".co/requirements.sha256",
+    "--exclude", ".co/logs/",
+    "--exclude", ".co/evals/",
+    "--exclude", ".co/sessions/",
+    "--exclude", ".venv/",
+    "--exclude", ".git/",
+    "--exclude", "__pycache__/",
+]
+
+
 def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
-    """rsync the project, excluding the state directory but carrying skills.
+    """rsync the project, carrying everything the author wrote and deleting
+    nothing the server owns.
 
-    `--delete` removes code files deleted locally, which is wanted. `.co/` is
-    excluded so the agent's identity, logs and evals survive — that exclusion is
-    the whole reason a redeploy no longer reissues the agent's address.
+    `--delete` removes code files deleted locally, which is wanted. It stops at
+    `.co/`, where the server keeps the agent's identity, its logs, the admins
+    list and the convergence marker — data the project has never heard of and
+    an include-list could not enumerate.
 
-    `.co/skills/` is the exception, and it has to be: skills are *what the agent
-    is*, not state it accumulated. Excluding all of `.co/` shipped an agent with
-    none of its skills — the deploy succeeded and the agent ran without them,
-    which is worse than failing. So skills are included, and `--delete` applies
-    inside that directory too so a removed skill actually goes away.
+    What the author writes under `.co/` — `host.yaml`, `OO.md`, `skills/`,
+    `commands/`, `dashboard.html` — is not state. It is what makes this agent
+    this agent, so it ships like the rest of the tree. `host.yaml` in particular
+    carries the permission whitelist and the port: without it the agent runs on
+    template defaults behind a proxy pointed at the wrong port, and reports
+    success either way.
 
-    `.co/dashboard.html` is included for the same reason: the Home page you wrote
-    is part of the agent. Left out, a deploy silently replaces it with a generated
-    starter — the agent looks fine and your dashboard is gone.
-
-    Order matters to rsync: the include must precede the exclude that would
-    otherwise swallow it, and `.co/` itself must be included for rsync to
-    descend into it at all.
+    See RSYNC_FILTERS for the two rules and why the default is now "carry".
     """
     from .server_commands import _identity as _ssh_identity
 
@@ -394,13 +427,7 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
     result = subprocess.run(
         [
             "rsync", "-az", "--delete",
-            "--include", ".co/",
-            "--include", ".co/skills/***",
-            "--include", ".co/dashboard.html",
-            "--exclude", ".co/*",
-            "--exclude", ".venv/",
-            "--exclude", ".git/",
-            "--exclude", "__pycache__/",
+            *RSYNC_FILTERS,
             "-e", " ".join(["ssh", "-o", "BatchMode=yes",
                             "-o", "StrictHostKeyChecking=accept-new",
                             *_ssh_identity()]),
