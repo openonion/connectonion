@@ -549,6 +549,23 @@ def _confirm(name: str, machine_type: str, pricing: dict, balance: Optional[floa
     return bool(questionary.confirm("Create it?", default=False).ask())
 
 
+def _forget_host_key(ssh_target: str) -> None:
+    """Drop any host key we hold for this address.
+
+    Cloud providers reuse addresses. When one comes back attached to a machine
+    we just created, the key in known_hosts belongs to a machine that no longer
+    exists, and ssh refuses with a warning about a possible attack —
+    StrictHostKeyChecking=accept-new covers a host it has never seen, not one
+    whose key changed. The operator's first command after paying for a server
+    then fails, alarmingly, for a reason that is entirely our doing.
+
+    Safe here precisely because we are the ones who created the machine: we know
+    the previous key is dead. Nothing else in `co` removes host keys.
+    """
+    host = ssh_target.split("@")[-1]
+    subprocess.run(["ssh-keygen", "-R", host], capture_output=True, text=True)
+
+
 def handle_server_new(name: str, machine_type: Optional[str] = None,
                       yes: bool = False) -> bool:
     """Have a server created for you, and register it locally."""
@@ -629,6 +646,8 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
         entry["hostname"] = server["hostname"]
     servers[name] = entry
     _save(servers)
+
+    _forget_host_key(server["ssh_target"])
 
     console.print(f"\n[green]✓ {name} is ready[/green]")
     console.print(f"  [cyan]{server['ssh_target']}[/cyan]")
