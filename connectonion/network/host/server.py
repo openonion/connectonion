@@ -30,7 +30,7 @@ import random
 from functools import partial
 import os
 from pathlib import Path
-from typing import Callable, Union
+from typing import Callable, Optional, Union
 
 import uvicorn
 import websockets
@@ -105,7 +105,8 @@ def get_default_trust() -> str:
     return get_default_trust_level() or "careful"
 
 
-def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
+def _extract_agent_metadata(create_agent: Callable,
+                            name: Optional[str] = None) -> tuple[dict, object]:
     """Extract metadata from a sample agent instance.
 
     Returns:
@@ -114,7 +115,13 @@ def _extract_agent_metadata(create_agent: Callable) -> tuple[dict, object]:
     sample = create_agent()
     raw_skills = getattr(sample, 'skills', [])
     metadata = {
-        "name": sample.name,
+        # host.yaml's name, when it has one. The Agent object's name is whatever
+        # the code that built it chose — the co-ai template hardcodes "oo" — so
+        # every agent from that template introduced itself as "oo" on the relay,
+        # in /info and in the directory, whatever the operator had named their
+        # project. The name in host.yaml is the one they chose and the one the
+        # deploy already uses for the directory, the unit and the hostname.
+        "name": name or sample.name,
         "tools": sample.tools.names(),
         "model": sample.llm.model,
         "skills": [{"name": s.name, "description": s.description, "location": s.location}
@@ -497,7 +504,7 @@ def host(
     examples = config.get('examples')
 
     # Extract metadata once at startup
-    agent_metadata, sample = _extract_agent_metadata(create_agent)
+    agent_metadata, sample = _extract_agent_metadata(create_agent, config.get("name"))
 
     # Auto-generate summary from system_prompt if not set
     if summary is None:
@@ -601,7 +608,7 @@ def host(
     uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")
 
 
-def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None):
+def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl=86400, *, blacklist=None, whitelist=None, name=None):
     """Create ASGI app for external uvicorn/gunicorn usage.
 
     Each request calls create_agent() to get a fresh Agent instance.
@@ -624,8 +631,10 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     registry = ActiveSessionRegistry()
     start_cleanup_job(registry)
 
-    # Extract metadata once at startup
-    agent_metadata, sample = _extract_agent_metadata(create_agent)
+    # Extract metadata once at startup. `name` is host.yaml's, when the caller
+    # has read it — host() does; a bare ASGI caller may not, and then the
+    # Agent's own name stands as before.
+    agent_metadata, sample = _extract_agent_metadata(create_agent, name)
     agent_metadata["address"] = get_agent_address(sample)
 
     # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
