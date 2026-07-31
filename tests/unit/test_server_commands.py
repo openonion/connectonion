@@ -631,3 +631,48 @@ class TestTheKeyPairOnDiskAlwaysMatches:
         from connectonion.cli.commands import keys_commands as kc
 
         assert ".ssh" not in kc.SSH_PRIVATE_KEY.parts
+
+
+class TestThePromptLeadsWithTheMonthlyPrice:
+    """A server is a monthly thing in everybody's head. "$360" alone is a number
+    nobody can compare to anything they already pay for; "$30 a month" places it
+    immediately. The year is how we charge, so it is said too — next to it, never
+    instead of it."""
+
+    PRICING = {
+        "term_months": 12, "region": "australia-southeast1", "default": "e2-small",
+        "machine_types": {"e2-small": {"usd_month": 30.0, "usd_12mo": 360.0,
+                                       "description": "2 vCPU (shared), 2 GB"}},
+    }
+
+    def _prompt(self, pricing):
+        with patch("questionary.confirm") as confirm:
+            confirm.return_value.ask.return_value = False
+            sc._confirm("prod", "e2-small", pricing, 500.0)
+
+    def test_both_the_month_and_the_year_are_shown(self, capsys):
+        self._prompt(self.PRICING)
+        out = " ".join(capsys.readouterr().out.split())
+
+        assert "$30 / month" in out
+        assert "$360.00 for 12 months" in out
+
+    def test_the_backends_monthly_figure_is_used_not_one_we_divide(self, capsys):
+        """One price, one place. A CLI that divided could round its way to a
+        different number than the one on the website."""
+        pricing = {**self.PRICING, "machine_types": {
+            "e2-small": {"usd_month": 29.0, "usd_12mo": 360.0, "description": "x"}}}
+
+        self._prompt(pricing)
+
+        assert "$29 / month" in " ".join(capsys.readouterr().out.split())
+
+    def test_an_older_backend_without_the_field_still_prompts(self, capsys):
+        """The yearly price is the one actually charged, so a missing monthly
+        figure is worth deriving rather than crashing on."""
+        pricing = {**self.PRICING, "machine_types": {
+            "e2-small": {"usd_12mo": 360.0, "description": "x"}}}
+
+        self._prompt(pricing)
+
+        assert "$30 / month" in " ".join(capsys.readouterr().out.split())
