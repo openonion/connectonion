@@ -382,6 +382,7 @@ def render_starter(agent_metadata):
         tagline=_tagline(agent_metadata),
         subtitle=_subtitle(agent_metadata, len(skills)),
         address=_address_line(agent_metadata),
+        activity=_activity_sections(),
         body=_skill_sections(skills),
     )
 
@@ -396,3 +397,161 @@ def _tagline(agent_metadata):
     the agent instead of to the person reading it. Better to say nothing.
     """
     return escape(first_sentence(agent_metadata.get("tagline"), limit=140))
+
+
+# ---------------------------------------------------------------- activity
+
+MAX_ACTIVITY_ROWS = 5
+
+
+def _co():
+    """The .co directory this agent renders from."""
+    from pathlib import Path as _P
+    root = _project_dir or project_root()
+    return _P(root) / ".co"
+
+
+def _ago(seconds):
+    """Coarse on purpose. "3h ago" is what the question deserves; a timestamp
+    makes the reader do subtraction to answer "is this thing still alive"."""
+    if seconds < 60:
+        return "just now"
+    for size, unit in ((3600, "m"), (86400, "h"), (float("inf"), "d")):
+        if seconds < size:
+            n = int(seconds // (60 if unit == "m" else 3600 if unit == "h" else 86400))
+            return f"{n}{unit} ago"
+    return "a while ago"
+
+
+def recent_runs(limit=MAX_ACTIVITY_ROWS):
+    """The last few turns, newest first, one entry per session.
+
+    The log is append-only and a session appears twice — once as ``running``,
+    again as ``done``. The later line wins, or the page would report every
+    finished run as still in flight.
+    """
+    import json as _json
+    path = _co() / "session_results.jsonl"
+    if not path.is_file():
+        return []
+    latest = {}
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                rec = _json.loads(line)
+            except ValueError:
+                continue          # a torn write must not cost the whole page
+            if isinstance(rec, dict) and rec.get("session_id"):
+                latest[rec["session_id"]] = rec
+    except OSError:
+        return []
+    runs = sorted(latest.values(), key=lambda r: r.get("created") or 0, reverse=True)
+    return runs[:limit]
+
+
+def scheduled_entries():
+    """What this agent runs on its own, and how each last went.
+
+    Reads the schedule module rather than reparsing the file, so the page and
+    the scheduler cannot disagree about what an entry means.
+    """
+    try:
+        from ..schedule import load_entries, load_state, last_run
+    except Exception:
+        return []
+    try:
+        entries = load_entries(_co())
+        state = load_state(_co())
+    except Exception:
+        return []
+    out = []
+    for e in entries:
+        st = state.get(e.name) or {}
+        when = last_run(state, e.name)
+        out.append({
+            "run": e.run,
+            "cadence": f"every {_cadence(e)}" if e.interval else str(e.at or ""),
+            "status": st.get("status"),
+            "last_run": when,
+        })
+    return out
+
+
+def _cadence(entry):
+    total = int(entry.interval.total_seconds())
+    for size, unit in ((86400, "d"), (3600, "h"), (60, "m")):
+        if total % size == 0 and total >= size:
+            return f"{total // size}{unit}"
+    return f"{total}s"
+
+
+
+def _took(ms):
+    """How long a turn took, in the unit a reader can hold.
+
+    Seconds stop being readable at about a minute, and the runs this section
+    exists for are the long ones — a full extraction pass is four minutes, and
+    "243.0s" makes you do the division to find that out.
+    """
+    seconds = ms / 1000
+    if seconds < 60:
+        return f"{seconds:.1f}s"
+    minutes, rest = divmod(int(seconds), 60)
+    if minutes < 60:
+        return f"{minutes}m {rest}s" if rest else f"{minutes}m"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h {minutes}m" if minutes else f"{hours}h"
+
+def _activity_sections():
+    """Both sections, or nothing at all.
+
+    A fresh agent has neither a schedule nor a history, and a box that is empty
+    on every new agent is worse than no box — it is prime space on the first
+    page anyone sees, spent saying nothing.
+    """
+    from datetime import datetime, timezone
+
+    _, fragments = _starter_templates()
+    section, row = fragments["activity"], fragments["act"]
+    now = datetime.now(timezone.utc)
+    out = []
+
+    scheduled = scheduled_entries()
+    if scheduled:
+        rows = []
+        for s in scheduled:
+            if s["last_run"] is None:
+                meta, tone = "not yet run", ""
+            else:
+                ago = _ago((now - s["last_run"]).total_seconds())
+                meta = f"{s['status'] or 'ran'} · {ago}"
+                tone = "bad" if s["status"] == "failed" else ""
+            rows.append(row.safe_substitute(
+                what=escape(f"{s['run']}  ({s['cadence']})"),
+                meta=escape(meta), tone=tone).strip())
+        out.append(section.safe_substitute(
+            title="Scheduled", rows="\n".join("      " + r for r in rows)).strip())
+
+    runs = recent_runs()
+    if runs:
+        rows = []
+        for r in runs:
+            if r.get("status") == "running":
+                meta, tone = "running", "live"
+            else:
+                ms = r.get("duration_ms")
+                meta = _took(ms) if isinstance(ms, (int, float)) else "done"
+                tone = ""
+            created = r.get("created")
+            if created:
+                meta += " · " + _ago(now.timestamp() - float(created))
+            rows.append(row.safe_substitute(
+                what=escape(str(r.get("prompt") or "")[:80]),
+                meta=escape(meta), tone=tone).strip())
+        out.append(section.safe_substitute(
+            title="Recent", rows="\n".join("      " + r for r in rows)).strip())
+
+    return "\n".join(out)

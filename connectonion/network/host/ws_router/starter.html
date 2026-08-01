@@ -178,6 +178,25 @@
   @media (min-width: 720px) {
     .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
   }
+
+  /* Activity and schedule. Both are absent on a fresh agent — an empty box on
+     the day-zero page would be the first thing a new user sees, saying nothing. */
+  .act { display: flex; align-items: baseline; gap: 8px; padding: 7px 0;
+         border-top: 1px solid var(--line); font-size: 12.5px; }
+  .act:first-child { border-top: 0; }
+  .act .what { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis;
+               white-space: nowrap; color: var(--fg); }
+  .act .meta { flex: none; color: var(--faint); font-variant-numeric: tabular-nums;
+               font-size: 11.5px; }
+  /* Three outcomes, three weights. "failed" has to survive being read at a
+     glance in a 440px column, so it carries colour; "running" is the one that
+     means "look again in a minute", not "something is wrong". */
+  .act .bad { color: #dc2626; }
+  .act .live { color: var(--accent); }
+  @media (prefers-color-scheme: dark) { .act .bad { color: #f87171; } }
+  .sec { padding: 12px 16px 14px; }
+  .sec > h2 { font-size: 11px; font-weight: 650; letter-spacing: 0.08em;
+              text-transform: uppercase; color: var(--faint); margin-bottom: 6px; }
 </style>
 </head>
 <body>
@@ -188,6 +207,7 @@
       <p class="sub">$subtitle</p>
     </header>
 $body
+$activity
 $address
   </main>
 </body>
@@ -223,3 +243,10 @@ $rows
 <template id="empty"><section class="card empty">
     <p>No skills yet. Add one to <code>.co/skills/</code> and it shows up here as a one-click action.</p>
   </section></template>
+
+<template id="activity"><section class="card sec">
+    <h2>$title</h2>
+$rows
+  </section></template>
+
+<template id="act"><div class="act"><span class="what">$what</span><span class="meta $tone">$meta</span></div></template>
