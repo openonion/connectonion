@@ -497,12 +497,12 @@ def scheduled_entries():
     try:
         from ..schedule import load_entries, load_state, last_run
     except Exception:
-        return []
+        return [], []
     try:
-        entries = load_entries(_co())
+        entries, problems = load_entries(_co(), report=True)
         state = load_state(_co())
     except Exception:
-        return []
+        return [], []
     out = []
     for e in entries:
         st = state.get(e.name) or {}
@@ -514,7 +514,7 @@ def scheduled_entries():
             "status": st.get("status"),
             "last_run": when,
         })
-    return out
+    return out, problems
 
 
 def _cadence(entry):
@@ -583,7 +583,7 @@ def _activity_sections():
     now = datetime.now(timezone.utc)
     out = []
 
-    scheduled = scheduled_entries()
+    scheduled, problems = scheduled_entries()
     if scheduled:
         rows = []
         for s in scheduled:
@@ -601,6 +601,16 @@ def _activity_sections():
                 meta=escape(meta), tone=tone).strip())
         out.append(section.safe_substitute(
             title="Scheduled", rows="\n".join("      " + r for r in rows)).strip())
+
+    if problems:
+        # A dropped entry renders as nothing, and so does a schedule that is
+        # merely not due yet. Saying which line was thrown away is the whole
+        # difference between the two.
+        rows = [row.safe_substitute(what=escape(p), meta="ignored", tone="bad").strip()
+                for p in problems]
+        out.append(section.safe_substitute(
+            title="Schedule problems",
+            rows="\n".join("      " + r for r in rows)).strip())
 
     runs = recent_runs()
     if runs:

@@ -56,86 +56,172 @@ def _parse_duration(text) -> Optional[timedelta]:
     return timedelta(**{_UNITS[m.group(2)]: int(m.group(1))})
 
 
-def load_entries(co_dir: Path) -> list:
-    """The schedule as authored, minus anything that does not parse.
+def load_entries(co_dir, report=False):
+    """The schedule as authored, minus anything that cannot mean something.
 
     One bad line must not take the others with it, and must not stop the agent
     booting: this file is hand-written and deployed, so a typo reaches
-    production and the agent has to survive it. What does not parse is dropped;
-    what does, runs.
+    production. But dropping it *silently* leaves absence as the only signal,
+    and absence is what a correct schedule looks like most of the time — so the
+    reasons are collected and the caller can say them out loud (#531).
+
+    Pass ``report=True`` for ``(entries, problems)``.
     """
     path = Path(co_dir) / SCHEDULE_FILE
+    problems = []
+
+    def done(entries):
+        return (entries, problems) if report else entries
+
     if not path.is_file():
-        return []
+        return done([])
 
     try:
         raw = yaml.safe_load(path.read_text(encoding="utf-8"))
-    except Exception:
-        return []
+    except Exception as exc:
+        problems.append(f"{SCHEDULE_FILE} does not parse: {exc}")
+        return done([])
     if not isinstance(raw, list):
-        return []
+        problems.append(f"{SCHEDULE_FILE} should be a list of entries")
+        return done([])
 
-    entries = []
-    for item in raw:
+    entries, seen = [], set()
+    for i, item in enumerate(raw, 1):
+        where = f"entry {i}"
         if not isinstance(item, dict):
+            problems.append(f"{where}: not a mapping")
             continue
         run = item.get("run")
         if not isinstance(run, str) or not run.strip():
+            problems.append(f"{where}: no run")
             continue
 
-        interval = _parse_duration(item["every"]) if item.get("every") is not None else None
-        at = item.get("at")
-        if interval is None and not at:
-            continue          # neither a valid interval nor a clock time
+        interval = at = None
+        if item.get("every") is not None:
+            interval = _parse_duration(item["every"])
+            if interval is None:
+                problems.append(f"{where}: {item['every']!r} is not a duration like 15m or 2h")
+                continue
+            if interval <= timedelta(0):
+                # `every: 0m` is always due, so it ran a full agent turn on every
+                # tick, forever, and looked like a working schedule while doing it.
+                problems.append(f"{where}: every {item['every']!r} must be greater than zero")
+                continue
+        elif item.get("at"):
+            at = str(item["at"]).strip()
+        else:
+            problems.append(f"{where}: needs every or at")
+            continue
 
-        entries.append(Entry(
-            # State is keyed by name, and requiring one would be ceremony for the
-            # single-entry case. The command is a serviceable identity.
-            name=str(item.get("name") or run).strip(),
-            run=run.strip(),
-            interval=interval,
-            at=str(at).strip() if at else None,
-            tz=str(item["tz"]).strip() if item.get("tz") else None,
-        ))
-    return entries
+        name = str(item.get("name") or run).strip()
+        entry = Entry(name=name, run=run.strip(), interval=interval, at=at,
+                      tz=str(item["tz"]).strip() if item.get("tz") else None)
+
+        if at is not None and _parse_at(entry) is None:
+            problems.append(f"{where}: {at!r} is not a time like '09:00' or 'Mon 09:00'")
+            continue
+        if entry.tz and _zone_or_none(entry.tz) is None:
+            # Kept, because refusing to run is worse than running in UTC — but
+            # eight hours off is not a thing to discover from a missed report.
+            problems.append(f"{where}: unknown timezone {entry.tz!r}, using UTC")
+        if name in seen:
+            # State is keyed by name: two entries sharing one overwrite each
+            # other's last_run and each ends up running half as often as written.
+            problems.append(f"{where}: duplicate name {name!r}")
+            continue
+        seen.add(name)
+        entries.append(entry)
+
+    return done(entries)
+
+
+def _zone_or_none(name):
+    try:
+        from zoneinfo import ZoneInfo
+        return ZoneInfo(name)
+    except Exception:
+        return None
 
 
 def _zone(entry: Entry):
     if not entry.tz:
         return timezone.utc
-    try:
-        from zoneinfo import ZoneInfo
-        return ZoneInfo(entry.tz)
-    except Exception:
-        # An unknown zone name is a typo in a deployed file. UTC is wrong by
-        # hours; refusing to run is wrong by everything.
-        return timezone.utc
+    # An unknown zone name is a typo in a deployed file. UTC is wrong by hours;
+    # refusing to run is wrong by everything. load_entries reports it.
+    return _zone_or_none(entry.tz) or timezone.utc
 
 
-def _clock_due(entry: Entry, last_run: Optional[datetime], now: datetime) -> bool:
-    """`at: "09:00"` or `at: "Mon 09:00"` — due once per matching moment."""
-    parts = entry.at.split()
+def _parse_at(entry):
+    """(weekday|None, hour, minute), or None when the string is not a time.
+
+    Returns None rather than raising: the caller decides whether that means
+    "drop this entry" (load) or "never fire" (evaluate).
+    """
+    parts = str(entry.at or "").split()
+    if not parts or len(parts) > 2:
+        return None
     day = None
     if len(parts) == 2:
         day = _WEEKDAYS.get(parts[0][:3].lower())
         if day is None:
-            return False
+            return None
     try:
         hour, minute = (int(x) for x in parts[-1].split(":"))
     except ValueError:
-        return False
+        return None
+    if not (0 <= hour < 24 and 0 <= minute < 60):
+        return None
+    return day, hour, minute
+
+
+def _last_occurrence(entry, now):
+    """The most recent moment this entry was supposed to fire, at or before now.
+
+    Comparing against *that* rather than against "is it that weekday right now"
+    is what makes a missed run catch up. An agent down through Monday used to
+    skip its weekly summary for a whole week, silently, while interval entries
+    caught up — the two forms of one feature disagreeing about the property
+    #521 exists to preserve.
+    """
+    parsed = _parse_at(entry)
+    if parsed is None:
+        return None
+    day, hour, minute = parsed
 
     local = now.astimezone(_zone(entry))
-    if day is not None and local.weekday() != day:
-        return False
-    if (local.hour, local.minute) < (hour, minute):
+    candidate = local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if day is None:
+        # Daily: today's time if it has passed, else yesterday's.
+        if candidate > local:
+            candidate -= timedelta(days=1)
+        return candidate
+
+    # Weekly: walk back to the most recent matching weekday at that time.
+    behind = (local.weekday() - day) % 7
+    candidate -= timedelta(days=behind)
+    if candidate > local:
+        candidate -= timedelta(days=7)
+    return candidate
+
+
+def _clock_due(entry, last_run, now):
+    """Due when the most recent scheduled moment has not been served yet.
+
+    Fires once for any number of missed occurrences: a month of downtime is one
+    catch-up summary, not four.
+    """
+    occurrence = _last_occurrence(entry, now)
+    if occurrence is None:
         return False
 
     if last_run is None:
-        return True
-    # Once per day. Compared in the entry's own zone, so a run at 09:00 Shanghai
-    # does not re-fire because it is still yesterday in UTC.
-    return last_run.astimezone(_zone(entry)).date() < local.date()
+        # A new entry has nothing to catch up: last Monday happened before it
+        # existed. It fires when its own next occurrence arrives, which means
+        # today, if today is the day and the time has passed.
+        local = now.astimezone(_zone(entry))
+        return occurrence.date() == local.date()
+
+    return last_run.astimezone(_zone(entry)) < occurrence
 
 
 def is_due(entry: Entry, last_run: Optional[datetime], now: datetime) -> bool:
@@ -293,7 +379,12 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
             await asyncio.sleep(TICK_SECONDS)
 
     async def on_startup() -> None:
-        entries = load_entries(co_dir)
+        entries, problems = load_entries(co_dir, report=True)
+        # Said once, at startup, where the operator is already looking. A
+        # dropped entry is otherwise indistinguishable from one that is simply
+        # not due yet — and that is what a working schedule looks like too.
+        for problem in problems:
+            _say(f"[yellow]{problem}[/yellow]")
         if not entries:
             return          # nothing scheduled: no task, no noise
         _say(f"{len(entries)} scheduled")
