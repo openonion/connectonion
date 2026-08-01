@@ -217,3 +217,24 @@ class TestReadingCost:
                                     "duration_ms": 5, "created": 1}) + "\n",
                         encoding="utf-8")
         assert [r["prompt"] for r in dash.recent_runs()] == ["huge"]
+
+
+class TestScheduleProblemsAreVisible:
+    """A dropped entry is invisible on Home too: it renders as nothing, which
+    is what a schedule that has not fired yet also renders as. #531."""
+
+    def test_a_rejected_entry_is_named_on_the_page(self, project):
+        (project / ".co" / "schedule.yaml").write_text(
+            '- every: 0m\n  run: "/spin"\n- every: 1h\n  run: "/fine"\n', encoding="utf-8")
+
+        html = dash.render_starter({"name": "billing", "skills": []})
+
+        assert "/fine" in html
+        assert "entry 1" in html, "the entry that was dropped is not mentioned anywhere"
+
+    def test_a_clean_schedule_adds_no_warning(self, project):
+        (project / ".co" / "schedule.yaml").write_text(
+            '- every: 1h\n  run: "/fine"\n', encoding="utf-8")
+
+        html = dash.render_starter({"name": "billing", "skills": []})
+        assert "entry " not in html
