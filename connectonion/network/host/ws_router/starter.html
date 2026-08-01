@@ -11,12 +11,12 @@
      have to be inlined as data: URIs, so there are none. */
   :root {
     color-scheme: light dark;
-    --bg: #fbfbfa; --fg: #171717; --muted: #737373; --faint: #a3a3a3;
-    --card: #fff; --line: #e7e7e5; --hover: #fafaf9; --accent: #16a34a;
+    --bg: #fbfbfa; --fg: #171717; --muted: #6b6b6b; --faint: #8a8a8a;
+    --card: #fff; --line: #e7e7e5; --hover: #f4f4f2; --accent: #16a34a;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #131313; --fg: #ededed; --muted: #9a9a9a; --faint: #6f6f6f;
+      --bg: #131313; --fg: #ededed; --muted: #a0a0a0; --faint: #8b8b8b;
       --card: #1a1a1a; --line: #2b2b2b; --hover: #212121; --accent: #22c55e;
     }
   }
@@ -25,7 +25,7 @@
     font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     background: var(--bg); color: var(--fg); line-height: 1.5;
     -webkit-font-smoothing: antialiased;
-    padding: 28px 20px 48px;
+    padding: 32px 18px 56px;
   }
   /* The Home pane is ~440px wide in oo-chat, full-width on mobile, and sometimes a
      whole browser window. One centred column with a max-width covers all three;
@@ -46,88 +46,149 @@
      up off the right edge behind a scrollbar. */
   main { max-width: 680px; margin: 0 auto; }
 
-  header { margin-bottom: 20px; }
-  h1 { font-size: 22px; font-weight: 650; letter-spacing: -0.02em; }
-  .sub {
-    color: var(--muted); font-size: 12.5px; margin-top: 3px;
-    font-variant-numeric: tabular-nums;
+  header { margin-bottom: 24px; }
+  /* Name and mark on one line. The mark is a letter, not an image: the CSP allows
+     images only as data: URIs, and an agent has no artwork anyway. It is the only
+     saturated colour above the fold, which is what makes the page feel like it
+     belongs to something rather than being a listing of a folder. */
+  .id { display: flex; align-items: center; gap: 10px; }
+  .mark {
+    flex: none; width: 34px; height: 34px; border-radius: 9px;
+    background: var(--accent); color: #fff;
+    font-size: 16px; font-weight: 650; line-height: 34px; text-align: center;
+    text-transform: uppercase; user-select: none;
   }
+  h1 { font-size: 24px; font-weight: 680; letter-spacing: -0.025em; line-height: 1.15; }
+  /* What the agent is for, in the agent's own words. The manifest below answers
+     "what is it made of", which is a different and much less interesting question. */
+  .tagline { font-size: 13.5px; line-height: 1.45; margin-top: 10px; }
+  .tagline:empty { display: none; }
+  .sub { color: var(--muted); font-size: 12px; margin-top: 8px; }
 
-  /* The address is 66 characters and this pane can be 440px wide. It wraps
-     rather than shrinking or truncating: it is here to be read and copied, and
-     an ellipsis would defeat the only reason it is on the page. */
+  /* 66 characters in a 440px pane. It wraps rather than truncating — an ellipsis
+     would defeat the only reason it is here (a deployed agent's address cannot be
+     known before its first boot) — and it is boxed so it reads as a value you can
+     copy rather than as a mistake in the layout. Below the skills, because you
+     read it once, on the day you deploy. */
   .addr {
-    color: var(--muted); opacity: .75; margin-top: 6px;
+    color: var(--muted); margin-top: 22px; padding: 8px 10px;
+    background: var(--hover); border: 1px solid var(--line); border-radius: 8px;
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 11px; line-height: 1.45; word-break: break-all;
+    font-size: 10.5px; line-height: 1.5; word-break: break-all;
     user-select: all;
   }
 
-  .card {
-    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    margin-bottom: 10px; overflow: hidden;
+  /* No card around the rows. At 440px a bordered box whose background differs
+     from the page by one percent of luminance renders as its border alone, and
+     that border then duplicates the hairlines of the rows inside it — two
+     separator systems stacked. The rows carry themselves. */
+  .section {
+    font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 8px 2px;
   }
-  .empty { padding: 20px 18px; }
+  .empty {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 20px 18px;
+  }
   .empty p { color: var(--muted); font-size: 13.5px; }
   .empty code {
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
     background: var(--hover); padding: 1px 5px; border-radius: 4px;
   }
 
-  /* <summary> is the only disclosure that works without JS, so the whole
-     many-skills layout hangs off it. */
-  summary {
-    display: flex; align-items: center; gap: 8px; cursor: pointer;
-    padding: 12px 16px; font-size: 13px; font-weight: 600;
-    letter-spacing: 0.02em; color: var(--fg); list-style: none;
-  }
-  summary::-webkit-details-marker { display: none; }
-  summary::before {
-    content: ""; width: 0; height: 0; flex: none;
-    border-left: 4px solid var(--faint); border-top: 3.5px solid transparent;
-    border-bottom: 3.5px solid transparent;
-    transition: transform .15s;
-  }
-  details[open] > summary::before { transform: rotate(90deg); }
-  summary:hover { background: var(--hover); }
-  .count {
-    margin-left: auto; font-size: 11.5px; font-weight: 550; color: var(--faint);
-    font-variant-numeric: tabular-nums;
-  }
-  details[open] > summary { border-bottom: 1px solid var(--line); }
+  /* The one disclosure on the page. A details element is the only fold that
+     works with no JavaScript. It is centred and bordered so it cannot be
+     mistaken for a skill row — left-aligned, borderless, chevroned right:
+     pressing it must not feel like it might run something.
 
-  /* Rows, not cards: a hundred bordered boxes is noise. One hairline between each. */
+     A down-chevron under a sentence, not a sideways triangle beside a slug. The
+     triangle is the file-tree idiom, and this page spent a redesign getting out
+     of the file browser. */
+  .more { margin-top: 6px; }
+  .more > summary {
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    padding: 11px 12px; cursor: pointer; list-style: none;
+    border: 1px solid var(--line); border-radius: 9px;
+    font-size: 12.5px; font-weight: 600; color: var(--muted);
+    transition: background .12s, border-color .12s, color .12s;
+  }
+  .more > summary::-webkit-details-marker { display: none; }
+  .more > summary::after {
+    content: ""; flex: none; width: 6px; height: 6px; margin-top: -3px;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg); transition: transform .15s;
+  }
+  .more[open] > summary::after { transform: rotate(-135deg); margin-top: 3px; }
+  .more > summary:hover { background: var(--hover); color: var(--fg); border-color: var(--faint); }
+  .more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .more > summary:active { background: var(--line); }
+  .more[open] > .rows { margin-top: 6px; }
+  /* <summary> text cannot change without JS; two labels and a swap can. */
+  .lbl-less { display: none; }
+  .more[open] .lbl-more { display: none; }
+  .more[open] .lbl-less { display: inline; }
+
+
+  .rows { display: flex; flex-direction: column; gap: 2px; }
+
+  /* Every row is a control, and has to look like one when nobody is hovering it.
+     Hover is the wrong place to put the only affordance: it does not exist on a
+     touch screen, and on a desktop it arrives after you have already guessed. */
   .skill {
-    display: block; width: 100%; text-align: left; font: inherit; cursor: pointer;
-    background: none; border: 0; border-top: 1px solid var(--line);
-    padding: 11px 16px; color: var(--fg);
+    position: relative; display: flex; flex-direction: column; justify-content: center;
+    width: 100%; min-height: 56px; text-align: left; font: inherit; cursor: pointer;
+    background: none; border: 0; border-radius: 9px;
+    padding: 11px 34px 11px 12px; color: var(--fg);
     transition: background .12s;
   }
-  .rows > .skill:first-child { border-top: 0; }
-  .skill:hover { background: var(--hover); }
+  /* A chevron drawn in CSS — the CSP forbids an icon font or a remote SVG, and a
+     border-box rotated 45° costs nothing. */
+  .skill::after {
+    content: ""; position: absolute; right: 14px; top: 50%;
+    width: 6px; height: 6px; margin-top: -4px;
+    border-right: 1.5px solid var(--faint); border-top: 1.5px solid var(--faint);
+    transform: rotate(45deg);
+    transition: transform .12s, border-color .12s;
+  }
+  .skill:hover, .skill:focus-visible { background: var(--hover); }
+  .skill:hover::after, .skill:focus-visible::after {
+    border-color: var(--accent); transform: rotate(45deg) translate(2px, -2px);
+  }
+  .skill:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .skill:active { background: var(--line); }
+  /* The name stays the literal skill name — it is what you would type — but in the
+     UI face. In monospace a hyphenated slug reads as a file path, which is most of
+     why this page used to look like a directory listing. */
   .skill .name {
-    display: block; font-size: 13.5px; font-weight: 550;
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    letter-spacing: -0.01em;
+    display: block; font-size: 14px; font-weight: 600;
+    letter-spacing: -0.006em;
   }
-  .skill:hover .name { color: var(--accent); }
+  /* One line, and the server already cut it at a sentence. Uniform row height is
+     what turns a list into something scannable; ragged two-line clamps gave every
+     row a different height and nothing for the eye to lock onto. */
   .skill .desc {
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden; margin-top: 2px;
-    font-size: 12.5px; line-height: 1.45; color: var(--muted);
+    display: block; margin-top: 3px;
+    font-size: 12.5px; line-height: 1.4; color: var(--muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   }
-  /* Undescribed skills are common; an empty span must not leave a gap. */
   .skill .desc:empty { display: none; }
+
+  /* A pane dragged out to a full window is one column of 56px rows with a field of
+     white either side. Past ~720px there is room for two. */
+  @media (min-width: 720px) {
+    .rows { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+  }
 </style>
 </head>
 <body>
   <main>
     <header>
-      <h1>$name</h1>
+      <div class="id"><span class="mark">$initial</span><h1>$name</h1></div>
+      <p class="tagline">$tagline</p>
       <p class="sub">$subtitle</p>
-$address
     </header>
 $body
+$address
   </main>
 </body>
 </html>
@@ -148,14 +209,12 @@ Placeholders are $name-style (string.Template). Do not use $ for anything else.
 
 <template id="skill"><button class="skill" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span></button></template>
 
-<template id="list"><section class="card">
-    <div class="rows">
+<template id="list"><div class="rows">
 $rows
-    </div>
-  </section></template>
+  </div></template>
 
-<template id="group"><details class="card group" $open>
-    <summary>$prefix<span class="count">$count</span></summary>
+<template id="more"><details class="more">
+    <summary><span class="lbl-more">$count more skill$plural</span><span class="lbl-less">Show fewer</span></summary>
     <div class="rows">
 $rows
     </div>

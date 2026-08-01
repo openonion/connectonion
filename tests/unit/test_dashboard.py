@@ -8,7 +8,6 @@ from connectonion.network.host.ws_router.dashboard import (
     MAX_DASHBOARD_BYTES,
     read_dashboard_snapshot,
     ensure_dashboard,
-    group_skills,
     published_skills,
     render_starter,
     send_dashboard,
@@ -101,12 +100,39 @@ def test_a_short_list_is_not_hidden_behind_a_disclosure():
     assert "<details" not in html
 
 
-def test_a_long_list_is_grouped_and_opens_on_something():
+def test_a_long_list_shows_the_first_few_and_folds_the_rest():
+    """One fold, not a taxonomy. Grouping by name prefix rendered fifteen skills
+    as four headers, three visible rows and a bucket called "other" — a page
+    showing a fifth of its content."""
     skills = [{"name": f"lark-{i}", "description": "", "location": "project"} for i in range(20)]
     skills += [{"name": f"x-{i}", "description": "", "location": "project"} for i in range(5)]
     html = render_starter({"name": "Many", "skills": skills})
-    assert "<details" in html
-    assert "<details class=\"card group\" open>" in html  # never a wall of shut drawers
+
+    assert html.count("<details") == 1
+    assert "17 more skills" in html          # 25 total, 8 shown
+    assert "other" not in html.lower()
+
+
+def test_every_skill_is_on_the_page_even_when_folded():
+    """Folded is not dropped. The count in the control has to be the truth."""
+    skills = [{"name": f"skill-{i:02d}", "description": "", "location": "project"}
+              for i in range(25)]
+    html = render_starter({"name": "Many", "skills": skills})
+
+    for skill in skills:
+        assert f'data-ochat-skill="{skill["name"]}"' in html
+
+
+def test_the_list_is_alphabetical_so_families_land_together():
+    """What replaced the grouping: sorting clusters lark-* on its own, with no
+    header, no bucket, and nothing hidden."""
+    skills = [{"name": n, "description": "", "location": "project"}
+              for n in ["tweet", "lark-doc", "alpha", "lark-base"]]
+    html = render_starter({"name": "Sorted", "skills": skills})
+
+    order = [html.index(f'data-ochat-skill="{n}"')
+             for n in ["alpha", "lark-base", "lark-doc", "tweet"]]
+    assert order == sorted(order)
 
 
 def test_skill_rows_carry_their_description():
@@ -322,25 +348,6 @@ def test_starter_lists_published_skills_past_unpublished_ones():
     html = render_starter({"name": "Many", "skills": skills})
     assert html.count("data-ochat-skill") == 6
     assert "personal-" not in html
-
-
-def test_group_skills_needs_a_third_member_to_form_a_family():
-    """Two lark-* skills behind a group of two is a click that buys nothing."""
-    skills = [{"name": n} for n in ["lark-base", "lark-doc", "lark-im", "x-api", "x-write", "tweet"]]
-    families, loose = group_skills(skills)
-
-    assert [(p, [s["name"] for s in m]) for p, m in families] == [
-        ("lark", ["lark-base", "lark-doc", "lark-im"]),
-    ]
-    assert [s["name"] for s in loose] == ["tweet", "x-api", "x-write"]
-
-
-def test_group_skills_splits_colon_prefixes_too():
-    skills = [{"name": n} for n in ["vercel:deploy", "vercel:env", "vercel:nextjs"]]
-    families, loose = group_skills(skills)
-
-    assert families[0][0] == "vercel"
-    assert loose == []
 
 
 def test_the_subtitle_omits_what_it_does_not_know():

@@ -507,15 +507,16 @@ def host(
     agent_metadata, sample = _extract_agent_metadata(create_agent, config.get("name"))
 
     # Auto-generate summary from system_prompt if not set
-    if summary is None:
+    # An operator-written summary is the only thing worth putting on the Home page
+    # as a tagline: the fallback below is prompt text, addressed to the agent in
+    # the second person, and reads as a mistake when shown to a person.
+    if summary is not None:
+        agent_metadata['tagline'] = summary
+    else:
         summary = sample.system_prompt[:1000] if sample.system_prompt else f"{agent_metadata['name']} agent"
 
     agent_metadata['summary'] = summary
     agent_metadata['examples'] = examples
-
-    # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
-    from .ws_router.dashboard import ensure_dashboard
-    ensure_dashboard(agent_metadata)
 
     # Load whitelist/blacklist: code param (list) takes priority, else load from YAML file path
     if whitelist is None:
@@ -532,6 +533,13 @@ def host(
         address.save(addr_data, co_dir)
 
     agent_metadata["address"] = addr_data['address']
+    agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"
+
+    # Rendered here and not earlier: the Home shows the address and the trust
+    # level, and neither exists until this point. Called above, it rendered a
+    # page missing both and nothing said so.
+    from .ws_router.dashboard import ensure_dashboard
+    ensure_dashboard(agent_metadata)
 
     storage = SessionStorage()
 
@@ -636,6 +644,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     # Agent's own name stands as before.
     agent_metadata, sample = _extract_agent_metadata(create_agent, name)
     agent_metadata["address"] = get_agent_address(sample)
+    agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"
 
     # Give the agent a polished Home on day zero (no-op if dashboard.html exists).
     from .ws_router.dashboard import ensure_dashboard
