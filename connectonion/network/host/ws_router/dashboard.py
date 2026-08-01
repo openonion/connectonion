@@ -42,6 +42,10 @@ MAX_DASHBOARD_BYTES = 2 * 1024 * 1024
 # happened to be in the new directory.
 _project_dir = None
 
+# What to render when the agent has not written a Home page of its own. Set once
+# at host startup, for the same reason as _project_dir.
+_agent_metadata = None
+
 
 def project_root(start=None):
     """The directory that owns ``.co/`` — the project, not wherever you ran from.
@@ -89,6 +93,17 @@ def read_dashboard_snapshot(session_id=None):
     every other server→client frame.
     """
     path = dashboard_path()
+    if not path.exists():
+        if _agent_metadata is None:
+            # ensure_dashboard has not run, so there is nothing to render *about*.
+            # An embedder that never starts a host gets no Home, as before.
+            return None
+        # No file means "not customised", not "no Home": render the starter.
+        html = render_starter(_agent_metadata)
+        frame = {"type": "DASHBOARD_SNAPSHOT", "html": html}
+        if session_id:
+            frame["session_id"] = session_id
+        return frame
     try:
         size = path.stat().st_size
     except OSError:
@@ -124,9 +139,12 @@ async def send_dashboard(send_msg, session_id, conn=None):
     """
     try:
         stat = dashboard_path().stat()
+        stamp = (stat.st_mtime_ns, stat.st_size)
     except OSError:
-        return
-    stamp = (stat.st_mtime_ns, stat.st_size)
+        # No file: the starter is rendered from metadata fixed at startup, so it
+        # cannot change within a run. One stamp for the whole run means each
+        # client is sent it once, like any other unchanged page.
+        stamp = ("starter", None)
     if conn is not None and conn.get("dashboard_stamp") == stamp:
         return
 
@@ -139,27 +157,25 @@ async def send_dashboard(send_msg, session_id, conn=None):
 
 
 def ensure_dashboard(agent_metadata, project_dir=None):
-    """Write a starter ``dashboard.html`` if the agent has none, and anchor the
-    directory every later read resolves against.
+    """Anchor the project directory, and remember what to render a Home from.
 
-    Called once at host startup; a no-op when the file already exists (the agent
-    owns it after that). Gives every agent a polished Home on day zero.
+    Called once at host startup. **No file is written.** An agent that has not
+    written its own Home gets the bundled starter, rendered fresh on every read.
+
+    This used to write ``dashboard.html`` on first boot and then never touch it
+    again, which sounds harmless and is not: the file froze whatever the starter
+    looked like the first time that agent ever started, and no later improvement
+    to the starter could reach it. Every agent's Home was a fossil of the version
+    that happened to be installed on its first day, and the only way to see a
+    change was to delete the file and remember why.
+
+    An agent that wants its own Home still writes ``.co/dashboard.html``; from
+    that moment the file wins and nothing here overwrites it. The difference is
+    that not having one is now a state rather than a one-time event.
     """
-    global _project_dir
+    global _project_dir, _agent_metadata
     _project_dir = Path(project_dir) if project_dir else project_root()
-
-    path = dashboard_path()
-    if path.exists():
-        return
-    try:
-        path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(render_starter(agent_metadata), encoding="utf-8")
-    except OSError as e:
-        # A read-only or missing project dir is a fine reason to have no dashboard;
-        # it is not a reason to refuse to start the host. Say so and move on.
-        Console().print(f"[yellow]Could not write {path}: {e}[/yellow]")
-        return
-    Console().print(f"[dim]Created {DASHBOARD_FILE} — your agent's Home page.[/dim]")
+    _agent_metadata = agent_metadata or {}
 
 
 def published_skills(skills):
