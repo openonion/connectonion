@@ -7,37 +7,38 @@ Example: `0.0.2`
 
 ## Update Rules
 
-### 1. **PATCH Version (0.0.X)**
-- Increment by 1 for each release
-- When PATCH reaches 10, roll over to MINOR version
-- Examples: 
-  - 0.0.1 → 0.0.2 → 0.0.3 ... → 0.0.9 → 0.1.0
+### 1. **PATCH Version (X.Y.Z)**
+- Increment by 1 for each release. That is the whole rule.
+- It does not roll over. `1.5.9 → 1.5.10 → 1.5.11 → …` for as long as the work
+  takes. Two digits are not a problem; a milestone nobody earned is.
 
-### 2. **MINOR Version (0.X.0)**
-- Increment when PATCH reaches 10
-- Reset PATCH to 0
-- When MINOR reaches 10, roll over to MAJOR version
-- Examples:
-  - 0.0.9 → 0.1.0
-  - 0.9.9 → 1.0.0
+### 2. **A whole number is earned, never reached**
 
-### 3. **`X.Y.0` is the stable release**
+`X.Y.0` and `X.0.0` do not arrive because a counter filled up. They are cut,
+deliberately, when there is something to say — a body of work that is finished
+and has been exercised end to end, not merely merged.
 
-A minor is not just where the patch counter rolls over — it is the version people are
-meant to sit on. So features do **not** ship straight into one:
+So there is no automatic `0.0.9 → 0.1.0`, and no automatic `0.9.9 → 1.0.0`.
+If the next release is not that kind of release, it is another patch.
 
-- while a feature is being stabilised it ships in **patch** releases (1.5.3, 1.5.4, …)
-- `X.Y.0` is cut once that work has actually been exercised end to end
+This rule exists because the alternative was tried. 1.5.9 was followed by a
+1.6.0 bump on the mechanical reading — a minor, the version people are meant to
+sit on — for a scheduler that had not been tested yet. Testing it immediately
+found four bugs, including a weekly job that was silently skipped for a whole
+week after any downtime. It shipped as **1.5.10** instead, and 1.6.0 stayed
+available for a release that has earned it.
 
-Merged features on `main` therefore do not force the next release to be a minor bump.
-That is semver's rule, not this project's.
+### 3. **What a `X.Y.0` claims**
+
+That the work in it is done being stabilised, and that someone has run it, not
+only that its tests pass. While a feature is still being proven it ships in
+patch releases; the minor is the statement that it no longer needs to be.
 
 ### 4. **MAJOR Version (X.0.0)**
-- Increment when MINOR reaches 10
-- Reset MINOR and PATCH to 0
-- Reserved for major breaking changes or stable releases
+- Reserved for breaking changes, or for a stable release worth naming
+- Same rule as any whole number: earned, not reached
 
-## Current Version: 1.6.0
+## Current Version: 1.5.10
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
@@ -106,40 +107,39 @@ Increment PATCH for:
 - Update wiki documentation → 0.2.1 → 0.2.2
 - Refactor internal LLM code → 0.2.2 → 0.2.3
 
-### MINOR (0.X.0)
-Increment MINOR when:
-- PATCH reaches 10 (automatic rollover)
-- OR adding new features (backward compatible)
-- OR significant improvements
+### MINOR (X.Y.0)
+Cut a MINOR when:
+- a body of work is finished being stabilised, and someone has run it end to end
+- OR the API gained something worth announcing, backward compatible
+
+Never because the patch counter got long. `1.5.11` is a fine version number.
 
 **Examples:**
-- 0.2.9 → 0.3.0 (automatic rollover)
-- Add new model provider → 0.2.5 → 0.3.0 (new feature)
-- New CLI commands → 0.2.3 → 0.3.0 (new feature)
+- Scheduler proven on a real deployment → 1.5.10 → 1.6.0
+- Add new model provider → 0.2.5 → 0.3.0
 
 ### MAJOR (X.0.0)
-Increment MAJOR when:
-- MINOR reaches 10 (automatic rollover)
-- OR breaking API changes
-- OR major architecture changes
+Cut a MAJOR when:
+- the API breaks
+- OR the architecture changed enough that the old mental model no longer fits
 
 **Examples:**
-- 0.9.9 → 1.0.0 (automatic rollover or stable release)
 - Remove deprecated functions → 0.5.0 → 1.0.0 (breaking change)
 - Complete API redesign → 0.7.0 → 1.0.0 (breaking change)
 
 ## Example Version Progression
 
 ```
-0.0.1 → 0.0.2 → 0.0.3 → 0.0.4 → 0.0.5 →
-0.0.6 → 0.0.7 → 0.0.8 → 0.0.9 → 0.1.0 →
-0.1.1 → 0.1.2 → ... → 0.1.9 → 0.2.0 →
-...
-0.9.9 → 1.0.0 (Major release)
+1.5.7 → 1.5.8 → 1.5.9 → 1.5.10 → 1.5.11 → …
+                                    ↓
+                        proven end to end, so:
+                                  1.6.0
 ```
+
+The patch line runs as long as the work does. The whole number is a separate
+decision, made by a person, about whether there is something to stand behind.
 
 ## Notes
 - We moved from beta (0.0.1bX) to production (0.0.2)
-- Each update increments the last digit by 1
-- When last digit reaches 10, it rolls over to the next level
-- This ensures predictable, incremental versioning
+- Each release increments the last digit by 1
+- Nothing rolls over automatically — see rule 2
