@@ -535,12 +535,23 @@ println(agent.ui)        // All events for rendering
 
 ## React: useAgentForHuman() Hook
 
-The `connectonion/react` subpath exports a React hook with state management and localStorage persistence.
+The [`@connectonion/react`](https://www.npmjs.com/package/@connectonion/react) package
+(repo: [openonion/connectonion-react](https://github.com/openonion/connectonion-react))
+exports a React hook with state management and localStorage persistence. It takes
+`connectonion` as a peer dependency:
+
+```bash
+npm install @connectonion/react connectonion
+```
+
+> These hooks used to ship inside the SDK at `connectonion/react`. That subpath was removed
+> in `connectonion@0.3.0` — import from `@connectonion/react` instead. Same hooks, same
+> signatures, same `localStorage` keys.
 
 ### Basic Usage
 
 ```tsx
-import { useAgentForHuman } from 'connectonion/react'
+import { useAgentForHuman } from '@connectonion/react'
 
 function ChatPage() {
   const {
@@ -657,7 +668,7 @@ respondToPlanReview("Skip step 2")
 │                                                   │
 │  app/[address]/[sessionId]/page.tsx               │
 │    └─ useAgentSDK()     ← elapsed time, pending   │
-│         └─ useAgentForHuman()   ← connectonion/react      │
+│         └─ useAgentForHuman()  ← @connectonion/react│
 │              └─ connect()  ← WebSocket to agent   │
 │                                                   │
 │  <Chat />                                         │
