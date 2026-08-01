@@ -189,36 +189,19 @@ def published_skills(skills):
     return [s for s in skills if s.get("location") in PUBLISHED_SKILL_LOCATIONS]
 
 
-# A flat list stays readable to about a dozen rows in a 440px pane. Past that it is
-# a wall, and the honest structure to impose is the one already in the names: skills
-# ship in families (lark-base, lark-doc, lark-sheets; vercel:deploy, vercel:env), and
-# an author who names three things alike has told you they belong together.
+# A flat list stays readable to about a dozen rows in a 440px pane. Past that,
+# show the first PREVIEW_ROWS and fold the rest behind one control.
 FLAT_MAX = 12
-FAMILY_MIN = 3
 
-
-def group_skills(skills):
-    """Split skills into ``(families, loose)`` by the prefix in their names.
-
-    A family is a prefix with at least ``FAMILY_MIN`` members, so two lark-* skills
-    stay in the open rather than hiding behind a group of two. Both halves come back
-    sorted: a Home page that reorders itself between runs is one you have to re-read
-    every time.
-    """
-    families = {}
-    for s in skills:
-        families.setdefault(re.split(r"[-:]", s["name"], 1)[0], []).append(s)
-
-    grouped = sorted(
-        (prefix, sorted(members, key=lambda s: s["name"]))
-        for prefix, members in families.items()
-        if len(members) >= FAMILY_MIN
-    )
-    loose = sorted(
-        (s for members in families.values() if len(members) < FAMILY_MIN for s in members),
-        key=lambda s: s["name"],
-    )
-    return grouped, loose
+# Eight, because the fold decides it rather than the content. A row is 56px plus
+# a 2px gap; the header block is ~135px and the disclosure ~44px, so 135 + 8x58 +
+# 44 lands the "more" control itself above the fold of a 440x800 pane. At nine
+# rows the escape hatch sits below the fold — something you must scroll to
+# discover, which is the problem it exists to solve.
+#
+# The gap to FLAT_MAX is deliberate: a fold can never hold fewer than four items,
+# so the page never offers "1 more skill" behind a click.
+PREVIEW_ROWS = 8
 
 
 def _parse_starter(path):
@@ -263,6 +246,30 @@ def _starter_templates():
     return page, fragments
 
 
+# What an author writes when they have nothing to say. Rendered literally it is
+# a line of body text whose content is an apology. An empty description already
+# collapses; these should too.
+_NON_DESCRIPTIONS = {"no description", "none", "n/a", "-", "todo"}
+
+
+def first_sentence(text, limit=None):
+    """The human-facing part of a description.
+
+    Skill descriptions are written for a model: a sentence of purpose followed by
+    paragraphs of instruction. Only the first sentence belongs on a Home page.
+    Clamping by pixels instead gave every row a different height and every
+    description a mid-word ellipsis — "Use only for…", "verify exact…" — which is
+    noise exactly where the page most needs to be read.
+    """
+    text = " ".join(str(text or "").split())
+    if text.lower() in _NON_DESCRIPTIONS:
+        return ""
+    head = re.split(r"(?<=[.!?])\s", text, maxsplit=1)[0]
+    if limit is None or len(head) <= limit:
+        return head
+    return head[:limit].rsplit(" ", 1)[0] + "…"
+
+
 def _skill_row(skill):
     """One skill as a button: its real name, and what it does underneath.
 
@@ -273,46 +280,47 @@ def _skill_row(skill):
     _, fragments = _starter_templates()
     return fragments["skill"].substitute(
         name=escape(str(skill.get("name", "")), quote=True),
-        description=escape(str(skill.get("description") or "").strip()),
+        description=escape(first_sentence(skill.get("description"))),
     ).strip()
 
 
 def _skill_sections(skills):
     """The body of the starter dashboard: every published skill, reachable.
 
-    Three shapes, because "a few skills" and "a hundred skills" are different pages:
-    nothing at all gets a note saying so; a short list is shown flat, because
-    collapsing six items hides them behind a click for no reason; a long one is
-    grouped, with the first family open so the page opens on something to click
-    rather than a row of shut drawers.
+    One alphabetical list. Past ``FLAT_MAX`` the first ``PREVIEW_ROWS`` are shown
+    and the rest sit behind a single disclosure.
+
+    This used to group by the prefix in the names — lark-*, stripe-* — an
+    inferred taxonomy built on a naming coincidence, and it was paid for at full
+    structural price: fifteen skills rendered as four group headers, three
+    visible rows, and a bucket called "other" holding the skills that belonged to
+    no family, sorted last. The page showed a fifth of its content and spent four
+    rows describing drawers.
+
+    Sorting alphabetically clusters those families anyway — ``lark-base`` and
+    ``lark-doc`` land next to each other with no header, no bucket and nothing
+    hidden. The taxonomy bought a label nobody needed and cost twelve skills of
+    visibility.
     """
     _, fragments = _starter_templates()
     if not skills:
         return "  " + fragments["empty"].template.strip()
 
+    ordered = sorted(skills, key=lambda s: s["name"])
+
     def rows(members, indent):
         return "\n".join(indent + _skill_row(s) for s in members)
 
-    if len(skills) <= FLAT_MAX:
-        listing = fragments["list"].substitute(
-            rows=rows(sorted(skills, key=lambda s: s["name"]), "      ")
-        )
-        return "  " + listing.strip()
+    if len(ordered) <= FLAT_MAX:
+        return "  " + fragments["list"].substitute(rows=rows(ordered, "    ")).strip()
 
-    families, loose = group_skills(skills)
-    if loose:
-        families.append(("other", loose))
-
-    group = fragments["group"]
-    return "\n".join(
-        "  " + group.substitute(
-            open="open" if i == 0 else "",
-            prefix=escape(prefix),
-            count=len(members),
-            rows=rows(members, "        "),
-        ).strip()
-        for i, (prefix, members) in enumerate(families)
-    )
+    head, tail = ordered[:PREVIEW_ROWS], ordered[PREVIEW_ROWS:]
+    return ("  " + fragments["list"].substitute(rows=rows(head, "    ")).strip()
+            + "\n  " + fragments["more"].substitute(
+                count=len(tail),
+                plural="s" if len(tail) != 1 else "",
+                rows=rows(tail, "      "),
+            ).strip())
 
 
 def _subtitle(agent_metadata, skill_count):
@@ -322,13 +330,15 @@ def _subtitle(agent_metadata, skill_count):
     reads as a broken agent instead of an unreported number.
     """
     parts = []
-    if agent_metadata.get("model"):
-        parts.append(escape(str(agent_metadata["model"])))
     if skill_count:
         parts.append(f"{skill_count} skill{'s' if skill_count != 1 else ''}")
     tools = agent_metadata.get("tools") or []
     if tools:
         parts.append(f"{len(tools)} tool{'s' if len(tools) != 1 else ''}")
+    # Last, and only after what the agent can do: which model runs it is the least
+    # interesting true thing on the page, and it used to lead.
+    if agent_metadata.get("model"):
+        parts.append(escape(str(agent_metadata["model"])))
     if agent_metadata.get("trust"):
         # Who this agent will talk to. The operator set it in code and cannot
         # otherwise see what the running agent actually resolved it to.
@@ -365,9 +375,24 @@ def render_starter(agent_metadata):
     """
     skills = published_skills(agent_metadata.get("skills") or [])
     page, _ = _starter_templates()
+    name = str(agent_metadata.get("name") or "Agent")
     return page.safe_substitute(
-        name=escape(str(agent_metadata.get("name") or "Agent")),
+        name=escape(name),
+        initial=escape(name.strip()[:1] or "A"),
+        tagline=_tagline(agent_metadata),
         subtitle=_subtitle(agent_metadata, len(skills)),
         address=_address_line(agent_metadata),
         body=_skill_sections(skills),
     )
+
+
+def _tagline(agent_metadata):
+    """One sentence saying what this agent is for, or nothing.
+
+    Only an operator-written summary. The host also derives one from the first
+    1000 characters of the system prompt, and that is prompt text rather than a
+    description: rendering it put "# Agent You are an autonomous agent working on
+    someone's behalf." at the top of the page, in the second person, addressed to
+    the agent instead of to the person reading it. Better to say nothing.
+    """
+    return escape(first_sentence(agent_metadata.get("tagline"), limit=140))
