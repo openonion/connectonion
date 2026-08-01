@@ -53,13 +53,16 @@
     font-variant-numeric: tabular-nums;
   }
 
-  /* The address is 66 characters and this pane can be 440px wide. It wraps
-     rather than shrinking or truncating: it is here to be read and copied, and
-     an ellipsis would defeat the only reason it is on the page. */
+  /* Below the skills, not under the title. It has to be on the page — it is the
+     one fact you cannot get without an ssh session (#396) — but you read it once,
+     when you deploy, and never again. At the top it was two lines of hex shouting
+     above a page whose subject is what the agent can do. It wraps rather than
+     truncating: an ellipsis would defeat the only reason it is here. */
   .addr {
-    color: var(--muted); opacity: .75; margin-top: 6px;
+    color: var(--muted); opacity: .55; margin-top: 18px; padding-top: 12px;
+    border-top: 1px solid var(--line);
     font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-    font-size: 11px; line-height: 1.45; word-break: break-all;
+    font-size: 10.5px; line-height: 1.5; word-break: break-all;
     user-select: all;
   }
 
@@ -125,9 +128,9 @@
     <header>
       <h1>$name</h1>
       <p class="sub">$subtitle</p>
-$address
     </header>
 $body
+$address
   </main>
 </body>
 </html>
