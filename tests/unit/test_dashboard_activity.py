@@ -162,3 +162,58 @@ class TestDurations:
     ])
     def test_a_long_run_is_not_reported_in_seconds(self, ms, shown):
         assert dash._took(ms) == shown
+
+
+class TestReadingCost:
+    """Five rows must cost five rows, not the whole history.
+
+    Each record embeds the turn's full message list — 23 KB on average on a real
+    agent, 85 KB at the top end — and the file is append-only with nothing
+    trimming it. Home is re-read on connect *and after every run*, so a whole-file
+    read is paid per turn, forever. #526.
+    """
+
+    def test_only_the_tail_is_read(self, project, monkeypatch):
+        path = project / ".co" / "session_results.jsonl"
+        # 200 fat records: what a few months of hourly scheduled work looks like.
+        big = "x" * 20_000
+        with open(path, "w", encoding="utf-8") as f:
+            for i in range(200):
+                f.write(json.dumps({"session_id": f"s{i}", "status": "done",
+                                    "prompt": f"turn-{i}", "result": big,
+                                    "duration_ms": 100, "created": 1000 + i}) + "\n")
+
+        read_bytes = []
+        real_read = type(path).read_bytes
+
+        def counting_read(self, *a, **kw):
+            data = real_read(self, *a, **kw)
+            read_bytes.append(len(data))
+            return data
+
+        monkeypatch.setattr(type(path), "read_bytes", counting_read, raising=False)
+        monkeypatch.setattr(type(path), "read_text",
+                            lambda self, *a, **kw: (_ for _ in ()).throw(
+                                AssertionError("read_text reads the whole file")),
+                            raising=False)
+
+        runs = dash.recent_runs(limit=5)
+
+        assert [r["prompt"] for r in runs] == [f"turn-{i}" for i in (199, 198, 197, 196, 195)]
+        assert sum(read_bytes) < path.stat().st_size / 4, (
+            f"read {sum(read_bytes)} bytes of a {path.stat().st_size}-byte file "
+            "to show five rows"
+        )
+
+    def test_a_file_shorter_than_the_window_still_works(self, project):
+        sessions(project, done("only-one"))
+        assert [r["prompt"] for r in dash.recent_runs()] == ["only-one"]
+
+    def test_a_record_larger_than_the_window_is_still_found(self, project):
+        """One 85 KB record is normal. A fixed byte window would return nothing."""
+        path = project / ".co" / "session_results.jsonl"
+        path.write_text(json.dumps({"session_id": "s", "status": "done",
+                                    "prompt": "huge", "result": "y" * 200_000,
+                                    "duration_ms": 5, "created": 1}) + "\n",
+                        encoding="utf-8")
+        assert [r["prompt"] for r in dash.recent_runs()] == ["huge"]

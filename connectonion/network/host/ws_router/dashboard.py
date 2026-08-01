@@ -423,31 +423,67 @@ def _ago(seconds):
     return "a while ago"
 
 
+def _tail_lines(path, wanted, chunk=65536):
+    """The last lines of an append-only file, newest first, read from the end.
+
+    Bounded by the answer rather than by the history. A record here carries the
+    turn's whole message list — 23 KB on a real agent, 85 KB at the top end — and
+    nothing trims the file, so reading it whole to show five rows is a cost that
+    grows forever and is paid on every turn (#526).
+
+    The chunk size is a starting point, not a window: one record can be larger
+    than it, so the walk continues until enough lines are found or the file is
+    exhausted.
+    """
+    try:
+        size = path.stat().st_size
+    except OSError:
+        return []
+    if not size:
+        return []
+
+    lines, buf, pos = [], b"", size
+    with open(path, "rb") as f:
+        while pos > 0 and len(lines) < wanted:
+            step = min(chunk, pos)
+            pos -= step
+            f.seek(pos)
+            buf = f.read(step) + buf
+            parts = buf.split(b"\n")
+            # The first part may be half a record; leave it for the next chunk,
+            # unless we have reached the start of the file and it is whole.
+            buf = parts[0] if pos > 0 else b""
+            complete = parts[1:] if pos > 0 else parts
+            lines = [c for c in complete if c.strip()] + lines
+    return list(reversed(lines[-wanted:] if wanted else lines))
+
+
 def recent_runs(limit=MAX_ACTIVITY_ROWS):
     """The last few turns, newest first, one entry per session.
 
     The log is append-only and a session appears twice — once as ``running``,
     again as ``done``. The later line wins, or the page would report every
-    finished run as still in flight.
+    finished run as still in flight. Reading from the end means the later line
+    is also the one seen first.
     """
     import json as _json
     path = _co() / "session_results.jsonl"
     if not path.is_file():
         return []
+
     latest = {}
-    try:
-        for line in path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
-            try:
-                rec = _json.loads(line)
-            except ValueError:
-                continue          # a torn write must not cost the whole page
-            if isinstance(rec, dict) and rec.get("session_id"):
-                latest[rec["session_id"]] = rec
-    except OSError:
-        return []
+    # More lines than sessions wanted: each session writes at least twice, and a
+    # torn line costs nothing but itself.
+    for raw in _tail_lines(path, wanted=limit * 4):
+        try:
+            rec = _json.loads(raw.decode("utf-8"))
+        except (ValueError, UnicodeDecodeError):
+            continue          # a torn write must not cost the whole page
+        if isinstance(rec, dict) and rec.get("session_id"):
+            latest.setdefault(rec["session_id"], rec)   # newest first: first wins
+        if len(latest) >= limit:
+            break
+
     runs = sorted(latest.values(), key=lambda r: r.get("created") or 0, reverse=True)
     return runs[:limit]
 
