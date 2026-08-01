@@ -508,6 +508,7 @@ def scheduled_entries():
         st = state.get(e.name) or {}
         when = last_run(state, e.name)
         out.append({
+            "name": e.name,
             "run": e.run,
             "cadence": f"every {_cadence(e)}" if e.interval else str(e.at or ""),
             "status": st.get("status"),
@@ -541,6 +542,33 @@ def _took(ms):
     hours, minutes = divmod(minutes, 60)
     return f"{hours}h {minutes}m" if minutes else f"{hours}h"
 
+
+def _collapse(runs, scheduled):
+    """Label scheduled runs by their entry, and fold consecutive repeats.
+
+    A schedule entry's prompt is one fixed sentence sent verbatim every firing,
+    so an agent that checks something every fifteen minutes fills this section
+    with the same row — and the rows that differ, the typed ones, are the first
+    pushed out. What varies between firings is what each found, which is in the
+    result, not the prompt (#528).
+
+    Only *consecutive* repeats fold. A typed turn between two firings separates
+    them, because it did.
+    """
+    by_run = {s["run"]: s["name"] for s in scheduled}
+    folded = []
+    for r in runs:
+        label = by_run.get(r.get("prompt"))
+        key = label or None
+        if key and folded and folded[-1]["key"] == key:
+            folded[-1]["count"] += 1
+            continue
+        folded.append({"key": key,
+                       "label": label or str(r.get("prompt") or ""),
+                       "count": 1,
+                       "run": r})
+    return folded
+
 def _activity_sections():
     """Both sections, or nothing at all.
 
@@ -566,7 +594,10 @@ def _activity_sections():
                 meta = f"{s['status'] or 'ran'} · {ago}"
                 tone = "bad" if s["status"] == "failed" else ""
             rows.append(row.safe_substitute(
-                what=escape(f"{s['run']}  ({s['cadence']})"),
+                # The entry's name, not its run text: an entry can be called
+                # "check for new contracts" while its instruction stays a
+                # paragraph. Entry.name falls back to run when none is given.
+                what=escape(f"{s['name']}  ({s['cadence']})"),
                 meta=escape(meta), tone=tone).strip())
         out.append(section.safe_substitute(
             title="Scheduled", rows="\n".join("      " + r for r in rows)).strip())
@@ -574,7 +605,8 @@ def _activity_sections():
     runs = recent_runs()
     if runs:
         rows = []
-        for r in runs:
+        for item in _collapse(runs, scheduled):
+            r = item["run"]          # the newest of a folded group
             if r.get("status") == "running":
                 meta, tone = "running", "live"
             else:
@@ -584,9 +616,11 @@ def _activity_sections():
             created = r.get("created")
             if created:
                 meta += " · " + _ago(now.timestamp() - float(created))
+            what = item["label"][:80]
+            if item["count"] > 1:
+                what += f"  ×{item['count']}"
             rows.append(row.safe_substitute(
-                what=escape(str(r.get("prompt") or "")[:80]),
-                meta=escape(meta), tone=tone).strip())
+                what=escape(what), meta=escape(meta), tone=tone).strip())
         out.append(section.safe_substitute(
             title="Recent", rows="\n".join("      " + r for r in rows)).strip())
 
