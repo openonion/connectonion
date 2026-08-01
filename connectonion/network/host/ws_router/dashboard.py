@@ -357,7 +357,8 @@ def _address_line(agent_metadata):
     address = agent_metadata.get("address")
     if not address:
         return ""
-    return '<p class="addr">' + escape(str(address)) + '</p>'
+    _, fragments = _starter_templates()
+    return fragments["addr"].safe_substitute(address=escape(str(address))).strip()
 
 
 def render_starter(agent_metadata):
@@ -375,6 +376,12 @@ def render_starter(agent_metadata):
     """
     skills = published_skills(agent_metadata.get("skills") or [])
     page, _ = _starter_templates()
+    # Read once. Three separate calls meant three reads of schedule.yaml and its
+    # state file per render, which is not just wasted work: they are read at
+    # three different instants, so a run landing mid-render could have the
+    # verdict and the row it points at disagreeing about the same entry.
+    scheduled, problems = scheduled_entries()
+    now = _now()
     name = str(agent_metadata.get("name") or "Agent")
     return page.safe_substitute(
         name=escape(name),
@@ -382,9 +389,9 @@ def render_starter(agent_metadata):
         tagline=_tagline(agent_metadata),
         subtitle=_subtitle(agent_metadata, len(skills)),
         address=_address_line(agent_metadata),
-        alert=_alert(*scheduled_entries(), now=_now()),
-        schedule=_schedule_card(scheduled_entries()[0], _now()),
-        activity=_activity_sections(),
+        alert=_alert(scheduled, problems, now),
+        schedule=_schedule_card(scheduled, now),
+        activity=_activity_sections(scheduled),
         body=_skill_sections(skills),
     )
 
@@ -629,28 +636,33 @@ def _alert(scheduled, problems, now):
     late = [s for s in scheduled if states[s["name"]] == "late"]
     failed = [s for s in scheduled if states[s["name"]] == "bad"]
 
+    # Subject and verdict are separate slots because the emphasis around the
+    # subject is markup, and markup belongs in starter.html. Building "<b>" here
+    # would put a design decision in Python and hand the template a string it is
+    # not allowed to escape.
     if len(late) + len(failed) > 1:
-        headline = escape(f"{len(late) + len(failed)} schedules need attention")
+        subject = f"{len(late) + len(failed)} schedules"
+        verdict = "need attention"
         detail = ", ".join(s["name"] for s in late + failed)
     elif late:
         entry = late[0]
-        headline = (f"<b>{escape(entry['name'])}</b> has not run — "
-                    f"{escape(_schedule_state(entry, now)[1])}")
+        subject, verdict = entry["name"], f"has not run — {_schedule_state(entry, now)[1]}"
         detail = (f"{entry['cadence']} · last ran "
                   f"{_ago((now - entry['last_run']).total_seconds())}"
                   if entry["last_run"] else f"{entry['cadence']} · never ran")
     elif failed:
         entry = failed[0]
-        headline = f"<b>{escape(entry['name'])}</b> failed on its last run"
+        subject, verdict = entry["name"], "failed on its last run"
         detail = entry["cadence"]
     elif problems:
-        headline = escape(f"{len(problems)} schedule entr"
-                          f"{'ies' if len(problems) != 1 else 'y'} ignored")
+        plural = "ies" if len(problems) != 1 else "y"
+        subject, verdict = f"{len(problems)} schedule entr{plural}", "ignored"
         detail = problems[0] + (", …" if len(problems) > 1 else "")
     else:
         return ""
     return "      " + fragments["alert"].safe_substitute(
-        headline=headline, detail=escape(detail)).strip()
+        subject=escape(subject), verdict=escape(verdict),
+        detail=escape(detail)).strip()
 
 
 def _schedule_card(scheduled, now):
@@ -673,7 +685,7 @@ def _schedule_card(scheduled, now):
         title="Schedule", rows="\n".join(rows)).strip()
 
 
-def _activity_sections():
+def _activity_sections(scheduled):
     """Both sections, or nothing at all.
 
     A fresh agent has neither a schedule nor a history, and a box that is empty
@@ -692,8 +704,6 @@ def _activity_sections():
     # two formats — on a three-entry agent, three of four "Recent" rows were
     # restatements. Problems moved into the verdict banner, which is where a
     # config error that means "this will never fire" belongs.
-    scheduled, _ = scheduled_entries()
-
     runs = recent_runs()
     if runs:
         rows = []
