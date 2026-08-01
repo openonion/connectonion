@@ -39,12 +39,21 @@ def in_tmp(tmp_path, monkeypatch):
     # ensure_dashboard anchors the module-level project dir at startup; clear it so
     # each test resolves against its own tmp_path instead of a previous test's.
     monkeypatch.setattr(dashboard_module, "_project_dir", None)
+    # Same for the metadata the starter is rendered from: leaking one test's agent
+    # into the next would make a Home appear where the test never started a host.
+    monkeypatch.setattr(dashboard_module, "_agent_metadata", None)
     return tmp_path
 
 
-def test_read_snapshot_returns_none_when_missing(in_tmp):
-    assert read_dashboard_snapshot() is None
-    assert read_dashboard_snapshot("sid") is None
+def test_no_file_means_the_starter_not_no_home(in_tmp):
+    """Not having customised a Home is a state, not an absence. This used to
+    answer None, which is why the starter had to be written to disk on first
+    boot — and why every agent's Home then froze at that version."""
+    ensure_dashboard({"name": "Lisa", "skills": []})
+
+    frame = read_dashboard_snapshot()
+    assert frame and "Lisa" in frame["html"]
+    assert read_dashboard_snapshot("sid")["session_id"] == "sid"
 
 
 def test_read_snapshot_returns_frame(in_tmp):
@@ -61,13 +70,13 @@ def test_read_snapshot_stamps_session_id(in_tmp):
     assert "session_id" not in read_dashboard_snapshot()
 
 
-def test_ensure_dashboard_creates_starter(in_tmp):
+def test_the_starter_is_what_an_uncustomised_agent_serves(in_tmp):
     meta = {"name": "Lisa", "skills": [
         {"name": "daily-brief", "description": "d", "location": "project"},
         {"name": "meeting_prep", "description": "d", "location": "project"},
     ]}
     ensure_dashboard(meta)
-    html = (in_tmp / ".co" / "dashboard.html").read_text(encoding="utf-8")
+    html = read_dashboard_snapshot()["html"]
     assert "Lisa" in html
     assert 'data-ochat-skill="daily-brief"' in html
     assert 'data-ochat-skill="meeting_prep"' in html
@@ -311,7 +320,7 @@ def test_starter_has_no_buttons_for_unpublished_skills(in_tmp):
         {"name": "my-notes", "description": "", "location": "user"},
         {"name": "dashboard", "description": "", "location": "builtin"},
     ]})
-    html = (in_tmp / ".co" / "dashboard.html").read_text(encoding="utf-8")
+    html = read_dashboard_snapshot()["html"]
     assert "data-ochat-skill" not in html
     assert ".co/skills/" in html  # falls back to the empty state
 
@@ -388,18 +397,21 @@ def test_ensure_dashboard_takes_an_explicit_project_dir(tmp_path, monkeypatch):
 
     ensure_dashboard({"name": "Explicit", "skills": []}, project_dir=project)
 
-    assert (project / ".co" / "dashboard.html").exists()
+    assert dashboard_module._project_dir == project
+    assert dashboard_module.dashboard_path() == project / ".co" / "dashboard.html"
 
 
-def test_ensure_dashboard_warns_instead_of_crashing_on_an_unwritable_dir(in_tmp, monkeypatch, capsys):
+def test_a_read_only_project_still_gets_a_home(in_tmp, monkeypatch):
+    """This used to be a warning and no Home at all: the starter was written to
+    disk, and a read-only project could not be written to. Rendering it instead
+    of storing it removes the failure mode rather than handling it."""
     def refuse(*args, **kwargs):
         raise PermissionError("read-only file system")
     monkeypatch.setattr(Path, "write_text", refuse)
 
-    ensure_dashboard({"name": "Locked", "skills": []})  # host startup must survive
+    ensure_dashboard({"name": "Locked", "skills": []})
 
-    assert "Could not write" in capsys.readouterr().err
-    assert read_dashboard_snapshot() is None
+    assert "Locked" in read_dashboard_snapshot()["html"]
 
 
 def test_the_starter_template_ships_in_the_wheel():
@@ -421,11 +433,13 @@ def test_the_fragment_templates_do_not_leak_into_the_page():
 # --- Where the Home page lives: .co/, found from the project root ---
 
 
-def test_the_starter_is_written_into_the_co_directory(in_tmp):
+def test_starting_a_host_writes_no_file(in_tmp):
+    """The whole point. A file written once is a fossil of the starter that
+    happened to be installed that day, and nothing ever refreshes it."""
     (in_tmp / ".co").mkdir()
     ensure_dashboard({"name": "Lisa", "skills": []})
 
-    assert (in_tmp / ".co" / "dashboard.html").is_file()
+    assert not (in_tmp / ".co" / "dashboard.html").exists()
     assert not (in_tmp / "dashboard.html").exists()
 
 
@@ -439,8 +453,6 @@ def test_the_project_is_found_from_a_subdirectory(in_tmp, monkeypatch):
 
     ensure_dashboard({"name": "Lisa", "skills": []})
 
-    assert (in_tmp / ".co" / "dashboard.html").is_file()
-    assert not (nested / "dashboard.html").exists()
     assert dashboard_module.dashboard_path() == in_tmp / ".co" / "dashboard.html"
 
 
@@ -466,10 +478,10 @@ def test_the_co_copy_wins_when_both_exist(in_tmp):
 
 
 def test_an_agent_outside_a_project_still_gets_a_home(in_tmp):
-    """No .co/ anywhere above: the Home lands where the agent was started."""
+    """No .co/ anywhere above, and nowhere to write one — still a Home."""
     ensure_dashboard({"name": "Loose", "skills": []})
 
-    assert (in_tmp / ".co" / "dashboard.html").is_file()
+    assert "Loose" in read_dashboard_snapshot()["html"]
 
 
 def test_a_personal_starter_template_replaces_the_bundled_one(in_tmp, monkeypatch, tmp_path):

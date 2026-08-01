@@ -74,6 +74,11 @@ Declare the table sortable and the client makes its headers clickable:
 ## Rules
 
 - One file: `.co/dashboard.html`. No sidecar JSON, no build step.
+- **It does not exist until you write it.** Until then the client shows a built-in
+  starter Home — name, model, skills, tools, trust, address — rendered fresh each
+  time, so it follows the agent as skills come and go. Writing the file replaces
+  that for good: from then on it is yours, nothing regenerates it, and a skill you
+  add later will not appear until you add its button.
 - Keep it under 2MB — the host won't send a larger file, and the Home pane goes blank. Inline images are base64, which is ~33% bigger than the source file, so compress screenshots before embedding them.
 - Keep the responsive layout and `prefers-color-scheme` dark mode intact.
 - **A media query here measures the Home pane, not the browser window.** The page renders inside its own iframe, so `@media (max-width: 560px)` means "when the pane is narrower than 560px" — the question you wanted to ask. No container queries needed. The pane is resizable, roughly 320–900px, so design for the narrow end: a four-column table needs about 500px, and below that the column the table exists for ends up off the right edge behind a scrollbar. Give wide tables a stacked form for narrow panes.
