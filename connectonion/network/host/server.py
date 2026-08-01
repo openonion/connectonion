@@ -40,6 +40,7 @@ from ... import address
 from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
 from .ws_router import run_ws_session
+from .schedule import create_schedule_lifespan
 from ..trust import TrustAgent, get_default_trust_level, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
 from .auth import extract_and_authenticate
@@ -299,6 +300,25 @@ def _print_host_banner(
             console.print()
 
     console.print()
+
+
+def _both(first, second):
+    """Run two lifespan callbacks as one, in order.
+
+    The ASGI app takes a single on_startup and a single on_shutdown, and there
+    are now two things that want them — the relay and the schedule. Either may
+    be absent, so this also has to handle None.
+    """
+    if first is None:
+        return second
+    if second is None:
+        return first
+
+    async def run_both():
+        await first()
+        await second()
+
+    return run_both
 
 
 def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner, *, profile: dict | None = None):
@@ -590,6 +610,16 @@ def host(
             relay_url, addr_data, summary, port, relay_session_runner,
             profile=_build_agent_profile(agent_metadata),
         )
+
+    # The schedule is not conditional on the relay. An agent reachable only on
+    # localhost still has recurring work to do, and tying its clock to whether
+    # it happens to be announced would make "it stopped running at night" a
+    # networking question.
+    sched_startup, sched_shutdown = create_schedule_lifespan(
+        co_dir, create_agent, storage, result_ttl, console=Console(),
+    )
+    on_startup = _both(on_startup, sched_startup)
+    on_shutdown = _both(sched_shutdown, on_shutdown)   # stop the clock first
 
     app = asgi_create_app(
         route_handlers=route_handlers,
