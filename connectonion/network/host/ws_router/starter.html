@@ -11,13 +11,15 @@
      have to be inlined as data: URIs, so there are none. */
   :root {
     color-scheme: light dark;
-    --bg: #fbfbfa; --fg: #171717; --muted: #6b6b6b; --faint: #8a8a8a;
-    --card: #fff; --line: #e7e7e5; --hover: #f4f4f2; --accent: #16a34a;
+    --bg: #f2f2f0; --fg: #171717; --muted: #6b6b6b; --faint: #8a8a8a;
+    --card: #fff; --line: #e6e6e3; --hover: #f6f6f4; --accent: #16a34a;
+    --alert: #b91c1c; --alert-bg: #fef2f2; --alert-line: #f2cccc;
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #131313; --fg: #ededed; --muted: #a0a0a0; --faint: #8b8b8b;
-      --card: #1a1a1a; --line: #2b2b2b; --hover: #212121; --accent: #22c55e;
+      --bg: #0e0e0e; --fg: #ededed; --muted: #a0a0a0; --faint: #8b8b8b;
+      --card: #1a1a1a; --line: #2b2b2b; --hover: #232323; --accent: #22c55e;
+      --alert: #fca5a5; --alert-bg: #251617; --alert-line: #4a2224;
     }
   }
   * { box-sizing: border-box; margin: 0; }
@@ -82,52 +84,81 @@
      from the page by one percent of luminance renders as its border alone, and
      that border then duplicates the hairlines of the rows inside it — two
      separator systems stacked. The rows carry themselves. */
-  .section {
-    font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
-    color: var(--faint); margin: 0 0 8px 2px;
-  }
-  .empty {
+  /* Cards, because a panel is a set of separate objects each answering one
+     question — is anything wrong, what runs next, what can I run, what happened
+     — and stacking them as identical bare lists made the page read as one long
+     catalogue with no primary. The page background is deliberately darker than
+     a card: the previous palette put #fff on #fbfbfa, one percent apart, so the
+     card was invisible and only its border drew. */
+  .card {
     background: var(--card); border: 1px solid var(--line); border-radius: 12px;
-    padding: 20px 18px;
+    padding: 14px; margin-bottom: 10px;
   }
-  .empty p { color: var(--muted); font-size: 13.5px; }
-  .empty code {
-    font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px;
-    background: var(--hover); padding: 1px 5px; border-radius: 4px;
+  .card > h2 {
+    font-size: 11px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--faint); margin: 0 0 10px 2px;
   }
 
-  /* The one disclosure on the page. A details element is the only fold that
-     works with no JavaScript. It is centred and bordered so it cannot be
-     mistaken for a skill row — left-aligned, borderless, chevroned right:
-     pressing it must not feel like it might run something.
+  /* The verdict. Above everything except the agent's name, because "is anything
+     wrong" outranks "what is this made of" — a failing schedule used to render as
+     an eleven-pixel right-aligned red word in the third list down the page.
 
-     A down-chevron under a sentence, not a sideways triangle beside a slug. The
-     triangle is the file-tree idiom, and this page spent a redesign getting out
-     of the file browser. */
-  .more { margin-top: 6px; }
-  .more > summary {
-    display: flex; align-items: center; justify-content: center; gap: 7px;
-    padding: 11px 12px; cursor: pointer; list-style: none;
-    border: 1px solid var(--line); border-radius: 9px;
-    font-size: 12.5px; font-weight: 600; color: var(--muted);
-    transition: background .12s, border-color .12s, color .12s;
+     Absent when nothing is wrong. A permanent green "all systems ok" badge is
+     worse than useless: it teaches the eye to skip the exact region the alarm
+     will one day appear in. Healthy is expressed by this being missing and by a
+     column of green dots below. */
+  .alert {
+    margin-top: 14px; padding: 10px 12px 11px 13px;
+    background: var(--alert-bg);
+    border: 1px solid var(--alert-line); border-left: 3px solid var(--alert);
+    border-radius: 8px;
+    font-size: 13px; line-height: 1.4; font-weight: 550; color: var(--alert);
   }
-  .more > summary::-webkit-details-marker { display: none; }
-  .more > summary::after {
-    content: ""; flex: none; width: 6px; height: 6px; margin-top: -3px;
-    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
-    transform: rotate(45deg); transition: transform .15s;
+  .alert b { font-weight: 700; }
+  .alert .detail {
+    display: block; margin-top: 3px; font-size: 11.5px; font-weight: 400; opacity: .85;
   }
-  .more[open] > summary::after { transform: rotate(-135deg); margin-top: 3px; }
-  .more > summary:hover { background: var(--hover); color: var(--fg); border-color: var(--faint); }
-  .more > summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-  .more > summary:active { background: var(--line); }
-  .more[open] > .rows { margin-top: 6px; }
-  /* <summary> text cannot change without JS; two labels and a swap can. */
-  .lbl-less { display: none; }
-  .more[open] .lbl-more { display: none; }
-  .more[open] .lbl-less { display: inline; }
+  .alert:empty { display: none; }
 
+  /* What runs without you. Not a button — nothing here can be pressed yet — so
+     it deliberately has no chevron: promising a click that does nothing is what
+     the skill rows were fixed to stop doing.
+
+     The dot column is the point. Three states down a left edge is the fastest
+     read on the page: a column of green means fine, one red means there, and
+     neither needs a word read. */
+  .sched {
+    display: flex; align-items: center; gap: 10px; width: 100%;
+    padding: 9px 6px; border-radius: 9px; text-align: left; font: inherit;
+    border: 0; background: none; color: var(--fg);
+  }
+  .sched .dot {
+    flex: none; width: 7px; height: 7px; border-radius: 50%; background: var(--faint);
+  }
+  .sched.ok .dot { background: var(--accent); }
+  .sched.bad .dot, .sched.late .dot { background: var(--alert); }
+  /* Late is the loudest state on the page and the only halo: it does not mean a
+     run failed, it means no run happened — the scheduler stopped. */
+  .sched.late .dot { box-shadow: 0 0 0 3px var(--alert-bg); }
+
+  .sched-main { flex: 1; min-width: 0; }
+  .sched-name {
+    display: block; font-size: 13.5px; font-weight: 600; letter-spacing: -0.004em;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sched-sub {
+    display: block; margin-top: 2px; font-size: 11.5px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .sched.bad .sched-sub, .sched.late .sched-sub { color: var(--alert); }
+
+  /* The future, not the past. This column is why the page is a panel and not a
+     log — and it is coarse because it is rendered once and read later. */
+  .sched-when {
+    flex: none; font-size: 12px; font-weight: 600;
+    font-variant-numeric: tabular-nums; color: var(--muted);
+  }
+  .sched.bad .sched-when, .sched.late .sched-when { color: var(--alert); font-weight: 700; }
 
   .rows { display: flex; flex-direction: column; gap: 2px; }
 
@@ -205,7 +236,9 @@
       <div class="id"><span class="mark">$initial</span><h1>$name</h1></div>
       <p class="tagline">$tagline</p>
       <p class="sub">$subtitle</p>
+$alert
     </header>
+$schedule
 $body
 $activity
 $address
@@ -229,9 +262,12 @@ Placeholders are $name-style (string.Template). Do not use $ for anything else.
 
 <template id="skill"><button class="skill" data-ochat-skill="$name"><span class="name">$name</span><span class="desc">$description</span></button></template>
 
-<template id="list"><div class="rows">
+<template id="list"><section class="card">
+    <h2>Skills</h2>
+    <div class="rows">
 $rows
-  </div></template>
+    </div>
+  </section></template>
 
 <template id="more"><details class="more">
     <summary><span class="lbl-more">$count more skill$plural</span><span class="lbl-less">Show fewer</span></summary>
@@ -241,12 +277,17 @@ $rows
   </details></template>
 
 <template id="empty"><section class="card empty">
+    <h2>Skills</h2>
     <p>No skills yet. Add one to <code>.co/skills/</code> and it shows up here as a one-click action.</p>
   </section></template>
 
-<template id="activity"><section class="card sec">
+<template id="activity"><section class="card">
     <h2>$title</h2>
 $rows
   </section></template>
+
+<template id="alert"><p class="alert">$headline<span class="detail">$detail</span></p></template>
+
+<template id="sched"><div class="sched $tone"><span class="dot"></span><span class="sched-main"><span class="sched-name">$name</span><span class="sched-sub">$sub</span></span><span class="sched-when">$when</span></div></template>
 
 <template id="act"><div class="act"><span class="what">$what</span><span class="meta $tone">$meta</span></div></template>

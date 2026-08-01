@@ -382,6 +382,8 @@ def render_starter(agent_metadata):
         tagline=_tagline(agent_metadata),
         subtitle=_subtitle(agent_metadata, len(skills)),
         address=_address_line(agent_metadata),
+        alert=_alert(*scheduled_entries(), now=_now()),
+        schedule=_schedule_card(scheduled_entries()[0], _now()),
         activity=_activity_sections(),
         body=_skill_sections(skills),
     )
@@ -495,7 +497,7 @@ def scheduled_entries():
     the scheduler cannot disagree about what an entry means.
     """
     try:
-        from ..schedule import load_entries, load_state, last_run
+        from ..schedule import load_entries, load_state, last_run, next_run
     except Exception:
         return [], []
     try:
@@ -503,6 +505,7 @@ def scheduled_entries():
         state = load_state(_co())
     except Exception:
         return [], []
+    now = _now()
     out = []
     for e in entries:
         st = state.get(e.name) or {}
@@ -513,6 +516,7 @@ def scheduled_entries():
             "cadence": f"every {_cadence(e)}" if e.interval else str(e.at or ""),
             "status": st.get("status"),
             "last_run": when,
+            "next_run": next_run(e, when, now),
         })
     return out, problems
 
@@ -569,6 +573,106 @@ def _collapse(runs, scheduled):
                        "run": r})
     return folded
 
+def _now():
+    from datetime import datetime, timezone
+    return datetime.now(timezone.utc)
+
+
+# Three ticks. One missed tick is a slow turn, not a fault.
+GRACE_SECONDS = 3 * 60
+
+
+def _until(seconds):
+    """How long until something fires, coarsely.
+
+    The mirror of ``_ago``, coarse for its reasons plus one more: this page is
+    rendered on connect and after a run, so a value can be an hour stale by the
+    time anybody reads it. "in 3h" survives that; "in 2h 47m" is wrong the moment
+    it is painted, and a countdown that cannot count is worse than none.
+    """
+    if seconds <= 120:
+        return "due now"                      # the tick is 60s; this is true
+    if seconds < 3600:
+        return f"in {int(seconds // 60)}m"
+    if seconds < 86400:
+        return f"in {int(seconds // 3600)}h"
+    return f"in {int(seconds // 86400)}d"
+
+
+def _schedule_state(entry, now):
+    """``(tone, when)`` for one entry — the whole health model, in one place.
+
+    ``late`` is the state this page could not previously express, and it is not a
+    louder ``failed``: failed means the run happened and broke, late means no run
+    happened at all. A daily entry that last ran five days ago has been owed a
+    run for four of them, which says the scheduler stopped rather than the work.
+    """
+    next_at = entry.get("next_run")
+    if next_at is None:
+        return "off", "never"
+    behind = (now - next_at).total_seconds()
+    if behind > GRACE_SECONDS:
+        return "late", _ago(behind).replace(" ago", " late")
+    if entry.get("status") == "failed":
+        return "bad", _until(-behind)
+    return "ok", _until(-behind)
+
+
+def _alert(scheduled, problems, now):
+    """The verdict, or nothing at all.
+
+    Nothing at all is the important half — see the note beside `.alert` in
+    starter.html.
+    """
+    _, fragments = _starter_templates()
+    states = {s["name"]: _schedule_state(s, now)[0] for s in scheduled}
+    late = [s for s in scheduled if states[s["name"]] == "late"]
+    failed = [s for s in scheduled if states[s["name"]] == "bad"]
+
+    if len(late) + len(failed) > 1:
+        headline = escape(f"{len(late) + len(failed)} schedules need attention")
+        detail = ", ".join(s["name"] for s in late + failed)
+    elif late:
+        entry = late[0]
+        headline = (f"<b>{escape(entry['name'])}</b> has not run — "
+                    f"{escape(_schedule_state(entry, now)[1])}")
+        detail = (f"{entry['cadence']} · last ran "
+                  f"{_ago((now - entry['last_run']).total_seconds())}"
+                  if entry["last_run"] else f"{entry['cadence']} · never ran")
+    elif failed:
+        entry = failed[0]
+        headline = f"<b>{escape(entry['name'])}</b> failed on its last run"
+        detail = entry["cadence"]
+    elif problems:
+        headline = escape(f"{len(problems)} schedule entr"
+                          f"{'ies' if len(problems) != 1 else 'y'} ignored")
+        detail = problems[0] + (", …" if len(problems) > 1 else "")
+    else:
+        return ""
+    return "      " + fragments["alert"].safe_substitute(
+        headline=headline, detail=escape(detail)).strip()
+
+
+def _schedule_card(scheduled, now):
+    """What runs without you, soonest first."""
+    if not scheduled:
+        return ""
+    _, fragments = _starter_templates()
+    rows = []
+    for entry in sorted(scheduled, key=lambda e: e["next_run"] or now):
+        tone, when = _schedule_state(entry, now)
+        if entry["last_run"]:
+            sub = (f"{entry['cadence']} · {entry['status'] or 'ran'} "
+                   f"{_ago((now - entry['last_run']).total_seconds())}")
+        else:
+            sub = f"{entry['cadence']} · not yet run"
+        rows.append("      " + fragments["sched"].safe_substitute(
+            tone=tone, name=escape(entry["name"]), sub=escape(sub),
+            when=escape(when)).strip())
+    return "  " + fragments["activity"].safe_substitute(
+        title="Schedule", rows="\n".join(rows)).strip()
+
+
 def _activity_sections():
     """Both sections, or nothing at all.
 
@@ -583,39 +687,25 @@ def _activity_sections():
     now = datetime.now(timezone.utc)
     out = []
 
-    scheduled, problems = scheduled_entries()
-    if scheduled:
-        rows = []
-        for s in scheduled:
-            if s["last_run"] is None:
-                meta, tone = "not yet run", ""
-            else:
-                ago = _ago((now - s["last_run"]).total_seconds())
-                meta = f"{s['status'] or 'ran'} · {ago}"
-                tone = "bad" if s["status"] == "failed" else ""
-            rows.append(row.safe_substitute(
-                # The entry's name, not its run text: an entry can be called
-                # "check for new contracts" while its instruction stays a
-                # paragraph. Entry.name falls back to run when none is given.
-                what=escape(f"{s['name']}  ({s['cadence']})"),
-                meta=escape(meta), tone=tone).strip())
-        out.append(section.safe_substitute(
-            title="Scheduled", rows="\n".join("      " + r for r in rows)).strip())
-
-    if problems:
-        # A dropped entry renders as nothing, and so does a schedule that is
-        # merely not due yet. Saying which line was thrown away is the whole
-        # difference between the two.
-        rows = [row.safe_substitute(what=escape(p), meta="ignored", tone="bad").strip()
-                for p in problems]
-        out.append(section.safe_substitute(
-            title="Schedule problems",
-            rows="\n".join("      " + r for r in rows)).strip())
+    # The Schedule card owns every scheduled entry, with its own cadence, status
+    # and next run. Listing them again here said the same three things twice in
+    # two formats — on a three-entry agent, three of four "Recent" rows were
+    # restatements. Problems moved into the verdict banner, which is where a
+    # config error that means "this will never fire" belongs.
+    scheduled, _ = scheduled_entries()
 
     runs = recent_runs()
     if runs:
         rows = []
-        for item in _collapse(runs, scheduled):
+        # Only what a person asked for. A scheduled firing has its own row in
+        # the Schedule card carrying cadence, status and next run; repeating it
+        # here said the same thing twice in two formats.
+        interactive = [i for i in _collapse(runs, scheduled) if i.get("key") is None]
+        if not interactive:
+            # An agent whose every run is scheduled has nothing to say here, and
+            # an empty card with a heading is worse than no card.
+            return "\n".join(out)
+        for item in interactive:
             r = item["run"]          # the newest of a folded group
             if r.get("status") == "running":
                 meta, tone = "running", "live"

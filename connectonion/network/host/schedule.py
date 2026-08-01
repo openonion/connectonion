@@ -224,6 +224,30 @@ def _clock_due(entry, last_run, now):
     return last_run.astimezone(_zone(entry)) < occurrence
 
 
+def next_run(entry: Entry, last_run: Optional[datetime], now: datetime) -> Optional[datetime]:
+    """The moment this entry is next supposed to fire.
+
+    Deliberately returns a time in the *past* when the entry is already owed a
+    run. The caller wants to know how late, and collapsing that to "now" hides
+    the only signal that says the scheduler has stopped ticking: an entry that
+    runs every day and last ran five days ago has not failed — it did not run at
+    all, which is a different fault with a different fix.
+
+    Mirrors ``is_due`` exactly — same catch-up rule, read forwards — because a
+    page that computes due-ness on its own is a page that can disagree with the
+    scheduler about what an entry means.
+    """
+    if entry.interval is not None:
+        return now if last_run is None else last_run + entry.interval
+    parsed = _parse_at(entry)
+    occurrence = _last_occurrence(entry, now)
+    if parsed is None or occurrence is None:
+        return None                    # never fires; load_entries reports it
+    if is_due(entry, last_run, now):
+        return occurrence              # the one it owes you, in the past
+    return occurrence + (timedelta(days=7) if parsed[0] is not None else timedelta(days=1))
+
+
 def is_due(entry: Entry, last_run: Optional[datetime], now: datetime) -> bool:
     """Whether this entry should run now.
 
