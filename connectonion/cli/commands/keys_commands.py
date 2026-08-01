@@ -10,11 +10,14 @@ LLM-Note:
 """
 
 import os
+import shutil
+import subprocess
 from pathlib import Path
+
+from dotenv import load_dotenv
 from rich.console import Console
 from rich.panel import Panel
 from rich.table import Table
-from dotenv import load_dotenv
 
 console = Console()
 
@@ -254,6 +257,35 @@ def write_derived_ssh_key(seed_phrase: str) -> Path:
     return SSH_PRIVATE_KEY
 
 
+def _public_key_identity(public_line: str) -> str:
+    """Return the key type and payload, excluding an optional comment."""
+    return " ".join(public_line.split()[:2])
+
+
+def _public_key_from_private(private_path: Path) -> str | None:
+    """Read the public half of an OpenSSH private key."""
+    try:
+        result = subprocess.run(
+            ["ssh-keygen", "-yf", str(private_path)],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+    except OSError:
+        return None
+    return result.stdout.strip() if result.returncode == 0 else None
+
+
+def _backup_path(path: Path) -> Path:
+    """Choose a backup name without overwriting an earlier backup."""
+    candidate = path.with_name(path.name + ".bak")
+    index = 1
+    while candidate.exists():
+        candidate = path.with_name(f"{path.name}.bak.{index}")
+        index += 1
+    return candidate
+
+
 def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
     """Print the SSH public key derived from the recovery phrase.
 
@@ -261,7 +293,6 @@ def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
     one thing to write down, and the operator can reach a provisioned server
     without a second secret to manage.
     """
-    from pathlib import Path
     from ... import address
 
     seed = addr_data.get("seed_phrase")
@@ -289,10 +320,33 @@ def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
     private_path = ssh_dir / "connectonion_ed25519"
     public_path = ssh_dir / "connectonion_ed25519.pub"
 
-    if private_path.exists():
-        console.print(f"[yellow]{private_path} already exists — not overwriting.[/yellow]")
-        console.print("[dim]Delete it first if you want it rewritten; the key is derived, so nothing is lost.[/dim]\n")
+    expected = _public_key_identity(keys["public_line"])
+    existing_private_public = (
+        _public_key_from_private(private_path) if private_path.exists() else None
+    )
+    existing_public = public_path.read_text().strip() if public_path.exists() else None
+
+    if (
+        existing_private_public
+        and _public_key_identity(existing_private_public) == expected
+        and existing_public
+        and _public_key_identity(existing_public) == expected
+    ):
+        console.print(f"[green]✓[/green] {private_path} already contains the derived SSH key.")
+        console.print("[dim]Nothing to do.[/dim]\n")
         return
+
+    backups = []
+    for path in (private_path, public_path):
+        if path.exists():
+            backup = _backup_path(path)
+            shutil.copy2(path, backup)
+            backups.append(backup)
+
+    if backups:
+        console.print("[yellow]The existing SSH key does not match the derived key used for new servers.[/yellow]")
+        for backup in backups:
+            console.print(f"[dim]Backed up {backup}[/dim]")
 
     private_path.write_text(keys["private_key"])
     private_path.chmod(0o600)
