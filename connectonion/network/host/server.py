@@ -357,14 +357,27 @@ def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: 
             failures = 0
             while True:
                 try:
-                    ws = await relay.connect(relay_url)
-                    announce_msg = announce.create_announce_message(
-                        addr_data, summary, endpoints=endpoints, relay=relay_url, profile=profile
-                    )
-                    await relay.serve_loop(
-                        ws, announce_msg,
+                    # serve_once owns the socket's whole life. Opening it here
+                    # and dropping it on either exit path left one in
+                    # CLOSE-WAIT per reconnect (#548). The announce message is
+                    # built by callback, after the connection, because it is
+                    # signed and has to be fresh for the socket it announces on.
+                    await relay.serve_once(
+                        relay_url,
+                        lambda: announce.create_announce_message(
+                            addr_data, summary, endpoints=endpoints,
+                            relay=relay_url, profile=profile,
+                        ),
                         addr_data=addr_data, session_handler=relay_session_runner,
                     )
+                    if failures:
+                        # Say so. The log printed `Relay disconnected` and then
+                        # nothing, so a journal read as a permanent outage when
+                        # the truth was a three-second blip — telling them apart
+                        # meant inspecting sockets on the box.
+                        relay_console.print(
+                            f"[magenta]\\[host][/magenta] [dim]relay reconnected[/dim]"
+                        )
                     failures = 0  # clean disconnect — next reconnect is immediate
                 except asyncio.CancelledError:
                     raise  # shutdown — propagate so on_shutdown can await it cleanly
