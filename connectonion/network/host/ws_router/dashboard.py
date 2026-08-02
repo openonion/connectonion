@@ -521,15 +521,28 @@ def scheduled_entries():
 
 
 def _why(reason, limit=60):
-    """The first line of a failure, short enough to sit in a row.
+    """The first line of a failure that carries information, short enough to
+    sit in a row.
+
+    Not literally the first line. Providers format refusals as banners, and the
+    real one this was built for opens with a row of equals signs:
+
+        ======================================================================
+        ❌ Insufficient ConnectOnion Credits
+        ======================================================================
+
+    The sentence a reader needs is the third line. Rendering line one turned
+    the row into punctuation.
 
     Naming the failure is the job; the traceback belongs to the log, and the
-    row now tells the reader which log to open and roughly when. A 500-character
-    exception rendered in full would push the panel sideways to say what its
-    first six words already said.
+    row already tells the reader which log to open and roughly when.
     """
-    head = str(reason).strip().splitlines()[0] if str(reason).strip() else ""
-    return head if len(head) <= limit else head[:limit - 1] + "…"
+    for line in str(reason).splitlines():
+        line = line.strip()
+        # A line with no letters or digits is decoration, not a message.
+        if line and any(ch.isalnum() for ch in line):
+            return line if len(line) <= limit else line[:limit - 1] + "…"
+    return ""
 
 
 def _cadence(entry):

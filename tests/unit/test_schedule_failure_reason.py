@@ -116,3 +116,27 @@ def test_the_tick_records_what_the_run_raised(tmp_path, monkeypatch):
     entry = sched.load_state(tmp_path).get("nightly") or {}
     assert entry.get("status") == "failed"
     assert "Insufficient ConnectOnion Credits" in (entry.get("reason") or "")
+
+
+def test_a_banner_shaped_error_does_not_render_as_a_row_of_equals_signs(tmp_path,
+                                                                        monkeypatch):
+    """The real one. Taking literally the first line showed the separator.
+
+    This is what the deployed agent actually wrote into its state file — the
+    provider formats the refusal as a banner, and the sentence a reader needs
+    is the third line, not the first.
+    """
+    co = setup_page(tmp_path, monkeypatch, ONE_ENTRY)
+    sched.record_run(co, "nightly", when=datetime.now(timezone.utc),
+                     status="failed", session_id=None, reason="""
+======================================================================
+❌ Insufficient ConnectOnion Credits
+======================================================================
+Account:     0x561605f3...dbe4
+Balance:     $0.0018
+""")
+
+    html = dashboard._activity_sections()
+
+    assert "Insufficient ConnectOnion Credits" in html
+    assert "=====" not in html
