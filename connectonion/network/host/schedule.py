@@ -324,6 +324,7 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
     host() can compose them.
     """
     task: dict = {}
+    in_flight: set = set()
 
     def _say(message: str) -> None:
         if console:
@@ -352,9 +353,23 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         state = load_state(co_dir)
 
         for entry in entries:
+            if entry.name in in_flight:
+                # record_run only happens after the turn returns, so last_run is
+                # stale for the whole duration — an entry whose work outlives its
+                # interval is "due" again while the first copy is still going, and
+                # again after that. Two copies of a pipeline that downloads,
+                # extracts and writes to one table race each other into the same
+                # rows (#537).
+                #
+                # Said out loud rather than skipped quietly: an entry that
+                # overruns every time is a misconfiguration — the schedule claims
+                # fifteen minutes and the truth is twenty-five.
+                _say(f"[yellow]{entry.name} still running, skipping this tick[/yellow]")
+                continue
             if not is_due(entry, last_run(state, entry.name), now):
                 continue
             _say(f"running {entry.name}")
+            in_flight.add(entry.name)
             try:
                 # A turn takes as long as it takes — four minutes is normal for
                 # real work. In a thread, so the heartbeat keeps going and the
@@ -366,6 +381,11 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
                 _say(f"[red]{entry.name} failed: {exc}[/red]")
                 record_run(co_dir, entry.name, when=now, status="failed", session_id=None)
                 continue
+            finally:
+                # Released whatever happened. A flag that outlived a crash would
+                # mean the entry never runs again, which is worse than the
+                # overlap it prevents.
+                in_flight.discard(entry.name)
             record_run(co_dir, entry.name, when=now, status=status, session_id=session_id)
 
     async def loop() -> None:
