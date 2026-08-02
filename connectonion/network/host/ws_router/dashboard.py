@@ -515,8 +515,34 @@ def scheduled_entries():
             "status": st.get("status"),
             "last_run": when,
             "running": e.name in _running,
+            "reason": st.get("reason"),
         })
     return out, problems
+
+
+def _why(reason, limit=60):
+    """The first line of a failure that carries information, short enough to
+    sit in a row.
+
+    Not literally the first line. Providers format refusals as banners, and the
+    real one this was built for opens with a row of equals signs:
+
+        ======================================================================
+        ❌ Insufficient ConnectOnion Credits
+        ======================================================================
+
+    The sentence a reader needs is the third line. Rendering line one turned
+    the row into punctuation.
+
+    Naming the failure is the job; the traceback belongs to the log, and the
+    row already tells the reader which log to open and roughly when.
+    """
+    for line in str(reason).splitlines():
+        line = line.strip()
+        # A line with no letters or digits is decoration, not a message.
+        if line and any(ch.isalnum() for ch in line):
+            return line if len(line) <= limit else line[:limit - 1] + "…"
+    return ""
 
 
 def _cadence(entry):
@@ -609,7 +635,14 @@ def _activity_sections():
                 # `failed` is different: the turn raised, and the scheduler
                 # genuinely knows that.
                 if s["status"] == "failed":
-                    meta, tone = f"failed · {ago}", "bad"
+                    # The reason, when the scheduler caught one. A deployed
+                    # agent's console is on a machine nobody is watching, so
+                    # `failed` alone costs an ssh session to turn into
+                    # "the account is out of credits" (#541).
+                    meta = f"failed · {ago}"
+                    if s.get("reason"):
+                        meta += f" · {_why(s['reason'])}"
+                    tone = "bad"
                 else:
                     meta, tone = f"ran · {ago}", ""
             rows.append(row.safe_substitute(

@@ -295,12 +295,18 @@ def load_state(co_dir: Path) -> dict:
 
 
 def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
-               session_id: Optional[str]) -> None:
+               session_id: Optional[str], reason: Optional[str] = None) -> None:
     """Remember one run, pointing at the session it produced.
 
     Only a pointer: .co/session_results.jsonl already holds the prompt, the
     transcript, the result and the duration. Copying any of that here would be
     a second source of truth that drifts.
+
+    `reason` is the exception from a run that raised, and is the exception to
+    that rule — a run that dies before producing a session leaves no session to
+    point at, so this file is the only place its cause can live. Without it Home
+    says `failed` and finding out that the account was out of credits costs an
+    ssh session (#541).
     """
     co_dir = Path(co_dir)
     co_dir.mkdir(parents=True, exist_ok=True)
@@ -309,11 +315,16 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
     handle = _lock(co_dir / f"{STATE_FILE}.lock")
     try:
         state = load_state(co_dir)
+        # Rebuilt rather than updated, so a later success drops the reason a
+        # previous failure left behind. A stale cause on a healthy entry is a
+        # worse lie than no cause at all.
         state[name] = {
             "last_run": when.astimezone(timezone.utc).isoformat(),
             "status": status,
             "session_id": session_id,
         }
+        if reason:
+            state[name]["reason"] = reason
         tmp = path.with_suffix(path.suffix + ".tmp")
         tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
         os.replace(tmp, path)      # readers see the old file or the new one
@@ -395,7 +406,8 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
                 # One entry failing is not the scheduler failing. Record it and
                 # keep the others on time.
                 _say(f"[red]{entry.name} failed: {exc}[/red]")
-                record_run(co_dir, entry.name, when=now, status="failed", session_id=None)
+                record_run(co_dir, entry.name, when=now, status="failed",
+                           session_id=None, reason=str(exc))
                 continue
             finally:
                 # Released whatever happened. A flag that outlived a crash would
