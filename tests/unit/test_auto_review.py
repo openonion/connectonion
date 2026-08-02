@@ -119,7 +119,10 @@ class TestTheUnknown:
     """An unrecognised tool is not evidence of safety."""
 
     def test_an_unknown_tool_asks(self):
-        allowed, reason = review("frobnicate", {"x": 1})
+        # consult_model=False: this pins the *rule* layer's answer. With the model
+        # in the loop the same call is a question for it, and a unit test that
+        # reaches the network tests the network.
+        allowed, reason = review("frobnicate", {"x": 1}, consult_model=False)
         assert not allowed
         assert "unknown" in reason.lower() or "recognis" in reason.lower()
 
@@ -130,7 +133,7 @@ class TestTheUnknown:
     def test_every_decision_carries_a_reason(self):
         for tool, args in [("read_file", {"path": "a"}), ("delete", {"path": "a"}),
                            ("frobnicate", {}), ("bash", {"command": "rm -rf /"})]:
-            _, reason = review(tool, args)
+            _, reason = review(tool, args, consult_model=False)
             assert isinstance(reason, str) and reason.strip(), tool
 
 
@@ -157,3 +160,71 @@ class TestItCannotRewriteItsOwnPermissions:
         """The carve-out is the policy files, not the whole directory."""
         allowed, reason = review("write", {"file_path": ".co/logs/run.log"})
         assert allowed, reason
+
+
+class TestTheModelDecidesTheUnknownMiddle:
+    """Rules cover what is obvious. The model is for what is not.
+
+    It is consulted only where the rules said "unrecognised" — never to revisit a
+    refusal, because destructive and outbound are the calls we are surest about
+    and a reviewer that can overturn them can be argued into anything.
+    """
+
+    def _verdict(self, allowed, reason):
+        from connectonion.useful_plugins.tool_approval.auto_review import Verdict
+        return Verdict(allowed=allowed, reason=reason)
+
+    def test_an_unknown_call_goes_to_the_model(self, monkeypatch):
+        import importlib
+        # `connectonion.llm_do` is a function re-exported at package level, which
+        # shadows the module of the same name; sys.modules has the real one.
+        llm_do_mod = importlib.import_module('connectonion.llm_do')
+        seen = {}
+
+        def fake(call, **kw):
+            seen['call'] = call
+            seen['model'] = kw.get('model')
+            return self._verdict(True, 'reads a.json and prints a count')
+
+        monkeypatch.setattr(llm_do_mod, 'llm_do', fake)
+        allowed, reason = review('bash', {'command': 'pdftoppm -r 120 a.pdf out/p'})
+
+        assert allowed
+        assert reason == 'reads a.json and prints a count'
+        assert 'pdftoppm' in seen['call'], 'the model must see the actual command'
+
+    def test_a_destructive_call_never_reaches_the_model(self, monkeypatch):
+        import importlib
+        # `connectonion.llm_do` is a function re-exported at package level, which
+        # shadows the module of the same name; sys.modules has the real one.
+        llm_do_mod = importlib.import_module('connectonion.llm_do')
+
+        def explode(*a, **k):
+            raise AssertionError('the model was consulted about a destructive call')
+
+        monkeypatch.setattr(llm_do_mod, 'llm_do', explode)
+        allowed, _ = review('bash', {'command': 'rm -rf build'})
+        assert not allowed
+
+    def test_a_model_failure_refuses_rather_than_allows(self, monkeypatch):
+        import importlib
+        # `connectonion.llm_do` is a function re-exported at package level, which
+        # shadows the module of the same name; sys.modules has the real one.
+        llm_do_mod = importlib.import_module('connectonion.llm_do')
+        monkeypatch.setattr(llm_do_mod, 'llm_do',
+                            lambda *a, **k: (_ for _ in ()).throw(RuntimeError('no credits')))
+
+        allowed, reason = review('bash', {'command': 'pdftoppm a.pdf out/p'})
+        assert not allowed
+        assert 'RuntimeError' in reason or 'review' in reason.lower()
+
+    def test_the_model_is_skippable(self, monkeypatch):
+        """Callers that must not spend a turn on review can opt out."""
+        import importlib
+        # `connectonion.llm_do` is a function re-exported at package level, which
+        # shadows the module of the same name; sys.modules has the real one.
+        llm_do_mod = importlib.import_module('connectonion.llm_do')
+        monkeypatch.setattr(llm_do_mod, 'llm_do',
+                            lambda *a, **k: (_ for _ in ()).throw(AssertionError('called')))
+        allowed, _ = review('frobnicate', {}, consult_model=False)
+        assert not allowed

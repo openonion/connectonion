@@ -33,7 +33,22 @@ the *owner*, not whoever happens to be connected.
 import re
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from .bash_parser import extract_commands_from_bash
+
+# The reviewer's own prompt. Kept in a file, not a string literal, because it is
+# the judgement itself — the thing most worth reading and arguing with.
+REVIEW_PROMPT = Path(__file__).parent.parent.parent / "prompt_files" / "auto_review.md"
+
+# Small and fast on purpose: this runs before tool calls the agent is waiting on,
+# and the hard cases were already decided by the rules above.
+REVIEW_MODEL = "co/gemini-2.5-flash"
+
+
+class Verdict(BaseModel):
+    allowed: bool
+    reason: str
 
 # Tools that only observe. Everything here is recoverable by definition: reading
 # twice is the same as reading once.
@@ -122,7 +137,10 @@ def _classify_command(cmd: str, raw: str = '') -> tuple[str, str]:
     binary = Path(parts[0]).name
     sub = parts[1] if len(parts) > 1 else ''
 
-    if binary in DESTRUCTIVE_COMMANDS:
+    # Prefix, not equality: `mkfs.ext4` and `mkfs.xfs` are the same command with
+    # a filesystem glued on, and asking a model whether mkfs is safe is a question
+    # that should never be asked.
+    if binary in DESTRUCTIVE_COMMANDS or binary.split('.')[0] in DESTRUCTIVE_COMMANDS:
         return 'destructive', f'`{binary}` destroys or changes what it touches'
     subs = _subcommands(binary, raw or cmd)
     if binary in DESTRUCTIVE_SUBCOMMANDS:
@@ -143,7 +161,37 @@ def _classify_command(cmd: str, raw: str = '') -> tuple[str, str]:
     return 'unknown', f'`{binary}` is not a command this reviewer knows'
 
 
-def review(tool_name: str, tool_args: dict, project_dir: Path = None) -> tuple[bool, str]:
+def _ask_model(tool_name: str, tool_args: dict) -> tuple[bool, str]:
+    """Adjudicate what the rules did not recognise.
+
+    Only ever reached for the unknown middle. A rule-based refusal — destructive,
+    outbound, outside the workspace — is never revisited here: those are the
+    decisions we are most sure of, and a model that can overturn them is a model
+    that can be argued into anything by the conversation it just read.
+
+    Any failure means refuse. The prompt exists to decide "allow"; when it cannot
+    run, the honest answer is the one that costs a question rather than a
+    deletion.
+    """
+    from ...llm_do import llm_do
+
+    call = f"tool: {tool_name}\narguments:\n"
+    for k, v in (tool_args or {}).items():
+        call += f"  {k}: {str(v)[:2000]}\n"
+
+    try:
+        verdict = llm_do(call, output=Verdict, model=REVIEW_MODEL,
+                         system_prompt=REVIEW_PROMPT, temperature=0)
+    except Exception as exc:
+        return False, f'could not be reviewed automatically ({type(exc).__name__})'
+    if not isinstance(verdict, Verdict):
+        return False, 'the reviewer did not answer in the expected shape'
+    reason = (verdict.reason or '').strip() or 'no reason given'
+    return bool(verdict.allowed), reason
+
+
+def review(tool_name: str, tool_args: dict, project_dir: Path = None,
+           consult_model: bool = True) -> tuple[bool, str]:
     """May this call run without asking anyone? Always answers with a reason.
 
     The reason is not decoration: an automatic decision nobody can inspect later
@@ -184,9 +232,19 @@ def review(tool_name: str, tool_args: dict, project_dir: Path = None) -> tuple[b
         reasons = []
         for cmd in parts:
             kind, why = _classify_command(cmd, command)
-            if kind != 'read':
+            if kind in ('destructive', 'outbound'):
+                # Never sent to the model: these are the decisions we are surest
+                # of, and a reviewer that can overturn them can be talked into
+                # anything by the conversation that produced the command.
                 return False, why
+            if kind == 'unknown':
+                return _ask_model(tool_name, tool_args) if consult_model else (False, why)
             reasons.append(why)
         return True, '; '.join(reasons[:3])
 
+    # The unknown middle. Not "unknown is unsafe" any more — unknown is where a
+    # reviewer earns its keep, and refusing everything it has no rule for is how
+    # the old default became a wall of prompts nobody could evaluate.
+    if consult_model:
+        return _ask_model(tool_name, tool_args)
     return False, f'{name} is an unknown tool, and unknown is not safe'
