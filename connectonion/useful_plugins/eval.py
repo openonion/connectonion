@@ -55,6 +55,21 @@ Focus on the USER'S INTENT, not exact text matching:
 Be lenient - if the core task was done, mark it passed."""
 
 
+DEFAULT_SCORING_MODEL = "co/gemini-3.6-flash"
+
+
+def _scoring_model(agent: 'Agent') -> str:
+    """Score with the model the agent was built with.
+
+    This used to be the literal below. An agent explicitly created with
+    `model="gemini-2.5-pro"` still sent these calls to `co/`, which is not a
+    detail when the reason for the override was that the co/ account was empty
+    (#543). Configuring a provider is rarely cosmetic — it is billing, data
+    residency, or simply the key that works.
+    """
+    return getattr(agent, "model", None) or DEFAULT_SCORING_MODEL
+
+
 def _generate_expected(agent: 'Agent') -> str:
     """Generate expected outcome for the task (called internally before evaluation)."""
     user_prompt = agent.current_session.get('user_prompt', '')
@@ -72,7 +87,7 @@ What should happen to complete this task? (1-2 sentences)"""
 
     return llm_do(
         prompt,
-        model="co/gemini-3.6-flash",
+        model=_scoring_model(agent),
         temperature=0.2,
         system_prompt=EXPECTED_PROMPT
     )
@@ -91,7 +106,17 @@ def generate_expected(agent: 'Agent') -> None:
     if agent.current_session.get('expected'):
         return
 
-    agent.current_session['expected'] = _generate_expected(agent)
+    # Scoring is not the work. This handler runs before the first tool, so an
+    # unreachable or unaffordable model here used to take the whole turn with
+    # it — a deployed agent failed every fifteen minutes for an hour on a
+    # $0.0025 call describing work it never got to do (#543).
+    #
+    # Losing the expectation costs the score and nothing else, which is why
+    # this one call earns a catch that most do not.
+    try:
+        agent.current_session['expected'] = _generate_expected(agent)
+    except Exception as exc:
+        agent.logger.print(f"[dim]/expected unavailable ({exc})[/dim]")
 
 
 def _summarize_trace(trace: List[Dict]) -> str:
@@ -184,13 +209,21 @@ Is this task truly complete? What was achieved or what's missing?"""
     agent.logger.print("[dim]/evaluating...[/dim]")
 
     # Use structured output for clear pass/fail
-    eval_result = llm_do(
-        prompt,
-        output=EvalResult,
-        model="co/gemini-3.6-flash",
-        temperature=0,
-        system_prompt=EVALUATE_PROMPT_TEXT
-    )
+    #
+    # Less dangerous than the expectation call — the work is already done — but
+    # an exception here still turns a run that succeeded into a run that
+    # reports failure, which is the same lie in the other direction (#543).
+    try:
+        eval_result = llm_do(
+            prompt,
+            output=EvalResult,
+            model=_scoring_model(agent),
+            temperature=0,
+            system_prompt=EVALUATE_PROMPT_TEXT
+        )
+    except Exception as exc:
+        agent.logger.print(f"[dim]/evaluation unavailable ({exc})[/dim]")
+        return
 
     # Support tests that patch llm_do to return a raw string
     if isinstance(eval_result, EvalResult):

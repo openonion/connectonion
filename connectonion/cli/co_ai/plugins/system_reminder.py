@@ -186,12 +186,23 @@ def detect_intent(agent: 'Agent') -> None:
         agent.logger.console.print("[dim]▸ understanding request...[/dim]")
 
     # Use llm_do with structured output
-    analysis = llm_do(
-        INTENT_PROMPT.format(user_prompt=user_prompt),
-        model="co/gemini-3.6-flash",
-        output=IntentAnalysis,
-        temperature=0,
-    )
+    #
+    # Follows agent.model, and cannot stop the run. This handler is the reason
+    # a deployed agent failed every fifteen minutes for an hour: it fires
+    # before the first tool, and what it produces is a sentence telling the
+    # user they were understood. Being unable to say "I understand" is not a
+    # reason to refuse to do the work (#543).
+    try:
+        analysis = llm_do(
+            INTENT_PROMPT.format(user_prompt=user_prompt),
+            model=getattr(agent, "model", None) or "co/gemini-3.6-flash",
+            output=IntentAnalysis,
+            temperature=0,
+        )
+    except Exception as exc:
+        if agent.logger.console:
+            agent.logger.console.print(f"[dim]▸ understanding unavailable ({exc})[/dim]")
+        return
 
     # Log acknowledgment to terminal
     if agent.logger.console:
