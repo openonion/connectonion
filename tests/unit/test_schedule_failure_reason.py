@@ -6,6 +6,8 @@ looks, the console line is on a machine they have to ssh into. The state file
 is what the page reads, so the reason has to survive into the state file.
 """
 
+import json
+import time
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -140,3 +142,35 @@ Balance:     $0.0018
 
     assert "Insufficient ConnectOnion Credits" in html
     assert "=====" not in html
+
+
+def test_an_interrupted_run_does_not_render_as_done(tmp_path, monkeypatch):
+    """A turn killed by a restart must not read as one that finished.
+
+    Recent branched on `running` and sent everything else to a duration — and
+    with no duration, to the word "done". That is the lie #536 removed from the
+    Scheduled row, arriving through the other door: reconcile marks a killed turn
+    `interrupted`, and the page called it done.
+    """
+    setup_page(tmp_path, monkeypatch, ONE_ENTRY)
+    (tmp_path / ".co" / "session_results.jsonl").write_text(
+        json.dumps({"session_id": "s1", "status": "interrupted",
+                    "prompt": "zzkilled-run", "created": time.time() - 300},
+                   ensure_ascii=False) + "\n", encoding="utf-8")
+
+    html = dashboard._activity_sections()
+
+    assert "zzkilled-run" in html
+    assert "done" not in html.lower().split("zzkilled-run")[1][:120]
+
+
+def test_a_session_still_waiting_says_so(tmp_path, monkeypatch):
+    setup_page(tmp_path, monkeypatch, ONE_ENTRY)
+    (tmp_path / ".co" / "session_results.jsonl").write_text(
+        json.dumps({"session_id": "s2", "status": "waiting_approval",
+                    "prompt": "zzasked-you", "created": time.time() - 60},
+                   ensure_ascii=False) + "\n", encoding="utf-8")
+
+    html = dashboard._activity_sections()
+    assert "zzasked-you" in html
+    assert "done" not in html.lower().split("zzasked-you")[1][:120]
