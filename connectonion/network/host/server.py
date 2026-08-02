@@ -563,6 +563,11 @@ def host(
 
     storage = SessionStorage()
 
+    # Any session still marked `running` belongs to a process that is gone —
+    # this one just started and owns none. Left alone they are permanent, since
+    # `running` is exempt from TTL, and every mid-turn restart adds one (#545).
+    storage.reconcile_interrupted()
+
     # Create Active Session Registry for WebSocket reconnection
     registry = ActiveSessionRegistry()
     start_cleanup_job(registry)  # Start background cleanup
@@ -664,6 +669,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
 
     if storage is None:
         storage = SessionStorage()
+    storage.reconcile_interrupted()      # see the note at the other call site
 
     # Create Active Session Registry for WebSocket reconnection
     registry = ActiveSessionRegistry()
