@@ -515,8 +515,21 @@ def scheduled_entries():
             "status": st.get("status"),
             "last_run": when,
             "running": e.name in _running,
+            "reason": st.get("reason"),
         })
     return out, problems
+
+
+def _why(reason, limit=60):
+    """The first line of a failure, short enough to sit in a row.
+
+    Naming the failure is the job; the traceback belongs to the log, and the
+    row now tells the reader which log to open and roughly when. A 500-character
+    exception rendered in full would push the panel sideways to say what its
+    first six words already said.
+    """
+    head = str(reason).strip().splitlines()[0] if str(reason).strip() else ""
+    return head if len(head) <= limit else head[:limit - 1] + "…"
 
 
 def _cadence(entry):
@@ -609,7 +622,14 @@ def _activity_sections():
                 # `failed` is different: the turn raised, and the scheduler
                 # genuinely knows that.
                 if s["status"] == "failed":
-                    meta, tone = f"failed · {ago}", "bad"
+                    # The reason, when the scheduler caught one. A deployed
+                    # agent's console is on a machine nobody is watching, so
+                    # `failed` alone costs an ssh session to turn into
+                    # "the account is out of credits" (#541).
+                    meta = f"failed · {ago}"
+                    if s.get("reason"):
+                        meta += f" · {_why(s['reason'])}"
+                    tone = "bad"
                 else:
                     meta, tone = f"ran · {ago}", ""
             rows.append(row.safe_substitute(
