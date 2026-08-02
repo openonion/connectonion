@@ -205,6 +205,7 @@ from pathlib import Path
 from ...core.events import before_each_tool, before_iteration, after_iteration, after_user_input
 from .constants import VALID_MODES, DEFAULT_MODE, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS
 from ...project import project_co_dir
+from .auto_review import review as auto_review
 from .bash_parser import extract_commands_from_bash, check_bash_chain_permitted
 
 if TYPE_CHECKING:
@@ -508,6 +509,30 @@ def check_approval(agent: 'Agent') -> None:
     tool_name = pending['name']
     tool_args = pending['arguments']
     mode = _get_mode(agent)
+
+    # =================================================================
+    # MODE: auto_review — decide from what the call would do, and say why
+    # =================================================================
+    # After the whitelist, before the human. The whitelist is what an operator
+    # wrote down in advance; this is for everything they did not think to write
+    # down, which on a real agent is most of it.
+    #
+    # Only ever *grants*. A refusal here falls through to the same prompt as
+    # before, so the reviewer can be wrong in the direction of asking and the
+    # worst case is the behaviour we already had.
+    if mode == 'auto_review':
+        allowed, why = auto_review(tool_name, tool_args)
+        if allowed:
+            if hasattr(agent, 'logger') and agent.logger and hasattr(agent.logger, 'console'):
+                agent.logger.console.log_permission_granted(
+                    tool_name, tool_args, 'auto_review', why)
+            # The record, not the console line: an automatic decision nobody can
+            # inspect afterwards is indistinguishable from no decision (#269).
+            agent.current_session.setdefault('auto_review_log', []).append(
+                {'tool': tool_name, 'allowed': True, 'reason': why})
+            return
+        agent.current_session.setdefault('auto_review_log', []).append(
+            {'tool': tool_name, 'allowed': False, 'reason': why})
 
     # =================================================================
     # MODE: accept_edits - File edits auto-approved, others need approval

@@ -248,9 +248,15 @@ class TestDangerousTools:
         assert len(io.sent) == 1  # No new approval request
 
     def test_non_command_tool_session_approval_uses_tool_name(self):
-        """Non-command tools (write, edit) use tool name as approval key."""
+        """Non-command tools (write, edit) use tool name as approval key.
+
+        Pinned to safe mode: this is about how a granted approval is *recorded*,
+        and under the auto_review default a write inside the workspace never
+        reaches the prompt at all.
+        """
         io = FakeIO(responses=[{'approved': True, 'scope': 'session'}])
         agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
 
         agent.current_session['pending_tool'] = {
             'name': 'write',
@@ -552,9 +558,14 @@ class TestDescription:
         assert io.sent[0]['description'] == 'Build the project'
 
     def test_description_empty_when_not_provided(self):
-        """approval_needed should have empty description when not in args."""
+        """approval_needed should have empty description when not in args.
+
+        Pinned to safe mode: `ls` is a read, so auto_review runs it without ever
+        sending an approval_needed frame to describe.
+        """
         io = FakeIO(responses=[{'approved': True}])
         agent = FakeAgent(io=io)
+        agent.current_session['mode'] = 'safe'
         agent.current_session['pending_tool'] = {
             'name': 'bash',
             'arguments': {'command': 'ls'},

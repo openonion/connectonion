@@ -338,7 +338,11 @@ def test_parameter_matching_rejects_non_matching(tmp_path, monkeypatch):
         'turn': 0
     }
 
-    # Test non-matching - should NOT auto-approve write to .py file
+    # Test non-matching - should NOT auto-approve write to .py file.
+    # Pinned to safe mode: this asserts the *whitelist* does not match, and under
+    # the auto_review default a write inside the workspace is granted by the
+    # reviewer instead — which would pass this test for the wrong reason.
+    agent.current_session['mode'] = 'safe'
     agent.current_session['pending_tool'] = {
         'name': 'write',
         'arguments': {'file_path': 'test.py', 'content': 'test'}

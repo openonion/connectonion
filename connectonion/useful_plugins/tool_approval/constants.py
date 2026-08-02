@@ -41,8 +41,17 @@ Tool Classification:
 #   - Agent: via enter_plan_mode() tool (safe/accept_edits → plan)
 # =============================================================================
 
-VALID_MODES = {'safe', 'plan', 'accept_edits'}
-DEFAULT_MODE = 'safe'
+VALID_MODES = {'auto_review', 'safe', 'plan', 'accept_edits'}
+
+# auto_review, not safe. `safe` asked a human before every dangerous tool, which
+# is correct and unusable in the two cases that matter most: an unattended run
+# has no human (and so skipped approval entirely — the strictest-looking mode
+# became no gate at all), and a visitor holding an invite code was offered
+# "Trust python3 for this session", an administrative grant they have no way to
+# judge. auto_review asks what the call would *do* instead of which set its tool
+# is in, and records why. `safe` is still selectable for anyone who wants a human
+# on every dangerous call.
+DEFAULT_MODE = 'auto_review'
 
 
 # Tools that need approval in 'safe' mode
