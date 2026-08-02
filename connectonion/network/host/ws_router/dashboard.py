@@ -495,7 +495,8 @@ def scheduled_entries():
     the scheduler cannot disagree about what an entry means.
     """
     try:
-        from ..schedule import load_entries, load_state, last_run
+        from ..schedule import load_entries, load_state, last_run, running_entries
+        _running = running_entries()
     except Exception:
         return [], []
     try:
@@ -513,6 +514,7 @@ def scheduled_entries():
             "cadence": f"every {_cadence(e)}" if e.interval else str(e.at or ""),
             "status": st.get("status"),
             "last_run": when,
+            "running": e.name in _running,
         })
     return out, problems
 
@@ -587,7 +589,13 @@ def _activity_sections():
     if scheduled:
         rows = []
         for s in scheduled:
-            if s["last_run"] is None:
+            if s.get("running"):
+                # While a run is in flight record_run has not landed, so
+                # last_run is the *previous* completion. Showing that for an
+                # entry configured every 15m whose run takes longer reads as
+                # eight minutes late when it is in fact working (#539).
+                meta, tone = "running", "live"
+            elif s["last_run"] is None:
                 meta, tone = "not yet run", ""
             else:
                 ago = _ago((now - s["last_run"]).total_seconds())

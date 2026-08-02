@@ -39,6 +39,22 @@ _DURATION = re.compile(r"^(\d+)([smhd])$")
 _WEEKDAYS = {"mon": 0, "tue": 1, "wed": 2, "thu": 3, "fri": 4, "sat": 5, "sun": 6}
 
 
+
+# Entry names with a run in flight right now.
+#
+# Module level rather than a closure so the Home page can read it: while a run
+# is in flight, record_run has not landed and the Scheduled row shows the
+# *previous* completion — which for an entry that takes longer than its
+# interval reads as overdue (#539). The page needs to know the difference
+# between "late" and "working".
+_RUNNING: set = set()
+
+
+def running_entries() -> set:
+    """The live set of entry names currently executing."""
+    return _RUNNING
+
+
 @dataclass
 class Entry:
     """One line of the schedule: what to run, and how often or when."""
@@ -324,7 +340,7 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
     host() can compose them.
     """
     task: dict = {}
-    in_flight: set = set()
+    in_flight = _RUNNING
 
     def _say(message: str) -> None:
         if console:
