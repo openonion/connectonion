@@ -40,16 +40,37 @@ class SessionStorage:
         with open(self.path, "a", encoding="utf-8") as f:
             f.write(session.model_dump_json() + "\n")
 
-    def get(self, session_id: str) -> Session | None:
+    def _records(self) -> list:
+        """Every parseable record, oldest first. A torn line costs itself, nothing more.
+
+        This file is appended from more than one thread, so a crash, a full disk
+        or an interleaved write can leave a partial line. `json.loads` on that
+        line used to raise out of get(), list() *and* reconcile_interrupted() —
+        and since reconcile runs at startup, one torn line stopped the agent from
+        booting at all.
+
+        The schedule's own state file settled this long ago: "Refusing to boot
+        over it costs the agent, so a truncated write or a hand edit is not
+        allowed to be fatal." Same file shape, same rule, applied late.
+        """
         if not self.path.exists():
-            return None
-        now = time.time()
+            return []
+        out = []
         with open(self.path, encoding="utf-8") as f:
-            lines = f.readlines()
-        for line in reversed(lines):
-            data = json.loads(line)
-            if data["session_id"] == session_id:
-                session = Session(**data)
+            for line in f:
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    out.append(Session(**json.loads(line)))
+                except Exception:
+                    continue      # one unreadable record, not an unreadable file
+        return out
+
+    def get(self, session_id: str) -> Session | None:
+        now = time.time()
+        for session in reversed(self._records()):
+            if session.session_id == session_id:
                 if session.status == "running" or not session.expires or session.expires > now:
                     return session
                 return None  # Expired
@@ -95,24 +116,11 @@ class SessionStorage:
 
     def _latest_by_id(self) -> dict:
         """The newest record for each session, whatever its status or age."""
-        if not self.path.exists():
-            return {}
-        out = {}
-        with open(self.path, encoding="utf-8") as f:
-            for line in f:
-                data = json.loads(line)
-                out[data["session_id"]] = Session(**data)
-        return out
+        return {s.session_id: s for s in self._records()}
 
     def list(self) -> list[Session]:
-        if not self.path.exists():
-            return []
-        sessions = {}
         now = time.time()
-        with open(self.path, encoding="utf-8") as f:
-            for line in f:
-                data = json.loads(line)
-                sessions[data["session_id"]] = Session(**data)
+        sessions = self._latest_by_id()
         valid = [s for s in sessions.values()
                  if s.status == "running" or not s.expires or s.expires > now]
         return sorted(valid, key=lambda s: s.created or 0, reverse=True)
