@@ -55,6 +55,42 @@ class SessionStorage:
                 return None  # Expired
         return None
 
+    def reconcile_interrupted(self):
+        """Close out sessions left `running` by a process that no longer exists.
+
+        Call at startup. That is the one moment the answer is certain: this
+        process has just begun and owns no sessions, so anything still marked
+        running belongs to a process that died between the two records a turn
+        writes — one when it starts, one when it returns.
+
+        Nothing corrected this before, and `running` is exempt from TTL
+        (see get/list), so the rows were not merely wrong but permanent. On a
+        deployed agent four of the five most recent rows on Home were turns
+        killed by a restart, all claiming to be running. Restarting mid-turn is
+        not an edge case; it is what deploying does.
+
+        `interrupted` rather than `failed`: the turn may well have finished its
+        work before the process went away, and for a scheduled entry that
+        writes to a shared ledger, "failed" invites a rerun that duplicates.
+        This says what is known — it stopped, and how far it got is not
+        recorded anywhere.
+        """
+        for session in self._latest_by_id().values():
+            if session.status == "running":
+                session.status = "interrupted"
+                self.save(session)
+
+    def _latest_by_id(self) -> dict:
+        """The newest record for each session, whatever its status or age."""
+        if not self.path.exists():
+            return {}
+        out = {}
+        with open(self.path, encoding="utf-8") as f:
+            for line in f:
+                data = json.loads(line)
+                out[data["session_id"]] = Session(**data)
+        return out
+
     def list(self) -> list[Session]:
         if not self.path.exists():
             return []
