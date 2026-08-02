@@ -163,6 +163,47 @@ async def _run_session(session_id, first_msg, sessions, relay_ws, session_handle
         del sessions[session_id]
 
 
+async def serve_once(
+    relay_url: str,
+    make_announce,
+    *,
+    addr_data: Dict[str, Any] = None,
+    session_handler=None,
+):
+    """One connection, from open to closed, however it ends.
+
+    The supervisor in host() used to open the socket itself and drop it on
+    both exit paths — `serve_loop` returning on a clean disconnect, and any
+    exception mid-serve. Neither closed it, so each reconnect left the old
+    one in CLOSE-WAIT: the relay had sent FIN and nothing on this side ever
+    answered (#548).
+
+    A leaked descriptor is invisible until the limit, and at the limit the
+    failure surfaces somewhere else entirely — a file that will not open, a
+    request that will not go out, with the relay nowhere in the message. An
+    agent meant to run for weeks reaches that limit.
+
+    Errors propagate: the supervisor's backoff and its escalation after five
+    consecutive failures both depend on seeing them. A close that itself
+    fails is suppressed rather than raised, because the socket is already
+    gone and the serve failure is the one worth reporting.
+
+    `make_announce` is a callable rather than a message because the message
+    is signed and must be fresh for the connection it announces on. Building
+    it before connecting also means a bad key spins the supervisor without
+    ever attempting a connection, which reports the wrong failure.
+    """
+    ws = await connect(relay_url)
+    try:
+        await serve_loop(ws, make_announce(), addr_data=addr_data,
+                         session_handler=session_handler)
+    finally:
+        try:
+            await ws.close()
+        except Exception:
+            pass
+
+
 async def serve_loop(
     websocket,
     announce_message: Dict[str, Any],
