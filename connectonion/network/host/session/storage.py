@@ -55,8 +55,14 @@ class SessionStorage:
                 return None  # Expired
         return None
 
+    # A turn that is still owed something by this process. Both are equally dead
+    # once the process is gone: `running` had work in flight, `waiting_approval`
+    # had a question outstanding, and the thread that would have finished either
+    # one no longer exists.
+    UNFINISHED = ('running', 'waiting_approval')
+
     def reconcile_interrupted(self):
-        """Close out sessions left `running` by a process that no longer exists.
+        """Close out sessions this process cannot possibly finish.
 
         Call at startup. That is the one moment the answer is certain: this
         process has just begun and owns no sessions, so anything still marked
@@ -74,9 +80,16 @@ class SessionStorage:
         writes to a shared ledger, "failed" invites a rerun that duplicates.
         This says what is known — it stopped, and how far it got is not
         recorded anywhere.
+
+        `waiting_approval` was missed the first time this shipped, and it is the
+        worse of the two. A run that stopped mid-work at least looks unfinished;
+        a session that asked a question renders as *waiting for you*, so the
+        reader is invited to answer something no thread is listening for. Nine
+        hours after the first version deployed, that agent held five of them —
+        the oldest 52 hours old.
         """
         for session in self._latest_by_id().values():
-            if session.status == "running":
+            if session.status in self.UNFINISHED:
                 session.status = "interrupted"
                 self.save(session)
 

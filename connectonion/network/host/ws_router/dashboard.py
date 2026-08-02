@@ -669,8 +669,18 @@ def _activity_sections():
         rows = []
         for item in _collapse(runs, scheduled):
             r = item["run"]          # the newest of a folded group
-            if r.get("status") == "running":
+            status = r.get("status")
+            if status == "running":
                 meta, tone = "running", "live"
+            elif status == "waiting_approval":
+                # It stopped and asked. Saying "done" here invites nobody to answer.
+                meta, tone = "waiting on you", "live"
+            elif status == "interrupted":
+                # Killed with its process — usually by a deploy. It may have
+                # finished its work first; nothing recorded how far it got, and
+                # "done" would claim it did. This is the same lie #536 took out
+                # of the Scheduled row, arriving through the other door.
+                meta, tone = "interrupted", "bad"
             else:
                 ms = r.get("duration_ms")
                 meta = _took(ms) if isinstance(ms, (int, float)) else "done"

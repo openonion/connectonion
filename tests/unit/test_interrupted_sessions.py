@@ -100,3 +100,31 @@ def test_an_interrupted_session_expires_like_any_other(tmp_path):
 
     assert storage.get("old") is None
     assert [s.session_id for s in storage.list()] == []
+
+
+def test_a_session_waiting_for_an_answer_is_also_reconciled(tmp_path):
+    """A question nobody can answer any more is as dead as a run nobody finished.
+
+    `waiting_approval` means a turn stopped and asked. After a restart the thread
+    that would receive the answer is gone, so the question cannot be answered by
+    anyone — but it kept claiming to be waiting. Measured on a deployed agent
+    nine hours after the reconcile shipped: five such sessions, the oldest 52
+    hours old, three of them still inside their TTL and still rendering as
+    waiting for a decision nobody could make.
+    """
+    storage = SessionStorage(str(tmp_path / "s.jsonl"))
+    write(storage, "asked", "waiting_approval")
+
+    storage.reconcile_interrupted()
+
+    assert storage.get("asked").status == "interrupted"
+
+
+def test_an_answered_question_is_untouched(tmp_path):
+    storage = SessionStorage(str(tmp_path / "s.jsonl"))
+    write(storage, "asked", "waiting_approval")
+    write(storage, "asked", "done")
+
+    storage.reconcile_interrupted()
+
+    assert storage.get("asked").status == "done"
