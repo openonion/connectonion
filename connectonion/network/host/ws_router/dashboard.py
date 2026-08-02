@@ -591,8 +591,19 @@ def _activity_sections():
                 meta, tone = "not yet run", ""
             else:
                 ago = _ago((now - s["last_run"]).total_seconds())
-                meta = f"{s['status'] or 'ran'} · {ago}"
-                tone = "bad" if s["status"] == "failed" else ""
+                # "done" is not said here. It means the turn returned, which is
+                # all the scheduler can know — an agent that answered "I could
+                # not reach the drive" returned just as successfully as one that
+                # did the work. Rendering that as `done` made three consecutive
+                # failures read as a healthy job (#535). "ran 2m ago" claims
+                # only what happened.
+                #
+                # `failed` is different: the turn raised, and the scheduler
+                # genuinely knows that.
+                if s["status"] == "failed":
+                    meta, tone = f"failed · {ago}", "bad"
+                else:
+                    meta, tone = f"ran · {ago}", ""
             rows.append(row.safe_substitute(
                 # The entry's name, not its run text: an entry can be called
                 # "check for new contracts" while its instruction stays a

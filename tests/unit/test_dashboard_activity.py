@@ -238,3 +238,48 @@ class TestScheduleProblemsAreVisible:
 
         html = dash.render_starter({"name": "billing", "skills": []})
         assert "entry " not in html
+
+
+class TestDoneDoesNotClaimSuccess:
+    """`done` means the turn ended, not that the work succeeded. #535.
+
+    A scheduled run on a deployed agent returned a well-written failure report
+    — lark-cli not configured, stage named, raw error quoted — and was recorded
+    `done`. Home rendered `检查新合同  done · just now`. Three runs, all
+    failing, all displayed as if healthy.
+
+    The framework cannot read the agent's prose to know whether the task
+    worked. What it can stop doing is implying that it did.
+    """
+
+    def _entry(self, project, status):
+        (project / ".co" / "schedule.yaml").write_text(
+            '- name: check\n  every: 15m\n  run: "/check"\n', encoding="utf-8")
+        (project / ".co" / "schedule-state.json").write_text(json.dumps({
+            "check": {"last_run": datetime.now(timezone.utc).isoformat(),
+                      "status": status, "session_id": "s"}}), encoding="utf-8")
+        return dash.render_starter({"name": "billing", "skills": []})
+
+    def test_a_completed_turn_is_not_labelled_done(self, project):
+        html = self._entry(project, "done")
+
+        assert "done" not in html.split("Scheduled")[-1].split("</section>")[0], (
+            "`done` reads as a health check; it only means the turn returned"
+        )
+
+    def test_it_says_when_it_last_ran_instead(self, project):
+        html = self._entry(project, "done")
+        scheduled = html.split("Scheduled")[-1].split("</section>")[0]
+
+        # "just now" rather than "…ago" for a run seconds old — _ago's own
+        # wording. Asserting "ago" here would have been a test that only
+        # passes when the fixture is more than a minute stale.
+        assert "ran ·" in scheduled
+
+    def test_a_run_the_scheduler_could_not_finish_is_still_marked_failed(self, project):
+        """The one case the framework *does* know about: the turn raised."""
+        html = self._entry(project, "failed")
+        scheduled = html.split("Scheduled")[-1].split("</section>")[0]
+
+        assert "failed" in scheduled
+        assert "bad" in scheduled          # carries the error tone
