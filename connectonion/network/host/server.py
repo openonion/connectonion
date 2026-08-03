@@ -41,7 +41,7 @@ from .. import announce, relay
 from ..asgi import create_app as asgi_create_app
 from .ws_router import run_ws_session
 from .schedule import create_schedule_lifespan
-from ..trust import TrustAgent, get_default_trust_level, parse_policy, TRUST_LEVELS
+from ..trust import TrustAgent, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
 from .auth import extract_and_authenticate
 from .config import load_host_config, load_list_file, validate_files, DEFAULT_FILE_LIMITS
@@ -95,15 +95,6 @@ def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
         return config
 
     return None
-
-
-def get_default_trust() -> str:
-    """Get default trust based on environment.
-
-    Returns:
-        Trust level based on CONNECTONION_ENV, defaults to 'careful'
-    """
-    return get_default_trust_level() or "careful"
 
 
 def _extract_agent_metadata(create_agent: Callable,

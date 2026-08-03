@@ -2,9 +2,9 @@
 Purpose: Factory functions for trust level validation and deprecated trust agent creation
 LLM-Note:
   Dependencies: imports from [os, pathlib, typing, tools, fast_rules] | imported by [trust/__init__.py, trust/trust_agent.py] | tested via TrustAgent initialization
-  Data flow: get_default_trust_level() → reads CONNECTONION_ENV → returns trust level | validate_trust_level(level) → checks against TRUST_LEVELS list | create_trust_agent(trust, api_key, model) [DEPRECATED] → resolves policy string/path/Agent → loads policy file → creates Agent with trust tools
-  State/Effects: reads environment variable CONNECTONION_ENV | reads policy files from network/trust/policies/{level}.md | no writes | PROMPTS_DIR constant points to trust module policies/
-  Integration: exposes get_default_trust_level(), validate_trust_level(), TRUST_LEVELS, create_trust_agent() [DEPRECATED] | TRUST_LEVELS = ["open", "careful", "strict"] | create_trust_agent emits DeprecationWarning (use TrustAgent instead)
+  Data flow: validate_trust_level(level) → checks against TRUST_LEVELS list | create_trust_agent(trust, api_key, model) [DEPRECATED] → resolves policy string/path/Agent → loads policy file → creates Agent with trust tools
+  State/Effects: reads policy files from network/trust/policies/{level}.md | no writes | PROMPTS_DIR constant points to trust module policies/
+  Integration: exposes validate_trust_level(), TRUST_LEVELS, create_trust_agent() [DEPRECATED] | TRUST_LEVELS = ["open", "careful", "strict"] | create_trust_agent emits DeprecationWarning (use TrustAgent instead)
   Performance: file I/O only when loading policies | parse_policy() extracts YAML frontmatter | environment check is O(1)
   Errors: raises FileNotFoundError if policy file doesn't exist | raises TypeError for invalid trust type | raises ValueError if trust Agent has no tools
   ⚠️ create_trust_agent() is deprecated - use TrustAgent class instead for better API
@@ -43,25 +43,6 @@ PROMPTS_DIR = Path(__file__).parent / "policies"
 
 # Trust level constants
 TRUST_LEVELS = ["open", "careful", "strict"]
-
-
-def get_default_trust_level() -> Optional[str]:
-    """
-    Get default trust level based on environment.
-    
-    Returns:
-        Default trust level or None
-    """
-    env = os.environ.get('CONNECTONION_ENV', '').lower()
-    
-    if env == 'development':
-        return 'open'
-    elif env == 'production':
-        return 'strict'
-    elif env in ['staging', 'test']:
-        return 'careful'
-    
-    return None
 
 
 def create_trust_agent(trust: Union[str, Path, 'Agent', None], api_key: Optional[str] = None, model: str = "gpt-5-mini") -> Optional['Agent']:

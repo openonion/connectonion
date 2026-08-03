@@ -211,9 +211,9 @@ host(agent, trust=trust)
 # No trust specified - auto-detected from environment
 host(agent)
 
-# CONNECTONION_ENV=development → trust="open"
-# CONNECTONION_ENV=staging     → trust="careful"
-# CONNECTONION_ENV=production  → trust="strict"
+# Trust is set in .co/host.yaml, not from the environment — there is no
+# CONNECTONION_ENV shortcut, because a stale shell variable must never be able
+# to open a host to everyone.
 ```
 
 ## List Management

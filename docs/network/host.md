@@ -1001,17 +1001,22 @@ guardian = Agent(
 host(agent, trust=guardian)
 ```
 
-### Environment-Based Defaults
+### One place decides: `.co/host.yaml`
 
-```python
-# No trust parameter needed - auto-detected!
-host(agent)
-
-# CONNECTONION_ENV=development → trust="open"
-# CONNECTONION_ENV=test        → trust="careful"
-# CONNECTONION_ENV=staging     → trust="careful"
-# CONNECTONION_ENV=production  → trust="strict"
+```yaml
+# .co/host.yaml
+trust: careful      # open | careful | strict
 ```
+
+There is no environment variable for this, on purpose. `CONNECTONION_ENV` used
+to be documented as setting trust automatically, with `development` meaning
+`open`. It never actually did anything — and wiring it up would have meant a
+variable sitting in someone's shell profile could open their host to everyone,
+at the moment they were least likely to be reading this page.
+
+How open a host is, is written down in a file its operator owns and can read
+back. Different machines get different files; `co deploy` copies the one you
+mean to the machine you mean.
 
 ---
 
@@ -1253,9 +1258,11 @@ services:
     build: .
     ports:
       - "8000:8000"
-    environment:
-      - CONNECTONION_ENV=production
 ```
+
+Trust comes from `.co/host.yaml` inside the image, not from the environment
+block — so what a container will accept is visible in the repo, not in the
+orchestrator's config.
 
 ### Reverse Proxy (Caddy)
 

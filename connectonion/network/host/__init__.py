@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [session/, auth.py, http_router.py, server.py, ws_router/] | imported by [network/__init__.py, user code] | tested via integration tests
   Data flow: pure re-export module aggregating host functionality
   State/Effects: no state
-  Integration: exposes host(agent, port, trust) main entry point, Session/SessionStorage for persistence, auth utilities (verify_signature, extract_and_authenticate, get_agent_address, is_custom_trust), route handlers (input_handler, session_handler, health_handler, info_handler, admin_*), create_app() ASGI factory, get_default_trust() helper
+  Integration: exposes host(agent, port, trust) main entry point, Session/SessionStorage for persistence, auth utilities (verify_signature, extract_and_authenticate, get_agent_address, is_custom_trust), route handlers (input_handler, session_handler, health_handler, info_handler, admin_*), create_app() ASGI factory
   Performance: trivial
   Errors: none
 Host an agent over HTTP/WebSocket.
@@ -37,7 +37,6 @@ from .http_router import (
 )
 from .server import (
     host,
-    get_default_trust,
     create_app,
 )
 
@@ -67,6 +66,5 @@ __all__ = [
     "admin_logs_handler",
     "admin_sessions_handler",
     # Helpers
-    "get_default_trust",
     "create_app",
 ]

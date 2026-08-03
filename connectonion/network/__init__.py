@@ -24,7 +24,7 @@ from .io import IO, WebSocketIO
 from .connect import connect, RemoteAgent, Response, ExecResult
 from .relay import connect as relay_connect, serve_loop
 from .announce import create_announce_message
-from .trust import TrustAgent, Decision, get_default_trust_level, TRUST_LEVELS, parse_policy
+from .trust import TrustAgent, Decision, TRUST_LEVELS, parse_policy
 from . import relay, announce
 
 __all__ = [
@@ -44,7 +44,6 @@ __all__ = [
     # Trust (TrustAgent is the single interface)
     "TrustAgent",
     "Decision",
-    "get_default_trust_level",
     "TRUST_LEVELS",
     "parse_policy",
     "relay",
