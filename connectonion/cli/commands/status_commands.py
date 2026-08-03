@@ -261,7 +261,13 @@ def _fetch_deployments(api_key: str):
 def _show_deployments(deployments):
     """Print a compact deployed-agent table."""
     if not deployments:
-        console.print("\n[cyan]Deployed Agents:[/cyan] none")
+        # Which list this is. It comes from ConnectOnion Cloud; an agent put on
+        # your own box with `co deploy --to` lives in ~/.co/servers.yaml and is
+        # never in it. A bare "none" told an operator with four registered
+        # servers and two running agents that they had nothing deployed —
+        # answering the one question this command exists to answer, wrongly.
+        console.print("\n[cyan]Deployed Agents (cloud):[/cyan] none")
+        console.print("[dim]  agents on your own servers: co server ls[/dim]")
         return
 
     table = Table(title="Deployed Agents", show_header=True, header_style="bold cyan")
