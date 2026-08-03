@@ -130,12 +130,22 @@ class SessionStorage:
         session_id = session.get('session_id')
         if not session_id:
             return
+        # The prompt, from the session this checkpoint is *of*. It used to be
+        # hardcoded empty, which is what Home renders as the row's label — so a
+        # deployed agent showed five rows reading only "interrupted · 13h ago",
+        # with nothing saying what had been interrupted. The dict in hand has
+        # had `user_prompt` all along.
+        #
+        # `created` from the earlier record for the same reason: it is what
+        # Recent turns into "13h ago", and stamping it at pause time makes a turn
+        # that began this morning look like it began when it stopped.
+        earlier = self.get(session_id)
         record = Session(
             session_id=session_id,
             status="waiting_approval",
-            prompt="",
+            prompt=str(session.get('user_prompt') or (earlier.prompt if earlier else '') or ''),
             session=session,
-            created=time.time(),
+            created=(earlier.created if earlier and earlier.created else time.time()),
             expires=time.time() + 86400,
         )
         self.save(record)

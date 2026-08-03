@@ -591,8 +591,14 @@ def _collapse(runs, scheduled):
         if key and folded and folded[-1]["key"] == key:
             folded[-1]["count"] += 1
             continue
+        # The fallback is a whole paragraph when the run came from a schedule
+        # entry whose text has since been edited — it no longer matches any
+        # entry, and a scheduled prompt is instructions, by design. Pasted in
+        # with its newlines it renders as three lines inside a one-line row,
+        # truncated mid-token (#546). Same rule as _why: the first line that
+        # carries information. The whole prompt is still in the session record.
         folded.append({"key": key,
-                       "label": label or str(r.get("prompt") or ""),
+                       "label": label or _why(r.get("prompt") or "", limit=80),
                        "count": 1,
                        "run": r})
     return folded
