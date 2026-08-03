@@ -41,7 +41,7 @@ def _make_fail(llm, exc):
         llm.client.chat.completions.create = raiser
 
 
-OPENAI_LIKE = ["gpt-4o", "groq/llama-3.3-70b-versatile", "grok/grok-4",
+OPENAI_LIKE = ["o4-mini", "groq/llama-3.3-70b-versatile", "grok/grok-4",
                "openrouter/meta-llama/llama-3-8b", "mistral/mistral-small"]
 
 
@@ -59,7 +59,7 @@ class TestAuthFailsTheSameWayEverywhere:
 
     def test_anthropic(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-        llm = create_llm("claude-3-5-sonnet-20241022", api_key="k")
+        llm = create_llm("claude-sonnet-4-20250514", api_key="k")
         _make_fail(llm, _anthropic_error(anthropic.AuthenticationError, 401))
 
         with pytest.raises(LLMAuthenticationError):
@@ -80,7 +80,7 @@ class TestAuthFailsTheSameWayEverywhere:
 class TestRateLimit:
     def test_openai(self, monkeypatch):
         monkeypatch.setenv("OPENAI_API_KEY", "k")
-        llm = create_llm("gpt-4o", api_key="k")
+        llm = create_llm("o4-mini", api_key="k")
         _make_fail(llm, _openai_error(openai.RateLimitError, 429))
 
         with pytest.raises(LLMRateLimitError):
@@ -88,7 +88,7 @@ class TestRateLimit:
 
     def test_anthropic(self, monkeypatch):
         monkeypatch.setenv("ANTHROPIC_API_KEY", "k")
-        llm = create_llm("claude-3-5-sonnet-20241022", api_key="k")
+        llm = create_llm("claude-sonnet-4-20250514", api_key="k")
         _make_fail(llm, _anthropic_error(anthropic.RateLimitError, 429))
 
         with pytest.raises(LLMRateLimitError):
@@ -109,7 +109,7 @@ class TestOneBaseCatchesThemAll:
     def test_the_original_error_is_still_reachable(self, monkeypatch):
         """Translating must not cost the traceback that says what happened."""
         monkeypatch.setenv("OPENAI_API_KEY", "k")
-        llm = create_llm("gpt-4o", api_key="k")
+        llm = create_llm("o4-mini", api_key="k")
         original = _openai_error(openai.AuthenticationError, 401)
         _make_fail(llm, original)
 
@@ -122,7 +122,7 @@ class TestOneBaseCatchesThemAll:
         """A 400 is a bad request, not an auth failure. Inventing a category for
         it would make the shared types mean less, not more."""
         monkeypatch.setenv("OPENAI_API_KEY", "k")
-        llm = create_llm("gpt-4o", api_key="k")
+        llm = create_llm("o4-mini", api_key="k")
         _make_fail(llm, _openai_error(openai.BadRequestError, 400))
 
         with pytest.raises(openai.BadRequestError):

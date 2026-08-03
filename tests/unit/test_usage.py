@@ -56,16 +56,16 @@ class TestGetPricing:
 
     def test_exact_match(self):
         """Test pricing lookup with exact model name."""
-        pricing = get_pricing("gpt-4o")
-        assert pricing["input"] == 2.50
-        assert pricing["output"] == 10.00
-        assert pricing["cached"] == 1.25
+        pricing = get_pricing("o4-mini")
+        assert pricing["input"] == 1.10
+        assert pricing["output"] == 4.40
+        assert pricing["cached"] == 0.55
 
     def test_prefix_match(self):
         """Test pricing lookup with model name prefix."""
-        # e.g., "gpt-4o-2024-08-06" should match "gpt-4o"
-        pricing = get_pricing("gpt-4o-2024-08-06")
-        assert pricing["input"] == 2.50
+        # e.g., "o4-mini-2025-04-16" should match "o4-mini"
+        pricing = get_pricing("o4-mini-2025-04-16")
+        assert pricing["input"] == 1.10
 
     def test_unknown_model_returns_default(self):
         """Test unknown model returns default pricing."""
@@ -74,7 +74,7 @@ class TestGetPricing:
 
     def test_anthropic_model_has_cache_write(self):
         """Test Anthropic models include cache_write pricing."""
-        pricing = get_pricing("claude-3-5-sonnet-20241022")
+        pricing = get_pricing("claude-sonnet-4-20250514")
         assert "cache_write" in pricing
         assert pricing["cache_write"] == 3.75
 
@@ -84,13 +84,13 @@ class TestGetContextLimit:
 
     def test_exact_match(self):
         """Test context limit lookup with exact model name."""
-        limit = get_context_limit("gpt-4o")
-        assert limit == 128000
+        limit = get_context_limit("o4-mini")
+        assert limit == 200000
 
     def test_prefix_match(self):
         """Test context limit lookup with model name prefix."""
-        limit = get_context_limit("gpt-4o-mini-2024")
-        assert limit == 128000
+        limit = get_context_limit("o4-mini-2025-04-16")
+        assert limit == 200000
 
     def test_unknown_model_returns_default(self):
         """Test unknown model returns default context limit."""
@@ -106,7 +106,7 @@ class TestGetContextLimit:
 
     def test_claude_context(self):
         """Test Claude models have 200k context."""
-        limit = get_context_limit("claude-3-5-sonnet-20241022")
+        limit = get_context_limit("claude-sonnet-4-20250514")
         assert limit == 200000
 
 
@@ -116,11 +116,11 @@ class TestCalculateCost:
     def test_basic_cost_no_cache(self):
         """Test cost calculation without caching."""
         cost = calculate_cost(
-            model="gpt-4o-mini",
+            model="gemini-2.5-flash",
             input_tokens=1000,
             output_tokens=500,
         )
-        # gpt-4o-mini: input=$0.15/1M, output=$0.60/1M
+        # gemini-2.5-flash: input=$0.15/1M, output=$0.60/1M
         # 1000 * 0.15 / 1M + 500 * 0.60 / 1M = 0.00015 + 0.0003 = 0.00045
         expected = (1000 / 1_000_000) * 0.15 + (500 / 1_000_000) * 0.60
         assert abs(cost - expected) < 0.0001
@@ -128,32 +128,32 @@ class TestCalculateCost:
     def test_cost_with_cached_tokens(self):
         """Test cost calculation with cached tokens."""
         cost = calculate_cost(
-            model="gpt-4o-mini",
+            model="gemini-2.5-flash",
             input_tokens=1000,
             output_tokens=500,
             cached_tokens=300,
         )
-        # gpt-4o-mini: input=$0.15/1M, output=$0.60/1M, cached=$0.075/1M
+        # gemini-2.5-flash: input=$0.15/1M, output=$0.60/1M, cached=$0.0375/1M
         # Non-cached: 700 input, 500 output
         # Cached: 300
         non_cached_input = 1000 - 300
         expected = (
             (non_cached_input / 1_000_000) * 0.15 +
             (500 / 1_000_000) * 0.60 +
-            (300 / 1_000_000) * 0.075
+            (300 / 1_000_000) * 0.0375
         )
         assert abs(cost - expected) < 0.0001
 
     def test_anthropic_cache_write_cost(self):
         """Test Anthropic cache write cost."""
         cost = calculate_cost(
-            model="claude-3-5-sonnet-20241022",
+            model="claude-sonnet-4-20250514",
             input_tokens=1000,
             output_tokens=500,
             cached_tokens=0,
             cache_write_tokens=200,
         )
-        # claude-3-5-sonnet: input=$3/1M, output=$15/1M, cache_write=$3.75/1M
+        # claude-sonnet-4: input=$3/1M, output=$15/1M, cache_write=$3.75/1M
         expected = (
             (1000 / 1_000_000) * 3.00 +
             (500 / 1_000_000) * 15.00 +
@@ -175,7 +175,7 @@ class TestCalculateCost:
     def test_zero_tokens_returns_zero(self):
         """Test zero tokens returns zero cost."""
         cost = calculate_cost(
-            model="gpt-4o",
+            model="o4-mini",
             input_tokens=0,
             output_tokens=0,
         )
@@ -187,14 +187,13 @@ class TestModelPricing:
 
     def test_openai_models_exist(self):
         """Test OpenAI models are in pricing."""
-        assert "gpt-4o" in MODEL_PRICING
-        assert "gpt-4o-mini" in MODEL_PRICING
+        assert "o3-mini" in MODEL_PRICING
         assert "o4-mini" in MODEL_PRICING
 
     def test_anthropic_models_exist(self):
         """Test Anthropic models are in pricing."""
-        assert "claude-3-5-sonnet-20241022" in MODEL_PRICING
-        assert "claude-3-5-haiku-20241022" in MODEL_PRICING
+        assert "claude-sonnet-4-20250514" in MODEL_PRICING
+        assert "claude-opus-4-20250514" in MODEL_PRICING
 
     def test_gemini_models_exist(self):
         """Test Gemini models are in pricing."""
@@ -210,13 +209,13 @@ class TestModelContextLimits:
 
     def test_openai_models_exist(self):
         """Test OpenAI models are in context limits."""
-        assert "gpt-4o" in MODEL_CONTEXT_LIMITS
-        assert MODEL_CONTEXT_LIMITS["gpt-4o"] == 128000
+        assert "o4-mini" in MODEL_CONTEXT_LIMITS
+        assert MODEL_CONTEXT_LIMITS["o4-mini"] == 200000
 
     def test_anthropic_models_exist(self):
         """Test Anthropic models are in context limits."""
-        assert "claude-3-5-sonnet-20241022" in MODEL_CONTEXT_LIMITS
-        assert MODEL_CONTEXT_LIMITS["claude-3-5-sonnet-20241022"] == 200000
+        assert "claude-sonnet-4-20250514" in MODEL_CONTEXT_LIMITS
+        assert MODEL_CONTEXT_LIMITS["claude-sonnet-4-20250514"] == 200000
 
     def test_gemini_models_exist(self):
         """Test Gemini models are in context limits."""

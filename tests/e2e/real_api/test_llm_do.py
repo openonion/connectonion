@@ -156,7 +156,7 @@ class TestBasicFunctionality:
         """Test simple completion with OpenAI."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
         assert isinstance(result, str)
         assert "4" in result
@@ -165,7 +165,7 @@ class TestBasicFunctionality:
         """Test simple completion with Anthropic."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
-            model="claude-3-5-haiku-20241022"
+            model="claude-sonnet-4-20250514"
         )
         assert isinstance(result, str)
         assert "4" in result
@@ -183,7 +183,7 @@ class TestBasicFunctionality:
         """Test simple completion with ConnectOnion managed keys."""
         result = llm_do(
             "What is 2+2? Answer with just the number.",
-            model="co/gpt-4o"
+            model="co/o4-mini"
         )
         assert isinstance(result, str)
         assert "4" in result
@@ -201,7 +201,7 @@ class TestStructuredOutput:
         result = llm_do(
             "I absolutely love this product! Best purchase ever!",
             output=Analysis,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, Analysis)
@@ -219,7 +219,7 @@ class TestStructuredOutput:
         Due: January 15, 2024
         """
 
-        result = llm_do(invoice_text, output=Invoice, model="gpt-4o-mini")
+        result = llm_do(invoice_text, output=Invoice, model="o4-mini")
 
         assert isinstance(result, Invoice)
         assert result.invoice_number == "INV-2024-001"
@@ -232,7 +232,7 @@ class TestStructuredOutput:
         result = llm_do(
             "John Doe, 30, software engineer",
             output=Person,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, Person)
@@ -245,7 +245,7 @@ class TestStructuredOutput:
         result = llm_do(
             "I absolutely love this product! Best purchase ever!",
             output=SentimentAnalysis,
-            model="claude-3-5-haiku-20241022"
+            model="claude-sonnet-4-20250514"
         )
 
         assert isinstance(result, SentimentAnalysis)
@@ -278,7 +278,7 @@ class TestComplexStructuredOutput:
         result = llm_do(
             "Extract keywords from: 'Machine learning and artificial intelligence are transforming technology and business'",
             output=KeywordExtraction,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, KeywordExtraction)
@@ -292,7 +292,7 @@ class TestComplexStructuredOutput:
         result = llm_do(
             "Review: The laptop is amazing! Fast performance, great display. Rating: 5/5. Highly recommend!",
             output=ProductReview,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, ProductReview)
@@ -306,7 +306,7 @@ class TestComplexStructuredOutput:
         result = llm_do(
             'Email: "URGENT: Your account will be suspended unless you verify your information immediately!" Classify this email.',
             output=EmailClassification,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, EmailClassification)
@@ -336,7 +336,7 @@ class TestComplexStructuredOutput:
         result = llm_do(
             invoice_text,
             output=InvoiceDetailed,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, InvoiceDetailed)
@@ -360,7 +360,7 @@ class TestComplexStructuredOutput:
         result = llm_do(
             blog_text,
             output=BlogAnalysis,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, BlogAnalysis)
@@ -375,7 +375,7 @@ class TestComplexStructuredOutput:
         result = llm_do(
             "User comment: 'This is a great product! Everyone should try it. Visit my-totally-legit-site.com for more info!'",
             output=ContentModeration,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, ContentModeration)
@@ -398,12 +398,12 @@ class TestAdvancedFeatures:
         result1 = llm_do(
             "What is the capital of France? One word only.",
             temperature=0.0,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
         result2 = llm_do(
             "What is the capital of France? One word only.",
             temperature=0.0,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         # Both should mention Paris
@@ -414,7 +414,7 @@ class TestAdvancedFeatures:
         """Test max_tokens parameter pass-through."""
         result = llm_do(
             "Write a very long story about a dragon",
-            model="gpt-4o-mini",
+            model="o4-mini",
             max_tokens=20  # Very short limit
         )
 
@@ -427,7 +427,7 @@ class TestAdvancedFeatures:
         result = llm_do(
             "Hello",
             system_prompt="You are a pirate. Always respond like a pirate.",
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         # Should contain pirate-like language
@@ -449,12 +449,12 @@ class TestCrossProviderConsistency:
         results = []
 
         if os.getenv("OPENAI_API_KEY"):
-            result = llm_do(prompt, model="gpt-4o-mini")
+            result = llm_do(prompt, model="o4-mini")
             results.append(("OpenAI", result))
             assert "4" in result
 
         if os.getenv("ANTHROPIC_API_KEY"):
-            result = llm_do(prompt, model="claude-3-5-haiku-20241022")
+            result = llm_do(prompt, model="claude-sonnet-4-20250514")
             results.append(("Anthropic", result))
             assert "4" in result
 
@@ -476,7 +476,7 @@ class TestDocumentationExamples:
 
     def test_quick_start_example(self):
         """Test the Quick Start example from docs."""
-        answer = llm_do("What's 2+2?", model="gpt-4o-mini")
+        answer = llm_do("What's 2+2?", model="o4-mini")
         assert "4" in answer
 
     def test_format_conversion_example(self):
@@ -488,7 +488,7 @@ class TestDocumentationExamples:
         result = llm_do(
             "Extract: name=John age=30",
             output=PersonData,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, PersonData)
@@ -500,7 +500,7 @@ class TestDocumentationExamples:
         result = llm_do(
             "Is this valid SQL? Reply yes/no only: SELECT * FROM users",
             temperature=0,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert result.strip().lower() in ["yes", "no"]

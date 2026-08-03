@@ -84,7 +84,7 @@ class TestEventSystem:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[after_user_input(track_user_input)]
         )
 
@@ -103,7 +103,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[before_llm(track_before_llm)]
         )
 
@@ -127,7 +127,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[after_llm(track_after_llm)]
         )
 
@@ -154,7 +154,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[before_each_tool(track_before_tool)]
         )
 
@@ -180,7 +180,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[after_tools(track_after_tools)]
         )
 
@@ -207,7 +207,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[failing_tool],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[on_error(track_error)]
         )
 
@@ -232,7 +232,7 @@ class TestEventSystem:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 after_user_input(handler1),
                 after_user_input(handler2),
@@ -256,7 +256,7 @@ class TestEventSystem:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[after_user_input(add_system_message)]
         )
 
@@ -275,7 +275,7 @@ class TestEventSystem:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[after_user_input(failing_event)]
         )
 
@@ -299,7 +299,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 after_user_input(track_user),
                 after_llm(track_llm),
@@ -322,7 +322,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         result = agent.input("Search for Python")
@@ -344,7 +344,7 @@ class TestEventSystem:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[after_user_input(verify_agent_access)]
         )
 
@@ -384,7 +384,7 @@ class TestEventSystem:
         with pytest.raises(TypeError, match="Event must be callable"):
             Agent(
                 "test",
-                model="gpt-4o-mini",
+                model="o4-mini",
                 on_events=["not a function"]  # String instead of callable
             )
 
@@ -397,7 +397,7 @@ class TestEventSystem:
         with pytest.raises(ValueError, match="missing _event_type.*Did you forget to wrap it"):
             Agent(
                 "test",
-                model="gpt-4o-mini",
+                model="o4-mini",
                 on_events=[my_handler]  # Not wrapped with after_llm(), etc.
             )
 
@@ -412,7 +412,7 @@ class TestEventSystem:
         with pytest.raises(ValueError, match="Invalid event type"):
             Agent(
                 "test",
-                model="gpt-4o-mini",
+                model="o4-mini",
                 on_events=[my_handler]
             )
 
@@ -434,7 +434,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search],  # Only has 'search' tool
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[on_error(track_error)]
         )
 
@@ -457,7 +457,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[on_complete(track_complete)]
         )
 
@@ -482,7 +482,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 after_tools(track_after_tools),
                 on_complete(track_complete)
@@ -511,7 +511,7 @@ class TestEventSystem:
         agent = Agent(
             "test",
             tools=[search, failing_tool],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[after_tools(track_after_tools), on_error(track_error)]
         )
 
@@ -649,7 +649,7 @@ class TestNewEventSyntax:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[check_tool, log_tool],
             log=False
         )
@@ -671,7 +671,7 @@ class TestNewEventSyntax:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 before_each_tool(handler1, handler2),  # returns [fn, fn]
                 after_tools(handler3),                 # returns fn
@@ -698,7 +698,7 @@ class TestNewEventSyntax:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 decorated_handler,                                # @decorator
                 before_each_tool(wrapper_handler1, wrapper_handler2),  # wrapper(fn1, fn2)
@@ -725,7 +725,7 @@ class TestNewEventSyntax:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 handler1,                              # decorated
                 after_user_input(handler2, handler3),  # wrapper with multiple
@@ -757,7 +757,7 @@ class TestOnStopSignalEvent:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 after_tools(set_stop),
                 on_stop_signal(track_stop)
@@ -794,7 +794,7 @@ class TestOnStopSignalEvent:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 after_tools(set_stop),
                 on_stop_signal(check_agent)
@@ -847,7 +847,7 @@ class TestOnStopSignalEvent:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 after_tools(set_stop),
                 on_stop_signal(handler1),
@@ -870,7 +870,7 @@ class TestOnStopSignalEvent:
 
         agent = Agent(
             "test",
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[on_stop_signal(track_stop)]
         )
 
@@ -892,7 +892,7 @@ class TestOnStopSignalEvent:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 after_tools(set_stop),
                 on_stop_signal(failing_handler)
@@ -916,7 +916,7 @@ class TestOnStopSignalEvent:
         agent = Agent(
             "test",
             tools=[search],
-            model="gpt-4o-mini",
+            model="o4-mini",
             on_events=[
                 after_tools(set_stop),
                 on_stop_signal(save_checkpoint)

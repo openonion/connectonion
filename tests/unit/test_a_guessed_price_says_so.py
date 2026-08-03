@@ -33,7 +33,7 @@ from connectonion.core.usage import (
 class TestTheManagedRouteFindsItsModel:
 
     @pytest.mark.parametrize("model", [
-        "co/gemini-3.6-flash", "co/gpt-4o", "co/claude-sonnet-4-5",
+        "co/gemini-3.6-flash", "co/o4-mini", "co/claude-sonnet-4-5",
     ])
     def test_a_co_model_is_priced_like_the_model_it_is(self, model):
         bare = model[len("co/"):]
@@ -63,17 +63,18 @@ class TestAGuessAnnouncesItself:
         assert is_estimated_price("some-model-nobody-has-heard-of")
 
     def test_a_known_model_is_not(self):
-        assert not is_estimated_price("gpt-4o")
+        assert not is_estimated_price("o4-mini")
 
     def test_a_dated_variant_is_not(self):
-        """Prefix matching already handles gpt-4o-2024-08-06."""
-        assert not is_estimated_price("gpt-4o-2024-08-06")
+        """Prefix matching already handles o4-mini-2024-08-06."""
+        assert not is_estimated_price("o4-mini-2024-08-06")
 
 
 class TestNothingElseMoves:
 
     def test_known_models_cost_what_they_did(self):
-        assert calculate_cost("gpt-4o", 1_000_000, 100_000) == pytest.approx(3.5)
+        # 1M in at $1.25/M + 100k out at $10/M
+        assert calculate_cost("gemini-2.5-pro", 1_000_000, 100_000) == pytest.approx(2.25)
 
     def test_an_unknown_model_still_returns_a_number(self):
         """A guess is better than a crash in a display path — it just has to
@@ -97,7 +98,7 @@ class TestTheDisplaySaysWhichItIs:
         return capsys.readouterr().err
 
     def test_a_known_model_prints_a_plain_figure(self, capsys):
-        line = self._line("gpt-4o", capsys)
+        line = self._line("o4-mini", capsys)
 
         assert "$0.0042" in line
         assert "~$" not in line, line

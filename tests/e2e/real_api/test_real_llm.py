@@ -35,7 +35,7 @@ class TestRealLLMDo:
     @requires_openai
     def test_real_api_simple_call(self):
         """Test real API call with simple string."""
-        result = llm_do("What is 2+2? Reply with just the number.", model="gpt-4o-mini")
+        result = llm_do("What is 2+2? Reply with just the number.", model="o4-mini")
 
         assert result is not None
         assert "4" in result
@@ -50,7 +50,7 @@ class TestRealLLMDo:
         result = llm_do(
             "What is 10 times 5?",
             output=TestResult,
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert isinstance(result, TestResult)
@@ -63,7 +63,7 @@ class TestRealLLMDo:
         result = llm_do(
             "Bonjour",
             system_prompt="You are a translator. Translate from French to English only. Be concise.",
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         assert result is not None
@@ -78,7 +78,7 @@ class TestRealMultiLLMSupport:
     @requires_openai
     def test_openai_model(self):
         """Test OpenAI model integration."""
-        agent = Agent("test_openai", model="gpt-4o-mini")
+        agent = Agent("test_openai", model="o4-mini")
         response = agent.input("Say hello in 5 words or less")
 
         assert response is not None
@@ -88,7 +88,7 @@ class TestRealMultiLLMSupport:
     @requires_anthropic
     def test_anthropic_model(self):
         """Test Anthropic Claude model integration."""
-        agent = Agent("test_anthropic", model="claude-3-5-haiku-20241022")
+        agent = Agent("test_anthropic", model="claude-sonnet-4-20250514")
         response = agent.input("Say hello in 5 words or less")
 
         assert response is not None
@@ -112,13 +112,13 @@ class TestRealMultiLLMSupport:
 
         # Test OpenAI with tools
         if os.getenv("OPENAI_API_KEY"):
-            agent = Agent("openai_tools", model="gpt-4o-mini", tools=[add_numbers])
+            agent = Agent("openai_tools", model="o4-mini", tools=[add_numbers])
             response = agent.input("What is 25 plus 17?")
             assert "42" in str(response)
 
         # Test Anthropic with tools
         if os.getenv("ANTHROPIC_API_KEY"):
-            agent = Agent("anthropic_tools", model="claude-3-5-haiku-20241022", tools=[add_numbers])
+            agent = Agent("anthropic_tools", model="claude-sonnet-4-20250514", tools=[add_numbers])
             response = agent.input("What is 25 plus 17?")
             assert "42" in str(response)
 

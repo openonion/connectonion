@@ -268,11 +268,9 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                             console.print("[green]You now have 100k free tokens![/green]")
                             console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
                             console.print("  • co/gemini-3.6-flash")
-                            console.print("  • co/gpt-4o")
-                            console.print("  • co/gemini-3.6-flash")
+                            console.print("  • co/gemini-3-pro-preview")
                             console.print("  • co/gpt-5")
-                            console.print("  • co/claude-3-haiku")
-                            console.print("  • co/claude-3-sonnet")
+                            console.print("  • co/claude-sonnet-4")
 
                             return "star", "connectonion", temp_dir  # Return the temp directory
                         else:
@@ -351,11 +349,9 @@ def api_key_setup_menu(temp_project_dir: Optional[Path] = None) -> Tuple[str, st
                         console.print("[green]You now have 100k free tokens![/green]")
                         console.print("\n[cyan]You can use ConnectOnion models with the 'co/' prefix:[/cyan]")
                         console.print("  • co/gemini-3.6-flash")
-                        console.print("  • co/gpt-4o")
-                        console.print("  • co/gemini-3.6-flash")
+                        console.print("  • co/gemini-3-pro-preview")
                         console.print("  • co/gpt-5")
-                        console.print("  • co/claude-3-haiku")
-                        console.print("  • co/claude-3-sonnet")
+                        console.print("  • co/claude-sonnet-4")
                         break  # Success, exit the loop
                     except Exception as e:
                         console.print(f"\n[red]Authentication failed: {e}[/red]")
@@ -556,11 +552,11 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
     configs = {
         'openai': {
             'var': 'OPENAI_API_KEY',
-            'model': 'gpt-4o-mini'
+            'model': 'o4-mini'
         },
         'anthropic': {
             'var': 'ANTHROPIC_API_KEY',
-            'model': 'claude-3-5-haiku-latest'
+            'model': 'claude-sonnet-4-20250514'
         },
         'google': {
             'var': 'GEMINI_API_KEY',
@@ -576,7 +572,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
         },
         'openrouter': {
             'var': 'OPENROUTER_API_KEY',
-            'model': 'openrouter/openai/gpt-4o-mini'
+            'model': 'openrouter/openai/o4-mini'
         },
         'connectonion': {
             'var': 'CONNECTONION_API_KEY',
@@ -596,7 +592,7 @@ def configure_env_for_provider(provider: str, api_key: str) -> str:
 
 # Model Configuration (use co/ prefix for managed models)
 MODEL=co/gemini-3.6-flash
-# Available models: co/gemini-3.6-flash, co/gpt-4o, co/claude-3-haiku, co/claude-3-sonnet
+# Available models: co/gemini-3.6-flash, co/gemini-3-pro-preview, co/gpt-5, co/claude-sonnet-4
 
 # No API key needed - authentication handled via JWT token from 'co auth'
 
@@ -638,7 +634,7 @@ def generate_custom_template_with_name(description: str, api_key: str, model: st
     Args:
         description: What the agent should do
         api_key: API key or token for LLM
-        model: Optional model to use (e.g., "co/gpt-4o-mini")
+        model: Optional model to use (e.g., "co/gemini-3.6-flash")
         loading_animation: Optional LoadingAnimation instance to update
 
     Returns:

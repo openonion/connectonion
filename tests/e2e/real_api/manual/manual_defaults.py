@@ -47,7 +47,7 @@ print(f"llm_do default model: {llm_do_model_default}")
 
 # Expected values
 expected_agent = "co/gemini-3.6-flash"
-expected_llm_do = "co/gpt-4o"
+expected_llm_do = "co/gemini-3.6-flash"
 
 if agent_model_default == expected_agent:
     print(f"✓ Agent default is correct: {expected_agent}")
@@ -67,7 +67,7 @@ print("=" * 60)
 print("\n1. With ConnectOnion managed keys (requires 'co auth'):")
 print("   from connectonion import llm_do, Agent")
 print("   ")
-print("   # Simple call - uses co/gpt-4o")
+print("   # Simple call - uses co/gemini-3.6-flash")
 print("   answer = llm_do('What is 2+2?')")
 print("   ")
 print("   # Agent - uses co/gemini-3.6-flash")
@@ -76,11 +76,11 @@ print("   result = agent.input('Analyze this data')")
 
 print("\n2. With your own API keys (override):")
 print("   # Override with your model")
-print("   answer = llm_do('Hello', model='gpt-4o', api_key='sk-...')")
-print("   agent = Agent('name', model='claude-3-5-sonnet', api_key='sk-ant-...')")
+print("   answer = llm_do('Hello', model='o4-mini', api_key='sk-...')")
+print("   agent = Agent('name', model='claude-sonnet-4-20250514', api_key='sk-ant-...')")
 
 print("\n3. Backend supported models:")
-print("   - co/gpt-4o ✓")
+print("   - co/gemini-3.6-flash ✓")
 print("   - co/gemini-3.6-flash ✓")
 
 # Test 3: Try to use with override (if OpenAI key available)
@@ -90,7 +90,7 @@ if has_openai:
     print("=" * 60)
 
     try:
-        result = llm_do("Say hello", model="gpt-4o-mini")
+        result = llm_do("Say hello", model="o4-mini")
         print(f"✓ llm_do works with OpenAI override")
         print(f"  Result: {result[:50]}...")
     except Exception as e:

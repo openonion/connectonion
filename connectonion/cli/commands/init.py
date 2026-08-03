@@ -265,7 +265,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 # OPENROUTER_API_KEY=
 
 # Optional: Override default model
-# MODEL=gpt-4o-mini
+# MODEL=co/gemini-3.6-flash
 """
             env_path.write_text(env_content, encoding='utf-8')
         files_created.append(".env")

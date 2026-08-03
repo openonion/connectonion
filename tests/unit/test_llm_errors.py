@@ -57,7 +57,7 @@ class TestMissingAPIKeys:
         """Test OpenAI raises ValueError when API key missing from environment."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
-                OpenAILLM(model="gpt-4o-mini")
+                OpenAILLM(model="o4-mini")
 
             assert "OpenAI API key required" in str(exc_info.value)
             assert "OPENAI_API_KEY" in str(exc_info.value)
@@ -66,7 +66,7 @@ class TestMissingAPIKeys:
         """Test OpenAI raises ValueError when api_key parameter is None."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
-                OpenAILLM(api_key=None, model="gpt-4o-mini")
+                OpenAILLM(api_key=None, model="o4-mini")
 
             assert "OpenAI API key required" in str(exc_info.value)
 
@@ -74,7 +74,7 @@ class TestMissingAPIKeys:
         """Test Anthropic raises ValueError when API key missing from environment."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
-                AnthropicLLM(model="claude-3-5-sonnet-20241022")
+                AnthropicLLM(model="claude-sonnet-4-20250514")
 
             assert "Anthropic API key required" in str(exc_info.value)
             assert "ANTHROPIC_API_KEY" in str(exc_info.value)
@@ -102,7 +102,7 @@ class TestMissingAPIKeys:
         """Test OpenRouter raises ValueError when API key missing from environment."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
-                OpenRouterLLM(model="openrouter/openai/gpt-4o-mini")
+                OpenRouterLLM(model="openrouter/openai/o4-mini")
 
             assert "OpenRouter API key required" in str(exc_info.value)
             assert "OPENROUTER_API_KEY" in str(exc_info.value)
@@ -120,7 +120,7 @@ class TestMissingAPIKeys:
         """Test OpenOnion raises ValueError with helpful message about co init."""
         with patch.dict(os.environ, {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
-                OpenOnionLLM(model="co/gpt-4o")
+                OpenOnionLLM(model="co/o4-mini")
 
             error_msg = str(exc_info.value)
             assert "OPENONION_API_KEY not found" in error_msg
@@ -155,7 +155,7 @@ class TestStructuredOutputErrors:
     def test_openai_structured_max_tokens_exceeded(self):
         """Test handling when OpenAI structured response exceeds max tokens."""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            llm = OpenAILLM(model="gpt-4o-mini")
+            llm = OpenAILLM(model="o4-mini")
 
             # Mock incomplete response due to max tokens
             mock_response = Mock()
@@ -172,7 +172,7 @@ class TestStructuredOutputErrors:
     def test_openai_structured_content_filter(self):
         """Test handling when OpenAI filters content in structured response."""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            llm = OpenAILLM(model="gpt-4o-mini")
+            llm = OpenAILLM(model="o4-mini")
 
             # Mock incomplete response due to content filter
             mock_response = Mock()
@@ -189,7 +189,7 @@ class TestStructuredOutputErrors:
     def test_openai_structured_refusal(self):
         """Test handling when OpenAI model refuses to generate structured output."""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            llm = OpenAILLM(model="gpt-4o-mini")
+            llm = OpenAILLM(model="o4-mini")
 
             # Mock refusal response
             mock_content = Mock()
@@ -214,7 +214,7 @@ class TestStructuredOutputErrors:
     def test_anthropic_structured_no_output(self):
         """Test Anthropic structured_complete raises error when no tool output received."""
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
-            llm = AnthropicLLM(model="claude-3-5-sonnet-20241022")
+            llm = AnthropicLLM(model="claude-sonnet-4-20250514")
 
             # Mock response with no tool_use blocks
             mock_content_block = Mock()
@@ -238,7 +238,7 @@ class TestJSONParsingErrors:
     def test_openai_malformed_tool_arguments(self):
         """Test handling when OpenAI returns malformed JSON in tool arguments."""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            llm = OpenAILLM(model="gpt-4o-mini")
+            llm = OpenAILLM(model="o4-mini")
 
             # Mock response with malformed JSON
             mock_tool_call = Mock()
@@ -302,7 +302,7 @@ class TestProviderErrorBubbling:
     def test_openai_api_error_bubbles_up(self):
         """Test that OpenAI API errors are not caught and bubble up."""
         with patch.dict(os.environ, {"OPENAI_API_KEY": "test-key"}):
-            llm = OpenAILLM(model="gpt-4o-mini")
+            llm = OpenAILLM(model="o4-mini")
 
             # Mock generic Exception (provider errors bubble up as-is)
             llm.client.chat.completions.create = Mock(
@@ -318,7 +318,7 @@ class TestProviderErrorBubbling:
     def test_anthropic_api_error_bubbles_up(self):
         """Test that Anthropic API errors are not caught and bubble up."""
         with patch.dict(os.environ, {"ANTHROPIC_API_KEY": "test-key"}):
-            llm = AnthropicLLM(model="claude-3-5-sonnet-20241022")
+            llm = AnthropicLLM(model="claude-sonnet-4-20250514")
 
             # Mock generic Exception (provider errors bubble up as-is)
             llm.client.messages.create = Mock(
@@ -341,7 +341,7 @@ class TestOpenAICompatibleProviders:
             "OPENROUTER_X_TITLE": "My App",
         }):
             with patch("connectonion.core.llm.openai.OpenAI") as mock_openai:
-                OpenRouterLLM(model="openrouter/openai/gpt-4o-mini")
+                OpenRouterLLM(model="openrouter/openai/o4-mini")
 
                 _, kwargs = mock_openai.call_args
                 assert kwargs["base_url"] == "https://openrouter.ai/api/v1"
@@ -395,7 +395,7 @@ class TestOpenAICompatibleProviders:
     def test_openrouter_structured_complete_json_mode(self):
         """OpenRouter structured output should use JSON mode and validate with Pydantic."""
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
-            llm = OpenRouterLLM(model="openrouter/openai/gpt-4o-mini")
+            llm = OpenRouterLLM(model="openrouter/openai/o4-mini")
 
             mock_message = Mock()
             mock_message.content = '{"value": 9, "message": "great"}'
@@ -428,7 +428,7 @@ class TestModelInference:
     def test_infer_openrouter_from_prefix(self):
         """Test that openrouter/* models are routed to OpenRouterLLM."""
         with patch.dict(os.environ, {"OPENROUTER_API_KEY": "test-key"}):
-            llm = create_llm("openrouter/openai/gpt-4o-mini")
+            llm = create_llm("openrouter/openai/o4-mini")
             assert isinstance(llm, OpenRouterLLM)
 
     def test_infer_grok_from_prefix(self):
@@ -477,28 +477,28 @@ class TestOpenOnionAuthentication:
         """Test that OPENONION_API_KEY from environment is used first."""
         with patch.dict(os.environ, {"OPENONION_API_KEY": "env-token"}):
             with patch('builtins.print'):  # Suppress warning message
-                llm = OpenOnionLLM(model="co/gpt-4o")
+                llm = OpenOnionLLM(model="co/o4-mini")
                 assert llm.auth_token == "env-token"
 
     def test_openonion_strips_co_prefix(self):
         """Test that co/ prefix is stripped from model name."""
         with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
             with patch('builtins.print'):  # Suppress warning
-                llm = OpenOnionLLM(model="co/gpt-4o-mini")
-                assert llm.model == "gpt-4o-mini"  # Prefix stripped
+                llm = OpenOnionLLM(model="co/o4-mini")
+                assert llm.model == "o4-mini"  # Prefix stripped
 
     def test_openonion_dev_mode_uses_localhost(self):
         """Test that OPENONION_DEV env var uses localhost."""
         with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token", "OPENONION_DEV": "1"}):
             with patch('builtins.print'):  # Suppress warning
-                llm = OpenOnionLLM(model="co/gpt-4o")
+                llm = OpenOnionLLM(model="co/o4-mini")
                 assert "localhost" in str(llm.client.base_url)
 
     def test_openonion_production_uses_oo_url(self):
         """Test that production mode uses oo.openonion.ai."""
         with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}, clear=True):
             with patch('builtins.print'):  # Suppress warning
-                llm = OpenOnionLLM(model="co/gpt-4o")
+                llm = OpenOnionLLM(model="co/o4-mini")
                 assert "oo.openonion.ai" in str(llm.client.base_url)
 
 
@@ -508,13 +508,13 @@ class TestAPIKeyFromParameter:
     def test_openai_api_key_from_parameter(self):
         """Test OpenAI accepts API key via parameter."""
         with patch.dict(os.environ, {}, clear=True):
-            llm = OpenAILLM(api_key="param-key", model="gpt-4o-mini")
+            llm = OpenAILLM(api_key="param-key", model="o4-mini")
             assert llm.api_key == "param-key"
 
     def test_anthropic_api_key_from_parameter(self):
         """Test Anthropic accepts API key via parameter."""
         with patch.dict(os.environ, {}, clear=True):
-            llm = AnthropicLLM(api_key="param-key", model="claude-3-5-sonnet-20241022")
+            llm = AnthropicLLM(api_key="param-key", model="claude-sonnet-4-20250514")
             assert llm.api_key == "param-key"
 
     def test_gemini_api_key_from_parameter(self):
@@ -526,7 +526,7 @@ class TestAPIKeyFromParameter:
     def test_create_llm_passes_api_key_to_provider(self):
         """Test that create_llm passes api_key parameter to provider."""
         with patch.dict(os.environ, {}, clear=True):
-            llm = create_llm("gpt-4o-mini", api_key="test-key")
+            llm = create_llm("o4-mini", api_key="test-key")
             assert isinstance(llm, OpenAILLM)
             assert llm.api_key == "test-key"
 
@@ -538,12 +538,12 @@ class TestCoModelRouting:
         """Test that co/* models are routed to OpenOnionLLM."""
         with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
             with patch('builtins.print'):  # Suppress warning
-                llm = create_llm("co/gpt-4o")
+                llm = create_llm("co/o4-mini")
                 assert isinstance(llm, OpenOnionLLM)
 
     def test_co_prefix_with_various_models(self):
         """Test that various co/* models all route to OpenOnion."""
-        models = ["co/gpt-4o", "co/claude-3-5-sonnet", "co/gemini-2.0-flash-exp", "co/o4-mini"]
+        models = ["co/o4-mini", "co/claude-sonnet-4-20250514", "co/gemini-2.0-flash-exp", "co/o4-mini"]
 
         with patch.dict(os.environ, {"OPENONION_API_KEY": "test-token"}):
             with patch('builtins.print'):  # Suppress warning
