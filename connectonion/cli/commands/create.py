@@ -23,6 +23,7 @@ from .auth_commands import authenticate
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
     PROVIDER_TO_ENV,
+    mint_invite_code,
     ensure_global_config,
     copy_docs,
     create_host_yaml,
@@ -369,6 +370,15 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
             ])
 
         env_content = "\n".join(env_lines) + "\n"
+
+    # The agent's own way in. Without it the host starts up saying "no one can
+    # onboard" and points at `co init` — a different command, for a directory
+    # that is already a project. Minted only when absent: regenerating would
+    # lock out everyone holding the old one.
+    if "CO_INVITE_CODE" not in env_content:
+        if env_content and not env_content.endswith("\n"):
+            env_content += "\n"
+        env_content += f"CO_INVITE_CODE={mint_invite_code()}\n"
 
     env_path.write_text(env_content, encoding='utf-8')
     files_created.append(".env")
