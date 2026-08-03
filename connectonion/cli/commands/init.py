@@ -231,6 +231,12 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
         code = "-".join("".join(_secrets.choice(alphabet) for _ in range(5)) for _ in range(3))
         keys_to_add.append(f"CO_INVITE_CODE={code}")
         global_keys["CO_INVITE_CODE"] = f"CO_INVITE_CODE={code}"
+        # In global_keys so the branch that writes a *fresh* .env includes it,
+        # and in existing_keys so the branch that appends to one does not add it
+        # a second time. Without this the file got the same code on two lines,
+        # and a duplicate in the file holding the agent's way in is how people
+        # stop trusting the file.
+        existing_keys.add("CO_INVITE_CODE")
 
     for key, line in global_keys.items():
         if key not in existing_keys:
