@@ -35,7 +35,7 @@ Usage:
 
 import re
 from pathlib import Path
-from typing import Dict, Optional, List
+from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
 
 
@@ -55,19 +55,23 @@ class SkillInfo:
 SKILLS_REGISTRY: Dict[str, SkillInfo] = {}
 
 
-def parse_skill_frontmatter(content: str) -> Dict[str, str]:
-    """Parse YAML frontmatter from SKILL.md content."""
-    # Match --- ... --- at start of file
-    match = re.match(r'^---\s*\n(.*?)\n---\s*\n', content, re.DOTALL)
-    if not match:
-        return {}
+def parse_skill_frontmatter(content: str) -> Dict[str, Any]:
+    """Parse YAML frontmatter from SKILL.md content.
 
-    frontmatter = {}
-    for line in match.group(1).split('\n'):
-        if ':' in line:
-            key, value = line.split(':', 1)
-            frontmatter[key.strip()] = value.strip()
+    Defers to the parser the skills plugin uses, because SKILL.md is one format
+    and two readers of it disagreed. This one used to split each line on the
+    first colon, which accepted frontmatter YAML rejects (an unquoted colon in a
+    description) and mangled what YAML handles (`tools: [a, b]` came back as the
+    string "[a, b]"). Whether a skill worked depended on which entry point
+    loaded it.
 
+    A file whose frontmatter does not parse now reads as empty here too, and the
+    fallbacks below take over — `co doctor` names the file and the line (#629),
+    which is what makes converging on the stricter reader safe.
+    """
+    from ....useful_plugins.skills import _parse_skill_content
+
+    frontmatter, _ = _parse_skill_content(content)
     return frontmatter
 
 
@@ -161,8 +165,17 @@ def _parse_skill_file(path: Path) -> Optional[SkillInfo]:
     content = path.read_text(encoding="utf-8")
     frontmatter = parse_skill_frontmatter(content)
 
+    # YAML types its values, and these two are labels for humans: the registry is
+    # keyed by name and the description goes into a prompt. `name: no` is a bool
+    # in YAML — `no`, `on`, `yes` and `off` all are — and a skill keyed by False
+    # cannot be looked up by any name a user can type. Structured values like
+    # `tools:` keep their real type; that is what the YAML reader is for.
     name = frontmatter.get("name")
     description = frontmatter.get("description")
+    if name is not None and not isinstance(name, str):
+        name = str(name)
+    if description is not None and not isinstance(description, str):
+        description = str(description)
 
     # If no name, use directory/file name
     if not name:

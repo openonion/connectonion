@@ -371,6 +371,26 @@ def skills_that_will_not_travel(co_dir: Optional[Path] = None,
 # UNIFIED PERMISSIONS WITH SNAPSHOT/RESTORE
 # =============================================================================
 
+def _tool_patterns(frontmatter: dict) -> list:
+    """The `tools:` declaration as a list of patterns.
+
+    YAML gives a string for `tools: read_file` and a list for `tools: [a, b]`.
+    The caller does `for pattern in patterns`, so the scalar form walked the
+    characters and registered `r`, `e`, `a`, `d`... as permission patterns.
+    Nothing was granted that should not have been -- no single character matches
+    a tool name -- but the author's declaration did nothing at all.
+    """
+    declared = frontmatter.get('tools')
+    if declared is None:
+        # No key at all, or `tools:` with nothing after it -- a null in YAML,
+        # which the caller's `for pattern in patterns` used to trip over. That
+        # runs when the skill is invoked, so it took the user's turn with it.
+        return []
+    if isinstance(declared, str):
+        return [declared]
+    return list(declared)
+
+
 def _grant_skill_permissions(agent: 'Agent', skill_name: str, patterns: List[str]) -> None:
     """Grant skill permissions using unified permission structure with 'when' field.
 
@@ -501,7 +521,7 @@ def handle_skill_invocation(agent: 'Agent') -> None:
     instructions = skill['instructions']
 
     # Grant skill permissions (with snapshot)
-    patterns = frontmatter.get('tools', [])
+    patterns = _tool_patterns(frontmatter)
     _grant_skill_permissions(agent, skill_name, patterns)
 
     # Replace user message with skill instructions, preserving slash-command args.
@@ -548,7 +568,7 @@ def skill(agent: 'Agent', name: str) -> str:
     instructions = skill_data['instructions']
 
     # Grant skill permissions (with snapshot)
-    patterns = frontmatter.get('tools', [])
+    patterns = _tool_patterns(frontmatter)
     _grant_skill_permissions(agent, name, patterns)
 
     return instructions
