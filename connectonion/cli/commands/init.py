@@ -165,6 +165,8 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # Authenticate to get OPENONION_API_KEY (always, for everyone)
     auth_success = authenticate(global_co_dir, save_to_project=False)
 
+    from .env_inheritance import is_personal_account_credential
+
     # Handle .env file - append API keys from global config
     env_path = Path(current_dir) / ".env"
     global_dir = Path.home() / ".co"
@@ -185,6 +187,13 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
                 line = line.strip()
                 if line and not line.startswith('#') and '=' in line:
                     key = line.split('=')[0].strip()
+                    if is_personal_account_credential(key):
+                        # Filtered at the source, so both write paths are clean.
+                        # Filtering only where keys are appended left the branch
+                        # that creates a fresh .env pouring the whole file in —
+                        # the unit tests were green and a real `co init` still
+                        # wrote the refresh tokens.
+                        continue
                     global_keys[key] = line
 
     # Read existing .env: overwrite identity keys, track existing keys
