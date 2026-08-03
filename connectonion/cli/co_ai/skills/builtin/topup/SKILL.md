@@ -87,8 +87,15 @@ Hand over exactly this, with `KEY` substituted — no login, no re-typing the ke
 https://o.openonion.ai/purchase?key=KEY
 ```
 
-Tell the person: *open it, pick an amount, pay — the credit lands on this same account and
+Tell the person: *open it, pick a top-up, pay — the credit lands on this same account and
 both `co` and the browser draw from it.* One balance, one link.
+
+**Set expectations about the page, because it will not match your words otherwise.** The
+purchase page shows fixed top-up packages (currently around \$0.99, \$19.90, \$109.90), and
+it is worded for API credit — it does **not** say "browser hours." That is not a wrong page:
+it is the same `credits_usd` browser time bills against. Tell the person plainly: *the page
+sells credit in fixed amounts; any of them adds to the one balance, and browser time draws
+from it at \$0.10/hour.* Do not promise an arbitrary-amount field the page does not have.
 
 ## The plain-language summary
 
