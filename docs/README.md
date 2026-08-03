@@ -1679,11 +1679,11 @@ def _add_reflection(agent) -> None:
     """Reflect on tool execution result"""
     trace = agent.current_session['trace'][-1]
 
-    if trace['type'] == 'tool_execution' and trace['status'] == 'success':
+    if trace['type'] == 'tool_result' and trace['status'] == 'success':
         # Extract current tool execution
         user_prompt = agent.current_session.get('user_prompt', '')
-        tool_name = trace['tool_name']
-        tool_args = trace['arguments']
+        tool_name = trace['name']
+        tool_args = trace['args']
         tool_result = trace['result']
 
         # Compress conversation messages
@@ -1746,7 +1746,7 @@ from connectonion import Agent, after_each_tool
 
 def log_tool(agent):
     trace = agent.current_session['trace'][-1]
-    print(f"✓ {trace['tool_name']} completed in {trace['timing']}ms")
+    print(f"✓ {trace['name']} completed in {trace['timing_ms']}ms")
 
 # Plugin is an event list
 logger = [after_each_tool(log_tool)]  # after_each_tool for per-tool logging
@@ -1901,7 +1901,7 @@ if "Maximum iterations" in result:
     # Look at the execution trace to see what went wrong
     for entry in agent.current_session['trace']:
         if entry.get('status') == 'error':
-            print(f"Tool {entry['tool_name']} failed: {entry['result']}")
+            print(f"Tool {entry['name']} failed: {entry['result']}")
 
 # Solutions:
 # 1. Increase iterations
