@@ -31,13 +31,17 @@ class TestGetEndpoints:
         ]
 
     def test_uses_ip_discovery_without_public_domain(self, monkeypatch):
-        """Local hosts keep the existing localhost/IP endpoint behavior."""
+        """Addresses another machine can reach — which loopback is not.
+
+        This used to assert localhost was published, and it was: the relay
+        record for a live agent listed http://localhost:8001 to anyone who
+        asked. A browser client walking that list then probed port 8001 on the
+        reader's own machine.
+        """
         monkeypatch.delenv("AGENT_PUBLIC_DOMAIN", raising=False)
         monkeypatch.setattr("connectonion.network.announce.get_ips", lambda: ["localhost", "10.0.0.2"])
 
         assert get_endpoints(8000) == [
-            "http://localhost:8000",
-            "ws://localhost:8000/ws",
             "http://10.0.0.2:8000",
             "ws://10.0.0.2:8000/ws",
         ]

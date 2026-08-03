@@ -38,6 +38,13 @@ def get_ips() -> List[str]:
     return ips
 
 
+def _is_loopback(host: str) -> bool:
+    """Whether this address only means anything on the machine that has it."""
+    if host in ("localhost", "::1"):
+        return True
+    return host.startswith("127.")
+
+
 def get_endpoints(port: int) -> List[str]:
     """Get all endpoints as full URLs (http and ws for each IP)."""
     domain = os.getenv("AGENT_PUBLIC_DOMAIN", "").strip().rstrip("/")
@@ -46,6 +53,18 @@ def get_endpoints(port: int) -> List[str]:
 
     endpoints = []
     for ip in get_ips():
+        if _is_loopback(ip):
+            # Not a place another machine can go, and the relay record is read
+            # by other machines. Published, it made a browser client walking the
+            # list probe port `port` on *the reader's own* machine — the address
+            # check was the only thing that stopped it talking to whatever
+            # answered. Fixed on the client side in @connectonion/react 0.3.2;
+            # this is the same bug at the source.
+            #
+            # Private addresses are deliberately kept: two agents in one VPC or
+            # on one LAN can use them, and the relay would otherwise carry a
+            # connection that did not need it.
+            continue
         endpoints.append(f"http://{ip}:{port}")
         endpoints.append(f"ws://{ip}:{port}/ws")
     return endpoints
