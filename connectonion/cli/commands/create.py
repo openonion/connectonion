@@ -316,13 +316,17 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # Always copy from global keys.env (includes AGENT_ADDRESS, AGENT_EMAIL, and API keys)
     if global_keys_env.exists() and global_keys_env.stat().st_size > 0:
         # Copy global keys to project
-        from .env_inheritance import is_personal_account_credential
+        from .env_inheritance import (
+            describes_this_machine,
+            is_personal_account_credential,
+        )
+
+        def inherited(line: str) -> bool:
+            key = line.strip().split('=', 1)[0]
+            return not (is_personal_account_credential(key) or describes_this_machine(key))
 
         with open(global_keys_env, 'r', encoding='utf-8') as f:
-            env_content = "".join(
-                line for line in f
-                if not is_personal_account_credential(line.strip().split('=', 1)[0])
-            )
+            env_content = "".join(line for line in f if inherited(line))
 
         # AGENT_CONFIG_PATH is deliberately not written here. Every tool that
         # reads it already falls back to ~/.co on the machine it is running on

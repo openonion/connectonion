@@ -296,21 +296,23 @@ class TestCliInit:
             assert (fake_home / ".co" / "keys" / "agent.key").exists()
             assert (fake_home / ".co" / "keys.env").exists()
 
-    def test_init_creates_agent_config_path_in_env(self):
-        """Test that init creates AGENT_CONFIG_PATH in .env file."""
+    def test_init_writes_no_absolute_home_directory(self):
+        """The opposite of what this file asserted until 1.6.0.
+
+        It asked for AGENT_CONFIG_PATH in the project .env and gave no reason.
+        #438 and `co deploy` both say the reason runs the other way: the value
+        is an absolute path to the machine that ran the command, and a project
+        .env travels. See tests/unit/test_the_machine_path_does_not_travel.py.
+        """
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
             result = self.runner.invoke(cli, ['init', '--template', 'co-ai'])
             assert result.exit_code == 0
 
-            # Check that .env contains AGENT_CONFIG_PATH
             assert os.path.exists(".env")
             with open(".env") as f:
-                content = f.read()
-                assert "AGENT_CONFIG_PATH=" in content
-                # Should point to home directory .co folder
-                assert "/.co" in content
+                assert "AGENT_CONFIG_PATH" not in f.read()
 
     def test_init_adds_default_model_comment_in_env(self):
         """Test that init adds default model comment to .env file."""
