@@ -1271,11 +1271,11 @@ from connectonion import Agent, send_email
 agent = Agent(
     "customer_support",
     tools=[send_email],
-    instructions="You help users and send them email confirmations"
+    system_prompt="You help users and send them email confirmations"
 )
 
 # The agent can now send emails autonomously
-response = agent("Send a welcome email to alice@example.com")
+response = agent.input("Send a welcome email to alice@example.com")
 # Agent sends: send_email("alice@example.com", "Welcome!", "Thanks for joining...")
 ```
 
@@ -1293,11 +1293,11 @@ def check_system_status() -> dict:
 monitor = Agent(
     "system_monitor",
     tools=[check_system_status, send_email],
-    instructions="Monitor system health and alert admin@example.com if issues"
+    system_prompt="Monitor system health and alert admin@example.com if issues"
 )
 
 # Agent checks system and sends alerts
-monitor("Check the system and alert if there are problems")
+monitor.input("Check the system and alert if there are problems")
 # Agent will:
 # 1. Call check_system_status() 
 # 2. See high CPU (95%)
