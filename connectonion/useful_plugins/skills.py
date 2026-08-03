@@ -168,6 +168,11 @@ def _load_skill(skill_name: str) -> Optional[Dict[str, Any]]:
     return None
 
 
+# ---\n<yaml>\n---\n<instructions>.  Shared with the reader that diagnoses a
+# SKILL.md, so "what doctor checks" cannot drift from "what loading accepts".
+_FRONTMATTER_RE = re.compile(r'^---\s*\n(.*?)\n---\s*\n(.*)$', re.DOTALL)
+
+
 def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
     """Parse SKILL.md content into frontmatter and instructions.
 
@@ -177,8 +182,7 @@ def _parse_skill_content(content: str) -> tuple[Dict[str, Any], str]:
     Returns:
         (frontmatter_dict, instructions_text)
     """
-    # Match YAML frontmatter: ---\n...\n---
-    match = re.match(r'^---\s*\n(.*?)\n---\s*\n(.*)$', content, re.DOTALL)
+    match = _FRONTMATTER_RE.match(content)
 
     if not match:
         # No frontmatter
@@ -289,27 +293,65 @@ def find_skill_problems(co_dir: Optional[Path] = None,
             if entry.name.startswith('.'):
                 continue
 
-            if not entry.is_symlink():
-                # A plain directory without a SKILL.md is not a broken skill — people
-                # keep notes, scratch dirs and shared assets in here. Only links are
-                # checked: a link is a claim that a skill lives somewhere, and that
-                # claim can be false.
-                continue
+            if entry.is_symlink():
+                # exists() follows the link, so False here means the target is gone.
+                if not entry.exists():
+                    problems.append((location, entry.name, 'broken symlink'))
+                    continue
 
-            # exists() follows the link, so False here means the target is gone.
-            if not entry.exists():
-                problems.append((location, entry.name, 'broken symlink'))
-                continue
+                resolved = entry.resolve()
+                if resolved == skills_dir.resolve() or resolved in skills_dir.resolve().parents:
+                    problems.append((location, entry.name, 'symlink points at its own ancestor'))
+                    continue
 
-            resolved = entry.resolve()
-            if resolved == skills_dir.resolve() or resolved in skills_dir.resolve().parents:
-                problems.append((location, entry.name, 'symlink points at its own ancestor'))
-                continue
+                if entry.is_dir() and not (entry / 'SKILL.md').exists():
+                    problems.append((location, entry.name, 'linked directory has no SKILL.md'))
+                    continue
 
-            if entry.is_dir() and not (entry / 'SKILL.md').exists():
-                problems.append((location, entry.name, 'linked directory has no SKILL.md'))
+            # A plain directory without a SKILL.md is not a broken skill — people
+            # keep notes, scratch dirs and shared assets in here, and nothing there
+            # claims otherwise. A SKILL.md is the claim, and like a symlink it can
+            # be false: loading swallows a YAML error and carries on with an empty
+            # frontmatter, so the skill reaches the model with no description and
+            # no `tools:` patterns, looking like it works.
+            if entry.is_dir() and (entry / 'SKILL.md').exists():
+                reason = _why_the_skill_cannot_be_read(entry / 'SKILL.md')
+                if reason:
+                    problems.append((location, entry.name, reason))
 
     return problems
+
+
+def _why_the_skill_cannot_be_read(skill_md: Path) -> Optional[str]:
+    """The reason a SKILL.md cannot be loaded, or None if it is fine.
+
+    Only unambiguous breakage. A file with no frontmatter at all is a legitimate
+    way to write a simple skill — the whole file is the instructions — and
+    reporting a working skill is worse than the silence this fixes.
+    """
+    content = skill_md.read_text(errors='replace')
+
+    if not content.strip():
+        return 'SKILL.md is empty'
+
+    match = _FRONTMATTER_RE.match(content)
+    if not match:
+        return None
+
+    import yaml
+    try:
+        yaml.safe_load(match.group(1))
+    except yaml.YAMLError as e:
+        detail = str(e).split('\n')[0]
+        mark = getattr(e, 'problem_mark', None)
+        if mark is None:
+            return f'SKILL.md frontmatter is not valid YAML: {detail}'
+        # The mark counts lines within the frontmatter, 0-based. Add one for the
+        # opening `---` and one for counting from 1, so the number is the line an
+        # editor puts the cursor on.
+        return f'SKILL.md frontmatter is not valid YAML at line {mark.line + 2}: {detail}'
+
+    return None
 
 
 def skills_that_will_not_travel(co_dir: Optional[Path] = None,
