@@ -116,21 +116,30 @@ class TestToolClassification:
 
 
 class TestNoIO:
-    """No IO means nobody to ask. It does not mean nothing to decide.
+    """No IO means no WebSocket. It does not, by itself, mean no human.
 
-    This test used to assert the opposite — that `rm -rf /` runs unchallenged
-    when no human is attached — and it passed for as long as that was true.
-    The reasoning behind it was reasonable: there is no one to show a prompt to,
-    and a prompt nobody answers hangs the run forever.
+    `co ai` in a terminal has io=None too, and the person running it is right
+    there. So a missing socket still skips the web approval flow — everything
+    below that point sends over it and has nothing to ask with.
 
-    But "cannot ask" was silently treated as "may proceed", so the mode that
-    looked strictest became no gate at all, in the one setting where nobody was
-    watching to notice. A scheduled run still cannot ask; it can still be
-    judged. See #535.
+    What changed is that "nobody is attached" is now stated by the caller that
+    knows it (the scheduler sets session['unattended']) rather than guessed
+    from a missing socket. See #535 and test_unattended_approval.py.
     """
 
-    def test_no_io_still_refuses_a_destructive_command(self):
+    def test_no_io_skips_the_web_approval_flow(self):
         agent = FakeAgent(io=None)
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'rm -rf /', 'description': 'Delete everything'}
+        }
+
+        check_approval(agent)
+
+    def test_unattended_does_not_skip(self):
+        """The case the old skip actually covered, now judged instead."""
+        agent = FakeAgent(io=None)
+        agent.current_session['unattended'] = True
         agent.current_session['pending_tool'] = {
             'name': 'bash',
             'arguments': {'command': 'rm -rf /', 'description': 'Delete everything'}
@@ -141,15 +150,6 @@ class TestNoIO:
         assert 'host.yaml' in str(exc.value), (
             "a refusal the operator cannot act on is an outage, not a safeguard"
         )
-
-    def test_no_io_still_allows_a_read(self):
-        agent = FakeAgent(io=None)
-        agent.current_session['pending_tool'] = {
-            'name': 'bash',
-            'arguments': {'command': 'cat inbox.json'}
-        }
-
-        check_approval(agent)
 
 
 class TestSafeTools:

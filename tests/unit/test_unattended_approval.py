@@ -25,6 +25,8 @@ def unattended(tool_name, arguments, tmp_path):
     agent.io = None
     agent.current_session = {
         'messages': [], 'trace': [], 'turn': 0,
+        # The scheduler states this; nothing infers it from a missing socket.
+        'unattended': True,
         'pending_tool': {'name': tool_name, 'arguments': arguments},
     }
     return agent
@@ -82,4 +84,20 @@ class TestUnattendedIsStillJudged:
         agent = unattended('bash', {'command': 'lark-cli task create'}, tmp_path)
         from connectonion.useful_plugins.tool_approval import load_config_permissions
         load_config_permissions(agent)
+        check_approval(agent)  # must not raise
+
+
+class TestATerminalIsNotUnattended:
+    """No WebSocket is not the same as no human.
+
+    `co ai` in a terminal also has `agent.io is None`. Gating on that would
+    have made every local run refuse its own `rm -rf build` and point the user
+    at a config file — while the user sat right there, able to answer.
+    """
+
+    def test_a_terminal_run_is_not_gated_by_the_unattended_rule(self, tmp_path,
+                                                                monkeypatch):
+        monkeypatch.chdir(tmp_path)
+        agent = unattended('bash', {'command': 'rm -rf build'}, tmp_path)
+        del agent.current_session['unattended']
         check_approval(agent)  # must not raise

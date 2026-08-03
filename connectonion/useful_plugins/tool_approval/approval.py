@@ -395,19 +395,11 @@ def matches_permission_pattern(tool_name: str, tool_args: dict, pattern: str) ->
 # =============================================================================
 
 def _permission_line(pending: dict) -> str:
-<<<<<<< HEAD
     """The exact host.yaml key that would allow this call in future.
 
     Capitalised `Bash(...)` because that is the form the loader matches. A
     suggestion that pastes cleanly and then silently does nothing is worse than
     no suggestion — the operator stops looking for the real cause.
-=======
-    """The exact key to paste into host.yaml to allow this call in future.
-
-    Capitalised `Bash(...)` because that is the form the loader matches — a
-    suggestion the operator pastes and that then silently does nothing is worse
-    than no suggestion, because they stop looking for the real cause.
->>>>>>> c290b58 (fix(approval): a run with nobody attached is still judged)
     """
     name = pending['name']
     if name.lower() not in ('bash', 'shell', 'run'):
@@ -511,14 +503,20 @@ def check_approval(agent: 'Agent') -> None:
         return
 
     # =================================================================
-    # No IO = nobody to ask. Not the same as nothing to decide.
+    # Unattended: nobody to ask. Not the same as nothing to decide.
     # =================================================================
-    # This used to `return` — the strictest-looking mode became no gate at all,
-    # exactly where nobody was watching. A scheduled run cannot answer a prompt,
-    # but it can still be judged, so the reviewer decides alone and a refusal
-    # stops the tool. The message carries the fix because the person who reads
-    # it is reading a log hours later with no way to ask a follow-up question.
-    if not agent.io:
+    # Approval used to be skipped whenever `agent.io` was missing, so the
+    # strictest-looking mode became no gate at all exactly where nobody was
+    # watching. A scheduled run cannot answer a prompt, but it can still be
+    # judged: the reviewer decides alone and a refusal stops the tool.
+    #
+    # Keyed on the flag the scheduler sets, not on a missing WebSocket — a
+    # terminal has no WebSocket either, and the person in front of it can be
+    # asked. Inferring "unattended" from "no io" would have gated `co ai`.
+    #
+    # The message carries its own fix: whoever reads it is reading a log hours
+    # later with no way to ask a follow-up question.
+    if agent.current_session.get('unattended'):
         allowed, why = auto_review(pending['name'], pending['arguments'])
         if allowed:
             return
@@ -528,6 +526,13 @@ def check_approval(agent: 'Agent') -> None:
             f"`permissions` in .co/host.yaml:\n\n    {_permission_line(pending)}:\n"
             f"      allowed: true\n      reason: why this schedule needs it"
         )
+
+    # No io and attended: a terminal. Everything below this line talks over the
+    # WebSocket, so there is nothing here that could ask. Unchanged behaviour —
+    # the gap this leaves is #535's other half, tracked separately, and closing
+    # it means building a console prompt rather than borrowing the web one.
+    if not agent.io:
+        return
 
     tool_name = pending['name']
     tool_args = pending['arguments']

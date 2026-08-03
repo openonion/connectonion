@@ -456,8 +456,11 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         from .http_router import input_handler
 
         session_id = str(uuid.uuid4())
+        # `unattended` is stated here, not inferred downstream from a missing
+        # WebSocket — a terminal has no WebSocket either, and a human sitting in
+        # front of one can be asked. Only this caller knows nobody is there.
         out = input_handler(create_agent, storage, entry.run, result_ttl,
-                            session={"session_id": session_id})
+                            session={"session_id": session_id, "unattended": True})
         return out.get("status", "done"), session_id
 
     async def tick_once(now: Optional[datetime] = None) -> None:
