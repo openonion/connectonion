@@ -28,6 +28,21 @@ import pytest
 from connectonion.network.announce import ANNOUNCE_SUMMARY_LIMIT, fit_summary
 
 
+@pytest.fixture(autouse=True)
+def _forget_what_was_already_said():
+    """The notice is deduplicated by module-level state, so it leaks between
+    tests: two of these use the same 5,000-character summary, and without this
+    the second one sees nothing and fails for the wrong reason.
+
+    Stated as a fixture rather than fixed by giving each test its own string,
+    because the coupling is real and the next test added here would hit it too.
+    """
+    import connectonion.network.announce as ann
+    ann._summary_already_mentioned = None
+    yield
+    ann._summary_already_mentioned = None
+
+
 class TestASummaryIsCutToWhatCanBeSent:
 
     def test_a_long_one_is_shortened(self, capsys):
@@ -69,3 +84,50 @@ class TestAnOrdinarySummaryIsUntouched:
     def test_an_empty_summary_is_left_alone(self):
         assert fit_summary("") == ""
         assert fit_summary(None) is None
+
+
+class TestItIsSaidOnceNotOnEveryReconnect:
+    """`create_announce_message` is the relay loop's callback, not a one-off.
+
+        while True:
+            await relay.serve_once(
+                relay_url,
+                lambda: announce.create_announce_message(…),
+
+    It is rebuilt on every reconnect — deliberately, because the message is
+    signed and has to be fresh for the socket it announces on (#548). So a
+    notice printed here is printed on every network blip, and an agent with a
+    long summary and a flaky link fills its log with one repeated line.
+
+    Same rule this repo already applies to the legacy trust-list notice: a
+    warning nobody sees is useless, and one that fires on every event is noise
+    that trains people to stop reading the log.
+    """
+
+    def test_a_reconnect_does_not_repeat_it(self, capsys, monkeypatch):
+        import connectonion.network.announce as ann
+        monkeypatch.setattr(ann, '_summary_already_mentioned', None, raising=False)
+
+        for _ in range(5):
+            ann.fit_summary("x" * 5000)
+
+        assert capsys.readouterr().out.count('[announce]') == 1
+
+    def test_a_different_summary_is_still_worth_saying(self, capsys, monkeypatch):
+        """host.yaml edited and the loop restarted is new information."""
+        import connectonion.network.announce as ann
+        monkeypatch.setattr(ann, '_summary_already_mentioned', None, raising=False)
+
+        ann.fit_summary("x" * 5000)
+        capsys.readouterr()
+        ann.fit_summary("y" * 9000)
+
+        assert '[announce]' in capsys.readouterr().out
+
+    def test_it_still_cuts_every_time(self, capsys, monkeypatch):
+        """Quiet is about the notice, not about the behaviour."""
+        import connectonion.network.announce as ann
+        monkeypatch.setattr(ann, '_summary_already_mentioned', None, raising=False)
+
+        for _ in range(3):
+            assert len(ann.fit_summary("x" * 5000)) == ann.ANNOUNCE_SUMMARY_LIMIT
