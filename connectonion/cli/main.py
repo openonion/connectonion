@@ -28,7 +28,10 @@ import typer
 from dotenv import load_dotenv
 from rich.console import Console
 
-from .. import __version__
+# From _version, not from the package: `from .. import __version__` pulled in
+# the OpenAI and Anthropic SDKs before the CLI had parsed an argument, which
+# is what every command handler being imported inside its function was for.
+from .._version import __version__
 
 # Load both env files for all CLI commands. keys.env stays first — that is
 # already the CLI's effective precedence, since commands that load .env do so

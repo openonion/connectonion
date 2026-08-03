@@ -10,7 +10,8 @@ LLM-Note:
 ConnectOnion - A simple agent framework with behavior tracking.
 """
 
-__version__ = "1.5.11"
+# Single source, in a module the CLI can import on its own — see _version.py.
+from ._version import __version__
 
 # Auto-load .env files for the entire framework
 import os as _os
