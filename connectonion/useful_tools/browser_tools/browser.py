@@ -188,6 +188,25 @@ def _clear_stale_singleton_lock(profile_dir: Path) -> None:
         (profile_dir / name).unlink(missing_ok=True)
 
 
+def _profile_lock_holder(profile_dir: Path) -> Optional[int]:
+    """PID of the LIVE process holding this profile's SingletonLock, or None.
+
+    The mirror of _clear_stale_singleton_lock: that one removes a DEAD owner's lock,
+    this one reports a LIVE owner. Run right after it, so a lock that remains means a
+    real Chrome still owns the persistent profile — a second launch on it aborts with
+    Chrome's cryptic ProcessSingleton error (or hangs to timeout). Returning the pid
+    lets open_browser fail fast with an actionable message instead.
+    """
+    lock = profile_dir / "SingletonLock"
+    if not lock.is_symlink():
+        return None
+    tail = os.readlink(lock).rsplit("-", 1)[-1]
+    if not tail.isdigit():
+        return None
+    pid = int(tail)
+    return pid if _pid_alive(pid) else None
+
+
 def driver_stealth_status():
     """Report whether the installed Patchright driver still has its stealth patches.
 
@@ -575,16 +594,34 @@ class BrowserAutomation:
             if had_previous_browser_state:
                 self._teardown()   # context is dead/unusable — full cleanup before relaunch
 
-        self.playwright = sync_playwright().start()
-
         # Dedicated persistent profile owned by co
         # First run: fresh profile, user logs in once. All later runs reuse saved cookies.
+        # Resolve and unlock it BEFORE starting the driver: the profile can be driven by
+        # only one browser at a time, so if a live one already owns it we fail fast here —
+        # no driver started, nothing to leak.
         profile_dir = Path.home() / ".co" / "browser_profile"
         profile_dir.mkdir(parents=True, exist_ok=True)
 
         # A previous Chrome that died uncleanly can leave a SingletonLock that blocks this
         # launch. Clear it if its owner is dead, so the persistent profile can't get bricked.
         _clear_stale_singleton_lock(profile_dir)
+
+        # A lock that survives the stale-clear means a LIVE browser still owns the profile.
+        # Launching anyway aborts with Chrome's cryptic ProcessSingleton error (or hangs to
+        # the 120s timeout), so surface the holder and the fix instead.
+        holder = _profile_lock_holder(profile_dir)
+        if holder is not None:
+            raise RuntimeError(
+                f"Browser profile is already in use by another process (PID {holder}).\n"
+                f"The persistent profile at {profile_dir} can be driven by only one browser "
+                f"at a time — usually another `co browser` daemon or a Chrome window you "
+                f"opened on this profile.\n"
+                f"Fix: quit that browser, or stop the process:  kill {holder}\n"
+                f"Then retry. (If you're sure nothing is using it, the lock is stale — "
+                f"remove {profile_dir / 'SingletonLock'} and retry.)"
+            )
+
+        self.playwright = sync_playwright().start()
 
         # Remove --no-sandbox from args since Playwright adds it by default
         # Just keep the flags we actually need

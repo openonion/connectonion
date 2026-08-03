@@ -380,7 +380,12 @@ def _tool_patterns(frontmatter: dict) -> list:
     Nothing was granted that should not have been -- no single character matches
     a tool name -- but the author's declaration did nothing at all.
     """
-    declared = frontmatter.get('tools', [])
+    declared = frontmatter.get('tools')
+    if declared is None:
+        # No key at all, or `tools:` with nothing after it -- a null in YAML,
+        # which the caller's `for pattern in patterns` used to trip over. That
+        # runs when the skill is invoked, so it took the user's turn with it.
+        return []
     if isinstance(declared, str):
         return [declared]
     return list(declared)

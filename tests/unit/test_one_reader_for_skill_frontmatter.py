@@ -201,3 +201,26 @@ class TestTheBundledSkillsStillRead:
         for path in bundled:
             info = _parse_skill_file(path)
             assert info.description, f"{path} lost its description"
+
+
+class TestAToolsKeyWithNothingAfterIt:
+    """`tools:` and then nothing is a null in YAML, and the caller iterates it.
+
+    Pre-existing — it crashed the same way before the readers were unified —
+    but it lands in the function that now owns reading that key. It fires when
+    the skill is *invoked*, and `_grant_skill_permissions` is not in a try
+    block, so the exception unwinds the turn the user was in the middle of.
+    """
+
+    def test_it_is_no_patterns_rather_than_a_crash(self):
+        from connectonion.useful_plugins.skills import _tool_patterns, _parse_skill_content
+
+        frontmatter, _ = _parse_skill_content("---\nname: n\ntools:\n---\n\nBody.\n")
+
+        assert frontmatter["tools"] is None, "the shape this is about changed"
+        assert _tool_patterns(frontmatter) == []
+
+    def test_an_explicit_empty_list_is_still_no_patterns(self):
+        from connectonion.useful_plugins.skills import _tool_patterns
+
+        assert _tool_patterns({"tools": []}) == []
