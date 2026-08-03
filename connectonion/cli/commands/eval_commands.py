@@ -34,6 +34,29 @@ class JudgeResult(BaseModel):
     analysis: str
 
 
+def summarise_run(trace: list, format_tool_call) -> dict:
+    """What one eval turn did, read off the trace the agent just wrote.
+
+    The tool entries are `tool_call` and `tool_result`; this read
+    `tool_execution`, which is what core/tool_executor.py's module note claimed
+    and nothing writes — so every saved eval also listed no tools at all.
+    `tool_result` rather than `tool_call`, so a tool counts once and only after
+    it finished.
+
+    Tokens and cost come from totals_from_trace, which explains the other half.
+    """
+    from ...core.usage import totals_from_trace
+
+    tokens, cost = totals_from_trace(trace)
+    results = [t for t in trace if t.get('type') == 'tool_result']
+
+    return {
+        'tokens': tokens,
+        'cost': cost,
+        'tools_called': [format_tool_call(t) for t in results],
+    }
+
+
 def get_agent_from_file(file_path: str, cwd: str):
     """Import agent instance from file."""
     from connectonion import Agent
@@ -145,18 +168,11 @@ def _run_evals(eval_files: list, agent_override: Optional[str] = None):
             result = agent.input(input_text)
 
             # Extract tools_called and metrics from agent session
-            trace = agent.current_session.get('trace', [])
-            tool_calls = [t for t in trace if t.get('type') == 'tool_execution']
-            llm_calls = [t for t in trace if t.get('type') == 'llm_call']
-            tools_called = [agent.logger._format_tool_call(t) for t in tool_calls]
-
-            total_tokens = sum(
-                (t.get('usage').input_tokens + t.get('usage').output_tokens)
-                for t in llm_calls if t.get('usage')
-            )
-            total_cost = sum(
-                t.get('usage').cost for t in llm_calls if t.get('usage')
-            )
+            summary = summarise_run(agent.current_session.get('trace', []),
+                                    agent.logger._format_tool_call)
+            tools_called = summary['tools_called']
+            total_tokens = summary['tokens']
+            total_cost = summary['cost']
 
             # Build history as JSON array string (compact, easy to scan)
             history_str = turn.get('history', '[]')

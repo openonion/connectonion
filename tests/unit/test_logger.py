@@ -249,13 +249,18 @@ class TestEvalLogging:
 
     def _create_mock_session(self, tool_calls=None, turn=1):
         """Helper to create mock session dict for log_turn."""
-        mock_usage = Mock()
-        mock_usage.input_tokens = 100
-        mock_usage.output_tokens = 50
-        mock_usage.cost = 0.01
-
+        # The shape agent.py writes: llm_call carries no usage — it is recorded
+        # when the request goes out — and llm_result carries it as a dict,
+        # because the trace has to stay JSON-serialisable. Putting a Mock on
+        # llm_call here taught the reader the wrong shape and then agreed with
+        # it, and every saved eval reported 0 tokens.
         trace = [
-            {'type': 'llm_call', 'usage': mock_usage}
+            {'type': 'llm_call', 'model': 'gpt-4', 'status': 'pending'},
+            {'type': 'llm_result', 'usage': {'input_tokens': 100,
+                                             'output_tokens': 50,
+                                             'cached_tokens': 0,
+                                             'cache_write_tokens': 0,
+                                             'cost': 0.01}},
         ]
         if tool_calls:
             for tc in tool_calls:
