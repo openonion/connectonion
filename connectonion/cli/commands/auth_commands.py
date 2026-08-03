@@ -138,7 +138,20 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
 
         return True
     else:
-        error_msg = response.json().get("detail", "Registration failed")
+        # The backend answers errors in JSON; a gateway in front of it does not.
+        # A 502 HTML page made `.json()` raise out of `co init` as a traceback,
+        # stopping before the project's .env was written — half a project and a
+        # stack trace where an explanation belongs. Seen for real on
+        # 2026-08-03: the relay returned 502 for about twenty seconds and every
+        # `co init` in that window died on JSONDecodeError.
+        #
+        # A backend blip is ordinary operation for something meant to run for
+        # years, so report which status came back rather than the shape of the
+        # reply this code hoped for.
+        try:
+            error_msg = response.json().get("detail", "Registration failed")
+        except ValueError:
+            error_msg = f"HTTP {response.status_code} (the reply was not JSON)"
         console.print(f"❌ Registration failed: {error_msg}", style="red")
         return False
 
