@@ -527,8 +527,14 @@ class Console:
         if cached:
             tokens_str = f"{tokens_str} ({cached} cached)"
 
-        # Format cost
-        cost_str = f"${usage.cost:.4f}" if usage.cost < 0.01 else f"${usage.cost:.2f}"
+        # Format cost. A `~` when the model is not in the pricing table, because
+        # the figure is then a generic fallback rather than a looked-up price —
+        # and printing a guess in the same shape as a fact is how the default
+        # model stayed mispriced without anyone noticing.
+        from .core.usage import is_estimated_price
+
+        amount = f"${usage.cost:.4f}" if usage.cost < 0.01 else f"${usage.cost:.2f}"
+        cost_str = f"~{amount}" if is_estimated_price(model) else amount
 
         # Format timing
         time_str = f"{duration_ms/1000:.1f}s" if duration_ms >= 100 else f"{duration_ms/1000:.2f}s"
