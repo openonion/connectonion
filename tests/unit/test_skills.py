@@ -57,11 +57,14 @@ class TestPermissionGranting:
 
         _grant_skill_permissions(agent, 'commit', ['Bash(git status)', 'read_file'])
 
-        # Snapshot should exist
-        assert '_permission_snapshot' in agent.current_session
+        # Snapshot should exist, and record which turn it describes — a turn
+        # that raises never restores, and its leftover snapshot must not be
+        # mistaken for the next turn's starting point.
+        snapshot = agent.current_session['_permission_snapshot']
+        assert snapshot['turn'] == agent.current_session['turn']
         # Snapshot should contain user approval
-        assert 'write' in agent.current_session['_permission_snapshot']
-        assert agent.current_session['_permission_snapshot']['write']['source'] == 'user'
+        assert 'write' in snapshot['permissions']
+        assert snapshot['permissions']['write']['source'] == 'user'
 
     def test_grant_skill_permissions_adds_patterns(self):
         """Test that skill permissions are added to permissions dict."""
@@ -116,7 +119,10 @@ class TestPermissionGranting:
                 'expires': {'type': 'session_end'}
             }
         }
-        agent.current_session['_permission_snapshot'] = deepcopy(agent.current_session['permissions'])
+        agent.current_session['_permission_snapshot'] = {
+            'turn': agent.current_session['turn'],
+            'permissions': deepcopy(agent.current_session['permissions']),
+        }
 
         # Add skill permission
         agent.current_session['permissions']['Bash(git status)'] = {
@@ -353,7 +359,8 @@ class TestCleanup:
             'bash': {'source': 'skill', 'when': {'command': 'git status'}}
         }
         agent.current_session['_permission_snapshot'] = {
-            'write': {'source': 'user'}
+            'turn': agent.current_session['turn'],
+            'permissions': {'write': {'source': 'user'}},
         }
 
         cleanup_scope(agent)

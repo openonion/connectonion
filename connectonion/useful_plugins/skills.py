@@ -341,9 +341,27 @@ def _grant_skill_permissions(agent: 'Agent', skill_name: str, patterns: List[str
         skill_name: Skill name for reason
         patterns: List of tool patterns (e.g., ["Bash(git *)", "read_file"])
     """
-    # Take snapshot of current permissions to restore later
-    current_perms = agent.current_session.get('permissions', {})
-    agent.current_session['_permission_snapshot'] = deepcopy(current_perms)
+    # Where this turn began — written once, by whichever skill runs first.
+    #
+    # A second skill in the same turn used to overwrite this with a state that
+    # already contained the first one's grants, so restore returned to "after
+    # skill A" and A's patterns were permanent for the rest of the session.
+    # Skills reference other skills; two in a turn is ordinary.
+    #
+    # A stack would be the answer if restore ran per skill. It does not —
+    # cleanup_scope is @on_complete and fires once, at the end of the turn — so
+    # the only snapshot worth having is the first.
+    # It also records which turn it describes. `on_complete` is not in a finally
+    # block, so a turn that raises — a rejected approval does exactly that —
+    # never restores and leaves its snapshot behind. Trusting that one would
+    # send the next turn back two turns.
+    turn_now = agent.current_session.get('turn', 0)
+    snapshot = agent.current_session.get('_permission_snapshot')
+    if snapshot is None or snapshot.get('turn') != turn_now:
+        current_perms = agent.current_session.get('permissions', {})
+        agent.current_session['_permission_snapshot'] = {
+            'turn': turn_now, 'permissions': deepcopy(current_perms),
+        }
 
     # Initialize permissions dict if needed
     if 'permissions' not in agent.current_session:
@@ -378,8 +396,20 @@ def _restore_permissions(agent: 'Agent') -> None:
 
     This ensures user approvals are preserved and skill permissions are cleared.
     """
-    if '_permission_snapshot' in agent.current_session:
-        agent.current_session['permissions'] = agent.current_session.pop('_permission_snapshot')
+    if '_permission_snapshot' not in agent.current_session:
+        return
+
+    restored = agent.current_session.pop('_permission_snapshot')['permissions']
+
+    # An approval the operator gave *during* the skill is theirs, not the
+    # skill's. It lives only in the live dict — the snapshot predates it — so a
+    # wholesale replace threw it away: they answered a dialog with "trust this
+    # for the session" and it silently did not stick.
+    for key, permission in (agent.current_session.get('permissions') or {}).items():
+        if permission.get('source') == 'user':
+            restored[key] = permission
+
+    agent.current_session['permissions'] = restored
 
 
 # =============================================================================
