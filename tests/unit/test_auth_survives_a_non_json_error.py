@@ -90,3 +90,46 @@ class TestAProperJsonError:
         response = FakeResponse(400, '{"oops": true}')
 
         assert _authenticate_against(response, project, monkeypatch) is False
+
+
+class TestSendEmailToo:
+    """The same call on the same kind of branch, in the email tool.
+
+    Two other places already guard it — `deploy_commands._error_text` and
+    `server_commands._report_failure` both wrap the call in try/except, so
+    somebody met this before. auth and send_email were the two that were
+    missed.
+
+    Here the crash is worse than a traceback: `send_email` is a *tool*, called
+    by the agent mid-run. It returns {"success": False, "error": …} for every
+    other failure, and the model reads that and tells the user. An exception
+    instead unwinds the turn.
+    """
+
+    def test_a_gateway_page_becomes_an_error_result(self, monkeypatch):
+        import importlib
+        send_email_mod = importlib.import_module('connectonion.useful_tools.send_email')
+
+        monkeypatch.setattr(
+            send_email_mod.requests, "post",
+            lambda *a, **k: FakeResponse(502, "<html>502 Bad Gateway</html>"))
+        monkeypatch.setenv("OPENONION_API_KEY", "token")
+
+        result = send_email_mod.send_email("a@example.com", "subject", "body")
+
+        assert result["success"] is False
+        assert "502" in result["error"]
+
+    def test_a_json_error_still_reads_the_detail(self, monkeypatch):
+        import importlib
+        send_email_mod = importlib.import_module('connectonion.useful_tools.send_email')
+
+        monkeypatch.setattr(
+            send_email_mod.requests, "post",
+            lambda *a, **k: FakeResponse(400, '{"detail": "recipient rejected"}'))
+        monkeypatch.setenv("OPENONION_API_KEY", "token")
+
+        result = send_email_mod.send_email("a@example.com", "subject", "body")
+
+        assert result["success"] is False
+        assert "recipient rejected" in result["error"]

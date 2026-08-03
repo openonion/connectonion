@@ -128,7 +128,19 @@ def send_email(to: str, subject: str, message: str) -> Dict:
                 "error": "Authentication failed. Run 'co auth' to re-authenticate."
             }
         else:
-            error_msg = response.json().get("detail", "Unknown error")
+            # The backend answers errors in JSON; the gateway in front of it
+            # does not. A 502 HTML page made .json() raise out of a *tool*,
+            # which is worse than a traceback in a CLI: every other failure
+            # here returns {"success": False, "error": …} for the model to read
+            # and relay, and an exception unwinds the turn instead.
+            #
+            # deploy_commands._error_text and server_commands._report_failure
+            # already guard the same call; auth (fixed above) and this were the
+            # two that were missed.
+            try:
+                error_msg = response.json().get("detail", "Unknown error")
+            except ValueError:
+                error_msg = f"HTTP {response.status_code} (the reply was not JSON)"
             return {
                 "success": False,
                 "error": error_msg
