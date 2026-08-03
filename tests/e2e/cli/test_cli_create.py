@@ -252,8 +252,9 @@ class TestCliCreate:
             assert os.path.exists(f'{base_path}/.co')
             assert os.path.exists(f'{base_path}/.co/host.yaml')
 
-    def test_create_adds_agent_config_path_to_env(self):
-        """Test that create adds AGENT_CONFIG_PATH to project .env file."""
+    def test_create_writes_no_absolute_home_directory(self):
+        """The opposite of what this asserted until 1.6.0 — see the twin in
+        test_cli_init.py, and tests/unit/test_the_machine_path_does_not_travel.py."""
         with self.runner.isolated_filesystem():
             from connectonion.cli.main import cli
 
@@ -267,10 +268,7 @@ class TestCliCreate:
             env_file = 'config-test-agent/.env'
             assert os.path.exists(env_file)
             with open(env_file) as f:
-                content = f.read()
-                assert "AGENT_CONFIG_PATH=" in content
-                # Should point to home directory .co folder
-                assert "/.co" in content
+                assert "AGENT_CONFIG_PATH" not in f.read()
 
     def test_create_adds_default_model_comment_to_env(self):
         """Test that create adds default model comment to project .env file."""
