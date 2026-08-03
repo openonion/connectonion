@@ -131,6 +131,12 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
             # Skip hidden files except .env.example
             if item.name.startswith('.') and item.name != '.env.example':
                 continue
+            # The installer's leftovers: pip byte-compiles the template's
+            # agent.py because it is a .py under the package, and copying that
+            # hands a new project bytecode for code nobody has run. Same reason
+            # as in create.py's copy_template_files.
+            if item.name == '__pycache__' or item.suffix in ('.pyc', '.pyo'):
+                continue
 
             dest_path = Path(current_dir) / item.name
 
@@ -141,7 +147,8 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
                 else:
                     if dest_path.exists():
                         shutil.rmtree(dest_path)
-                    shutil.copytree(item, dest_path)
+                    shutil.copytree(item, dest_path,
+                                    ignore=shutil.ignore_patterns('__pycache__', '*.py[cod]'))
                     files_created.append(f"{item.name}/")
             else:
                 # Skip .env.example, we'll create .env directly
