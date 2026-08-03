@@ -130,7 +130,7 @@ Example Usage
 ------------
 Basic completion:
     >>> from connectonion.llm import create_llm
-    >>> llm = create_llm(model="gpt-4o-mini")
+    >>> llm = create_llm(model="o4-mini")
     >>> response = llm.complete([{"role": "user", "content": "Hello"}])
     >>> print(response.content)
 
@@ -138,7 +138,7 @@ Structured output:
     >>> from pydantic import BaseModel
     >>> class Answer(BaseModel):
     ...     value: int
-    >>> llm = create_llm(model="gpt-4o-mini")
+    >>> llm = create_llm(model="o4-mini")
     >>> result = llm.structured_complete(
     ...     [{"role": "user", "content": "What is 2+2?"}],
     ...     Answer
@@ -363,7 +363,7 @@ class OpenAILLM(LLM):
 class AnthropicLLM(LLM):
     """Anthropic Claude LLM implementation."""
     
-    def __init__(self, api_key: Optional[str] = None, model: str = "claude-3-5-sonnet-20241022", max_tokens: int = 8192, **kwargs):
+    def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514", max_tokens: int = 8192, **kwargs):
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("Anthropic API key required. Set ANTHROPIC_API_KEY environment variable or pass api_key parameter.")
@@ -827,7 +827,7 @@ class GrokLLM(LLM):
 class OpenRouterLLM(LLM):
     """OpenRouter LLM implementation using OpenAI-compatible endpoint."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "openrouter/openai/gpt-4o-mini", **kwargs):
+    def __init__(self, api_key: Optional[str] = None, model: str = "openrouter/openai/o4-mini", **kwargs):
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not self.api_key:
             raise ValueError("OpenRouter API key required. Set OPENROUTER_API_KEY environment variable or pass api_key parameter.")
@@ -991,27 +991,9 @@ class MistralLLM(LLM):
 # Model registry mapping model names to providers
 MODEL_REGISTRY = {
     # OpenAI models
-    "gpt-4o": "openai",
-    "gpt-4o-mini": "openai",
-    "gpt-4-turbo": "openai",
-    "gpt-3.5-turbo": "openai",
-    "o1": "openai",
-    "o1-mini": "openai",
-    "o1-preview": "openai",
-    "o4-mini": "openai",  # Testing placeholder
-    
-    # Anthropic Claude models
-    "claude-3-5-sonnet": "anthropic",
-    "claude-3-5-sonnet-20241022": "anthropic",
-    "claude-3-5-sonnet-latest": "anthropic",
-    "claude-3-5-haiku": "anthropic",
-    "claude-3-5-haiku-20241022": "anthropic",
-    "claude-3-5-haiku-latest": "anthropic",
-    "claude-3-haiku-20240307": "anthropic",
-    "claude-3-opus-20240229": "anthropic",
-    "claude-3-opus-latest": "anthropic",
-    "claude-3-sonnet-20240229": "anthropic",
-    
+    "o3-mini": "openai",
+    "o4-mini": "openai",
+
     # Claude 4 models
     "claude-opus-4.1": "anthropic",
     "claude-opus-4-1-20250805": "anthropic",
@@ -1034,14 +1016,6 @@ MODEL_REGISTRY = {
     "gemini-2.5-flash": "google",
     "gemini-2.0-flash-exp": "google",
     "gemini-2.0-flash-thinking-exp": "google",
-    "gemini-1.5-pro": "google",
-    "gemini-1.5-pro-002": "google",
-    "gemini-1.5-pro-001": "google",
-    "gemini-1.5-flash": "google",
-    "gemini-1.5-flash-002": "google",
-    "gemini-1.5-flash-001": "google",
-    "gemini-1.5-flash-8b": "google",
-    "gemini-1.0-pro": "google",
 }
 
 
@@ -1227,7 +1201,7 @@ def create_llm(model: str, api_key: Optional[str] = None, **kwargs) -> LLM:
     """Factory function to create the appropriate LLM based on model name.
     
     Args:
-        model: The model name (e.g., "gpt-4o", "claude-3-5-sonnet", "gemini-1.5-pro")
+        model: The model name (e.g., "o4-mini", "claude-sonnet-4-20250514", "gemini-2.5-pro")
         api_key: Optional API key to override environment variable
         **kwargs: Additional arguments to pass to the LLM constructor
     

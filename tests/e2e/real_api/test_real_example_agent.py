@@ -88,7 +88,7 @@ def test_complete_agent_workflow(tmp_path):
             process_data
         ],
         system_prompt="You are a helpful assistant with access to various tools.",
-        model="gpt-4o-mini",  # Using a cost-effective model
+        model="o4-mini",  # Using a cost-effective model
         log=str(log_path)  # Log to file (console always on by default)
     )
 
@@ -126,7 +126,7 @@ def test_agent_with_real_conversation(tmp_path):
     agent = Agent(
         name="conversation_example",
         tools=[calculator, get_current_time, search_web],
-        model="gpt-4o-mini",
+        model="o4-mini",
         log=str(log_path)
     )
 
@@ -161,7 +161,7 @@ def test_agent_with_decorators():
     agent = Agent(
         name="decorator_example",
         tools=[custom_tool, process_data],
-        model="gpt-4o-mini"
+        model="o4-mini"
     )
 
     response = agent.input("Use the custom tool with input 'test data'")

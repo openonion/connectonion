@@ -83,11 +83,11 @@ Supported Providers
 ------------------
 All providers from llm.py module:
 
-1. **OpenAI**: gpt-4o, gpt-4o-mini, gpt-3.5-turbo, o4-mini
+1. **OpenAI**: o4-mini, o3-mini
    - Native structured output via responses.parse()
    - Fastest structured output implementation
 
-2. **Anthropic**: claude-3-5-sonnet, claude-3-5-haiku-20241022
+2. **Anthropic**: claude-sonnet-4-20250514, claude-opus-4-20250514
    - Structured output via forced tool calling
    - Requires max_tokens parameter (default: 8192)
 
@@ -95,7 +95,7 @@ All providers from llm.py module:
    - Structured output via response_schema
    - Good balance of speed and quality
 
-4. **ConnectOnion**: co/gpt-4o, co/gemini-3.6-flash (DEFAULT)
+4. **ConnectOnion**: co/gemini-3.6-flash (DEFAULT), co/gpt-5
    - Managed API keys (no env vars needed!)
    - Proxies to OpenAI with usage tracking
    - Requires: run `co auth` first
@@ -120,7 +120,7 @@ Usage Patterns
    ... )
 
 4. **Different Provider**:
-   >>> answer = llm_do("Hello", model="claude-3-5-haiku-20241022")
+   >>> answer = llm_do("Hello", model="claude-sonnet-4-20250514")
 
 5. **Runtime Parameters**:
    >>> answer = llm_do(
@@ -239,10 +239,10 @@ def llm_do(
     Make a one-shot LLM call with optional structured output.
 
     Supports multiple LLM providers:
-    - OpenAI: "gpt-4o", "o4-mini", "gpt-3.5-turbo"
-    - Anthropic: "claude-3-5-sonnet", "claude-3-5-haiku-20241022"
+    - OpenAI: "o4-mini", "o3-mini"
+    - Anthropic: "claude-sonnet-4-20250514", "claude-opus-4-20250514"
     - Google: "gemini-2.5-pro", "gemini-2.5-flash"
-    - ConnectOnion Managed: "co/gpt-4o", "co/gemini-3.6-flash" (no API keys needed!)
+    - ConnectOnion Managed: "co/gemini-3.6-flash", "co/gpt-5" (no API keys needed!)
 
     Args:
         input: The input text/question to send to the LLM
@@ -264,7 +264,7 @@ def llm_do(
         >>> answer = llm_do("What's 2+2?", model="co/gemini-3.6-flash")
 
         >>> # With Claude
-        >>> answer = llm_do("Explain quantum physics", model="claude-3-5-haiku-20241022")
+        >>> answer = llm_do("Explain quantum physics", model="claude-sonnet-4-20250514")
 
         >>> # With Gemini
         >>> answer = llm_do("Write a poem", model="gemini-2.5-flash")

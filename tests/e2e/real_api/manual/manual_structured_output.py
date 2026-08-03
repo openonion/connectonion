@@ -30,10 +30,10 @@ print(f"  OpenAI: {'✓' if has_openai else '✗'}")
 
 # Select model to use
 if has_co_auth:
-    model = "co/gpt-4o"
+    model = "co/o4-mini"
     print(f"\nUsing: {model} (ConnectOnion managed)")
 elif has_openai:
-    model = "gpt-4o-mini"
+    model = "o4-mini"
     print(f"\nUsing: {model} (OpenAI direct)")
 else:
     print("\n✗ No authentication available. Set OPENONION_API_KEY or OPENAI_API_KEY")

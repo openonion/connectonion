@@ -39,7 +39,7 @@ def get_current_time() -> str:
 
 @requires_openai
 def test_agent_run_no_tools_needed():
-    agent = Agent(name="test_no_tools", model="gpt-4o-mini", log=False)
+    agent = Agent(name="test_no_tools", model="o4-mini", log=False)
     result = agent.input("Simply say 'Hello test'")
     assert result is not None
     assert isinstance(result, str)
@@ -52,7 +52,7 @@ def test_agent_run_with_single_tool_call():
     agent = Agent(
         name="test_single_tool",
         tools=[calculator],
-        model="gpt-4o-mini",
+        model="o4-mini",
         system_prompt="You are a calculator assistant. When asked to calculate, use the calculator tool.",
         log=False,
     )
@@ -72,7 +72,7 @@ def test_agent_run_with_multiple_tool_calls():
     agent = Agent(
         name="test_multi_tool",
         tools=[calculator, get_current_time],
-        model="gpt-4o-mini",
+        model="o4-mini",
         system_prompt="You have calculator and time tools. Use them when asked.",
         log=False,
     )

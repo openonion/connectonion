@@ -77,7 +77,7 @@ def test_production_llm_do_structured(monkeypatch):
         "Write a friendly hello email to a new colleague",
         output=EmailDraft,
         temperature=0.7,
-        model="co/gpt-4o-mini"
+        model="co/o4-mini"
     )
 
     # Verify we got a valid Pydantic model

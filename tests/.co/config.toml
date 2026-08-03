@@ -15,5 +15,5 @@ email = "0x7b78b4cf@mail.openonion.ai"
 email_active = false
 created_at = "2025-09-18T11:42:35.025759"
 algorithm = "ed25519"
-default_model = "gpt-4o-mini"
+default_model = "co/gemini-3.6-flash"
 max_iterations = 10

@@ -59,7 +59,7 @@ def _tools():
 
 def test_model_detection_openai():
     """Test OpenAI model name patterns."""
-    models = ["o4-mini", "gpt-4o", "gpt-4o-mini", "gpt-3.5-turbo", "o1", "o1-mini"]
+    models = ["o4-mini", "o4-mini", "o4-mini", "o3-mini", "o1", "o3-mini"]
     for model in models:
         assert model.startswith("gpt") or model.startswith("o")
 
@@ -71,7 +71,7 @@ def test_model_detection_google():
         "gemini-2.0-flash-exp",
         "gemini-2.0-flash-thinking-exp",
         "gemini-2.5-flash",
-        "gemini-1.5-flash-8b",
+        "gemini-2.5-flash",
     ]
     for model in models:
         assert model.startswith("gemini")
@@ -83,8 +83,8 @@ def test_model_detection_anthropic():
         "claude-opus-4.1",
         "claude-opus-4",
         "claude-sonnet-4",
-        "claude-3-5-sonnet-latest",
-        "claude-3-5-haiku-latest",
+        "claude-sonnet-4-20250514",
+        "claude-sonnet-4-20250514",
     ]
     for model in models:
         assert model.startswith("claude")
@@ -96,14 +96,14 @@ def test_select_model_for_code_generation():
         mapping = {
             "code": "o4-mini",
             "reasoning": "gemini-2.5-pro",
-            "fast": "gpt-4o-mini",
+            "fast": "o4-mini",
             "long_context": "gemini-2.5-pro",
         }
         return mapping.get(task_type, "o4-mini")
 
     assert select_model_for_task("code") == "o4-mini"
     assert select_model_for_task("reasoning") == "gemini-2.5-pro"
-    assert select_model_for_task("fast") == "gpt-4o-mini"
+    assert select_model_for_task("fast") == "o4-mini"
     assert select_model_for_task("long_context") == "gemini-2.5-pro"
 
 
@@ -133,11 +133,11 @@ def test_tools_work_across_all_models():
     test_cases = []
 
     if os.getenv("OPENAI_API_KEY"):
-        test_cases.append(("gpt-4o-mini", "openai"))
+        test_cases.append(("o4-mini", "openai"))
     if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
         test_cases.append(("gemini-2.5-flash", "google"))
     if os.getenv("ANTHROPIC_API_KEY"):
-        test_cases.append(("claude-3-5-haiku-latest", "anthropic"))
+        test_cases.append(("claude-sonnet-4-20250514", "anthropic"))
 
     for model, provider in test_cases:
         agent = Agent(f"test_{provider}", model=model, tools=tools)
@@ -155,7 +155,7 @@ def test_tools_work_across_all_models():
 def test_openai_real_call():
     """Test actual API call with OpenAI model."""
     tools = _tools()
-    agent = Agent("test", model="gpt-4o-mini", tools=tools)
+    agent = Agent("test", model="o4-mini", tools=tools)
     response = agent.input("Use the simple_calculator tool to add 5 and 3")
     assert "8" in response
 
@@ -173,7 +173,7 @@ def test_gemini_real_call():
 def test_anthropic_real_call():
     """Test actual API call with Claude model."""
     tools = _tools()
-    agent = Agent("test", model="claude-3-5-haiku-latest", tools=tools)
+    agent = Agent("test", model="claude-sonnet-4-20250514", tools=tools)
     response = agent.input("Use the process_data tool to convert 'Hello' to uppercase")
     assert "HELLO" in response
 
@@ -189,11 +189,11 @@ def test_flagship_model_comparison():
     flagship_models = []
 
     if os.getenv("OPENAI_API_KEY"):
-        flagship_models.append(("gpt-4o-mini", "openai"))
+        flagship_models.append(("o4-mini", "openai"))
     if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
         flagship_models.append(("gemini-2.5-flash", "google"))
     if os.getenv("ANTHROPIC_API_KEY"):
-        flagship_models.append(("claude-3-5-haiku-latest", "anthropic"))
+        flagship_models.append(("claude-sonnet-4-20250514", "anthropic"))
 
     for model, provider in flagship_models:
         agent = Agent(f"compare_{provider}", model=model)
@@ -212,11 +212,11 @@ def test_fast_model_performance():
     fast_models = []
 
     if os.getenv("OPENAI_API_KEY"):
-        fast_models.append("gpt-4o-mini")
+        fast_models.append("o4-mini")
     if os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY"):
         fast_models.append("gemini-2.5-flash")
     if os.getenv("ANTHROPIC_API_KEY"):
-        fast_models.append("claude-3-5-haiku-latest")
+        fast_models.append("claude-sonnet-4-20250514")
 
     for model in fast_models:
         start_time = time.time()

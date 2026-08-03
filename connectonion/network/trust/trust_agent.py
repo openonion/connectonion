@@ -106,7 +106,7 @@ class TrustAgent:
         authentication backends, or business logic. See module docstring.
     """
 
-    def __init__(self, trust: str = "careful", *, api_key: str = None, model: str = "co/gpt-4o-mini"):
+    def __init__(self, trust: str = "careful", *, api_key: str = None, model: str = "co/gemini-3.6-flash"):
         """
         Create a TrustAgent.
 

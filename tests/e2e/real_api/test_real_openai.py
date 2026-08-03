@@ -45,7 +45,7 @@ class TestRealOpenAI:
 
     def test_openai_basic_completion(self):
         """Test basic completion with OpenAI."""
-        llm = OpenAILLM(model="gpt-4o-mini")
+        llm = OpenAILLM(model="o4-mini")
         agent = Agent(name="openai_test", llm=llm)
 
         response = agent.input("Say 'Hello from OpenAI' exactly")
@@ -56,7 +56,7 @@ class TestRealOpenAI:
         """Test OpenAI with tool calling."""
         agent = Agent(
             name="openai_tools",
-            model="gpt-4o-mini",
+            model="o4-mini",
             tools=[calculator]
         )
 
@@ -68,7 +68,7 @@ class TestRealOpenAI:
         """Test multi-turn conversation with OpenAI."""
         agent = Agent(
             name="openai_conversation",
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         # First turn
@@ -84,7 +84,7 @@ class TestRealOpenAI:
         """Test streaming responses from OpenAI."""
         agent = Agent(
             name="openai_streaming",
-            model="gpt-4o-mini"
+            model="o4-mini"
         )
 
         response = agent.input("Count from 1 to 5")
@@ -95,10 +95,10 @@ class TestRealOpenAI:
 
     def test_openai_different_models(self):
         """Test different OpenAI models."""
-        models = ["gpt-4o-mini", "gpt-4o"]
+        models = ["o4-mini", "o4-mini"]
 
         for model in models:
-            if model == "gpt-4o" and not os.getenv("TEST_EXPENSIVE_MODELS"):
+            if model == "o4-mini" and not os.getenv("TEST_EXPENSIVE_MODELS"):
                 continue  # Skip expensive models unless explicitly enabled
 
             agent = Agent(

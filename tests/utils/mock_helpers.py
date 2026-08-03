@@ -38,7 +38,7 @@ class MockLLM(LLM):
         ])
 
         # With custom model name
-        mock_llm = MockLLM(responses=[...], model="gpt-4o-mini")
+        mock_llm = MockLLM(responses=[...], model="o4-mini")
     """
 
     def __init__(
@@ -135,7 +135,7 @@ class OpenAIMockBuilder:
     """Builder for creating OpenAI API mocks."""
 
     @staticmethod
-    def simple_response(content: str, model: str = "gpt-3.5-turbo") -> Mock:
+    def simple_response(content: str, model: str = "o4-mini") -> Mock:
         """Create mock for text-only responses."""
         mock_response = MagicMock()
         mock_response.id = "chatcmpl-test123"

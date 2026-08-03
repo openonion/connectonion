@@ -36,25 +36,28 @@ class TestUnknownModelsSaySo:
 class TestKnownModelsStillRoute:
     """The tightening must not strand the models it was protecting."""
 
-    @pytest.mark.parametrize("model", ["o1", "o1-mini", "o1-preview", "o4-mini"])
+    @pytest.mark.parametrize("model", ["o1", "o3-mini", "o3-mini", "o4-mini"])
     def test_registered_o_series_models_still_reach_openai(self, model):
         assert isinstance(create_llm(model, api_key="test-key"), OpenAILLM)
 
-    @pytest.mark.parametrize("model", ["o3-mini", "o4-turbo"])
+    @pytest.mark.parametrize("model", ["o3-pro", "o4-turbo"])
     def test_unregistered_but_real_o_series_families_still_infer(self, model):
         """The registry cannot list every variant OpenAI ships, so inference by
         family prefix has to keep working — that is what the allowlist is for."""
         assert isinstance(create_llm(model, api_key="test-key"), OpenAILLM)
 
-    def test_gpt_models_are_untouched(self):
+    def test_a_retired_name_still_routes_rather_than_crashing(self):
+        """1.6.0 stops pricing and listing the gpt-4 family, but someone whose
+        code still names one is calling a live OpenAI endpoint. Dropping it from
+        the registry must not turn that into "Unknown model"."""
         assert isinstance(create_llm("gpt-4o", api_key="test-key"), OpenAILLM)
 
     def test_other_providers_are_untouched(self):
-        assert isinstance(create_llm("claude-3-5-sonnet-20241022", api_key="k"), AnthropicLLM)
-        assert isinstance(create_llm("gemini-1.5-pro", api_key="k"), GeminiLLM)
+        assert isinstance(create_llm("claude-sonnet-4-20250514", api_key="k"), AnthropicLLM)
+        assert isinstance(create_llm("gemini-2.5-pro", api_key="k"), GeminiLLM)
 
     def test_the_allowlist_is_prefixes_not_whole_names(self):
-        """o1-mini must match on "o1" — listing whole names would need an entry
+        """o3-mini must match on "o1" — listing whole names would need an entry
         per variant and go stale on the next OpenAI release."""
-        assert "o1-mini".startswith(OPENAI_REASONING_PREFIXES)
+        assert "o3-mini".startswith(OPENAI_REASONING_PREFIXES)
         assert not "olmo-7b".startswith(OPENAI_REASONING_PREFIXES)

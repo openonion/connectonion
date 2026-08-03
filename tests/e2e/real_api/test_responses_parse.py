@@ -36,8 +36,8 @@ class MathAnswer(BaseModel):
 # =============================================================================
 
 OPENAI_MODELS = [
-    "co/gpt-4o-mini",
-    "co/gpt-4o",
+    "co/o4-mini",
+    "co/o4-mini",
     "co/gpt-5",
     "co/gpt-5-mini",
     "co/gpt-5-nano",

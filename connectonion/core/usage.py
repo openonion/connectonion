@@ -28,23 +28,10 @@ class TokenUsage(BaseModel):
 # Format: {"input": $, "output": $, "cached": $, "cache_write": $}
 MODEL_PRICING = {
     # OpenAI models - cached = 50% of input
-    "gpt-4o": {"input": 2.50, "output": 10.00, "cached": 1.25},
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60, "cached": 0.075},
-    "gpt-4-turbo": {"input": 10.00, "output": 30.00, "cached": 5.00},
-    "o1": {"input": 15.00, "output": 60.00, "cached": 7.50},
-    "o1-mini": {"input": 3.00, "output": 12.00, "cached": 1.50},
-    "o1-preview": {"input": 15.00, "output": 60.00, "cached": 7.50},
     "o3-mini": {"input": 1.10, "output": 4.40, "cached": 0.55},
     "o4-mini": {"input": 1.10, "output": 4.40, "cached": 0.55},
 
     # Anthropic Claude models - cached = 10% of input, cache_write = 125% of input
-    "claude-3-5-sonnet-20241022": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},
-    "claude-3-5-sonnet-latest": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},
-    "claude-3-5-haiku-20241022": {"input": 0.80, "output": 4.00, "cached": 0.08, "cache_write": 1.00},
-    "claude-3-5-haiku-latest": {"input": 0.80, "output": 4.00, "cached": 0.08, "cache_write": 1.00},
-    "claude-3-opus-20240229": {"input": 15.00, "output": 75.00, "cached": 1.50, "cache_write": 18.75},
-    "claude-3-sonnet-20240229": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},
-    "claude-3-haiku-20240307": {"input": 0.25, "output": 1.25, "cached": 0.025, "cache_write": 0.3125},
 
     # Claude 4 models
     "claude-sonnet-4-20250514": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},
@@ -58,30 +45,15 @@ MODEL_PRICING = {
     "gemini-2.5-pro": {"input": 1.25, "output": 10.00, "cached": 0.3125},
     "gemini-2.5-flash": {"input": 0.15, "output": 0.60, "cached": 0.0375},
     "gemini-2.0-flash": {"input": 0.10, "output": 0.40, "cached": 0.025},
-    "gemini-1.5-pro": {"input": 1.25, "output": 5.00, "cached": 0.3125},
-    "gemini-1.5-flash": {"input": 0.075, "output": 0.30, "cached": 0.01875},
 }
 
 # Context window limits (tokens)
 MODEL_CONTEXT_LIMITS = {
     # OpenAI
-    "gpt-4o": 128000,
-    "gpt-4o-mini": 128000,
-    "gpt-4-turbo": 128000,
-    "o1": 200000,
-    "o1-mini": 128000,
-    "o1-preview": 128000,
     "o3-mini": 200000,
     "o4-mini": 200000,
 
     # Anthropic
-    "claude-3-5-sonnet-20241022": 200000,
-    "claude-3-5-sonnet-latest": 200000,
-    "claude-3-5-haiku-20241022": 200000,
-    "claude-3-5-haiku-latest": 200000,
-    "claude-3-opus-20240229": 200000,
-    "claude-3-sonnet-20240229": 200000,
-    "claude-3-haiku-20240307": 200000,
     "claude-sonnet-4-20250514": 200000,
     "claude-opus-4-20250514": 200000,
 
@@ -93,8 +65,6 @@ MODEL_CONTEXT_LIMITS = {
     "gemini-2.5-pro": 1000000,
     "gemini-2.5-flash": 1000000,
     "gemini-2.0-flash": 1000000,
-    "gemini-1.5-pro": 2000000,
-    "gemini-1.5-flash": 1000000,
 }
 
 # Default values for unknown models
@@ -122,20 +92,17 @@ def get_pricing(model: str) -> dict:
     if name in MODEL_PRICING:
         return MODEL_PRICING[name]
 
-    # Try prefix match (e.g., "gpt-4o-2024-08-06" -> "gpt-4o"), longest first.
+    # Try prefix match (e.g., "gemini-2.5-pro-preview" -> "gemini-2.5-pro"),
+    # longest first.
     #
-    # Taking the first key that matched let dict order decide, and three entries
-    # are prefixes of others: gpt-4o ⊂ gpt-4o-mini, o1 ⊂ o1-mini, o1 ⊂
-    # o1-preview. Exact matches are tried above, so the listed names were fine —
-    # but a pinned, dated name is not listed, and pinning a date is what
-    # production code does:
-    #
-    #     gpt-4o-mini              input 0.15   output 0.60
-    #     gpt-4o-mini-2024-07-18   input 2.50   output 10.00   ← gpt-4o's price
-    #
-    # Seventeen times the cost for the same model, depending on whether the
-    # name carries its date. The longest match is the most specific one, which
-    # is what a prefix match is for.
+    # Taking the first key that matched let dict order decide. Exact matches are
+    # tried above, so a listed name was always fine — but a pinned, dated name is
+    # not listed, and pinning a date is what production code does. When one entry
+    # is a prefix of another, the shorter one used to win and charge its own
+    # price for the longer model. The table no longer contains such a pair (a
+    # test enforces that), but the ordering is what makes it safe to add one.
+    # The longest match is the most specific one, which is what a prefix match
+    # is for.
     for known_model in sorted(MODEL_PRICING, key=len, reverse=True):
         if name.startswith(known_model):
             return MODEL_PRICING[known_model]
@@ -165,10 +132,10 @@ def get_context_limit(model: str) -> int:
         return MODEL_CONTEXT_LIMITS[name]
 
     # Longest first, for the reason spelled out in get_pricing — and here the
-    # consequence is worse than a wrong number on screen. o1 is 200000 and
-    # o1-mini is 128000, so `o1-mini-2024-09-12` took o1's: the agent believed
-    # it had seventy-two thousand tokens it did not have, auto-compaction fired
-    # too late, and the provider rejected the request for length.
+    # consequence is worse than a wrong number on screen. A dated name that fell
+    # through to a larger model's limit made the agent believe it had tens of
+    # thousands of tokens it did not have: auto-compaction fired too late and the
+    # provider rejected the request for length.
     for known_model in sorted(MODEL_CONTEXT_LIMITS, key=len, reverse=True):
         if name.startswith(known_model):
             return MODEL_CONTEXT_LIMITS[known_model]

@@ -138,7 +138,7 @@ def test_model_name_handling():
             print(f"   CLI now sends full model name with co/ prefix")
             
             # Test what happens now
-            model = "co/gpt-4o-mini"
+            model = "co/o4-mini"
             print(f"   Example: {model} -> API receives: {model}")
         else:
             print(f"\n❌ Model name still being stripped")

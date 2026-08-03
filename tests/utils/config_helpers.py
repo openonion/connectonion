@@ -49,7 +49,7 @@ TEST_CONFIG_TOML = {
         "email_active": TEST_ACCOUNT["email_active"],
         "created_at": "2024-01-01T00:00:00",
         "algorithm": "ed25519",
-        "default_model": "gpt-4o-mini",
+        "default_model": "o4-mini",
         "max_iterations": 10,
     },
     "auth": {
@@ -136,7 +136,7 @@ def main():
     agent = Agent(
         "test-agent",
         tools=[send_email, get_emails, mark_read],
-        model="gpt-4o-mini"
+        model="o4-mini"
     )
     
     # Test email functionality

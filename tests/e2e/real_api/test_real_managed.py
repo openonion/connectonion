@@ -57,7 +57,7 @@ def test_co_model_direct_api():
     print("\nTesting LLM completion...")
     
     payload = {
-        "model": "co/gpt-4o-mini",  # With co/ prefix as CLI sends
+        "model": "co/o4-mini",  # With co/ prefix as CLI sends
         "messages": [
             {"role": "system", "content": "You are a helpful assistant."},
             {"role": "user", "content": "Say 'Hello from ConnectOnion!' in exactly 3 words."}
@@ -103,7 +103,7 @@ def test_llm_do_function():
             print(f"✅ Found saved token: {token[:20]}...")
             
             # Test llm_do with co/ model
-            print("\nCalling llm_do with co/gpt-4o-mini...")
+            print("\nCalling llm_do with co/o4-mini...")
             
             # Set production mode
             os.environ.pop("OPENONION_DEV", None)
@@ -111,7 +111,7 @@ def test_llm_do_function():
             try:
                 response = llm_do(
                     "Reply with exactly: 'ConnectOnion works!'",
-                    model="co/gpt-4o-mini",
+                    model="co/o4-mini",
                     temperature=0.1
                 )
                 print(f"✅ Response: {response}")
@@ -160,8 +160,8 @@ def test_model_name_variations():
     
     # Test different model name formats
     test_cases = [
-        ("co/gpt-4o-mini", "With co/ prefix (as CLI sends)"),
-        ("gpt-4o-mini", "Without co/ prefix (raw model name)"),
+        ("co/o4-mini", "With co/ prefix (as CLI sends)"),
+        ("o4-mini", "Without co/ prefix (raw model name)"),
     ]
     
     results = []
@@ -206,8 +206,8 @@ def test_all_managed_models_with_tools():
     # All managed models that support tool calling
     models_to_test = [
         # OpenAI models
-        "co/gpt-4o-mini",
-        # "co/gpt-4o",  # More expensive, skip in regular tests
+        "co/o4-mini",
+        # "co/o4-mini",  # More expensive, skip in regular tests
         # Google Gemini models
         "co/gemini-2.5-flash",
         # "co/gemini-2.5-pro",  # More expensive

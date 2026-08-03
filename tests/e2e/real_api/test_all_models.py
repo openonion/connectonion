@@ -2,8 +2,8 @@
 LLM-Note: Parametrized tests for all newest LLM models
 
 What it tests:
-- OpenAI models: gpt-4o, gpt-4o-mini, o1-mini
-- Anthropic models: claude-3-5-sonnet, claude-3-5-haiku, claude-opus-4.1
+- OpenAI models: o4-mini, o4-mini, o3-mini
+- Anthropic models: claude-sonnet-4-20250514, claude-opus-4-20250514, claude-opus-4.1
 - Google models: gemini-2.5-pro, gemini-2.5-flash
 - Basic completion and tool calling for each model
 
@@ -38,16 +38,16 @@ from tests.e2e.real_api.conftest import (
 # =============================================================================
 
 OPENAI_MODELS = [
-    "gpt-4o",
-    "gpt-4o-mini",
-    "o1-mini",
+    "o4-mini",
+    "o4-mini",
+    "o3-mini",
     # "o1",        # Expensive, enable if needed
     # "o4-mini",   # May not be available yet
 ]
 
 ANTHROPIC_MODELS = [
     "claude-sonnet-4",
-    "claude-3-5-haiku-latest",
+    "claude-sonnet-4-20250514",
     # "claude-opus-4",  # Expensive, enable if needed
 ]
 
@@ -58,7 +58,7 @@ GEMINI_MODELS = [
 ]
 
 OPENONION_MODELS = [
-    "co/gpt-4o-mini",
+    "co/o4-mini",
     "co/gemini-2.5-flash",
 ]
 

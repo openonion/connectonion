@@ -44,14 +44,12 @@ class TestMultiLLMSupport:
         from connectonion.core.llm import MODEL_REGISTRY
 
         # Test OpenAI models
-        assert MODEL_REGISTRY["gpt-4o"] == "openai"
-        assert MODEL_REGISTRY["gpt-4o-mini"] == "openai"
-        assert MODEL_REGISTRY["o1"] == "openai"
+        assert MODEL_REGISTRY["o3-mini"] == "openai"
         assert MODEL_REGISTRY["o4-mini"] == "openai"
 
         # Test Anthropic models
-        assert MODEL_REGISTRY["claude-3-5-sonnet-20241022"] == "anthropic"
-        assert MODEL_REGISTRY["claude-3-5-haiku-20241022"] == "anthropic"
+        assert MODEL_REGISTRY["claude-sonnet-4-20250514"] == "anthropic"
+        assert MODEL_REGISTRY["claude-sonnet-4-20250514"] == "anthropic"
         assert MODEL_REGISTRY["claude-opus-4.1"] == "anthropic"
 
         # Test Google models
@@ -66,12 +64,12 @@ class TestMultiLLMSupport:
 
         # Test OpenAI model creation
         if self.has_openai:
-            llm = create_llm("gpt-4o-mini")
+            llm = create_llm("o4-mini")
             assert isinstance(llm, OpenAILLM)
 
         # Test Anthropic model creation
         if self.has_anthropic:
-            llm = create_llm("claude-3-5-haiku-20241022")
+            llm = create_llm("claude-sonnet-4-20250514")
             assert isinstance(llm, AnthropicLLM)
 
         # Test Google model creation

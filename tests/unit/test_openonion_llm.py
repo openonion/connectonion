@@ -28,13 +28,13 @@ class TestOpenOnionLLM:
     def test_initialization_production(self):
         """Test OpenOnionLLM initializes with production URL."""
         with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
-            llm = OpenOnionLLM(model="co/gpt-4o")
+            llm = OpenOnionLLM(model="co/o4-mini")
 
             assert hasattr(llm, 'client'), "Should have OpenAI client"
             assert llm.client.base_url == "https://oo.openonion.ai/v1/"
             assert llm.client.api_key == "mock-jwt-token"
             assert llm.auth_token == "mock-jwt-token"
-            assert llm.model == "gpt-4o"  # co/ prefix stripped by implementation
+            assert llm.model == "o4-mini"  # co/ prefix stripped by implementation
 
     def test_initialization_development(self):
         """Test OpenOnionLLM initializes with development URL."""
@@ -45,7 +45,7 @@ class TestOpenOnionLLM:
             assert llm.model == "o4-mini"  # co/ prefix stripped
 
     def test_complete_gpt4o(self):
-        """Test complete method with co/gpt-4o model."""
+        """Test complete method with co/o4-mini model."""
         with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
             # Create mock response
             mock_response = MagicMock()
@@ -57,14 +57,14 @@ class TestOpenOnionLLM:
             mock_response.usage.completion_tokens = 20
             mock_response.usage.prompt_tokens_details = None
 
-            llm = OpenOnionLLM(model="co/gpt-4o")
+            llm = OpenOnionLLM(model="co/o4-mini")
 
             with patch.object(llm.client.chat.completions, 'create', return_value=mock_response) as mock_create:
                 result = llm.complete([{"role": "user", "content": "test"}])
 
                 # Check call parameters
                 call_kwargs = mock_create.call_args[1]
-                assert call_kwargs['model'] == "gpt-4o"  # Sent to server without prefix
+                assert call_kwargs['model'] == "o4-mini"  # Sent to server without prefix
 
                 # Check response
                 assert result.content == "Test response"
@@ -114,7 +114,7 @@ class TestOpenOnionLLM:
             mock_tool_call.id = "call_123"
             mock_response.choices[0].message.tool_calls = [mock_tool_call]
 
-            llm = OpenOnionLLM(model="co/gpt-4o")
+            llm = OpenOnionLLM(model="co/o4-mini")
 
             tools = [{
                 "name": "test_tool",
@@ -143,7 +143,7 @@ class TestOpenOnionLLM:
         """Test create_llm function with co/ models."""
         with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
             # Test various co/ models
-            models = ["co/gpt-4o", "co/o4-mini", "co/claude-3-haiku", "co/gemini-2.0-flash-exp"]
+            models = ["co/o4-mini", "co/o3-mini", "co/claude-sonnet-4-20250514", "co/gemini-2.0-flash-exp"]
 
             for model in models:
                 llm = create_llm(model)
@@ -155,7 +155,7 @@ class TestOpenOnionLLM:
         """Test error when no auth token is found."""
         with patch.dict('os.environ', {}, clear=True):
             with pytest.raises(ValueError) as exc_info:
-                OpenOnionLLM(model="co/gpt-4o")
+                OpenOnionLLM(model="co/o4-mini")
 
             assert "OPENONION_API_KEY not found" in str(exc_info.value)
             assert "Run 'co init'" in str(exc_info.value)
@@ -163,7 +163,7 @@ class TestOpenOnionLLM:
     def test_get_balance_success(self):
         """Test get_balance returns balance on successful request."""
         with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
-            llm = OpenOnionLLM(model="co/gpt-4o")
+            llm = OpenOnionLLM(model="co/o4-mini")
 
             # Mock successful response
             mock_response = MagicMock()
@@ -191,7 +191,7 @@ class TestOpenOnionLLM:
     def test_get_balance_network_error(self):
         """Test get_balance raises on network error (let it crash philosophy)."""
         with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
-            llm = OpenOnionLLM(model="co/gpt-4o")
+            llm = OpenOnionLLM(model="co/o4-mini")
 
             # Mock network error
             with patch('requests.get', side_effect=Exception("Network error")):
@@ -202,7 +202,7 @@ class TestOpenOnionLLM:
     def test_get_balance_auth_error(self):
         """Test get_balance returns None on 401 auth error."""
         with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
-            llm = OpenOnionLLM(model="co/gpt-4o")
+            llm = OpenOnionLLM(model="co/o4-mini")
 
             # Mock auth error response
             mock_response = MagicMock()
@@ -217,7 +217,7 @@ class TestOpenOnionLLM:
     def test_get_balance_invalid_response(self):
         """Test get_balance returns None when balance_usd missing."""
         with patch.dict(os.environ, {'OPENONION_API_KEY': 'mock-jwt-token'}, clear=True):
-            llm = OpenOnionLLM(model="co/gpt-4o")
+            llm = OpenOnionLLM(model="co/o4-mini")
 
             # Mock response without balance_usd
             mock_response = MagicMock()

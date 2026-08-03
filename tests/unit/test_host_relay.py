@@ -153,7 +153,7 @@ class TestHostRelayConnection:
         field is simply left out rather than sent as null/zero."""
         profile = host_module._build_agent_profile({
             "name": "byo_key_agent",
-            "model": "gpt-4o",
+            "model": "o4-mini",
             "skills": [],
         })
 

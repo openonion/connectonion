@@ -75,10 +75,10 @@ def test_insufficient_credits_handles_missing_body_attribute():
 def test_llm_connection_captures_model_and_base_url():
     err = LLMConnectionError(
         TimeoutError("connect timed out"),
-        model="gpt-4o",
+        model="o4-mini",
         base_url="https://api.openai.com",
     )
-    assert err.model == "gpt-4o"
+    assert err.model == "o4-mini"
     assert err.base_url == "https://api.openai.com"
     assert err.error_type == "TimeoutError"
 
@@ -86,12 +86,12 @@ def test_llm_connection_captures_model_and_base_url():
 def test_llm_connection_message_includes_model_and_diagnostics():
     err = LLMConnectionError(
         ConnectionRefusedError("nope"),
-        model="claude-3-5-sonnet-latest",
+        model="claude-sonnet-4-20250514",
         base_url="https://api.anthropic.com",
     )
     msg = str(err)
     assert 'Connection Failed' in msg
-    assert 'claude-3-5-sonnet-latest' in msg
+    assert 'claude-sonnet-4-20250514' in msg
     assert 'api.anthropic.com' in msg
     assert 'ConnectionRefusedError' in msg
 

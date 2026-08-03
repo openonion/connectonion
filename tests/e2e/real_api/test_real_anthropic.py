@@ -41,7 +41,7 @@ class TestRealAnthropic:
 
     def test_anthropic_basic_completion(self):
         """Test basic completion with Anthropic."""
-        llm = AnthropicLLM(model="claude-3-5-haiku-latest")
+        llm = AnthropicLLM(model="claude-sonnet-4-20250514")
         agent = Agent(name="anthropic_test", llm=llm)
 
         response = agent.input("Say 'Hello from Claude' exactly")
@@ -52,7 +52,7 @@ class TestRealAnthropic:
         """Test Anthropic with tool calling."""
         agent = Agent(
             name="anthropic_tools",
-            model="claude-3-5-haiku-latest",
+            model="claude-sonnet-4-20250514",
             tools=[text_processor]
         )
 
@@ -64,7 +64,7 @@ class TestRealAnthropic:
         """Test multi-turn conversation with Anthropic."""
         agent = Agent(
             name="anthropic_conversation",
-            model="claude-3-5-haiku-latest"
+            model="claude-sonnet-4-20250514"
         )
 
         # First turn
@@ -79,8 +79,8 @@ class TestRealAnthropic:
     def test_anthropic_different_models(self):
         """Test different Anthropic models."""
         models = [
-            "claude-3-5-haiku-latest",
-            "claude-3-5-sonnet-latest",
+            "claude-sonnet-4-20250514",
+            "claude-sonnet-4-20250514",
         ]
 
         for model in models:
@@ -100,7 +100,7 @@ class TestRealAnthropic:
         """Test Anthropic with custom system prompt."""
         agent = Agent(
             name="anthropic_system",
-            model="claude-3-5-haiku-latest",
+            model="claude-sonnet-4-20250514",
             system_prompt="You are a helpful poetry assistant. Always respond in haiku format."
         )
 

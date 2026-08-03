@@ -96,7 +96,7 @@ class TestIsCustomTrust:
     def test_agent_is_custom(self):
         """Test that Agent instances are custom."""
         from connectonion import Agent
-        agent = Agent(name="guardian", tools=[], model="gpt-4o-mini")
+        agent = Agent(name="guardian", tools=[], model="o4-mini")
         assert is_custom_trust(agent) is True
 
 
