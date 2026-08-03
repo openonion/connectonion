@@ -22,7 +22,6 @@ from unittest.mock import patch, Mock
 from connectonion.network.host import (
     extract_and_authenticate,
     is_custom_trust,
-    get_default_trust,
 )
 from connectonion.network.trust import TrustAgent, validate_trust_level, TRUST_LEVELS
 
@@ -73,30 +72,11 @@ class TestTrustLevels:
         assert validate_trust_level("CAREFUL") is True
         assert validate_trust_level("Strict") is True
 
-    def test_get_default_trust_development(self):
-        """Test default trust in development environment."""
-        with patch.dict(os.environ, {"CONNECTONION_ENV": "development"}):
-            assert get_default_trust() == "open"
-
-    def test_get_default_trust_production(self):
-        """Test default trust in production environment."""
-        with patch.dict(os.environ, {"CONNECTONION_ENV": "production"}):
-            assert get_default_trust() == "strict"
-
-    def test_get_default_trust_staging(self):
-        """Test default trust in staging environment."""
-        with patch.dict(os.environ, {"CONNECTONION_ENV": "staging"}):
-            assert get_default_trust() == "careful"
-
-    def test_get_default_trust_test(self):
-        """Test default trust in test environment."""
-        with patch.dict(os.environ, {"CONNECTONION_ENV": "test"}):
-            assert get_default_trust() == "careful"
-
-    def test_get_default_trust_unset(self):
-        """Test default trust when environment is unset."""
-        with patch.dict(os.environ, {"CONNECTONION_ENV": ""}):
-            assert get_default_trust() == "careful"
+    # The five tests that used to sit here checked get_default_trust() in
+    # isolation and passed for as long as it existed. It was never called from
+    # anywhere — a green test on a function nothing invokes is how that goes
+    # unnoticed for a year. Trust now comes from .co/host.yaml only; see
+    # test_trust_comes_from_host_yaml.py and #366.
 
 
 class TestIsCustomTrust:

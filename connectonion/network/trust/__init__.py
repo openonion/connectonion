@@ -4,7 +4,7 @@ LLM-Note:
   Dependencies: imports from [trust_agent, factory, fast_rules] | imported by [network/host/server.py, network/host/auth.py, network/__init__.py] | tested via TrustAgent usage
   Data flow: module exports TrustAgent class and helper functions → users import and create TrustAgent("careful") → TrustAgent delegates to factory for policy loading and tools for file operations
   State/Effects: no direct state (delegates to TrustAgent, factory, tools) | reads policy files | reads/writes .co/trust/ directory via tools
-  Integration: exposes TrustAgent, Decision, get_default_trust_level(), validate_trust_level(), TRUST_LEVELS, parse_policy() | single entry point for trust operations | __all__ controls public API
+  Integration: exposes TrustAgent, Decision, validate_trust_level(), TRUST_LEVELS, parse_policy() | single entry point for trust operations | __all__ controls public API
   Performance: imports are static (no lazy loading) | TrustAgent cached per instance
   Errors: no error handling at module level (errors from TrustAgent/factory propagate)
 
@@ -32,7 +32,7 @@ Subclass to customize behavior (e.g., database-backed admin storage).
 """
 
 from .trust_agent import TrustAgent, Decision
-from .factory import get_default_trust_level, validate_trust_level, TRUST_LEVELS
+from .factory import validate_trust_level, TRUST_LEVELS
 from .fast_rules import parse_policy
 
 __all__ = [
@@ -40,7 +40,6 @@ __all__ = [
     "TrustAgent",
     "Decision",
     # Helpers
-    "get_default_trust_level",
     "validate_trust_level",
     "TRUST_LEVELS",
     "parse_policy",

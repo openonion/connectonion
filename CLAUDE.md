@@ -57,7 +57,7 @@ ConnectOnion is a Python framework for creating AI agents with automatic activit
 - Three levels: "open" (dev), "careful" (staging), "strict" (prod)
 - Custom policies: markdown files or inline text describing verification rules
 - Custom agents: Pass your own Agent instance with verification tools
-- Environment-based defaults: `CONNECTONION_ENV` sets trust level automatically
+- Trust is set in `.co/host.yaml`. No environment variable can change it
 - Module structure: `factory.py` (creation), `fast_rules.py` (policy parsing/evaluation), `tools.py` (verification tools), `trust_agent.py` (TrustAgent class), `policies/` (level policy markdown)
 - Onboard methods: `invite_code` (verify against configured codes), `payment` (verify via oo-api credit transfer)
 - Payment verification: `TrustAgent.verify_payment()` calls oo-api `/api/v1/onboard/verify` to check for recent transfers
@@ -251,7 +251,7 @@ Tools that need access to `agent.io` (for frontend communication) declare `agent
 - The LLM never sees the `agent` parameter
 
 ### Trust Verification (`connectonion/network/trust/`)
-- Environment defaults: `CONNECTONION_ENV=development` → trust="open"
+- No environment defaults: how open a host is lives in the operator's own file
 - Custom policies loaded from markdown files or inline strings
 - Trust agent created lazily when trust parameter provided
 - Prevents infinite recursion: trust agents don't have their own trust agents

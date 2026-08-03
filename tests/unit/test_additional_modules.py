@@ -36,7 +36,6 @@ def test_event_decorators_tag_function():
 def test_parse_trust_config_inline():
     cfg = host_server._parse_trust_config("---\ndefault: allow\n---\n")
     assert cfg and cfg.get("default") == "allow"
-    assert host_server.get_default_trust()
 
 
 def test_io_classes():
