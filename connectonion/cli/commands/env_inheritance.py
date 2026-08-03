@@ -25,3 +25,19 @@ def is_personal_account_credential(key: str) -> bool:
     return key.startswith(PERSONAL_ACCOUNT_PREFIXES)
 
 
+# Values that are true of the machine rather than of the project. A project .env
+# travels — cloned, rsynced, deployed — and an absolute home directory is right
+# in exactly one place.
+#
+# AGENT_CONFIG_PATH is the whole list so far. #438 removed the line that wrote
+# it, and `co deploy` rewrites it for the server, but neither covers the route
+# it actually arrives by: it sits in ~/.co/keys.env on machines where an older
+# release put it there, and keys.env is copied key by key.
+MACHINE_LOCAL_KEYS = ('AGENT_CONFIG_PATH',)
+
+
+def describes_this_machine(key: str) -> bool:
+    """Whether this keys.env entry would be wrong anywhere else."""
+    return key in MACHINE_LOCAL_KEYS
+
+
