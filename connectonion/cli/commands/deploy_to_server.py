@@ -670,19 +670,32 @@ def _sync_code(target: str, agent: str, project_dir: Path) -> bool:
         text=True,
         timeout=600,
     )
-    if result.returncode == 0:
-        # Every deploy, not only when the unit changes: the files have to belong
-        # to the user the service runs as. An agent that ran as root before left
-        # root-owned logs and state behind, and the first thing the unprivileged
-        # process does is fail to write its own log —
-        # PermissionError: [Errno 13] Permission denied: '.co/logs/oo.log'
-        _ssh(target, f"sudo chown -R {_remote_user(target)}: {SRV}/{agent}", timeout=120)
-
     if result.returncode != 0:
         console.print("[red]rsync failed.[/red]")
         for line in (result.stderr or result.stdout).strip().splitlines()[-8:]:
             console.print(f"  [dim]{line}[/dim]")
         return False
+
+    # Every deploy, not only when the unit changes: the files have to belong
+    # to the user the service runs as. An agent that ran as root before left
+    # root-owned logs and state behind, and the first thing the unprivileged
+    # process does is fail to write its own log —
+    # PermissionError: [Errno 13] Permission denied: '.co/logs/oo.log'
+    #
+    # And the result is checked, because this step exists to prevent a specific
+    # failure and used to discard whether it happened. A box where sudo wants a
+    # password reported a successful deploy and an agent that broke on its first
+    # write — and, since #585, on its first read of a trust list, with an error
+    # naming a file whose real cause was this line.
+    chown = _ssh(target, f"sudo chown -R {_remote_user(target)}: {SRV}/{agent}",
+                 timeout=120)
+    if chown.returncode != 0:
+        console.print("[red]chown failed — the deployed files may still be "
+                      "root-owned, and the agent cannot read or write them.[/red]")
+        for line in (chown.stderr or chown.stdout).strip().splitlines()[-4:]:
+            console.print(f"  [dim]{line}[/dim]")
+        return False
+
     return True
 
 
@@ -814,6 +827,29 @@ def _restart(target: str, agent: str) -> bool:
     return True
 
 
+def _record_port(target: str, agent: str, port: int) -> None:
+    """Write down the port this agent keeps, and say so if that did not work.
+
+    `_port_for` reads this file on the next deploy. When it is missing the port
+    is probed again — and the old one is now held by the running agent, so a
+    different one is chosen, Caddy is rewritten to follow, and the operator
+    reads "8000 is taken on this machine" every deploy with no cause they can
+    find. The port climbs by one each time.
+
+    Not an outage, so not a reason to fail the deploy. Worth one line.
+    """
+    result = _ssh(
+        target,
+        f"mkdir -p {SRV}/{agent}/.co && echo {port} > {SRV}/{agent}/.co/port",
+        timeout=60,
+    )
+    if result.returncode != 0:
+        console.print(f"[yellow]could not record port {port} on the server — "
+                      f"the next deploy will choose a new one[/yellow]")
+        for line in (result.stderr or result.stdout).strip().splitlines()[-2:]:
+            console.print(f"  [dim]{line}[/dim]")
+
+
 def _mark_provisioned(target: str, agent: str) -> None:
     from ... import __version__
     marker = json.dumps({"schema": PROVISION_SCHEMA,
@@ -898,8 +934,7 @@ def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
     port = _port_for(target, agent, project["port"])
     if port != project["port"]:
         console.print(f"  [dim]port {port} — 8000 is taken on this machine[/dim]")
-    _ssh(target, f"mkdir -p {SRV}/{agent}/.co && echo {port} > {SRV}/{agent}/.co/port",
-         timeout=60)
+    _record_port(target, agent, port)
 
     if hostname and not _ensure_caddy(target, agent, hostname, port):
         return False
