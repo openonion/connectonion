@@ -81,18 +81,36 @@ def _check_list(list_name: str, agent_id: str) -> bool:
     if not list_path.exists():
         _mention_a_legacy_list(list_name)
         return False
+    # An unreadable file is not an empty file.
+    #
+    # This used to be `except Exception: return False`, which is the safe
+    # direction for whitelist and contacts and fail-open for blocklist: a
+    # blocklist.txt saved as GBK by a Windows editor, or left root-owned by a
+    # deploy, raises on read and every blocked address is admitted. Same
+    # swallow, safe one way and dangerous the other, which is why it lasted —
+    # the direction that matters is the one nobody tests.
+    #
+    # Absent is an answer, and still returns False above. Unreadable is a
+    # question this agent cannot answer, so it says which file and stops.
     try:
         content = list_path.read_text(encoding='utf-8')
-        agent_id = agent_id.strip().lower()
-        for line in content.strip().split('\n'):
-            line = line.strip()
-            if not line or line.startswith('#'):
-                continue
-            if _matches(agent_id, line.lower()):
-                return True
-        return False
-    except Exception:
-        return False
+    except OSError as exc:
+        raise OSError(f"cannot read {list_path}: {exc}") from exc
+    except UnicodeDecodeError as exc:
+        raise UnicodeDecodeError(
+            exc.encoding, exc.object, exc.start, exc.end,
+            f"{list_path} is not UTF-8 — an editor may have saved it in a "
+            f"local code page; re-save it as UTF-8"
+        ) from None
+
+    agent_id = agent_id.strip().lower()
+    for line in content.strip().split('\n'):
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if _matches(agent_id, line.lower()):
+            return True
+    return False
 
 
 def _matches(agent_id: str, pattern: str) -> bool:
@@ -361,15 +379,27 @@ def load_admins(co_dir: Path = None) -> set:
             pass
 
     # Additional admins from this agent's own admins.txt
+    # Same reasoning as _check_list, and the cost is higher since #579: the
+    # approval dialog is admins-only, so an admins.txt that cannot be read does
+    # not merely lose a permission — every approval the owner attempts comes
+    # back "you are stranger", naming the wrong reason, about a file nothing
+    # mentions.
     admins_file = _admins_file(co_dir)
     if admins_file.exists():
         try:
-            for line in admins_file.read_text(encoding='utf-8').splitlines():
-                line = line.strip()
-                if line and not line.startswith('#'):
-                    admins.add(line)
-        except Exception:
-            pass
+            content = admins_file.read_text(encoding='utf-8')
+        except OSError as exc:
+            raise OSError(f"cannot read {admins_file}: {exc}") from exc
+        except UnicodeDecodeError as exc:
+            raise UnicodeDecodeError(
+                exc.encoding, exc.object, exc.start, exc.end,
+                f"{admins_file} is not UTF-8 — an editor may have saved it in "
+                f"a local code page; re-save it as UTF-8"
+            ) from None
+        for line in content.splitlines():
+            line = line.strip()
+            if line and not line.startswith('#'):
+                admins.add(line)
 
     return admins
 
