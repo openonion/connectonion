@@ -268,8 +268,19 @@ def _print_host_banner(
     prefix = "[magenta]\\[host][/magenta]"
     indent = "       "  # 7 spaces to align with [host]
 
-    # Build relay status
-    relay_status = "[green]✓[/green] relay" if relay_url else "[dim]no relay[/dim]"
+    # What relay this agent will announce on — a statement of configuration, not
+    # of success. This printed "✓ relay" whenever a URL was set, before any
+    # connection was attempted, so an unreachable relay still got a green tick
+    # and the operator was told their agent was reachable. Whether it connected
+    # is said by the lines that know: `relay connection error …`, `relay
+    # reconnected`, and the ♥ in a terminal.
+    from urllib.parse import urlparse
+
+    if relay_url:
+        relay_host = urlparse(relay_url).netloc or relay_url
+        relay_status = f"[dim]relay:[/dim] {relay_host}"
+    else:
+        relay_status = "[dim]no relay[/dim]"
 
     # Get absolute paths for config and logs
     config_file = (co_dir / "host.yaml").resolve() if co_dir else (Path.cwd() / ".co" / "host.yaml").resolve()
@@ -282,10 +293,14 @@ def _print_host_banner(
     console.print(f"{indent}[bold]POST[/bold] /input · [bold]WS[/bold] /ws · [dim]GET /docs[/dim]")
     console.print()
 
-    # Full address + clickable chat link hint
-    chat_url = f"https://chat.openonion.ai/{address}"
+    # Full address, and the chat site — but only when this agent announces on the
+    # relay that site reads. The link was unconditional, which was accidentally
+    # true while every agent was on the public relay; an agent on a private one
+    # was being sent to a site that has never heard of it.
     console.print(f"{indent}[cyan]{address}[/cyan]")
-    console.print(f"{indent}[link={chat_url}][dim]↳ chat.openonion.ai ↗[/dim][/link]")
+    if relay_url == DEFAULT_RELAY_URL:
+        chat_url = f"https://chat.openonion.ai/{address}"
+        console.print(f"{indent}[link={chat_url}][dim]↳ chat.openonion.ai ↗[/dim][/link]")
     console.print(f"{indent}{relay_status}")
     console.print()
 
