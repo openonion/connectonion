@@ -27,6 +27,7 @@ from .project_cmd_lib import (
     ensure_global_config,
     copy_docs,
     create_host_yaml,
+    record_creator_as_admin,
     setup_gitignore,
     print_resources,
     get_special_directory_warning,
@@ -307,6 +308,10 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     host_name = os.path.basename(current_dir) or "connectonion-agent"
     if create_host_yaml(co_dir, host_name):
         files_created.append(".co/host.yaml")
+
+    # Who may command this agent. `co deploy` writes the deployer in for the
+    # same reason; without it `co call` from this very machine is refused.
+    record_creator_as_admin(Path(current_dir))
 
     # Handle .gitignore if in git repo
     gi_result = setup_gitignore(Path(current_dir))

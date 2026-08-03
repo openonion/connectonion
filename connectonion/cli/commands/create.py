@@ -27,6 +27,7 @@ from .project_cmd_lib import (
     ensure_global_config,
     copy_docs,
     create_host_yaml,
+    record_creator_as_admin,
     setup_gitignore,
     print_resources,
     LoadingAnimation,
@@ -336,6 +337,10 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     # Create host.yaml from template (unified config for host() and co deploy)
     if create_host_yaml(co_dir, name):
         files_created.append(".co/host.yaml")
+
+    # Who may command this agent — see record_creator_as_admin. `co deploy`
+    # writes the deployer in for the same reason.
+    record_creator_as_admin(project_dir)
 
     # Create .env file - copy from global keys.env
     env_path = project_dir / ".env"

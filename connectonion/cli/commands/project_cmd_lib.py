@@ -33,6 +33,43 @@ from ... import address
 console = Console()
 
 
+def record_creator_as_admin(project_dir: Path) -> None:
+    """Let whoever made this agent command it.
+
+    `co deploy` already writes the deployer's address into the agent's
+    .co/admins.txt, with the reason spelled out there: admins.txt is who may
+    command the agent, and without it nobody can — ADMIN_ADD is gated on
+    super-admin, super-admin is the agent's own address, and that private key
+    lives only with the agent. The one account that could grant admin is the
+    one nobody can sign as.
+
+    The same is true of an agent run locally, and neither `co create` nor
+    `co init` did it, so `co call` against an agent you had just made on your
+    own machine answered "agent requires onboarding" (#614).
+
+    The address is read from the keypair, not from keys.env's AGENT_ADDRESS:
+    the file has to name the key that will actually be presented at CONNECT,
+    and those two are not always the same value.
+
+    Appended and only when absent — the file may already name other admins, and
+    a second `co init` must not add the same line twice.
+    """
+    from ... import address
+
+    data = address.load(Path.home() / ".co")
+    if not data or not data.get("address"):
+        return
+
+    admins = project_dir / ".co" / "admins.txt"
+    admins.parent.mkdir(parents=True, exist_ok=True)
+    existing = admins.read_text(encoding="utf-8").splitlines() if admins.exists() else []
+    if data["address"] in (l.strip() for l in existing):
+        return
+
+    with open(admins, "a", encoding="utf-8") as f:
+        f.write(data["address"] + "\n")
+
+
 def mint_invite_code() -> str:
     """One code, for one agent, generated once.
 
