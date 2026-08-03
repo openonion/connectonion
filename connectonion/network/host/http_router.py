@@ -231,9 +231,16 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
         },
     }
 
-    # Startup balance snapshot for co/* managed-key agents; omitted otherwise.
-    if agent_metadata.get("balance_usd") is not None:
-        result["balance_usd"] = agent_metadata["balance_usd"]
+    # The balance is deliberately not here. /info needs no credentials, so on a
+    # deployed agent this response is readable by the whole internet, and the
+    # operator's account balance is both commercially revealing on its own and a
+    # targeting signal — credits are money, and an agent holding a lot of them is
+    # worth more effort than one holding none.
+    #
+    # It still reaches authenticated clients: AGENT_PROFILE after CONNECT, and
+    # the CONNECTED frame. That is where the chat UI reads it, and what
+    # connectonion-react already documents — "the public /info answer is
+    # deliberately narrower".
 
     if trust_config:
         onboard = trust_config.get("onboard", {})
