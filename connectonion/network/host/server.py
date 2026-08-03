@@ -631,6 +631,11 @@ def host(
     # this one just started and owns none. Left alone they are permanent, since
     # `running` is exempt from TTL, and every mid-turn restart adds one (#545).
     storage.reconcile_interrupted()
+    # And drop what no reader can see: superseded records, and sessions past
+    # their TTL that are not running. The file is append-only otherwise, and a
+    # live agent was at 17 MB for 222 sessions — every dashboard open reparses
+    # all of it.
+    storage.compact()
 
     # Create Active Session Registry for WebSocket reconnection
     registry = ActiveSessionRegistry()
@@ -734,6 +739,7 @@ def create_app(create_agent: Callable, storage=None, trust="careful", result_ttl
     if storage is None:
         storage = SessionStorage()
     storage.reconcile_interrupted()      # see the note at the other call site
+    storage.compact()
 
     # Create Active Session Registry for WebSocket reconnection
     registry = ActiveSessionRegistry()
