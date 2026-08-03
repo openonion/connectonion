@@ -270,8 +270,16 @@ class TestInfoHandler:
         assert result["trust"] == "careful"
         assert "version" in result
 
-    def test_includes_balance_when_present(self):
-        """A managed-key agent's balance snapshot is echoed on /info."""
+    def test_never_publishes_the_balance(self):
+        """The opposite of what this asserted until 1.6.0.
+
+        /info takes no credentials, so on a deployed agent this response is
+        readable by the whole internet, and the operator's balance is both
+        commercially revealing and a targeting signal. It still reaches
+        authenticated clients in AGENT_PROFILE and the CONNECTED frame — which
+        is where oo-chat reads it, and what connectonion-react already
+        documented: "the public /info answer is deliberately narrower".
+        """
         metadata = {
             "name": "my_agent",
             "tools": [],
@@ -283,7 +291,8 @@ class TestInfoHandler:
 
         result = info_handler(metadata, mock_trust)
 
-        assert result["balance_usd"] == 4.22
+        assert "balance_usd" not in result
+        assert 4.22 not in result.values()
 
     def test_omits_balance_when_absent(self):
         """Agents without an OpenOnion balance don't get a null/zero field."""
