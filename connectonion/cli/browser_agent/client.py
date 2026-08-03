@@ -172,6 +172,17 @@ def send(line: str, headless: bool = False, tab: str = None) -> int:
     try:
         conn = _connect(sock_path)
         if conn is None:
+            if line.split()[:1] == ["status"]:
+                # Asking whether the browser is running must not start it. With
+                # nobody listening the answer is already known, and obtaining it
+                # by launching a Chrome — and creating ~/.co/browser.log to do
+                # so — is both backwards and the thing that broke in a managed
+                # sandbox: $HOME readable, writes only in the workspace, so the
+                # open raised PermissionError, which the RuntimeError below does
+                # not catch, and the CLI printed a traceback instead of a status
+                # (#356).
+                print("Browser daemon: not running — the next page command starts one")
+                return 0
             _ensure_browser_ready(line)  # cold start: provision the browser first
             conn = _spawn_daemon(sock_path, headless)
     except RuntimeError as exc:
