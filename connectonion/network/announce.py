@@ -28,6 +28,9 @@ import httpx
 # one gets ANNOUNCE_OK.
 ANNOUNCE_SUMMARY_LIMIT = 1000
 
+# The summary we last mentioned cutting, so a reconnect does not repeat it.
+_summary_already_mentioned = None
+
 
 def fit_summary(summary):
     """Cut a summary to what the relay will accept, and say so when it does.
@@ -45,9 +48,19 @@ def fit_summary(summary):
     """
     if not summary or len(summary) <= ANNOUNCE_SUMMARY_LIMIT:
         return summary
-    print(f"[announce] summary is {len(summary)} characters and the relay takes "
-          f"{ANNOUNCE_SUMMARY_LIMIT}; announcing the first {ANNOUNCE_SUMMARY_LIMIT}. "
-          f"Shorten `summary:` in .co/host.yaml to choose what goes.")
+
+    # Said once per summary, not once per announce. This function is the relay
+    # loop's callback — the message is rebuilt on every reconnect, deliberately,
+    # because it is signed and has to be fresh for the socket it announces on
+    # (#548). Printing here on every network blip fills the log with one line
+    # and teaches the operator to stop reading it. A changed summary is news
+    # again: host.yaml was edited.
+    global _summary_already_mentioned
+    if _summary_already_mentioned != summary:
+        _summary_already_mentioned = summary
+        print(f"[announce] summary is {len(summary)} characters and the relay takes "
+              f"{ANNOUNCE_SUMMARY_LIMIT}; announcing the first {ANNOUNCE_SUMMARY_LIMIT}. "
+              f"Shorten `summary:` in .co/host.yaml to choose what goes.")
     return summary[:ANNOUNCE_SUMMARY_LIMIT]
 
 
