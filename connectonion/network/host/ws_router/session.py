@@ -128,6 +128,23 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 # Anything else (ASK_USER_RESPONSE, APPROVAL_RESPONSE, mode_change, ...)
                 # → forward to the running agent's input mailbox.
                 active_io.send_to_agent(data)
+
+            else:
+                # No handler and no agent to forward to. This used to fall off
+                # the end of the chain: no reply, no log, nothing — and a client
+                # waiting for an answer waited until its own timeout, then
+                # reported something unrelated to the cause. Silence is the
+                # answer #434 was about, and every other branch here sends an
+                # ERROR frame.
+                #
+                # It matters most for a long-term release: an agent from this
+                # version will meet clients of many versions, and the first
+                # symptom of version skew should be "I do not know that
+                # message", not a connection that looks fine and never answers.
+                await send_msg({
+                    "type": "ERROR",
+                    "message": f"unknown message type: {msg_type!r}",
+                })
     finally:
         # asyncio cancel idiom: cancel() only signals; await ensures the task
         # actually unwinds before we return. The CancelledError surfaced by
