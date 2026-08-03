@@ -2,6 +2,12 @@
 
 All notable changes to ConnectOnion will be documented in this file.
 
+> **The current history lives in [VERSIONING.md](VERSIONING.md).** This file
+> stopped being written after 1.5.0 while six releases shipped, and its older
+> entries are out of order — two histories is how one of them stops being kept.
+> What is below is left as it was; anything from 1.5.1 onward is in
+> VERSIONING.md, and a test now fails if a release ships without an entry there.
+
 ## [1.5.0] - 2026-07-28
 
 ### ✨ Features
