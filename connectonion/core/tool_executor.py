@@ -2,7 +2,7 @@
 Purpose: Execute agent tools with xray context injection, timing, error handling, and trace recording
 LLM-Note:
   Dependencies: imports from [time, json, typing, xray.py] | imported by [agent.py] | tested by [tests/test_tool_executor.py]
-  Data flow: receives from Agent → tool_calls: List[ToolCall], tools: ToolRegistry, agent: Agent, logger: Logger → for each tool: injects xray context via inject_xray_context() → if tool._needs_agent, injects agent into tool_args → executes tool_func(**tool_args) → records timing and result → appends to agent.current_session['trace'] → clears xray context → adds tool result to messages
+  Data flow: receives from Agent → tool_calls: List[ToolCall], tools: ToolRegistry, agent: Agent, logger: Logger → for each tool: injects xray context via inject_xray_context() → if tool._needs_agent, passes agent in a call-only copy → executes tool_func(**call_args) → records timing and result → appends to agent.current_session['trace'] → clears xray context → adds tool result to messages
   State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_execution entries | calls logger.log_tool_call() and logger.log_tool_result() for user feedback | injects/clears xray context via thread-local storage
   Integration: exposes execute_and_record_tools(tool_calls, tools, agent, logger), execute_single_tool(...) | uses logger.log_tool_call(name, args) for natural function-call style output: greet(name='Alice') | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp
   Performance: times each tool execution in milliseconds | executes tools sequentially (not parallel) | trace entry added BEFORE auto-trace so xray.trace() sees it | agent injection uses cached _needs_agent flag (set by tool_factory) instead of inspect.signature() for zero overhead
@@ -246,13 +246,24 @@ def execute_single_tool(
         # Inject agent for tools that declare 'agent' in their signature.
         # _needs_agent is cached by tool_factory at registration time.
         # This lets tools access agent.io for frontend communication (ask_user, DiffWriter, etc.)
+        # A separate dict for the call, not a mutation of the caller's.
+        #
+        # This used to be `tool_args['agent'] = agent`, and the trace entry holds
+        # `tool_args` by reference — so between recording the trace and the
+        # `finally` that popped the field, an entry containing a live Agent was
+        # reachable. In host mode the forwarder thread is draining and encoding
+        # those entries concurrently, so the mitigation was a race. #382.
+        #
+        # `agent` is plumbing, not something the model asked for, and it does not
+        # belong in the record of what was called.
+        call_args = tool_args
         if getattr(tool_func, '_needs_agent', False):
-            tool_args['agent'] = agent
+            call_args = {**tool_args, 'agent': agent}
 
         if inspect.iscoroutinefunction(tool_func):
-            result = _run_async_tool(tool_func(**tool_args))
+            result = _run_async_tool(tool_func(**call_args))
         else:
-            result = tool_func(**tool_args)
+            result = tool_func(**call_args)
         tool_duration = (time.time() - tool_start) * 1000  # milliseconds
 
         trace_entry["timing_ms"] = tool_duration
@@ -300,10 +311,7 @@ def execute_single_tool(
         # Note: on_error event will fire in execute_and_record_tools after result message added
 
     finally:
-        # Remove injected agent from tool_args to prevent serialization issues.
-        # Trace entries reference tool_args, so leaving 'agent' would cause
-        # "Non-JSON-serializable object: Agent" warnings when session_sync sends traces.
-        tool_args.pop('agent', None)
+        # No `tool_args.pop('agent')` here any more: nothing was ever put in.
         # Clear xray context after tool execution
         clear_xray_context()
 
