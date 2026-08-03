@@ -116,17 +116,39 @@ class TestToolClassification:
 
 
 class TestNoIO:
-    """Test behavior when no IO (not web mode)."""
+    """No IO means nobody to ask. It does not mean nothing to decide.
 
-    def test_no_io_skips_approval(self):
-        """No IO = not web mode, should skip approval."""
+    This test used to assert the opposite — that `rm -rf /` runs unchallenged
+    when no human is attached — and it passed for as long as that was true.
+    The reasoning behind it was reasonable: there is no one to show a prompt to,
+    and a prompt nobody answers hangs the run forever.
+
+    But "cannot ask" was silently treated as "may proceed", so the mode that
+    looked strictest became no gate at all, in the one setting where nobody was
+    watching to notice. A scheduled run still cannot ask; it can still be
+    judged. See #535.
+    """
+
+    def test_no_io_still_refuses_a_destructive_command(self):
         agent = FakeAgent(io=None)
         agent.current_session['pending_tool'] = {
             'name': 'bash',
             'arguments': {'command': 'rm -rf /', 'description': 'Delete everything'}
         }
 
-        # Should not raise (skips approval)
+        with pytest.raises(ValueError) as exc:
+            check_approval(agent)
+        assert 'host.yaml' in str(exc.value), (
+            "a refusal the operator cannot act on is an outage, not a safeguard"
+        )
+
+    def test_no_io_still_allows_a_read(self):
+        agent = FakeAgent(io=None)
+        agent.current_session['pending_tool'] = {
+            'name': 'bash',
+            'arguments': {'command': 'cat inbox.json'}
+        }
+
         check_approval(agent)
 
 

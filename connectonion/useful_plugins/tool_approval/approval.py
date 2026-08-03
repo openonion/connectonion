@@ -395,11 +395,19 @@ def matches_permission_pattern(tool_name: str, tool_args: dict, pattern: str) ->
 # =============================================================================
 
 def _permission_line(pending: dict) -> str:
+<<<<<<< HEAD
     """The exact host.yaml key that would allow this call in future.
 
     Capitalised `Bash(...)` because that is the form the loader matches. A
     suggestion that pastes cleanly and then silently does nothing is worse than
     no suggestion — the operator stops looking for the real cause.
+=======
+    """The exact key to paste into host.yaml to allow this call in future.
+
+    Capitalised `Bash(...)` because that is the form the loader matches — a
+    suggestion the operator pastes and that then silently does nothing is worse
+    than no suggestion, because they stop looking for the real cause.
+>>>>>>> c290b58 (fix(approval): a run with nobody attached is still judged)
     """
     name = pending['name']
     if name.lower() not in ('bash', 'shell', 'run'):
@@ -497,14 +505,29 @@ def check_approval(agent: 'Agent') -> None:
     if 'stop_signal' in agent.current_session:
         raise ValueError("User rejected this batch of tools. They want to provide input for the correct direction.")
 
-    # No IO = not web mode, skip
-    if not agent.io:
-        return
-
     # Get pending tool info
     pending = agent.current_session.get('pending_tool')
     if not pending:
         return
+
+    # =================================================================
+    # No IO = nobody to ask. Not the same as nothing to decide.
+    # =================================================================
+    # This used to `return` — the strictest-looking mode became no gate at all,
+    # exactly where nobody was watching. A scheduled run cannot answer a prompt,
+    # but it can still be judged, so the reviewer decides alone and a refusal
+    # stops the tool. The message carries the fix because the person who reads
+    # it is reading a log hours later with no way to ask a follow-up question.
+    if not agent.io:
+        allowed, why = auto_review(pending['name'], pending['arguments'])
+        if allowed:
+            return
+        raise ValueError(
+            f"Refused without asking: {why}. No one is attached to this run, so "
+            f"nobody could be asked. To let it through, add this under "
+            f"`permissions` in .co/host.yaml:\n\n    {_permission_line(pending)}:\n"
+            f"      allowed: true\n      reason: why this schedule needs it"
+        )
 
     tool_name = pending['name']
     tool_args = pending['arguments']
