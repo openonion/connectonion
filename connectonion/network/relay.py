@@ -163,6 +163,33 @@ async def _run_session(session_id, first_msg, sessions, relay_ws, session_handle
         del sessions[session_id]
 
 
+def heartbeat_is_worth_printing() -> bool:
+    """Whether anyone is watching the pulse.
+
+    The relay loop refreshes its ANNOUNCE every sixty seconds — the relay drops
+    a registration after about 120 — and printed a `♥` each time. In a terminal
+    that is a pulse you can watch. Under systemd it is 1400 lines a day that say
+    nothing, on every deployed agent, drowning the ones that do. Measured on a
+    live one: 3656 log lines over 11 hours, roughly 660 of them heartbeats.
+
+    "Is it running" is already answered by `systemctl status`.
+
+    Same test connectonion/__init__.py already applies to its env diagnostic —
+    a redirected stream is a different audience — with the same escape hatch for
+    someone debugging a piped run.
+
+    Only the heartbeat is affected. `♥ cannot refresh`, `Relay error` and
+    `Relay disconnected` print either way: silence means healthy, which is what
+    a log is for.
+    """
+    import os
+    import sys
+
+    if os.getenv("CO_HEARTBEAT") == "1":
+        return True
+    return bool(getattr(sys.stderr, "isatty", lambda: False)())
+
+
 async def serve_once(
     relay_url: str,
     make_announce,
@@ -271,7 +298,8 @@ async def serve_loop(
                     addr_data, summary, endpoints=endpoints, relay=relay_url
                 )
                 await send_announce(websocket, fresh_announce)
-                console.print(f"{prefix} [red]♥[/red]")
+                if heartbeat_is_worth_printing():
+                    console.print(f"{prefix} [red]♥[/red]")
             else:
                 # Nothing is sent. The fallback used to re-stamp the original
                 # frame and send it again, which could only ever be rejected:
