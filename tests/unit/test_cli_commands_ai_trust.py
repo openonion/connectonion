@@ -74,10 +74,11 @@ def test_handle_ai_one_shot_keeps_plain_mode_unchanged(monkeypatch, capsys):
 
 def test_trust_commands_list_and_actions(tmp_path, monkeypatch):
     # Point CO_DIR at temp path and create lists
-    monkeypatch.setattr(trust_mod, "CO_DIR", tmp_path)
-    (tmp_path / "contacts.txt").write_text("c1\n", encoding="utf-8")
-    (tmp_path / "whitelist.txt").write_text("w1\n", encoding="utf-8")
-    (tmp_path / "blocklist.txt").write_text("b1\n", encoding="utf-8")
+    co = tmp_path / ".co"; co.mkdir()
+    monkeypatch.chdir(tmp_path)
+    (co / "contacts.txt").write_text("c1\n", encoding="utf-8")
+    (co / "whitelist.txt").write_text("w1\n", encoding="utf-8")
+    (co / "blocklist.txt").write_text("b1\n", encoding="utf-8")
 
     monkeypatch.setattr(trust_mod, "load_admins", lambda: ["a1"])
     monkeypatch.setattr(trust_mod, "get_self_address", lambda: "a1")

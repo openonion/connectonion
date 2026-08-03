@@ -30,7 +30,7 @@ from rich.console import Console
 from rich.table import Table
 
 from ...network.trust.tools import (
-    CO_DIR,
+    list_file,
     get_level,
     promote_to_contact,
     promote_to_whitelist,
@@ -48,7 +48,7 @@ console = Console()
 
 def _read_list(list_name: str) -> list[str]:
     """Read entries from a list file."""
-    list_path = CO_DIR / f"{list_name}.txt"
+    list_path = list_file(list_name)
     if not list_path.exists():
         return []
     content = list_path.read_text(encoding='utf-8')
@@ -103,7 +103,7 @@ def handle_trust_list():
         console.print("  [dim]Empty[/dim]")
     console.print()
 
-    console.print(f"[dim]Lists stored in: {CO_DIR}[/dim]")
+    console.print(f"[dim]Lists stored in: {list_file('whitelist').parent}[/dim]")
 
 
 def handle_trust_level(address: str):

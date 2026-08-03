@@ -1,0 +1,125 @@
+"""Whose whitelist is it.
+
+`admins.txt` was moved out of `~/.co/` and beside the agent's own identity,
+because one machine hosting two agents meant making someone an admin of one
+made them an admin of both. The other three lists — whitelist, contacts,
+blocklist — were left on the old global path.
+
+Whitelist is the one that grants. `is_whitelisted()` is a real allow, so
+promoting an address while poking at a throwaway agent silently promotes it on
+the production agent running on the same box. Nothing in either agent's
+directory records that it happened.
+
+These tests put two agents in two directories and check that what one grants,
+the other has never heard of.
+"""
+
+import importlib
+from pathlib import Path
+
+import pytest
+
+tools = importlib.import_module('connectonion.network.trust.tools')
+
+
+STRANGER = '0x' + 'c' * 64
+
+
+@pytest.fixture
+def two_agents(tmp_path, monkeypatch):
+    """Two agent directories, the way one machine hosting two agents looks."""
+    a, b = tmp_path / 'agent-a', tmp_path / 'agent-b'
+    (a / '.co').mkdir(parents=True)
+    (b / '.co').mkdir(parents=True)
+    # A $HOME of its own, so a stray real ~/.co cannot make these pass.
+    monkeypatch.setenv('HOME', str(tmp_path / 'home'))
+    return a, b
+
+
+def test_a_whitelist_grant_does_not_reach_the_other_agent(two_agents, monkeypatch):
+    a, b = two_agents
+
+    monkeypatch.chdir(a)
+    tools.promote_to_whitelist(STRANGER)
+    assert tools.is_whitelisted(STRANGER), "the grant did not take effect where it was made"
+
+    monkeypatch.chdir(b)
+    assert not tools.is_whitelisted(STRANGER), (
+        "an address whitelisted on one agent is whitelisted on every agent "
+        "sharing the machine"
+    )
+
+
+def test_a_contact_does_not_reach_the_other_agent(two_agents, monkeypatch):
+    a, b = two_agents
+
+    monkeypatch.chdir(a)
+    tools.promote_to_contact(STRANGER)
+    assert tools.is_contact(STRANGER)
+
+    monkeypatch.chdir(b)
+    assert not tools.is_contact(STRANGER)
+
+
+def test_a_block_does_not_reach_the_other_agent(two_agents, monkeypatch):
+    """Blocking leaks in the safe direction, and still should not leak.
+
+    An operator who blocks someone from a public agent has not asked to cut
+    them off from a private one they also run.
+    """
+    a, b = two_agents
+
+    monkeypatch.chdir(a)
+    tools.block(STRANGER)
+    assert tools.is_blocked(STRANGER)
+
+    monkeypatch.chdir(b)
+    assert not tools.is_blocked(STRANGER)
+
+
+def test_the_list_files_live_beside_the_agent(two_agents, monkeypatch):
+    """Where they are is the whole fix — visible in the agent's own directory,
+    next to the identity they are compared against."""
+    a, _ = two_agents
+
+    monkeypatch.chdir(a)
+    tools.promote_to_whitelist(STRANGER)
+
+    assert (a / '.co' / 'whitelist.txt').exists()
+    assert not (Path.home() / '.co' / 'whitelist.txt').exists()
+
+
+class TestTheOldGlobalListsAreNotLostSilently:
+    """Upgrading moves where these live. Nobody should find out from a lockout.
+
+    An operator who whitelisted a colleague in ~/.co/whitelist.txt gets, after
+    the upgrade, a colleague who cannot connect and no reason anywhere. The
+    entries are not read any more — reading them would be the bug — so the one
+    thing left to do is say where they went.
+    """
+
+    def test_a_legacy_list_with_entries_is_announced_once(self, two_agents,
+                                                          monkeypatch, capsys):
+        a, _ = two_agents
+        legacy = Path.home() / '.co'
+        legacy.mkdir(parents=True, exist_ok=True)
+        (legacy / 'whitelist.txt').write_text(STRANGER + '\n')
+
+        monkeypatch.setattr(tools, '_announced_legacy', set())
+        monkeypatch.chdir(a)
+        tools.is_whitelisted(STRANGER)
+        tools.is_whitelisted(STRANGER)
+        tools.is_whitelisted(STRANGER)
+
+        out = capsys.readouterr().out
+        assert str(legacy / 'whitelist.txt') in out
+        # The line names both paths, so count the lines, not the filename.
+        assert out.count('[trust]') == 1, "said once, not on every check"
+
+    def test_nothing_is_said_when_there_is_no_legacy_file(self, two_agents,
+                                                          monkeypatch, capsys):
+        a, _ = two_agents
+        monkeypatch.setattr(tools, '_announced_legacy', set())
+        monkeypatch.chdir(a)
+        tools.is_whitelisted(STRANGER)
+        assert capsys.readouterr().out == ""

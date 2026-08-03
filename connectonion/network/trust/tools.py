@@ -19,7 +19,38 @@ from pathlib import Path
 from typing import List, Callable
 
 
-CO_DIR = Path.home() / ".co"
+def list_file(list_name: str) -> Path:
+    """Where one of this agent's trust lists lives — beside its identity.
+
+    These used to sit in a single ~/.co/ shared by every agent on the machine,
+    while the address they are compared against came from the project's .co/.
+    One box hosting two agents meant one whitelist: an address promoted while
+    poking at a throwaway agent was promoted on the production one too, with
+    nothing in either agent's directory recording it.
+
+    `admins.txt` was moved for exactly this reason. These three are the rest of
+    the same list, and whitelist is the one that grants.
+    """
+    return Path.cwd() / ".co" / f"{list_name}.txt"
+
+
+# One line per list per process. The entries in the old global file are not read
+# — reading them would be the bug this moved away from — so saying where they
+# went is the only thing left to do. Silence here is a colleague who cannot
+# connect and no reason anywhere.
+_announced_legacy = set()
+
+
+def _mention_a_legacy_list(list_name: str) -> None:
+    legacy = Path.home() / ".co" / f"{list_name}.txt"
+    if list_name in _announced_legacy or not legacy.exists():
+        return
+    _announced_legacy.add(list_name)
+    if not legacy.read_text(encoding="utf-8").strip():
+        return
+    print(f"[trust] {legacy} is no longer read — these lists now live beside "
+          f"each agent, in its own .co/. Copy the lines you still want into "
+          f"{list_file(list_name)}.")
 
 
 def _admins_file(co_dir: Path = None) -> Path:
@@ -46,8 +77,9 @@ def _check_list(list_name: str, agent_id: str) -> bool:
     but an admin pastes what a UI showed them, and `block("0xABCDEF…")` that
     silently blocks nobody is worse than one that errors — it reported success.
     """
-    list_path = CO_DIR / f"{list_name}.txt"
+    list_path = list_file(list_name)
     if not list_path.exists():
+        _mention_a_legacy_list(list_name)
         return False
     try:
         content = list_path.read_text(encoding='utf-8')
@@ -148,8 +180,8 @@ def verify_agent(agent_id: str, agent_info: str = "") -> str:
 
 def _add_to_list(list_name: str, client_id: str) -> bool:
     """Add client_id to a list file."""
-    CO_DIR.mkdir(parents=True, exist_ok=True)
-    list_path = CO_DIR / f"{list_name}.txt"
+    list_path = list_file(list_name)
+    list_path.parent.mkdir(parents=True, exist_ok=True)
 
     # Check if already in list
     if _check_list(list_name, client_id):
@@ -163,7 +195,7 @@ def _add_to_list(list_name: str, client_id: str) -> bool:
 
 def _remove_from_list(list_name: str, client_id: str) -> bool:
     """Remove client_id from a list file."""
-    list_path = CO_DIR / f"{list_name}.txt"
+    list_path = list_file(list_name)
     if not list_path.exists():
         return True
 
