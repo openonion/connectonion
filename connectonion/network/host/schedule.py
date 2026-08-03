@@ -328,6 +328,15 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
     path = co_dir / STATE_FILE
 
     handle = _lock(co_dir / f"{STATE_FILE}.lock")
+    if handle is None:
+        # Proceeding unlocked is the deliberate choice — blocking forever on a
+        # lock held by a process the OS never noticed dying is worse. But this
+        # write is a read-modify-write of the whole file, so it can drop another
+        # writer's entry, and a lost last_run makes the scheduler run something
+        # a second time. Say it, so that duplicate run is findable in the log
+        # instead of being inferred weeks later.
+        print(f"[schedule] writing {name} without the state lock — another "
+              f"process is holding it; an entry may be lost")
     try:
         state = load_state(co_dir)
         # Rebuilt rather than updated, so a later success drops the reason a
