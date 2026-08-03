@@ -156,3 +156,35 @@ class TestTheDeployedAgentRunsFromItsOwnDirectory:
                        if l.startswith('WorkingDirectory='))
 
         assert f"{workdir}/.co" == f"{SRV}/ledger/.co"
+
+
+class TestCoTrustSaysWhereItLooked:
+    """Four empty lists and no agent look identical, and mean opposite things."""
+
+    def test_no_agent_here_is_not_reported_as_empty_lists(self, tmp_path,
+                                                          monkeypatch, capsys):
+        from connectonion.cli.commands.trust_commands import handle_trust_list
+
+        monkeypatch.chdir(tmp_path)          # no .co/ in it
+        handle_trust_list()
+
+        out = capsys.readouterr().out
+        assert 'No agent here' in out
+        assert 'Whitelist' not in out, (
+            "listing empty sections here reads as 'my whitelist was wiped'"
+        )
+
+    def test_a_real_agent_still_lists_its_entries(self, tmp_path, monkeypatch,
+                                                  capsys):
+        from connectonion.cli.commands.trust_commands import handle_trust_list
+
+        co = tmp_path / '.co'
+        co.mkdir()
+        (co / 'whitelist.txt').write_text('0xabc\n')
+        monkeypatch.chdir(tmp_path)
+
+        handle_trust_list()
+
+        out = capsys.readouterr().out
+        assert 'Whitelist' in out
+        assert '0xabc' in out

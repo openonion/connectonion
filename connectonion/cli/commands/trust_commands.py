@@ -58,6 +58,18 @@ def _read_list(list_name: str) -> list[str]:
 
 def handle_trust_list():
     """List all trust lists."""
+    # These lists belong to one agent, so being in the wrong directory shows
+    # four empty sections — which reads as "my whitelist was wiped" rather than
+    # "you are not standing in an agent". Say which it is.
+    agent_dir = list_file("whitelist").parent
+    if not agent_dir.is_dir():
+        console.print()
+        console.print(f"[yellow]No agent here[/yellow] — {agent_dir} does not exist.")
+        console.print("[dim]Trust lists belong to one agent. Run this from its "
+                      "directory, or 'co init' to make one.[/dim]")
+        console.print()
+        return
+
     contacts = _read_list("contacts")
     whitelist = _read_list("whitelist")
     blocklist = _read_list("blocklist")
