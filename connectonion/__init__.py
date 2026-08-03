@@ -16,6 +16,7 @@ from ._version import __version__
 # Auto-load .env files for the entire framework
 import os as _os
 import sys as _sys
+from types import ModuleType as _ModuleType
 from dotenv import load_dotenv
 from pathlib import Path as _Path
 
@@ -37,38 +38,95 @@ for _env_file in (_Path.cwd() / ".env", _Path.home() / ".co" / "keys.env"):
         if _show_env:
             print(f"[env] {_env_file.resolve()}", file=_sys.stderr)
 
-from .core import Agent, LLM, create_tool_from_function
-from .core import (
-    on_agent_ready,
-    after_user_input,
-    before_iteration,
-    after_iteration,
-    before_llm,
-    after_llm,
-    before_each_tool,
-    before_tools,
-    after_each_tool,
-    after_tools,
-    on_error,
-    on_complete,
-    on_stop_signal,
-)
-from .logger import Logger
-from .llm_do import llm_do
-from .transcribe import transcribe
-from .prompts import load_system_prompt
-from .debug import xray, auto_debug_exception, replay, xray_replay
-from .useful_tools import (
-    send_email, get_emails, mark_read, mark_unread,
-    Memory, Gmail, GDrive, Synology, GoogleCalendar, Outlook, MicrosoftCalendar,
-    WebFetch, Shell, bash, codex, DiffWriter, MODE_NORMAL, MODE_AUTO, MODE_PLAN,
-    pick, yes_no, autocomplete, TodoList, SlashCommand,
-    # Claude Code-style file tools
-    read_file, edit, multi_edit, glob, grep, write,
-)
-from .network import connect, RemoteAgent, Response, ExecResult, host, create_app, IO
-from .network import relay, announce
-from . import address
+# The public names are resolved on first use, not on import (PEP 562).
+#
+# These used to be plain `from .core import Agent` lines, which meant importing
+# anything from this package imported all of it: the model SDKs, Gmail's Google
+# credentials, the TUI and the whole network stack. `import connectonion.cli.main`
+# runs this file first — Python offers no way around that — so `co --version`
+# paid 3.4s to print six characters, and every `co` call paid it again.
+#
+# Only the lookup moves. `from connectonion import Agent` still works, still
+# returns the same object, and the second read is a plain global: __getattr__
+# writes what it resolved into globals(), so it runs once per name.
+_SUBMODULES = ("address", "core", "debug", "logger", "network", "prompts", "useful_tools")
+
+_FROM = {
+    **{name: ".core" for name in (
+        "Agent", "LLM", "create_tool_from_function",
+        "on_agent_ready", "after_user_input", "before_iteration", "after_iteration",
+        "before_llm", "after_llm", "before_each_tool", "before_tools",
+        "after_each_tool", "after_tools", "on_error", "on_complete", "on_stop_signal",
+    )},
+    "Logger": ".logger",
+    # Both of these name a module *and* the function inside it. The eager
+    # `from .llm_do import llm_do` bound the function over the module, and code
+    # calls `connectonion.llm_do(...)` — so the function is what this must return.
+    "llm_do": ".llm_do",
+    "transcribe": ".transcribe",
+    "load_system_prompt": ".prompts",
+    **{name: ".debug" for name in ("xray", "auto_debug_exception", "replay", "xray_replay")},
+    **{name: ".useful_tools" for name in (
+        "send_email", "get_emails", "mark_read", "mark_unread",
+        "Memory", "Gmail", "GDrive", "Synology", "GoogleCalendar", "Outlook",
+        "MicrosoftCalendar", "WebFetch", "Shell", "bash", "codex", "DiffWriter",
+        "MODE_NORMAL", "MODE_AUTO", "MODE_PLAN",
+        "pick", "yes_no", "autocomplete", "TodoList", "SlashCommand",
+        # Claude Code-style file tools
+        "read_file", "edit", "multi_edit", "glob", "grep", "write",
+    )},
+    **{name: ".network" for name in (
+        "connect", "RemoteAgent", "Response", "ExecResult", "host", "create_app",
+        "IO", "relay", "announce",
+    )},
+}
+
+
+def __getattr__(name):
+    from importlib import import_module
+
+    if name in _SUBMODULES:
+        # `from .core import Agent` also set `connectonion.core`, and code reads it.
+        value = import_module(f".{name}", __name__)
+    elif name in _FROM:
+        value = getattr(import_module(_FROM[name], __name__), name)
+    else:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+    globals()[name] = value
+    return value
+
+
+def __dir__():
+    return sorted(set(__all__) | set(_SUBMODULES) | set(globals()))
+
+
+class _Package(_ModuleType):
+    """Keeps `llm_do` and `transcribe` meaning the function, not the module.
+
+    Each of those names belongs to both a module and the function inside it.
+    Importing `connectonion.llm_do` — which docs/README.md tells people to do,
+    and which web_fetch.py and gmail.py do internally — makes the import system
+    bind the *module* onto this package, shadowing the function. Then
+    `connectonion.llm_do(...)` raises "'module' object is not callable".
+
+    The eager version won that race by accident: `__init__` ran before anything
+    else could import the submodule, and its last act was to rebind the name to
+    the function. Lazy resolution gives up that ordering, so the tie is settled
+    here instead — where it does not depend on who imported what first.
+
+    Overriding __getattribute__ rather than __getattr__ is the point: by the
+    time this matters the attribute *exists*, so __getattr__ would never run.
+    """
+
+    _SHADOWED = frozenset({"llm_do", "transcribe"})
+
+    def __getattribute__(self, name):
+        value = _ModuleType.__getattribute__(self, name)
+        if name in _Package._SHADOWED and isinstance(value, _ModuleType):
+            return getattr(value, name)
+        return value
+
 
 __all__ = [
     # Core
@@ -144,3 +202,6 @@ __all__ = [
     "on_complete",
     "on_stop_signal",
 ]
+
+# The module's last act: everything above must exist before the class changes.
+_sys.modules[__name__].__class__ = _Package
