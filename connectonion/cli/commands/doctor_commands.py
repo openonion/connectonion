@@ -45,6 +45,33 @@ def verdict(problems: list) -> int:
     return 1
 
 
+def model_pricing_note(model) -> "str | None":
+    """What to say about a model 1.6.0 no longer prices, or None.
+
+    #603 dropped thirty pre-2025 models from the price table and deliberately
+    left routing alone, so a project that still names `gpt-4o-mini` keeps
+    working — but every cost shown for it is DEFAULT_PRICING now, six times the
+    real figure in that example, marked only by a `~`.
+
+    The `~` says the number is a guess. It does not say why, and `co doctor` —
+    which is what people run after an upgrade when something looks off — said
+    nothing at all.
+
+    Not a problem row: the agent runs. A note, next to the model.
+    """
+    if not model or not model.strip():
+        return None
+
+    from ...core.usage import is_estimated_price
+
+    model = model.strip()
+    if not is_estimated_price(model):
+        return None
+
+    return (f"{model} is no longer in the price table — it still runs, "
+            f"and costs shown for it are estimates")
+
+
 def handle_doctor():
     """Run comprehensive diagnostics on ConnectOnion installation.
 
@@ -105,6 +132,7 @@ def handle_doctor():
 
     # Check for host.yaml (project config)
     local_config = Path(".co") / "host.yaml"
+    config = {}
 
     if local_config.exists():
         config_table.add_row("Config", f"[green]✓[/green] {local_config}")
@@ -113,6 +141,21 @@ def handle_doctor():
             config = yaml.safe_load(f) or {}
         agent_name = config.get("name", "Not set")
         config_table.add_row("Agent Name", f"[dim]{agent_name}[/dim]")
+
+    # The model this project would use, and whether 1.6.0 still prices it.
+    #
+    # MODEL comes from the environment because connectonion/__init__.py loads
+    # the project .env at import and cli/main.py loads it again — both happen
+    # before this runs. The explicit load_dotenv further down is for the API
+    # key and comes later; do not reorder this above it expecting to find the
+    # value there.
+    model = os.getenv("MODEL") or config.get("model")
+    if model:
+        note = model_pricing_note(model)
+        if note:
+            config_table.add_row("Model", f"[yellow]○[/yellow] {note}")
+        else:
+            config_table.add_row("Model", f"[green]✓[/green] {model}")
     else:
         config_table.add_row("Config", "[yellow]○[/yellow] Not found (optional)")
 
