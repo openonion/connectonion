@@ -38,7 +38,7 @@ patch releases; the minor is the statement that it no longer needs to be.
 - Reserved for breaking changes, or for a stable release worth naming
 - Same rule as any whole number: earned, not reached
 
-## Current Version: 1.5.10
+## Current Version: 1.5.11
 
 ### Version History
 - 0.0.1b1 → 0.0.1b8 (Beta releases)
