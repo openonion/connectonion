@@ -27,6 +27,15 @@ from .session import Session, SessionStorage, merge_sessions, session_to_chat_it
 
 
 # ═══════════════════════════════════════════════════════
+# State a client carries but does not author. Set server-side — by a validated
+# mode_change, by the trust layer at CONNECT — and restored from storage so it
+# survives the round trip without the client being able to invent it.
+SERVER_OWNED_SESSION_KEYS = (
+    'mode', 'ulw_turns', 'ulw_turns_used', 'skip_tool_approval',
+    'permissions', 'approval', 'requester',
+)
+
+
 # Handlers
 # ═══════════════════════════════════════════════════════
 
@@ -51,6 +60,18 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
             client_session=session,
             server_session=stored.session
         )
+
+    # Answers the server already gave, which the client does not get to change.
+    #
+    # merge_sessions picks one whole session, so a client that wins the merge
+    # would otherwise hand the agent its own `skip_tool_approval: True` and skip
+    # every approval check. These come from what the server stored, or from
+    # nowhere.
+    stored_session = (stored.session if stored and stored.session else {}) or {}
+    for key in SERVER_OWNED_SESSION_KEYS:
+        session.pop(key, None)
+        if key in stored_session:
+            session[key] = stored_session[key]
 
     # After the merge, and overwriting whatever arrived. The session dict
     # round-trips through the client, so anything read out of it is their
