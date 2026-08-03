@@ -1147,6 +1147,48 @@ def upsert_env(env_path: Path, updates: dict, *, strip_prefix: str = None) -> No
         env_path.chmod(0o600)
 
 
+def _state_the_address_the_key_has(global_dir: Path) -> None:
+    """Keep keys.env's AGENT_ADDRESS equal to the key it claims to describe.
+
+    The line is a copy of the keypair, not a fact of its own, and it was written
+    once at first setup and never revisited. ensure_global_config() does have the
+    reconcile — but only inside the branch that regenerates a *missing* key, and
+    a key that merely *changed* returns above it. So after a `co reset`, or a
+    restore from a different recovery phrase, the file kept naming the previous
+    identity, every project made afterwards copied that line into its .env, and
+    every deploy shipped it to a server.
+
+    An address is what other agents whitelist, what goes in admins.txt, and what
+    someone pastes to a colleague. One whose private key nobody holds is worse
+    than none.
+
+    Rewritten every time rather than once — the same self-healing rule `co deploy`
+    applies to authorized_keys and admins.txt. A no-op when they already agree.
+    """
+    keys_env = global_dir / "keys.env"
+    if not keys_env.exists():
+        return
+
+    data = address.load(global_dir)
+    if not data or not data.get("address"):
+        return
+
+    lines = keys_env.read_text(encoding="utf-8").splitlines(keepends=True)
+    wanted = f"AGENT_ADDRESS={data['address']}\n"
+    out, found = [], False
+    for line in lines:
+        if line.startswith("AGENT_ADDRESS="):
+            found = True
+            out.append(wanted)
+        else:
+            out.append(line)
+    if not found:
+        out.append(wanted)
+
+    if out != lines:
+        keys_env.write_text("".join(out), encoding="utf-8")
+
+
 def ensure_global_config() -> None:
     """Ensure ~/.co/ exists with global identity (keys + keys.env).
 
@@ -1157,8 +1199,10 @@ def ensure_global_config() -> None:
     global_dir = Path.home() / ".co"
     key_file = global_dir / "keys" / "agent.key"
 
-    # If keys exist, already initialized
+    # If keys exist, already initialized — except for one line, which is a copy
+    # of the key rather than a fact of its own.
     if key_file.exists():
+        _state_the_address_the_key_has(global_dir)
         return
 
     # First time - create global config
