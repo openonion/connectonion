@@ -119,30 +119,35 @@ class TestAWarmDaemonIsUnaffected:
 
     def test_status_reaches_a_running_daemon(self, monkeypatch, capsys):
         """When one is up, status must still ask it — the local answer is only
-        for the case where there is nobody to ask."""
-        asked = []
+        for the case where there is nobody to ask.
+
+        The fake reply is delivered once and then the socket reports EOF. An
+        earlier version of this returned the same bytes on every recv, so
+        send()'s read-to-EOF loop never ended: green here, and a job killed at
+        five minutes on CI. A fake that cannot end is not a fake of a socket.
+        """
+        sent = []
 
         class FakeConn:
+            def __init__(self):
+                self._reply = [b"OK\nBrowser: open, headless=false\n"]
+
             def sendall(self, data):
-                asked.append(data)
+                sent.append(data)
 
             def shutdown(self, how):
                 pass
 
             def recv(self, n):
-                return b"OK\nBrowser: open\n" if len(asked) == 1 and not getattr(self, "_done", False) else b""
+                return self._reply.pop(0) if self._reply else b""
 
             def close(self):
                 pass
 
-        conn = FakeConn()
-
-        def once(data):
-            asked.append(data)
-
-        monkeypatch.setattr(client, "_connect", lambda *a, **k: conn)
+        monkeypatch.setattr(client, "_connect", lambda *a, **k: FakeConn())
 
         code = client.send("status")
 
-        assert asked, "status did not reach the running daemon"
+        assert sent, "status did not reach the running daemon"
         assert code == 0
+        assert "Browser: open" in capsys.readouterr().out
