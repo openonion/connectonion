@@ -43,6 +43,44 @@ console = Console()
 TEMPLATES_DIR = Path(__file__).parent.parent / "templates"
 
 
+def copy_template_files(template: str, project_dir: Path, files_created: list) -> None:
+    """Copy one template into a new project, source only.
+
+    `pip install` byte-compiles every .py in the wheel, and the template's
+    agent.py is a .py under the package even though nothing imports it — so an
+    installed copy carries
+    `templates/co-ai/__pycache__/agent.cpython-3xx.pyc`, compiled by whichever
+    interpreter did the installing. Copying the directory as found handed that
+    to every new project: a `__pycache__` for code the user has not run yet.
+
+    Nothing breaks — a mismatched magic number is ignored, and .gitignore covers
+    the directory — but the first thing someone sees in their first project
+    should not need explaining.
+    """
+    for item in template_dir_for(template).iterdir():
+        if item.name.startswith('.') and item.name != '.env.example':
+            continue
+        if item.name == '.env.example':
+            continue
+        # The installer's leftovers, at this level and every level below.
+        if item.name == '__pycache__' or item.suffix in ('.pyc', '.pyo'):
+            continue
+
+        dest_path = project_dir / item.name
+        if item.is_dir():
+            shutil.copytree(item, dest_path,
+                            ignore=shutil.ignore_patterns('__pycache__', '*.py[cod]'))
+            files_created.append(f"{item.name}/")
+        else:
+            shutil.copy2(item, dest_path)
+            files_created.append(item.name)
+
+
+def template_dir_for(template: str) -> Path:
+    """Where a template lives. Read through TEMPLATES_DIR so a test can move it."""
+    return TEMPLATES_DIR / template
+
+
 def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
                   template: Optional[str], description: Optional[str], yes: bool,
                   parent_dir: Optional[Path] = None):
@@ -278,19 +316,7 @@ def handle_create(name: Optional[str], ai: Optional[bool], key: Optional[str],
     files_created = []
 
     if template != 'custom' and template_dir.exists():
-        for item in template_dir.iterdir():
-            if item.name.startswith('.') and item.name != '.env.example':
-                continue
-
-            dest_path = project_dir / item.name
-
-            if item.is_dir():
-                shutil.copytree(item, dest_path)
-                files_created.append(f"{item.name}/")
-            else:
-                if item.name != '.env.example':
-                    shutil.copy2(item, dest_path)
-                    files_created.append(item.name)
+        copy_template_files(template, project_dir, files_created)
 
     # Create custom agent.py if custom template
     if custom_code:
