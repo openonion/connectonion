@@ -374,6 +374,45 @@ def _both(first, second):
     return run_both
 
 
+
+class _Unset:
+    """Distinguishes "the caller said nothing" from "the caller said None"."""
+
+    def __repr__(self):
+        return "UNSET"
+
+    def __bool__(self):
+        return False
+
+
+UNSET = _Unset()
+
+
+def resolve_relay_url(param, config: dict) -> str | None:
+    """Which relay this agent announces on.
+
+    Every other host() parameter defaults to None, which load_host_config reads
+    as "not specified" so the file wins. relay_url defaulted to
+    DEFAULT_RELAY_URL — a real string — so `host(agent)`, which is what every
+    generated agent.py calls, passed it as an explicit override and the file
+    never won.
+
+    That line is in every project's host.yaml, under a header that says "edit
+    these values". Editing it did nothing: an agent pointed at a private relay
+    announced on the public one, with a ✓ in the banner and no error anywhere,
+    because as far as the process was concerned nothing had gone wrong.
+
+    UNSET rather than None as the default, because None already means something
+    here — no relay at all — and the two must not collapse into each other.
+    """
+    if param is not UNSET:
+        return param or None          # explicit, including None for "off"
+
+    from_file = config.get("relay_url", UNSET)
+    if from_file is UNSET:
+        return DEFAULT_RELAY_URL      # nothing said anywhere
+    return from_file or None          # an empty value in the file means off
+
 def _create_relay_lifespan(relay_url: str, addr_data: dict, summary: str, port: int, relay_session_runner, *, profile: dict | None = None):
     """Create relay startup/shutdown callbacks for ASGI lifespan.
 
@@ -484,7 +523,7 @@ def host(
     workers: int = None,
     reload: bool = None,
     *,
-    relay_url: str = DEFAULT_RELAY_URL,
+    relay_url: str | None = UNSET,
     blacklist: list | None = None,
     whitelist: list | None = None,
     co_dir: Path = None,
@@ -572,10 +611,12 @@ def host(
         port = int(os.environ["AGENT_PORT"])
 
     # Load config: host.yaml (optional) → code param overrides
+    # relay_url is resolved separately: load_host_config drops a None code
+    # param as "not specified", and None is a meaningful answer here.
     config = load_host_config(
         co_dir,
         port=port, trust=trust, result_ttl=result_ttl,
-        workers=workers, reload=reload, relay_url=relay_url,
+        workers=workers, reload=reload,
         summary=summary, examples=examples,
     )
 
@@ -585,7 +626,7 @@ def host(
     result_ttl = config.get('result_ttl', 86400)
     workers = config.get('workers', 1)
     reload = config.get('reload', False)
-    relay_url = config.get('relay_url')
+    relay_url = resolve_relay_url(relay_url, config)
     summary = config.get('summary')
     examples = config.get('examples')
 
