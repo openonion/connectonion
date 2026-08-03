@@ -161,7 +161,7 @@ class TestHandleWebSocket:
 
         handlers = {
             "auth": lambda *args, **kwargs: ("prompt", "identity", True, None),
-            "ws_input": lambda storage, prompt, conn, session=None: {"result": "result", "session_id": "123", "duration_ms": 100, "session": {}},
+            "ws_input": lambda storage, prompt, conn, session=None, images=None, files=None, requester_address=None: {"result": "result", "session_id": "123", "duration_ms": 100, "session": {}},
         }
 
         registry = ActiveSessionRegistry()
@@ -228,7 +228,8 @@ class TestHandleWebSocket:
         agent_called = [False]
         connection_received = [None]
 
-        def mock_ws_input(storage, prompt, connection, session=None, images=None, files=None):
+        def mock_ws_input(storage, prompt, connection, session=None, images=None, files=None,
+                          requester_address=None):
             agent_called[0] = True
             connection_received[0] = connection
             return {"result": "Agent response", "session_id": "123", "duration_ms": 100, "session": {}, "status": "done"}
@@ -275,7 +276,7 @@ class TestHandleWebSocket:
 
         handlers = {
             "auth": lambda *args, **kwargs: ("test", "0x", True, None),
-            "ws_input": lambda storage, p, c, session=None, images=None, files=None: {"result": "Expected result", "session_id": "abc-123", "duration_ms": 50, "session": {}, "status": "done"},
+            "ws_input": lambda storage, p, c, session=None, images=None, files=None, requester_address=None: {"result": "Expected result", "session_id": "abc-123", "duration_ms": 50, "session": {}, "status": "done"},
             "trust_agent": Mock(config={}),
         }
 
@@ -316,7 +317,7 @@ class TestHandleWebSocket:
 
         handlers = {
             "auth": lambda *args, **kwargs: (None, "0x", False, "unauthorized: invalid signature"),
-            "ws_input": lambda storage, p, c, session=None: {"result": "result", "session_id": "123", "duration_ms": 100, "session": {}},
+            "ws_input": lambda storage, p, c, session=None, images=None, files=None, requester_address=None: {"result": "result", "session_id": "123", "duration_ms": 100, "session": {}},
         }
         registry = ActiveSessionRegistry()
 

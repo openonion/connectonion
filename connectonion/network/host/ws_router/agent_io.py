@@ -17,10 +17,11 @@ from ...io import WebSocketIO
 console = Console()
 
 
-def _agent_thread_body(route_handlers, storage, prompt, io, session, images, files, registry, session_id, result_holder):
+def _agent_thread_body(route_handlers, storage, prompt, io, session, images, files, registry, session_id, result_holder, requester_address=None):
     """Thread target: run agent and store result. Calls io.mark_agent_done() when done."""
     try:
-        result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files)
+        result_holder[0] = route_handlers["ws_input"](storage, prompt, io, session, images, files,
+                                                      requester_address=requester_address)
         registry.mark_session_connected(session_id)
     except Exception as e:
         result_holder[0] = e
@@ -130,7 +131,8 @@ async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
 
     agent_thread = threading.Thread(
         target=_agent_thread_body,
-        args=(route_handlers, storage, prompt, io, session, images, files, registry, session_id, result_holder),
+        args=(route_handlers, storage, prompt, io, session, images, files, registry, session_id, result_holder,
+              agent_address),
         daemon=True,
     )
     # Register BEFORE start: thread may complete before .start() returns control,

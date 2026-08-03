@@ -392,6 +392,20 @@ def matches_permission_pattern(tool_name: str, tool_args: dict, pattern: str) ->
 # Event Handlers
 # =============================================================================
 
+def _permission_line(pending: dict) -> str:
+    """The exact host.yaml key that would allow this call in future.
+
+    Capitalised `Bash(...)` because that is the form the loader matches. A
+    suggestion that pastes cleanly and then silently does nothing is worse than
+    no suggestion — the operator stops looking for the real cause.
+    """
+    name = pending['name']
+    if name.lower() not in ('bash', 'shell', 'run'):
+        return name
+    binary = (pending.get('arguments') or {}).get('command', '').strip().split(' ')[0]
+    return f"Bash({binary} *)" if binary else "Bash"
+
+
 @before_each_tool
 def check_approval(agent: 'Agent') -> None:
     """Check if tool needs approval based on current mode.
@@ -525,6 +539,31 @@ def check_approval(agent: 'Agent') -> None:
     # Unknown tools (not in SAFE or DANGEROUS) are treated as safe
     if tool_name not in DANGEROUS_TOOLS:
         return
+
+    # =================================================================
+    # The dialog belongs to the operator, not to whoever is connected
+    # =================================================================
+    # Placed here, at the one line that is about to prompt — not earlier. An
+    # earlier check refused `read_file` for a contact, which gates access
+    # rather than approval and makes the agent useless to the people it was
+    # shared with. Only a call that would have opened the dialog is affected.
+    #
+    # The host knows who is on this socket: CONNECT is signed and the trust
+    # layer classified them before the session existed. That answer used to be
+    # dropped, so a contact saw the owner's "Allow" button and an invite code
+    # carried command execution.
+    #
+    # No requester recorded means the session did not arrive through the host —
+    # a local `co ai` run — and behaves as before.
+    requester = agent.current_session.get('requester')
+    if requester and requester.get('level') != 'admin':
+        raise ValueError(
+            f"{tool_name} needs the operator's approval, and you are "
+            f"{requester.get('level', 'not the operator')}. Only they can "
+            f"answer that prompt. Ask them to allow it in .co/host.yaml under "
+            f"`permissions` — the entry for this call is "
+            f"`{_permission_line(pending)}`."
+        )
 
     # Get approval key for this tool
     approval_key = _get_approval_key(tool_name, tool_args)
