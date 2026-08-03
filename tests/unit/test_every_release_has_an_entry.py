@@ -28,6 +28,14 @@ import connectonion
 REPO = Path(__file__).resolve().parents[2]
 VERSIONING = REPO / 'VERSIONING.md'
 
+# Where VERSIONING.md starts recording every release rather than milestones.
+# Before this it lists 0.0.1, 0.1.0, 1.0.0, 1.2.0 … — eleven entries covering
+# eighty-odd tags — and the rest of that history is in CHANGELOG.md. Demanding
+# an entry for each of those would mean writing a past nobody here checked.
+#
+# A floor, so 1.6 and everything after is covered without touching this line.
+DENSE_HISTORY_FROM = (1, 5, 0)
+
 
 def _documented_versions() -> set:
     return set(re.findall(r'^- (\d+\.\d+\.\d+)', VERSIONING.read_text(encoding='utf-8'),
@@ -49,14 +57,35 @@ class TestNoReleaseIsSkipped:
     def test_every_released_tag_is_documented(self):
         import subprocess
 
-        tags = subprocess.run(['git', 'tag', '-l', 'v1.5.*'], cwd=REPO,
+        tags = subprocess.run(['git', 'tag', '-l', 'v*'], cwd=REPO,
                               capture_output=True, text=True).stdout.split()
-        released = {t.lstrip('v') for t in tags}
+        if not tags:
+            # actions/checkout@v4 does not fetch tags unless asked, so on CI
+            # this has nothing to compare against — and passing on an empty set
+            # is how a check ends up reporting nothing in exactly the
+            # environment it was written to guard. Say so instead; -rs in
+            # addopts makes the skip visible.
+            #
+            # It runs where a release is actually cut, which is a working
+            # checkout. `fetch-tags: true` in the workflow would make it run
+            # everywhere and is the better answer, once someone with the
+            # `workflow` token scope can push that file (#584).
+            pytest.skip("no tags in this checkout — nothing to compare "
+                        "VERSIONING.md against (CI does not fetch them)")
+
+        def parts(v):
+            return [int(x) for x in v.split('.')]
+
         documented = _documented_versions()
 
-        missing = sorted(released - documented,
-                         key=lambda v: [int(p) for p in v.split('.')])
-        assert missing == [], f"released with no entry: {missing}"
+        released = {t.lstrip('v') for t in tags
+                    if re.fullmatch(r'v\d+\.\d+\.\d+', t)}
+        in_scope = {v for v in released if parts(v) >= list(DENSE_HISTORY_FROM)}
+
+        missing = sorted(in_scope - documented, key=parts)
+        assert missing == [], (
+            f"released with no entry in VERSIONING.md: {missing}"
+        )
 
 
 class TestOneHistoryNotTwo:
@@ -69,3 +98,29 @@ class TestOneHistoryNotTwo:
         assert 'VERSIONING.md' in text, (
             "CHANGELOG.md does not say where the current history lives"
         )
+
+
+class TestACheckThatCannotRunSaysSo:
+    """The tag comparison is the one that found the six missing entries, and
+    it is the one that cannot run on CI: `actions/checkout@v4` does not fetch
+    tags unless asked, so `git tag -l` comes back empty there.
+
+    Passing on an empty set is how a check ends up reporting nothing in exactly
+    the environment it was written to guard — the same shape as the Windows
+    clipboard tests that skipped everywhere (#584) and the docs-site check that
+    skipped inside a worktree (#583). Third time this week, so it gets a test
+    of its own rather than a comment.
+    """
+
+    def test_no_tags_skips_rather_than_passes(self, monkeypatch):
+        import subprocess as sp_mod
+
+        class Empty:
+            stdout = ""
+
+        monkeypatch.setattr(sp_mod, 'run', lambda *a, **k: Empty())
+
+        with pytest.raises(pytest.skip.Exception) as skipped:
+            TestNoReleaseIsSkipped().test_every_released_tag_is_documented()
+
+        assert 'tags' in str(skipped.value)
