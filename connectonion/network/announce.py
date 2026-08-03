@@ -22,6 +22,35 @@ import ifaddr
 import httpx
 
 
+# The relay's limit, stated here because this is where the message is built.
+# Verified against the live relay: 5,400 characters comes back as
+# {"type": "ERROR", "error": "Summary too long (max 1000 chars)"} while a short
+# one gets ANNOUNCE_OK.
+ANNOUNCE_SUMMARY_LIMIT = 1000
+
+
+def fit_summary(summary):
+    """Cut a summary to what the relay will accept, and say so when it does.
+
+    host() already truncates the summary it derives from the system prompt, but
+    passed a `summary:` from host.yaml through whole — so an operator who wrote
+    a long one got an agent that starts, serves locally, and is never
+    registered: the relay refuses every announce and the reconnect loop retries
+    forever.
+
+    Not silent — the client prints `Relay error: …` — but it scrolls past in
+    startup output beside a banner that still says the relay is on. The number
+    is knowable here, so it is applied here, and the operator is told what was
+    actually sent instead of matching a red line against a config file.
+    """
+    if not summary or len(summary) <= ANNOUNCE_SUMMARY_LIMIT:
+        return summary
+    print(f"[announce] summary is {len(summary)} characters and the relay takes "
+          f"{ANNOUNCE_SUMMARY_LIMIT}; announcing the first {ANNOUNCE_SUMMARY_LIMIT}. "
+          f"Shorten `summary:` in .co/host.yaml to choose what goes.")
+    return summary[:ANNOUNCE_SUMMARY_LIMIT]
+
+
 def get_ips() -> List[str]:
     """Get all IP addresses (localhost, local network, public)."""
     ips = ["localhost"]
@@ -102,7 +131,7 @@ def create_announce_message(
         "type": "ANNOUNCE",
         "address": address_data["address"],
         "timestamp": int(time.time()),
-        "summary": summary,
+        "summary": fit_summary(summary),
         "endpoints": endpoints,
         "relay": relay,
     }
