@@ -146,6 +146,7 @@ class SessionStorage:
             return
 
         now = time.time()
+        size_when_read = self.path.stat().st_size
         keep = [s for s in self._latest_by_id().values()
                 if s.status == "running" or not s.expires or s.expires > now]
 
@@ -153,6 +154,31 @@ class SessionStorage:
         with open(tmp, "w", encoding="utf-8") as f:
             for session in sorted(keep, key=lambda s: s.created or 0):
                 f.write(session.model_dump_json() + "\n")
+
+        # Someone appended while we were reading and writing, and their record
+        # is only in the file we are about to replace. A lost session record is
+        # a turn that happened and left no trace — absent from the dashboard,
+        # uncounted by `co status`, with nothing anywhere saying one was
+        # dropped.
+        #
+        # The window is small: this runs at startup, before this process serves
+        # anything. Not zero — `host()` can run workers > 1, so another process
+        # may already be serving, and the relay announce and the schedule's
+        # first tick both begin within milliseconds.
+        #
+        # Skipping costs nothing; the next startup compacts. So notice, and
+        # leave the file alone.
+        # A missing file counts as changed. Compaction is housekeeping and must
+        # not be able to stop the agent — the same rule _records already states
+        # for a torn line: refusing to boot over it costs the agent.
+        try:
+            unchanged = self.path.stat().st_size == size_when_read
+        except OSError:
+            unchanged = False
+        if not unchanged:
+            tmp.unlink(missing_ok=True)
+            return
+
         tmp.replace(self.path)
 
     def reconcile_interrupted(self):
