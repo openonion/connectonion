@@ -24,7 +24,7 @@ def co_dir(tmp_path, monkeypatch):
     """Set up temp ~/.co directory."""
     co_path = tmp_path / ".co"
     co_path.mkdir()
-    monkeypatch.setattr("connectonion.network.trust.tools.CO_DIR", co_path)
+    monkeypatch.chdir(tmp_path)   # the lists live beside the agent, so cwd is the agent
     return co_path
 
 

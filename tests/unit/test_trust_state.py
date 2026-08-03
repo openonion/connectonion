@@ -33,10 +33,16 @@ from connectonion.network.trust.tools import (
 
 @pytest.fixture
 def temp_co_dir(tmp_path, monkeypatch):
-    """Create temp ~/.co/ directory for tests."""
+    """A directory that *is* this agent — the lists live inside it.
+
+    These fixtures used to redirect a module-level CO_DIR, which is the shape
+    of the bug they were working around: one global path meant one whitelist
+    for every agent on the machine. Now the agent's cwd decides, so the way to
+    isolate a test is to give it its own agent directory.
+    """
     co_dir = tmp_path / ".co"
-    co_dir.mkdir()
-    monkeypatch.setattr(tools, "CO_DIR", co_dir)
+    co_dir.mkdir(exist_ok=True)
+    monkeypatch.chdir(tmp_path)
     return co_dir
 
 

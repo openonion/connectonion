@@ -331,7 +331,7 @@ class TestExtractAndAuthenticate:
         # Set up temp ~/.co directory
         co_path = tmp_path / ".co"
         co_path.mkdir()
-        monkeypatch.setattr("connectonion.network.trust.tools.CO_DIR", co_path)
+        monkeypatch.chdir(tmp_path)
 
         signing_key = SigningKey.generate()
         verify_key = signing_key.verify_key

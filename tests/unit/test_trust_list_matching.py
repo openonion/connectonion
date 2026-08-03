@@ -13,11 +13,12 @@ from connectonion.network.trust import tools
 
 @pytest.fixture
 def listfile(tmp_path, monkeypatch):
-    """Point the module at a temp .co and write one of its list files."""
-    monkeypatch.setattr(tools, "CO_DIR", tmp_path)
+    """Give the test its own agent directory and write one of its list files."""
+    (tmp_path / ".co").mkdir(exist_ok=True)
+    monkeypatch.chdir(tmp_path)
 
     def write(name, *lines):
-        (tmp_path / f"{name}.txt").write_text("\n".join(lines) + "\n")
+        (tmp_path / ".co" / f"{name}.txt").write_text("\n".join(lines) + "\n")
     return write
 
 
@@ -98,7 +99,6 @@ class TestUnchanged:
     """Behaviour the fix must not disturb."""
 
     def test_a_missing_file_denies(self, listfile, tmp_path, monkeypatch):
-        monkeypatch.setattr(tools, "CO_DIR", tmp_path)
         assert not tools._check_list("whitelist", "anyone")
 
     def test_comments_and_blank_lines_are_skipped(self, listfile):
