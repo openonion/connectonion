@@ -23,10 +23,29 @@ rather than tolerating.
 The version string lives in its own module now, importable without the package.
 """
 
+import os
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
+
+
+REPO = Path(__file__).resolve().parents[2]
+
+
+def _in_a_fresh_interpreter(code: str) -> subprocess.CompletedProcess:
+    """Run code against *this* checkout.
+
+    Without cwd and PYTHONPATH pinned here, the subprocess imports whatever
+    `connectonion` is installed in site-packages — these tests then measure a
+    released wheel and say nothing about the branch. They did exactly that
+    until a rebase made the two versions disagree and the assertion read
+    `assert '1.5.11' in 'co 1.5.10'`.
+    """
+    env = dict(os.environ, PYTHONPATH=str(REPO))
+    return subprocess.run([sys.executable, "-c", code],
+                          capture_output=True, text=True, cwd=REPO, env=env)
 
 
 def _modules_after(statement: str) -> set:
@@ -36,8 +55,8 @@ def _modules_after(statement: str) -> set:
         f"{statement}\n"
         "print(json.dumps(sorted(m for m in sys.modules if '.' not in m)))"
     )
-    out = subprocess.run([sys.executable, "-c", code],
-                         capture_output=True, text=True, check=True)
+    out = _in_a_fresh_interpreter(code)
+    assert out.returncode == 0, out.stderr
     import json
     return set(json.loads(out.stdout))
 
@@ -60,11 +79,10 @@ class TestTheVersionIsCheapToRead:
 
     def test_it_agrees_with_pyproject(self):
         import re
-        from pathlib import Path
 
         from connectonion._version import __version__
 
-        pyproject = Path(__file__).resolve().parents[2] / "pyproject.toml"
+        pyproject = REPO / "pyproject.toml"
         declared = re.search(r'^version = "([^"]+)"', pyproject.read_text(),
                              re.MULTILINE).group(1)
 
@@ -87,13 +105,14 @@ class TestTheCLIEntryPointIsToo:
         assert sdk not in loaded, f"co pays for {sdk} before parsing an argument"
 
     def test_version_still_prints(self):
-        out = subprocess.run(
-            [sys.executable, "-m", "connectonion.cli.main", "--version"],
-            capture_output=True, text=True)
+        out = _in_a_fresh_interpreter(
+            "import runpy, sys;"
+            " sys.argv = ['co', '--version'];"
+            " runpy.run_module('connectonion.cli.main', run_name='__main__')")
 
         from connectonion._version import __version__
 
-        assert __version__ in out.stdout
+        assert __version__ in out.stdout, out.stdout + out.stderr
 
 
 class TestThereIsOneVersionString:
