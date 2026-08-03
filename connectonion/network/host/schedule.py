@@ -17,6 +17,7 @@ is one implementation. The argument in full is #521.
 import asyncio
 import json
 import os
+import threading
 import re
 import uuid
 from dataclasses import dataclass, field
@@ -256,26 +257,40 @@ def is_due(entry: Entry, last_run: Optional[datetime], now: datetime) -> bool:
     return False
 
 
-def _lock(path: Path):
-    """Exclusive, non-blocking, released by the OS on death.
+def _lock(path: Path, attempts: int = 50, pause: float = 0.02):
+    """Exclusive, released by the OS on death, and worth waiting a moment for.
+
+    Retries rather than giving up at the first refusal. The lock used to be
+    single-shot LOCK_NB, and every caller treated a refusal as permission to
+    proceed — so under contention nobody held it and every writer did a
+    read-modify-write on the same file. Measured: twelve threads, 240 writes,
+    one whole entry silently missing from the result.
+
+    Still bounded. A second of retries is generous for a write of a few hundred
+    bytes, and blocking forever on a lock held by a process that died in a way
+    the OS did not notice is worse than proceeding.
 
     Same shape as cli/browser_agent/transport.py — POSIX flock, Windows
     msvcrt. A scheduler that imports fcntl at module level is a scheduler that
     does not import on Windows.
     """
-    handle = open(path, "a+", encoding="utf-8")
-    try:
-        if os.name == "nt":
-            import msvcrt
-            handle.seek(0)
-            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
-        else:
-            import fcntl
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-    except OSError:
-        handle.close()
-        return None
-    return handle
+    import time as _time
+    for attempt in range(attempts):
+        handle = open(path, "a+", encoding="utf-8")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return handle
+        except OSError:
+            handle.close()
+            if attempt < attempts - 1:
+                _time.sleep(pause)
+    return None
 
 
 def load_state(co_dir: Path) -> dict:
@@ -325,9 +340,19 @@ def record_run(co_dir: Path, name: str, *, when: datetime, status: str,
         }
         if reason:
             state[name]["reason"] = reason
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
-        os.replace(tmp, path)      # readers see the old file or the new one
+        # A name of its own. One shared `.tmp` meant concurrent writers wrote
+        # over each other's file and then raced to rename it: the first
+        # os.replace consumed it and the second raised FileNotFoundError, out
+        # of the scheduler's own tick.
+        tmp = path.with_suffix(f"{path.suffix}.{os.getpid()}.{threading.get_ident()}.tmp")
+        try:
+            tmp.write_text(json.dumps(state, ensure_ascii=False, indent=2), encoding="utf-8")
+            os.replace(tmp, path)  # readers see the old file or the new one
+        finally:
+            # A crash between write and replace would otherwise leave one temp
+            # file per incident, in the directory the agent reads on every boot.
+            if tmp.exists():
+                tmp.unlink(missing_ok=True)
     finally:
         if handle:
             handle.close()
