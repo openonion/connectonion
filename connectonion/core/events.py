@@ -194,8 +194,8 @@ def after_each_tool(*funcs: EventHandler) -> Union[EventHandler, List[EventHandl
         @after_each_tool
         def log_tool(agent):
             trace = agent.current_session['trace'][-1]
-            if trace['type'] == 'tool_execution':
-                print(f"Tool: {trace['tool_name']} in {trace['timing']:.0f}ms")
+            if trace['type'] == 'tool_result':
+                print(f"Tool: {trace['name']} in {trace['timing_ms']:.0f}ms")
 
         on_events=[after_each_tool(handler1, handler2)]
     """
@@ -235,7 +235,7 @@ def after_tools(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]
         @after_tools
         def add_reflection(agent):
             trace = agent.current_session['trace']
-            recent = [t for t in trace if t['type'] == 'tool_execution'][-3:]
+            recent = [t for t in trace if t['type'] == 'tool_result'][-3:]
             agent.current_session['messages'].append({
                 'role': 'assistant',
                 'content': f"Completed {len(recent)} tools"
@@ -307,7 +307,7 @@ def on_complete(*funcs: EventHandler) -> Union[EventHandler, List[EventHandler]]
         @on_complete
         def log_done(agent):
             trace = agent.current_session['trace']
-            tools_used = [t['tool_name'] for t in trace if t['type'] == 'tool_execution']
+            tools_used = [t['name'] for t in trace if t['type'] == 'tool_result']
             print(f"Task done. Tools: {tools_used}")
 
         on_events=[on_complete(handler1, handler2)]

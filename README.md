@@ -327,7 +327,7 @@ from connectonion import Agent, after_tools, llm_do
 # Define a reflection plugin
 def add_reflection(agent):
     trace = agent.current_session['trace'][-1]
-    if trace['type'] == 'tool_execution' and trace['status'] == 'success':
+    if trace['type'] == 'tool_result' and trace['status'] == 'success':
         result = trace['result']
         reflection = llm_do(
             f"Result: {result[:200]}\n\nWhat did we learn?",
