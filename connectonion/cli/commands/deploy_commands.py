@@ -194,8 +194,8 @@ def _add_directory_to_tarball(
         tar.add(path, arcname=str(rel), recursive=False)
 
 
-def _add_deployer_as_admin(tar: tarfile.TarFile) -> None:
-    """Ship the deployer's address as the agent's one admin.
+def _add_deployer_as_admin(tar: tarfile.TarFile, project_dir: Path) -> None:
+    """Ship the admin list: whoever the project names, plus the deployer.
 
     A deployed agent generates its own keypair on first boot, and ADMIN_ADD is gated
     on super-admin — which is that same address, whose private key never leaves the
@@ -206,8 +206,14 @@ def _add_deployer_as_admin(tar: tarfile.TarFile) -> None:
     list and grants the role to whoever signs as it. Nothing secret travels, and
     revoking is deleting a line. Same idea as ssh-copy-id, one layer up.
 
-    Written into the package on every deploy so the list self-heals, and synthesized
-    here rather than read from disk because .co/ is excluded from the package.
+    Written into the package on every deploy so the list self-heals.
+
+    Merged with the project's own .co/admins.txt rather than replacing it. That
+    file is packed with the rest of the project — only some of .co/ is excluded,
+    not all of it — so this used to add a *second* member with the same path,
+    and extraction took the last one. Anyone the operator had added was dropped,
+    silently, and the loss surfaced later as a colleague who could not command an
+    agent they had been given access to. One entry now, and it contains both.
 
     The identity resolved is the one `co call` signs with — project .co/ first, then
     ~/.co/ — and deliberately not `project_dir/.co`: a --template deploy builds a
@@ -224,7 +230,15 @@ def _add_deployer_as_admin(tar: tarfile.TarFile) -> None:
     if not data or not data.get("address"):
         return
 
-    payload = f"{data['address']}\n".encode()
+    admins = []
+    configured = project_dir / ".co" / "admins.txt"
+    if configured.exists():
+        admins = [l.strip() for l in configured.read_text(encoding="utf-8").splitlines()
+                  if l.strip()]
+    if data["address"] not in admins:
+        admins.append(data["address"])
+
+    payload = ("\n".join(admins) + "\n").encode()
     info = tarfile.TarInfo(name=".co/admins.txt")
     info.size = len(payload)
     info.mode = 0o600
@@ -267,6 +281,10 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
     External --skills directories are copied into .co/skills/.
     """
     ignore_patterns = _load_deploy_ignore_patterns(project_dir)
+    # _add_deployer_as_admin writes this path itself, having merged the
+    # project's copy with the deployer. Packing the file here as well would put
+    # two members under one name and let write order decide which survives.
+    ignore_patterns.append(".co/admins.txt")
     tarball = Path(tempfile.mkdtemp()) / "agent.tar.gz"
     with tarfile.open(tarball, "w:gz") as tar:
         if _is_git_repo(project_dir):
@@ -295,7 +313,7 @@ def _build_tarball(project_dir: Path, skills_paths: list[Path]) -> Path:
                 arc_prefix,
                 _load_skill_ignore_patterns(skills_path),
             )
-        _add_deployer_as_admin(tar)
+        _add_deployer_as_admin(tar, project_dir)
     return tarball
 
 
