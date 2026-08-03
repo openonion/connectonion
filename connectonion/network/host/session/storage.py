@@ -10,6 +10,7 @@ LLM-Note:
 """
 
 import json
+import os
 import time
 from pathlib import Path
 from typing import Optional
@@ -121,6 +122,38 @@ class SessionStorage:
     # had a question outstanding, and the thread that would have finished either
     # one no longer exists.
     UNFINISHED = ('running', 'waiting_approval')
+
+    def compact(self) -> None:
+        """Drop what no reader can see any more, and rewrite the file.
+
+        `save()` appends and nothing removed. `expires` was honoured on read —
+        list() and get() skip records past their TTL — but they stayed in the
+        file and list() parsed all of them to answer. Measured on a live agent:
+        17 MB for 222 sessions. One running a schedule every fifteen minutes
+        writes 96 a day, so about 7 MB a day and 2.5 GB a year, and a dashboard
+        that reparses the lot each time it is opened.
+
+        Safe for one specific reason: it removes only what list() and get()
+        already refuse to return — superseded records for a session, and
+        sessions past their TTL that are not `running`. Every one of those was
+        invisible to every reader before it was removed, so nothing observable
+        changes except the size.
+
+        Written to a temporary file and moved into place, so a crash in the
+        middle leaves the old file rather than half a new one.
+        """
+        if not self.path.exists():
+            return
+
+        now = time.time()
+        keep = [s for s in self._latest_by_id().values()
+                if s.status == "running" or not s.expires or s.expires > now]
+
+        tmp = self.path.with_suffix(f"{self.path.suffix}.compact.{os.getpid()}")
+        with open(tmp, "w", encoding="utf-8") as f:
+            for session in sorted(keep, key=lambda s: s.created or 0):
+                f.write(session.model_dump_json() + "\n")
+        tmp.replace(self.path)
 
     def reconcile_interrupted(self):
         """Close out sessions this process cannot possibly finish.
