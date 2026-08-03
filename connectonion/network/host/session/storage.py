@@ -67,13 +67,53 @@ class SessionStorage:
                     continue      # one unreadable record, not an unreadable file
         return out
 
+    def _lines_from_the_end(self, chunk: int = 65536):
+        """Yield whole lines newest-first, reading backwards in chunks.
+
+        get() answers "what is the latest record for this one session", and the
+        answer is almost always near the end — a turn asks about the session it
+        is in. Parsing forwards meant every lookup cost the whole file.
+
+        That file is append-only and never shrinks: 17 MB and 222 sessions on an
+        agent up for thirteen hours, each record carrying its full message list.
+        get() runs on every turn and inside every checkpoint(), so a full parse
+        there is a cost that grows for as long as the agent stays alive.
+        """
+        with open(self.path, "rb") as f:
+            f.seek(0, 2)
+            end = f.tell()
+            tail = b""
+            while end > 0:
+                size = min(chunk, end)
+                end -= size
+                f.seek(end)
+                block = f.read(size) + tail
+                lines = block.split(b"\n")
+                tail = lines.pop(0)          # may be half a line; carry it back
+                for raw in reversed(lines):
+                    if raw.strip():
+                        yield raw
+            if tail.strip():
+                yield tail
+
     def get(self, session_id: str) -> Session | None:
+        if not self.path.exists():
+            return None
         now = time.time()
-        for session in reversed(self._records()):
-            if session.session_id == session_id:
-                if session.status == "running" or not session.expires or session.expires > now:
-                    return session
-                return None  # Expired
+        for raw in self._lines_from_the_end():
+            try:
+                data = json.loads(raw.decode("utf-8"))
+            except (ValueError, UnicodeDecodeError):
+                continue          # one torn record, not an unreadable file
+            if not isinstance(data, dict) or data.get("session_id") != session_id:
+                continue
+            try:
+                session = Session(**data)
+            except Exception:
+                continue
+            if session.status == "running" or not session.expires or session.expires > now:
+                return session
+            return None  # Expired
         return None
 
     # A turn that is still owed something by this process. Both are equally dead
