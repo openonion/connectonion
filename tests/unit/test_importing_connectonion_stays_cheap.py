@@ -225,3 +225,44 @@ class TestWhatMustStayEager:
         from connectonion._version import __version__
 
         assert connectonion.__version__ == __version__
+
+
+class TestEverySubmoduleThatUsedToBeReachableStillIs:
+    """Eager `from .X import Y` also bound `connectonion.X`, for every subpackage
+    the import touched — including ones nobody re-exported from.
+
+    Checked against the commit before lazy loading landed:
+
+        connectonion.tui             module          -> must stay a module
+        connectonion.useful_plugins  module          -> must stay a module
+        connectonion.cli             AttributeError  -> nothing to preserve
+
+    They are undocumented internals, which is exactly why this is worth pinning:
+    nobody would notice removing them until someone's code stopped importing.
+    Listing them costs nothing at startup — a name is only imported when read.
+    """
+
+    @pytest.mark.parametrize("name", ["tui", "useful_plugins"])
+    def test_it_is_still_an_attribute(self, name):
+        import connectonion
+
+        assert hasattr(connectonion, name), f"connectonion.{name} used to resolve"
+
+    @pytest.mark.parametrize("name", ["tui", "useful_plugins"])
+    def test_reading_it_gives_the_module(self, name):
+        import connectonion
+        from types import ModuleType
+
+        assert isinstance(getattr(connectonion, name), ModuleType)
+
+    @pytest.mark.parametrize("name", ["tui", "useful_plugins"])
+    def test_it_is_not_loaded_until_it_is_read(self, name):
+        """The point of the change: listing a name must not import it."""
+        loaded = _top_level_modules_added_by("import connectonion")
+
+        assert "connectonion" in loaded
+        out = _in_a_fresh_interpreter(
+            "import sys, connectonion;"
+            f" assert 'connectonion.{name}' not in sys.modules, 'imported too early'")
+
+        assert out.returncode == 0, out.stderr
