@@ -225,7 +225,10 @@ def reset():
 def doctor():
     """Diagnose installation."""
     from .commands.doctor_commands import handle_doctor
-    handle_doctor()
+    # The exit code is the whole point of running this in a script: it used to
+    # be 0 even under its own `✗ broken symlink`.
+    if handle_doctor():
+        raise typer.Exit(1)
 
 
 @app.command(context_settings={"allow_extra_args": True, "ignore_unknown_options": True})

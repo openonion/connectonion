@@ -22,6 +22,29 @@ from rich import box
 console = Console()
 
 
+def verdict(problems: list) -> int:
+    """The last line, and the exit code, saying what the body already said.
+
+    `co doctor` printed `✅ Diagnostics complete!` and exited 0 whatever it
+    found — including, on a real project, right under its own
+    `user/email-outreach ✗ broken symlink`. People read the last line, and a
+    deploy script reads the exit code; both were told everything was fine.
+
+    Five places add a `✗` row. They now record what they found, and this says
+    it back.
+    """
+    if not problems:
+        console.print("[bold green]✅ Diagnostics complete — nothing wrong[/bold green]\n")
+        return 0
+
+    console.print(f"[bold red]✗ Diagnostics complete — {len(problems)} problem"
+                  f"{'s' if len(problems) > 1 else ''}[/bold red]")
+    for problem in problems:
+        console.print(f"  [red]•[/red] {problem}")
+    console.print()
+    return 1
+
+
 def handle_doctor():
     """Run comprehensive diagnostics on ConnectOnion installation.
 
@@ -29,6 +52,11 @@ def handle_doctor():
     let an LLM agent inspect the environment, interpret errors,
     and suggest fixes conversationally.
     """
+    # `found`, not `problems`: find_skill_problems() already puts a list of
+    # (location, name, reason) tuples in a local called `problems`, and
+    # shadowing it made the loop below unpack my strings into three names.
+    # The real CLI caught that; the unit tests could not see it.
+    found: list[str] = []
     from ... import __version__
 
     console.print("\n[bold cyan]🔍 ConnectOnion Diagnostics[/bold cyan]\n")
@@ -60,6 +88,7 @@ def handle_doctor():
         system_table.add_row("Command", f"[green]✓[/green] {co_path}")
     else:
         system_table.add_row("Command", "[red]✗[/red] 'co' not found in PATH")
+        found.append("'co' is not on PATH")
 
     # Package location
     import connectonion
@@ -141,6 +170,7 @@ def handle_doctor():
     elif status == "broken":
         browser_table.add_row("Patchright", f"[yellow]○[/yellow] {browser_version}")
         browser_table.add_row("Stealth driver", f"[red]✗[/red] {detail}")
+        found.append(f"stealth driver: {detail}")
     else:  # missing
         browser_table.add_row("Patchright", f"[yellow]○[/yellow] {detail}")
 
@@ -173,6 +203,7 @@ def handle_doctor():
 
     for location, name, reason in problems:
         skills_table.add_row(f"{location}/{name}", f"[red]✗[/red] {reason}")
+        found.append(f"skill {location}/{name}: {reason}")
 
     console.print(Panel(skills_table, title="[bold]Skills[/bold]", border_style="yellow"))
     console.print()
@@ -217,9 +248,11 @@ def handle_doctor():
                 connectivity_table.add_row("Authentication", "[green]✓[/green] Valid credentials")
             else:
                 connectivity_table.add_row("Authentication", f"[red]✗[/red] Failed (status {response.status_code})")
+                found.append(f"authentication failed (status {response.status_code})")
 
         console.print(Panel(connectivity_table, title="[bold]Connectivity[/bold]", border_style="magenta"))
         console.print()
 
-    console.print("[bold green]✅ Diagnostics complete![/bold green]\n")
+    code = verdict(found)
     console.print("[dim]Run 'co auth' if you need to authenticate[/dim]\n")
+    return code
