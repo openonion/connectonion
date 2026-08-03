@@ -239,17 +239,25 @@ class TestSystemdUnit:
         assert "/srv/myagent/.venv/bin/python agent.py" in unit
 
     def test_an_unchanged_unit_is_not_rewritten(self):
-        """Rewriting every deploy would mean a daemon-reload for no reason."""
+        """Rewriting every deploy would mean a daemon-reload for no reason.
+
+        Asserted as "no write and no reload" rather than "exactly one ssh
+        call": the count also covered `systemctl enable`, and enabling is a
+        separate fact from the file's contents — skipping it is #574, where a
+        deploy reported success and the agent did not come back from a reboot.
+        """
         # Same user the target implies — the unit runs as whoever owns the files.
         wanted = dts._unit_text("myagent", "agent.py", user="user")
         with patch.object(dts, "_ssh", return_value=_ok(wanted)) as ssh:
             # The deploy flow resolves the account once and passes it down, so
-            # this call counts only the ssh the unit write itself does.
+            # these calls are only the ones the unit step itself does.
             assert dts._write_unit_if_changed(
                 "user@host", "myagent", "agent.py", user="user"
             ) is True
 
-        assert ssh.call_count == 1  # the read only
+        sent = [c.args[1] for c in ssh.call_args_list]
+        assert not any("UNITEOF" in c for c in sent), sent
+        assert not any("daemon-reload" in c for c in sent), sent
 
     def test_a_changed_unit_is_written_and_reloaded(self):
         with patch.object(dts, "_ssh", side_effect=[_ok("old content"), _ok()]) as ssh:
