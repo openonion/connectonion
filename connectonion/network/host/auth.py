@@ -6,7 +6,7 @@ LLM-Note:
   State/Effects: TrustAgent handles all trust state (whitelist, contacts, blocklist in ~/.co/)
   Integration: exposes verify_signature(), extract_and_authenticate(), get_agent_address(), is_custom_trust() | used by host() to enforce authentication
   Performance: TrustAgent.should_allow() runs fast rules first (zero tokens), only uses LLM for 'ask' cases
-  Errors: returns error strings: "unauthorized: ...", "forbidden: ..." | does NOT raise exceptions
+  Errors: returns error strings: "unauthorized: ...", "forbidden: ...", "misconfigured: ..." (a trust list the agent cannot read) | does NOT raise exceptions
 Authentication and signature verification for hosted agents.
 
 Trust evaluation (via TrustAgent.should_allow()):
@@ -129,7 +129,19 @@ def extract_and_authenticate(data: dict, trust, *, blacklist=None, whitelist=Non
         # Unknown type (e.g., Agent) - use default "careful"
         trust_agent = TrustAgent("careful")
 
-    decision = trust_agent.should_allow(agent_address, request_data)
+    # A trust list this agent cannot read raises rather than answering "not
+    # blocked" (#585). That is right, and it needs an exit here: the WebSocket
+    # session loop lets exceptions propagate out, so an unhandled one closes the
+    # socket with nothing sent — the client sees a connection that died and no
+    # reason, which is #434 arriving by a new route.
+    #
+    # This module's contract is to return error strings, so it keeps it: refuse,
+    # name the file, and let the ERROR frame carry it to whoever is holding the
+    # other end. Fail closed, and say why.
+    try:
+        decision = trust_agent.should_allow(agent_address, request_data)
+    except (OSError, UnicodeDecodeError) as exc:
+        return None, agent_address, True, f"misconfigured: {exc}"
 
     if decision.allow:
         return prompt, agent_address, True, None
