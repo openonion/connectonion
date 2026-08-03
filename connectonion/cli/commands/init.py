@@ -206,6 +206,23 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
 
     # Collect keys to append (not already in .env)
     keys_to_add = []
+
+    # The agent's own way in. Minted here, once, and never again if it already
+    # exists — regenerating it would silently lock out everyone already holding
+    # the old one.
+    #
+    # In .env because that is already the secret channel: git ignores it, the
+    # rsync in `co deploy` excludes it, and deploy delivers it separately as a
+    # root-owned 0600 file. The alternative was the shipped policy's literal
+    # `invite_code: [OpenOnion]` — one password for every deployment, published
+    # in this repository and printed by every agent on startup (#561).
+    if "CO_INVITE_CODE" not in existing_keys:
+        import secrets as _secrets
+        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no O/0, no I/1 — it gets typed by hand
+        code = "-".join("".join(_secrets.choice(alphabet) for _ in range(5)) for _ in range(3))
+        keys_to_add.append(f"CO_INVITE_CODE={code}")
+        global_keys["CO_INVITE_CODE"] = f"CO_INVITE_CODE={code}"
+
     for key, line in global_keys.items():
         if key not in existing_keys:
             keys_to_add.append(line)

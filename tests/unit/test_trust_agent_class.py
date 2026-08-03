@@ -111,14 +111,28 @@ class TestShouldAllow:
 class TestVerification:
     """Test verification methods."""
 
-    def test_verify_invite_valid_code(self, co_dir):
-        """Valid invite code promotes to contact."""
-        trust = TrustAgent("careful")  # careful.md has invite_code: [OpenOnion]
+    def test_verify_invite_valid_code(self, co_dir, monkeypatch):
+        """Valid invite code promotes to contact.
 
-        result = trust.verify_invite("new-user", "OpenOnion")
+        careful.md now declares `invite_code: [$CO_INVITE_CODE]` — this used to
+        assert the shipped constant `OpenOnion`, which was one password for every
+        deployment, published in this repository (#561).
+        """
+        monkeypatch.setenv("CO_INVITE_CODE", "U262R-7WA6E-LGWG4")
+        trust = TrustAgent("careful")
+
+        result = trust.verify_invite("new-user", "U262R-7WA6E-LGWG4")
 
         assert result is True
         assert trust.get_level("new-user") == "contact"
+
+    def test_the_old_shipped_constant_no_longer_works(self, co_dir, monkeypatch):
+        """The exact string a stranger used to get in with."""
+        monkeypatch.setenv("CO_INVITE_CODE", "U262R-7WA6E-LGWG4")
+        trust = TrustAgent("careful")
+
+        assert trust.verify_invite("stranger", "OpenOnion") is False
+        assert trust.get_level("stranger") != "contact"
 
     def test_verify_invite_invalid_code(self, co_dir):
         """Invalid invite code does not promote."""

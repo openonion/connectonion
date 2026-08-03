@@ -13,7 +13,9 @@ deny:
 
 # How strangers become contacts
 onboard:
-  invite_code: [OpenOnion]
+  # Read from the environment, so every agent has its own. A literal here
+  # would be one password for every deployment, published in this repo.
+  invite_code: [$CO_INVITE_CODE]
   payment: 10
 
 # Strangers without credentials

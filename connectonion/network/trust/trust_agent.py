@@ -230,7 +230,11 @@ Should this client be allowed access?"""
         Returns:
             True if valid and promoted, False otherwise
         """
-        valid_codes = self._config.get('onboard', {}).get('invite_code', [])
+        # Through the same resolver as evaluate_request, because this is the path
+        # ONBOARD_SUBMIT actually takes — fixing only the other one would have
+        # left the real door open (#561).
+        from .fast_rules import _resolve_codes
+        valid_codes = _resolve_codes(self._config.get('onboard', {}).get('invite_code', []))
         if invite_code in valid_codes:
             self.promote_to_contact(client_id)
             return True

@@ -60,6 +60,33 @@ def parse_policy(policy_text: str, source: str = None) -> tuple[dict, str]:
     return config, markdown_body
 
 
+def _resolve_codes(codes) -> list:
+    """Turn what the policy declares into the codes that actually open the door.
+
+    `$NAME` reads NAME from the environment — which on a deployed agent is the
+    root-owned 0600 env file, the same channel every other secret takes, and the
+    one thing `co deploy` neither rsyncs nor overwrites.
+
+    An unset variable resolves to *nothing*, never to the placeholder and never
+    to a default. That last part is the whole point: the shipped policy used to
+    carry `invite_code: [OpenOnion]`, a constant published in this repository
+    and printed by every agent on startup, and a stranger who typed it was
+    admitted as a contact in five seconds (#561). A missing code is a closed
+    door, not an open one.
+    """
+    import os as _os
+    out = []
+    for code in codes or []:
+        text = str(code)
+        if text.startswith('$'):
+            value = _os.environ.get(text[1:], '').strip()
+            if value:
+                out.append(value)
+        elif text:
+            out.append(text)
+    return out
+
+
 def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[str]:
     """
     Evaluate request using fast rules (no LLM).
@@ -127,7 +154,7 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
     onboard = config.get('onboard', {})
 
     # Check invite code
-    valid_codes = onboard.get('invite_code', [])
+    valid_codes = _resolve_codes(onboard.get('invite_code', []))
     request_code = request.get('invite_code')
     if request_code and request_code in valid_codes:
         promote_to_contact(client_id)
