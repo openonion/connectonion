@@ -1,0 +1,229 @@
+"""Who is allowed to answer an approval prompt.
+
+The host knows exactly who is on the socket: CONNECT is signed, and the trust
+layer classifies the caller as admin / whitelisted / contact / blocked before
+the session exists. That answer was computed and dropped — `approval.py` had
+zero references to the requester.
+
+So the dialog went to whoever was connected. A contact — anyone who typed the
+invite code — was shown the owner's dialog and could click "Allow". An invite
+code carried command execution.
+
+The dialog is the operator's. Anyone else gets a refusal that names what the
+operator would have to pre-authorise, which is a thing they can paste into a
+message and ask for.
+"""
+
+import pytest
+
+from connectonion.useful_plugins.tool_approval import check_approval
+
+
+class FakeIO:
+    def __init__(self, responses=None):
+        self.responses = responses or [{'approved': True}]
+        self.sent = []
+        self.i = 0
+
+    def send(self, event):
+        self.sent.append(event)
+
+    def receive(self):
+        if self.i < len(self.responses):
+            self.i += 1
+            return self.responses[self.i - 1]
+        return {'type': 'io_closed'}
+
+    def receive_all(self, msg_type=None):
+        return []
+
+
+class FakeAgent:
+    def __init__(self, io=None, requester=None):
+        self.io = io
+        self.storage = None
+        self.current_session = {'messages': [], 'trace': [], 'pending_tool': None}
+        if requester is not None:
+            self.current_session['requester'] = requester
+
+
+DANGEROUS = {'name': 'bash', 'arguments': {'command': 'rm -rf build',
+                                           'description': 'clean'}}
+
+
+class TestOnlyAnAdminIsAsked:
+
+    @pytest.mark.parametrize("level", ['contact', 'whitelisted', 'stranger'])
+    def test_a_non_admin_is_not_shown_the_dialog(self, level):
+        io = FakeIO()
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
+                                            'level': level})
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        with pytest.raises(ValueError):
+            check_approval(agent)
+
+        assert io.sent == [], (
+            f"a {level} was offered the operator's approval dialog and could "
+            "have clicked Allow"
+        )
+
+    def test_the_refusal_names_what_to_ask_for(self):
+        """The requester cannot fix this themselves, so tell them what to ask.
+
+        A refusal that just says no turns into a message to the operator
+        saying 'it did not work', which costs a round trip to learn nothing.
+        """
+        agent = FakeAgent(io=FakeIO(), requester={'address': '0x' + 'e' * 64,
+                                                  'level': 'contact'})
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        with pytest.raises(ValueError) as exc:
+            check_approval(agent)
+
+        message = str(exc.value)
+        assert 'host.yaml' in message
+        assert 'bash' in message
+
+    def test_an_admin_is_still_asked(self):
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'f' * 64,
+                                            'level': 'admin'})
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        check_approval(agent)
+
+        assert len(io.sent) == 1
+        assert io.sent[0]['type'] == 'approval_needed'
+
+    def test_a_safe_tool_is_unaffected_for_everyone(self):
+        """This gates approval, not access. A contact may still use the agent."""
+        io = FakeIO()
+        agent = FakeAgent(io=io, requester={'address': '0x' + 'e' * 64,
+                                            'level': 'contact'})
+        agent.current_session['pending_tool'] = {'name': 'read_file',
+                                                 'arguments': {'path': 'a.md'}}
+
+        check_approval(agent)
+
+        assert io.sent == []
+
+
+class TestAnUnknownRequester:
+    """No requester recorded means the session did not come through the host.
+
+    A local `co ai` run is exactly that, and it must keep working. The rule is
+    about a socket with someone else on it, not about the absence of a field.
+    """
+
+    def test_no_requester_recorded_behaves_as_before(self):
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io)
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        check_approval(agent)
+
+        assert len(io.sent) == 1
+
+
+class TestTheClientCannotDeclareItsOwnLevel:
+    """The session dict round-trips through the client, so it is their input.
+
+    A client sends its session back on every turn and the server merges it. If
+    the requester's level were read from there, claiming to be the operator
+    would be a matter of editing one JSON field — a worse hole than the one
+    this closes, introduced by closing it.
+
+    So the level is recomputed from the signed address every turn and
+    overwrites whatever arrived.
+    """
+
+    def test_a_forged_requester_is_overwritten(self, tmp_path, monkeypatch):
+        from connectonion.network.host.http_router import input_handler
+        from connectonion.network.host.session import SessionStorage
+
+        monkeypatch.chdir(tmp_path)
+        (tmp_path / '.co').mkdir()
+        seen = {}
+
+        class Agent:
+            def __init__(self):
+                self.io = None
+                self.storage = None
+                self.current_session = {}
+
+            def input(self, prompt, session=None, **kw):
+                seen['requester'] = (session or {}).get('requester')
+                self.current_session = dict(session or {})
+                return 'ok'
+
+        forged = {'session_id': 'abc', 'requester': {'address': '0xdead',
+                                                     'level': 'admin'}}
+
+        input_handler(Agent, SessionStorage(tmp_path / '.co' / 'sessions.jsonl'), 'hi', 60,
+                      session=forged, requester={'address': '0xbeef',
+                                                 'level': 'contact'})
+
+        assert seen['requester'] == {'address': '0xbeef', 'level': 'contact'}, (
+            "the client's own claim about its level survived into the session"
+        )
+
+
+class TestTheLevelTheHostActuallyComputes:
+    """The gate compares against a value real code has to be able to produce.
+
+    The first version of this compared `get_level(...) != 'admin'`, and every
+    test passed — because every test wrote `level: 'admin'` by hand. `get_level`
+    returns stranger / contact / whitelist / blocked and never 'admin', so the
+    gate would have refused the owner too: nobody could approve anything over
+    a socket.
+
+    This test goes through the resolver the host uses, so agreeing with the
+    implementation is not enough to pass it.
+    """
+
+    def _resolve(self, address, tmp_path):
+        from connectonion.network.trust import TrustAgent
+        trust = TrustAgent('careful')
+        return {'address': address,
+                'level': 'admin' if trust.is_admin(address)
+                         else trust.get_level(address)}
+
+    def test_an_address_in_admins_txt_resolves_to_admin(self, tmp_path, monkeypatch):
+        owner = '0x' + '1' * 64
+        co = tmp_path / '.co'
+        co.mkdir()
+        (co / 'admins.txt').write_text(owner + '\n')
+        monkeypatch.chdir(tmp_path)
+
+        requester = self._resolve(owner, tmp_path)
+
+        assert requester['level'] == 'admin', (
+            "the owner does not resolve to the level the gate requires, so "
+            "nobody could approve anything"
+        )
+
+    def test_the_owner_is_still_shown_the_dialog(self, tmp_path, monkeypatch):
+        owner = '0x' + '1' * 64
+        co = tmp_path / '.co'
+        co.mkdir()
+        (co / 'admins.txt').write_text(owner + '\n')
+        monkeypatch.chdir(tmp_path)
+
+        io = FakeIO(responses=[{'approved': True}])
+        agent = FakeAgent(io=io, requester=self._resolve(owner, tmp_path))
+        agent.current_session['pending_tool'] = DANGEROUS
+
+        check_approval(agent)
+
+        assert len(io.sent) == 1
+
+    def test_someone_not_in_admins_txt_is_not_admin(self, tmp_path, monkeypatch):
+        co = tmp_path / '.co'
+        co.mkdir()
+        (co / 'admins.txt').write_text('0x' + '1' * 64 + '\n')
+        monkeypatch.chdir(tmp_path)
+
+        requester = self._resolve('0x' + '2' * 64, tmp_path)
+
+        assert requester['level'] != 'admin'

@@ -32,7 +32,7 @@ from .session import Session, SessionStorage, merge_sessions, session_to_chat_it
 
 def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, result_ttl: int,
                   session: dict | None = None, connection=None, images: list[str] | None = None,
-                  files: list[dict] | None = None) -> dict:
+                  files: list[dict] | None = None, requester: dict | None = None) -> dict:
     """POST /input (and WebSocket /ws) with session merge and UI conversion."""
     agent = create_agent()
     agent.io = connection
@@ -51,6 +51,16 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
             client_session=session,
             server_session=stored.session
         )
+
+    # After the merge, and overwriting whatever arrived. The session dict
+    # round-trips through the client, so anything read out of it is their
+    # input — a level taken from there would make "I am the operator" a matter
+    # of editing one JSON field. The caller recomputes this every turn from the
+    # signature-verified address.
+    if requester is not None:
+        session['requester'] = requester
+    else:
+        session.pop('requester', None)
 
     record = Session(
         session_id=session_id,

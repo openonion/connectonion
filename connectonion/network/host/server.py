@@ -191,9 +191,21 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         validate_files(files, config)
         return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
 
-    def handle_ws_input(storage, prompt, connection, session=None, images=None, files=None):
+    def handle_ws_input(storage, prompt, connection, session=None, images=None,
+                        files=None, requester_address=None):
         validate_files(files, config)
-        return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
+        # Resolved here, not carried in the session — see input_handler.
+        # `admin` is not one of get_level's answers — it returns stranger /
+        # contact / whitelist / blocked. The operator is whoever is in
+        # .co/admins.txt, which is a separate question, and conflating them
+        # would have refused the owner as loudly as everyone else.
+        requester = None
+        if requester_address:
+            level = ('admin' if trust_agent.is_admin(requester_address)
+                     else trust_agent.get_level(requester_address))
+            requester = {'address': requester_address, 'level': level}
+        return input_handler(create_agent, storage, prompt, result_ttl, session,
+                             connection, images, files, requester=requester)
 
     def handle_ws_exec(tool_name, args):
         return exec_handler(create_agent, exec_permissions, tool_name, args)
