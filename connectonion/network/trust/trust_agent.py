@@ -198,14 +198,24 @@ class TrustAgent:
             allow: bool
             reason: str
 
-        # Build context for LLM
+        # Only facts this agent established for itself. The request body is
+        # written by the party being judged, and an authorization decision must
+        # not take the subject's own testimony as evidence — the address below
+        # is signature-verified at the request boundary, the level comes from
+        # this agent's own files.
+        #
+        # Not "the model would probably see through it". That is a defence
+        # whose strength cannot be reasoned about, sitting in front of an agent
+        # that runs shell commands and writes files.
         level = self.get_level(client_id)
-        prompt = f"""Evaluate this trust request:
-- client_id: {client_id}
-- current_level: {level}
-- request: {request}
+        prompt = f"""Decide whether to admit this client.
 
-Should this client be allowed access?"""
+- client_id: {client_id}   (Ed25519 address, signature verified)
+- current_level: {level}
+
+You are not shown what they sent. They wrote it, so it is not evidence about
+them. Decide from the identity and the level alone; if that is not enough to
+justify admitting them, it is not enough."""
 
         decision = llm_do(
             prompt,
