@@ -369,6 +369,21 @@ def _remote_user(target: str) -> str:
     return target.split("@")[0]
 
 
+def _enable(target: str, agent: str) -> bool:
+    """Set the unit to start at boot.
+
+    Separate from writing it: the unit's contents and whether systemd will
+    start it after a reboot are two different facts, and only one of them is
+    visible in the file.
+    """
+    result = _ssh(target, f"sudo systemctl enable {agent} >/dev/null 2>&1", timeout=60)
+    if result.returncode != 0:
+        console.print(f"[yellow]  {agent} will not start after a reboot: "
+                      f"systemctl enable failed[/yellow]")
+        return False
+    return True
+
+
 def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
                            hostname: Optional[str] = None,
                            user: Optional[str] = None,
@@ -389,7 +404,14 @@ def _write_unit_if_changed(target: str, agent: str, entrypoint: str,
 
     current = _ssh(target, f"cat {unit_path} 2>/dev/null", timeout=60)
     if current.returncode == 0 and current.stdout == wanted:
-        return True
+        # The unit is right, but being enabled is a separate fact about the
+        # machine and this branch used to skip it — so enablement was decided
+        # by whatever the first deploy did and never looked at again. A box
+        # that had been disabled by hand stayed disabled through every later
+        # deploy, each one printing the green success line, until a reboot
+        # turned it into an outage nobody connected to a deploy weeks earlier
+        # (#574). enable is idempotent and one round trip.
+        return _enable(target, agent)
 
     console.print("[dim]  writing systemd unit …[/dim]")
     script = f"""
