@@ -122,8 +122,21 @@ def get_pricing(model: str) -> dict:
     if name in MODEL_PRICING:
         return MODEL_PRICING[name]
 
-    # Try prefix match (e.g., "gpt-4o-2024-08-06" -> "gpt-4o")
-    for known_model in MODEL_PRICING:
+    # Try prefix match (e.g., "gpt-4o-2024-08-06" -> "gpt-4o"), longest first.
+    #
+    # Taking the first key that matched let dict order decide, and three entries
+    # are prefixes of others: gpt-4o ⊂ gpt-4o-mini, o1 ⊂ o1-mini, o1 ⊂
+    # o1-preview. Exact matches are tried above, so the listed names were fine —
+    # but a pinned, dated name is not listed, and pinning a date is what
+    # production code does:
+    #
+    #     gpt-4o-mini              input 0.15   output 0.60
+    #     gpt-4o-mini-2024-07-18   input 2.50   output 10.00   ← gpt-4o's price
+    #
+    # Seventeen times the cost for the same model, depending on whether the
+    # name carries its date. The longest match is the most specific one, which
+    # is what a prefix match is for.
+    for known_model in sorted(MODEL_PRICING, key=len, reverse=True):
         if name.startswith(known_model):
             return MODEL_PRICING[known_model]
 
@@ -146,11 +159,18 @@ def is_estimated_price(model: str) -> bool:
 
 def get_context_limit(model: str) -> int:
     """Get context limit for a model, with fallback to default."""
-    if model in MODEL_CONTEXT_LIMITS:
-        return MODEL_CONTEXT_LIMITS[model]
+    name = _priced_name(model)
 
-    for known_model in MODEL_CONTEXT_LIMITS:
-        if model.startswith(known_model):
+    if name in MODEL_CONTEXT_LIMITS:
+        return MODEL_CONTEXT_LIMITS[name]
+
+    # Longest first, for the reason spelled out in get_pricing — and here the
+    # consequence is worse than a wrong number on screen. o1 is 200000 and
+    # o1-mini is 128000, so `o1-mini-2024-09-12` took o1's: the agent believed
+    # it had seventy-two thousand tokens it did not have, auto-compaction fired
+    # too late, and the provider rejected the request for length.
+    for known_model in sorted(MODEL_CONTEXT_LIMITS, key=len, reverse=True):
+        if name.startswith(known_model):
             return MODEL_CONTEXT_LIMITS[known_model]
 
     return DEFAULT_CONTEXT_LIMIT
