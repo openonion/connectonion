@@ -128,3 +128,48 @@ def test_an_answered_question_is_untouched(tmp_path):
     storage.reconcile_interrupted()
 
     assert storage.get("asked").status == "done"
+
+
+class TestATornLineIsNotFatal:
+    """An append-only file can be torn. Booting over it is not optional.
+
+    `.co/session_results.jsonl` is appended from more than one thread, and a
+    crash, a full disk, or an interleaved write leaves a partial line. The
+    schedule's own state file decided this years ago — "Refusing to boot over it
+    costs the agent, so a truncated write or a hand edit is not allowed to be
+    fatal" — and this file never got the same treatment.
+
+    It became a boot failure rather than a display bug when reconcile started
+    running at startup.
+    """
+
+    def torn(self, tmp_path, body):
+        path = tmp_path / "s.jsonl"
+        path.write_text(body, encoding="utf-8")
+        return SessionStorage(str(path))
+
+    def test_reconcile_survives_a_torn_line(self, tmp_path):
+        storage = self.torn(tmp_path, '{"session_id": "a", "status": "runni')
+        storage.reconcile_interrupted()          # must not raise
+
+    def test_list_survives_a_torn_line(self, tmp_path):
+        storage = self.torn(tmp_path, 'not json at all\n')
+        assert storage.list() == []
+
+    def test_get_survives_a_torn_line(self, tmp_path):
+        storage = self.torn(tmp_path, 'not json at all\n')
+        assert storage.get("a") is None
+
+    def test_the_good_lines_around_it_still_count(self, tmp_path):
+        """A torn line costs that one record, not the file."""
+        good = json.dumps({"session_id": "b", "status": "running", "prompt": "go",
+                           "created": time.time(), "expires": time.time() + 86400})
+        storage = self.torn(tmp_path, f'{{"broken\n{good}\n')
+
+        storage.reconcile_interrupted()
+
+        assert storage.get("b").status == "interrupted"
+
+    def test_a_blank_line_is_not_a_record(self, tmp_path):
+        storage = self.torn(tmp_path, '\n\n')
+        assert storage.list() == []
