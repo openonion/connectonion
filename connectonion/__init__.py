@@ -49,7 +49,12 @@ for _env_file in (_Path.cwd() / ".env", _Path.home() / ".co" / "keys.env"):
 # Only the lookup moves. `from connectonion import Agent` still works, still
 # returns the same object, and the second read is a plain global: __getattr__
 # writes what it resolved into globals(), so it runs once per name.
-_SUBMODULES = ("address", "core", "debug", "logger", "network", "prompts", "useful_tools")
+# Every subpackage the eager imports used to bind onto this package as a side
+# effect. `tui` and `useful_plugins` are re-exported by nobody, which is exactly
+# why they are listed: removing a name that used to resolve is not something a
+# startup-time change should do quietly. Naming one here does not import it.
+_SUBMODULES = ("address", "core", "debug", "logger", "network", "prompts",
+               "tui", "useful_plugins", "useful_tools")
 
 _FROM = {
     **{name: ".core" for name in (
