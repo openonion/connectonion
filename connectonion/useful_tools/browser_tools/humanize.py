@@ -11,6 +11,7 @@ LLM-Note:
 """
 
 import math
+import base64
 import platform
 import random
 import shutil
@@ -213,27 +214,77 @@ def _segments(text):
     return [(ime, "".join(chars)) for ime, chars in runs]
 
 
-def _clipboard_cmds():
-    """(set_argv, get_argv) for the OS clipboard, or None if no tool is available. A real
-    user pastes Chinese far more than they hand-type it, and paste is a fully trusted event
-    with none of the IME path's residual tells (see type_text)."""
+def _clipboard_set_argv(text: str) -> list[str] | None:
+    """The command that puts `text` on the clipboard, or None if there is none.
+
+    Windows does not go through `clip.exe`. clip.exe decodes its stdin with the
+    console OEM code page — cp936 on Chinese Windows, cp932 on Japanese — so
+    UTF-8 bytes piped into it arrive as mojibake, and the automation then types
+    the wrong characters while reporting success (#277).
+
+    So the text rides inside the command as base64, which is ASCII whatever the
+    console is set to, and PowerShell decodes it as UTF-8 on the other side. No
+    code page is consulted in either direction.
+    """
     system = platform.system()
     if system == "Darwin":
-        return (["pbcopy"], ["pbpaste"])
+        return ["pbcopy"]
     if system == "Windows":
-        return (["clip"], ["powershell", "-NoProfile", "-Command", "Get-Clipboard"])
+        payload = base64.b64encode(text.encode("utf-8")).decode("ascii")
+        script = (
+            f"$b=[Convert]::FromBase64String('{payload}');"
+            "Set-Clipboard -Value ([Text.Encoding]::UTF8.GetString($b))"
+        )
+        # Windows caps a command line near 8191 characters, and base64 inflates
+        # UTF-8 by a third. Past that the shell truncates and a fragment lands on
+        # the clipboard — silently, only for long text. _paste already falls back
+        # to the IME path when the clipboard route is unavailable, so decline it
+        # rather than half-use it.
+        if len(script) > 7000:
+            return None
+        return ["powershell", "-NoProfile", "-Command", script]
     if shutil.which("xclip"):
-        return (["xclip", "-selection", "clipboard"],
-                ["xclip", "-selection", "clipboard", "-o"])
+        return ["xclip", "-selection", "clipboard"]
     if shutil.which("xsel"):
-        return (["xsel", "--clipboard", "--input"], ["xsel", "--clipboard", "--output"])
+        return ["xsel", "--clipboard", "--input"]
     return None
 
 
-def _active_text_len(page):
-    return page.evaluate(
-        "() => { const e = document.activeElement;"
-        " return e ? ((e.value != null ? e.value : e.textContent) || '').length : 0; }")
+def _clipboard_get_argv() -> list[str] | None:
+    """The command that reads the clipboard back, as UTF-8 on stdout."""
+    system = platform.system()
+    if system == "Darwin":
+        return ["pbpaste"]
+    if system == "Windows":
+        # Same reasoning in reverse: pin the output encoding rather than let the
+        # console decide how to spell what it hands back.
+        return ["powershell", "-NoProfile", "-Command",
+                "[Console]::OutputEncoding=[Text.Encoding]::UTF8; Get-Clipboard"]
+    if shutil.which("xclip"):
+        return ["xclip", "-selection", "clipboard", "-o"]
+    if shutil.which("xsel"):
+        return ["xsel", "--clipboard", "--output"]
+    return None
+
+
+def _clipboard_set(text: str) -> bool:
+    argv = _clipboard_set_argv(text)
+    if argv is None:
+        return False
+    # On Windows the text is already inside the command; elsewhere it goes on
+    # stdin, where UTF-8 is what these tools expect.
+    stdin = None if platform.system() == "Windows" else text.encode("utf-8")
+    subprocess.run(argv, input=stdin)
+    return True
+
+
+def _clipboard_get() -> str:
+    argv = _clipboard_get_argv()
+    if argv is None:
+        return ""
+    out = subprocess.run(argv, capture_output=True).stdout
+    # Get-Clipboard appends a newline that was never on the clipboard.
+    return out.decode("utf-8", errors="replace").rstrip("\r\n")
 
 
 def _paste(page, text):
@@ -241,18 +292,16 @@ def _paste(page, text):
     the user's clipboard. Returns True only if the field actually took the paste — some
     inputs (password fields, paste-blocked forms) reject it, and the caller then falls back
     to the IME path."""
-    cmds = _clipboard_cmds()
-    if cmds is None:
+    if _clipboard_set_argv(text) is None:
         return False
-    set_argv, get_argv = cmds
-    saved = subprocess.run(get_argv, capture_output=True).stdout
-    subprocess.run(set_argv, input=text.encode())
+    saved = _clipboard_get()
+    _clipboard_set(text)
     before = _active_text_len(page)
     modifier = "Meta" if platform.system() == "Darwin" else "Control"
     page.keyboard.press(f"{modifier}+v")
     _pause(page, 0.12, 0.4)
     grew = _active_text_len(page) >= before + len(text)
-    subprocess.run(set_argv, input=saved)  # restore the user's clipboard
+    _clipboard_set(saved)  # restore the user's clipboard
     return grew
 
 
