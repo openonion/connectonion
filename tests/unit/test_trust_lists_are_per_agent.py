@@ -123,3 +123,36 @@ class TestTheOldGlobalListsAreNotLostSilently:
         monkeypatch.chdir(a)
         tools.is_whitelisted(STRANGER)
         assert capsys.readouterr().out == ""
+
+
+class TestTheDeployedAgentRunsFromItsOwnDirectory:
+    """The line that makes all of the above work in production.
+
+    Scoping the lists to the agent means resolving them from the working
+    directory. On a deployed agent that only holds because the unit file says
+    so. Drop `WorkingDirectory` and every list resolves under `/`, quietly
+    empty: the whitelist stops granting, the blocklist stops blocking, and
+    nothing anywhere says why.
+
+    Nothing pinned this before. It was one uncommented line in a unit template.
+    """
+
+    def test_the_unit_pins_the_working_directory(self):
+        from connectonion.cli.commands.deploy_to_server import _unit_text, SRV
+
+        unit = _unit_text("ledger", "agent.py")
+
+        assert f"WorkingDirectory={SRV}/ledger" in unit, (
+            "without this the agent's trust lists resolve under / and are "
+            "silently empty"
+        )
+
+    def test_the_working_directory_is_where_the_lists_are(self):
+        """Same directory the deploy puts .co/ in — one place, not two."""
+        from connectonion.cli.commands.deploy_to_server import _unit_text, SRV
+
+        unit = _unit_text("ledger", "agent.py")
+        workdir = next(l.split('=', 1)[1] for l in unit.splitlines()
+                       if l.startswith('WorkingDirectory='))
+
+        assert f"{workdir}/.co" == f"{SRV}/ledger/.co"
