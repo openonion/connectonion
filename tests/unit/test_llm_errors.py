@@ -340,7 +340,7 @@ class TestOpenAICompatibleProviders:
             "OPENROUTER_HTTP_REFERER": "https://example.com",
             "OPENROUTER_X_TITLE": "My App",
         }):
-            with patch("connectonion.core.llm.openai.OpenAI") as mock_openai:
+            with patch("openai.OpenAI") as mock_openai:
                 OpenRouterLLM(model="openrouter/openai/o4-mini")
 
                 _, kwargs = mock_openai.call_args

@@ -5,7 +5,7 @@ LLM-Note:
   Data flow: Agent/llm_do calls create_llm(model, api_key) → factory routes to provider class → Provider.__init__() validates API key → Agent calls complete(messages, tools) OR structured_complete(messages, output_schema) → provider converts to native format → calls API → parses response → returns LLMResponse(content, tool_calls, raw_response) OR Pydantic model instance
   State/Effects: reads environment variables (OPENAI_API_KEY, ANTHROPIC_API_KEY, GEMINI_API_KEY/GOOGLE_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, XAI_API_KEY, OPENONION_API_KEY) | reads OPENONION_API_KEY from env / .env / ~/.co/keys.env | makes HTTP requests to LLM APIs | no caching or persistence
   Integration: exposes create_llm(model, api_key), LLM abstract base class, OpenAILLM, AnthropicLLM, GeminiLLM, GroqLLM, GrokLLM, OpenRouterLLM, OpenOnionLLM, LLMResponse, ToolCall dataclasses | providers implement complete() and structured_complete() | OpenAI message format is lingua franca | tool calling uses OpenAI schema converted per-provider
-  Performance: stateless (no caching) | synchronous (no streaming) | default max_tokens=8192 for Anthropic (required) | each call hits API
+  Performance: openai/anthropic are imported inside the functions that use them, so importing this module does not pay for either SDK | stateless (no caching) | synchronous (no streaming) | default max_tokens=8192 for Anthropic (required) | each call hits API
   Errors: raises ValueError for missing API keys, unknown models, invalid parameters | provider-specific errors bubble up (openai.APIError, anthropic.APIError, etc.) | OpenOnionLLM transforms 402 errors to InsufficientCreditsError with formatted message and typed attributes | Pydantic ValidationError for invalid structured output
 
 Unified LLM provider abstraction layer for ConnectOnion framework.
@@ -161,8 +161,6 @@ import base64
 import logging
 
 logger = logging.getLogger(__name__)
-import openai
-import anthropic
 # google-genai not needed - using OpenAI-compatible endpoint instead
 import requests
 from pathlib import Path
@@ -226,6 +224,8 @@ class LLM(ABC):
         Translating never costs the original: it is chained as __cause__, so the
         traceback still says what the SDK actually reported.
         """
+        import anthropic
+        import openai
         model = getattr(self, "model", "unknown")
         try:
             return send()
@@ -279,6 +279,7 @@ class OpenAILLM(LLM):
     """OpenAI LLM implementation."""
     
     def __init__(self, api_key: Optional[str] = None, model: str = "o4-mini", **kwargs):
+        import openai
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError("OpenAI API key required. Set OPENAI_API_KEY environment variable or pass api_key parameter.")
@@ -364,6 +365,7 @@ class AnthropicLLM(LLM):
     """Anthropic Claude LLM implementation."""
     
     def __init__(self, api_key: Optional[str] = None, model: str = "claude-sonnet-4-20250514", max_tokens: int = 8192, **kwargs):
+        import anthropic
         self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         if not self.api_key:
             raise ValueError("Anthropic API key required. Set ANTHROPIC_API_KEY environment variable or pass api_key parameter.")
@@ -601,6 +603,7 @@ class GeminiLLM(LLM):
     """Google Gemini LLM implementation using OpenAI-compatible endpoint."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = "gemini-2.0-flash-exp", **kwargs):
+        import openai
         self.api_key = api_key or os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
         if not self.api_key:
             raise ValueError("Gemini API key required. Set GEMINI_API_KEY environment variable or pass api_key parameter. (GOOGLE_API_KEY is also supported for backward compatibility)")
@@ -679,6 +682,7 @@ class GroqLLM(LLM):
     """Groq LLM implementation using OpenAI-compatible endpoint."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = "groq/llama-3.3-70b-versatile", **kwargs):
+        import openai
         self.api_key = api_key or os.getenv("GROQ_API_KEY")
         if not self.api_key:
             raise ValueError("Groq API key required. Set GROQ_API_KEY environment variable or pass api_key parameter.")
@@ -756,6 +760,7 @@ class GrokLLM(LLM):
     """Grok (xAI) LLM implementation using OpenAI-compatible endpoint."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = "grok/grok-4", **kwargs):
+        import openai
         self.api_key = api_key or os.getenv("XAI_API_KEY")
         if not self.api_key:
             raise ValueError("Grok API key required. Set XAI_API_KEY environment variable or pass api_key parameter.")
@@ -828,6 +833,7 @@ class OpenRouterLLM(LLM):
     """OpenRouter LLM implementation using OpenAI-compatible endpoint."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = "openrouter/openai/o4-mini", **kwargs):
+        import openai
         self.api_key = api_key or os.getenv("OPENROUTER_API_KEY")
         if not self.api_key:
             raise ValueError("OpenRouter API key required. Set OPENROUTER_API_KEY environment variable or pass api_key parameter.")
@@ -916,6 +922,7 @@ class MistralLLM(LLM):
     """Mistral AI LLM implementation using OpenAI-compatible endpoint."""
 
     def __init__(self, api_key: Optional[str] = None, model: str = "mistral/mistral-large-latest", **kwargs):
+        import openai
         self.api_key = api_key or os.getenv("MISTRAL_API_KEY")
         if not self.api_key:
             raise ValueError("Mistral API key required. Set MISTRAL_API_KEY environment variable or pass api_key parameter.")
@@ -1025,6 +1032,7 @@ class OpenOnionLLM(LLM):
     def __init__(self, api_key: Optional[str] = None, model: str = "co/gemini-3.6-flash", **kwargs):
         # For co/ models, api_key is actually the auth token
         # Framework auto-loads .env, so OPENONION_API_KEY will be in environment
+        import openai
         self.auth_token = api_key or os.getenv("OPENONION_API_KEY")
         if not self.auth_token:
             raise ValueError(
@@ -1119,6 +1127,7 @@ class OpenOnionLLM(LLM):
         One helper rather than a copied block: two copies of a translation table
         drift, and the half that drifts is the half nobody tested.
         """
+        import openai
         try:
             return send()
         except openai.APIStatusError as e:
