@@ -173,3 +173,58 @@ class TestATornLineIsNotFatal:
     def test_a_blank_line_is_not_a_record(self, tmp_path):
         storage = self.torn(tmp_path, '\n\n')
         assert storage.list() == []
+
+
+class TestACheckpointRemembersItsTurn:
+    """A row that says only "interrupted · 13h ago" tells nobody anything.
+
+    Read off the deployed agent after the reconcile shipped:
+
+        Recent
+                        interrupted · 13h ago
+                        interrupted · 13h ago
+                        interrupted · 17h ago
+
+    Five rows, no labels. `checkpoint()` writes the record that a turn pausing
+    for approval leaves behind, and it hardcoded `prompt=""` — while holding a
+    session dict with `user_prompt` in it.
+    """
+
+    def test_the_checkpoint_keeps_the_prompt(self, tmp_path):
+        storage = SessionStorage(str(tmp_path / "s.jsonl"))
+
+        storage.checkpoint({"session_id": "s1",
+                            "user_prompt": "/contract-ledger 检查云盘里有没有新合同",
+                            "messages": []})
+
+        assert "检查云盘里有没有新合同" in storage.get("s1").prompt
+
+    def test_a_checkpoint_does_not_reset_the_turn_s_age(self, tmp_path):
+        """`created` is what Recent renders as "13h ago". Stamping it at
+        checkpoint time makes a turn that began this morning look like it began
+        when it paused."""
+        storage = SessionStorage(str(tmp_path / "s.jsonl"))
+        began = time.time() - 3600
+        storage.save(Session(session_id="s1", status="running", prompt="go",
+                             created=began, expires=time.time() + 86400))
+
+        storage.checkpoint({"session_id": "s1", "user_prompt": "go", "messages": []})
+
+        assert abs((storage.get("s1").created or 0) - began) < 1
+
+    def test_a_checkpoint_with_no_earlier_record_still_works(self, tmp_path):
+        storage = SessionStorage(str(tmp_path / "s.jsonl"))
+        storage.checkpoint({"session_id": "fresh", "user_prompt": "hello", "messages": []})
+        assert storage.get("fresh").prompt == "hello"
+
+    def test_the_label_survives_the_reconcile(self, tmp_path):
+        """The whole point: after a restart the row still says what it was."""
+        storage = SessionStorage(str(tmp_path / "s.jsonl"))
+        storage.checkpoint({"session_id": "s1", "user_prompt": "count the files",
+                            "messages": []})
+
+        storage.reconcile_interrupted()
+
+        row = storage.get("s1")
+        assert row.status == "interrupted"
+        assert row.prompt == "count the files"
