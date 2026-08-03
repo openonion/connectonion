@@ -181,18 +181,57 @@ class TestRelayE2E:
         assert response.done
 
     def test_relay_multiturn(self, agent_server):
-        """Multi-turn conversation through relay preserves session."""
+        """A second client resuming the session is handed the first turn's history.
+
+        Three versions of this test, and the first two could not see the bug
+        they existed to catch.
+
+        It began by asking the model to remember a number and asserting the
+        number came back — a *model behaviour*, not a system property. It failed
+        for three releases because gemini-3.6-flash replies "I am an LLM and I
+        do not have memory of past conversations" to being asked to remember
+        something, on the FIRST turn, before any session round-trip exists. The
+        red test then pointed at the session layer, which was working.
+
+        The second version asserted on `agent.current_session` after two turns.
+        That passed — and *kept* passing with server-side restoration
+        deliberately sabotaged, because RemoteAgent accumulates history on the
+        client. It was testing the client's own bookkeeping.
+
+        So: turn one on one client, turn two on a **fresh** client that knows
+        only the session id. Any history it sees can only have come from the
+        server. Sabotaging `storage.get` now turns this red, which is the whole
+        point of it existing.
+        """
         keys = agent_server
+        first = "Say the word apple."
+        second = "Say the word banana."
+
         agent = connect(keys["address"], keys=keys, relay_url=RELAY_URL)
         agent._resolved_endpoint = None
         agent._endpoint_resolved = True
 
-        r1 = agent.input("Remember this number: 7742. Just confirm.", timeout=60)
+        r1 = agent.input(first, timeout=60)
         assert r1.done
+        session_id = (agent.current_session or {}).get("session_id")
+        assert session_id, "no session id came back from the first turn"
 
-        r2 = agent.input("What number did I ask you to remember?", timeout=60)
+        # A different client, with nothing but the id. It cannot know the history.
+        resumed = connect(keys["address"], keys=keys, relay_url=RELAY_URL)
+        resumed._resolved_endpoint = None
+        resumed._endpoint_resolved = True
+        resumed._current_session = {"session_id": session_id}
+
+        r2 = resumed.input(second, timeout=60)
         assert r2.done
-        assert "7742" in r2.text
+
+        messages = (resumed.current_session or {}).get("messages") or []
+        contents = [str(m.get("content") or "") for m in messages]
+        assert any(first in c for c in contents), (
+            "the first turn is missing — the server did not restore the session: "
+            f"{[c[:40] for c in contents]}"
+        )
+        assert any(second in c for c in contents), "the second turn never landed"
 
     def test_raw_websocket_session_id(self, agent_server):
         """Every WebSocket event must carry session_id."""
