@@ -361,22 +361,22 @@ def load_admins(co_dir: Path = None) -> set:
     Returns:
         Set of admin addresses
     """
-    import json
-
     admins = set()
 
-    # Self address is always admin (from project's .co/address.json)
     if co_dir is None:
         co_dir = Path.cwd() / ".co"
 
-    addr_file = co_dir / "address.json"
-    if addr_file.exists():
-        try:
-            addr_data = json.loads(addr_file.read_text(encoding='utf-8'))
-            if addr_data.get('address'):
-                admins.add(addr_data['address'])
-        except Exception:
-            pass
+    # Self address is always admin. Through get_self_address, which reads
+    # `.co/keys/` and falls back to the older `.co/address.json` — this used to
+    # read address.json alone, a file nothing has written since keys moved. So
+    # is_super_admin(self) was True while is_admin(self) was False, and
+    # ws_admin gates on is_admin *before* it reaches the super-admin check:
+    # ADMIN_ADD and ADMIN_REMOVE were unreachable by the one account they exist
+    # for. Same shape as #579 and #614 — a gate compared against a value the
+    # resolver never produces for that identity.
+    self_address = get_self_address(co_dir)
+    if self_address:
+        admins.add(self_address)
 
     # Additional admins from this agent's own admins.txt
     # Same reasoning as _check_list, and the cost is higher since #579: the
