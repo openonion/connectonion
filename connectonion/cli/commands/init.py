@@ -23,6 +23,7 @@ from .auth_commands import authenticate
 # Import shared functions from project_cmd_lib
 from .project_cmd_lib import (
     PROVIDER_TO_ENV,
+    mint_invite_code,
     ensure_global_config,
     copy_docs,
     create_host_yaml,
@@ -226,9 +227,7 @@ def handle_init(ai: Optional[bool], key: Optional[str], template: Optional[str],
     # `invite_code: [OpenOnion]` — one password for every deployment, published
     # in this repository and printed by every agent on startup (#561).
     if "CO_INVITE_CODE" not in existing_keys:
-        import secrets as _secrets
-        alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"   # no O/0, no I/1 — it gets typed by hand
-        code = "-".join("".join(_secrets.choice(alphabet) for _ in range(5)) for _ in range(3))
+        code = mint_invite_code()
         keys_to_add.append(f"CO_INVITE_CODE={code}")
         global_keys["CO_INVITE_CODE"] = f"CO_INVITE_CODE={code}"
         # In global_keys so the branch that writes a *fresh* .env includes it,

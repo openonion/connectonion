@@ -33,6 +33,30 @@ from ... import address
 console = Console()
 
 
+def mint_invite_code() -> str:
+    """One code, for one agent, generated once.
+
+    The alphabet drops O/0 and I/1 because this gets read off a screen and
+    typed on a phone. Three groups of five is enough entropy for a door that
+    also checks trust levels, and short enough to dictate over a call.
+
+    Callers mint it only when the project has none: regenerating would silently
+    lock out everyone already holding the old one.
+
+    It replaced the shipped policy's literal `invite_code: [OpenOnion]` — one
+    password for every deployment, published in this repository and printed by
+    every agent on startup (#561). `co init` minted one from the start and
+    `co create` did not, so the command the docs lead with produced a project
+    that told its operator "no one can onboard" and pointed at the other
+    command for the fix.
+    """
+    import secrets
+
+    alphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+    return "-".join("".join(secrets.choice(alphabet) for _ in range(5))
+                    for _ in range(3))
+
+
 def get_docs_source() -> Path:
     """Get the docs directory path - works in both dev and installed package."""
     # After pip install: connectonion/docs/ exists (via force-include)
@@ -928,13 +952,23 @@ entrypoint: agent.py
 
 
 def setup_gitignore(project_dir: Path) -> Optional[str]:
-    """Create or update .gitignore if in a git repo. Returns description of what was done, or None."""
-    git_dir = project_dir / ".git"
-    # Also check parent for `co create` inside a git repo
-    parent_git = Path.cwd() / ".git"
-    if not git_dir.exists() and not parent_git.exists():
-        return None
+    """Write .gitignore. Returns a description of what was done, or None.
 
+    Written whether or not this is a git repo yet, because the ordinary order
+    is the other way round:
+
+        co create my-agent      # .env: OPENONION_API_KEY, CO_INVITE_CODE
+        cd my-agent
+        git init && git add . && git commit
+
+    A project is made first and versioned once it works. Waiting for `.git` to
+    exist meant the file that excludes `.env` was never written, and `git add .`
+    took the agent's API token and the code that lets a stranger onboard.
+
+    An unused .gitignore in a directory that never becomes a repo costs a few
+    bytes. A missing one costs a published token, and the recovery is rotating
+    every key in the file.
+    """
     gitignore_path = project_dir / ".gitignore"
     if gitignore_path.exists():
         existing = gitignore_path.read_text(encoding='utf-8')
