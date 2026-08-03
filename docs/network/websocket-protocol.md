@@ -18,6 +18,10 @@ If `INPUT` arrives while the session's agent is already running, the server trea
 
 `EXEC` is the direct-execution fast path: it runs one named tool with no LLM, no session, and no history, replying with a single `EXEC_RESULT`. It requires the same CONNECT auth as INPUT, and the tool is gated by the host's `.co/host.yaml` permission whitelist. See [remote-call.md](remote-call.md).
 
+A fourth type, `ONBOARD_SUBMIT`, exists only to answer the trust gate. It is not part of the
+normal path — it appears only when the server interrupts CONNECT with `ONBOARD_REQUIRED`.
+See [Trust Gate](#trust-gate-onboarding).
+
 ```
 ┌────────────────────────────────────────────────────────────────┐
 │                    WebSocket Lifecycle                          │
@@ -28,6 +32,9 @@ If `INPUT` arrives while the session's agent is already running, the server trea
 │   INPUT carries:     just the prompt (session already set)     │
 │                                                                │
 │   Server decides:    new / connected / running                 │
+│                      …or, for a caller the trust policy denies │
+│                      but offers a way in: ONBOARD_REQUIRED,    │
+│                      and CONNECT waits until they pass         │
 │                                                                │
 └────────────────────────────────────────────────────────────────┘
 ```
@@ -164,6 +171,62 @@ Client                                    Server
   │── INPUT ───────────────────────────────►│  fresh session, full history from CONNECT
 ```
 
+### Trust Gate (onboarding)
+
+An agent whose trust policy denies strangers can still let them earn their way in — an
+invite code, or a payment. That negotiation happens **inside CONNECT**, before any message
+is sent.
+
+```
+Client                                    Server
+  │                                         │
+  │── WS open ────────────────────────────►│
+  │── CONNECT ─────────────────────────────►│  verify Ed25519 signature — OK
+  │   { payload, from, signature }          │  trust policy: this caller is denied
+  │                                         │  …but onboard methods are configured
+  │                                         │  stash the CONNECT, do not answer it yet
+  │◄── ONBOARD_REQUIRED ───────────────────│  { methods: ["invite_code"] }
+  │                                         │
+  │   (client shows a code prompt)          │
+  │                                         │
+  │── ONBOARD_SUBMIT ──────────────────────►│  signed again, invite_code in payload
+  │   { payload: { invite_code }, … }       │  verify_invite()
+  │                                         │
+  │◄── ONBOARD_SUCCESS ────────────────────│  { level: "contact" }  ← caller promoted
+  │◄── CONNECTED ──────────────────────────│  the stashed CONNECT, now resumed
+  │                                         │
+  │── INPUT ───────────────────────────────►│  the conversation the caller came for
+```
+
+Three things follow from this shape, and each one is a mistake a client can make:
+
+**The answer arrives before the first message.** A client that opens the socket on a
+landing page — to receive `DASHBOARD_SNAPSHOT`, say — already has the gate's answer in hand
+before the reader types anything. There is no need to send a message and watch it be
+refused, and no need to guess from `/info`: that endpoint is anonymous and tells an admin
+exactly what it tells a stranger, so a client that gates on it puts a code prompt in front
+of people who hold the keys.
+
+**A refused code is an `ERROR`, not another `ONBOARD_REQUIRED`.** The gate does not re-ask.
+The reply is `{"type": "ERROR", "message": "Invalid invite code"}`, and a client that waits
+for a second `ONBOARD_REQUIRED` to detect the refusal will wait forever, leaving the reader
+staring at a form that never responds.
+
+**The stashed CONNECT is resumed by the server, not replayed by the client.** Do not send
+CONNECT again after `ONBOARD_SUCCESS`. Its signature carries a timestamp with a five-minute
+window, and a human reading a card, finding a code and typing it can easily outlast that —
+the resend would be rejected as expired. The server holds the original and completes it
+itself, with the address the onboard verified.
+
+A real capture of a first-time visitor on a gated agent, all on one socket:
+
+```
+ONBOARD_REQUIRED → ONBOARD_SUCCESS → CONNECTED → AGENT_PROFILE
+→ DASHBOARD_SNAPSHOT → (INPUT) → … → OUTPUT → SESSION_STATUS
+```
+
+See [../features/trust.md](../features/trust.md) for configuring `onboard` in `trust.md`.
+
 ---
 
 ## Message Reference
@@ -203,6 +266,14 @@ Server response based on state:
 | Provided | In registry, running | `"running"` | Reattach IO, pipe buffered events |
 | Provided | In registry, connected | `"connected"` | Merge sessions, reset idle timer |
 | Provided | Not found | `"new"` | Allocate new session (same id) |
+
+**CONNECTED is not the only possible reply.** If the trust policy turns this caller away
+and the agent offers a way in, the server answers `ONBOARD_REQUIRED` instead and holds the
+CONNECT open until the caller passes — see [Trust Gate](#trust-gate-onboarding) below. If
+the policy turns them away and offers nothing, the reply is `ERROR`.
+
+This decision is made **per caller**, after the signature is verified, so an admin, a
+contact, or anyone who onboarded earlier never sees the gate at all.
 
 #### INPUT
 
@@ -251,6 +322,33 @@ The tool is checked against the host's `.co/host.yaml` permission whitelist (the
 ```json
 { "type": "APPROVAL_RESPONSE", "approved": true, "scope": "once" }
 ```
+
+#### ONBOARD_SUBMIT
+
+Pass the trust gate. Sent in reply to `ONBOARD_REQUIRED`, on the same socket.
+
+```json
+{
+  "type": "ONBOARD_SUBMIT",
+  "payload": {
+    "invite_code": "B7HSW-6Y6P4-BZC5Z",
+    "to": "0x3d4017c3e843...",
+    "timestamp": 1702234567
+  },
+  "from": "0xClientPublicKey",
+  "signature": "0x..."
+}
+```
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `payload.invite_code` | One of the two | A code the agent's `trust.md` lists under `onboard.invite_code` |
+| `payload.payment` | One of the two | Amount claimed paid, for `onboard.payment`. This is an assertion the host verifies — nothing is charged over this socket |
+| `payload.timestamp` | Yes | Same five-minute window as CONNECT. Signed fresh here, which is the point: the original CONNECT's may have aged out while the reader typed |
+| `from` / `signature` | Yes | Signed exactly like CONNECT |
+
+Sent on the same socket as the CONNECT it answers. A wrong code comes back as `ERROR` and
+the stashed CONNECT is **kept**, so the reader can simply try again — no reconnect needed.
 
 ### Server → Client
 
@@ -404,11 +502,67 @@ Acknowledges an INPUT that arrived while the agent was running. The prompt has b
 }
 ```
 
+#### ONBOARD_REQUIRED
+
+The trust gate, in reply to CONNECT. The caller's signature checked out, but the policy
+denies them — and the agent offers a way in. The CONNECT is **held open**, not failed.
+
+```json
+{
+  "type": "ONBOARD_REQUIRED",
+  "identity": "0xCallerPublicKey",
+  "methods": ["invite_code", "payment"],
+  "payment_amount": 10,
+  "payment_address": "0xAgentAddress"
+}
+```
+
+| Field | Present | Description |
+|-------|---------|-------------|
+| `identity` | Always | The address that was just authenticated — the caller, echoed back |
+| `methods` | Always | Which of `invite_code` / `payment` this agent accepts. Show only these |
+| `payment_amount` | With `payment` | Amount, from `onboard.payment` in `trust.md` |
+| `payment_address` | With `payment` | Where to send it |
+
+Answer with `ONBOARD_SUBMIT`. Note what is *not* here: no session, no status. Nothing has
+been established yet.
+
+#### ONBOARD_SUCCESS
+
+The submitted proof was accepted and the caller has been promoted. `CONNECTED` follows on
+its own — the server completes the CONNECT it stashed, so **do not send CONNECT again**.
+
+```json
+{
+  "type": "ONBOARD_SUCCESS",
+  "identity": "0xCallerPublicKey",
+  "level": "contact",
+  "message": "Invite code verified. You are now a contact."
+}
+```
+
+`level` is the trust level actually granted, read back from the policy after promotion —
+not a value the client chose. From here the connection proceeds exactly as an ungated one.
+
+#### ADMIN_RESULT
+
+Reply to `ADMIN_PROMOTE` / `ADMIN_DEMOTE` from an admin caller.
+
+```json
+{ "type": "ADMIN_RESULT", "action": "promote", "ok": true, "level": "whitelisted" }
+```
+
+Fields beyond `action` are whatever the trust handler returned for that operation.
+
 #### ERROR
 
 ```json
 { "type": "ERROR", "message": "Something went wrong" }
 ```
+
+Also how a **refused onboard** comes back — `{"type": "ERROR", "message": "Invalid invite
+code"}`. There is no dedicated failure frame, and no repeat of `ONBOARD_REQUIRED`: a client
+waiting for one of those to detect the refusal will wait forever.
 
 ---
 
