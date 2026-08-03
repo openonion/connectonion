@@ -44,7 +44,7 @@ from .schedule import create_schedule_lifespan
 from ..trust import TrustAgent, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
 from .auth import extract_and_authenticate
-from .config import load_host_config, load_list_file, validate_files, DEFAULT_FILE_LIMITS
+from .config import load_host_config, load_list_file, validate_files, validate_images, DEFAULT_FILE_LIMITS
 from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
 from .http_router import (
     input_handler,
@@ -189,11 +189,13 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
 
     def handle_input(storage, prompt, session=None, connection=None, images=None, files=None):
         validate_files(files, config)
+        validate_images(images, config)
         return input_handler(create_agent, storage, prompt, result_ttl, session, connection, images, files)
 
     def handle_ws_input(storage, prompt, connection, session=None, images=None,
                         files=None, requester_address=None):
         validate_files(files, config)
+        validate_images(images, config)
         # Resolved here, not carried in the session — see input_handler.
         # `admin` is not one of get_level's answers — it returns stranger /
         # contact / whitelist / blocked. The operator is whoever is in

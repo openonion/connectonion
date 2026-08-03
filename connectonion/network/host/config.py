@@ -151,3 +151,48 @@ def validate_files(files: list, config: dict) -> None:
             )
 
     logger.info(f"File upload validated: {len(files)} file(s) accepted")
+
+
+def validate_images(images, config: dict) -> None:
+    """Hold images to the same limit as files.
+
+    `max_file_size` says "MB per file (both WebSocket and HTTP)" and
+    validate_files enforces it — for `files`. The same two handlers take
+    `images` beside it, a list of base64 strings that goes straight to
+    agent.input() and on to the model, and nothing measured it. uvicorn sets no
+    request-size cap of its own, so an authenticated client could hand the host
+    a body of any size and the agent would hold it in memory.
+
+    Not a new limit: the one already advertised in /info as max_file_size_mb.
+
+    The decoded size is what matters, and base64 is 4 characters per 3 bytes.
+    Measured from the string rather than decoded, so a large image is refused
+    without first allocating it — decoding to find out how big it is would be
+    the same problem one step later.
+    """
+    if not images:
+        return
+
+    max_count = config.get("max_files_per_request", DEFAULT_FILE_LIMITS["max_files_per_request"])
+    max_size_mb = config.get("max_file_size", DEFAULT_FILE_LIMITS["max_file_size"])
+    max_size_bytes = max_size_mb * 1024 * 1024
+
+    if len(images) > max_count:
+        logger.warning(f"Image upload rejected: too many images ({len(images)} > {max_count})")
+        raise ValueError(
+            f"Too many images: {len(images)} (max: {max_count}). "
+            f"Increase max_files_per_request in host.yaml"
+        )
+
+    for index, image in enumerate(images):
+        if not isinstance(image, str):
+            continue
+        payload = image.split(",", 1)[1] if image.startswith("data:") else image
+        size = len(payload) * 3 // 4
+        if size > max_size_bytes:
+            mb = size / 1024 / 1024
+            logger.warning(f"Image upload rejected: image {index} too large ({mb:.1f}MB > {max_size_mb}MB)")
+            raise ValueError(
+                f"Image too large: image {index} ({mb:.1f}MB, max: {max_size_mb}MB). "
+                f"Increase max_file_size in host.yaml"
+            )
