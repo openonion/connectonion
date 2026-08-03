@@ -102,18 +102,46 @@ DEFAULT_PRICING = {"input": 1.00, "output": 3.00, "cached": 0.50}
 DEFAULT_CONTEXT_LIMIT = 128000
 
 
+def _priced_name(model: str) -> str:
+    """The name this model is listed under, if it is listed at all.
+
+    `co/` is the managed route to a model, not a different model — and not one
+    of the priced entries carries the prefix, so every agent on the default
+    setup (which is a `co/` model) had its tokens costed from the generic
+    fallback. For co/gemini-3.6-flash that is 3.00 an output megatoken against
+    the model's own 7.50.
+    """
+    return model[len("co/"):] if model.startswith("co/") else model
+
+
 def get_pricing(model: str) -> dict:
     """Get pricing for a model, with fallback to default."""
+    name = _priced_name(model)
+
     # Try exact match
-    if model in MODEL_PRICING:
-        return MODEL_PRICING[model]
+    if name in MODEL_PRICING:
+        return MODEL_PRICING[name]
 
     # Try prefix match (e.g., "gpt-4o-2024-08-06" -> "gpt-4o")
     for known_model in MODEL_PRICING:
-        if model.startswith(known_model):
+        if name.startswith(known_model):
             return MODEL_PRICING[known_model]
 
     return DEFAULT_PRICING
+
+
+def is_estimated_price(model: str) -> bool:
+    """Whether this model's cost is a guess rather than a looked-up price.
+
+    DEFAULT_PRICING is returned exactly like a real entry, so a fabricated
+    number reaches a display with the same confidence as a known one. That is
+    how the default model went mispriced without anyone noticing: the figure
+    looked like every other figure.
+
+    Callers that show money should say when it is an estimate. The next model
+    the world ships is unknown here again.
+    """
+    return get_pricing(model) is DEFAULT_PRICING
 
 
 def get_context_limit(model: str) -> int:
