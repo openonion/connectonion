@@ -291,15 +291,63 @@ def _print_host_banner(
 
     # Trust/Invite (belongs to host layer)
     if trust_config and isinstance(trust, str) and trust.lower() in TRUST_LEVELS:
-        onboard = trust_config.get("onboard", {})
-        invite_codes = onboard.get("invite_code", [])
-        if invite_codes:
-            codes = invite_codes if isinstance(invite_codes, list) else [invite_codes]
-            codes_str = ", ".join(codes)
-            console.print(f"{indent}[bold yellow]Invite: {codes_str}[/bold yellow]")
+        line = _invite_line(trust_config)
+        if line:
+            console.print(f"{indent}[bold yellow]{line}[/bold yellow]")
             console.print()
 
     console.print()
+
+
+def _invite_line(trust_config) -> str | None:
+    """One line about the agent's door, or nothing.
+
+    Three things it must not do.
+
+    **Print the code.** It is a password, and this line goes to stdout, which on
+    a deployed agent is journalctl — readable by anyone with the box, kept as
+    long as the logs are kept, and copied into every paste of a startup dump.
+    Saying a door exists is not the same as publishing its key.
+
+    **Print the placeholder.** `$CO_INVITE_CODE` rendered verbatim reads as the
+    code to anyone who has not seen the policy file.
+
+    **Say nothing when nobody can get in.** A policy that declares
+    `$CO_INVITE_CODE` on a machine where it is unset refuses every code. That is
+    the safe direction, and it is the one an upgrade produces on any deployment
+    that relied on the old shipped constant — so it has to be said out loud, or
+    the operator learns it from a person who could not get in.
+    """
+    onboard = (trust_config or {}).get("onboard") or {}
+    declared = onboard.get("invite_code") or []
+    declared = declared if isinstance(declared, list) else [declared]
+    if not declared:
+        return None
+
+    from ..trust.fast_rules import _resolve_codes
+    from_env = [str(c)[1:] for c in declared if str(c).startswith("$")]
+    literals = [c for c in declared if not str(c).startswith("$")]
+    live = _resolve_codes(declared)
+
+    if live:
+        # Say *where* the code is, not just that there is one. Telling an
+        # operator whose code is a literal in trust.md to "get it from .env"
+        # sends them looking for something that is not there.
+        resolved_from_env = [n for n in from_env if os.environ.get(n, "").strip()]
+        if resolved_from_env and literals:
+            where = f"{', '.join(resolved_from_env)} in .env, and one in the trust policy"
+        elif resolved_from_env:
+            where = f"{', '.join(resolved_from_env)} in .env"
+        else:
+            where = "in the trust policy"
+        dead = [n for n in from_env if not os.environ.get(n, "").strip()]
+        note = f" ({', '.join(dead)} is declared but unset)" if dead else ""
+        return f"Invite: set — {where}, not printed here{note}"
+
+    if from_env:
+        return (f"Invite: no one can onboard — {', '.join(from_env)} is not set. "
+                f"Add it to .env, or run `co init` to mint one.")
+    return None
 
 
 def _both(first, second):
