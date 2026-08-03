@@ -80,3 +80,36 @@ def test_no_temp_files_are_left_behind(tmp_path):
 
     leftovers = [p.name for p in tmp_path.iterdir() if ".tmp" in p.name]
     assert not leftovers, leftovers[:5]
+
+
+def test_writing_without_the_lock_is_not_silent(tmp_path, capsys, monkeypatch):
+    """Giving up on the lock and writing anyway is a decision, not a detail.
+
+    _lock retries for a second and then returns None, and record_run proceeds
+    regardless — deliberately, because blocking forever on a lock held by a
+    process the OS never noticed dying is worse. But an unlocked
+    read-modify-write can still lose another writer's entry, and a lost
+    last_run makes the scheduler run something twice. That has to be findable
+    afterwards, in the log, not inferred from a duplicate run.
+    """
+    from datetime import datetime, timezone
+    from connectonion.network.host import schedule as sch
+
+    monkeypatch.setattr(sch, "_lock", lambda *a, **k: None)
+
+    sch.record_run(tmp_path, "nightly", when=datetime.now(timezone.utc),
+                   status="done", session_id="s1")
+
+    out = capsys.readouterr().out + capsys.readouterr().err
+    assert "lock" in out.lower(), f"nothing said about the missing lock: {out!r}"
+
+
+def test_a_normal_write_says_nothing(tmp_path, capsys):
+    """The warning has to be rare enough to mean something."""
+    from datetime import datetime, timezone
+    from connectonion.network.host.schedule import record_run
+
+    record_run(tmp_path, "nightly", when=datetime.now(timezone.utc),
+               status="done", session_id="s1")
+
+    assert "lock" not in capsys.readouterr().out.lower()
