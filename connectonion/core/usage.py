@@ -178,3 +178,24 @@ def calculate_cost(
         cache_write_cost = (cache_write_tokens / 1_000_000) * pricing["cache_write"]
 
     return input_cost + output_cost + cached_cost + cache_write_cost
+
+
+def totals_from_trace(trace: list) -> tuple:
+    """Tokens and cost for a run, read off the trace the agent wrote.
+
+    Three callers had their own copy of this and all three were wrong the same
+    way: they summed the `llm_call` entries. `llm_call` is written when the
+    request goes out, before there is anything to count — the usage is on the
+    `llm_result` that follows. Every run summary and every saved eval therefore
+    reported 0 tokens and $0.0000, for every run there has ever been.
+
+    The usage is a dict, not a TokenUsage: agent.py records model_dump() to keep
+    the trace JSON-serialisable. Attribute access would have raised the moment
+    the list stopped being empty, which is how a copy of this was written three
+    times without anyone noticing it never ran.
+    """
+    usages = [t.get('usage') for t in trace if t.get('type') == 'llm_result']
+    usages = [u for u in usages if u]
+
+    return (sum(u['input_tokens'] + u['output_tokens'] for u in usages),
+            sum(u['cost'] for u in usages))

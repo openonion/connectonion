@@ -583,17 +583,12 @@ class Console:
             session: Agent's current_session dict (contains trace with usage)
             session_path: Optional path to eval file
         """
-        # Calculate totals from trace
-        trace = session.get('trace', [])
-        llm_calls = [t for t in trace if t.get('type') == 'llm_call']
-        total_tokens = sum(
-            (t.get('usage').input_tokens + t.get('usage').output_tokens)
-            for t in llm_calls if t.get('usage')
-        )
-        total_cost = sum(
-            t.get('usage').cost
-            for t in llm_calls if t.get('usage')
-        )
+        # Calculate totals from trace. Summing llm_call entries here is what
+        # made this line print "0 tokens · $0.0000" for every run — see
+        # totals_from_trace.
+        from .core.usage import totals_from_trace
+
+        total_tokens, total_cost = totals_from_trace(session.get('trace', []))
 
         # Format tokens
         tokens_str = f"{total_tokens/1000:.1f}k" if total_tokens >= 1000 else str(total_tokens)

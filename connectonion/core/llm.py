@@ -1098,8 +1098,17 @@ class OpenOnionLLM(LLM):
             cached_tokens = 0
             if hasattr(response.usage, 'prompt_tokens_details') and response.usage.prompt_tokens_details:
                 cached_tokens = getattr(response.usage.prompt_tokens_details, 'cached_tokens', 0) or 0
-            # Use the underlying model for pricing (without co/ prefix)
-            cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
+            # The server bills the account and says what it took. Use that,
+            # not the local table: prompt_tokens + completion_tokens is 12 on a
+            # call whose total_tokens is 114, because the reasoning models
+            # charge for tokens the OpenAI-shaped fields never name. Arithmetic
+            # over those two numbers came out 11.6x under what was charged.
+            #
+            # `is not None` rather than a truth test — a free call reports 0.0,
+            # and falling back there would invent a charge for it.
+            cost = getattr(response.usage, 'cost_usd', None)
+            if cost is None:
+                cost = calculate_cost(self.model, input_tokens, output_tokens, cached_tokens)
             usage = TokenUsage(
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,

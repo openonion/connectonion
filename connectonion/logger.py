@@ -19,6 +19,7 @@ from typing import Optional, Union, Dict, Any, List
 import yaml
 
 from .console import Console
+from .core.usage import totals_from_trace
 
 
 def _slugify(text: str, max_length: int = 50) -> str:
@@ -244,17 +245,8 @@ class Logger:
 
         # Aggregate from trace
         trace = session.get('trace', [])
-        llm_calls = [t for t in trace if t.get('type') == 'llm_call']
         tool_calls = [t for t in trace if t.get('type') == 'tool_result']
-
-        total_tokens = sum(
-            (t.get('usage').input_tokens + t.get('usage').output_tokens)
-            for t in llm_calls if t.get('usage')
-        )
-        total_cost = sum(
-            t.get('usage').cost
-            for t in llm_calls if t.get('usage')
-        )
+        total_tokens, total_cost = totals_from_trace(trace)
 
         # Build metadata as compact JSON string
         meta = json.dumps({
