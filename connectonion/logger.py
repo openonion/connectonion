@@ -19,7 +19,6 @@ from typing import Optional, Union, Dict, Any, List
 import yaml
 
 from .console import Console
-from .core.usage import totals_from_trace
 
 # How many run_N.yaml files to keep per eval. They hold the full message array
 # of one turn, nothing in the code reads them back, and an agent on a schedule
@@ -256,6 +255,13 @@ class Logger:
         # Aggregate from trace
         trace = session.get('trace', [])
         tool_calls = [t for t in trace if t.get('type') == 'tool_result']
+        # Imported here, not at module level: `.core.usage` runs
+        # `connectonion.core.__init__`, which imports Agent, which imports
+        # Logger from this module -- so `import connectonion.logger` in a
+        # process that has not already loaded core died on the cycle. The
+        # eager imports used to hide it; #631 removed them.
+        from .core.usage import totals_from_trace
+
         total_tokens, total_cost = totals_from_trace(trace)
 
         # Build metadata as compact JSON string
