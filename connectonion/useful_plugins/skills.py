@@ -73,6 +73,7 @@ from typing import TYPE_CHECKING, Optional, Dict, Any, List
 from copy import deepcopy
 
 from ..core.events import after_user_input, on_complete, before_each_tool, on_agent_ready
+from ..project import project_co_dir, project_root
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -128,10 +129,10 @@ def _get_skill_paths(skill_name: str) -> List[Path]:
     home = Path.home()
 
     # 1. Project-level ConnectOnion: .co/skills/skill-name/SKILL.md
-    paths.append(Path.cwd() / '.co' / 'skills' / skill_name / 'SKILL.md')
+    paths.append(project_co_dir() / 'skills' / skill_name / 'SKILL.md')
 
     # 2. Project-level Claude Code: .claude/skills/skill-name/SKILL.md
-    paths.append(Path.cwd() / '.claude' / 'skills' / skill_name / 'SKILL.md')
+    paths.append(project_root() / '.claude' / 'skills' / skill_name / 'SKILL.md')
 
     # 3. User-level ConnectOnion: ~/.co/skills/skill-name/SKILL.md
     paths.append(home / '.co' / 'skills' / skill_name / 'SKILL.md')

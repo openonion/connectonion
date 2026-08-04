@@ -47,22 +47,8 @@ _project_dir = None
 _agent_metadata = None
 
 
-def project_root(start=None):
-    """The directory that owns ``.co/`` — the project, not wherever you ran from.
-
-    Walks up from ``start``. Everything else the agent is made of is found this way
-    (``.co/skills``, ``.co/host.yaml``), and the Home page had no such notion: it
-    resolved against the bare cwd, so running the agent from a subdirectory created
-    a second dashboard.html there and served that one instead.
-
-    Falls back to ``start`` when there is no ``.co/`` above it — an agent hosted
-    outside a project still gets a Home, it just lives where it was started.
-    """
-    start = Path(start or Path.cwd()).resolve()
-    for directory in (start, *start.parents):
-        if (directory / CO_DIR).is_dir():
-            return directory
-    return start
+# The directory that owns `.co/`. See connectonion/project.py.
+from ....project import project_root
 
 
 def dashboard_path():

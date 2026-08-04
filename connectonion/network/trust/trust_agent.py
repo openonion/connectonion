@@ -53,6 +53,7 @@ Extensibility:
 
 from dataclasses import dataclass
 from pathlib import Path
+from ...project import project_co_dir
 from typing import Optional
 import logging
 
@@ -300,7 +301,7 @@ justify admitting them, it is not enough."""
         # Load agent's keys for signing the request
         from ... import address as addr
 
-        co_dir = Path.cwd() / '.co'
+        co_dir = project_co_dir()
         keys = addr.load(co_dir)
         if not keys:
             return False
