@@ -39,13 +39,16 @@ USAGE = (
 
 
 def _load_keys():
-    """This machine's identity, to sign the request (required for strict-trust
-    remotes, harmless otherwise). Project .co first, then ~/.co; None if absent."""
-    from connectonion import address
-    co_dir = Path(".co")
-    if not (co_dir.exists() and (co_dir / "keys" / "agent.key").exists()):
-        co_dir = Path.home() / ".co"
-    return address.load(co_dir)
+    """This caller's identity, to sign the request.
+
+    Every trust level above `open` refuses an unsigned request -- `careful`, the
+    default, included. This was a second copy of the resolver that used a bare
+    `Path(".co")`, so running `co call` from a subdirectory signed as the machine
+    rather than as the project.
+    """
+    from connectonion.network.connect import _this_callers_identity
+
+    return _this_callers_identity()
 
 
 def handle_call(args) -> int:

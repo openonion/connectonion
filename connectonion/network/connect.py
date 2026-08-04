@@ -33,6 +33,36 @@ import httpx
 from .. import address as addr
 
 
+def _this_callers_identity():
+    """The keys a client signs with: this project's, else this machine's.
+
+    `connect()` took `keys=None` and passed it straight through, so the
+    documented one-liner -- `connect(addr).input(...)` -- sent unsigned frames
+    and a `careful` agent refused them:
+
+        ConnectionError: Auth error: unauthorized: signed request required
+
+    `careful` is what `co init` writes, so that was the default server. What
+    `careful` adds over `strict` is a way *in* for a signed stranger, not
+    permission to stay anonymous.
+
+    `co call` never hit this because it loaded the keys itself, in a second copy
+    of this logic that resolved `.co` against the bare cwd. The host side had
+    already settled the question -- resolve_agent_identity: the project's key
+    when it has one, the machine's ~/.co when it does not -- so a client gets
+    the same answer, with the walk-up #661 gave the project half.
+
+    Never generates. An agent must have an address; a caller without one is a
+    caller the remote is entitled to refuse.
+    """
+    from pathlib import Path
+
+    from .. import address
+    from ..project import project_co_dir
+
+    return address.load(project_co_dir()) or address.load(Path.home() / ".co")
+
+
 def _sort_endpoints(endpoints: List[str]) -> List[str]:
     """Closest first, and among equally close ones, the encrypted one.
 
@@ -196,7 +226,10 @@ class RemoteAgent:
         relay_url: str = "wss://oo.openonion.ai"
     ):
         self.address = agent_address
-        self._keys = keys
+        # None means "I did not choose" -- find the caller's identity, because
+        # an unsigned client cannot talk to a default agent. False means "no
+        # keys, deliberately", which trust: open accepts and people use in dev.
+        self._keys = _this_callers_identity() if keys is None else (keys or None)
         self._relay_url = relay_url.rstrip("/")
         self._status = "idle"
         self._current_session: Optional[Dict[str, Any]] = None
@@ -778,7 +811,10 @@ def connect(
 
     Args:
         address: Agent's public key address (0x...)
-        keys: Signing keys from address.load() - required for strict trust agents
+        keys: Signing keys. Omit them and this project's identity is used
+              (then this machine's ~/.co). Every trust level above `open`
+              refuses an unsigned request, `careful` included. Pass
+              keys=False to connect anonymously to a `trust: open` agent.
         relay_url: Relay server base URL (default: production)
 
     Returns:
