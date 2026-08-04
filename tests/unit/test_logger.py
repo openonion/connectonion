@@ -58,7 +58,9 @@ class TestLoggerInit:
         assert logger.enable_console is True
         assert logger.enable_sessions is True
         assert logger.enable_file is True
-        assert logger.log_file_path == Path(".co/logs/test-agent.log")
+        # Resolved, not relative: the Logger locates the project's .co by walking
+        # up, so a chdir after construction cannot move where it writes.
+        assert logger.log_file_path == Path(".co/logs/test-agent.log").resolve()
         assert logger.console is not None
 
     def test_quiet_mode(self):
@@ -291,7 +293,7 @@ class TestEvalLogging:
         logger.log_turn("Say hello to Alice", "Hello, Alice!", 1000, session, "gpt-4")
 
         # File should be created with slugified input name
-        assert logger.eval_file == Path(".co/evals/say_hello_to_alice.yaml")
+        assert logger.eval_file == Path(".co/evals/say_hello_to_alice.yaml").resolve()
         assert logger.eval_file.exists()
 
     def test_log_turn_creates_run_yaml_for_messages(self, tmp_path, monkeypatch):
