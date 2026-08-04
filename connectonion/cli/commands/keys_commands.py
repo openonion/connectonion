@@ -20,8 +20,26 @@ console = Console()
 
 
 def _find_co_dir() -> Path:
-    """Find the .co directory (local first, then global)."""
-    local = Path(".co")
+    """The identity this project uses: its own key, else the machine's.
+
+    The project half is found by walking up, the way everything else has since
+    #660. As a bare `Path(".co")` it was invisible one directory down, and the
+    `~/.co` fallback then answered instead -- so `co keys` printed a different
+    address depending on where in the project you stood:
+
+        from the project root   Address 0xd72fbbd5…   Source .co (project)
+        from a subdirectory     Address 0x10e68f6d…   Source ~/.co (global)
+
+    Both stated as confidently as the other, and an operator reads one off this
+    panel and hands it out.
+
+    The fallback itself stays: a project with no key of its own is a real
+    configuration -- `co init` usually produces one -- and it is what
+    resolve_agent_identity does on the host side.
+    """
+    from ...project import project_co_dir
+
+    local = project_co_dir()
     if local.exists() and (local / "keys" / "agent.key").exists():
         return local
 
@@ -75,10 +93,21 @@ def _short_path(p: Path) -> str:
 
 
 def _source_label(co_dir: Path) -> str:
-    """Return human-readable source label for where keys are loaded from."""
+    """Return human-readable source label for where keys are loaded from.
+
+    Relative to where you are standing, so it stays short and says which way the
+    project lies: `.co` at the root, `../.co` from a subdirectory. It used to
+    interpolate `co_dir` directly, which read fine only because that value was
+    the relative `Path(".co")`; once it became the resolved project path the
+    panel printed the machine's whole directory tree.
+    """
     if co_dir.resolve() == (Path.home() / ".co").resolve():
         return "~/.co (global)"
-    return f"{co_dir} (project)"
+    try:
+        shown = co_dir.relative_to(Path.cwd())
+    except ValueError:
+        shown = Path(os.path.relpath(co_dir, Path.cwd()))
+    return f"{shown} (project)"
 
 
 def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
