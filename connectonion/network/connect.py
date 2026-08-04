@@ -78,7 +78,21 @@ async def resolve_endpoint(
         except Exception:
             return None
 
-        if not agent_info.get("online") or not agent_info.get("endpoints"):
+        # `online` is advisory, not required. The relay does not send it —
+        # measured against production, the reply is endpoints / relay /
+        # last_seen / profile — so requiring it meant this function returned
+        # None for every agent that has ever existed, and every call went over
+        # the relay even to an agent on the same machine. _sort_endpoints and
+        # its localhost-first ordering had never run.
+        #
+        # An explicit False is still honoured: the relay knowing the agent is
+        # gone is worth more than rediscovering it at one timeout per endpoint.
+        # Absent means no opinion.
+        #
+        # Liveness was never what this flag established anyway. Each candidate
+        # below is fetched and its /info address must match the agent being
+        # looked for, which is both stronger and current.
+        if agent_info.get("online") is False or not agent_info.get("endpoints"):
             return None
 
         # Step 2: Sort endpoints (localhost first)
