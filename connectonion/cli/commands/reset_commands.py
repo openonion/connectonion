@@ -3,7 +3,7 @@ Purpose: Delete global ConnectOnion configuration and create fresh account with 
 LLM-Note:
   Dependencies: imports from [sys, shutil, yaml, pathlib, rich.console, rich.prompt, rich.panel, address, auth_commands.authenticate, __version__, datetime] | imported by [cli/main.py via handle_reset()] | tested by [tests/e2e/cli/test_cli_reset.py]
   Data flow: receives no args → checks ~/.co/ exists → prompts user for 'Y' confirmation with clear warnings → deletes ~/.co/keys/, ~/.co/keys.env → recreates directory structure → address.generate() creates new Ed25519 keypair with seed phrase → address.save() saves to ~/.co/keys/ → creates fresh keys.env with new agent identity → calls authenticate(global_dir, save_to_project=False) to register new account and get bonus credits → displays seed phrase in Rich panel → warns user to update project .env files
-  State/Effects: DESTRUCTIVE OPERATION | deletes entire ~/.co/ directory contents (keys, keys.env) | creates fresh ~/.co/ with new keypair | calls authenticate() which creates new backend account and writes OPENONION_API_KEY to keys.env | writes to stdout via rich.Console with warnings and confirmations | existing projects still have old API key (requires manual 'co init' to update)
+  State/Effects: DESTRUCTIVE OPERATION | deletes ~/.co/keys/ and ~/.co/keys.env, and nothing else — skills/, subs/, backups/, blocklist.txt and agent.json all survive | creates fresh ~/.co/ with new keypair | calls authenticate() which creates new backend account and writes OPENONION_API_KEY to keys.env | writes to stdout via rich.Console with warnings and confirmations | existing projects still have old API key (requires manual 'co init' to update)
   Integration: exposes handle_reset() for CLI | similar to ensure_global_config() in init.py but deletes first | relies on address.generate() for new Ed25519 keypair | calls authenticate() to register new account | displays seed phrase via Rich panel | requires explicit 'Y' confirmation to proceed
   Performance: file deletion is fast (<100ms) | address.generate() is fast (<100ms) | authenticate() makes network call (2-5s) | config file writes are I/O bound
   Errors: gracefully handles missing ~/.co/ (nothing to reset) | requires uppercase 'Y' for confirmation (case-sensitive) | cancels if user types anything else | authenticate() may fail but reset still completes | warns user about data loss before proceeding
@@ -26,12 +26,12 @@ console = Console()
 def handle_reset():
     """Reset ConnectOnion global configuration and create new account.
 
-    WARNING: This will delete all your data including:
-    - Your Ed25519 keypair and account access
-    - Your balance and transaction history
-    - All configuration and credentials
+    WARNING: This deletes ~/.co/keys/ and ~/.co/keys.env, which means:
+    - Your Ed25519 keypair, and with it access to the current account
+    - The balance and history that account had
 
-    You will get a fresh new account.
+    Everything else in ~/.co stays where it is — skills, subscriptions,
+    backups, the blocklist. You get a fresh account, not a fresh machine.
     """
     global_dir = Path.home() / ".co"
 
@@ -42,12 +42,12 @@ def handle_reset():
         return
 
     # Show clear warning
-    console.print("\n[bold yellow]⚠️  WARNING: This will DELETE ALL your ConnectOnion data[/bold yellow]\n")
+    console.print("\n[bold yellow]⚠️  WARNING: This deletes your keypair — the account goes with it[/bold yellow]\n")
     console.print("[red]You will lose:[/red]")
-    console.print("  • Your account and balance")
-    console.print("  • All transaction history")
-    console.print("  • Your Ed25519 keypair")
-    console.print("  • All configurations and credentials\n")
+    console.print("  • Your Ed25519 keypair (~/.co/keys/)")
+    console.print("  • Your credentials (~/.co/keys.env)")
+    console.print("  • The account those belong to: its balance and its history\n")
+    console.print("[dim]Everything else in ~/.co stays: skills, subscriptions, backups, blocklist.[/dim]\n")
 
     console.print("[green]You will get:[/green]")
     console.print("  • Fresh new account")
@@ -61,7 +61,7 @@ def handle_reset():
         console.print("\n[yellow]Cancelled.[/yellow]\n")
         return
 
-    # Delete everything
+    # The keypair and the credentials. Nothing else in ~/.co is touched.
     keys_dir = global_dir / "keys"
     if keys_dir.exists():
         shutil.rmtree(keys_dir)
