@@ -148,6 +148,34 @@ def _load_index() -> Optional[dict]:
 SOURCE_PRIORITY = {src: i for i, (src, _, _) in enumerate(SOURCES)}
 
 
+# What a skill must not carry with it. VERSIONING.md put it plainly when the
+# command was introduced -- "skills carry their own files but never their
+# secrets" -- and nothing implemented it: the copy took the directory whole,
+# .env, credentials.json, keys/ and all.
+#
+# It matters most where the command points. `--to-project` puts the skill where
+# `co deploy` will find it, and a deploy rsyncs the project tree to a server, so
+# a credential a skill kept beside itself on a laptop lands on the box.
+#
+# Matched on the name, not the contents: guessing at contents gets both false
+# positives and false negatives, and a name like `.env` or `id_rsa` is what
+# people actually use. `.env.example` is deliberately not caught -- it is the
+# file you commit.
+SECRET_NAMES = {".env", "credentials.json", "id_rsa", "id_ed25519", ".netrc",
+                ".npmrc", ".pypirc", "keys.env", "service-account.json"}
+SECRET_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+
+
+def _is_secret(path: Path) -> bool:
+    name = path.name
+    if name in SECRET_NAMES:
+        return True
+    if name.endswith(SECRET_SUFFIXES):
+        return True
+    # `.env.local`, `.env.production` -- but not `.env.example`
+    return name.startswith(".env.") and not name.endswith((".example", ".sample", ".template"))
+
+
 def _copy_entry(entry: dict, force: bool, skills_dir: Optional[Path] = None) -> bool:
     """Copy a single index entry into <skills_dir>/<name>/. Returns True if copied."""
     name = entry["name"]
@@ -164,17 +192,40 @@ def _copy_entry(entry: dict, force: bool, skills_dir: Optional[Path] = None) -> 
         return False
 
     dest_dir.mkdir(parents=True, exist_ok=True)
+    left_behind = []
     if src_path.name == "SKILL.md" and src_path.parent.is_dir():
+        def skip_secrets(directory, names):
+            # copytree's ignore hook, so a credential nested in a subdirectory is
+            # left behind too -- keys/id_rsa was the one that made this obvious.
+            dropped = [n for n in names if _is_secret(Path(directory) / n)]
+            left_behind.extend(str(Path(directory).joinpath(n)) for n in dropped)
+            return set(dropped)
+
         for item in src_path.parent.iterdir():
             target = dest_dir / item.name
+            if _is_secret(item):
+                left_behind.append(str(item))
+                continue
             if item.is_dir():
                 if target.exists() and force:
                     shutil.rmtree(target)
-                shutil.copytree(item, target)
+                shutil.copytree(item, target, ignore=skip_secrets)
             else:
                 shutil.copy2(item, target)
     else:
         shutil.copy2(src_path, dest_file)
+
+    # A directory whose whole contents were secrets arrives empty, which reads as
+    # "the keys came along". Remove it rather than leave that impression.
+    for directory in sorted((d for d in dest_dir.rglob("*") if d.is_dir()),
+                            key=lambda d: len(d.parts), reverse=True):
+        if not any(directory.iterdir()):
+            directory.rmdir()
+
+    # Said out loud: a skill that really did keep something here would otherwise
+    # lose it without a word, and finding that out later is worse.
+    for path in left_behind:
+        console.print(f"[yellow]  skipped {Path(path).name} (a secret stays where it is)[/yellow]")
 
     console.print(f"[green]✓ Copied {name} ({entry['source']}) → {dest_dir}[/green]")
     return True
