@@ -53,8 +53,14 @@ for _env_file in (_Path.cwd() / ".env", _Path.home() / ".co" / "keys.env"):
 # effect. `tui` and `useful_plugins` are re-exported by nobody, which is exactly
 # why they are listed: removing a name that used to resolve is not something a
 # startup-time change should do quietly. Naming one here does not import it.
-_SUBMODULES = ("address", "core", "debug", "logger", "network", "prompts",
-               "tui", "useful_plugins", "useful_tools")
+# Every submodule that resolved as an attribute before the package went lazy.
+# The eager imports set these as a side effect; nothing does now, so each one
+# has to be named. #632 named most of them and missed console, derive and
+# useful_events_handlers -- each measured, one interpreter per attribute,
+# because accessing any one of them imports the others and hides the gap.
+_SUBMODULES = ("address", "console", "core", "debug", "derive", "logger",
+               "network", "prompts", "tui", "useful_events_handlers",
+               "useful_plugins", "useful_tools")
 
 _FROM = {
     **{name: ".core" for name in (
