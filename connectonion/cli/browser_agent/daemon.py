@@ -199,6 +199,9 @@ class BrowserDaemon:
         self.sock_path = sock_path
         self.browser = BrowserAutomation(headless=headless)
         self._srv = None
+        # Set by _cleanup before it closes the listener, so serve() can tell "we are
+        # stopping" from "the socket broke while we were meant to be serving".
+        self._closing = False
         self._had_browser = False
         self.last_command = None  # {"line": str, "at": float} of the last real command
         self._next_tab = 1        # id allocator for auto-named tabs
@@ -567,7 +570,25 @@ class BrowserDaemon:
             signal.signal(signal.SIGTERM, lambda *_: sys.exit(0))
 
         while True:
-            conn = self._accept()
+            try:
+                conn = self._accept()
+            except OSError:
+                # Closing the listener is how this daemon is told to stop, and
+                # _accept's docstring says the raise is the mechanism. Letting it
+                # escape is the part that hurt: each serve() thread printed a
+                # traceback on the way out, and several doing that at once while
+                # the interpreter finalised aborted the process --
+                #   Fatal Python error: _enter_buffered_busy: could not acquire
+                #   lock for <_io.BufferedWriter name='<stderr>'> at interpreter
+                #   shutdown, possibly due to daemon threads
+                # -- taking whatever was still buffered with it. Seen at the end
+                # of a full test run: everything passed, exit code 134.
+                #
+                # Only when it is us doing the closing. A listener that breaks
+                # while this is supposed to be serving is a real failure.
+                if self._closing:
+                    return
+                raise
             if conn is None:
                 continue  # a client that failed the auth handshake (Windows) — keep serving
             request = ""
@@ -719,6 +740,7 @@ class BrowserDaemon:
             conn.sendall(data)
 
     def _cleanup(self):
+        self._closing = True   # read by serve() -- see the accept loop
         # Stop accepting FIRST: closing/unlinking the socket before anything slow
         # means a client connecting during shutdown fails immediately and spawns
         # a fresh daemon, instead of reaching a daemon that will never accept its request.
