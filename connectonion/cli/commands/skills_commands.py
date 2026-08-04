@@ -161,16 +161,28 @@ SOURCE_PRIORITY = {src: i for i, (src, _, _) in enumerate(SOURCES)}
 # positives and false negatives, and a name like `.env` or `id_rsa` is what
 # people actually use. `.env.example` is deliberately not caught -- it is the
 # file you commit.
-SECRET_NAMES = {".env", "credentials.json", "id_rsa", "id_ed25519", ".netrc",
-                ".npmrc", ".pypirc", "keys.env", "service-account.json"}
+SECRET_NAMES = {".env", ".netrc", ".npmrc", ".pypirc", "keys.env",
+                "credentials.json", "service-account.json", "service_account.json",
+                "token.json", "auth.json", "secrets.json", "secrets.yaml", "secrets.yml",
+                ".git-credentials"}
 SECRET_SUFFIXES = (".pem", ".key", ".p12", ".pfx")
+
+# Whole directories that exist to hold credentials. Listed as directories on
+# purpose: the first pass named `id_rsa` and `id_ed25519` and `.ssh/id_ecdsa`
+# walked straight past, because guessing every key filename is the wrong shape
+# of rule. Nothing inside one of these travels.
+SECRET_DIRS = {".ssh", ".aws", ".gnupg", ".kube", ".docker", ".azure"}
 
 
 def _is_secret(path: Path) -> bool:
     name = path.name
-    if name in SECRET_NAMES:
+    if name in SECRET_DIRS:
         return True
-    if name.endswith(SECRET_SUFFIXES):
+    if name in SECRET_NAMES or name.endswith(SECRET_SUFFIXES):
+        return True
+    # An SSH private key is `id_<type>`; its `.pub` half is not a secret, and
+    # nor is anything else that merely starts with those two letters.
+    if name.startswith("id_") and not name.endswith(".pub"):
         return True
     # `.env.local`, `.env.production` -- but not `.env.example`
     return name.startswith(".env.") and not name.endswith((".example", ".sample", ".template"))
