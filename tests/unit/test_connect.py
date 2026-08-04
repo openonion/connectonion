@@ -278,6 +278,14 @@ def create_mock_ws(messages: list):
             self.messages = messages
             self.index = 0
 
+        def __await__(self):
+            """`websockets.connect(url)` is awaitable as well as a context
+            manager, and connect.py awaits it so a refused connection can be
+            retried elsewhere."""
+            async def _self():
+                return self
+            return _self().__await__()
+
         async def __aenter__(self):
             return self
 
@@ -398,6 +406,14 @@ class TestStreamInput:
                 self.agent = agent_ref
                 self.status_during_recv = None
                 self.call_count = 0
+
+            def __await__(self):
+                """`websockets.connect(url)` is awaitable as well as a context
+                manager, and connect.py awaits it so a refused connection can be
+                retried elsewhere."""
+                async def _self():
+                    return self
+                return _self().__await__()
 
             async def __aenter__(self):
                 return self
