@@ -1,7 +1,7 @@
 """
 Purpose: Runtime inspector module for AI-powered crash debugging with experiment validation
 LLM-Note:
-  Dependencies: imports from [agent.py, runtime_inspector.py] | imported by [debug/__init__.py, user code] | tested by [tests/debug/test_runtime_inspector.py]
+  Dependencies: imports from [agent.py, runtime_inspector.py] | imported by [debug/__init__.py, user code] | tested by [tests/unit/test_runtime_inspector.py]
   Data flow: re-exports create_debug_agent factory and RuntimeInspector class
   State/Effects: no state
   Integration: exposes create_debug_agent() → Agent, RuntimeInspector class for capturing crash context and experimenting with fixes | used for interactive crash debugging

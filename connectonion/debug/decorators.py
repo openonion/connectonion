@@ -1,7 +1,7 @@
 """
 Purpose: Provide @replay decorator for re-executing tools with modified parameters during debugging
 LLM-Note:
-  Dependencies: imports from [functools, builtins, typing] | imported by [agent.py, __init__.py] | tested by [tests/test_decorators.py]
+  Dependencies: imports from [functools, builtins, typing] | imported by [agent.py, __init__.py] | tested by [tests/unit/test_decorators.py]
   Data flow: @replay wraps function → stores func, args, kwargs in ReplayFunction during execution → user calls replay(param=new_value) in debugger → re-executes function with merged kwargs → prints result
   State/Effects: modifies builtins namespace by injecting global 'replay' object | stores ReplayFunction state in _func, _args, _kwargs, _original_func | clears context after execution | no persistence
   Integration: exposes @replay decorator, replay global callable, xray_replay() combined decorator, _is_replay_enabled() helper | marked functions have __replay_enabled__ attribute | ReplayDecorator acts as both decorator and callable

@@ -1,7 +1,7 @@
 """
 Purpose: Prompt templates directory with utility for copying example prompts to user projects
 LLM-Note:
-  Dependencies: imports from [pathlib] | imported by [cli/commands/copy_commands.py, user code] | tested by [tests/prompts/test_useful_prompts.py]
+  Dependencies: imports from [pathlib] | imported by [cli/commands/copy_commands.py, user code] | tested by [no direct test file]
   Data flow: get_example_path(name) → returns Path to template directory for copying | PROMPTS_DIR constant points to useful_prompts/ directory
   State/Effects: reads filesystem (Path operations) | no modifications
   Integration: exposes PROMPTS_DIR constant, get_example_path(name) → Path | used by `co copy coding_agent` command to copy templates | contains coding_agent/ subdirectory with main.md, tools/*.md, assembler.py

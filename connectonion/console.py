@@ -1,7 +1,7 @@
 """
 Purpose: Handle agent terminal output with Rich formatting and optional file logging
 LLM-Note:
-  Dependencies: imports from [sys, datetime, pathlib, typing, rich.console, rich.panel, rich.text] | imported by [logger.py, tool_executor.py] | tested by [tests/test_console.py]
+  Dependencies: imports from [sys, datetime, pathlib, typing, rich.console, rich.panel, rich.text] | imported by [logger.py, tool_executor.py] | tested by [tests/unit/test_console.py]
   Data flow: receives from Logger/tool_executor → .print(), .log_tool_call(), .log_tool_result() → formats with timestamp → prints to stderr via RichConsole → optionally appends to log_file as plain text
   State/Effects: writes to stderr (not stdout, to avoid mixing with agent results) | writes to log_file if provided (plain text with timestamps) | creates log file parent directories if needed | appends session separator on init
   Integration: exposes Console(log_file), .print(message, style), .log_tool_call(name, args), .log_tool_result(result, timing), .log_llm_response(), .print_xray_table() | tool calls formatted as natural function-call style: greet(name='Alice')

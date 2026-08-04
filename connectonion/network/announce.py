@@ -1,7 +1,7 @@
 """
 Purpose: Build and sign ANNOUNCE messages for agent relay network registration
 LLM-Note:
-  Dependencies: imports from [json, time, typing, address.py, ifaddr, httpx] | imported by [host.py] | tested by [tests/test_announce.py]
+  Dependencies: imports from [json, time, typing, address.py, ifaddr, httpx] | imported by [host.py] | tested by [tests/unit/test_announce.py]
   Data flow: receives from host() → create_announce_message(address_data, summary, endpoints) → builds message dict without signature → serializes to deterministic JSON (sort_keys=True) → calls address.sign() to create Ed25519 signature → returns signed message ready for relay
   State/Effects: get_ips() makes HTTP request to ipify (one-time) | pure function otherwise | deterministic JSON serialization (matches server verification) | signature is hex string without 0x prefix
   Integration: exposes get_ips(), create_announce_message(address_data, summary, endpoints) | used by host() to announce agent presence to relay network | relay server verifies signature using address (public key) | heartbeat re-sends with updated timestamp

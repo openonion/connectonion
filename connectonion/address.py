@@ -1,7 +1,7 @@
 """
 Purpose: Generate and manage Ed25519 cryptographic agent identities with seed phrase recovery
 LLM-Note:
-  Dependencies: imports from [os, pathlib, typing, nacl.signing, mnemonic] | imported by [cli/commands/auth_commands.py] | tested by [tests/test_address.py]
+  Dependencies: imports from [os, pathlib, typing, nacl.signing, mnemonic] | imported by [cli/commands/auth_commands.py] | tested by [tests/unit/test_address.py]
   Data flow: generate() → creates 12-word seed phrase via Mnemonic → derives SigningKey from seed → creates address (0x + hex public key) → returns {address, short_address, email, seed_phrase, signing_key} | recover(seed_phrase) → validates phrase → recreates SigningKey → recreates address
   State/Effects: save() writes to .co/keys/ directory: agent.key (binary signing key), recovery.txt (seed phrase), DO_NOT_SHARE (warning) | sets file permissions to 0o600 | load() reads from .co/keys/ and env vars (AGENT_EMAIL, IS_EMAIL_ACTIVE) | no global state
   Integration: exposes generate(), recover(seed_phrase), save(address_data, co_dir), load(co_dir), verify(address, message, signature), sign(address_data, message) | address format: 0x + 64 hex chars (32 bytes public key) | email format: first 10 chars + @mail.openonion.ai

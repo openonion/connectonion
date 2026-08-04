@@ -3,7 +3,7 @@ ConnectOnion exceptions.
 
 Purpose: Custom exceptions for ConnectOnion framework with formatted, actionable error messages
 LLM-Note:
-  Dependencies: none | imported by [llm.py] | tested by [tests/test_billing_error_agent.py]
+  Dependencies: none | imported by [llm.py] | tested by [no direct test file]
   Data flow: OpenOnionLLM catches openai.APIStatusError(402) → transforms to InsufficientCreditsError → raises with formatted message
   State/Effects: parses error detail from API response | formats beautiful error message with account, balance, cost, shortfall | preserves original error in __cause__
   Integration: exposes InsufficientCreditsError exception class | raised by OpenOnionLLM when insufficient credits

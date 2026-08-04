@@ -1,7 +1,7 @@
 """
 Purpose: Reusable selection list component with fuzzy matching and keyboard navigation
 LLM-Note:
-  Dependencies: imports from [rich.text/table/console, tui/fuzzy.py, dataclasses] | imported by [tui/input.py, tui/providers.py] | tested by [tests/tui/test_dropdown.py]
+  Dependencies: imports from [rich.text/table/console, tui/fuzzy.py, dataclasses] | imported by [tui/input.py, tui/providers.py] | tested by [no direct test file]
   Data flow: Dropdown(items, selected_index) → render() → formats items with icons/labels → highlights selected item → uses fuzzy.highlight_match() for query highlighting
   State/Effects: maintains selected_index | no I/O (pure rendering)
   Integration: exposes DropdownItem(icon, label, value, meta, score, positions) dataclass | Dropdown.render() → Rich Group | used by Input widget for autocomplete

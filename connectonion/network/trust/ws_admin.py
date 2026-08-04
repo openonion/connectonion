@@ -2,7 +2,7 @@
 
 Purpose: Verify signed websocket frames for ONBOARD_SUBMIT and ADMIN_* actions, then mutate trust state (verify invite/payment, promote/demote/block/unblock, super-admin add/remove) and stream back ONBOARD_SUCCESS / ADMIN_RESULT / ERROR responses. handle_onboard_submit returns the verified agent_address so the session loop can finish the trust-gated CONNECT.
 LLM-Note:
-  Dependencies: imports from [rich.console] | imported by [network/host/ws_router/session.py (handle_admin_message, handle_onboard_submit), network/host/ws_router/connect.py (get_onboard_requirements during CONNECT)] | tested by [tests/network/test_ws_admin.py, tests/integration/test_onboard_flow.py]
+  Dependencies: imports from [rich.console] | imported by [network/host/ws_router/session.py (handle_admin_message, handle_onboard_submit), network/host/ws_router/connect.py (get_onboard_requirements during CONNECT)] | tested by [no direct test file]
   Data flow:
     • get_onboard_requirements(trust_agent) — read trust_agent.config.onboard → {methods: ["invite_code"|"payment"], payment_amount, payment_address (from trust_agent.get_self_address())} or None
     • handle_onboard_submit(data, send_msg, route_handlers) — auth via route_handlers["auth"](data, "open") → check trust_agent.is_blocked → verify_invite or verify_payment → reply ONBOARD_SUCCESS with new level or ERROR

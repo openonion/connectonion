@@ -1,7 +1,7 @@
 """
 Purpose: Automatically analyze uncaught Python exceptions using AI with runtime frame inspection
 LLM-Note:
-  Dependencies: imports from [sys, traceback, os, dotenv, console.py, debug_agent/__init__.py] | imported by [__init__.py] | tested by [tests/test_auto_debug_exception.py]
+  Dependencies: imports from [sys, traceback, os, dotenv, console.py, debug_agent/__init__.py] | imported by [__init__.py] | tested by [tests/unit/test_auto_debug_exception.py]
   Data flow: auto_debug_exception() → installs sys.excepthook → on exception: calls original_hook (shows traceback) → finds relevant frame (last user code, not library) → extracts frame.f_locals → creates debug_agent with actual frame and traceback → sends prompt with exception details → agent uses runtime inspection tools (explore_namespace, execute_in_frame, inspect_object, validate_assumption, test_fix) → displays AI analysis
   State/Effects: modifies sys.excepthook globally | loads .env for CONNECTONION_AUTO_DEBUG | creates debug Agent instances on exceptions | calls console.print() to display analysis | does not prevent exception from terminating program
   Integration: exposes auto_debug_exception(model) | checks CONNECTONION_AUTO_DEBUG=false env to disable | creates debug_agent with frame, exception_traceback, model parameters | prompt guides AI to use runtime inspection tools

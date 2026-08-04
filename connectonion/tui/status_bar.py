@@ -1,7 +1,7 @@
 """
 Purpose: Powerline-style status bar with colored segments for terminal UI
 LLM-Note:
-  Dependencies: imports from [rich.text.Text, dataclasses] | imported by [tui/chat.py, tui/input.py] | tested by [tests/tui/test_status_bar.py]
+  Dependencies: imports from [rich.text.Text, dataclasses] | imported by [tui/chat.py, tui/input.py] | tested by [no direct test file]
   Data flow: StatusBar(segments) → render() → formats segments with powerline arrows → colored backgrounds → returns Rich Text
   State/Effects: no state (pure function)
   Integration: exposes StatusBar(segments: list[tuple[icon, label, color]]) with render() → Text | uses powerline characters (requires powerline fonts) | fallback to simple arrows if fonts unavailable
