@@ -114,7 +114,10 @@ class TestFindCoDir:
                 from connectonion.cli.commands.keys_commands import _find_co_dir
                 result = _find_co_dir()
                 assert result is not None
-                assert result == Path(".co")
+                # Resolved, not the relative `Path(".co")` it used to return:
+                # the project is now found by walking up, so the answer has to
+                # name a directory rather than depend on the cwd.
+                assert result == (Path(tmpdir) / ".co").resolve()
             finally:
                 os.chdir(original_cwd)
 
