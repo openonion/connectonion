@@ -306,19 +306,15 @@ class RemoteAgent:
         import websockets
 
         await self._try_resolve_endpoint()
-        if self._resolved_endpoint:
-            ws_url = self._resolved_endpoint
-            is_direct = True
-        else:
-            ws_url = f"{self._relay_url}/ws/input"
-            is_direct = False
 
         exec_id = str(uuid.uuid4())
-        connect_msg = self._build_connect_message(is_direct)
         exec_msg = {"type": "EXEC", "exec_id": exec_id, "tool": tool, "args": args}
 
+        connection, is_direct = await self._open_best_connection(websockets)
+        connect_msg = self._build_connect_message(is_direct)
+
         try:
-            async with websockets.connect(ws_url) as ws:
+            async with connection as ws:
                 await ws.send(json.dumps(connect_msg))
 
                 # Wait for CONNECTED (EXEC needs the same auth gate as INPUT).
@@ -389,6 +385,44 @@ class RemoteAgent:
         self._ui_events = []
         self._status = "idle"
 
+    def _ways_to_reach(self) -> list:
+        """Where to try, best first: the agent itself, then the relay behind it.
+
+        #643 made direct resolution work, and a resolved endpoint is cached for
+        the life of this object. That is a good trade until the endpoint stops
+        answering -- the agent restarts on another port, or the caller moves off
+        that network -- and then every later call fails over a path that worked
+        before #643, when resolution never succeeded and everything went through
+        the relay.
+
+        The relay is still there and still reaches the agent. One refused
+        connection is a cheaper thing to pay than the conversation.
+        """
+        relay = (f"{self._relay_url}/ws/input", False)
+        if self._resolved_endpoint:
+            return [(self._resolved_endpoint, True), relay]
+        return [relay]
+
+    async def _open_best_connection(self, websockets):
+        """Open the first way that answers, and remember if the direct one did not.
+
+        Only the connection attempt is retried. Once a socket is open, an error
+        on it is the agent's answer and belongs to the caller -- retrying a
+        refused tool call somewhere else would run it twice.
+        """
+        for ws_url, is_direct in self._ways_to_reach():
+            try:
+                return await websockets.connect(ws_url), is_direct
+            except OSError:
+                if not is_direct:
+                    raise          # the relay is the last resort; there is no next
+                self._forget_direct_endpoint()
+
+    def _forget_direct_endpoint(self) -> None:
+        """Stop trying a corpse on every turn; resolve again when next asked."""
+        self._resolved_endpoint = None
+        self._endpoint_resolved = False
+
     async def _try_resolve_endpoint(self) -> None:
         """Try to resolve endpoint for the agent address. Only attempts once."""
         if self._endpoint_resolved:
@@ -418,23 +452,19 @@ class RemoteAgent:
             "content": prompt
         })
 
-        # Choose connection: direct (resolved) or via relay
-        if self._resolved_endpoint:
-            ws_url = self._resolved_endpoint
-            is_direct = True
-        else:
-            ws_url = f"{self._relay_url}/ws/input"
-            is_direct = False
-
         # Generate input_id for routing/response matching
         input_id = str(uuid.uuid4())
 
-        # Build the CONNECT and INPUT messages
+        # The agent itself when it answers, the relay behind it when it does not.
+        connection, is_direct = await self._open_best_connection(websockets)
+
+        # Build the CONNECT and INPUT messages -- after opening, because both are
+        # shaped by which way answered and a relay-bound frame is not a direct one.
         connect_msg = self._build_connect_message(is_direct)
         input_msg = self._build_input_message(prompt, input_id, is_direct, images, files)
 
         try:
-            async with websockets.connect(ws_url) as ws:
+            async with connection as ws:
                 # Authenticate first
                 await ws.send(json.dumps(connect_msg))
 
