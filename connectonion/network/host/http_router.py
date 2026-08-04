@@ -243,13 +243,20 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
     # connectonion-react already documents — "the public /info answer is
     # deliberately narrower".
 
-    if trust_config:
-        onboard = trust_config.get("onboard", {})
-        if onboard:
-            result["onboard"] = {
-                "invite_code": "invite_code" in onboard,
-                "payment": onboard.get("payment"),
-            }
+    # The same rule the CONNECT path applies, on this handler's own input.
+    # Deciding it separately is how this came to publish an invite code that no
+    # value opens: `trust_config` holds the *unexpanded* `$CO_INVITE_CODE`, so
+    # `"invite_code" in onboard` was true on an agent with none set. /info needs
+    # no credentials, so that answer went to the whole internet.
+    from ..trust.ws_admin import doors_that_open
+
+    offered = doors_that_open((trust_config or {}).get("onboard", {}),
+                              trust.get_self_address()) if trust_config else None
+    if offered:
+        result["onboard"] = {
+            "invite_code": "invite_code" in offered["methods"],
+            "payment": offered.get("payment_amount"),
+        }
 
     return result
 
