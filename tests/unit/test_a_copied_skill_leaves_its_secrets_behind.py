@@ -136,3 +136,58 @@ class TestASingleFileSkill:
                     force=True, skills_dir=tmp_path / "dest")
 
         assert (tmp_path / "dest" / "solo" / "SKILL.md").exists()
+
+
+class TestTheShapesTheFirstPassMissed:
+    """Step 7 on #657: assume the fix was incomplete, and it was.
+
+    Matching one filename at a time missed two kinds of thing —
+
+        token.json, auth.json, service_account.json, .git-credentials,
+        secrets.yaml                      common names that were simply not listed
+
+        .ssh/id_ecdsa, .aws/credentials   a credential *directory*, where guessing
+                                          each filename is the wrong shape of rule
+
+    The second is why the directory rule exists: a skill carrying `.ssh/` should
+    leave all of it, not the two key names someone thought of.
+    """
+
+    @pytest.mark.parametrize("name", [
+        "token.json", "auth.json", "service_account.json",
+        ".git-credentials", "secrets.yaml", "secrets.yml",
+    ])
+    def test_a_credential_file_is_skipped(self, tmp_path, name):
+        from connectonion.cli.commands.skills_commands import _is_secret
+
+        assert _is_secret(tmp_path / name), f"{name} would travel"
+
+    @pytest.mark.parametrize("directory", [".ssh", ".aws", ".gnupg", ".kube"])
+    def test_a_credential_directory_is_skipped_whole(self, tmp_path, directory):
+        from connectonion.cli.commands.skills_commands import _is_secret
+
+        assert _is_secret(tmp_path / directory)
+
+    def test_everything_inside_such_a_directory_stays(self, tmp_path):
+        """The point of the directory rule: no guessing at the names inside."""
+        src = tmp_path / "src" / "s"
+        (src / ".ssh").mkdir(parents=True)
+        (src / "SKILL.md").write_text("---\nname: s\n---\n\nGo.\n")
+        (src / ".ssh" / "id_ecdsa").write_text("PRIVATE\n")
+        (src / ".ssh" / "known_hosts").write_text("host\n")
+
+        _copy_entry({"name": "s", "path": str(src / "SKILL.md"), "source": "t"},
+                    force=True, skills_dir=tmp_path / "dest")
+
+        assert not (tmp_path / "dest" / "s" / ".ssh").exists()
+        assert (tmp_path / "dest" / "s" / "SKILL.md").exists()
+
+    @pytest.mark.parametrize("innocent", [
+        "config.json", "package.json", "data.yaml", "README.md",
+        "tokens.md", "secrets.md",
+    ])
+    def test_an_ordinary_file_is_not_mistaken_for_one(self, tmp_path, innocent):
+        """A rule that eats documentation is a rule nobody keeps."""
+        from connectonion.cli.commands.skills_commands import _is_secret
+
+        assert not _is_secret(tmp_path / innocent)
