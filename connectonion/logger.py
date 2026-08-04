@@ -21,6 +21,11 @@ import yaml
 from .console import Console
 from .core.usage import totals_from_trace
 
+# How many run_N.yaml files to keep per eval. They hold the full message array
+# of one turn, nothing in the code reads them back, and an agent on a schedule
+# wrote 9.5 MB of them a day on the box it was deployed to.
+KEEP_RUNS_PER_EVAL = 20
+
 
 def _slugify(text: str, max_length: int = 50) -> str:
     """Convert text to URL-friendly slug for filenames.
@@ -395,6 +400,45 @@ class Logger:
             f.write("messages: |\n")
             for line in messages_formatted.split('\n'):
                 f.write(f"  {line}\n")
+
+        self._trim_old_runs(self.eval_dir)
+
+    @staticmethod
+    def _trim_old_runs(eval_dir: Path, keep: Optional[int] = None) -> None:
+        """Keep the most recent run files for one eval and drop the rest.
+
+        Each turn writes a run_N.yaml holding the whole message array, and
+        nothing removed them. Measured on the deployed naturewill agent, which
+        runs on a schedule: 17 MB of evals in 43 hours — about 9.5 MB a day, or
+        3.5 GB a year, on the 1–2 GB VPS `co server new` provisions. The agent
+        fills its own disk, and what dies is the agent.
+
+        What reads them, exactly: nothing does during a run. `co eval` globs
+        `evals/*.yaml` — the per-eval file beside this directory, not the runs
+        inside it. `Logger.load_messages(run=N)` can open one, and no caller in
+        this codebase does; only its tests. So the readers are a human looking
+        at what went wrong and anyone calling that method, and for both of those
+        it is the recent runs that are worth having. Older ones do go, which is
+        the trade against a disk that fills.
+
+        Housekeeping must never be able to stop a turn, so a directory that is
+        not there is simply nothing to do, and a hand-named file that is not
+        run_<number>.yaml is left where it is.
+        """
+        keep = KEEP_RUNS_PER_EVAL if keep is None else keep
+        if not eval_dir or not eval_dir.is_dir():
+            return
+
+        numbered = []
+        for path in eval_dir.glob("run_*.yaml"):
+            number = path.stem.split("_", 1)[1]
+            if number.isdigit():
+                numbered.append((int(number), path))
+
+        # By number, not by name: sorted as text "run_10" comes before "run_9",
+        # which would delete the newest run and keep the oldest.
+        for _, path in sorted(numbered)[:-keep or None]:
+            path.unlink(missing_ok=True)
 
     def _write_eval(self):
         """Write eval data to YAML file."""
