@@ -54,8 +54,9 @@ async def send_announce(websocket, announce_message: Dict[str, Any]):
         No response = success (per protocol spec)
 
     Example:
-        >>> from . import announce, address
-        >>> addr = address.load()
+        >>> from pathlib import Path
+        >>> from connectonion import address, announce
+        >>> addr = address.load(Path.home() / ".co")
         >>> msg = announce.create_announce_message(addr, "My agent", [])
         >>> await send_announce(ws, msg)
     """
