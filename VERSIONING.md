@@ -68,34 +68,37 @@ patch releases; the minor is the statement that it no longer needs to be.
 
 ## Files to Update When Versioning
 
-When updating version, these files must be changed:
+Three files carry the version, and `test_the_version_agrees_with_itself.py`
+fails if they disagree — so a release that misses one is caught rather than
+shipped.
 
-### Python Package Files
-1. `/connectonion/__init__.py` - `__version__` variable
-2. `/setup.py` - `version` parameter
+1. `connectonion/_version.py` — `__version__ = "X.Y.Z"`. **The only literal.**
+   `connectonion/__init__.py` reads it (`from ._version import __version__`)
+   so that `co --version` need not import the package; there is nothing to edit
+   there.
+2. `pyproject.toml` — the `version` field. This is what the wheel carries.
+3. `## Current Version:` at the top of this file.
 
-### Documentation Files
-3. `/docs-site/app/page.tsx` - Version badge
-4. `/README.md` - Any version references
-5. `/docs-site/README.md` - Any version references
+And one in the sibling docs repo, checked by the same test when it is beside
+this one: `docs-site/lib/version.ts` — `VERSION = 'X.Y.Z'`.
 
-### Configuration Files (if present)
-6. `/pyproject.toml` - version field (if exists)
-7. `/package.json` - version field (if exists)
+The entry in the release list below is not optional either: a version with no
+entry fails `test_every_release_has_an_entry.py`.
 
 ## Version Update Checklist
 
 When releasing a new version:
 
-- [ ] Update `__version__` in `/connectonion/__init__.py`
-- [ ] Update `version` in `/setup.py`
-- [ ] Update version badge in `/docs-site/app/page.tsx` (if exists)
-- [ ] Update any version references in README files
+- [ ] Update `__version__` in `connectonion/_version.py`
+- [ ] Update `version` in `pyproject.toml`
+- [ ] Update `## Current Version:` and add the release line in this file
+- [ ] Update `VERSION` in the docs site's `lib/version.ts`
+- [ ] Run the suite: `pytest tests/ -m "not slow and not real_api and not network"`
 - [ ] Commit changes: `git commit -m "Release vX.Y.Z: Description"`
 - [ ] Create git tag: `git tag vX.Y.Z`
 - [ ] Push commits: `git push`
 - [ ] Push tag: `git push origin vX.Y.Z`
-- [ ] Build package: `python setup.py sdist bdist_wheel`
+- [ ] Build package: `python -m build`
 - [ ] Upload to PyPI: `twine upload dist/*`
 
 ## What Triggers Each Version Type
