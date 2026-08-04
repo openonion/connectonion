@@ -34,13 +34,35 @@ from .. import address as addr
 
 
 def _sort_endpoints(endpoints: List[str]) -> List[str]:
-    """Sort endpoints by priority: localhost first, then local network, then public."""
-    def priority(url: str) -> int:
+    """Closest first, and among equally close ones, the encrypted one.
+
+    Closeness was the only key, so an agent announcing both schemes on one host
+    was reached over whichever the relay listed first — and it lists plaintext
+    first. The connection then went in the clear to an agent that had offered TLS.
+
+    What travels on it is a signed CONNECT, and #649 measured what a captured one
+    is worth: EXEC carries no signature of its own, so within the five-minute
+    freshness window a replayed CONNECT opens a session on which any whitelisted
+    tool runs with any arguments. Before #643 this never came up — resolution
+    always failed and every client went through the relay over wss://.
+
+    Closeness still decides first. A plaintext loopback connection has no network
+    to be observed on, and reaching an agent on this machine is the case direct
+    resolution exists for. This only chooses between endpoints that are equally
+    close.
+
+    Not the whole of #649: an agent that offers no TLS at all still speaks
+    plaintext across a LAN, and what to do about that is the trade filed there.
+    """
+    def priority(url: str) -> tuple:
         if "localhost" in url or "127.0.0.1" in url:
-            return 0
-        if "192.168." in url or "10." in url or "172.16." in url:
-            return 1
-        return 2
+            closeness = 0
+        elif "192.168." in url or "10." in url or "172.16." in url:
+            closeness = 1
+        else:
+            closeness = 2
+        encrypted = 0 if url.startswith(("https://", "wss://")) else 1
+        return (closeness, encrypted)
     return sorted(endpoints, key=priority)
 
 
