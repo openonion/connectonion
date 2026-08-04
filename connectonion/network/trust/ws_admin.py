@@ -2,9 +2,10 @@
 
 Purpose: Verify signed websocket frames for ONBOARD_SUBMIT and ADMIN_* actions, then mutate trust state (verify invite/payment, promote/demote/block/unblock, super-admin add/remove) and stream back ONBOARD_SUCCESS / ADMIN_RESULT / ERROR responses. handle_onboard_submit returns the verified agent_address so the session loop can finish the trust-gated CONNECT.
 LLM-Note:
-  Dependencies: imports from [rich.console] | imported by [network/host/ws_router/session.py (handle_admin_message, handle_onboard_submit), network/host/ws_router/connect.py (get_onboard_requirements during CONNECT)] | tested by [no direct test file]
+  Dependencies: imports from [rich.console, .fast_rules (_resolve_codes, lazily)] | imported by [network/host/ws_router/session.py (handle_admin_message, handle_onboard_submit), network/host/ws_router/connect.py (get_onboard_requirements during CONNECT), network/host/http_router.py (doors_that_open for /info)] | tested by [tests/unit/test_an_agent_only_offers_a_door_that_opens.py]
   Data flow:
-    • get_onboard_requirements(trust_agent) — read trust_agent.config.onboard → {methods: ["invite_code"|"payment"], payment_amount, payment_address (from trust_agent.get_self_address())} or None
+    • doors_that_open(onboard, self_address) — the single rule: an invite code counts only if _resolve_codes yields one (an unset $CO_INVITE_CODE yields nothing, #561), a payment counts only if there is an address to send it to → {methods, payment_amount, payment_address} or None
+    • get_onboard_requirements(trust_agent) — read trust_agent.config.onboard → doors_that_open(…, trust_agent.get_self_address()) or None
     • handle_onboard_submit(data, send_msg, route_handlers) — auth via route_handlers["auth"](data, "open") → check trust_agent.is_blocked → verify_invite or verify_payment → reply ONBOARD_SUCCESS with new level or ERROR
     • handle_admin_message(data, send_msg, route_handlers) — auth + is_admin gate → ADMIN_PROMOTE/DEMOTE/BLOCK/UNBLOCK/GET_LEVEL routed to route_handlers admin_trust_* callbacks → ADMIN_ADD/REMOVE additionally gated on is_super_admin → reply ADMIN_RESULT
   State/Effects: mutates trust agent state via trust_agent.verify_invite/verify_payment and admin_trust_* / admin_admins_* callbacks | prints colored audit lines to stdout via rich.Console (✓/✗ with truncated agent_address) | sends frames to client via injected send_msg
@@ -18,36 +19,44 @@ from rich.console import Console
 console = Console()
 
 
-def get_onboard_requirements(trust_agent) -> dict | None:
-    """The ways in that can actually be taken, or None if there are none.
+def doors_that_open(onboard: dict, self_address) -> dict | None:
+    """Which onboarding methods a stranger could actually complete, or None.
 
-    Not what the policy mentions — what a stranger can complete. An agent with
-    no way in says so, rather than offering a menu whose every item fails.
+    One rule, so that every place which tells a stranger how to get in reaches
+    the same verdict. Deciding it twice is how the agent came to publish an
+    invite code that no value opens: the raw policy holds the unexpanded
+    `$CO_INVITE_CODE`, so `"invite_code" in onboard` is true on an agent with
+    none set, while verify_invite -- which resolves it -- lets nobody in.
+    #561 fixed two such places; the advertiser and /info were the third and
+    fourth.
     """
-    config = trust_agent.config
-    onboard = config.get("onboard", {})
-    if not onboard:
-        return None
-
-    # Only doors that open. This listed a method whenever the policy *mentioned*
-    # it, while verify_invite resolves the list first -- and an unset $CO_INVITE_CODE
-    # resolves to nothing, deliberately (#561: "a missing code is a closed door,
-    # not an open one"). Every agent without a code set therefore offered strangers
-    # an invite code that no value could satisfy. Same for a payment with no address
-    # to send it to: told to pay, not told where.
     from .fast_rules import _resolve_codes
 
     result = {"methods": []}
     if _resolve_codes(onboard.get("invite_code", [])):
         result["methods"].append("invite_code")
 
-    payment_address = trust_agent.get_self_address() if "payment" in onboard else None
-    if payment_address:
+    # A payment with nowhere to send it is not a way in: the client would be
+    # told to pay and not told where, and verify_payment refuses without an
+    # address anyway.
+    if "payment" in onboard and self_address:
         result["methods"].append("payment")
         result["payment_amount"] = onboard["payment"]
-        result["payment_address"] = payment_address
+        result["payment_address"] = self_address
 
     return result if result["methods"] else None
+
+
+def get_onboard_requirements(trust_agent) -> dict | None:
+    """The ways in that can actually be taken, or None if there are none.
+
+    Not what the policy mentions — what a stranger can complete. An agent with
+    no way in says so, rather than offering a menu whose every item fails.
+    """
+    onboard = trust_agent.config.get("onboard", {})
+    if not onboard:
+        return None
+    return doors_that_open(onboard, trust_agent.get_self_address())
 
 
 async def handle_onboard_submit(data, send_msg, route_handlers):
