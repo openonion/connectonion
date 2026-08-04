@@ -209,7 +209,13 @@ def _skill_search_paths(co_dir: Optional[Path] = None,
     One definition, so discovery and any diagnosis of it look in the same places —
     a second copy would eventually report on directories the loader no longer reads.
     """
-    base = project_dir or (co_dir.parent if co_dir else Path.cwd())
+    # The project, not the directory this was called from. #663 gave the
+    # loader (`_get_skill_paths`) the walk-up and left this one on the bare cwd,
+    # so from a subdirectory a project skill was still loadable by name and no
+    # longer *listed* -- and a skill the model is never told about is a skill
+    # that does not work. Measured with `co ai` in a project one level down: the
+    # skill answered at the root and was invisible in `sub/`.
+    base = project_dir or (co_dir.parent if co_dir else project_root())
     co_base = co_dir or (base / '.co')
     builtin_base = Path(__file__).parent.parent / 'cli' / 'co_ai' / 'skills' / 'builtin'
 
