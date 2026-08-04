@@ -485,6 +485,35 @@ def setup_skills(agent: 'Agent') -> None:
     agent.skills = _discover_all_skills(co_dir=co_dir)
 
 
+def _close_out_a_turn_that_never_finished(agent: 'Agent') -> None:
+    """Undo a skill's grants when the turn that made them died before restoring.
+
+    `cleanup_scope` is @on_complete, and on_complete is a plain statement after
+    the loop in Agent.input -- no finally. A turn that raises never reaches it,
+    and the grant stays:
+
+        turn 1, during        ['Bash(rm -rf *)', 'write']
+          ... the turn raises
+        turn 2, at the start  ['Bash(rm -rf *)', 'write']
+
+    The permission record even carries expires={'type': 'turn_end'}; nothing was
+    enforcing it. The ordinary way to get here is the operator answering "no" to
+    an approval, which raises -- so a refusal left the skill's permissions alive
+    for the rest of the session.
+
+    A snapshot tagged with an earlier turn is exactly the evidence that its
+    restore never ran, so this runs at the start of every turn rather than
+    wrapping the turn in try/finally: on_complete keeps meaning "the turn
+    finished", which the logger and the eval writer both read it as.
+    """
+    snapshot = agent.current_session.get('_permission_snapshot')
+    if not snapshot:
+        return
+    if snapshot.get('turn') == agent.current_session.get('turn', 0):
+        return          # this turn's own scope, still running
+    _restore_permissions(agent)
+
+
 @after_user_input
 def handle_skill_invocation(agent: 'Agent') -> None:
     """Detect /command and load skill with permission scope.
@@ -492,6 +521,8 @@ def handle_skill_invocation(agent: 'Agent') -> None:
     Intercepts messages starting with / and loads corresponding skill.
     Sets permission_scope in session and replaces user message with skill instructions.
     """
+    _close_out_a_turn_that_never_finished(agent)
+
     messages = agent.current_session.get('messages', [])
     if not messages:
         return
