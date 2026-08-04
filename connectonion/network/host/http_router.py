@@ -254,9 +254,15 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
     return result
 
 
-def admin_logs_handler(agent_name: str) -> dict:
-    """GET /admin/logs"""
-    log_path = project_co_dir() / "logs" / f"{agent_name}.log"
+def admin_logs_handler(log_path) -> dict:
+    """GET /admin/logs
+
+    Takes the path, not a name to rebuild one from. It used to take the agent's
+    display name, which is host.yaml's name and not the Agent's -- so it looked
+    for a file the logger never writes. `Logger(log=...)` was unreachable too,
+    whatever the names.
+    """
+    log_path = Path(log_path)
     if log_path.exists():
         return {"content": log_path.read_text(encoding="utf-8")}
     return {"error": "No logs found"}
