@@ -91,6 +91,46 @@ def resume_forwarding(send_msg, active, registry, session_id, storage, conn=None
     return io, task
 
 
+def verified_prompt(data: dict, route_handlers) -> tuple:
+    """(prompt, error) -- the signed prompt when the frame carries a signature.
+
+    The client signs the prompt into `payload`:
+
+        payload = {"prompt": prompt, "timestamp": ...}
+        input_msg["payload"] = payload
+        input_msg["signature"] = ...
+
+    and this read `data.get("prompt")`, the unsigned top-level field, checking
+    only that the connection had authenticated. Measured against a live agent
+    with the two saying different things:
+
+        POST /input            signed: SIGNED   top-level: UNSIGNED  -> ran SIGNED
+        INPUT over WebSocket   signed: SIGNED   top-level: UNSIGNED  -> ran UNSIGNED
+
+    Same protocol, same client, two different guarantees -- and the client signs
+    on both paths, which is what made this one look authenticated while the
+    signature decided nothing. Reading the signed field is not enough on its own:
+    an unverified payload can say anything. So the frame goes through the same
+    verifier the HTTP path uses, which is also the one the admin messages use a
+    few lines away in session.py.
+
+    `"open"` here is about authentication, not authorisation: who may act was
+    settled at CONNECT. This only establishes that the signature covers the
+    prompt about to run.
+
+    A frame with no signature keeps using the top-level field -- a client built
+    without keys sends none, and its connection was authenticated by its CONNECT.
+    Whether a signature should be *required* is the decision in #649, not this.
+    """
+    if not (data.get("signature") and isinstance(data.get("payload"), dict)):
+        return data.get("prompt"), None
+
+    prompt, _, sig_valid, err = route_handlers["auth"](data, "open")
+    if not sig_valid:
+        return None, err or "invalid signature"
+    return prompt, None
+
+
 async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
     """Validate INPUT, spawn agent thread + forward task. Returns (io, forward_task) or None on error."""
     if not conn["authenticated"]:
@@ -98,7 +138,13 @@ async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
         await send_msg({"type": "ERROR", "message": "authenticate first (send CONNECT)"})
         return None
 
-    prompt = data.get("prompt")
+    prompt, sig_error = verified_prompt(data, route_handlers)
+    if sig_error:
+        console.print(f"[red]✗ INPUT rejected:[/red] {sig_error}")
+        # extract_and_authenticate already prefixes its own errors; adding
+        # another produced "unauthorized: unauthorized: invalid signature".
+        await send_msg({"type": "ERROR", "message": sig_error})
+        return None
     if not prompt:
         await send_msg({"type": "ERROR", "message": "prompt required"})
         return None
