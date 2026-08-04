@@ -250,6 +250,38 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
     }
 
 
+def usable_uvicorn_options(workers, reload) -> tuple:
+    """What uvicorn can actually be given, and a word about the difference.
+
+    `host()` hands uvicorn an app *object*. Uvicorn can only fork workers or
+    watch files when it is given an import string, and handed an object it
+    refuses both and returns without ever serving. Both values are written into
+    every generated host.yaml, under a header that says to edit them:
+
+        workers: 1
+        reload: false
+
+    Changing either one used to print the whole startup banner -- address, URL,
+    "POST /input" -- and then exit, leaving one uvicorn warning underneath and
+    nothing listening on the port the banner named.
+
+    Serving them properly is a larger question than this one. Each worker
+    process would run its own scheduler loop and its own in_flight set, so a
+    schedule that overruns its interval gets one copy per worker: the race #537
+    is about. Until that is answered, keep the agent running and say what was
+    not honoured -- silently running one worker is a smaller lie than dying
+    behind a banner that says otherwise.
+    """
+    if workers and workers > 1:
+        print(f"[host] workers: {workers} not honoured — running one worker "
+              f"(uvicorn needs an import string to fork, and the scheduler is "
+              f"per process)")
+    if reload:
+        print("[host] reload: true not honoured — running without reload "
+              "(uvicorn needs an import string to watch files)")
+    return 1, False
+
+
 def _print_host_banner(
     port: int,
     address: str,
@@ -775,6 +807,7 @@ def host(
         co_dir=co_dir,
     )
 
+    workers, reload = usable_uvicorn_options(workers, reload)
     uvicorn.run(app, host="0.0.0.0", port=port, workers=workers, reload=reload, log_level="warning")
 
 
