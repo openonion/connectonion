@@ -209,3 +209,40 @@ class TestACodeThatIsWrong:
         agent.call("bash", command="pwd")
 
         assert not [m for m in socket.sent if m.get("type") == "EXEC"]
+
+
+class TestDecliningThePrompt:
+    """Pressing Enter is an answer, and it is a normal one.
+
+    `_prompt_onboard` raises ValueError when nothing is entered. `call()` never
+    reached it before, and every other refusal it can meet — a blacklist, a bad
+    invite code, a tool that is not whitelisted — comes back as
+    `ExecResult(status="error")`. Declining should not be the one that prints a
+    stack trace at somebody who just typed `co call`.
+
+    Confirmed through a pty against a real host before fixing:
+
+        Enter invite code:
+        Traceback (most recent call last):
+          ...
+        ValueError: No valid onboard credentials provided
+    """
+
+    def test_it_is_an_error_result_not_an_exception(self, monkeypatch):
+        agent, _ = _agent_that(monkeypatch, ONBOARD_THEN_IN, invite="")
+
+        result = agent.call("bash", command="pwd")
+
+        assert not result.ok
+
+    def test_the_error_says_what_happened(self, monkeypatch):
+        agent, _ = _agent_that(monkeypatch, ONBOARD_THEN_IN, invite="")
+
+        assert "onboard" in agent.call("bash", command="pwd").error.lower()
+
+    def test_no_command_is_run(self, monkeypatch):
+        agent, socket = _agent_that(monkeypatch, ONBOARD_THEN_IN, invite="")
+
+        agent.call("bash", command="pwd")
+
+        assert not [m for m in socket.sent if m.get("type") == "EXEC"]
