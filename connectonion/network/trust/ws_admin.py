@@ -19,21 +19,33 @@ console = Console()
 
 
 def get_onboard_requirements(trust_agent) -> dict | None:
-    """Extract onboard requirements from trust config."""
+    """The ways in that can actually be taken, or None if there are none.
+
+    Not what the policy mentions — what a stranger can complete. An agent with
+    no way in says so, rather than offering a menu whose every item fails.
+    """
     config = trust_agent.config
     onboard = config.get("onboard", {})
     if not onboard:
         return None
 
+    # Only doors that open. This listed a method whenever the policy *mentioned*
+    # it, while verify_invite resolves the list first -- and an unset $CO_INVITE_CODE
+    # resolves to nothing, deliberately (#561: "a missing code is a closed door,
+    # not an open one"). Every agent without a code set therefore offered strangers
+    # an invite code that no value could satisfy. Same for a payment with no address
+    # to send it to: told to pay, not told where.
+    from .fast_rules import _resolve_codes
+
     result = {"methods": []}
-    if "invite_code" in onboard:
+    if _resolve_codes(onboard.get("invite_code", [])):
         result["methods"].append("invite_code")
-    if "payment" in onboard:
+
+    payment_address = trust_agent.get_self_address() if "payment" in onboard else None
+    if payment_address:
         result["methods"].append("payment")
         result["payment_amount"] = onboard["payment"]
-        payment_address = trust_agent.get_self_address()
-        if payment_address:
-            result["payment_address"] = payment_address
+        result["payment_address"] = payment_address
 
     return result if result["methods"] else None
 

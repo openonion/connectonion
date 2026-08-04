@@ -75,6 +75,17 @@ def _resolve_codes(codes) -> list:
     door, not an open one.
     """
     import os as _os
+    # One value written plainly is one code, not one per letter. The shipped
+    # policies write a list, so iterating a bare string never showed here -- but
+    # `invite_code: mycode` is the natural way to write a single code in YAML,
+    # and iterating it makes every character a code that opens the door.
+    # One value written plainly is one code, not one per letter. The shipped
+    # policies write a list, so iterating a bare string never showed here -- but
+    # `invite_code: mycode` is the natural way to write a single code in YAML,
+    # and iterating it makes every character a code that opens the door while
+    # the code the operator actually chose is refused.
+    if isinstance(codes, str):
+        codes = [codes]
     out = []
     for code in codes or []:
         text = str(code)
