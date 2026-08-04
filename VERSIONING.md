@@ -99,7 +99,17 @@ When releasing a new version:
 - [ ] Push commits: `git push`
 - [ ] Push tag: `git push origin vX.Y.Z`
 - [ ] Build package: `python -m build`
+- [ ] Check what you built: `pytest tests/e2e/test_the_wheel_works_when_installed.py -m slow`
 - [ ] Upload to PyPI: `twine upload dist/*`
+
+The suite above it runs against the source tree, where every file is present
+whether or not it is packaged. Nothing else looks at the artifact that goes to
+PyPI, and a wheel has shipped without the documentation before — `co init`
+reported ".co/docs/ (full documentation)" over an empty folder, which is what
+the force-include note in pyproject.toml is about. That step installs the wheel
+into a throwaway venv, outside the repo, and checks the data files the runtime
+loads: the trust policies, the co_ai prompts, the project template, the docs,
+and the `co` entry point.
 
 ## What Triggers Each Version Type
 
