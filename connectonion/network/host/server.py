@@ -44,7 +44,7 @@ from .schedule import create_schedule_lifespan
 from ..trust import TrustAgent, parse_policy, TRUST_LEVELS
 from ..trust.factory import PROMPTS_DIR
 from .auth import extract_and_authenticate
-from .config import load_host_config, load_list_file, validate_files, validate_images, DEFAULT_FILE_LIMITS
+from .config import load_host_config, load_list_file, validate_files, validate_images, project_co_dir, DEFAULT_FILE_LIMITS
 from .session import SessionStorage, ActiveSessionRegistry, start_cleanup_job
 from .http_router import (
     input_handler,
@@ -351,8 +351,9 @@ def _print_host_banner(
         relay_status = "[dim]no relay[/dim]"
 
     # Get absolute paths for config and logs
-    config_file = (co_dir / "host.yaml").resolve() if co_dir else (Path.cwd() / ".co" / "host.yaml").resolve()
-    logs_dir = (co_dir / "logs").resolve() if co_dir else (Path.cwd() / ".co" / "logs").resolve()
+    base = co_dir or project_co_dir()
+    config_file = (base / "host.yaml").resolve()
+    logs_dir = (base / "logs").resolve()
 
     # Header with [host] prefix
     console.print()
@@ -680,9 +681,13 @@ def host(
             "host(lambda: Agent(...)) for per-request isolation.[/yellow]"
         )
 
-    # Resolve co_dir: explicit > cwd/.co (project default)
+    # Resolve co_dir: explicit > the project's .co, found by walking up.
+    # Not `Path.cwd() / '.co'`: an agent started one directory down found no
+    # host.yaml and ran on defaults -- a project that says `trust: strict` came
+    # up as `careful`, admitting contacts and accepting an invite code while its
+    # configuration said whitelist only.
     if co_dir is None:
-        co_dir = Path.cwd() / '.co'
+        co_dir = project_co_dir()
 
     # A server can host more than one agent, and only the port stops it: two of
     # them defaulting to 8000 means the second dies on "address already in use"

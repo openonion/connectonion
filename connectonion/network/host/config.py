@@ -28,6 +28,39 @@ DEFAULT_FILE_LIMITS = {
 }
 
 
+def project_co_dir(start=None) -> Path:
+    """The `.co/` that belongs to this agent -- the project's, not the one beside
+    wherever the process was started.
+
+    This resolved against the bare cwd, so an agent started one directory down
+    found no host.yaml and every value in it fell back to a default. Measured on
+    a project whose file says trust: careful, port: 8806, 88 permission entries:
+
+        from the project root      port 8806   trust careful   permissions 88
+        from a subdirectory of it  port None   trust None      permissions 0
+
+    They fall back in different directions. The port lands on 8000, so the agent
+    listens somewhere else. The permissions land on none, so everything asks --
+    safe. Trust lands on "careful" (server.py), so a project that says `strict`
+    runs as `careful` instead: it admits contacts and accepts an invite code,
+    while its configuration says whitelist only.
+
+    Walking up is how the rest of the agent is found, and the rule is written
+    down in dashboard.py -- "the project, not wherever you ran from" -- after the
+    same bug hit the Home page. #660 did the trust lists.
+
+    There is a second copy of this in network/trust/tools.py rather than one
+    shared definition: host imports trust (server.py -> TrustAgent), so a shared
+    home in either package would close a cycle. Eight lines duplicated beats an
+    import loop; if a third caller appears, that is the time to find it a home.
+    """
+    start = Path(start or Path.cwd()).resolve()
+    for directory in (start, *start.parents):
+        if (directory / '.co').is_dir():
+            return directory / '.co'
+    return start / '.co'
+
+
 def load_host_config(co_dir: Path = None, **code_params) -> dict:
     """
     Load host configuration from .co/host.yaml.
@@ -49,7 +82,7 @@ def load_host_config(co_dir: Path = None, **code_params) -> dict:
         Includes 'permissions' field if defined in host.yaml
     """
     if co_dir is None:
-        co_dir = Path.cwd() / '.co'
+        co_dir = project_co_dir()
 
     # Start with defaults
     config = DEFAULT_FILE_LIMITS.copy()
