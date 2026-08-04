@@ -81,12 +81,23 @@ def _ssh(target: str, command: str, timeout: int = 300) -> subprocess.CompletedP
         )
 
 
-def _read_project(project_dir: Path) -> Optional[dict]:
+def _read_project(project_dir: Optional[Path] = None) -> Optional[dict]:
     """Read the agent name and entrypoint from .co/host.yaml.
 
     Same contract as the cloud deploy, so a project does not need a second
     config to be deployable both ways.
+
+    The project is the directory that owns `.co/`, found by walking up -- the
+    rule the rest of the codebase settled on in #660/#661/#663. Resolved against
+    the bare cwd, `co deploy` from a subdirectory said "Not a ConnectOnion
+    project. Run 'co init' first." while `load_host_config` from the same place
+    read the project's own `trust: strict`. Following that advice created a
+    second `.co` there, which downgraded the real project to `careful` and made
+    deploy report success against the subdirectory.
     """
+    from ...project import project_root
+
+    project_dir = Path(project_dir) if project_dir else project_root()
     host_yaml = project_dir / ".co" / "host.yaml"
     if not host_yaml.exists():
         console.print("[red]Not a ConnectOnion project. Run 'co init' first.[/red]")
@@ -883,7 +894,9 @@ def _mark_provisioned(target: str, agent: str) -> None:
 def handle_deploy_to(server: str, project_dir: Optional[Path] = None,
                      own_identity: bool = False) -> bool:
     """co deploy --to <server>:  ensure(setup) → sync code → restart."""
-    project_dir = (project_dir or Path.cwd()).resolve()
+    from ...project import project_root
+
+    project_dir = Path(project_dir).resolve() if project_dir else project_root()
 
     # Checked here rather than discovered inside subprocess.run, which raises
     # FileNotFoundError and prints a traceback — for the one failure a person can

@@ -366,7 +366,10 @@ def _deploy_current_project(skills: list[str], project_dir: Path | None = None) 
     """Deploy the current ConnectOnion project."""
     console.print("\n[cyan]Deploying to ConnectOnion Cloud...[/cyan]\n")
 
-    project_dir = Path.cwd() if project_dir is None else project_dir
+    # The project, not the directory you ran from -- see _read_project.
+    from ...project import project_root
+
+    project_dir = project_root() if project_dir is None else project_dir
 
     # Must be a ConnectOnion project
     host_yaml_path = project_dir / ".co" / "host.yaml"
