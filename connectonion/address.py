@@ -52,6 +52,37 @@ def _account_key(seed: bytes) -> "SigningKey":
     return SigningKey(derive_path(seed, slip13_path(ACCOUNT_URI)))
 
 
+class Identity(dict):
+    """The identity dict, which does not print its own secrets.
+
+    `load()` carries the recovery phrase because things genuinely need it after
+    loading -- `co server` derives the deploy SSH key from it, `co keys` shows
+    it on request -- so it stays. What changes is that reading it is something
+    you ask for, `keys["seed_phrase"]`, rather than something that falls out of
+    printing the object.
+
+    A plain dict prints everything it holds, and this one is held in ordinary
+    places: it is what `address.load()` hands to `connect(keys=...)`, and since
+    #673 every client stores one. `print(keys)`, a logger call, a crash reporter
+    that renders locals, or `repr(agent.__dict__)` then puts twelve words that
+    reconstruct the private key wherever that text goes. That happened during
+    review of #673, to a real machine identity, from a five-line probe.
+
+    The signing key is hidden for the same reason: it is the private half, and a
+    repr that renders it is the same leak by another route.
+    """
+
+    _SECRET = ("seed_phrase", "signing_key", "private_key")
+
+    def __repr__(self) -> str:
+        return repr({
+            key: ("<hidden>" if key in self._SECRET and value is not None else value)
+            for key, value in self.items()
+        })
+
+    __str__ = __repr__
+
+
 def derives_from(seed_phrase: str, signing_key) -> bool:
     """Does this phrase produce this key under the current derivation?
 
@@ -109,14 +140,14 @@ def generate() -> Dict[str, Any]:
     # Create email address (first 10 chars of address)
     email = f"{address[:10]}@mail.openonion.ai"
     
-    return {
+    return Identity({
         "address": address,
         "short_address": short_address,
         "email": email,
         "email_active": False,  # Email inactive until authenticated
         "seed_phrase": seed_phrase,
         "signing_key": signing_key
-    }
+    })
 
 
 def recover(seed_phrase: str) -> Dict[str, Any]:
@@ -163,13 +194,13 @@ def recover(seed_phrase: str) -> Dict[str, Any]:
     # Create email address (first 10 chars of address)
     email = f"{address[:10]}@mail.openonion.ai"
     
-    return {
+    return Identity({
         "address": address,
         "short_address": short_address,
         "email": email,
         "email_active": False,  # Email inactive until authenticated
         "signing_key": signing_key
-    }
+    })
 
 
 def save(address_data: Dict[str, Any], co_dir: Path) -> None:
@@ -274,14 +305,14 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
         email = os.getenv("AGENT_EMAIL", f"{address[:10]}@mail.openonion.ai")
         email_active = os.getenv("IS_EMAIL_ACTIVE", "").lower() == "true"
         
-        result = {
+        result = Identity({
             "address": address,
             "short_address": short_address,
             "email": email,
             "email_active": email_active,
             "legacy_derivation": legacy_derivation,
             "signing_key": signing_key
-        }
+        })
         
         if seed_phrase:
             result["seed_phrase"] = seed_phrase
@@ -444,10 +475,10 @@ def derive_ssh_key(seed_phrase: str, host: str = None, user: str = "root") -> Di
     else:
         signing_key = SigningKey(derive_path(seed, slip13_path(ssh_uri(user, host))))
 
-    return {
+    return Identity({
         "public_line": _openssh_public_line(bytes(signing_key.verify_key)),
         "private_key": _openssh_private_key(bytes(signing_key), bytes(signing_key.verify_key)),
-    }
+    })
 
 
 def _ssh_string(data: bytes) -> bytes:
