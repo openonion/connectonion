@@ -1,7 +1,7 @@
 """
 Purpose: Factory function to create debug agents with runtime inspection capabilities for AI-powered exception analysis
 LLM-Note:
-  Dependencies: imports from [pathlib, ../agent.py, runtime_inspector.py] | imported by [__init__.py, auto_debug_exception.py] | tested by [tests/test_debug_agent.py]
+  Dependencies: imports from [pathlib, ../agent.py, runtime_inspector.py] | imported by [__init__.py, auto_debug_exception.py] | tested by [no direct test file]
   Data flow: auto_debug_exception() calls create_debug_agent(frame, traceback, model) → creates RuntimeInspector(frame, traceback) → loads system prompt from prompts/debug_assistant.md → creates Agent with inspector as tool → returns Agent configured for debugging
   State/Effects: reads debug_assistant.md file | creates Agent and RuntimeInspector instances | no writes or global state | inspector has frozen exception frame context
   Integration: exposes create_debug_agent(frame, exception_traceback, model) function | agent gets RuntimeInspector methods as tools via automatic method extraction | used by auto_debug_exception() to analyze crashes

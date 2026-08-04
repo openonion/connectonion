@@ -1,7 +1,7 @@
 """
 Purpose: Autocomplete providers for Input widget with fuzzy search and file/command completion
 LLM-Note:
-  Dependencies: imports from [pathlib, typing.Protocol, tui/fuzzy.py, tui/dropdown.py] | imported by [tui/input.py, tui/chat.py] | tested by [tests/tui/test_providers.py]
+  Dependencies: imports from [pathlib, typing.Protocol, tui/fuzzy.py, tui/dropdown.py] | imported by [tui/input.py, tui/chat.py] | tested by [no direct test file]
   Data flow: Provider.search(query) → fuzzy_match() filters items → returns list[DropdownItem] sorted by score | StaticProvider for fixed lists | FileProvider for filesystem completion | CommandProvider for slash commands
   State/Effects: FileProvider reads filesystem via Path.glob() | no persistent state
   Integration: exposes Provider protocol with search(query) → list[DropdownItem|tuple], StaticProvider(items), FileProvider(base_path), CommandProvider(commands) | used by Input triggers dict (e.g., {"/": CommandProvider, "@": FileProvider})

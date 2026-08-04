@@ -1,7 +1,7 @@
 """
 Purpose: Simple horizontal line separator for terminal UI sections
 LLM-Note:
-  Dependencies: imports from [rich.text.Text] | imported by [tui/chat.py, tui/input.py] | tested by [tests/tui/test_divider.py]
+  Dependencies: imports from [rich.text.Text] | imported by [tui/chat.py, tui/input.py] | tested by [no direct test file]
   Data flow: Divider(width, char, style) → render() → returns Rich Text with repeated character
   State/Effects: no state (pure function)
   Integration: exposes Divider(width, char, style) with render() → Text | used for visual separation in TUI layouts

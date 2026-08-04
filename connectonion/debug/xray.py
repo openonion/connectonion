@@ -1,7 +1,7 @@
 """
 Purpose: Provide runtime debugging context and visual trace for AI agent tool execution
 LLM-Note:
-  Dependencies: imports from [inspect, builtins, typing] | imported by [tool_executor.py, __init__.py] | tested by [tests/test_xray_class.py, tests/test_xray_without_decorator.py, tests/test_xray_auto_trace.py]
+  Dependencies: imports from [inspect, builtins, typing] | imported by [tool_executor.py, __init__.py] | tested by [no direct test file]
   Data flow: receives from tool_executor → inject_xray_context(agent, user_prompt, messages, iteration, previous_tools) → stores in builtins.xray global → tool accesses xray.agent, xray.task, etc. → tool calls xray.trace() to display formatted execution history → clear_xray_context() after execution
   State/Effects: modifies builtins namespace by injecting global 'xray' object | stores thread-local context in XrayDecorator instance (_agent, _user_prompt, _messages, _iteration, _previous_tools) | clears context after tool execution | no file I/O or persistence
   Integration: exposes @xray decorator, xray global object with .agent, .task, .user_prompt, .messages, .iteration, .previous_tools properties, .trace() method | inject_xray_context(), clear_xray_context(), is_xray_enabled() helper functions | tool_executor checks __xray_enabled__ attribute to auto-print Rich tables

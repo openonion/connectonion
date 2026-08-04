@@ -1,7 +1,7 @@
 """
 Purpose: Provide runtime inspection tools for AI-powered exception debugging with live frame access
 LLM-Note:
-  Dependencies: imports from [pathlib, typing, re] | imported by [debug_agent/agent.py, debug_agent/__init__.py, auto_debug_exception.py] | tested by [tests/test_runtime_inspector.py]
+  Dependencies: imports from [pathlib, typing, re] | imported by [debug_agent/agent.py, debug_agent/__init__.py, auto_debug_exception.py] | tested by [tests/unit/test_runtime_inspector.py]
   Data flow: auto_debug_exception() creates RuntimeInspector(frame, traceback) → stores frame.f_globals + frame.f_locals in self.namespace → AI agent calls methods: execute_in_frame(code) uses eval/exec, inspect_object(var) shows type/attrs/methods, validate_assumption(statement) tests hypothesis, test_fix(code) validates solutions, explore_namespace() lists all variables → returns formatted strings → AI interprets for debugging
   State/Effects: stores frozen exception frame and namespace | execute_in_frame() can modify namespace via exec | no file I/O or external side effects | evaluates arbitrary Python code (security: only in debug context)
   Integration: exposes RuntimeInspector class with methods: execute_in_frame(code), inspect_object(variable_name), validate_assumption(statement), test_fix(fix_code), try_alternative(code), explore_namespace(), get_traceback() | used as class-based tool (Agent auto-extracts methods via tool_factory.extract_methods_from_instance)

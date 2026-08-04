@@ -1,7 +1,7 @@
 """
 Purpose: Smart terminal input component with trigger-based autocomplete and bracketed paste support
 LLM-Note:
-  Dependencies: imports from [rich.console/live, tui/keys.py, tui/dropdown.py, tui/providers.py, tui/status_bar.py] | imported by [tui/chat.py, cli/commands/] | tested by [tests/tui/test_input.py]
+  Dependencies: imports from [rich.console/live, tui/keys.py, tui/dropdown.py, tui/providers.py, tui/status_bar.py] | imported by [tui/chat.py, cli/commands/] | tested by [no direct test file]
   Data flow: Input(prompt, triggers, on_submit) → read_input() enables bracketed paste → keys.read_key() captures input → handles triggers (/, @) → providers.search() filters items → Dropdown renders matches → arrow keys navigate → Enter selects/submits → returns final value
   State/Effects: modifies terminal (enables bracketed paste, raw mode) | restores terminal on exit | maintains buffer state during input session
   Integration: exposes Input(prompt, placeholder, triggers, status_segments, on_submit) with read_input() → str | triggers dict maps trigger char to Provider | uses keys.py for raw input, dropdown.py for rendering, providers.py for search

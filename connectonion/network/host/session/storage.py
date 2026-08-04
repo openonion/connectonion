@@ -1,7 +1,7 @@
 """
 Purpose: Persistent session storage for hosted agent requests with TTL expiry
 LLM-Note:
-  Dependencies: imports from [pydantic, pathlib, json, time] | imported by [host/http_router.py, host/server.py, host/ws_router/agent_io.py, host/session/__init__.py] | tested by [tests/network/test_session_storage.py]
+  Dependencies: imports from [pydantic, pathlib, json, time] | imported by [host/http_router.py, host/server.py, host/ws_router/agent_io.py, host/session/__init__.py] | tested by [tests/unit/test_session_storage.py]
   Data flow: save(session) appends to JSONL → get(session_id) reads backwards, returns latest if not expired → list() loads all, filters expired
   State/Effects: writes to .co/session_results.jsonl (append-only) | creates .co/ directory if missing
   Integration: exposes Session (Pydantic model), SessionStorage class with save/get/list | used by http_router.input_handler and ws_router agent execution paths

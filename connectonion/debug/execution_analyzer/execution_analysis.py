@@ -1,7 +1,7 @@
 """
 Purpose: Post-execution analysis of agent runs with AI-powered improvement suggestions
 LLM-Note:
-  Dependencies: imports from [pathlib, pydantic, typing, llm_do.py] | imported by [agent.py via execution_analyzer/__init__.py] | tested by [tests/test_execution_analyzer.py]
+  Dependencies: imports from [pathlib, pydantic, typing, llm_do.py] | imported by [agent.py via execution_analyzer/__init__.py] | tested by [no direct test file]
   Data flow: receives from Agent.input() after completion → analyze_execution(user_prompt, agent_instance, final_result, execution_trace, max_iterations_reached) → builds execution summary with tool calls → loads prompt from execution_analysis_prompt.md → calls llm_do() with ExecutionAnalysis Pydantic schema → returns structured analysis with task_completed, problems_identified, system_prompt_suggestions, overall_quality, key_insights
   State/Effects: reads execution_analysis_prompt.md file | makes single LLM API call via llm_do() | no writes or global state | stateless
   Integration: exposes analyze_execution(), ExecutionAnalysis Pydantic model | used by Agent after .input() completes to provide feedback | uses same model as agent instance for analysis | ExecutionAnalysis schema validated by Pydantic

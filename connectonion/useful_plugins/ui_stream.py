@@ -1,7 +1,7 @@
 """
 Purpose: Plugin for streaming agent completion summaries to WebSocket UI clients
 LLM-Note:
-  Dependencies: imports from [core/events.py on_complete, typing] | imported by [useful_plugins/__init__.py, user code] | tested by [tests/plugins/test_ui_stream.py]
+  Dependencies: imports from [core/events.py on_complete, typing] | imported by [useful_plugins/__init__.py, user code] | tested by [tests/unit/test_ui_stream.py]
   Data flow: fires on_complete event → extracts trace from current_session → counts tools_used and llm_calls → sends via agent.io.log('complete', tools_used, llm_calls, iterations) → WebSocket client receives completion event
   State/Effects: sends message via agent.io (if connected) | no persistent state | read-only access to session trace
   Integration: exposes ui_stream plugin (use via plugins=[ui_stream]) | only fires if agent.io exists (hosted mode) | complements direct events from agent.py/tool_executor.py | stream_complete handler decorated with @on_complete

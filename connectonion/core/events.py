@@ -1,7 +1,7 @@
 """
 Purpose: Event system for hooking into agent lifecycle
 LLM-Note:
-  Dependencies: None (standalone module) | imported by [agent.py, __init__.py] | tested by [tests/test_events.py]
+  Dependencies: None (standalone module) | imported by [agent.py, __init__.py] | tested by [tests/unit/test_events.py]
   Data flow: Wrapper functions tag event handlers with _event_type attribute → Agent organizes handlers by type → Agent invokes handlers at specific lifecycle points passing agent instance
   State/Effects: Event handlers receive agent instance and can modify agent.current_session (messages, trace, etc.)
   Integration: exposes on_agent_ready(), after_user_input(), before_iteration(), after_iteration(), before_llm(), after_llm(), before_each_tool(), before_tools(), after_each_tool(), after_tools(), on_error(), on_complete(), on_stop_signal()

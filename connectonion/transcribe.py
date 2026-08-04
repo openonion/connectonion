@@ -1,7 +1,7 @@
 """
 Purpose: Audio transcription utility using Gemini API
 LLM-Note:
-  Dependencies: imports from [os, base64, pathlib, mimetypes, google.generativeai] | imported by [user code] | tested by [tests/test_transcribe.py]
+  Dependencies: imports from [os, base64, pathlib, mimetypes, google.generativeai] | imported by [user code] | tested by [tests/unit/test_transcribe.py]
   Data flow: transcribe(audio, prompt, model) → load audio file → encode base64 → call Gemini API → return text
   State/Effects: reads audio files from disk | makes Gemini API request | no caching
   Integration: exposes transcribe(audio, prompt, model, timestamps) | similar pattern to llm_do()

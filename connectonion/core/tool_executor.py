@@ -1,7 +1,7 @@
 """
 Purpose: Execute agent tools with xray context injection, timing, error handling, and trace recording
 LLM-Note:
-  Dependencies: imports from [time, json, typing, xray.py] | imported by [agent.py] | tested by [tests/test_tool_executor.py]
+  Dependencies: imports from [time, json, typing, xray.py] | imported by [agent.py] | tested by [tests/unit/test_tool_executor.py]
   Data flow: receives from Agent → tool_calls: List[ToolCall], tools: ToolRegistry, agent: Agent, logger: Logger → for each tool: injects xray context via inject_xray_context() → if tool._needs_agent, passes agent in a call-only copy → executes tool_func(**call_args) → records timing and result → appends to agent.current_session['trace'] → clears xray context → adds tool result to messages
   State/Effects: mutates agent.current_session['messages'] by appending assistant message with tool_calls and tool result messages | mutates agent.current_session['trace'] by appending tool_call then tool_result entries | calls logger.log_tool_call() and logger.log_tool_result() for user feedback | injects/clears xray context via thread-local storage
   Integration: exposes execute_and_record_tools(tool_calls, tools, agent, logger), execute_single_tool(...) | uses logger.log_tool_call(name, args) for natural function-call style output: greet(name='Alice') | creates trace entries with type, tool_name, arguments, call_id, result, status, timing, iteration, timestamp

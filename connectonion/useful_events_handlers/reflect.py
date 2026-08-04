@@ -1,7 +1,7 @@
 """
 Purpose: Reflection event handler for generating reasoning after tool execution
 LLM-Note:
-  Dependencies: imports from [core/events.py after_tools, llm_do.py, pathlib, typing] | imported by [useful_events_handlers/__init__.py, user code] | tested by [tests/events/test_reflect.py]
+  Dependencies: imports from [core/events.py after_tools, llm_do.py, pathlib, typing] | imported by [useful_events_handlers/__init__.py, user code] | tested by [no direct test file]
   Data flow: fires after_tools event → _compress_messages() truncates tool results to 150 chars → llm_do generates reflection using reflect.md prompt → adds reflection as user message to session → LLM sees reflection in next iteration
   State/Effects: modifies agent.current_session['messages'] by appending user reflection message | calls llm_do (costs tokens) | no persistent state
   Integration: exposes reflect event handler (use via on_events=[reflect]) | uses after_tools (not after_each_tool) to fire ONCE after ALL tools | loads prompt from prompt_files/reflect.md | compresses messages to reduce context size
