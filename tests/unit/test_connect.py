@@ -348,7 +348,10 @@ class TestStreamInput:
 
         mock_ws = create_mock_ws([
             json.dumps({"type": "CONNECTED", "session_id": "s1", "status": "new"}),
-            json.dumps({"type": "ask_user", "text": "Which date?"}),
+            # `question` is what the tool sends; this fake said `text`, which no
+            # producer has ever sent, so it certified a contract that existed
+            # nowhere else. See test_the_question_reaches_the_client.py.
+            json.dumps({"type": "ask_user", "question": "Which date?"}),
         ])
 
         with patch('websockets.connect', return_value=mock_ws):

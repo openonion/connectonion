@@ -619,16 +619,30 @@ class RemoteAgent:
 
                     elif event_type == "ask_user":
                         # Agent is asking a question - return done=False so caller sends another input()
+                        #
+                        # `question` is the field the tool sends. This read `text`,
+                        # which no producer has ever sent -- useful_tools/ask_user.py
+                        # and diff_writer.py both send `question` -- so every
+                        # multi-turn conversation over the network arrived with the
+                        # question missing and the options intact, the one field
+                        # both sides happened to spell alike. `text` stays accepted
+                        # for anything built against the old shape.
                         self._status = "waiting"
                         done = False
-                        result_text = event.get("text", "")
+                        result_text = event.get("question") or event.get("text") or ""
 
-                        # Add ask_user event to UI
-                        self._add_ui_event({
+                        # multi_select and fields were dropped: a client could not
+                        # tell one answer from many, and a form asked for over the
+                        # network could not be rendered at all.
+                        asked = {
                             "type": "ask_user",
-                            "text": event.get("text"),
-                            "options": event.get("options")
-                        })
+                            "text": result_text,
+                            "options": event.get("options"),
+                            "multi_select": event.get("multi_select"),
+                        }
+                        if event.get("fields") is not None:
+                            asked["fields"] = event["fields"]
+                        self._add_ui_event(asked)
                         break
 
                     else:
