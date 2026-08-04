@@ -752,7 +752,8 @@ def host(
     from .ws_router.dashboard import ensure_dashboard
     ensure_dashboard(agent_metadata)
 
-    storage = SessionStorage()
+    # co_dir, not the default: host(co_dir=...) must put the sessions there too.
+    storage = SessionStorage(co_dir / "session_results.jsonl")
 
     # Any session still marked `running` belongs to a process that is gone —
     # this one just started and owns none. Left alone they are permanent, since
