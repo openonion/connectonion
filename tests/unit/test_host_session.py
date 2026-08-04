@@ -87,11 +87,18 @@ class TestSessionStorageInit:
     """Test SessionStorage initialization."""
 
     def test_default_path(self, tmp_path, monkeypatch):
-        """Default path is .co/session_results.jsonl."""
+        """Default path is `.co/session_results.jsonl` in the project.
+
+        Same directory as before when the cwd *is* the project, which is what
+        this asserted. It is now resolved rather than relative: the bare relative
+        path was re-read against the cwd on every use, and constructing it from a
+        subdirectory both lost the history and planted a `.co/` that shadowed the
+        project's own — see test_the_session_history_belongs_to_the_project.py.
+        """
         monkeypatch.chdir(tmp_path)
         storage = SessionStorage()
 
-        assert storage.path == Path(".co/session_results.jsonl")
+        assert storage.path == tmp_path.resolve() / ".co" / "session_results.jsonl"
 
     def test_custom_path(self, tmp_path):
         """Custom path is used when provided."""

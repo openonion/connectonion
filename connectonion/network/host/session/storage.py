@@ -17,6 +17,8 @@ from typing import Optional
 
 from pydantic import BaseModel
 
+from ....project import project_co_dir
+
 
 class Session(BaseModel):
     """Session record for agent requests."""
@@ -33,8 +35,15 @@ class Session(BaseModel):
 class SessionStorage:
     """JSONL file storage. Append-only, last entry wins."""
 
-    def __init__(self, path: str = ".co/session_results.jsonl"):
-        self.path = Path(path)
+    def __init__(self, path=None):
+        # The project's `.co/`, not a bare relative path. `host()` builds this
+        # with no argument, so an agent hosted from a subdirectory wrote its
+        # sessions to `sub/.co/` -- invisible to any later run, and the `.co/`
+        # created here is a decoy that the walk-up in #660/#661/#663 stops at,
+        # so the project's own host.yaml and trust lists stop being found.
+        # Absolute, because a relative path is re-resolved on every use and a
+        # tool calling os.chdir would move the history mid-run.
+        self.path = Path(path) if path else project_co_dir() / "session_results.jsonl"
         self.path.parent.mkdir(exist_ok=True)
 
     def save(self, session: Session):
