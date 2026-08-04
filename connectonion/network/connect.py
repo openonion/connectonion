@@ -771,16 +771,26 @@ class RemoteAgent:
             self._add_ui_event({
                 "type": "tool_call",
                 "id": event.get("id"),
+                # The LLM's call id, which the result carries too. `id` is this
+                # event's own and differs between the call and its result.
+                "tool_id": event.get("tool_id"),
                 "name": event.get("name"),
                 "args": event.get("args"),
                 "status": "running"
             })
 
         elif event_type == "tool_result":
-            # Find and update existing tool_call by id
-            tool_id = event.get("id")
+            # Correlate on tool_id -- the LLM's call id, which both frames
+            # share. This read `id`, which is per-event and differs between the
+            # call and its result, so the match never succeeded and every tool
+            # stayed "running" for the rest of the session however it finished.
+            # The replayed path (session/ui.py) has always keyed on tool_id.
+            # `id` remains the fallback for a frame that carries no tool_id.
+            key = event.get("tool_id") or event.get("id")
             for ui_event in self._ui_events:
-                if ui_event.get("type") == "tool_call" and ui_event.get("id") == tool_id:
+                if ui_event.get("type") == "tool_call" and (
+                    ui_event.get("tool_id") or ui_event.get("id")
+                ) == key:
                     ui_event["status"] = "done" if event.get("status") == "success" else "error"
                     ui_event["result"] = event.get("result")
                     break
