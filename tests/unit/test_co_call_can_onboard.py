@@ -64,6 +64,14 @@ class FakeWebSocket:
                 f"{[m.get('type') for m in self.sent]}")
         return json.dumps(self._outbox.pop(0))
 
+    def __await__(self):
+        """`websockets.connect(url)` is awaitable as well as a context manager,
+        and connect.py awaits it so a refused connection can be retried
+        elsewhere. A stand-in that is only a context manager is not one."""
+        async def _self():
+            return self
+        return _self().__await__()
+
     async def __aenter__(self):
         return self
 
