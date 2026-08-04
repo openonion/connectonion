@@ -33,6 +33,7 @@ State management:
 """
 
 from pathlib import Path
+from ....project import project_co_dir
 from rich.console import Console
 from rich.panel import Panel
 from rich.markdown import Markdown
@@ -52,7 +53,10 @@ console = Console()
 
 def get_plan_file_path(session_id: str = None) -> Path:
     """Get the plan file path, scoped by session ID."""
-    co_dir = Path.cwd() / ".co"
+    # The project's `.co/`, not one planted wherever `co ai` was started: the
+    # walk-up stops at the nearest `.co/`, so a stray one shadows the project's
+    # host.yaml and trust lists for everything run there afterwards.
+    co_dir = project_co_dir()
     co_dir.mkdir(exist_ok=True)
     if session_id:
         return co_dir / f"PLAN_{session_id}.md"

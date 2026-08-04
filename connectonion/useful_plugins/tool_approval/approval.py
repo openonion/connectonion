@@ -204,6 +204,7 @@ from pathlib import Path
 
 from ...core.events import before_each_tool, before_iteration, after_iteration, after_user_input
 from .constants import VALID_MODES, DEFAULT_MODE, DANGEROUS_TOOLS, FILE_EDIT_TOOLS, COMMAND_TOOLS
+from ...project import project_co_dir
 from .bash_parser import extract_commands_from_bash, check_bash_chain_permitted
 
 if TYPE_CHECKING:
@@ -702,7 +703,7 @@ def load_permission_patterns(co_dir=None) -> dict:
         if template_permissions and isinstance(template_permissions, dict):
             permissions.update(_convert_permission_patterns(template_permissions))
 
-    co_dir = Path(co_dir) if co_dir else (Path.cwd() / '.co')
+    co_dir = Path(co_dir) if co_dir else project_co_dir()
     host_yaml = co_dir / 'host.yaml'
     if host_yaml.exists():
         with open(host_yaml, 'r', encoding='utf-8') as f:
@@ -777,7 +778,7 @@ def load_config_permissions(agent: 'Agent') -> None:
 
     # Reuse the shared loader — template safe defaults + project host.yaml —
     # so the session flow and direct EXEC honor one whitelist.
-    co_dir = Path.cwd() / '.co'
+    co_dir = project_co_dir()
     host_yaml = co_dir / 'host.yaml'
     loaded = load_permission_patterns(co_dir)
 

@@ -35,6 +35,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Optional, Dict, Any, List
 
 from ..core.events import on_agent_ready
+from ..project import project_co_dir
 
 if TYPE_CHECKING:
     from ..core.agent import Agent
@@ -49,7 +50,7 @@ def _get_agent_paths(agent_name: str) -> List[Path]:
     paths = []
 
     # 1. Project-level
-    paths.append(Path.cwd() / '.co' / 'agents' / agent_name / 'AGENT.md')
+    paths.append(project_co_dir() / 'agents' / agent_name / 'AGENT.md')
 
     # 2. User-level
     paths.append(Path.home() / '.co' / 'agents' / agent_name / 'AGENT.md')
@@ -100,7 +101,7 @@ def _discover_all_agents() -> List[Dict[str, str]]:
     seen_names = set()
 
     for location, base_path in [
-        ('project', Path.cwd() / '.co' / 'agents'),
+        ('project', project_co_dir() / 'agents'),
         ('user', Path.home() / '.co' / 'agents'),
         ('builtin', Path(__file__).parent / 'builtin_agents')
     ]:

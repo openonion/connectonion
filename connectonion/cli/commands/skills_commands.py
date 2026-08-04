@@ -18,6 +18,7 @@ import re
 import shutil
 from datetime import datetime, timezone
 from pathlib import Path
+from ...project import project_co_dir
 from typing import List, Optional
 
 from rich.console import Console
@@ -30,17 +31,29 @@ SKILLS_DIR = CO_HOME / "skills"
 INDEX_FILE = SKILLS_DIR / "index.json"
 AGENT_JSON = CO_HOME / "agent.json"
 
+def project_skills_dir() -> Path:
+    """`.co/skills` in the project, wherever `co` was run from.
+
+    Resolved per call. As a module-level constant this was `Path.cwd() / '.co'`
+    evaluated at *import* time, so it named the directory the process started in
+    and nothing could change it afterwards. `--to-project` then mkdir'd it,
+    which plants a `.co/` that shadows the project's own for every later lookup.
+    """
+    return project_co_dir() / "skills"
+
+
 # Sources mirror oo/lib/fanout.py — same agents, read direction.
 # Each entry: (source_id, root_path, layout)
 # layout: "skill-dir" → root/<name>/SKILL.md, "flat-md" → root/<name>.md, "mdc" → root/<name>.mdc
-SOURCES = [
-    ("co-project", Path.cwd() / ".co" / "skills", "skill-dir"),
-    ("co-user",    Path.home() / ".co" / "skills", "skill-dir"),
-    ("claude",     Path.home() / ".claude" / "skills", "skill-dir"),
-    ("codex",      Path.home() / ".codex" / "skills", "skill-dir"),
-    ("cursor",     Path.home() / ".cursor" / "rules", "mdc"),
-    ("kiro",       Path.home() / ".kiro" / "steering", "flat-md"),
-]
+def sources() -> list:
+    return [
+        ("co-project", project_skills_dir(), "skill-dir"),
+        ("co-user",    Path.home() / ".co" / "skills", "skill-dir"),
+        ("claude",     Path.home() / ".claude" / "skills", "skill-dir"),
+        ("codex",      Path.home() / ".codex" / "skills", "skill-dir"),
+        ("cursor",     Path.home() / ".cursor" / "rules", "mdc"),
+        ("kiro",       Path.home() / ".kiro" / "steering", "flat-md"),
+    ]
 
 FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
@@ -95,7 +108,7 @@ def _entry(source_id: str, fallback_name: str, path: Path) -> dict:
 def handle_skills_discover(save: bool = True, json_out: bool = False, include_namespaced: bool = False):
     """Scan known agent skill roots and print/save an index."""
     all_skills: list = []
-    for source_id, root, layout in SOURCES:
+    for source_id, root, layout in sources():
         all_skills.extend(scan_source(source_id, root, layout))
 
     if not include_namespaced:
@@ -113,7 +126,7 @@ def handle_skills_discover(save: bool = True, json_out: bool = False, include_na
 
     index = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
-        "sources": [src for src, _, _ in SOURCES],
+        "sources": [src for src, _, _ in sources()],
         "skills": deduped,
     }
 
@@ -145,7 +158,14 @@ def _load_index() -> Optional[dict]:
     return json.loads(INDEX_FILE.read_text(encoding="utf-8"))
 
 
-SOURCE_PRIORITY = {src: i for i, (src, _, _) in enumerate(SOURCES)}
+def source_priority() -> dict:
+    """Priority by source, in the order `sources()` lists them.
+
+    A function, not a constant: as a constant it ran `sources()` at import
+    time, which resolves the project directory — the very thing this module
+    stopped doing at import time.
+    """
+    return {src: i for i, (src, _, _) in enumerate(sources())}
 
 
 # What a skill must not carry with it. VERSIONING.md put it plainly when the
@@ -262,7 +282,7 @@ def handle_skills_copy(
         console.print("[yellow]No index found. Run `co skills discover` first.[/yellow]")
         return
 
-    skills_dir = (Path.cwd() / ".co" / "skills") if to_project else SKILLS_DIR
+    skills_dir = project_skills_dir() if to_project else SKILLS_DIR
     skills_dir.mkdir(parents=True, exist_ok=True)
 
     by_name: dict = {}
@@ -271,11 +291,12 @@ def handle_skills_copy(
 
     if all_:
         candidates = [s for s in index["skills"] if not source or s["source"] == source]
-        # Dedupe by name using SOURCES priority order (co-project > co-user > claude > ...)
+        # Dedupe by name using source priority order (co-project > co-user > claude > ...)
+        priority = source_priority()
         chosen: dict = {}
         for s in candidates:
             existing = chosen.get(s["name"])
-            if existing is None or SOURCE_PRIORITY[s["source"]] < SOURCE_PRIORITY[existing["source"]]:
+            if existing is None or priority[s["source"]] < priority[existing["source"]]:
                 chosen[s["name"]] = s
 
         copied = skipped = 0

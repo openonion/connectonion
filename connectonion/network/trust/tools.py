@@ -53,37 +53,9 @@ def _mention_a_legacy_list(list_name: str) -> None:
           f"{list_file(list_name)}.")
 
 
-def _project_co_dir(start=None) -> Path:
-    """The `.co/` that belongs to this agent — the project's, not the one beside
-    wherever the process happens to be standing.
-
-    These resolved against the bare cwd, so running the agent one directory down
-    looked for `subdir/.co/contacts.txt`. Measured on a project with a real
-    contact and a real block in its lists:
-
-        from the project root      -> contact
-        from a subdirectory of it  -> stranger
-
-    The directions are not symmetric. A contact or a whitelisted address demoted
-    to stranger is refused, which is safe. A blocked address demoted to stranger
-    is no longer blocked -- is_blocked() reads the same list -- so someone who
-    was blocked gets back in because of where the process was started.
-
-    Walking up is how everything else the agent is made of is found (.co/skills,
-    .co/host.yaml), and it is what dashboard.py settled on for the Home page
-    after the same bug: "the project, not wherever you ran from". It also closes
-    the other half of the hazard that comment names -- a tool or a plugin calling
-    os.chdir mid-run, after which every later check would read somewhere else.
-
-    Falls back to the starting directory when there is no `.co/` above it, so an
-    agent hosted outside a project still has lists; they just live where it was
-    started.
-    """
-    start = Path(start or Path.cwd()).resolve()
-    for directory in (start, *start.parents):
-        if (directory / ".co").is_dir():
-            return directory / ".co"
-    return start / ".co"
+# The `.co/` that belongs to this agent. A blocked address read from the wrong
+# list comes back a stranger, so this one fails open. See connectonion/project.py.
+from ...project import project_co_dir as _project_co_dir
 
 
 def _admins_file(co_dir: Path = None) -> Path:
@@ -397,7 +369,7 @@ def load_admins(co_dir: Path = None) -> set:
     admins = set()
 
     if co_dir is None:
-        co_dir = Path.cwd() / ".co"
+        co_dir = _project_co_dir()
 
     # Self address is always admin. Through get_self_address, which reads
     # `.co/keys/` and falls back to the older `.co/address.json` — this used to
@@ -460,7 +432,7 @@ def get_self_address(co_dir: Path = None) -> str | None:
     import json
 
     if co_dir is None:
-        co_dir = Path.cwd() / ".co"
+        co_dir = _project_co_dir()
 
     from ... import address
 

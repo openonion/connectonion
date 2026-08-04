@@ -37,6 +37,7 @@ import re
 from pathlib import Path
 from typing import Any, Dict, Optional, List
 from dataclasses import dataclass
+from ....project import project_co_dir
 
 
 @dataclass
@@ -97,7 +98,7 @@ def discover_skills(base_path: Optional[Path] = None) -> List[SkillInfo]:
     if base_path:
         search_paths.append(base_path / ".co" / "skills")
     else:
-        search_paths.append(Path.cwd() / ".co" / "skills")
+        search_paths.append(project_co_dir() / "skills")
 
     # User-level skills
     home_skills = Path.home() / ".co" / "skills"

@@ -27,25 +27,9 @@ from .core.usage import totals_from_trace
 KEEP_RUNS_PER_EVAL = 20
 
 
-def _project_co_dir(start=None) -> Path:
-    """The project's `.co/`, found by walking up -- not `Path(".co")`.
-
-    A bare `.co` is created wherever the Agent happens to be constructed, so a
-    script run from a subdirectory of its own project got a second `.co/logs/`
-    there. That is untidy on its own, and it defeats the rule the rest of the
-    agent follows: host.yaml and the trust lists are located by walking up
-    (#660), and a scattered `.co` stops that walk at the wrong directory. The
-    scaffold builds the Agent before calling host(), so the scatter happens
-    first and the walk finds it.
-
-    Falls back to the starting directory when there is no `.co/` above, which is
-    a fresh project's first run -- the logs land where it was started, as before.
-    """
-    start = Path(start or Path.cwd()).resolve()
-    for directory in (start, *start.parents):
-        if (directory / ".co").is_dir():
-            return directory / ".co"
-    return start / ".co"
+# The project's `.co/`, found by walking up -- not `Path(".co")`, which creates
+# one wherever the Agent happens to be constructed. See connectonion/project.py.
+from .project import project_co_dir as _project_co_dir
 
 
 def _slugify(text: str, max_length: int = 50) -> str:
