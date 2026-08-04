@@ -20,6 +20,7 @@ import uuid
 from functools import partial
 from pathlib import Path
 from typing import Callable
+from ...project import project_co_dir
 
 from ..asgi.http import read_body, send_json, send_html, send_text, CORS_HEADERS
 from ..trust.http_admin import handle_admin_routes
@@ -255,7 +256,7 @@ def info_handler(agent_metadata: dict, trust, trust_config: dict | None = None,
 
 def admin_logs_handler(agent_name: str) -> dict:
     """GET /admin/logs"""
-    log_path = Path(f".co/logs/{agent_name}.log")
+    log_path = project_co_dir() / "logs" / f"{agent_name}.log"
     if log_path.exists():
         return {"content": log_path.read_text(encoding="utf-8")}
     return {"error": "No logs found"}
@@ -264,7 +265,7 @@ def admin_logs_handler(agent_name: str) -> dict:
 def admin_sessions_handler() -> dict:
     """GET /admin/sessions"""
     import yaml
-    sessions_dir = Path(".co/evals")
+    sessions_dir = project_co_dir() / "evals"
     if not sessions_dir.exists():
         return {"sessions": []}
 

@@ -14,6 +14,7 @@ import json
 import yaml
 import requests
 from pathlib import Path
+from ..project import project_co_dir
 from typing import Dict, Optional
 from dotenv import load_dotenv
 
@@ -169,11 +170,12 @@ def get_agent_email() -> Optional[str]:
     Returns:
         str: Agent's email address or None if not configured
     """
-    co_dir = Path(".co")
+    # The project's `.co/`. This walked up exactly one level by hand --
+    # `Path("../.co")` -- so it survived one subdirectory and returned None
+    # from two. project.py does the same walk for any depth.
+    co_dir = project_co_dir()
     if not co_dir.exists():
-        co_dir = Path("../.co")
-        if not co_dir.exists():
-            return None
+        return None
     
     config_path = co_dir / "host.yaml"
     if not config_path.exists():

@@ -37,6 +37,7 @@ Your command prompt here...
 
 import yaml
 from pathlib import Path
+from ..project import project_co_dir, project_root
 from typing import Dict, Optional, List
 
 
@@ -70,12 +71,12 @@ class SlashCommand:
             SlashCommand instance or None if not found
         """
         # Check user custom first
-        custom_path = Path(".co/commands") / f"{command_name}.md"
+        custom_path = project_co_dir() / "commands" / f"{command_name}.md"
         if custom_path.exists():
             return cls._parse_file(custom_path, is_custom=True)
 
         # Check built-in
-        builtin_path = Path("commands") / f"{command_name}.md"
+        builtin_path = project_root() / "commands" / f"{command_name}.md"
         if builtin_path.exists():
             return cls._parse_file(builtin_path, is_custom=False)
 
@@ -172,14 +173,14 @@ class SlashCommand:
         commands = {}
 
         # Load built-ins first
-        builtin_dir = Path("commands")
+        builtin_dir = project_root() / "commands"
         if builtin_dir.exists():
             for filepath in builtin_dir.glob("*.md"):
                 cmd = cls._parse_file(filepath, is_custom=False)
                 commands[cmd.name] = cmd
 
         # Load customs (override built-ins)
-        custom_dir = Path(".co/commands")
+        custom_dir = project_co_dir() / "commands"
         if custom_dir.exists():
             for filepath in custom_dir.glob("*.md"):
                 cmd = cls._parse_file(filepath, is_custom=True)
@@ -197,5 +198,5 @@ class SlashCommand:
         Returns:
             True if custom command exists in .co/commands/
         """
-        custom_path = Path(".co/commands") / f"{command_name}.md"
+        custom_path = project_co_dir() / "commands" / f"{command_name}.md"
         return custom_path.exists()
