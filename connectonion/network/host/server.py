@@ -250,6 +250,42 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
     }
 
 
+def resolve_agent_identity(co_dir: Path) -> dict:
+    """The keypair this agent serves under — the same one `co status` reports.
+
+    A project with no key of its own used to get two different answers. `co status`
+    falls back to the machine's identity:
+
+        co_dir = Path(".co")
+        if not (co_dir.exists() and (co_dir / "keys" / "agent.key").exists()):
+            co_dir = Path.home() / ".co"
+
+    and this did not, so it minted a third one. Measured in a project created by
+    1.5.x, whose `co init` pointed at the global ~/.co and wrote no local key:
+
+        co status says   0x10e68f6dff39ab1c50cc48ea…
+        host served as   0x3910103910d99954443e42a3…
+
+    The operator reads one address, hands it out, and nothing reaches the agent.
+    The project's identity changes on the way past, too: whatever was whitelisted
+    or announced under the configured address is now somebody else.
+
+    Generating stays for a machine with no identity at all — an agent has to have
+    an address. What goes is inventing one while a configured identity sits unused.
+    """
+    own = address.load(co_dir)
+    if own:
+        return own
+
+    inherited = address.load(Path.home() / ".co")
+    if inherited:
+        return inherited
+
+    fresh = address.generate()
+    address.save(fresh, co_dir)
+    return fresh
+
+
 def usable_uvicorn_options(workers, reload) -> tuple:
     """What uvicorn can actually be given, and a word about the difference.
 
@@ -699,12 +735,8 @@ def host(
     if blacklist is None:
         blacklist = load_list_file(config.get('blacklist'))
 
-    # Load or generate agent identity
-    addr_data = address.load(co_dir)
-
-    if addr_data is None:
-        addr_data = address.generate()
-        address.save(addr_data, co_dir)
+    # Load or generate agent identity -- the one `co status` reports, not a new one
+    addr_data = resolve_agent_identity(co_dir)
 
     agent_metadata["address"] = addr_data['address']
     agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"
