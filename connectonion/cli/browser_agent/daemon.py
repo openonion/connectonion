@@ -741,6 +741,19 @@ class BrowserDaemon:
 
     def _cleanup(self):
         self._closing = True   # read by serve() -- see the accept loop
+        # Wake a thread already blocked in accept(). Closing the listener raises
+        # out of accept() on macOS, which is where the abort was seen -- but not
+        # on Linux, where accept() simply keeps blocking and serve() never
+        # notices the flag. CI caught that: this file's own test failed on all
+        # four Linux jobs and passed on macOS and Windows.
+        #
+        # One throwaway connection is enough; connect_ex reports failure as a
+        # return value rather than an exception, and a failure here means the
+        # socket is already gone, which is the outcome we wanted anyway.
+        if self._srv and not transport.IS_WINDOWS and os.path.exists(self.sock_path):
+            waker = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            waker.connect_ex(self.sock_path)
+            waker.close()
         # Stop accepting FIRST: closing/unlinking the socket before anything slow
         # means a client connecting during shutdown fails immediately and spawns
         # a fresh daemon, instead of reaching a daemon that will never accept its request.
