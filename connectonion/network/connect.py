@@ -331,7 +331,16 @@ class RemoteAgent:
                                 text="", status="error",
                                 error=f"agent requires onboarding ({', '.join(methods) or 'no methods offered'})"
                                       " — run this from a terminal to enter an invite code")
-                        credentials = self._prompt_onboard(methods, event.get("payment_amount"))
+                        try:
+                            credentials = self._prompt_onboard(methods, event.get("payment_amount"))
+                        except ValueError as declined:
+                            # Entering nothing is an answer, and a normal one.
+                            # _prompt_onboard raises for it, and every other refusal
+                            # call() can meet — a blacklist, a bad code, a tool that
+                            # is not whitelisted — comes back as an ExecResult. This
+                            # is that same channel, not a swallowed error.
+                            return ExecResult(text="", status="error",
+                                              error=f"onboarding not completed: {declined}")
                         await ws.send(json.dumps(self._build_onboard_submit(credentials)))
                         continue
                     if etype == "ERROR":
