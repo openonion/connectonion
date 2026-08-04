@@ -22,6 +22,7 @@ Lifecycle:
 
 import asyncio
 import json
+import sys
 import time
 import uuid
 from dataclasses import dataclass
@@ -314,8 +315,25 @@ class RemoteAgent:
                     if etype == "CONNECTED":
                         break
                     if etype == "ONBOARD_REQUIRED":
-                        return ExecResult(text="", status="error",
-                                          error="agent requires onboarding — run input() once to onboard, then call() works")
+                        # The same exchange input() does, on the same socket: submit
+                        # credentials and keep waiting. The host finishes the CONNECT
+                        # its trust gate interrupted (ws_router/session.py pops the
+                        # stashed pending_connect and calls establish_connection), so
+                        # CONNECTED arrives on this loop and the EXEC goes out below.
+                        #
+                        # This used to answer "run input() once to onboard" — the
+                        # Python API, which is no help to whoever typed `co call`.
+                        methods = event.get("methods", [])
+                        if not sys.stdin.isatty():
+                            # A script has no stdin to answer with, and prompting
+                            # would hang it. Fail, but say what the agent asked for.
+                            return ExecResult(
+                                text="", status="error",
+                                error=f"agent requires onboarding ({', '.join(methods) or 'no methods offered'})"
+                                      " — run this from a terminal to enter an invite code")
+                        credentials = self._prompt_onboard(methods, event.get("payment_amount"))
+                        await ws.send(json.dumps(self._build_onboard_submit(credentials)))
+                        continue
                     if etype == "ERROR":
                         return ExecResult(text="", status="error",
                                           error=event.get("message", "connect failed"))
