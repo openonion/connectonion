@@ -84,11 +84,23 @@ class TestTheAdminRoutes:
 
     @pytest.mark.parametrize("depth", DEPTHS)
     def test_the_log_is_found(self, project, monkeypatch, depth):
-        from connectonion.network.host.http_router import admin_logs_handler
+        """Through the route, because the path now comes from the Logger.
+
+        `admin_logs_handler` used to rebuild the path from the agent's display
+        name and this asserted that rebuild resolved to the project. It takes
+        the path itself now — the logger's, which walks up on its own (#661) —
+        so the subdirectory case belongs at the route, where the two meet.
+        """
+        from connectonion import Agent
+        from connectonion.network.host.server import _create_route_handlers
+        from connectonion.network.trust.trust_agent import TrustAgent
 
         monkeypatch.chdir(project / depth)
+        agent = Agent("myagent", tools=[], model="co/gemini-2.5-flash")
+        handlers = _create_route_handlers(
+            lambda: agent, {"name": "the-project"}, 3600, TrustAgent("careful"), {})
 
-        assert "a log line" in admin_logs_handler("myagent").get("content", "")
+        assert "a log line" in handlers["admin_logs"]().get("content", "")
 
 
 class TestTheAgentsOwnEmail:

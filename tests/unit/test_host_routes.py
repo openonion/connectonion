@@ -406,7 +406,7 @@ class TestAdminLogsHandler:
         log_file = log_dir / "test_agent.log"
         log_file.write_text("Log line 1\nLog line 2\n")
 
-        result = admin_logs_handler("test_agent")
+        result = admin_logs_handler(log_file)
 
         assert "content" in result
         assert "Log line 1" in result["content"]
@@ -416,7 +416,7 @@ class TestAdminLogsHandler:
         """admin_logs_handler returns error when log doesn't exist."""
         monkeypatch.chdir(tmp_path)
 
-        result = admin_logs_handler("nonexistent_agent")
+        result = admin_logs_handler(tmp_path / ".co" / "logs" / "nonexistent.log")
 
         assert "error" in result
         assert result["error"] == "No logs found"

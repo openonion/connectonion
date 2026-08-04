@@ -219,7 +219,11 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         return info_handler(agent_metadata, trust, trust_config, config)
 
     def handle_admin_logs():
-        return admin_logs_handler(agent_name)
+        # Where the log actually is, asked of the logger that writes it. Rebuilt
+        # from agent_metadata["name"] this looked for the *display* name --
+        # host.yaml's, deliberately (see _extract_agent_metadata) -- while the
+        # file is named after the Agent. `co init` makes those differ by default.
+        return admin_logs_handler(create_agent().logger.log_file_path)
 
     return {
         "input": handle_input,
