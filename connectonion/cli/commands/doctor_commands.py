@@ -13,6 +13,8 @@ import sys
 import os
 import shutil
 from pathlib import Path
+
+from ...project import project_co_dir
 import requests
 from rich.console import Console
 from rich.panel import Panel
@@ -70,6 +72,23 @@ def model_pricing_note(model) -> "str | None":
 
     return (f"{model} is no longer in the price table — it still runs, "
             f"and costs shown for it are estimates")
+
+
+def _shown(path: Path) -> str:
+    """A path relative to where you are standing, so the panel stays readable.
+
+    These rows used to interpolate a bare `Path(".co")/…`, which read as
+    `.co/keys/agent.key` only because it was relative to begin with. Resolving
+    the project properly made them absolute, and the panel started printing the
+    machine's whole directory tree. Relative to the cwd it also says which way
+    the project lies: `.co/…` at the root, `../.co/…` below it.
+    """
+    import os
+
+    try:
+        return str(path.relative_to(Path.cwd()))
+    except ValueError:
+        return os.path.relpath(path, Path.cwd())
 
 
 def handle_doctor():
@@ -131,11 +150,16 @@ def handle_doctor():
     config_table.add_column("Status")
 
     # Check for host.yaml (project config)
-    local_config = Path(".co") / "host.yaml"
+    # The project's, found by walking up -- the rule since #660. As a bare
+    # Path(".co") every one of these answered for whatever directory `co doctor`
+    # was run from, so a subdirectory of a project was diagnosed as a different
+    # project: no config, and the machine's key reported as this agent's with a
+    # green tick beside it.
+    local_config = project_co_dir() / "host.yaml"
     config = {}
 
     if local_config.exists():
-        config_table.add_row("Config", f"[green]✓[/green] {local_config}")
+        config_table.add_row("Config", f"[green]✓[/green] {_shown(local_config)}")
         import yaml
         with open(local_config, 'r', encoding="utf-8") as f:
             config = yaml.safe_load(f) or {}
@@ -160,11 +184,11 @@ def handle_doctor():
         config_table.add_row("Config", "[yellow]○[/yellow] Not found (optional)")
 
     # Check for keys
-    local_keys = Path(".co") / "keys" / "agent.key"
+    local_keys = project_co_dir() / "keys" / "agent.key"
     global_keys = Path.home() / ".co" / "keys" / "agent.key"
 
     if local_keys.exists():
-        config_table.add_row("Keys", f"[green]✓[/green] {local_keys}")
+        config_table.add_row("Keys", f"[green]✓[/green] {_shown(local_keys)}")
     elif global_keys.exists():
         config_table.add_row("Keys", f"[green]✓[/green] {global_keys}")
     else:
@@ -269,7 +293,7 @@ def handle_doctor():
             from ... import address
             import time
 
-            co_dir = Path(".co") if local_keys.exists() else Path.home() / ".co"
+            co_dir = project_co_dir() if local_keys.exists() else Path.home() / ".co"
             addr_data = address.load(co_dir)
 
             public_key = addr_data["address"]
