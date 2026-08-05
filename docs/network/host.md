@@ -954,7 +954,7 @@ Pre-configured trust agents for common scenarios:
 
 ```python
 host(agent, trust="open")      # Accept all (development)
-host(agent, trust="careful")   # Recommend signature, accept unsigned (default)
+host(agent, trust="careful")   # Admin, whitelisted and contacts (default; every request is signed)
 host(agent, trust="strict")    # Require valid signature (production)
 ```
 

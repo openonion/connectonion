@@ -30,7 +30,7 @@ def doors_that_open(onboard: dict, self_address) -> dict | None:
     #561 fixed two such places; the advertiser and /info were the third and
     fourth.
     """
-    from .fast_rules import _resolve_codes
+    from .fast_rules import _resolve_codes, _resolve_payment
 
     result = {"methods": []}
     if _resolve_codes(onboard.get("invite_code", [])):
@@ -38,10 +38,13 @@ def doors_that_open(onboard: dict, self_address) -> dict | None:
 
     # A payment with nowhere to send it is not a way in: the client would be
     # told to pay and not told where, and verify_payment refuses without an
-    # address anyway.
-    if "payment" in onboard and self_address:
+    # address anyway. Nor is one with no price: `"payment" in onboard` was true
+    # for the unresolved `$CO_PAYMENT` the default now ships, which is the same
+    # mistake this function exists to stop making about invite codes.
+    price = _resolve_payment(onboard.get("payment"))
+    if price and self_address:
         result["methods"].append("payment")
-        result["payment_amount"] = onboard["payment"]
+        result["payment_amount"] = price
         result["payment_address"] = self_address
 
     return result if result["methods"] else None

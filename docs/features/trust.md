@@ -754,6 +754,43 @@ Evaluate strangers for access...
 4. Apply `default` action
 
 
+### Which door your agent opens
+
+The shipped `careful` policy — what every agent gets unless you say otherwise —
+opens **neither** door. Both are switched on from the environment, and an unset
+variable is a closed door, never a default:
+
+```yaml
+onboard:
+  invite_code: [$CO_INVITE_CODE]
+  payment: $CO_PAYMENT
+```
+
+| | unset | set |
+|---|---|---|
+| `CO_INVITE_CODE` | no invite door; nothing is advertised | strangers who type that code become contacts |
+| `CO_PAYMENT` | no payment door | strangers who transfer at least that much to the agent's address become contacts |
+
+On a deployed agent these live in the root-owned env file `co deploy` writes,
+the same channel as every other secret — not in the project, and not in this
+repository. A literal in a shipped policy would be one password for every
+deployment (#561), and a shipped price would charge for every agent whose
+operator never asked to (#672).
+
+Writing the number in your own policy still works, and is the right thing when
+the price is part of what you are publishing:
+
+```yaml
+onboard:
+  payment: 25      # what this agent charges, decided when it is published
+```
+
+**The price is yours, not the caller's.** What a client sends in its onboard
+frame is a claim about what it paid; the transfer is verified against the
+amount *you* configured. `payment: 0` is not a price — an agent that admits
+anyone who sends nothing is `open`, and should say so.
+
+
 ## TrustAgent Class
 
 TrustAgent inherits from Agent and provides trust-specific methods.

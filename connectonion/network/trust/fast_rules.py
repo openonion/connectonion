@@ -60,6 +60,52 @@ def parse_policy(policy_text: str, source: str = None) -> tuple[dict, str]:
     return config, markdown_body
 
 
+def _resolve_payment(value) -> float | None:
+    """The price this agent charges, or None because it does not charge.
+
+    Same contract as _resolve_codes above: `$NAME` reads NAME from the
+    environment and an unset variable resolves to *nothing*, never to the
+    placeholder and never to a default.
+
+    That switch is what payment was missing. `invite_code` has had it since
+    #561 and is therefore opt-in -- an agent with no CO_INVITE_CODE set opens
+    no invite door. `payment` shipped as the bare literal `10`, with nothing to
+    set and nothing to unset, so every agent created by `co init` advertised a
+    price its operator never chose and admitted anyone who paid it (#672).
+    Which door an agent opens is decided when it is published, in its trust
+    config; the shipped default now opens neither.
+
+    Zero and below are not prices. `payment: 0` admits a stranger who sends
+    nothing, which is `open` -- an operator who means that should say so.
+    """
+    if value is None:
+        return None
+    text = str(value).strip()
+    if text.startswith('$'):
+        import os as _os
+        text = _os.environ.get(text[1:], '').strip()
+    if not text:
+        return None
+    if not _looks_numeric(text):
+        # A price nobody can pay is not a door. Advertising one would tell a
+        # stranger to transfer "ten dollars" and refuse whatever they sent.
+        return None
+    amount = float(text)
+    return amount if amount > 0 else None
+
+
+def _looks_numeric(text: str) -> bool:
+    """One leading sign, not lstrip.
+
+    `lstrip('-+')` accepts `--5`, which reaches float() and raises where the
+    whole point of asking was to avoid that. Caught reviewing this change:
+    CO_PAYMENT is operator-typed, and a typo in it should close the door, not
+    crash the trust gate that reads it.
+    """
+    stripped = text[1:] if text[:1] in '-+' else text
+    return stripped.replace('.', '', 1).isdigit()
+
+
 def _resolve_codes(codes) -> list:
     """Turn what the policy declares into the codes that actually open the door.
 
@@ -75,10 +121,6 @@ def _resolve_codes(codes) -> list:
     door, not an open one.
     """
     import os as _os
-    # One value written plainly is one code, not one per letter. The shipped
-    # policies write a list, so iterating a bare string never showed here -- but
-    # `invite_code: mycode` is the natural way to write a single code in YAML,
-    # and iterating it makes every character a code that opens the door.
     # One value written plainly is one code, not one per letter. The shipped
     # policies write a list, so iterating a bare string never showed here -- but
     # `invite_code: mycode` is the natural way to write a single code in YAML,

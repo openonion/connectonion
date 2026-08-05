@@ -59,10 +59,19 @@ import pytest
 
 @pytest.fixture
 def careful(monkeypatch):
-    """A default-trust agent with no invite code set — the deployed case."""
+    """A default-trust agent with no invite code, selling access for 10.
+
+    The price is set here rather than inherited. It used to be shipped in
+    careful.md, so every agent had one; #672 made it opt-in, and these tests
+    are about what an agent offers *given* a door, not about which doors the
+    default policy carries. That question is
+    tests/unit/test_payment_is_opt_in.py, which asserts the default offers
+    nothing at all.
+    """
     from connectonion.network.trust.trust_agent import TrustAgent
 
     monkeypatch.delenv("CO_INVITE_CODE", raising=False)
+    monkeypatch.setenv("CO_PAYMENT", "10")
     return TrustAgent("careful")
 
 
