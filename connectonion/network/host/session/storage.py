@@ -48,6 +48,67 @@ def session_owner(record) -> str | None:
     return requester.get("address")
 
 
+def _exclusive(path: Path, wait: bool = True, attempts: int = 3000,
+               pause: float = 0.01):
+    """Hold this file against other writers.
+
+    Appends and compaction have to exclude each other. The guard compact() uses
+    -- read the size, build the replacement, read it again, replace -- still
+    leaves a window between the second read and the replace, and an append that
+    lands in it is in the file being thrown away. compact() says what that
+    costs: "A lost session record is a turn that happened and left no trace."
+
+    At startup, where compact() has only ever run, that window is small and
+    nothing is serving. It is why an agent left running never compacts at all
+    (#625), and why the fix is this rather than calling it more often.
+
+    Same shape as schedule.py's lock, for the same reasons: POSIX flock,
+    Windows msvcrt, imported inside so a module-level `fcntl` does not stop
+    this importing on Windows.
+
+    `wait=False` for compaction: it is housekeeping, and skipping costs one
+    cycle. An append waits instead -- giving up and writing anyway is exactly
+    the lost turn this exists to prevent, which is what the first version of
+    this did, and its test stayed red.
+
+    Waiting cannot hang on a dead holder: the OS releases a flock when the
+    process holding it dies. The cap is a backstop for a live process wedged
+    forever, not for a crashed one.
+    """
+    import time as _time
+
+    for _ in range(attempts if wait else 1):
+        handle = open(path, "a+", encoding="utf-8")
+        try:
+            if os.name == "nt":
+                import msvcrt
+                handle.seek(0)
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            else:
+                import fcntl
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+            return handle
+        except OSError:
+            handle.close()
+            _time.sleep(pause)
+    return None
+
+
+def _release(handle) -> None:
+    if handle is None:
+        return
+    try:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
 class SessionStorage:
     """JSONL file storage. Append-only, last entry wins."""
 
@@ -62,9 +123,18 @@ class SessionStorage:
         self.path = Path(path) if path else project_co_dir() / "session_results.jsonl"
         self.path.parent.mkdir(exist_ok=True)
 
+    @property
+    def _lock_path(self) -> Path:
+        return self.path.with_suffix(self.path.suffix + ".lock")
+
     def save(self, session: Session):
-        with open(self.path, "a", encoding="utf-8") as f:
-            f.write(session.model_dump_json() + "\n")
+        # Excludes compact(), which replaces this file wholesale.
+        handle = _exclusive(self._lock_path)
+        try:
+            with open(self.path, "a", encoding="utf-8") as f:
+                f.write(session.model_dump_json() + "\n")
+        finally:
+            _release(handle)
 
     def _records(self) -> list:
         """Every parseable record, oldest first. A torn line costs itself, nothing more.
@@ -170,6 +240,15 @@ class SessionStorage:
         if not self.path.exists():
             return
 
+        handle = _exclusive(self._lock_path, wait=False)
+        if handle is None:
+            return          # someone is writing; the next cycle compacts
+        try:
+            self._compact_locked()
+        finally:
+            _release(handle)
+
+    def _compact_locked(self) -> None:
         now = time.time()
         size_when_read = self.path.stat().st_size
         keep = [s for s in self._latest_by_id().values()
