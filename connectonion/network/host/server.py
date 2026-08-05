@@ -305,17 +305,20 @@ def usable_uvicorn_options(workers, reload) -> tuple:
     "POST /input" -- and then exit, leaving one uvicorn warning underneath and
     nothing listening on the port the banner named.
 
-    Serving them properly is a larger question than this one. Each worker
-    process would run its own scheduler loop and its own in_flight set, so a
-    schedule that overruns its interval gets one copy per worker: the race #537
-    is about. Until that is answered, keep the agent running and say what was
-    not honoured -- silently running one worker is a smaller lie than dying
-    behind a banner that says otherwise.
+    What blocks it now is only the app object. The scheduler no longer is: it
+    takes one lock per tick, so under several processes exactly one of them
+    runs a due entry (#640). This paragraph used to name that as the second
+    reason, and the message below said so out loud -- kept in sync here because
+    a stale reason in an operator-facing line is how someone concludes the
+    limitation is bigger than it is.
+
+    Keep the agent running and say what was not honoured -- silently running
+    one worker is a smaller lie than dying behind a banner that says otherwise.
     """
     if workers and workers > 1:
         print(f"[host] workers: {workers} not honoured — running one worker "
-              f"(uvicorn needs an import string to fork, and the scheduler is "
-              f"per process)")
+              f"(uvicorn needs an import string to fork; `co host` hands it an "
+              f"app object)")
     if reload:
         print("[host] reload: true not honoured — running without reload "
               "(uvicorn needs an import string to watch files)")

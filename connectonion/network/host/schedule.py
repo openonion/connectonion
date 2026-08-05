@@ -257,6 +257,60 @@ def is_due(entry: Entry, last_run: Optional[datetime], now: datetime) -> bool:
     return False
 
 
+TICK_LOCK_FILE = "schedule.tick.lock"
+
+
+def _tick_lock(co_dir: Path):
+    """Take the tick for this minute, or return None because someone else has it.
+
+    `create_app`'s docstring tells people to run `uvicorn myagent:app
+    --workers 4`, so the lifespan — and this scheduler — runs once per forked
+    process. The overlap guard above it is a module-level set, which is per
+    process, and `last_run` is not written until the turn returns. So every
+    worker saw the same due entry and started its own copy: four workers, four
+    runs of a pipeline that was written expecting one.
+
+    Elected per tick rather than for the life of the process. A worker that
+    dies holding this costs one tick — the OS drops the flock — where a leader
+    chosen at startup would leave the schedule stopped until someone noticed.
+
+    Refusal is the answer here, not a retry: _lock() below waits and then
+    proceeds anyway, which is right for a short write to the state file and
+    exactly wrong for this, where proceeding is the duplicate run.
+    """
+    handle = open(co_dir / TICK_LOCK_FILE, "a+", encoding="utf-8")
+    try:
+        if os.name == "nt":
+            import msvcrt
+            # seek(0) so lock and unlock name the same byte. "a+" leaves the
+            # position at the end, and this only works by accident while the
+            # file stays empty. _lock() below already does this.
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        return handle
+    except OSError:
+        handle.close()
+        return None
+
+
+def _release_tick_lock(handle) -> None:
+    if handle is None:
+        return
+    try:
+        if os.name == "nt":
+            import msvcrt
+            handle.seek(0)
+            msvcrt.locking(handle.fileno(), msvcrt.LK_UNLCK, 1)
+        else:
+            import fcntl
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    finally:
+        handle.close()
+
+
 def _lock(path: Path, attempts: int = 50, pause: float = 0.02):
     """Exclusive, released by the OS on death, and worth waiting a moment for.
 
@@ -411,6 +465,19 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         entries = load_entries(co_dir)
         if not entries:
             return
+
+        holder = _tick_lock(co_dir)
+        if holder is None:
+            # Another worker is running this tick. Not worth a line of output:
+            # under --workers 4 it is the normal case three times over, every
+            # minute, and it would bury what the running worker says.
+            return
+        try:
+            await _run_due(entries, now)
+        finally:
+            _release_tick_lock(holder)
+
+    async def _run_due(entries, now: datetime) -> None:
         state = load_state(co_dir)
 
         for entry in entries:
