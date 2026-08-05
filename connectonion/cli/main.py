@@ -306,7 +306,11 @@ def eval(
 ):
     """Run evals and show results."""
     from .commands.eval_commands import handle_eval
-    handle_eval(name=name, agent_file=agent)
+
+    # The exit code is the point of #682: `co eval` returned 0 after a run
+    # where nothing executed. Discarding it here would leave that fix
+    # unreachable from a shell, which is where CI reads it.
+    raise typer.Exit(code=handle_eval(name=name, agent_file=agent) or 0)
 
 
 @app.command()

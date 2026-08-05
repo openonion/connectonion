@@ -85,6 +85,26 @@ def get_agent_from_file(file_path: str, cwd: str):
     )
 
 
+def is_run_record(data) -> bool:
+    """True if this YAML is something the logger wrote, not an eval you authored.
+
+    `.co/evals/` is two things at once: the suite you write and the run log the
+    framework writes (`logger.py`: "writes YAML evals to .co/evals/ ... one
+    file per unique first input"). `co eval` scanned the directory and reported
+    on both, so it complained about every file it had put there itself -- 8 in
+    a project where an agent had run a few turns, 487 in `~/.co/evals` after a
+    few days of `co ai` (#682).
+
+    The rule is the documented format, not a guess: `docs/debug/eval.md` says an
+    authored eval carries `agent:` and `expected:`. Neither present means a run
+    record. *One* present means a half-written test, which still gets its
+    complaint -- staying quiet about a real mistake is the opposite bug.
+    """
+    if not isinstance(data, dict) or not data:
+        return True
+    return "agent" not in data and "expected" not in data
+
+
 def handle_eval(name: Optional[str] = None, agent_file: Optional[str] = None):
     """Run evals and show results.
 
@@ -97,20 +117,41 @@ def handle_eval(name: Optional[str] = None, agent_file: Optional[str] = None):
     if not evals_dir.exists():
         console.print("[yellow]No evals found.[/yellow]")
         console.print("[dim]Create eval files in .co/evals/*.yaml[/dim]")
-        return
+        # Non-zero, because nothing ran. Exit 0 here reads as "evals passed" to
+        # anything gating on it in CI, which is the same mistake #535 fixed for
+        # the schedule display: done must not imply the work succeeded.
+        return 1
 
     if name:
         eval_files = list(evals_dir.glob(f"{name}.yaml"))
         if not eval_files:
             console.print(f"[red]Eval not found: {name}[/red]")
-            return
+            return 1
     else:
         eval_files = list(evals_dir.glob("*.yaml"))
 
     if not eval_files:
         console.print("[yellow]No eval files found in .co/evals/[/yellow]")
-        return
+        return 1
 
+    # The logger's own records live here too. They are not tests and never
+    # were; scanning them is what produced a wall of "No agent specified".
+    authored = []
+    for eval_file in eval_files:
+        with open(eval_file, encoding="utf-8") as f:
+            if not is_run_record(yaml.safe_load(f)):
+                authored.append(eval_file)
+
+    skipped = len(eval_files) - len(authored)
+    if skipped:
+        console.print(f"[dim]{skipped} run record(s) in .co/evals/ — not evals, skipped[/dim]")
+
+    if not authored:
+        console.print("[yellow]No evals to run.[/yellow]")
+        console.print("[dim]An eval needs 'agent:' and 'expected:' — see docs/debug/eval.md[/dim]")
+        return 1
+
+    eval_files = authored
     _run_evals(eval_files, agent_file)
 
     # Reload and show status
@@ -119,7 +160,7 @@ def handle_eval(name: Optional[str] = None, agent_file: Optional[str] = None):
     else:
         eval_files = list(evals_dir.glob("*.yaml"))
 
-    _show_eval_status(eval_files)
+    return _show_eval_status(eval_files)
 
 
 def _run_evals(eval_files: list, agent_override: Optional[str] = None):
@@ -136,6 +177,14 @@ def _run_evals(eval_files: list, agent_override: Optional[str] = None):
         if not agent_file:
             console.print(f"[red]No agent specified for {eval_file.stem}[/red]")
             console.print(f"[dim]Add 'agent: agent.py' to the YAML or use --agent flag[/dim]")
+            continue
+
+        # A named agent file that is not there. This used to raise
+        # FileNotFoundError out of get_agent_from_file and end the run with a
+        # traceback -- worse than the exit-0 this issue is about, because it
+        # takes the other evals with it (#682).
+        if not (Path(cwd) / agent_file).exists() and not Path(agent_file).exists():
+            console.print(f"[red]Agent file not found for {eval_file.stem}: {agent_file}[/red]")
             continue
 
         # Load agent (cached)
@@ -244,8 +293,14 @@ Does the output satisfy the expected criteria? Consider:
     return llm_do(prompt, output=JudgeResult)
 
 
-def _show_eval_status(eval_files: list):
-    """Show pass/fail status for all evals (uses stored results, no re-judging)."""
+def _show_eval_status(eval_files: list) -> int:
+    """Show pass/fail status for all evals, and return an exit code.
+
+    Non-zero if anything failed, or if nothing was actually checked. `co eval`
+    used to return None -- exit 0 -- after a run where eight evals could not
+    run and none executed, which anything gating on it in CI reads as "evals
+    passed" (#682).
+    """
     table = Table(title="Eval Results", show_header=True)
     table.add_column("Eval", style="cyan")
     table.add_column("Status", justify="center")
@@ -300,3 +355,13 @@ def _show_eval_status(eval_files: list):
     if no_expected > 0:
         console.print(f"[dim]{no_expected} no expected[/dim]", end="")
     console.print()
+
+    if failed:
+        return 1
+    if not passed:
+        # Nothing was checked. Saying so is the point: a suite that judged
+        # nothing has not passed.
+        console.print("[yellow]Nothing was checked — no eval produced a "
+                      "pass or a fail.[/yellow]")
+        return 1
+    return 0
