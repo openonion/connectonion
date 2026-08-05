@@ -32,6 +32,22 @@ class Session(BaseModel):
     duration_ms: Optional[int] = None
 
 
+def session_owner(record) -> str | None:
+    """The address that started this session, or None if nobody owns it.
+
+    Written by input_handler on every turn, from the signature-verified
+    address, and kept in SERVER_OWNED_SESSION_KEYS so a client carries it but
+    does not get to author it. It was recorded and never read back, so naming
+    someone else's session id handed you their conversation (#696).
+
+    None for a session stored before this was read -- nobody inherits those.
+    """
+    if not record or not record.session:
+        return None
+    requester = record.session.get("requester") or {}
+    return requester.get("address")
+
+
 class SessionStorage:
     """JSONL file storage. Append-only, last entry wins."""
 

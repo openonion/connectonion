@@ -74,14 +74,39 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         console.print(f"  [dim]↑ client session: {msg_count} messages[/dim]")
 
     if session_id:
-        from ..session import merge_sessions
+        from ..session import merge_sessions, session_owner
         stored = storage.get(session_id)
+        active_for_id = registry.get(session_id)
+        # A session belongs to whoever started it. The id arrives on the
+        # client's frame and used to be the whole credential, so a second
+        # identity that named it was handed the first one's conversation --
+        # and `GET /sessions` gives the ids out wholesale (#683, #696).
+        #
+        # They get a *different* id, not an empty session under this one.
+        # Reusing it was the first version of this fix, and it meant the
+        # squatter's turn saved a record under the owner's id -- storage is
+        # append-only, last entry wins -- so the owner came back to an empty
+        # conversation. Measured: "A LOST their conversation". That trades a
+        # disclosure for a destruction, which is not a trade.
+        #
+        # A new id is also the honest answer: it is what CONNECTED reports, so
+        # the client knows which session it is actually in.
+        owner = session_owner(stored) or (active_for_id and active_for_id.owner)
+        if owner and owner != agent_address:
+            console.print(f"  [dim]↩ session {session_id[:8]}… belongs to another "
+                          f"caller — starting a new one[/dim]")
+            stored = None
+            session_id = str(uuid.uuid4())
+            conn["session_id"] = session_id
         if stored and stored.session:
             client = conn["session"] or {}
             conn["session"], server_newer = merge_sessions(client_session=client, server_session=stored.session)
             if server_newer:
                 console.print(f"  [dim]↕ merged sessions (server newer)[/dim]")
 
+    # The live half, and the worse one: resume_forwarding rewinds and streams
+    # the output of a turn already in progress. A caller who does not own it was
+    # given a fresh id above, so this lookup finds nothing for them.
     active = registry.get(session_id)
     if active and active.status == 'running':
         status = "running"

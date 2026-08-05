@@ -56,6 +56,23 @@ def input_handler(create_agent: Callable, storage: SessionStorage, prompt: str, 
     server_newer = False
 
     stored = storage.get(session_id)
+    # Same rule CONNECT applies, because this is the same decision: a session
+    # belongs to whoever started it, and the id is on the client's frame.
+    #
+    # Fixing it only in establish_connection was not enough -- measured. B
+    # connected, was correctly given a fresh session ("belongs to another
+    # caller"), and then its INPUT named the same id and this lookup handed
+    # over A's conversation anyway:
+    #
+    #     B CONNECTED session=47edf32c… status=new     <- the CONNECT fix worked
+    #     B <- "PURPLE-OTTER-42."                      <- and it leaked here
+    #
+    # `requester` is the signature-verified address for this turn.
+    from .session import session_owner
+
+    owner = session_owner(stored)
+    if owner and requester and owner != requester.get('address'):
+        stored = None
     if stored and stored.session:
         session, server_newer = merge_sessions(
             client_session=session,
