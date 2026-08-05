@@ -222,3 +222,58 @@ class TestEveryPlaceThatReportsTheIdentityAgrees:
         doctor_commands.handle_doctor()
 
         assert "agent.key" in capsys.readouterr().out
+
+
+class TestItIsTheNameDeployUses:
+    """`co deploy` has derived the agent's identity since #396, from
+    `host.yaml`'s name:
+
+        agent_identity = derived_agent_identity(agent)   # agent = config["name"]
+
+    Deriving locally from the *directory* instead would give the same project
+    two addresses — one when it runs here, another when it is deployed — for any
+    operator who renamed either. `co init` writes the directory name into
+    host.yaml, so they agree until someone edits one, which is exactly the kind
+    of divergence nobody notices until an address stops matching.
+    """
+
+    def test_host_yaml_name_wins_over_the_directory(self, machine):
+        _, global_identity, project = machine
+        co = project("on-disk")
+        (co / "host.yaml").write_text("name: the-real-name\n", encoding="utf-8")
+
+        from mnemonic import Mnemonic
+        from nacl.signing import SigningKey
+
+        from connectonion.derive import derive_path, identity_uri, slip13_path
+
+        seed = Mnemonic("english").to_seed(global_identity["seed_phrase"])
+        expected = SigningKey(derive_path(seed, slip13_path(identity_uri("the-real-name"))))
+
+        assert resolve_agent_identity(co)["address"] == \
+            "0x" + bytes(expected.verify_key).hex()
+
+    def test_it_matches_what_deploy_would_ship(self, machine):
+        from connectonion.cli.commands.server_commands import derived_agent_identity
+
+        _, _, project = machine
+        co = project("shipme")
+        (co / "host.yaml").write_text("name: shipme\n", encoding="utf-8")
+
+        assert resolve_agent_identity(co)["address"] == \
+            derived_agent_identity("shipme")["address"]
+
+    def test_the_directory_is_the_fallback(self, machine):
+        """No host.yaml, or no name in it — the directory is still the answer."""
+        _, _, project = machine
+        co = project("nameless")
+
+        assert resolve_agent_identity(co)["address"] == \
+            resolve_agent_identity(project("nameless"))["address"]
+
+    def test_a_host_yaml_without_a_name_falls_back(self, machine):
+        _, _, project = machine
+        co = project("no-name-key")
+        (co / "host.yaml").write_text("port: 8000\n", encoding="utf-8")
+
+        assert resolve_agent_identity(co)["derived"] is True

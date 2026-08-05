@@ -41,6 +41,25 @@ def project_co_dir(start: Optional[Union[str, Path]] = None) -> Path:
     return project_root(start) / CO_DIR
 
 
+def _configured_agent_name(co_dir):
+    """host.yaml's `name`, or None. The same value `co deploy` reads."""
+    host_yaml = Path(co_dir) / "host.yaml"
+    if not host_yaml.exists():
+        return None
+    import yaml
+
+    try:
+        config = yaml.safe_load(host_yaml.read_text(encoding="utf-8", errors="replace"))
+    except yaml.YAMLError:
+        # A malformed host.yaml is reported where it is loaded for real; here it
+        # only means the name is unknown, and the directory answers instead.
+        return None
+    if not isinstance(config, dict):
+        return None
+    name = config.get("name")
+    return str(name).strip() or None if name else None
+
+
 def derived_identity(co_dir=None):
     """This project's own address, derived from the recovery phrase, or None.
 
@@ -70,7 +89,12 @@ def derived_identity(co_dir=None):
     if not phrase:
         return None
 
-    name = Path(co_dir or project_co_dir()).resolve().parent.name
+    # The name `co deploy` derives from, so an agent has one address whether it
+    # runs here or on a server. Deploy has derived from host.yaml's `name` since
+    # #396; taking the directory instead would give a renamed project two
+    # identities and nothing would say which was which.
+    co_dir = Path(co_dir or project_co_dir())
+    name = _configured_agent_name(co_dir) or co_dir.resolve().parent.name
     if not name:
         return None
 
