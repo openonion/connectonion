@@ -265,12 +265,22 @@ justify admitting them, it is not enough."""
         Returns:
             True if transfer verified and promoted, False otherwise
         """
-        required = self._config.get('onboard', {}).get('payment')
-        if not required:
+        from .fast_rules import _resolve_payment
+
+        # The operator's price, resolved the same way the advertised one is.
+        # Two places decide this and they have to agree, or a stranger pays
+        # what they were told and is refused.
+        min_amount = _resolve_payment(self._config.get('onboard', {}).get('payment'))
+        if not min_amount:
             return False
 
-        # Use configured amount if not specified
-        min_amount = amount if amount > 0 else required
+        # `amount` is what the client said they sent. It used to be the number
+        # this verified against -- `amount if amount > 0 else required`, and
+        # the only caller reaches here when amount > 0, so the operator's price
+        # was never the minimum. An agent advertising 10 was opened by a
+        # transfer of 0.01 from anyone who sent {"payment": 0.01}: oo-api
+        # confirmed it honestly, having been asked about 0.01. A claim about
+        # what you paid is not an authorisation to pay it.
 
         # Get self address (agent's address)
         self_addr = self.get_self_address()

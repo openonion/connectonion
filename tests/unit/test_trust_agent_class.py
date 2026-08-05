@@ -145,7 +145,10 @@ class TestVerification:
 
     def test_verify_payment_sufficient(self, co_dir, monkeypatch):
         """Sufficient payment promotes to contact."""
-        trust = TrustAgent("careful")  # careful.md has payment: 10
+        # The price is configured, not shipped: careful.md carried `payment: 10`
+        # until #672 made it opt-in via CO_PAYMENT.
+        monkeypatch.setenv("CO_PAYMENT", "10")
+        trust = TrustAgent("careful")
 
         # Mock the API verification to return True
         monkeypatch.setattr(trust, "_verify_transfer_via_api", lambda *args: True)

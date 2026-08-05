@@ -16,7 +16,13 @@ onboard:
   # Read from the environment, so every agent has its own. A literal here
   # would be one password for every deployment, published in this repo.
   invite_code: [$CO_INVITE_CODE]
-  payment: 10
+  # Same reason, and the same switch. This shipped as a bare `10`, so every
+  # agent `co init` created advertised a price its operator never chose and
+  # admitted whoever paid it. Unset means this agent does not sell access;
+  # `CO_PAYMENT=25` means it does. An operator who prefers to write the number
+  # in their own trust config still can -- that is the decision made when an
+  # agent is published, and it differs per deployment.
+  payment: $CO_PAYMENT
 
 # Strangers without credentials
 default: ask

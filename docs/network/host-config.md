@@ -94,11 +94,22 @@ examples:
 trust: careful  # "open", "careful", or "strict"
 ```
 
-| Level | Behavior | Use Case |
-|-------|----------|----------|
-| `open` | Accept all requests | Development |
-| `careful` | Recommend signature, accept unsigned | Staging/Default |
-| `strict` | Require valid signature | Production |
+| Level | Who may act | Use Case |
+|-------|-------------|----------|
+| `open` | Anyone who signs | Development |
+| `careful` | Admin, whitelisted, contacts; strangers are asked about | Staging/Default |
+| `strict` | The whitelist only | Production |
+
+**Every request must be signed, at every level.** `extract_and_authenticate`
+refuses an unsigned one before it reads the level at all:
+
+```
+POST /input  (no signature)  ->  401 unauthorized: signed request required
+```
+
+The levels decide *who may act*, not whether a request is authenticated. This
+table used to say `careful` accepted unsigned requests, which no level does —
+an unsigned `curl` has never reached an agent on any of them.
 
 #### Advanced Trust Configuration
 
