@@ -15,8 +15,13 @@ from rich.console import Console
 console = Console()
 
 
-async def run_exec(data, send_msg, route_handlers):
-    """Run one EXEC request in a worker thread, reply with EXEC_RESULT."""
+async def run_exec(data, send_msg, route_handlers, requester_address=None):
+    """Run one EXEC request in a worker thread, reply with EXEC_RESULT.
+
+    `requester_address` is the connection's authenticated caller. It used not
+    to be passed at all, so the gate below it could only ask what was being
+    run, never by whom (#653).
+    """
     exec_id = data.get("exec_id")
     tool_name = data.get("tool")
     args = data.get("args") or {}
@@ -28,7 +33,8 @@ async def run_exec(data, send_msg, route_handlers):
 
     console.print(f"[green]✓ EXEC[/green] tool={tool_name} args={str(args)[:80]}")
     try:
-        result = await asyncio.to_thread(route_handlers["ws_exec"], tool_name, args)
+        result = await asyncio.to_thread(route_handlers["ws_exec"], tool_name, args,
+                                         requester_address)
     except Exception as e:
         result = {"status": "error", "error": f"{type(e).__name__}: {e}"}
 

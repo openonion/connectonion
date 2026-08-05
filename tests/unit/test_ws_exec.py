@@ -176,7 +176,7 @@ class TestRunExec:
         async def send(msg):
             sent.append(msg)
 
-        def ws_exec(tool, args):
+        def ws_exec(tool, args, requester_address=None):
             assert tool == "_echo"
             return {"status": "success", "result": "echo: hey", "duration_ms": 1}
 
@@ -209,7 +209,7 @@ class TestRunExec:
         async def send(msg):
             sent.append(msg)
 
-        def ws_exec(tool, args):
+        def ws_exec(tool, args, requester_address=None):
             raise RuntimeError("handler blew up")
 
         await run_exec({"type": "EXEC", "exec_id": "e3", "tool": "_echo"},
