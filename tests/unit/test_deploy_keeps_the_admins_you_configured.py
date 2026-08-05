@@ -37,20 +37,32 @@ COLLEAGUE = "0x" + "b" * 64
 
 
 @pytest.fixture
-def project(tmp_path):
-    """A project with a .co/, as `co create` leaves one."""
+def project(tmp_path, monkeypatch):
+    """A project with a .co/, as `co create` leaves one, and the operator
+    standing in it.
+
+    `deployer` is whatever the resolver says this project is, not the machine
+    key. Since #689 a project with no key of its own derives its own identity,
+    so hardcoding the global address here would be asserting the old rule
+    rather than the thing this file is about — which is that the admins the
+    operator configured survive a deploy.
+    """
     from connectonion import address
+    from connectonion.project import project_identity
 
     home = Path.home()
-    (home / ".co").mkdir(parents=True, exist_ok=True)
+    (home / ".co" / "keys").mkdir(parents=True, exist_ok=True)
     data = address.generate()
     address.save(data, home / ".co")
+    (home / ".co" / "keys" / "recovery.txt").write_text(data["seed_phrase"],
+                                                       encoding="utf-8")
 
     p = tmp_path / "shipme"
     (p / ".co").mkdir(parents=True)
     (p / "agent.py").write_text("from connectonion import host\n")
     (p / ".co" / "host.yaml").write_text("name: shipme\nentrypoint: agent.py\n")
-    return SimpleNamespace(dir=p, deployer=data["address"])
+    monkeypatch.chdir(p)
+    return SimpleNamespace(dir=p, deployer=project_identity()["address"])
 
 
 def _admins_in(tarball: Path) -> list:
