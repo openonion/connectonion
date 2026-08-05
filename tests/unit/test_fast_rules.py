@@ -200,20 +200,34 @@ class TestEvaluateRequestOnboard:
         assert result == "deny"
         assert not tools.is_contact("client")
 
-    def test_payment_onboards(self, temp_co_dir):
-        """Sufficient payment promotes to contact and allows."""
-        config = {"onboard": {"payment": 10}}
+    def test_a_claimed_payment_does_not_onboard(self, temp_co_dir):
+        """`request["payment"]` is a number the client wrote in its own frame.
+
+        These two used to assert the opposite -- that {"payment": 15} against
+        `payment: 10` returned "allow" and made the client a contact. Nothing on
+        this path verifies a transfer; verify_payment and its oo-api call are on
+        ONBOARD_SUBMIT. Demonstrated against a real host, from a
+        freshly-generated identity with no balance and no history:
+
+            claimed payment: 999, transferred: nothing
+            -> {"type": "CONNECTED", "session_id": ..., "status": "new"}
+               contacts.txt: 1 entry
+
+        The signature on that frame proves who said it, not that anything was
+        paid. Payment is decided on ONBOARD_SUBMIT now, where it is checked.
+        """
+        config = {"onboard": {"payment": 10}, "default": "deny"}
         request = {"payment": 15}
         result = evaluate_request(config, "paying-client", request)
-        assert result == "allow"
-        assert tools.is_contact("paying-client")
+        assert result == "deny"
+        assert not tools.is_contact("paying-client")
 
-    def test_exact_payment_works(self, temp_co_dir):
-        """Exact payment amount is accepted."""
-        config = {"onboard": {"payment": 10}}
+    def test_not_even_the_exact_amount(self, temp_co_dir):
+        config = {"onboard": {"payment": 10}, "default": "deny"}
         request = {"payment": 10}
         result = evaluate_request(config, "client", request)
-        assert result == "allow"
+        assert result == "deny"
+        assert not tools.is_contact("client")
 
     def test_insufficient_payment_rejected(self, temp_co_dir):
         """Insufficient payment doesn't onboard."""
