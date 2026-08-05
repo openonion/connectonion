@@ -11,6 +11,7 @@ LLM-Note:
 
 import re
 from datetime import datetime
+import os
 from pathlib import Path
 from typing import Optional, Dict, Any, List, Union
 from rich.console import Console as RichConsole
@@ -65,6 +66,12 @@ def _plain_prefix() -> str:
     return PREFIX
 
 
+# The agent log rotates at this size, keeping one previous generation (#638).
+# 10 MB is thousands of turns at the ~1.3 KB per turn measured there, and two
+# files is a bound an operator never has to think about.
+LOG_MAX_BYTES = 10 * 1024 * 1024
+
+
 class Console:
     """Console for agent output and optional file logging.
 
@@ -84,16 +91,43 @@ class Console:
             self._init_log_file()
 
     def _init_log_file(self):
-        """Initialize log file with session header."""
+        """Initialize log file with session header, rotating it if it is full."""
         # Create parent dirs if needed
         if self.log_file.parent != Path('.'):
             self.log_file.parent.mkdir(parents=True, exist_ok=True)
+
+        self._rotate_if_full()
 
         # Add session separator
         with open(self.log_file, 'a', encoding='utf-8') as f:
             f.write(f"\n{'='*60}\n")
             f.write(f"Session started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
             f.write(f"{'='*60}\n\n")
+
+    def _rotate_if_full(self):
+        """At the cap, the log becomes `.log.1` and a fresh one starts.
+
+        Nothing rotated or capped this file. Measured on the deployed
+        naturewill agent over 3.3 days: 1.46 MB, ~160 MB/year; a working agent
+        on a fifteen-minute schedule, ~44 MB/year (#638). Neither fills the
+        1-2 GB VPS `co server new` provisions soon, but 1.6.0 is meant to run
+        for years without anyone looking at it, and #637 capped the fast member
+        of this same family.
+
+        Rotation rather than truncation: history is what an operator opens the
+        log for. One generation, so the ceiling is two files.
+
+        On open, not from a background thread -- a plain append-only text file
+        that an operator can also point logrotate at, and rotating underneath a
+        running writer is how you lose the lines in flight.
+        """
+        if not self.log_file.exists():
+            return
+        if self.log_file.stat().st_size < LOG_MAX_BYTES:
+            return
+
+        previous = self.log_file.with_name(self.log_file.name + ".1")
+        os.replace(self.log_file, previous)
 
     def print_banner(
         self,
