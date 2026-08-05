@@ -131,7 +131,19 @@ def _credential_rows(
             source = "—"
         elif len(unique_values) > 1:
             status = "conflict"
-            source = " + ".join(source_names)
+            # Which one is actually used. _credential_sources returns its
+            # sources in precedence order — process environment first, because
+            # load_dotenv() does not override a variable already set — so the
+            # first one found is the winner.
+            #
+            # The panel named the conflict and stopped one word short of the
+            # answer, and an operator reading it is looking *because* something
+            # is using the wrong key. The natural guess is that the project's
+            # own .env wins, being the more specific of the two. It does not.
+            source = " + ".join(
+                f"{name} (used)" if index == 0 else name
+                for index, name in enumerate(source_names)
+            )
         elif source_names[0] == "process environment":
             status = "configured"
             source = " + ".join(source_names)
