@@ -114,16 +114,28 @@ def authenticate(co_dir: Path, save_to_project: bool = True, quiet: bool = False
 
             console.print(f"✓ Saved to {global_keys_env}", style="green")
 
-            # Also save to current directory's .env (always create if using global keys and save_to_project=True)
+            # Also save to the project's .env, when there is a project.
+            #
+            # This re-guessed the destination with another bare Path(".co"),
+            # ignoring the co_dir it was handed: from a subdirectory it resolved
+            # to ~/.co and wrote the token to ~/.env — not the project's .env,
+            # and not ~/.co/keys.env, which is the documented secret location and
+            # the one `co status` and `co doctor` report on.
+            #
+            # It also printed Path.cwd()/.env regardless of where it wrote, so
+            # the success line could name a file that did not exist.
             if save_to_project:
-                local_env_path = Path(".co") if Path(".co").exists() else co_dir
-                upsert_env(local_env_path.parent / ".env", {
-                    "OPENONION_API_KEY": token,
-                    "AGENT_EMAIL": agent_email,
-                    "AGENT_ADDRESS": public_key,
-                })
-                local_env_file = Path.cwd() / ".env"
-                console.print(f"✓ Saved to {local_env_file}", style="green")
+                from ...project import project_root
+
+                root = project_root()
+                if (root / ".co").is_dir():
+                    local_env_file = root / ".env"
+                    upsert_env(local_env_file, {
+                        "OPENONION_API_KEY": token,
+                        "AGENT_EMAIL": agent_email,
+                        "AGENT_ADDRESS": public_key,
+                    })
+                    console.print(f"✓ Saved to {local_env_file}", style="green")
         else:
             # Save to local project .env
             upsert_env(co_dir.parent / ".env", {
@@ -169,7 +181,14 @@ def handle_auth():
     5. Save the token for future use
     """
     # Check if we have local keys first
-    co_dir = Path(".co")
+    #
+    # The project's, found by walking up — the rule since #660. As a bare
+    # Path(".co") this was invisible one directory down, so `co auth` there
+    # authenticated as the machine and, worse, wrote the token to ~/.env
+    # instead of the project's .env. Last live member of #665.
+    from ...project import project_co_dir
+
+    co_dir = project_co_dir()
     use_global = False
 
     # Check if local .co/keys/agent.key exists
