@@ -39,3 +39,24 @@ def project_root(start: Optional[Union[str, Path]] = None) -> Path:
 def project_co_dir(start: Optional[Union[str, Path]] = None) -> Path:
     """The project's ``.co/``. Does not create it."""
     return project_root(start) / CO_DIR
+
+
+def project_identity(co_dir=None):
+    """The identity this project acts as: its own key, else the machine's.
+
+    The same rule `resolve_agent_identity` applies on the host side, in one
+    place so the trust layer, the host and `co doctor` cannot answer it
+    differently. Loading only the project directory came back empty for a
+    project with no key of its own -- which is what both `co init` and
+    `co create` produce -- so the payment door had no address to advertise and
+    payment verification gave up before calling oo-api (#716).
+
+    Deliberately *not* a per-project derived identity. An address is what an
+    OpenOnion account is keyed on: `authenticate()` signs with it and the
+    backend issues the token for that public key, so a new address is a new
+    account with an empty balance. #715 tried that and Aaron stopped it.
+    """
+    from . import address
+
+    co_dir = Path(co_dir) if co_dir else project_co_dir()
+    return address.load(co_dir) or address.load(Path.home() / CO_DIR)

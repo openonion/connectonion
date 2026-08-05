@@ -288,13 +288,18 @@ def handle_doctor():
         else:
             connectivity_table.add_row("Backend", f"[yellow]⚠[/yellow] Status {response.status_code}")
 
-        # Check authentication (if keys exist)
-        if local_keys.exists() or global_keys.exists():
+        # Signed as whoever this project acts as. This worked the same rule
+        # out a second time, in the same file -- so the identity the panel
+        # names above and the identity it authenticates as here were decided
+        # independently, and doctor could report on an account that is not the
+        # one in question.
+        from ...project import project_identity
+
+        addr_data = project_identity()
+        if addr_data:
             from ... import address
             import time
 
-            co_dir = project_co_dir() if local_keys.exists() else Path.home() / ".co"
-            addr_data = address.load(co_dir)
 
             public_key = addr_data["address"]
             timestamp = int(time.time())
