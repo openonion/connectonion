@@ -220,16 +220,27 @@ def evaluate_request(config: dict, client_id: str, request: dict) -> Optional[st
         )
         return 'allow'
 
-    # Check payment
-    required_payment = onboard.get('payment')
-    request_payment = request.get('payment', 0)
-    if required_payment and request_payment >= required_payment:
-        promote_to_contact(client_id)
-        logger.warning(
-            f"[FAST_RULES] Returning 'allow' — {client_id} onboarded by payment, "
-            f"promoted to contact"
-        )
-        return 'allow'
+    # Payment is NOT decided here. This used to read
+    #
+    #     required_payment = onboard.get('payment')
+    #     request_payment = request.get('payment', 0)
+    #     if required_payment and request_payment >= required_payment:
+    #         promote_to_contact(client_id)
+    #
+    # which promoted a stranger on a number they wrote in their own request. No
+    # transfer is checked on this path -- verify_payment and its oo-api call are
+    # on ONBOARD_SUBMIT -- so saying "payment: 10" was enough to become a
+    # contact, having sent nothing. #690 was the buyer naming the price; this
+    # was the buyer skipping the payment.
+    #
+    # It also raised. Once the shipped policy carried `$CO_PAYMENT` instead of a
+    # literal (#691), `required_payment` was a non-empty string, the guard
+    # passed, and `0 >= "$CO_PAYMENT"` killed the trust gate on every stranger
+    # CONNECT -- the first contact any agent ever has.
+    #
+    # A stranger offering payment falls through to `default` (`ask` on
+    # careful), and pays through ONBOARD_SUBMIT, where the transfer is
+    # verified. One door, one check.
 
     # 4. Default action for strangers without onboarding
     default = config.get('default', 'deny')
