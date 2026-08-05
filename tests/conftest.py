@@ -388,7 +388,15 @@ def _no_stray_project_above_the_test(tmp_path_factory):
 
     yield
 
-    resolved = project_root()
+    try:
+        resolved = project_root()
+    except (FileNotFoundError, OSError):
+        # A test whose working directory was a tmp dir that has since been
+        # removed has no cwd to resolve from. That is not contamination, and
+        # raising here turned a passing test into an error on CI -- where tmp
+        # dirs are cleaned more eagerly than on my machine, which is why this
+        # only showed there.
+        return
     tmp_root = tmp_path_factory.getbasetemp().resolve()
     repo = Path(__file__).resolve().parent.parent
 

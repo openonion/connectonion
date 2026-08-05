@@ -99,3 +99,26 @@ class TestTheGuardIsInstalled:
 
         assert "_no_stray_project_above_the_test" in source
         assert "autouse=True" in source
+
+
+class TestTheGuardSurvivesAVanishedDirectory:
+    """A test whose cwd was a tmp dir that has since gone has no cwd at all.
+
+    The first version of the guard called project_root() in teardown and blew
+    up with FileNotFoundError, turning a passing test into an error. It only
+    showed on CI, where tmp directories are cleaned more eagerly than on my
+    machine -- the same local-vs-CI asymmetry the guard exists to fix, this
+    time caused by the guard.
+    """
+
+    def test_no_cwd_is_not_contamination(self, tmp_path, monkeypatch):
+        gone = tmp_path / "vanishing"
+        gone.mkdir()
+        monkeypatch.chdir(gone)
+        os.rmdir(gone)
+
+        with pytest.raises((FileNotFoundError, OSError)):
+            Path.cwd()
+
+        # The guard's own teardown runs after this test and must not error.
+        monkeypatch.undo()
