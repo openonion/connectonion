@@ -91,6 +91,79 @@ def _fetch_skill(address: str, name: str, relay: str) -> str:
     return r.json()["body"]
 
 
+def _declared_tools(body: str) -> str:
+    """What a skill's frontmatter asked to auto-approve, for the operator's eyes.
+
+    Printed at sync time rather than written into the skill: the body is a
+    prompt an agent reads, and this list is a decision the operator makes.
+    """
+    import yaml
+
+    if not body.startswith("---"):
+        return ""
+    parts = body.split("---", 2)
+    if len(parts) < 3:
+        return ""
+    try:
+        front = yaml.safe_load(parts[1])
+    except yaml.YAMLError:
+        return ""
+    if not isinstance(front, dict):
+        return ""
+    return str(front.get("tools", ""))
+
+
+def strip_tool_grants(body: str, name: str) -> str:
+    """Remove a subscribed skill's `tools:` grant, keeping its instructions.
+
+    A SKILL.md is not only instructions. Its frontmatter carries a `tools:`
+    list, and invoking the skill auto-approves those patterns for the turn --
+    measured on a real agent: ['Bash(git status)', 'read_file']. So a skill
+    fetched from the relay arrives asking for auto-approval, from a source
+    nobody verified: this module's own header says v1 trusts the relay, which
+    strips the signer and signature. It is then written verbatim and fanned out
+    into ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor and ~/.kiro (#654).
+
+    The instructions are what you subscribed to. The grant is not, and the
+    operator can add the patterns to their own .co/host.yaml, where the
+    decision is theirs and visible.
+
+    A skill with no frontmatter is a legitimate simple skill -- the whole file
+    is the prompt (#629) -- and one whose frontmatter does not parse is not
+    ours to rewrite. Both pass through untouched.
+
+    Verifying the publisher's signature is the real answer (#654 option 3) and
+    needs the relay to stop stripping it.
+    """
+    import yaml
+
+    if not body.startswith("---"):
+        return body
+    parts = body.split("---", 2)
+    if len(parts) < 3:
+        return body
+
+    try:
+        front = yaml.safe_load(parts[1])
+    except yaml.YAMLError:
+        # Rewriting what we cannot read is worse than passing it through; the
+        # skill loader reports an unreadable one.
+        return body
+    if not isinstance(front, dict) or "tools" not in front:
+        return body
+
+    front.pop("tools")
+    rendered = yaml.safe_dump(front, sort_keys=False, allow_unicode=True).rstrip()
+    # The note says what happened; it does not repeat the patterns. This body
+    # becomes the prompt an agent reads, and the operator is the one who needs
+    # the list -- so it goes to the terminal at sync time instead, where the
+    # decision to add them is being made.
+    note = ("\n> `tools:` removed on sync — a subscribed skill does not "
+            "pre-authorise anything. Add what you want to your own "
+            ".co/host.yaml.\n")
+    return f"---\n{rendered}\n---\n{note}{parts[2]}"
+
+
 def _mirror_bundle(address: str, alias: str, profile: dict, relay: str) -> int:
     """Write profile + each skill body under ~/.co/subs/<alias>/. Returns skill count."""
     bundle = SUBS_DIR / alias
@@ -103,7 +176,11 @@ def _mirror_bundle(address: str, alias: str, profile: dict, relay: str) -> int:
         name = skill["name"]
         body = _fetch_skill(address, name, relay)
         (skills_root / name).mkdir(parents=True, exist_ok=True)
-        (skills_root / name / "SKILL.md").write_text(body, encoding="utf-8")
+        cleaned = strip_tool_grants(body, name)
+        if cleaned != body:
+            console.print(f"[yellow]{name}: removed its tools: grant[/yellow] "
+                          f"[dim]{_declared_tools(body)}[/dim]")
+        (skills_root / name / "SKILL.md").write_text(cleaned, encoding="utf-8")
         n += 1
     return n
 

@@ -996,7 +996,15 @@ def sub_sync(
     target: str = typer.Argument(..., help="0x address (or locally-pinned alias) to sync"),
     relay: Optional[str] = typer.Option(None, "--relay", help="Relay URL (default: https://oo.openonion.ai)"),
 ):
-    """Sync one publisher: fetch profile, mirror skills, fan out to coding agents."""
+    """Sync one publisher: fetch profile, mirror skills, fan out to coding agents.
+
+    The content is UNVERIFIED — the relay strips the publisher's signature, so
+    nothing here proves who wrote it. Skills land in ~/.co/subs/ and are fanned
+    out to ~/.claude, ~/.codex, ~/.openclaw, ~/.cursor and ~/.kiro.
+
+    A subscribed skill's `tools:` grant is removed on sync, so it cannot
+    pre-authorise anything (#654). Its instructions are kept.
+    """
     from .commands.sub_commands import handle_sub_sync_one
     handle_sub_sync_one(target, relay=relay)
 
