@@ -434,9 +434,13 @@ def get_self_address(co_dir: Path = None) -> str | None:
     if co_dir is None:
         co_dir = _project_co_dir()
 
-    from ... import address
+    # The identity this project acts as -- its own key, else the machine's,
+    # which is what the host serves under. Loading the directory alone came
+    # back empty for a project with no key of its own, so the payment door had
+    # no address to send a stranger to (#716).
+    from ...project import project_identity
 
-    keys = address.load(co_dir)
+    keys = project_identity(co_dir)
     if keys and keys.get("address"):
         return keys["address"]
 

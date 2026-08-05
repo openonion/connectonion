@@ -326,11 +326,15 @@ justify admitting them, it is not enough."""
             # direction this check must never fail in.
             return False
 
-        # Load agent's keys for signing the request
+        # The identity this project acts as, for signing the request. Loading
+        # the project directory alone returned None for a project with no key
+        # of its own, so this gave up before calling oo-api and a stranger who
+        # really had transferred the money was refused (#716). That is the
+        # configuration both `co init` and `co create` produce.
         from ... import address as addr
+        from ...project import project_identity
 
-        co_dir = project_co_dir()
-        keys = addr.load(co_dir)
+        keys = project_identity()
         if not keys:
             return False
 
