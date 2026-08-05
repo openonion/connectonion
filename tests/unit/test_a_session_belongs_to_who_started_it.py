@@ -216,3 +216,90 @@ class TestWhatConnectDoes:
 
         connected = [m for m in sent if m.get("type") == "CONNECTED"]
         assert connected[0]["status"] == "running"
+
+
+class TestASquatterDoesNotDestroyIt:
+    """Treating the session as "not found" is not enough on its own.
+
+    The first version of this fix kept the client's session id and gave them an
+    empty session under it. Their turn then saved a record with that id --
+    storage is append-only, last entry wins -- and the owner came back to find
+    their conversation replaced. Measured, after that version:
+
+        A turn 1: session=1b7625e1…  -> OK.
+        B squats on it (status=new)  -> Hello!
+        A returns (status=connected) -> "I don't have a codeword from you."
+        A LOST their conversation
+
+    Which is a worse trade than the leak it fixed: the leak needed the id, and
+    so does this, but this destroys rather than discloses. So a caller who names
+    somebody else's session gets a *different* id, and the owner's record is
+    never written to.
+    """
+
+    def _connect(self, caller, storage, registry, wanted=SID):
+        import asyncio
+
+        from connectonion.network.host.ws_router.connect import establish_connection
+
+        conn = {"authenticated": False, "agent_address": None,
+                "session_id": None, "session": None}
+        sent = []
+
+        async def send_msg(msg):
+            sent.append(msg)
+
+        asyncio.run(establish_connection({"session_id": wanted}, caller, send_msg,
+                                         conn, storage, registry,
+                                         {"agent_metadata": {"name": "t"}}))
+        return conn, sent
+
+    def test_the_squatter_gets_a_different_id(self, storage):
+        from connectonion.network.host.session import ActiveSessionRegistry
+
+        _stored(storage, owner=A)
+        conn, sent = self._connect(B, storage, ActiveSessionRegistry())
+
+        assert conn["session_id"] != SID, (
+            "B keeps the id, so B's turn overwrites A's stored session"
+        )
+
+    def test_the_client_is_told_the_id_it_actually_has(self, storage):
+        from connectonion.network.host.session import ActiveSessionRegistry
+
+        _stored(storage, owner=A)
+        conn, sent = self._connect(B, storage, ActiveSessionRegistry())
+        connected = [m for m in sent if m.get("type") == "CONNECTED"][0]
+
+        assert connected["session_id"] == conn["session_id"]
+        assert connected["session_id"] != SID
+
+    def test_the_owner_keeps_theirs(self, storage):
+        from connectonion.network.host.session import ActiveSessionRegistry
+
+        _stored(storage, owner=A)
+        conn, _ = self._connect(A, storage, ActiveSessionRegistry())
+
+        assert conn["session_id"] == SID
+
+    def test_a_live_session_is_protected_the_same_way(self, storage):
+        from connectonion.network.host.session import ActiveSessionRegistry
+
+        registry = ActiveSessionRegistry()
+        registry.register(SID, io=object(), thread=None, owner=A)
+        conn, _ = self._connect(B, storage, registry)
+
+        assert conn["session_id"] != SID, (
+            "B would register a second agent under A's live session id"
+        )
+
+    def test_an_unowned_session_is_still_shared(self, storage):
+        """Sessions stored before any of this have no owner. Nobody is evicted
+        from them on upgrade."""
+        from connectonion.network.host.session import ActiveSessionRegistry
+
+        storage.save(Session(session_id=SID, status="done", prompt="x",
+                             session={"messages": [], "iteration": 1, "updated": 1.0}))
+        conn, _ = self._connect(B, storage, ActiveSessionRegistry())
+
+        assert conn["session_id"] == SID
