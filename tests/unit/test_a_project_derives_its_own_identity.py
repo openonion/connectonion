@@ -168,3 +168,57 @@ class TestWhatMustNotChange:
         co.mkdir(parents=True)
 
         assert resolve_agent_identity(co)["address"].startswith("0x")
+
+
+class TestEveryPlaceThatReportsTheIdentityAgrees:
+    """The point of one resolver is that nothing gets to keep its own copy.
+
+    `co doctor` had one. It printed
+
+        Keys  ✓ /Users/changxing/.co/keys/agent.key
+
+    for a project that derives — naming a file that is not this agent's
+    identity, which is #659 in the one command an operator runs *to find out
+    what is wrong*. Found by running it, after I had written "all four callers"
+    in the PR: doctor was a fifth.
+    """
+
+    def test_doctor_does_not_name_the_global_key_for_a_derived_project(self, machine, capsys, monkeypatch):
+        """Wide, because rich wraps a long path across table cells and the
+        exact string then is not in the output — so this passed for the wrong
+        reason first time, the same way #681's did."""
+        from connectonion.cli.commands import doctor_commands
+
+        home_co, _, project = machine
+        co = project("oo")
+        monkeypatch.chdir(co.parent)
+        monkeypatch.setenv("COLUMNS", "300")
+
+        doctor_commands.handle_doctor()
+        out = capsys.readouterr().out
+
+        assert str(home_co / "keys" / "agent.key") not in out, out[:800]
+
+    def test_doctor_says_it_is_derived(self, machine, capsys, monkeypatch):
+        from connectonion.cli.commands import doctor_commands
+
+        _, _, project = machine
+        co = project("oo")
+        monkeypatch.chdir(co.parent)
+
+        doctor_commands.handle_doctor()
+
+        assert "derived" in capsys.readouterr().out.lower()
+
+    def test_a_project_with_its_own_key_still_names_the_file(self, machine, capsys, monkeypatch):
+        from connectonion import address
+        from connectonion.cli.commands import doctor_commands
+
+        _, _, project = machine
+        co = project("has-its-own")
+        address.save(address.generate(), co)
+        monkeypatch.chdir(co.parent)
+
+        doctor_commands.handle_doctor()
+
+        assert "agent.key" in capsys.readouterr().out

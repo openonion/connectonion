@@ -183,14 +183,22 @@ def handle_doctor():
     else:
         config_table.add_row("Config", "[yellow]○[/yellow] Not found (optional)")
 
-    # Check for keys
+    # Where this agent's identity comes from — asked of the one resolver, not
+    # worked out again here. Doctor had its own copy of the rule and named
+    # ~/.co/keys/agent.key for a project that derives (#689), which is a file
+    # that agent does not use. Naming the wrong identity is #659, and doctor is
+    # the command an operator runs *to find out what is wrong*.
+    from ...project import project_identity
+
     local_keys = project_co_dir() / "keys" / "agent.key"
-    global_keys = Path.home() / ".co" / "keys" / "agent.key"
+    identity = project_identity()
 
     if local_keys.exists():
         config_table.add_row("Keys", f"[green]✓[/green] {_shown(local_keys)}")
-    elif global_keys.exists():
-        config_table.add_row("Keys", f"[green]✓[/green] {global_keys}")
+    elif identity and identity.get("derived"):
+        config_table.add_row("Keys", "[green]✓[/green] derived from your recovery phrase")
+    elif identity:
+        config_table.add_row("Keys", f"[green]✓[/green] {Path(identity['source']) / 'keys' / 'agent.key'}")
     else:
         config_table.add_row("Keys", "[yellow]○[/yellow] Not found (run 'co auth' to create)")
 
@@ -288,13 +296,16 @@ def handle_doctor():
         else:
             connectivity_table.add_row("Backend", f"[yellow]⚠[/yellow] Status {response.status_code}")
 
-        # Check authentication (if keys exist)
-        if local_keys.exists() or global_keys.exists():
+        # Check authentication, as whoever this project actually is. This
+        # worked the resolution out a second time, in the same file -- and
+        # signing the backend probe with a different identity than the agent
+        # serves under would make doctor report on an account that is not the
+        # one in question.
+        if identity:
             from ... import address
             import time
 
-            co_dir = project_co_dir() if local_keys.exists() else Path.home() / ".co"
-            addr_data = address.load(co_dir)
+            addr_data = identity
 
             public_key = addr_data["address"]
             timestamp = int(time.time())
