@@ -319,13 +319,11 @@ def resolve_agent_identity(co_dir: Path) -> dict:
     Generating stays for a machine with no identity at all — an agent has to have
     an address. What goes is inventing one while a configured identity sits unused.
     """
-    own = address.load(co_dir)
-    if own:
-        return own
+    from ...project import project_identity
 
-    inherited = address.load(Path.home() / ".co")
-    if inherited:
-        return inherited
+    resolved = project_identity(co_dir)
+    if resolved:
+        return resolved
 
     fresh = address.generate()
     address.save(fresh, co_dir)

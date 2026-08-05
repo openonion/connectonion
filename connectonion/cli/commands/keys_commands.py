@@ -126,7 +126,12 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
         console.print("[cyan]Run 'co init' or 'co create' first.[/cyan]\n")
         return
 
-    addr_data = address.load(co_dir)
+    # The same resolver the host and the client use. `co keys` printing one
+    # address while `co host` serves another is #659, and this is the shape it
+    # would come back in: a project with no key of its own now derives one.
+    from ...project import project_identity
+
+    addr_data = project_identity(co_dir)
     if not addr_data:
         console.print("\n[red]Failed to load keys.[/red]\n")
         return

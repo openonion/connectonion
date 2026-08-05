@@ -60,7 +60,11 @@ def _this_callers_identity():
     from .. import address
     from ..project import project_co_dir
 
-    return address.load(project_co_dir()) or address.load(Path.home() / ".co")
+    # One answer to "who is this project", shared with the host and `co keys`
+    # -- a client that signs as a different identity than its own agent
+    # serves under is #659 from the other side.
+    from ..project import project_identity
+    return project_identity()
 
 
 def _sort_endpoints(endpoints: List[str]) -> List[str]:

@@ -39,3 +39,67 @@ def project_root(start: Optional[Union[str, Path]] = None) -> Path:
 def project_co_dir(start: Optional[Union[str, Path]] = None) -> Path:
     """The project's ``.co/``. Does not create it."""
     return project_root(start) / CO_DIR
+
+
+def derived_identity(co_dir=None):
+    """This project's own address, derived from the recovery phrase, or None.
+
+    Lives here because "which identity is this project's" is the same question
+    as "which directory is this project", and answering it in more than one
+    place is what this release has spent itself fixing. Four call sites resolved
+    it independently before: the host, the client in connect.py, `co keys`, and
+    project_cmd_lib. A host that served a derived address while `co keys`
+    printed the inherited one would be #659 again.
+
+    Derived rather than generated (Aaron's call): the twelve words already cover
+    it, the same phrase and project name always give the same address, and
+    `co keys` can print it before the project has ever run. Not a new scheme --
+    `identity_uri` and `slip13_path` already define it and `co server` already
+    derives SSH keys the same way.
+    """
+    from mnemonic import Mnemonic
+    from nacl.signing import SigningKey
+
+    from . import address
+    from .derive import derive_path, identity_uri, slip13_path
+
+    phrase_file = Path.home() / CO_DIR / "keys" / "recovery.txt"
+    if not phrase_file.exists():
+        return None
+    phrase = phrase_file.read_text(encoding="utf-8", errors="replace").strip()
+    if not phrase:
+        return None
+
+    name = Path(co_dir or project_co_dir()).resolve().parent.name
+    if not name:
+        return None
+
+    signing_key = SigningKey(
+        derive_path(Mnemonic("english").to_seed(phrase), slip13_path(identity_uri(name))))
+    hex_address = "0x" + bytes(signing_key.verify_key).hex()
+    return address.Identity({
+        "address": hex_address,
+        "short_address": f"{hex_address[:6]}...{hex_address[-4:]}",
+        "email": f"{hex_address[:10]}@mail.openonion.ai",
+        "email_active": False,
+        "source": "derived",
+        "signing_key": signing_key,
+    })
+
+
+def project_identity(co_dir=None):
+    """The identity this project acts as: its own key, else derived, else the
+    global one, else nothing.
+
+    The single answer every caller should use.
+    """
+    from . import address
+
+    co_dir = Path(co_dir) if co_dir else project_co_dir()
+    own = address.load(co_dir)
+    if own:
+        return own
+    derived = derived_identity(co_dir)
+    if derived:
+        return derived
+    return address.load(Path.home() / CO_DIR)
