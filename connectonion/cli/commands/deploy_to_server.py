@@ -578,6 +578,23 @@ def _caddy_running(target: str) -> bool:
 # version and `.co/dashboard.html` in its second, and was silently dropping
 # `host.yaml`, `OO.md` and `commands/` when this was written. Forgetting to
 # carry config is invisible: the deploy succeeds and a different agent runs.
+def _secret_excludes() -> list:
+    """rsync --exclude pairs for everything the skills rule calls a secret."""
+    from .skills_commands import SECRET_DIRS, SECRET_NAMES, SECRET_SUFFIXES
+
+    patterns = sorted(SECRET_NAMES)
+    patterns += [f"*{suffix}" for suffix in sorted(SECRET_SUFFIXES)]
+    patterns += [f"{directory}/" for directory in sorted(SECRET_DIRS)]
+    # An SSH private key outside .ssh/. Named rather than globbed: `id_*` would
+    # also take id_generator.py, and rsync patterns cannot say "but not .pub".
+    patterns += ["id_rsa", "id_dsa", "id_ecdsa", "id_ed25519"]
+
+    out = []
+    for pattern in patterns:
+        out += ["--exclude", pattern]
+    return out
+
+
 RSYNC_FILTERS = [
     "--filter", "P .co/**",
     # `.env` is a secret, not source. It reaches the server through
@@ -602,6 +619,17 @@ RSYNC_FILTERS = [
     "--exclude", ".venv/",
     "--exclude", ".git/",
     "--exclude", "__pycache__/",
+    # Every other shape a credential takes, from the list `co skills copy`
+    # already uses (#657, #658). The `.env` rule above is the same idea applied
+    # to one filename; a project that keeps credentials.json, a *.pem or an
+    # .aws/ at its root was handing them to rsync as ordinary source, to land at
+    # 644 in a 755 tree.
+    #
+    # Derived rather than restated: two lists of "what is a secret" drift, and
+    # the one that drifts is the one nobody is looking at. #658 is what that
+    # looks like — the first pass named id_rsa and id_ed25519 and walked past
+    # .ssh/id_ecdsa, so the rule became directory-shaped.
+    *_secret_excludes(),
 ]
 
 
