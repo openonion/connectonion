@@ -263,71 +263,49 @@ def write_per_host_ssh_key(seed_phrase: str, host: str, user: str = "root") -> P
     return path
 
 
-def write_derived_ssh_key(seed_phrase: str) -> Path:
-    """Write the derived key pair where our own ssh calls look for it.
-
-    Both halves, always together, overwriting whatever was there. Overwriting
-    is safe precisely because the key is derived: the phrase is the original,
-    the files are a cache of it. Writing one half and keeping the other is what
-    produces a pair that cannot authenticate.
-    """
-    from ... import address
-
-    keys = address.derive_ssh_key(seed_phrase)
-
-    SSH_PRIVATE_KEY.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-    SSH_PRIVATE_KEY.write_text(keys["private_key"])
-    SSH_PRIVATE_KEY.chmod(0o600)
-    SSH_PUBLIC_KEY.write_text(keys["public_line"] + "\n")
-    SSH_PUBLIC_KEY.chmod(0o644)
-    return SSH_PRIVATE_KEY
-
-
 def _show_ssh_key(addr_data: dict, write: bool = False) -> None:
-    """Print the SSH public key derived from the recovery phrase.
+    """The SSH keys derived from the recovery phrase — one per server.
 
-    Same phrase as the agent identity, different derivation — so there is still
-    one thing to write down, and the operator can reach a provisioned server
-    without a second secret to manage.
+    There is no single key to print any more. #427 retired the one that was
+    derived from a label and installed everywhere: a snapshot of one machine
+    yielded the key that opened the rest, and rotating meant changing the
+    recovery phrase. Each server now gets its own, derived from the same tree as
+    the identity, so this prints the set rather than asking for a host nobody
+    would remember.
     """
-    from pathlib import Path
     from ... import address
+    from .server_commands import _load
 
     seed = addr_data.get("seed_phrase")
     if not seed:
         console.print("\n[red]No recovery phrase available.[/red]")
-        console.print("[dim]The SSH key is derived from it, so it cannot be rebuilt without it.[/dim]")
+        console.print("[dim]The SSH keys are derived from it, so they cannot be rebuilt without it.[/dim]")
         console.print("[cyan]It lives in .co/keys/recovery.txt — restore that file, or run 'co init' in a new project.[/cyan]\n")
         return
 
-    keys = address.derive_ssh_key(seed)
-
-    console.print()
-    console.print(keys["public_line"])
-    console.print()
-
-    if not write:
-        console.print("[dim]Add that line to ~/.ssh/authorized_keys on any server you want to reach.[/dim]")
-        console.print("[dim]Use [bold]--write[/bold] to also write the private half to ~/.ssh/.[/dim]\n")
+    servers = sorted((_load() or {}).keys())
+    if not servers:
+        console.print("\n[yellow]No servers registered.[/yellow]")
+        console.print("[dim]Keys are per-server now. `co server new` or `co server add` first, "
+                      "then this prints the line to install on each.[/dim]\n")
         return
 
-    # A human-facing export into ~/.ssh, which the operator owns. Our own copy
-    # lives in ~/.co/ssh and is managed by write_derived_ssh_key().
-    ssh_dir = Path.home() / ".ssh"
-    ssh_dir.mkdir(mode=0o700, exist_ok=True)
-    private_path = ssh_dir / "connectonion_ed25519"
-    public_path = ssh_dir / "connectonion_ed25519.pub"
+    console.print()
+    for name in servers:
+        line = address.derive_ssh_key(seed, host=name)["public_line"]
+        console.print(f"[cyan]{name}[/cyan]")
+        # soft_wrap: an authorized_keys line that rich has folded at the
+        # terminal width is a broken line once pasted, and pasting it is the
+        # only reason to print it.
+        console.print(f"  {line}", soft_wrap=True)
+    console.print()
 
-    if private_path.exists():
-        console.print(f"[yellow]{private_path} already exists — not overwriting.[/yellow]")
-        console.print("[dim]Delete it first if you want it rewritten; the key is derived, so nothing is lost.[/dim]\n")
-        return
+    if write:
+        for name in servers:
+            path = write_per_host_ssh_key(seed, name)
+            console.print(f"[green]✓[/green] {name} → {path}")
+        console.print()
+    else:
+        console.print("[dim]Each line goes in ~/.ssh/authorized_keys on that server only.[/dim]")
+        console.print("[dim]Use [bold]--write[/bold] to cache the private halves under ~/.co/ssh/.[/dim]\n")
 
-    private_path.write_text(keys["private_key"])
-    private_path.chmod(0o600)
-    public_path.write_text(keys["public_line"] + "\n")
-    public_path.chmod(0o644)
-
-    console.print(f"[green]✓[/green] wrote {private_path} [dim](0600)[/dim]")
-    console.print(f"[green]✓[/green] wrote {public_path}")
-    console.print(f"\n[dim]Use it with:[/dim] ssh -i {private_path} user@host\n")

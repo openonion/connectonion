@@ -122,14 +122,12 @@ def _identity(target: str = None) -> list:
     Every path that reaches a server goes through here: preflight, deploy,
     rsync, and the interactive shell.
     """
-    from .keys_commands import SSH_PRIVATE_KEY, per_host_key_path
+    from .keys_commands import per_host_key_path
 
     keys = []
     name = _server_name(target)
     if name and per_host_key_path(name).exists():
         keys += ["-i", str(per_host_key_path(name))]
-    if SSH_PRIVATE_KEY.exists():
-        keys += ["-i", str(SSH_PRIVATE_KEY)]
     return keys
 
 
@@ -569,44 +567,33 @@ def _ensure_ssh_key(name: str = None) -> Optional[str]:
     second one was locked out of the machine the first had just bought.
     """
     from ... import address
-    from .keys_commands import (_find_co_dir, write_derived_ssh_key,
-                                write_per_host_ssh_key)
+    from .keys_commands import _find_co_dir, write_per_host_ssh_key
+
+    if not name:
+        return None
 
     for co_dir in (Path.home() / ".co", _find_co_dir()):
         if not co_dir or not co_dir.exists():
             continue
         data = address.load(co_dir)
         if data and data.get("seed_phrase"):
-            if name:
-                write_per_host_ssh_key(data["seed_phrase"], name)
-            write_derived_ssh_key(data["seed_phrase"])
-            return address.derive_ssh_key(data["seed_phrase"])["public_line"]
+            write_per_host_ssh_key(data["seed_phrase"], name)
+            return address.derive_ssh_key(data["seed_phrase"], host=name)["public_line"]
     return None
 
 
 def _ssh_public_lines(name: str = None) -> list:
-    """Every public line to put in a server's authorized_keys.
+    """The public line to put in a server's authorized_keys.
 
-    Both keys during the #427 migration, so a machine carries the per-server key
-    from the tree *and* the older shared one. Installing only the new key would
-    lock us out of every server provisioned before it, and there is no way back
-    in that does not go through a key already on the box.
+    One line, for this server. The migration in #427 installed two for a while --
+    the per-server key from the tree and an older shared one -- so that machines
+    provisioned before the tree existed stayed reachable. Step 4 retired the
+    shared key: every live server was checked to open with its own key alone
+    before this landed, and a machine that still holds only the old line has to
+    be re-provisioned rather than kept on a key nobody can derive any more.
     """
-    from ... import address
-    from .keys_commands import _find_co_dir
-
-    shared = _ensure_ssh_key(name)
-    if not shared or not name:
-        return [shared] if shared else []
-
-    for co_dir in (Path.home() / ".co", _find_co_dir()):
-        if not co_dir or not co_dir.exists():
-            continue
-        data = address.load(co_dir)
-        if data and data.get("seed_phrase"):
-            per_server = address.derive_ssh_key(data["seed_phrase"], host=name)
-            return [per_server["public_line"], shared]
-    return [shared]
+    line = _ensure_ssh_key(name)
+    return [line] if line else []
 
 
 def _fetch_pricing() -> Optional[dict]:
