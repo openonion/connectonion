@@ -58,9 +58,21 @@ def running_entries() -> set:
 
 @dataclass
 class Entry:
-    """One line of the schedule: what to run, and how often or when."""
+    """One line of the schedule: what to run, and how often or when.
+
+    `run` is a prompt, executed through the same path as POST /input. `exec` is
+    a command, executed directly. Exactly one of them.
+
+    The second exists because the first cannot be trusted for deterministic
+    work: a task whose whole job was running one script logged "successfully
+    executed the script and updated…" on several consecutive runs while the
+    output file's mtime never moved (#709). The log line is the model's own
+    account and nothing compared it against the filesystem. An exec entry is
+    recorded by its exit code, which nothing has an opinion about.
+    """
     name: str
-    run: str
+    run: Optional[str] = None
+    exec: Optional[str] = None
     interval: Optional[timedelta] = None
     at: Optional[str] = None
     tz: Optional[str] = None
@@ -109,8 +121,16 @@ def load_entries(co_dir, report=False):
             problems.append(f"{where}: not a mapping")
             continue
         run = item.get("run")
-        if not isinstance(run, str) or not run.strip():
-            problems.append(f"{where}: no run")
+        command = item.get("exec")
+        has_run = isinstance(run, str) and run.strip()
+        has_exec = isinstance(command, str) and command.strip()
+        if has_run and has_exec:
+            # Two answers to "what does this entry do" is a question, not a
+            # default, and picking one silently is how the wrong half runs.
+            problems.append(f"{where}: has both run and exec — pick one")
+            continue
+        if not has_run and not has_exec:
+            problems.append(f"{where}: no run or exec")
             continue
 
         interval = at = None
@@ -130,8 +150,13 @@ def load_entries(co_dir, report=False):
             problems.append(f"{where}: needs every or at")
             continue
 
-        name = str(item.get("name") or run).strip()
-        entry = Entry(name=name, run=run.strip(), interval=interval, at=at,
+        # `or run` alone names an unnamed exec entry "None", since run is
+        # None for those.
+        name = str(item.get("name") or run or command).strip()
+        entry = Entry(name=name,
+                      run=run.strip() if has_run else None,
+                      exec=command.strip() if has_exec else None,
+                      interval=interval, at=at,
                       tz=str(item["tz"]).strip() if item.get("tz") else None)
 
         if at is not None and _parse_at(entry) is None:
@@ -445,6 +470,27 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
         if console:
             console.print(f"[dim][schedule][/dim] {message}")
 
+    def _run_command(entry: Entry) -> tuple:
+        """Run the entry's command and report its exit code.
+
+        Nothing is asked whether it succeeded — that is the whole point of the
+        exec form. A task whose job was running one script reported success on
+        several consecutive runs while the file it writes never changed (#709),
+        because the only account of what happened was the model's own.
+
+        stderr is kept on failure: a non-zero exit with nothing to read is a
+        mystery at 3am, and the schedule state is where someone will look.
+        """
+        import subprocess
+
+        result = subprocess.run(entry.exec, shell=True, cwd=co_dir.parent,
+                                capture_output=True, text=True, timeout=600)
+        if result.returncode == 0:
+            return "done", None
+        detail = (result.stderr or result.stdout or "").strip()
+        return "failed", f"exit {result.returncode}: {detail[-400:]}" if detail else \
+            f"exit {result.returncode}"
+
     def _run_entry(entry: Entry) -> tuple:
         """One turn, through the same path as POST /input.
 
@@ -503,7 +549,12 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
                 # A turn takes as long as it takes — four minutes is normal for
                 # real work. In a thread, so the heartbeat keeps going and the
                 # agent stays reachable while it runs.
-                status, session_id = await asyncio.to_thread(_run_entry, entry)
+                if entry.exec:
+                    status, reason = await asyncio.to_thread(_run_command, entry)
+                    session_id = None
+                else:
+                    status, session_id = await asyncio.to_thread(_run_entry, entry)
+                    reason = None
             except Exception as exc:
                 # One entry failing is not the scheduler failing. Record it and
                 # keep the others on time.
@@ -516,7 +567,8 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
                 # mean the entry never runs again, which is worse than the
                 # overlap it prevents.
                 in_flight.discard(entry.name)
-            record_run(co_dir, entry.name, when=now, status=status, session_id=session_id)
+            record_run(co_dir, entry.name, when=now, status=status,
+                       session_id=session_id, reason=reason)
 
     def _compact_sessions() -> None:
         """Housekeeping on the tick, because startup may never come again.
