@@ -260,7 +260,7 @@
       <summary class="endpoint-header">
         <span class="method get">GET</span>
         <span class="endpoint-path">/sessions</span>
-        <span class="endpoint-desc">List all sessions</span>
+        <span class="endpoint-desc">List your own sessions (signed)</span>
         <span class="endpoint-expand">▾</span>
       </summary>
       <div class="endpoint-body">
@@ -273,7 +273,14 @@
         <div class="endpoint-section">
           <h4>Curl</h4>
           <div class="curl-box">
-            <pre id="sessions-curl">curl -X GET "http://localhost:8000/sessions"</pre>
+            <pre id="sessions-curl">co call &lt;address&gt; sessions
+
+# or sign it yourself — a GET has no body, so the signature is in headers
+# over {"method","path","timestamp"}, same canonical form as CONNECT:
+#   x-co-from:      your agent address
+#   x-co-signature: sign(canonical(payload))
+#   x-co-timestamp: unix seconds
+python -c "from connectonion.network.host.auth import sign_request; print(sign_request(keys,'GET','/sessions'))"</pre>
             <button class="copy-btn" onclick="copyCurl('sessions-curl')">Copy</button>
           </div>
         </div>

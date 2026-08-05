@@ -149,6 +149,63 @@ def extract_and_authenticate(data: dict, trust, *, blacklist=None, whitelist=Non
         return None, agent_address, True, f"forbidden: {decision.reason}"
 
 
+# ─────────────────────────── signed GETs ───────────────────────────
+#
+# A GET has no body to sign, so `curl http://agent/sessions` returned every
+# conversation on the agent -- prompts, answers and full message history -- to
+# anyone who could reach the port (#683). It is also where #696's attack got
+# its session ids.
+#
+# The signature travels in headers over {method, path, timestamp}, canonicalised
+# exactly as CONNECT and INPUT already are, and is then verified by the same
+# _authenticate_signed below. One canonicalisation, one freshness window, one
+# blacklist check -- a second implementation of any of those is how the halves
+# of a gate drift apart, which is most of what this release has been about.
+
+FROM_HEADER = "x-co-from"
+SIGNATURE_HEADER = "x-co-signature"
+TIMESTAMP_HEADER = "x-co-timestamp"
+
+
+def _canonical(payload: dict) -> bytes:
+    """The bytes that get signed. Same shape as connect.py's."""
+    return json.dumps(payload, sort_keys=True, separators=(',', ':')).encode()
+
+
+def sign_request(keys: dict, method: str, path: str, timestamp=None) -> dict:
+    """Headers a client sends with a signed GET.
+
+    Exported so a client does not have to reconstruct the format -- and so the
+    tests drive the real one rather than certifying their own idea of it.
+    """
+    from ... import address as _address
+
+    payload = {"method": method.upper(), "path": path,
+               "timestamp": int(timestamp if timestamp is not None else time.time())}
+    return {
+        FROM_HEADER: keys["address"],
+        SIGNATURE_HEADER: _address.sign(keys, _canonical(payload)).hex(),
+        TIMESTAMP_HEADER: str(payload["timestamp"]),
+    }
+
+
+def request_from_headers(headers: dict, method: str, path: str) -> dict:
+    """Turn a signed GET into the dict every other authenticated frame is.
+
+    The payload is rebuilt from the *actual* method and path, not from anything
+    the client sent, so a signature made for one path does not verify against
+    another.
+    """
+    lowered = {str(k).lower(): v for k, v in (headers or {}).items()}
+    timestamp = lowered.get(TIMESTAMP_HEADER)
+    return {
+        "payload": {"method": method.upper(), "path": path,
+                    "timestamp": int(timestamp) if timestamp is not None else None},
+        "from": lowered.get(FROM_HEADER),
+        "signature": lowered.get(SIGNATURE_HEADER),
+    }
+
+
 def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
     """Authenticate signed request with Ed25519 - ALWAYS REQUIRED.
 
