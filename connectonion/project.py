@@ -82,7 +82,16 @@ def derived_identity(co_dir=None):
         "short_address": f"{hex_address[:6]}...{hex_address[-4:]}",
         "email": f"{hex_address[:10]}@mail.openonion.ai",
         "email_active": False,
-        "source": "derived",
+        # `source` means "the directory this key belongs to", and #688 writes
+        # the served-by record into it. A derived key belongs to the project it
+        # was derived for -- so that stays a real directory rather than a
+        # marker string, which would have made claim_identity silently do
+        # nothing and taken #688's collision warning with it.
+        #
+        # Nothing collides here anyway: two projects deriving from one phrase
+        # get two addresses. The record still says who is serving.
+        "source": str(Path(co_dir or project_co_dir())),
+        "derived": True,
         "signing_key": signing_key,
     })
 

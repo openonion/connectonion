@@ -40,15 +40,28 @@ from connectonion.network.host.server import claim_identity, resolve_agent_ident
 
 @pytest.fixture
 def shared(tmp_path):
-    """One global ~/.co holding the only keypair, and two projects with none."""
+    """Two projects that really do share one keypair.
+
+    They used to share it by *both having none* and inheriting the global
+    ~/.co. Since #689 that no longer collides — a project with no key of its
+    own derives `agent://<name>`, so two of them are two agents, which is the
+    whole point of that change.
+
+    The collision this file is about still exists: it needs the same key file
+    in both places, which is what AGENT_CONFIG_PATH pointing two projects at
+    one directory produces, and what copying a `.co/keys/` produces. So the
+    fixture plants the same key in both rather than relying on inheritance.
+    """
     home_co = tmp_path / "home" / ".co"
     home_co.mkdir(parents=True)
-    address.save(address.generate(), home_co)
+    identity = address.generate()
+    address.save(identity, home_co)
 
     first = tmp_path / "oo" / ".co"
     second = tmp_path / "naturewill" / ".co"
     for co in (first, second):
         co.mkdir(parents=True)
+        address.save(identity, co)
     return home_co, first, second
 
 
@@ -111,9 +124,17 @@ class TestAProjectWithItsOwnKey:
         assert claim_identity(first, resolve_agent_identity(first), "a") is None
         assert claim_identity(second, resolve_agent_identity(second), "b") is None
 
-    def test_the_claim_lands_beside_the_key_it_is_about(self, tmp_path, monkeypatch):
-        """Not in the project — the whole point is that several projects share
-        one identity directory, so the record has to live with the key."""
+    def test_the_claim_is_keyed_on_the_address(self, tmp_path, monkeypatch):
+        """Not in the project, and not beside the key either.
+
+        Beside the key only catches projects sharing one `.co`. A copied
+        `.co/keys/`, or AGENT_CONFIG_PATH pointing two projects at one
+        directory, is the same collision on the network and was invisible to
+        that. The address is what actually collides, so it is what the record
+        is filed under — in ~/.co, because "who on this machine serves this
+        address" is not any one project's question, and because a record there
+        never travels in a deploy.
+        """
         home_co = tmp_path / "home" / ".co"
         home_co.mkdir(parents=True)
         monkeypatch.setattr(Path, "home", lambda: home_co.parent)
@@ -123,19 +144,23 @@ class TestAProjectWithItsOwnKey:
 
         claim_identity(project, resolve_agent_identity(project), "p")
 
-        assert (project / "served_by.json").exists()
-        assert not (home_co / "served_by.json").exists()
+        identity = resolve_agent_identity(project)
+        assert (home_co / "served_by" / f"{identity['address']}.json").exists()
+        assert not (project / "served_by.json").exists()
 
 
 class TestWhereTheIdentityCameFrom:
     """claim_identity has to record against the key's own directory, so the
     loaded identity has to say which one that was."""
 
-    def test_an_inherited_identity_says_it_is_the_global_one(self, shared, monkeypatch):
+    def test_a_loaded_identity_says_which_directory_it_came_from(self, shared, monkeypatch):
+        """It used to be the global one for a keyless project. Since #689 a
+        keyless project derives instead, so what this checks is the surviving
+        case: a key on disk reports its own directory."""
         home_co, first, _ = shared
         monkeypatch.setattr(Path, "home", lambda: home_co.parent)
 
-        assert resolve_agent_identity(first)["source"] == str(home_co)
+        assert resolve_agent_identity(first)["source"] == str(first)
 
     def test_a_local_identity_says_the_project(self, tmp_path, monkeypatch):
         monkeypatch.setattr(Path, "home", lambda: tmp_path / "nowhere")
@@ -152,8 +177,10 @@ class TestTheRecordItself:
         home_co, first, _ = shared
         monkeypatch.setattr(Path, "home", lambda: home_co.parent)
 
-        claim_identity(first, resolve_agent_identity(first), "oo")
-        record = json.loads((home_co / "served_by.json").read_text())
+        identity = resolve_agent_identity(first)
+        claim_identity(first, identity, "oo")
+        record = json.loads(
+            (home_co / "served_by" / f"{identity['address']}.json").read_text())
 
         assert record["name"] == "oo"
         assert record["project"] == str(first.parent)

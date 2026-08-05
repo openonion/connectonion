@@ -91,10 +91,15 @@ class TestTwoProjectsAreTwoAgents:
 
         assert first["address"] == again["address"]
 
-    def test_it_says_where_it_came_from(self, machine):
+    def test_it_says_it_was_derived(self, machine):
+        """A flag, not a marker in `source`. `source` means "the directory this
+        key belongs to" and #688 writes its served-by record there — overloading
+        it made claim_identity silently do nothing."""
         _, _, project = machine
+        resolved = resolve_agent_identity(project("oo"))
 
-        assert resolve_agent_identity(project("oo"))["source"] == "derived"
+        assert resolved["derived"] is True
+        assert Path(resolved["source"]).name == ".co"
 
 
 class TestItIsTheDocumentedDerivation:

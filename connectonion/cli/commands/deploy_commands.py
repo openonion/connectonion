@@ -220,13 +220,9 @@ def _add_deployer_as_admin(tar: tarfile.TarFile, project_dir: Path) -> None:
     throwaway project whose address is deleted with it, so seeding that would name an
     admin nobody can ever be.
     """
-    from ... import address
-    from .keys_commands import _find_co_dir
+    from ...project import project_identity
 
-    co_dir = _find_co_dir()
-    if not co_dir:
-        return
-    data = address.load(co_dir)
+    data = project_identity()
     if not data or not data.get("address"):
         return
 

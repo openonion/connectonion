@@ -51,6 +51,10 @@ def machine(tmp_path, monkeypatch):
     (home / ".co").mkdir(parents=True)
     machine_keys = address.generate()
     address.save(machine_keys, home / ".co")
+    # The phrase, so a keyless project can derive its own identity (#689).
+    # Without it the fixture only ever exercises the inherit fallback.
+    (home / ".co" / "keys" / "recovery.txt").write_text(
+        machine_keys["seed_phrase"], encoding="utf-8")
 
     project = tmp_path / "project"
     (project / ".co").mkdir(parents=True)
@@ -61,20 +65,27 @@ def machine(tmp_path, monkeypatch):
 
 class TestAProjectWithNoKeyOfItsOwn:
 
-    def test_it_uses_the_machine_identity(self, machine):
+    def test_it_derives_its_own(self, machine):
+        """It used to take the machine's, which made every project on a laptop
+        one agent (#642). Since #689 it derives `agent://<project-name>` from
+        the same recovery phrase — its own address, and one the phrase can
+        reproduce."""
         machine_keys, project = machine
 
         resolved = resolve_agent_identity(project / ".co")
 
-        assert resolved["address"] == machine_keys["address"]
+        assert resolved["address"] != machine_keys["address"]
+        assert resolved["derived"] is True
 
     def test_it_does_not_invent_one(self, machine):
+        """Still the property this class was written for: whatever it resolves
+        to must be reproducible, not a fresh random key."""
         machine_keys, project = machine
 
-        resolved = resolve_agent_identity(project / ".co")
+        first = resolve_agent_identity(project / ".co")
+        again = resolve_agent_identity(project / ".co")
 
-        assert resolved["address"] != address.generate()["address"]  # sanity
-        assert resolved["address"] == machine_keys["address"]
+        assert first["address"] == again["address"]
 
     def test_it_writes_no_key_into_the_project(self, machine):
         _, project = machine
@@ -84,15 +95,20 @@ class TestAProjectWithNoKeyOfItsOwn:
         assert not (project / ".co" / "keys" / "agent.key").exists()
 
     def test_it_agrees_with_what_co_status_would_report(self, machine):
-        """The same resolution `co status` does, spelled out here so the two
-        cannot drift apart again."""
+        """The property this whole file exists for, and it matters more now.
+
+        This used to re-implement the resolution rule inline — which is the
+        drift it was written to prevent, one copy later. Both sides now ask
+        `project_identity`, so there is one rule and this asserts they share
+        it.
+        """
+        from connectonion.project import project_identity
+
         machine_keys, project = machine
-
         co_dir = project / ".co"
-        status_dir = co_dir if (co_dir / "keys" / "agent.key").exists() else Path.home() / ".co"
-        status_says = address.load(status_dir)["address"]
 
-        assert resolve_agent_identity(co_dir)["address"] == status_says
+        assert resolve_agent_identity(co_dir)["address"] == \
+            project_identity(co_dir)["address"]
 
 
 class TestAProjectWithItsOwnKey:
@@ -159,6 +175,8 @@ class TestHostActuallyUsesIt:
         server_module.host(Agent("t", tools=[], model="co/gemini-2.5-flash"),
                            relay_url=None)
 
-        assert seen.get("address") == machine_keys["address"], (
+        from connectonion.project import project_identity
+
+        assert seen.get("address") == project_identity(project / ".co")["address"], (
             "host() served an address the operator was never told"
         )

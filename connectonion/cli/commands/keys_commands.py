@@ -92,8 +92,14 @@ def _short_path(p: Path) -> str:
     return resolved
 
 
-def _source_label(co_dir: Path) -> str:
+def _source_label(co_dir: Path, identity: dict = None) -> str:
     """Return human-readable source label for where keys are loaded from.
+
+    A derived identity has no directory at all — it comes from the recovery
+    phrase and the project name (#689) — so it says so rather than naming
+    whichever directory the search happened to end in. Printing "~/.co
+    (global)" beside an address that is not the global one is the panel lying
+    quietly, which is what this label was already fixed for once.
 
     Relative to where you are standing, so it stays short and says which way the
     project lies: `.co` at the root, `../.co` from a subdirectory. It used to
@@ -101,6 +107,8 @@ def _source_label(co_dir: Path) -> str:
     the relative `Path(".co")`; once it became the resolved project path the
     panel printed the machine's whole directory tree.
     """
+    if identity and identity.get("derived"):
+        return "derived from your recovery phrase"
     if co_dir.resolve() == (Path.home() / ".co").resolve():
         return "~/.co (global)"
     try:
@@ -120,18 +128,22 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
     """
     from ... import address
 
+    # The identity, asked for directly. _find_co_dir answers a different
+    # question -- "a directory that holds keys" -- and collapses project and
+    # global before anything can tell them apart, so `co keys` printed the
+    # machine's address for a project that now derives its own. A host serving
+    # one address while this panel prints another is #659.
+    from ...project import project_identity
+
     co_dir = _find_co_dir()
-    if not co_dir:
+    addr_data = project_identity()
+    if not co_dir and not addr_data:
         console.print("\n[red]No agent keys found.[/red]")
         console.print("[cyan]Run 'co init' or 'co create' first.[/cyan]\n")
         return
-
-    # The same resolver the host and the client use. `co keys` printing one
-    # address while `co host` serves another is #659, and this is the shape it
-    # would come back in: a project with no key of its own now derives one.
-    from ...project import project_identity
-
-    addr_data = project_identity(co_dir)
+    if not addr_data:
+        console.print("\n[red]Failed to load keys.[/red]\n")
+        return
     if not addr_data:
         console.print("\n[red]Failed to load keys.[/red]\n")
         return
@@ -150,7 +162,7 @@ def handle_keys(reveal: bool = False, ssh: bool = False, write: bool = False):
     id_table.add_row("Address", addr_data["address"])
     id_table.add_row("Short ID", addr_data["short_address"])
     id_table.add_row("Email", addr_data.get("email", "N/A"))
-    id_table.add_row("Source", _source_label(co_dir))
+    id_table.add_row("Source", _source_label(co_dir, addr_data))
     id_table.add_row("Key File", _short_path(co_dir / "keys" / "agent.key"))
 
     console.print()

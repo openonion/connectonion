@@ -807,13 +807,15 @@ class TestDeployerSeededAsAdmin:
 
         # A real identity, not a mock: the point of the test is that the address
         # the operator actually signs with is the one that lands in the package.
-        identity = tmp_path / "identity" / ".co"
-        identity.mkdir(parents=True)
+        #
+        # And found the way the code finds it, rather than by patching a seam.
+        # This used to patch `_find_co_dir`, which the deploy path stopped
+        # calling when identity resolution moved into project_identity (#689) --
+        # so the patch landed nowhere and the test would have passed for the
+        # wrong reason if the assertion had been weaker.
         keys = address.generate()
-        address.save(keys, identity)
-        monkeypatch.setattr(
-            "connectonion.cli.commands.keys_commands._find_co_dir", lambda: identity
-        )
+        address.save(keys, repo / ".co")
+        monkeypatch.chdir(repo)
 
         tarball = _build_tarball(repo, [])
         with tarfile.open(tarball) as tar:

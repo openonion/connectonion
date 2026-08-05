@@ -1036,12 +1036,8 @@ def _deployer_address() -> Optional[str]:
     when there is no local identity; the deploy proceeds, and the agent simply has
     no reachable admin, which is the state before this existed.
     """
-    from ... import address
-    from .keys_commands import _find_co_dir
+    from ...project import project_identity
 
-    co_dir = _find_co_dir()
-    if not co_dir:
-        return None
-    data = address.load(co_dir)
+    data = project_identity()
     return data.get("address") if data else None
 

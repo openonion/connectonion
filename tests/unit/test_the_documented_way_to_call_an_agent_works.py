@@ -87,24 +87,34 @@ def connect_keys(address_str):
     return connect(address_str)._keys
 
 
-class TestTheMachineIdentityIsTheFallback:
-    """What the host side does — `resolve_agent_identity`: own key, else ~/.co."""
+class TestTheClientIsTheSameAgentAsTheHost:
+    """A client signs as whatever this project *is* — the same answer
+    `resolve_agent_identity` gives the host. Signing as one identity while your
+    own agent serves under another is #659 from the other side."""
 
-    def test_a_project_without_keys_uses_the_home_identity(self, tmp_path, monkeypatch):
+    def test_a_project_without_keys_derives_its_own(self, tmp_path, monkeypatch):
+        """It used to sign as the machine identity, which is what made every
+        project on a laptop one agent (#642). Since #689 it derives."""
         from connectonion import address
         from connectonion.network import connect
+        from connectonion.project import project_identity
 
         home = tmp_path / "home"
         (home / ".co").mkdir(parents=True)
         machine = address.generate()
         address.save(machine, home / ".co")
+        (home / ".co" / "keys" / "recovery.txt").write_text(
+            machine["seed_phrase"], encoding="utf-8")
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: home))
 
         project = tmp_path / "keyless"
         (project / ".co").mkdir(parents=True)
         monkeypatch.chdir(project)
 
-        assert connect("0x" + "a" * 64)._keys["address"] == machine["address"]
+        signing_as = connect("0x" + "a" * 64)._keys["address"]
+
+        assert signing_as != machine["address"]
+        assert signing_as == project_identity(project / ".co")["address"]
 
     def test_no_identity_anywhere_is_not_an_error(self, tmp_path, monkeypatch):
         """A caller with no key at all still constructs; the agent decides."""

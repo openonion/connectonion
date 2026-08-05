@@ -354,13 +354,24 @@ def claim_identity(co_dir: Path, identity: dict, name: str) -> Optional[str]:
     where refusing belongs — that is the moment a second permanent copy is
     made.
     """
-    source = Path(identity.get("source") or co_dir)
+    # Keyed on the address, not on the directory the key came from. The
+    # directory only catches projects sharing one `.co`; a copied `.co/keys/`,
+    # or two projects pointed at one directory by AGENT_CONFIG_PATH, is the
+    # same collision on the network and was invisible to it. Since #689 gave
+    # keyless projects their own derived identity, the directory-shaped case
+    # is also the rarer one.
+    #
+    # In ~/.co because the question is "who on this machine serves this
+    # address", which is not any one project's to answer -- and it means the
+    # record never travels in a deploy.
+    source = Path.home() / ".co" / "served_by"
+    source.mkdir(parents=True, exist_ok=True)
     if not source.is_dir():
         # A freshly generated identity is saved into a directory that may not
         # exist yet, and a hint about who is serving is not worth failing a
         # start over. No directory, no claim, no warning.
         return None
-    record = source / SERVED_BY_FILE
+    record = source / f"{identity['address']}.json"
     mine = {"name": name, "project": str(co_dir.parent), "address": identity["address"]}
 
     existing = None
