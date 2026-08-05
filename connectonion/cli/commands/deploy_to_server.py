@@ -611,6 +611,11 @@ RSYNC_FILTERS = [
     "--exclude", ".co/keys/",
     "--exclude", ".co/address.json",
     "--exclude", ".co/admins.txt",
+    # Which agent is serving under this key, and from which directory on
+    # the operator's machine (#642). Shipping it puts a local absolute path
+    # on the server and makes the deployed agent read the laptop's claim as
+    # a collision on every start.
+    "--exclude", ".co/served_by.json",
     "--exclude", ".co/provision.json",
     "--exclude", ".co/requirements.sha256",
     "--exclude", ".co/logs/",
