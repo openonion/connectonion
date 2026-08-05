@@ -98,17 +98,43 @@ class TestFromTheProjectRoot:
         assert "agent.key" in row and str(home) not in row
 
 
-class TestTheGlobalFallbackStays:
-    """A project with no key of its own is what `co init` usually produces."""
+class TestAKeylessProjectSaysWhereItsIdentityComesFrom:
+    """A project with no key of its own is what `co init` usually produces.
 
-    def test_a_keyless_project_reports_the_machine_key(self, tmp_path):
+    It used to report the machine's key file. Since #689 it derives its own
+    identity from the recovery phrase, so naming a file at all would name one
+    this agent does not use — which is the mistake this whole file exists to
+    catch, one release later.
+    """
+
+    def test_it_says_derived_rather_than_naming_a_file(self, tmp_path):
         from connectonion import address
 
         home = tmp_path / "home2"
-        (home / ".co").mkdir(parents=True)
-        address.save(address.generate(), home / ".co")
+        (home / ".co" / "keys").mkdir(parents=True)
+        identity = address.generate()
+        address.save(identity, home / ".co")
+        (home / ".co" / "keys" / "recovery.txt").write_text(
+            identity["seed_phrase"], encoding="utf-8")
 
         keyless = tmp_path / "keyless"
+        (keyless / ".co").mkdir(parents=True)
+        (keyless / "sub").mkdir()
+
+        row = _keys_row(_doctor(keyless / "sub", home))
+        assert "derived" in row.lower(), row
+
+    def test_with_no_phrase_it_still_falls_back(self, tmp_path):
+        """Nothing to derive from — the machine key is still better than
+        claiming there is no identity."""
+        from connectonion import address
+
+        home = tmp_path / "home3"
+        (home / ".co").mkdir(parents=True)
+        address.save(address.generate(), home / ".co")
+        (home / ".co" / "keys" / "recovery.txt").unlink(missing_ok=True)
+
+        keyless = tmp_path / "keyless3"
         (keyless / ".co").mkdir(parents=True)
         (keyless / "sub").mkdir()
 
