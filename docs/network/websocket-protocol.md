@@ -266,11 +266,29 @@ Server response based on state:
 | Provided | In registry, running | `"running"` | Reattach IO, pipe buffered events |
 | Provided | In registry, connected | `"connected"` | Merge sessions, reset idle timer |
 | Provided | Not found | `"new"` | Allocate new session (same id) |
+| Provided | Owned by another caller | `"new"` | Allocate new session, **new id** |
+
+A session belongs to whoever started it. Naming someone else's id gets a fresh
+session with a *different* id, reported in CONNECTED — not theirs, and not an
+error, which would confirm the session exists. Keeping the requested id would
+mean your turn overwrote their history.
 
 **CONNECTED is not the only possible reply.** If the trust policy turns this caller away
 and the agent offers a way in, the server answers `ONBOARD_REQUIRED` instead and holds the
 CONNECT open until the caller passes — see [Trust Gate](#trust-gate-onboarding) below. If
 the policy turns them away and offers nothing, the reply is `ERROR`.
+
+"Offers a way in" means a door that actually opens, not one that is merely
+written down. The shipped policy declares `invite_code: [$CO_INVITE_CODE]` and
+`payment: $CO_PAYMENT`; with neither set, nothing resolves and there is no
+onboarding to offer, so a stranger gets `ERROR` from the policy rather than an
+`ONBOARD_REQUIRED` leading nowhere.
+
+**A CONNECT signature opens one connection.** Replaying a captured one is
+refused with `ERROR unauthorized: this CONNECT was already used`. EXEC carries
+no signature of its own, so the connection is the unit of authentication and a
+replayed CONNECT would otherwise be the whole whitelisted tool surface for the
+five-minute freshness window.
 
 This decision is made **per caller**, after the signature is verified, so an admin, a
 contact, or anyone who onboarded earlier never sees the gate at all.
