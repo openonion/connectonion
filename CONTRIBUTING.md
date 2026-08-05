@@ -140,6 +140,36 @@ Unsure where to begin? You can start by looking through these issues:
    ```
    Then create a Pull Request on GitHub.
 
+### Using AI to write your contribution
+
+**AI-assisted contributions are welcome. Undisclosed, unreviewed ones are not.**
+
+We don't care whether a human or a model typed the diff. We care whether someone
+read it and can defend it. If AI wrote any part of your change, the PR template
+asks you for three things:
+
+**1. Which model, and which tool.** Say `Claude Opus 4.5 via Claude Code`, not
+"AI". Model capability directly affects code quality, and knowing which one wrote
+a change tells a reviewer where to look first. This is never a reason to reject a
+PR — it calibrates review.
+
+**2. What you are unsure about.** Which part is weakest, what you never actually
+ran, what breaks first if you're wrong. *"I'm not sure"* is a fine answer.
+Claiming confidence you don't have is not, and it is the fastest way to get a PR
+closed — once a reviewer finds one confident claim that isn't true, they have to
+re-check everything else you said.
+
+**3. Real test output.** Paste the command and what it printed. Green CI is not
+review: a change can pass every test and still be the wrong shape.
+
+That last point is worth stating plainly, because it is the most common reason we
+close a PR that is *not* wrong. A change that spans several subsystems at once —
+each hunk defensible, all tests passing — can still leave behind a design nobody
+owns. Fixing one bug is not a licence to reshape three modules. If your diff is
+growing past the bug, stop and open an issue about the design instead.
+
+If you can't say what's weak about your own change, you haven't reviewed it.
+
 ## Style Guidelines
 
 ### Python Style
