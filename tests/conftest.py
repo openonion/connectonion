@@ -342,3 +342,20 @@ def pytest_collection_modifyitems(config, items):
         for item in items:
             if "real_api" in item.keywords:
                 item.add_marker(skip_marker)
+
+
+@pytest.fixture(autouse=True)
+def _forget_seen_signatures():
+    """One CONNECT signature opens one connection (#649), and the record of
+    which ones have been used is process-global -- it has to be, because the
+    replay being refused happens across connections.
+
+    That makes it state one test hands to the next. Several test files send a
+    hardcoded `"signature": "0xsig"`, so without this the second test to use
+    one is refused for a reason that has nothing to do with what it checks.
+    """
+    from connectonion.network.host.auth import _seen_signatures
+
+    _seen_signatures.clear()
+    yield
+    _seen_signatures.clear()

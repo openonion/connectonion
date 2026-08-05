@@ -18,6 +18,7 @@ Trust evaluation (via TrustAgent.should_allow()):
 import hashlib
 import json
 import time
+from typing import Dict
 
 from ..trust import TrustAgent, TRUST_LEVELS
 
@@ -204,6 +205,50 @@ def request_from_headers(headers: dict, method: str, path: str) -> dict:
         "from": lowered.get(FROM_HEADER),
         "signature": lowered.get(SIGNATURE_HEADER),
     }
+
+
+# ─────────────────────────── replay ───────────────────────────
+#
+# EXEC carries no signature of its own -- the signature authenticates the
+# *connection*, and every command on it is trusted because of who opened it. So
+# a captured CONNECT, replayed inside the five-minute freshness window, is not
+# "repeat what the caller did": it is any whitelisted tool with any arguments,
+# because the attacker writes the EXEC frames themselves (#649, measured).
+#
+# One signature opens one connection. The attack has to *open* one; without a
+# MITM position an attacker cannot inject into somebody else's live socket.
+#
+# Legitimate clients are unaffected: each builds a fresh CONNECT with a fresh
+# timestamp, and the one place this codebase re-establishes a connection
+# deliberately does not replay the frame -- see ws_router/connect.py, "no
+# CONNECT replay, its signature may have aged past the 5-minute window".
+#
+# Signing each command is the complete answer and a protocol change (#649
+# option 3). This closes the route without breaking a client.
+
+_seen_signatures: Dict[str, float] = {}
+
+
+def signature_already_used(data: dict) -> bool:
+    """True if this exact signature has opened a connection already.
+
+    Records it if not. Entries past the freshness window are dropped as we go:
+    they cannot be replayed anyway, so keeping them is memory the agent never
+    gets back.
+    """
+    signature = data.get("signature")
+    if not signature:
+        return False          # refused by the signature check itself
+
+    now = time.time()
+    for old in [sig for sig, seen in _seen_signatures.items()
+                if now - seen > SIGNATURE_EXPIRY_SECONDS]:
+        del _seen_signatures[old]
+
+    if signature in _seen_signatures:
+        return True
+    _seen_signatures[signature] = now
+    return False
 
 
 def _authenticate_signed(data: dict, *, blacklist=None, recipient_address=None):
