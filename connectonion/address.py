@@ -398,62 +398,47 @@ def sign(address_data: Dict[str, Any], message: bytes) -> bytes:
 # is still exactly one thing to write down.
 #
 # The agent key is deliberately left on its original derivation — bare
-# seed[:32]. Deriving it through HKDF instead would change every existing
-# agent's address and void every trust relationship keyed to it. Only the new
-# SSH key is derived with a label, so a third purpose can be added later
-# without disturbing either of the first two.
+# seed[:32]. Deriving it differently would change every existing agent's address
+# and void every trust relationship keyed to it.
 #
 #     agent identity : SigningKey(seed[:32])                     (unchanged)
-#     ssh access     : HKDF(seed, info="connectonion:ssh:v1")
+#     ssh access     : SLIP-0010, one path per server            (#427)
 #
 # Two keys, not one used twice: a signing oracle in the agent protocol must not
 # be usable against SSH login.
+#
+# SSH access used to be a second construction — HKDF over a fixed label, one key
+# for every machine. #427 retired it: a snapshot of one server yielded the key
+# that opened all of them, and the only way to rotate was to change the recovery
+# phrase, which re-keys the identity too.
 # ---------------------------------------------------------------------------
 
-SSH_DERIVATION_INFO = b"connectonion:ssh:v1"
+def derive_ssh_key(seed_phrase: str, host: str, user: str = "root") -> Dict[str, str]:
+    """Derive an Ed25519 SSH keypair for one server, from a recovery phrase.
 
+    The key comes off the SLIP-0010 tree at the SLIP-0013 path for
+    ``ssh://<user>@<host>`` — the same paths ``trezor-agent`` derives, so a
+    hardware key can stand in for the file cache. One key per server: a snapshot
+    of one machine does not yield the key that opens the others, and rotating
+    means bumping the URI's index rather than changing the recovery phrase.
 
-def _hkdf_sha512(seed: bytes, info: bytes, length: int = 32) -> bytes:
-    """RFC 5869 HKDF with SHA-512, no salt. Enough for one 32-byte output."""
-    import hashlib
-    import hmac
-
-    prk = hmac.new(b"\x00" * hashlib.sha512().digest_size, seed, hashlib.sha512).digest()
-
-    out = b""
-    block = b""
-    counter = 1
-    while len(out) < length:
-        block = hmac.new(prk, block + info + bytes([counter]), hashlib.sha512).digest()
-        out += block
-        counter += 1
-    return out[:length]
-
-
-def derive_ssh_key(seed_phrase: str, host: str = None, user: str = "root") -> Dict[str, str]:
-    """Derive an Ed25519 SSH keypair from a recovery phrase.
-
-    With a ``host``, the key comes off the SLIP-0010 tree at the SLIP-0013 path
-    for ``ssh://<user>@<host>`` — one key per server, and rotatable by bumping
-    the URI's index. That is where this is going (#427).
-
-    Without one, it is the original HKDF key: a single key shared by every
-    server. That key cannot simply be dropped, because it is the line sitting in
-    ``authorized_keys`` on every machine provisioned to date, and it is the way
-    back into them. It stays derivable until those are backfilled, and goes in
-    1.6.
+    ``host`` is required. It was optional until #427 step 4, and omitting it
+    gave the original HKDF key — a single key shared by every server, installed
+    at provisioning and offered on every connection. That construction is gone.
 
     Ed25519 is a native OpenSSH type, so the public half is an ordinary
     `ssh-ed25519 AAAA…` line that needs nothing custom on any server.
 
     Args:
         seed_phrase: The 12-word BIP39 recovery phrase
+        host: The server this key is for — its registered name
+        user: The remote user the key logs in as
 
     Returns:
         {"public_line": "ssh-ed25519 AAAA… connectonion", "private_key": "-----BEGIN…"}
 
     Example:
-        >>> keys = derive_ssh_key("legal winner thank year wave …")
+        >>> keys = derive_ssh_key("legal winner thank year wave …", host="prod")
         >>> keys["public_line"].startswith("ssh-ed25519 ")
         True
     """
@@ -468,12 +453,11 @@ def derive_ssh_key(seed_phrase: str, host: str = None, user: str = "root") -> Di
         raise ValueError("Invalid recovery phrase")
 
     seed = mnemo.to_seed(seed_phrase)
-    if host is None:
-        # The pre-tree key. Still derived because it is in authorized_keys on
-        # every server provisioned so far — see derive_ssh_key's docstring.
-        signing_key = SigningKey(_hkdf_sha512(seed, SSH_DERIVATION_INFO))
-    else:
-        signing_key = SigningKey(derive_path(seed, slip13_path(ssh_uri(user, host))))
+    # One key per server, from the same SLIP-0010 tree as the identity. The
+    # pre-tree key -- HKDF over a label, one key for every machine -- was retired
+    # in #427 step 4: a snapshot of one box yielded the key that opened all of
+    # them, and the only way to rotate was to change the recovery phrase.
+    signing_key = SigningKey(derive_path(seed, slip13_path(ssh_uri(user, host))))
 
     return Identity({
         "public_line": _openssh_public_line(bytes(signing_key.verify_key)),

@@ -20,8 +20,25 @@ PHRASE = "legal winner thank year wave sausage worth useful legal winner thank y
 # The address this phrase produced before #404 retired seed[:32]. Kept as the
 # thing we must NOT derive any more, not as a target.
 PRE_SLIP10_ADDRESS = "0xc6f2ac5598970c79633714d3eb5c34d7bfc3e92da58c7354b37996d9a4af3ab2"
-EXPECTED_SSH_LINE = (
+# The line the retired HKDF derivation produced for this phrase. Kept the way
+# PRE_SLIP10_ADDRESS is kept — as the thing we must NOT derive any more. #427
+# step 4 removed that construction; a key that reappears here means it came back.
+PRE_TREE_SSH_LINE = (
     "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBs9N4V0K4pXPZNr5XPKmSJusfyalyjdi4xN36gqLt8U"
+    " connectonion"
+)
+
+# One key per server, from the SLIP-0013 tree at ssh://root@<host>. Pinned for
+# the same reason the address is: a refactor that moves this locks the operator
+# out of every machine carrying the old line.
+HOST = "example.com"
+EXPECTED_SSH_LINE = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAICgnid4NtTrXmupaihshh6xksas6FdTA8usYcMTJbjCi"
+    " connectonion"
+)
+OTHER_HOST = "other.example.com"
+EXPECTED_OTHER_SSH_LINE = (
+    "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMTyCd4f9nB7DuSz9Hmdbanebz1/8ovEDP6Rv/iYi+5O"
     " connectonion"
 )
 
@@ -52,20 +69,42 @@ class TestAgentAddressMovedOnPurpose:
         assert address.recover(PHRASE)["address"] != old_style
 
 
+class TestTheRetiredDerivationStaysRetired:
+    """#427 step 4. The old construction produced one key for every server."""
+
+    def test_no_host_is_not_a_call_any_more(self):
+        with pytest.raises(TypeError):
+            address.derive_ssh_key(PHRASE)
+
+    def test_a_server_key_is_not_the_old_shared_one(self):
+        assert address.derive_ssh_key(PHRASE, host=HOST)["public_line"] != PRE_TREE_SSH_LINE
+
+
+class TestEveryServerGetsItsOwnKey:
+
+    def test_two_servers_two_keys(self):
+        assert (address.derive_ssh_key(PHRASE, host=HOST)["public_line"]
+                != address.derive_ssh_key(PHRASE, host=OTHER_HOST)["public_line"])
+
+    def test_the_second_host_is_pinned_too(self):
+        assert (address.derive_ssh_key(PHRASE, host=OTHER_HOST)["public_line"]
+                == EXPECTED_OTHER_SSH_LINE)
+
+
 class TestDeriveSSHKey:
     def test_known_phrase_produces_the_same_ssh_key(self):
-        assert address.derive_ssh_key(PHRASE)["public_line"] == EXPECTED_SSH_LINE
+        assert address.derive_ssh_key(PHRASE, host=HOST)["public_line"] == EXPECTED_SSH_LINE
 
     def test_derivation_is_deterministic(self):
-        assert address.derive_ssh_key(PHRASE) == address.derive_ssh_key(PHRASE)
+        assert address.derive_ssh_key(PHRASE, host=HOST) == address.derive_ssh_key(PHRASE, host=HOST)
 
     def test_different_phrases_produce_different_keys(self):
         other = "zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo zoo wrong"
-        assert address.derive_ssh_key(other)["public_line"] != EXPECTED_SSH_LINE
+        assert address.derive_ssh_key(other, host=HOST)["public_line"] != EXPECTED_SSH_LINE
 
     def test_invalid_phrase_is_rejected(self):
         with pytest.raises(ValueError, match="Invalid recovery phrase"):
-            address.derive_ssh_key("not actually a bip39 phrase at all")
+            address.derive_ssh_key("not actually a bip39 phrase at all", host=HOST)
 
     def test_ssh_key_is_not_the_agent_key(self):
         """Two keys, not one used twice.
@@ -76,26 +115,31 @@ class TestDeriveSSHKey:
         than a derivation.
         """
         from mnemonic import Mnemonic
+        from nacl.signing import SigningKey
 
         seed = Mnemonic("english").to_seed(PHRASE)
-        ssh_seed = address._hkdf_sha512(seed, address.SSH_DERIVATION_INFO)
+        # Checked through the public line rather than the private bytes, because
+        # the derivation is no longer a helper this test can call: #427 step 4
+        # removed the HKDF construction it used to reach into.
+        ssh_line = address.derive_ssh_key(PHRASE, host=HOST)["public_line"]
 
-        assert ssh_seed != seed[:32]
-        assert ssh_seed != seed[32:]
+        for half in (seed[:32], seed[32:]):
+            sliced = address._openssh_public_line(bytes(SigningKey(half).verify_key))
+            assert ssh_line != sliced
 
 
 class TestOpenSSHEncoding:
     """The output has to be usable verbatim by real ssh tooling."""
 
     def test_public_line_has_the_three_authorized_keys_fields(self):
-        parts = address.derive_ssh_key(PHRASE)["public_line"].split()
+        parts = address.derive_ssh_key(PHRASE, host=HOST)["public_line"].split()
         assert len(parts) == 3
         assert parts[0] == "ssh-ed25519"
         assert parts[2] == "connectonion"
 
     def test_public_blob_declares_its_own_type_and_carries_32_bytes(self):
         """Decode the base64 the way sshd does: length-prefixed strings."""
-        blob = base64.b64decode(address.derive_ssh_key(PHRASE)["public_line"].split()[1])
+        blob = base64.b64decode(address.derive_ssh_key(PHRASE, host=HOST)["public_line"].split()[1])
 
         type_len = int.from_bytes(blob[0:4], "big")
         key_type = blob[4:4 + type_len]
@@ -106,7 +150,7 @@ class TestOpenSSHEncoding:
         assert len(blob) == 8 + type_len + key_len
 
     def test_private_key_is_an_unencrypted_openssh_block(self):
-        private = address.derive_ssh_key(PHRASE)["private_key"]
+        private = address.derive_ssh_key(PHRASE, host=HOST)["private_key"]
 
         assert private.startswith("-----BEGIN OPENSSH PRIVATE KEY-----\n")
         assert private.rstrip().endswith("-----END OPENSSH PRIVATE KEY-----")
@@ -123,7 +167,7 @@ class TestOpenSSHEncoding:
         Getting this wrong produces a file that looks right and that ssh-keygen
         refuses to load.
         """
-        private = address.derive_ssh_key(PHRASE)["private_key"]
+        private = address.derive_ssh_key(PHRASE, host=HOST)["private_key"]
         body = base64.b64decode("".join(private.splitlines()[1:-1]))
 
         offset = len(b"openssh-key-v1\x00")
@@ -192,4 +236,4 @@ class TestPerHostSSHKeys:
         """Every server provisioned so far has this line in authorized_keys. If
         this moves, we are locked out of machines we own — #427 step 4 is where
         it goes, after they are backfilled."""
-        assert address.derive_ssh_key(PHRASE)["public_line"] == EXPECTED_SSH_LINE
+        assert address.derive_ssh_key(PHRASE, host=HOST)["public_line"] == EXPECTED_SSH_LINE

@@ -645,12 +645,19 @@ class TestWeCanReachTheServerWeJustCreated:
     machine the account had just been charged $180 for. Found by running it.
     """
 
-    def test_ssh_offers_the_derived_key_when_it_is_on_disk(self, tmp_path):
-        key = tmp_path / "connectonion_ed25519"
-        key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
+    def test_ssh_offers_the_servers_own_key_when_it_is_on_disk(self, tmp_path):
+        """Per-server since #427 step 4 — there is no global key to offer."""
+        from connectonion.cli.commands.keys_commands import per_host_key_path
 
-        with patch("connectonion.cli.commands.keys_commands.SSH_PRIVATE_KEY", key), \
+        with patch("connectonion.cli.commands.keys_commands.SSH_PRIVATE_KEY",
+                   tmp_path / "id_ed25519"), \
+             patch("connectonion.cli.commands.server_commands._server_name",
+                   return_value="prod"), \
+             patch("connectonion.cli.commands.keys_commands.per_host_key_path") as php, \
              patch.object(sc.subprocess, "run", return_value=_ok("ok")) as run:
+            key = tmp_path / "id_ed25519_prod"
+            key.write_text("-----BEGIN OPENSSH PRIVATE KEY-----\n")
+            php.return_value = key
             sc._ssh("co@1.2.3.4", "echo ok")
 
         argv = run.call_args.args[0]
@@ -687,9 +694,9 @@ class TestWeCanReachTheServerWeJustCreated:
              patch("connectonion.address.derive_ssh_key",
                    return_value={"public_line": "ssh-ed25519 AAAA x",
                                  "private_key": "-----BEGIN OPENSSH PRIVATE KEY-----\n"}), \
-             patch("connectonion.cli.commands.keys_commands.write_derived_ssh_key",
-                   side_effect=lambda seed: written.append(seed)):
-            line = sc._ensure_ssh_key()
+             patch("connectonion.cli.commands.keys_commands.write_per_host_ssh_key",
+                   side_effect=lambda seed, host, user="root": written.append((seed, host))):
+            line = sc._ensure_ssh_key("prod")
 
         assert line == "ssh-ed25519 AAAA x"
         assert written, "the private half was never written"
@@ -721,13 +728,14 @@ class TestTheKeyBelongsToTheOperatorNotTheProject:
 
         with patch("connectonion.address.load", side_effect=fake_load), \
              patch("connectonion.address.derive_ssh_key",
-                   side_effect=lambda s: seen.append(s) or {"public_line": f"key-for-{s}",
-                                                            "private_key": "x"}), \
-             patch("connectonion.cli.commands.keys_commands.write_derived_ssh_key"), \
+                   side_effect=lambda s, host=None, user="root": seen.append(s) or {
+                       "public_line": f"key-for-{s}", "private_key": "x"}), \
+             patch("connectonion.cli.commands.keys_commands.write_per_host_ssh_key"), \
              patch("connectonion.cli.commands.keys_commands._find_co_dir",
                    return_value=tmp_path / "project" / ".co"):
-            first = sc._ensure_ssh_key()
-            second = sc._ensure_ssh_key()
+            # A name is required since #427 step 4 — every key belongs to a server.
+            first = sc._ensure_ssh_key("prod")
+            second = sc._ensure_ssh_key("prod")
 
         assert first == second == "key-for-operator phrase"
         assert "project phrase" not in seen
@@ -743,10 +751,10 @@ class TestTheKeyBelongsToTheOperatorNotTheProject:
                    return_value={"seed_phrase": "project phrase"}), \
              patch("connectonion.address.derive_ssh_key",
                    return_value={"public_line": "project-key", "private_key": "x"}), \
-             patch("connectonion.cli.commands.keys_commands.write_derived_ssh_key"), \
+             patch("connectonion.cli.commands.keys_commands.write_per_host_ssh_key"), \
              patch("connectonion.cli.commands.keys_commands._find_co_dir",
                    return_value=project):
-            assert sc._ensure_ssh_key() == "project-key"
+            assert sc._ensure_ssh_key("prod") == "project-key"
 
 
 class TestTheKeyPairOnDiskAlwaysMatches:
@@ -755,18 +763,19 @@ class TestTheKeyPairOnDiskAlwaysMatches:
     which is a confusing way to learn a server you paid for is unreachable."""
 
     def test_both_halves_are_rewritten_together(self, tmp_path, monkeypatch):
+        """Per-server since #427 step 4; the property is unchanged."""
         from connectonion.cli.commands import keys_commands as kc
 
-        priv, pub = tmp_path / "id_ed25519", tmp_path / "id_ed25519.pub"
+        monkeypatch.setattr(kc, "SSH_PRIVATE_KEY", tmp_path / "id_ed25519")
+        priv = tmp_path / "id_ed25519_prod"
+        pub = tmp_path / "id_ed25519_prod.pub"
         priv.write_text("an older key from another phrase")
         pub.write_text("ssh-ed25519 STALE stale\n")
-        monkeypatch.setattr(kc, "SSH_PRIVATE_KEY", priv)
-        monkeypatch.setattr(kc, "SSH_PUBLIC_KEY", pub)
 
         with patch("connectonion.address.derive_ssh_key",
                    return_value={"private_key": "FRESH PRIVATE",
                                  "public_line": "ssh-ed25519 FRESH fresh"}):
-            kc.write_derived_ssh_key("some phrase")
+            kc.write_per_host_ssh_key("some phrase", "prod")
 
         assert priv.read_text() == "FRESH PRIVATE"
         assert pub.read_text().strip() == "ssh-ed25519 FRESH fresh"
@@ -919,12 +928,24 @@ class TestReadyMeansYouCanLogIn:
         assert waited == ["co@203.0.113.7"]
 
 
-class TestThePerServerKeyMigration:
-    """#427: a second key, derived per server, installed beside the old one.
+class TestEveryServerHasItsOwnKey:
+    """#427 step 4: the shared key is retired; a key belongs to one machine.
 
-    The one rule the migration has to obey is that no step removes the only key
-    a machine holds. Every server provisioned to date carries the shared key and
-    nothing else, and the way back into a box we own is that key.
+    This class used to assert the migration's transitional state — both lines
+    installed, both offered — because removing the shared key before every box
+    carried its own would have orphaned machines we own, and the way back into a
+    server is a key it already trusts.
+
+    That step is done. Before it landed, each live server was checked to open
+    with its per-server key alone:
+
+        nw-runner (claude-runner)    NEW_KEY_WORKS
+        nw-prod   (naturewill-test)  NEW_KEY_WORKS
+        naturewill-prod              NEW_KEY_WORKS
+        test      (co-test-deploy)   unreachable — the box no longer exists
+
+    A machine that still holds only the old line has to be re-provisioned: the
+    key that opened it can no longer be derived.
     """
 
     PHRASE = ("legal winner thank year wave sausage worth useful legal "
@@ -942,45 +963,40 @@ class TestThePerServerKeyMigration:
         address.save(keys, co_dir)
         return co_dir
 
-    def test_a_deploy_installs_the_new_key_without_dropping_the_old_one(
+    def test_a_deploy_installs_one_line_and_it_is_this_servers(
             self, phrase_on_disk, servers_file):
-        """Both lines, or a machine that only has the old key is orphaned the
-        moment we stop offering it."""
+        from connectonion import address
+
         lines = sc._ssh_public_lines("prod")
 
-        assert len(lines) == 2, lines
-        assert all(l.startswith("ssh-ed25519 ") for l in lines), lines
-        assert lines[0] != lines[1], "the per-server key is the shared key"
-
-        from connectonion import address
-        assert lines[1] == address.derive_ssh_key(self.PHRASE)["public_line"], \
-            "the shared key is no longer among the lines a deploy installs"
+        assert len(lines) == 1, lines
+        assert lines[0] == address.derive_ssh_key(self.PHRASE, host="prod")["public_line"]
 
     def test_each_server_gets_its_own_key(self, phrase_on_disk, servers_file):
-        """The point of the tree: a key leaked off one box does not open the
-        next one."""
+        """The point of the tree: a key leaked off one box does not open the next."""
         assert sc._ssh_public_lines("prod")[0] != sc._ssh_public_lines("staging")[0]
 
-    def test_ssh_offers_the_server_its_own_key_first(self, phrase_on_disk,
-                                                     servers_file):
-        """Offered, not forced — the old key stays in the list so a machine that
-        has not been redeployed since the migration still opens."""
-        from connectonion.cli.commands.keys_commands import (SSH_PRIVATE_KEY,
-                                                             per_host_key_path)
-        sc._ssh_public_lines("prod")          # a deploy, which caches both keys
+    def test_ssh_offers_the_server_its_own_key(self, phrase_on_disk, servers_file):
+        from connectonion.cli.commands.keys_commands import per_host_key_path
+
+        sc._ssh_public_lines("prod")          # a deploy, which caches the key
         sc._update(lambda servers: servers.update(
             {"prod": {"ssh": "co@1.2.3.4", "hostname": "prod.example"}}))
 
         for handle in ("prod", "co@1.2.3.4"):
-            assert sc._identity(handle) == ["-i", str(per_host_key_path("prod")),
-                                            "-i", str(SSH_PRIVATE_KEY)], handle
+            assert sc._identity(handle) == ["-i", str(per_host_key_path("prod"))], handle
 
-    def test_a_server_we_have_never_seen_still_gets_the_old_key(
+    def test_a_server_we_have_never_seen_gets_no_key_to_offer(
             self, phrase_on_disk, servers_file):
-        """A box added by hand with `co server add`, or one whose deploy has not
-        run yet, has only the shared key on it. Offering nothing would be worse
-        than offering the wrong key."""
-        from connectonion.cli.commands.keys_commands import SSH_PRIVATE_KEY
-        sc._ensure_ssh_key()
+        """There is no shared key to fall back on any more.
 
-        assert sc._identity("root@5.6.7.8") == ["-i", str(SSH_PRIVATE_KEY)]
+        ssh then tries the operator's own keys, which is how a box registered by
+        hand with `co server add` has always opened — `_identity` never passes
+        IdentitiesOnly, so offering nothing is not the same as refusing.
+        """
+        assert sc._identity("root@5.6.7.8") == []
+
+    def test_a_name_is_required_to_get_a_line(self, phrase_on_disk, servers_file):
+        """Hostless meant the shared key, which is the thing that was retired."""
+        assert sc._ssh_public_lines() == []
+        assert sc._ensure_ssh_key(None) is None

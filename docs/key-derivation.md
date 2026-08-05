@@ -104,12 +104,41 @@ There is no in-place upgrade, because the address *is* the identity.
 | `ssh_uri(user, host)` | `ssh://<user>@<host>`, matching `trezor-agent` |
 | `ACCOUNT_URI` | `https://oo.openonion.ai` — the account identity |
 
-## Still on the old scheme
+## SSH keys
 
-`co keys --ssh` derives with HKDF and the label `connectonion:ssh:v1`, not through the
-tree. That is deliberate for now: the SSH public key is in `authorized_keys` on every
-server already provisioned, so changing it locks you out of machines you own. Folding
-it in is a migration — add the new key, then retire the old — not a switch.
+One key per server, from the same tree:
+
+```
+ssh://root@<server>  ──SLIP-0013──▶  m/13'/…  ──▶  the key for that server only
+```
+
+`co keys --ssh` prints the set — one line per registered server — and `--write`
+caches the private halves under `~/.co/ssh/id_ed25519_<server>`. The cache is
+exactly that: the phrase is the original, so losing a file costs a
+re-derivation, not access.
+
+Two properties this buys, neither of which the old scheme could offer:
+
+- **A snapshot of one machine does not open the others.** Each server's key is
+  derived from its own URI.
+- **Rotation without re-keying the identity.** Bump the URI's index and the old
+  key stops being derived; the agent's address is untouched.
+
+The paths match what `trezor-agent` derives, so a hardware key can stand in for
+the file cache.
+
+### What was retired
+
+Until #427 step 4, SSH access used a second construction — HKDF over the label
+`connectonion:ssh:v1` — producing **one key for every server**, installed into
+`authorized_keys` at provisioning and offered on every connection. It could not
+be switched in one commit: the public line was already on every machine
+provisioned before the tree existed, and there is no way back into a server
+except a key it already trusts.
+
+So it went in the order the migration required — install the per-server key
+alongside the old one, backfill existing machines on every deploy, verify each
+server opens with its own key alone, and only then stop deriving the shared one.
 
 ## See also
 
