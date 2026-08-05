@@ -226,7 +226,6 @@ class TestCorsHeaders:
         assert b"content-type" in allowed
 
 
-@pytest.mark.asyncio
 def signed_scope(method: str, path: str) -> dict:
     """A scope carrying the headers a signed GET needs (#683).
 
@@ -244,6 +243,7 @@ def signed_scope(method: str, path: str) -> dict:
             "headers": [[k.encode(), v.encode()] for k, v in headers.items()]}
 
 
+@pytest.mark.asyncio
 class TestHandleHttpRouting:
     """Test handle_http routing logic."""
 
