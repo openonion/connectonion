@@ -66,6 +66,48 @@ from .http_router import (
 )
 
 
+EXEC_REQUIRES = ("admin", "whitelist")
+
+
+def _make_ws_exec(create_agent, exec_permissions, trust_agent):
+    """Direct tool execution, gated on who is asking as well as what they ask.
+
+    EXEC used to take neither the caller's address nor their level:
+
+        def handle_ws_exec(tool_name, args):
+            return exec_handler(create_agent, exec_permissions, tool_name, args)
+
+    while the INPUT handler beside it resolved both and carried them down. So
+    the permission whitelist was the only gate, and any authenticated
+    connection could run any whitelisted tool. #653 measured what that costs on
+    default settings: a stranger submits an invite code, becomes a contact, and
+    runs `whoami` as the operator. The session loop's comment said "Auth is the
+    same gate as INPUT" -- the authentication was; the authorisation was not.
+
+    Admin or whitelisted, because EXEC is the terminal-style fast path: no LLM,
+    no session, and no approval hook. `before_each_tool` does not fire here, so
+    a tool invoked this way skips everything that normally sits between the
+    model deciding to call something and it running. A contact can still talk
+    to the agent through INPUT, where those checks are in the way. Driving the
+    operator's tools directly is a different act and was never gated as one.
+    """
+    def handle_ws_exec(tool_name, args, requester_address=None):
+        if not requester_address:
+            return {"status": "error",
+                    "error": "forbidden: exec requires an authenticated caller"}
+
+        level = ('admin' if trust_agent.is_admin(requester_address)
+                 else trust_agent.get_level(requester_address))
+        if level not in EXEC_REQUIRES:
+            return {"status": "error",
+                    "error": f"forbidden: exec requires admin or whitelist, "
+                             f"you are {level}"}
+
+        return exec_handler(create_agent, exec_permissions, tool_name, args)
+
+    return handle_ws_exec
+
+
 def _parse_trust_config(trust: Union[str, "Agent"]) -> dict | None:
     """Parse trust config from trust parameter.
 
@@ -210,8 +252,7 @@ def _create_route_handlers(create_agent: Callable, agent_metadata: dict, result_
         return input_handler(create_agent, storage, prompt, result_ttl, session,
                              connection, images, files, requester=requester)
 
-    def handle_ws_exec(tool_name, args):
-        return exec_handler(create_agent, exec_permissions, tool_name, args)
+    handle_ws_exec = _make_ws_exec(create_agent, exec_permissions, trust_agent)
 
     def handle_health(start_time):
         return health_handler(agent_name, start_time)

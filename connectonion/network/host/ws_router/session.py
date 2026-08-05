@@ -120,7 +120,11 @@ async def run_ws_session(send_msg, recv_msg, *, route_handlers, storage, registr
                 if not conn["authenticated"]:
                     await send_msg({"type": "ERROR", "message": "authenticate first (send CONNECT)"})
                 else:
-                    task = asyncio.create_task(run_exec(data, send_msg, route_handlers))
+                    # conn has held the caller's address since CONNECT. Nothing
+                    # asked it, so any authenticated connection could run any
+                    # whitelisted tool (#653).
+                    task = asyncio.create_task(
+                        run_exec(data, send_msg, route_handlers, conn["agent_address"]))
                     exec_tasks.add(task)
                     task.add_done_callback(exec_tasks.discard)
 
