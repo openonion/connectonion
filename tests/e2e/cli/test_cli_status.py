@@ -99,7 +99,11 @@ class TestCredentialStatus:
         anthropic = self._row(rows, "ANTHROPIC_API_KEY")
 
         assert anthropic["status"] == "conflict"
-        assert anthropic["source"] == "<project>/.env + ~/.co/keys.env"
+        # The winner is marked now: with no environment value, the project's
+        # .env is the highest-precedence source present and is the one loaded.
+        # Naming a conflict without naming the winner left the operator to
+        # guess, and the natural guess is wrong the other way round.
+        assert anthropic["source"] == "<project>/.env (used) + ~/.co/keys.env"
         assert "local-secret" not in repr(rows)
         assert "global-secret" not in repr(rows)
         assert str(tmp_path) not in repr(rows)
