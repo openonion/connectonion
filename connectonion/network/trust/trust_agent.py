@@ -177,12 +177,30 @@ class TrustAgent:
         elif result == 'deny':
             return Decision(allow=False, reason="Denied by fast rules")
 
-        # result is None -> default: ask triggered
-        # Check if onboard methods are available
-        onboard = self._config.get('onboard', {})
-        if onboard and (onboard.get('invite_code') or onboard.get('payment')):
-            # Onboard methods available - return special decision for browser to collect credentials
-            self.logger.info(f"[ONBOARD] Stranger {client_id[:10]}... needs to onboard (methods: {list(onboard.keys())})")
+        # result is None -> default: ask triggered.
+        #
+        # Which doors actually open, asked of the one rule that decides it.
+        # This used to read the raw config:
+        #
+        #     if onboard and (onboard.get('invite_code') or onboard.get('payment')):
+        #
+        # and both shipped values are unexpanded placeholders -- `[$CO_INVITE_CODE]`
+        # and `$CO_PAYMENT` -- so both were truthy on an agent with neither set.
+        # Every stranger was sent to onboard through nothing, while /info
+        # correctly published no way in, and `_llm_decide` below was
+        # unreachable: `careful` is the default level, and `default: ask`
+        # evaluated by the LLM policy is its whole documented behaviour for
+        # strangers.
+        #
+        # #561 fixed two places that decided this separately; #671 found the
+        # advertiser and /info as the third and fourth. This was the fifth.
+        from .ws_admin import doors_that_open
+
+        offered = doors_that_open(self._config.get('onboard', {}),
+                                  self.get_self_address())
+        if offered:
+            self.logger.info(f"[ONBOARD] Stranger {client_id[:10]}... needs to onboard "
+                             f"(methods: {offered['methods']})")
             return Decision(allow=False, reason="Onboard required")
 
         # No onboard methods - use LLM to evaluate
