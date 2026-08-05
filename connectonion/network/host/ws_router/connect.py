@@ -74,8 +74,21 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
         console.print(f"  [dim]↑ client session: {msg_count} messages[/dim]")
 
     if session_id:
-        from ..session import merge_sessions
+        from ..session import merge_sessions, session_owner
         stored = storage.get(session_id)
+        # A session belongs to whoever started it. The id arrives on the
+        # client's frame and used to be the whole credential, so a second
+        # identity that named it was handed the first one's conversation --
+        # and `GET /sessions` gives the ids out wholesale (#683, #696).
+        #
+        # Owned by someone else is treated as not found: a fresh session with
+        # that id, indistinguishable from one that expired. Refusing would
+        # confirm it exists.
+        owner = session_owner(stored)
+        if owner and owner != agent_address:
+            console.print(f"  [dim]↩ session {session_id[:8]}… belongs to another "
+                          f"caller — starting a new one[/dim]")
+            stored = None
         if stored and stored.session:
             client = conn["session"] or {}
             conn["session"], server_newer = merge_sessions(client_session=client, server_session=stored.session)
@@ -83,6 +96,10 @@ async def establish_connection(data, agent_address, send_msg, conn, storage, reg
                 console.print(f"  [dim]↕ merged sessions (server newer)[/dim]")
 
     active = registry.get(session_id)
+    # The live half, and the worse one: resume_forwarding rewinds and streams
+    # the output of a turn already in progress.
+    if active and active.owner and active.owner != agent_address:
+        active = None
     if active and active.status == 'running':
         status = "running"
     elif active and active.status == 'connected':

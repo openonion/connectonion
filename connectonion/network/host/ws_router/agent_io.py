@@ -188,7 +188,7 @@ async def start_agent(data, send_msg, conn, route_handlers, storage, registry):
     if existing:
         registry.mark_session_running(session_id, io, agent_thread)
     else:
-        registry.register(session_id, io, agent_thread)
+        registry.register(session_id, io, agent_thread, owner=agent_address)
     agent_thread.start()
 
     task = asyncio.create_task(

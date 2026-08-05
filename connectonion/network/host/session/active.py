@@ -33,6 +33,7 @@ class ActiveSession:
     created: float
     last_ping: float
     status: str                  # 'running' | 'connected'
+    owner: object = None         # address that started it; None = nobody (#696)
 
 
 class ActiveSessionRegistry:
@@ -42,8 +43,13 @@ class ActiveSessionRegistry:
         self._sessions: Dict[str, ActiveSession] = {}
         self._lock = threading.Lock()
 
-    def register(self, session_id: str, io, thread) -> None:
-        """Register a new execution."""
+    def register(self, session_id: str, io, thread, owner=None) -> None:
+        """Register a new execution.
+
+        `owner` is the signature-verified address that started it. Without it,
+        a second identity naming this session id attached to the turn in
+        progress and had its output streamed to them (#696).
+        """
         with self._lock:
             self._sessions[session_id] = ActiveSession(
                 session_id=session_id,
@@ -52,6 +58,7 @@ class ActiveSessionRegistry:
                 created=time.time(),
                 last_ping=time.time(),
                 status='running',
+                owner=owner,
             )
 
     def get(self, session_id: str) -> Optional[ActiveSession]:
