@@ -779,7 +779,7 @@ def handle_server_fix_key(name: str) -> bool:
                       "the server API.\n")
         return False
 
-    ssh_public_line = _ensure_ssh_key()
+    ssh_public_line = _ensure_ssh_key(name)
     if not ssh_public_line:
         console.print("\n[red]No SSH key to install.[/red]")
         console.print("[dim]It is derived from your recovery phrase. "
@@ -837,7 +837,7 @@ def handle_server_new(name: str, machine_type: Optional[str] = None,
         console.print("[cyan]co auth[/cyan] first — creating a server spends credit.\n")
         return False
 
-    ssh_public_line = _ensure_ssh_key()
+    ssh_public_line = _ensure_ssh_key(name)
     if not ssh_public_line:
         console.print("\n[red]No SSH key to install.[/red]")
         console.print("[dim]The key is derived from your recovery phrase; without it the "
