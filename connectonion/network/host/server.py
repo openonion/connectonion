@@ -30,6 +30,7 @@ import random
 from functools import partial
 import os
 from pathlib import Path
+import json
 from typing import Callable, Optional, Union
 
 import uvicorn
@@ -288,6 +289,68 @@ def resolve_agent_identity(co_dir: Path) -> dict:
     fresh = address.generate()
     address.save(fresh, co_dir)
     return fresh
+
+
+SERVED_BY_FILE = "served_by.json"
+
+
+def claim_identity(co_dir: Path, identity: dict, name: str) -> Optional[str]:
+    """Record that this agent serves under this key, or say who already does.
+
+    One address, one agent. #642 caught two of them sharing `0x10e68f6d…` —
+    `oo` on this laptop with bash and write, and `naturewill` on the deployed
+    box with the contract-ledger tools — because every 1.5.x `co init` wrote
+    `AGENT_CONFIG_PATH=~/.co` and a project with no key of its own inherits the
+    global one on purpose. Since #643 a client resolves an endpoint directly
+    and picks by proximity, so a call meant for the deployed agent reaches the
+    local coding agent instead. `/info` verification cannot catch that: the
+    address genuinely matches.
+
+    The record goes beside the key rather than in the project, because the
+    whole problem is several projects sharing one identity directory.
+
+    Returns a warning, not a refusal. The agent whose address this is may be
+    the one restarting, and an operator who cannot start their agent because of
+    a stale claim is worse off than one who is told the truth. `co deploy` is
+    where refusing belongs — that is the moment a second permanent copy is
+    made.
+    """
+    source = Path(identity.get("source") or co_dir)
+    if not source.is_dir():
+        # A freshly generated identity is saved into a directory that may not
+        # exist yet, and a hint about who is serving is not worth failing a
+        # start over. No directory, no claim, no warning.
+        return None
+    record = source / SERVED_BY_FILE
+    mine = {"name": name, "project": str(co_dir.parent), "address": identity["address"]}
+
+    existing = None
+    if record.exists():
+        try:
+            existing = json.loads(record.read_text(encoding="utf-8"))
+        except json.JSONDecodeError:
+            # A warning aid, not a gate. An unreadable record costs a warning,
+            # not a start.
+            existing = None
+
+    record.write_text(json.dumps(mine, indent=2), encoding="utf-8")
+
+    if not existing or existing.get("project") == mine["project"]:
+        return None       # nobody else, or the same project restarting/renamed
+
+    # Only advice that works. Saying "point AGENT_CONFIG_PATH at this project's
+    # .co" would be wrong for the case that produces this warning: the project
+    # has no key there, which is why it inherited one. Nothing today mints a
+    # local identity for a project that already exists — that gap is what makes
+    # this a warning rather than a refusal, and it is filed separately.
+    return (
+        f"{identity['address'][:10]}… is already served by "
+        f"'{existing.get('name')}' in {existing.get('project')}, using the same "
+        f"key from {source}. Two agents on one address means whichever is "
+        f"nearest answers the call, and the tools they answer with differ. A "
+        f"project created by `co create` gets its own identity and does not "
+        f"share."
+    )
 
 
 def usable_uvicorn_options(workers, reload) -> tuple:
@@ -746,6 +809,12 @@ def host(
 
     # Load or generate agent identity -- the one `co status` reports, not a new one
     addr_data = resolve_agent_identity(co_dir)
+
+    # Said before the banner, where the address is about to be printed as if it
+    # belonged to this agent alone.
+    collision = claim_identity(co_dir, addr_data, agent_metadata["name"])
+    if collision:
+        print(f"[host] {collision}")
 
     agent_metadata["address"] = addr_data['address']
     agent_metadata["trust"] = trust if isinstance(trust, str) else "custom"

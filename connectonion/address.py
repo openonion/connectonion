@@ -311,6 +311,11 @@ def load(co_dir: Path) -> Optional[Dict[str, Any]]:
             "email": email,
             "email_active": email_active,
             "legacy_derivation": legacy_derivation,
+            # Which directory this key came from. A project with no key of its
+            # own falls back to the global ~/.co, so anything recorded *about*
+            # the key -- which agent is serving under it (#642) -- has to be
+            # written beside the key, not in whichever project loaded it.
+            "source": str(co_dir),
             "signing_key": signing_key
         })
         
