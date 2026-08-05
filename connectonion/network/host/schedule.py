@@ -474,6 +474,7 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
             return
         try:
             await _run_due(entries, now)
+            _compact_sessions()
         finally:
             _release_tick_lock(holder)
 
@@ -516,6 +517,28 @@ def create_schedule_lifespan(co_dir: Path, create_agent, storage, result_ttl: in
                 # overlap it prevents.
                 in_flight.discard(entry.name)
             record_run(co_dir, entry.name, when=now, status=status, session_id=session_id)
+
+    def _compact_sessions() -> None:
+        """Housekeeping on the tick, because startup may never come again.
+
+        compact() was called from host() and create_app() and nowhere else, so
+        an agent left running never compacted -- which is the ordinary case for
+        what this release is for. Its own docstring measures the cost: 17 MB
+        for 222 sessions, about 7 MB a day and 2.5 GB a year on a
+        fifteen-minute schedule, with a dashboard that reparses the lot each
+        time it is opened (#625).
+
+        Here rather than on a timer of its own: this tick already runs every
+        minute and is already elected to one process per cluster (#687), so
+        adding a second scheduler to do housekeeping would be adding back the
+        thing that fixed.
+
+        Compaction skips rather than waits if a turn is mid-write, so a busy
+        agent simply compacts on a later tick.
+        """
+        if storage is None:
+            return
+        storage.compact()
 
     async def loop() -> None:
         while True:
