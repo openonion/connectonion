@@ -38,7 +38,7 @@ Your command prompt here...
 import yaml
 from pathlib import Path
 from ..project import project_co_dir, project_root
-from typing import Dict, Optional, List
+from typing import Dict, List, Optional
 
 
 class SlashCommand:
@@ -163,30 +163,43 @@ class SlashCommand:
         return filtered
 
     @classmethod
-    def list_all(cls) -> Dict[str, "SlashCommand"]:
+    def list_all(cls, report: bool = False):
         """List all available commands (built-in and custom).
 
+        One bad file used to lose every good one. This is the menu, and
+        `_parse_file` raises on a file without frontmatter, so a typo in a file
+        the user may never have opened produced no commands at all and a
+        traceback.
+
+        A file that cannot be read is skipped and named. Silence would be its
+        own bug — #629 exists because a dropped entry is indistinguishable from
+        one that was never there — so `report=True` returns the reasons.
+
+        Checked, not caught: `_why_the_command_cannot_be_read` asks the
+        questions `_parse_file` would raise on, so a genuinely unexpected
+        failure still surfaces instead of being swallowed as "malformed".
+
         Returns:
-            Dict mapping command names to SlashCommand instances
-            Custom commands override built-ins
+            Dict mapping command names to SlashCommand instances, or
+            (commands, problems) when report=True. Custom commands override
+            built-ins.
         """
         commands = {}
+        problems = []
 
-        # Load built-ins first
-        builtin_dir = project_root() / "commands"
-        if builtin_dir.exists():
-            for filepath in builtin_dir.glob("*.md"):
-                cmd = cls._parse_file(filepath, is_custom=False)
+        for directory, is_custom in ((project_root() / "commands", False),
+                                     (project_co_dir() / "commands", True)):
+            if not directory.exists():
+                continue
+            for filepath in sorted(directory.glob("*.md")):
+                reason = _why_the_command_cannot_be_read(filepath)
+                if reason:
+                    problems.append(f"{filepath.name}: {reason}")
+                    continue
+                cmd = cls._parse_file(filepath, is_custom=is_custom)
                 commands[cmd.name] = cmd
 
-        # Load customs (override built-ins)
-        custom_dir = project_co_dir() / "commands"
-        if custom_dir.exists():
-            for filepath in custom_dir.glob("*.md"):
-                cmd = cls._parse_file(filepath, is_custom=True)
-                commands[cmd.name] = cmd
-
-        return commands
+        return (commands, problems) if report else commands
 
     @classmethod
     def is_custom(cls, command_name: str) -> bool:
@@ -200,3 +213,43 @@ class SlashCommand:
         """
         custom_path = project_co_dir() / "commands" / f"{command_name}.md"
         return custom_path.exists()
+
+
+def _why_the_command_cannot_be_read(filepath: Path) -> Optional[str]:
+    """The reason a command file cannot be loaded, or None if it is fine.
+
+    The same questions `_parse_file` raises on, asked instead of caught, so the
+    menu can skip one file without a try/except that would also hide a bug in
+    the parser itself.
+
+    Unlike a SKILL.md, a command with no frontmatter is not currently a valid
+    simple command -- `_parse_file` requires `name` and `description`. Whether
+    it *should* be (filename as name, whole file as prompt, the way #629 treats
+    skills) is a format decision and is not made here. #668 records that the
+    two subsystems disagree about identical input.
+    """
+    content = filepath.read_text(encoding="utf-8", errors="replace")
+
+    if not content.strip():
+        return "file is empty"
+    if not content.startswith("---"):
+        return "no YAML frontmatter (expected a '---' block at the top)"
+
+    parts = content.split("---", 2)
+    if len(parts) < 3:
+        return "frontmatter is not closed by a second '---'"
+
+    import yaml as _yaml
+    try:
+        frontmatter = _yaml.safe_load(parts[1])
+    except _yaml.YAMLError as exc:
+        # The one place catching is right: asking "is this valid YAML" without
+        # running the parser means writing a second YAML parser.
+        return f"frontmatter is not valid YAML: {str(exc).splitlines()[0]}"
+
+    if not isinstance(frontmatter, dict):
+        return "frontmatter is not a mapping"
+    for field in ("name", "description"):
+        if field not in frontmatter:
+            return f"missing '{field}' field"
+    return None
