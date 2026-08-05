@@ -13,6 +13,8 @@ LLM-Note:
 import json
 import re
 from datetime import datetime
+import os
+import sys
 from pathlib import Path
 from typing import Optional, Union, Dict, Any, List
 
@@ -204,9 +206,9 @@ class Logger:
         self._first_input = first_input
 
         # Load existing or create new
-        if self.eval_file.exists():
-            with open(self.eval_file, 'r', encoding="utf-8") as f:
-                self.eval_data = yaml.safe_load(f) or {}
+        existing = _read_eval_file(self.eval_file)
+        if existing is not None:
+            self.eval_data = existing
 
             # Check if this is the same conversation (same first input)
             existing_turns = self.eval_data.get('turns', [])
@@ -466,8 +468,19 @@ class Logger:
             'turns': self.eval_data['turns']
         }
 
-        with open(self.eval_file, 'w', encoding='utf-8') as f:
+        # Written whole, then moved into place. `open(path, 'w')` truncates
+        # first, so two `co ai` runs with the same opening line -- which derive
+        # the same slug -- interleaved into one file and left invalid YAML
+        # behind. Every later run then died reading it, including runs from
+        # other projects, because `co ai` uses the global ~/.co (#695).
+        #
+        # os.replace is atomic on POSIX and Windows, so a reader sees the old
+        # file or the new one, never half of either. Same directory, or the
+        # move would be a copy across filesystems and lose that.
+        tmp = self.eval_file.with_suffix(f".{os.getpid()}.tmp")
+        with open(tmp, 'w', encoding='utf-8') as f:
             yaml.dump(ordered, f, default_flow_style=False, allow_unicode=True, sort_keys=False)
+        os.replace(tmp, self.eval_file)
 
     def get_eval_path(self) -> Optional[str]:
         """Get the absolute path to the current eval file.
@@ -518,3 +531,33 @@ class Logger:
             return {'turns': [], 'runs': 0}
         with open(self.eval_file, 'r', encoding="utf-8") as f:
             return yaml.safe_load(f) or {'turns': [], 'runs': 0}
+
+
+def _read_eval_file(path: Path) -> Optional[dict]:
+    """The eval data in this file, or None to start a fresh one.
+
+    A corrupt eval is a lost eval, not a reason the CLI stops working. It used
+    to be fatal: one file left invalid by concurrent writers broke *every*
+    later `co ai` call, and the error named a file the current run had nothing
+    to do with (#695).
+
+    The bad file is renamed rather than deleted -- it is the record of a run,
+    and someone may want to look at what happened to it.
+
+    yaml.safe_load is the one thing worth catching here: asking "is this valid
+    YAML" without running the parser means writing a second YAML parser.
+    """
+    if not path.exists():
+        return None
+
+    text = path.read_text(encoding="utf-8", errors="replace")
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        aside = path.with_suffix(path.suffix + f".corrupt.{os.getpid()}")
+        os.replace(path, aside)
+        print(f"[eval] {path.name} was not valid YAML ({str(exc).splitlines()[0]}); "
+              f"moved to {aside.name} and starting a new one", file=sys.stderr)
+        return None
+
+    return data if isinstance(data, dict) else {}
