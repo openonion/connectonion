@@ -359,3 +359,44 @@ def _forget_seen_signatures():
     _seen_signatures.clear()
     yield
     _seen_signatures.clear()
+
+
+@pytest.fixture(autouse=True)
+def _no_stray_project_above_the_test(tmp_path_factory):
+    """A `.co/` in a shared parent silently becomes every test's project.
+
+    `_never_touch_the_real_home` above isolates HOME, so `~/.co` is safe. This
+    is the other half: `project_root()` walks up from the *working directory*,
+    and a stray `.co/` anywhere above it wins.
+
+    Measured (#694): real-host verification runs left a `/private/tmp/.co/`
+    behind, and afterwards a unit test with nothing to do with any of it failed
+
+        assert logger.log_file_path == Path(".co/logs/test-agent.log").resolve()
+        E  assert PosixPath('/private/tmp/.co/logs/test-agent.log') == …
+
+    standalone, not only in some order -- so `-p no:randomly` does not hide it.
+    It is invisible on CI, where the machine is clean, which is the worst
+    property: a local run disagrees with CI for a reason nobody can reproduce.
+
+    This does not repoint anything. Tests that chdir into their own project
+    depend on the walk-up finding it, and pinning the answer would break them.
+    It only refuses to let the walk-up escape somewhere shared, so the
+    contamination is a failure with a name instead of a wrong answer.
+    """
+    from connectonion.project import project_root
+
+    yield
+
+    resolved = project_root()
+    tmp_root = tmp_path_factory.getbasetemp().resolve()
+    repo = Path(__file__).resolve().parent.parent
+
+    allowed = resolved == repo or resolved.is_relative_to(tmp_root) \
+        or resolved.is_relative_to(repo)
+    assert allowed, (
+        f"this test's project resolved to {resolved}, which is neither the repo "
+        f"nor its own tmp dir — a stray .co/ above the working directory is "
+        f"deciding what the code under test reads. Remove it ({resolved / '.co'}) "
+        f"or chdir somewhere isolated."
+    )
