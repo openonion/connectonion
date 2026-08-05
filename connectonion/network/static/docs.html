@@ -273,14 +273,7 @@
         <div class="endpoint-section">
           <h4>Curl</h4>
           <div class="curl-box">
-            <pre id="sessions-curl">co call &lt;address&gt; sessions
-
-# or sign it yourself — a GET has no body, so the signature is in headers
-# over {"method","path","timestamp"}, same canonical form as CONNECT:
-#   x-co-from:      your agent address
-#   x-co-signature: sign(canonical(payload))
-#   x-co-timestamp: unix seconds
-python -c "from connectonion.network.host.auth import sign_request; print(sign_request(keys,'GET','/sessions'))"</pre>
+            <pre id="sessions-curl">curl -X GET "http://localhost:8000/sessions"</pre>
             <button class="copy-btn" onclick="copyCurl('sessions-curl')">Copy</button>
           </div>
         </div>
@@ -547,6 +540,23 @@ python -c "from connectonion.network.host.auth import sign_request; print(sign_r
       } catch(e) { console.error(e); }
     }
 
+    // Reading sessions needs an identity (#683). A GET has no body, so the
+    // signature is in headers over {method, path, timestamp} -- the same
+    // canonical form CONNECT uses. This page has no key and must not have one,
+    // so it shows the call rather than making it.
+    function signedCurl(base, path){
+      return `# The signature covers {"method","path","timestamp"} — same canonical
+# form as CONNECT. Print the three headers for this path:
+python -c "import pathlib, connectonion.address as a; \\
+from connectonion.network.host.auth import sign_request; \\
+print(sign_request(a.load(pathlib.Path('.co')), 'GET', '${path}'))"
+
+curl -X GET "${base}${path}" \\
+  -H "x-co-from: <address>" \\
+  -H "x-co-signature: <signature>" \\
+  -H "x-co-timestamp: <unix seconds>"`;
+    }
+
     async function fetchInfo(){
       const res = await fetch(buildUrl('/info'));
       const data = await res.json();
@@ -559,9 +569,9 @@ python -c "from connectonion.network.host.auth import sign_request; print(sign_r
         $('session-result').textContent = '{"error": "Please enter a session ID"}';
         return;
       }
-      const res = await fetch(buildUrl('/sessions/' + sessionId));
-      const data = await res.json();
-      $('session-result').textContent = JSON.stringify(data, null, 2);
+      $('session-result').textContent = JSON.stringify({
+        note: "Signed request required — see the curl above. This page has no key.",
+      }, null, 2);
     }
 
     async function fetchHealth(){
@@ -600,11 +610,11 @@ python -c "from connectonion.network.host.auth import sign_request; print(sign_r
   -d '${inputBody}'`;
 
       // GET /sessions curl
-      $('sessions-curl').textContent = `curl -X GET "${base}/sessions"`;
+      $('sessions-curl').textContent = signedCurl(base, '/sessions');
 
       // GET /sessions/{session_id} curl
       const sessionId = $('session-id').value.trim() || '{session_id}';
-      $('session-curl').textContent = `curl -X GET "${base}/sessions/${sessionId}"`;
+      $('session-curl').textContent = signedCurl(base, '/sessions/' + sessionId);
 
       // GET /info curl
       $('info-curl').textContent = `curl -X GET "${base}/info"`;
@@ -678,9 +688,9 @@ python -c "from connectonion.network.host.auth import sign_request; print(sign_r
     async function sendWs(){ if(!ws) return; const { images, files } = await getAttachments(); const msg = { type:'INPUT', prompt: $('ws-prompt').value }; if(images) msg.images=images; if(files) msg.files=files; ws.send(JSON.stringify(msg)); log('→ ' + JSON.stringify(msg)); }
 
     async function refreshSessions(){
-      const res = await fetch(buildUrl('/sessions'));
-      const data = await res.json();
-      $('sessions').textContent = JSON.stringify(data, null, 2);
+      $('sessions').textContent = JSON.stringify({
+        note: "Signed request required — see the curl above. This page has no key.",
+      }, null, 2);
     }
     function toggleAuto(){ if($('auto').checked){ autoTimer=setInterval(refreshSessions, 5000); } else { clearInterval(autoTimer); } }
 
