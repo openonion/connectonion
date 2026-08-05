@@ -434,9 +434,14 @@ def get_self_address(co_dir: Path = None) -> str | None:
     if co_dir is None:
         co_dir = _project_co_dir()
 
-    from ... import address
+    # The identity this project acts as -- the same one the host serves under
+    # and `co keys` prints. Loading the directory alone came back empty for a
+    # project with no key of its own, which is what `co init` produces, so the
+    # payment door either advertised no address to pay or a stale one from
+    # address.json (#689).
+    from ...project import project_identity
 
-    keys = address.load(co_dir)
+    keys = project_identity(co_dir)
     if keys and keys.get("address"):
         return keys["address"]
 
