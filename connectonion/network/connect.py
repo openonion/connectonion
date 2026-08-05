@@ -96,6 +96,35 @@ def _sort_endpoints(endpoints: List[str]) -> List[str]:
     return sorted(endpoints, key=priority)
 
 
+LOOPBACK = ("localhost", "127.0.0.1", "::1", "[::1]")
+
+
+def endpoint_is_safe(url: str) -> bool:
+    """May a signed frame go to this endpoint?
+
+    TLS anywhere, or plaintext to loopback only.
+
+    Before #643 `resolve_endpoint` never resolved anything, so every client went
+    through the relay over `wss://` and TLS covered this. Direct connections
+    then became the normal path, and a self-hosted agent announces plain
+    `ws://`:
+
+        "endpoints": ["http://10.5.27.133:8797", "ws://10.5.27.133:8797/ws", …]
+
+    A CONNECT is signed, and on a LAN anyone who can observe that traffic can
+    capture one. Within the freshness window a captured CONNECT is the whole
+    whitelisted tool surface (#649). Loopback has no network to observe, and a
+    deployed agent is served over https (1.5.3), so both of the cases direct
+    resolution exists for stay fast; the rest falls back to the relay.
+    """
+    from urllib.parse import urlparse
+
+    parsed = urlparse(url)
+    if parsed.scheme in ("https", "wss"):
+        return True
+    return (parsed.hostname or "") in LOOPBACK
+
+
 async def resolve_endpoint(
     agent_address: str,
     relay_url: str,
@@ -151,7 +180,9 @@ async def resolve_endpoint(
         sorted_endpoints = _sort_endpoints(agent_info["endpoints"])
 
         # Step 3: Try each HTTP endpoint
-        http_endpoints = [ep for ep in sorted_endpoints if ep.startswith("http://") or ep.startswith("https://")]
+        http_endpoints = [ep for ep in sorted_endpoints
+                          if (ep.startswith("http://") or ep.startswith("https://"))
+                          and endpoint_is_safe(ep)]
 
         for http_url in http_endpoints:
             try:

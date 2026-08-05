@@ -98,8 +98,13 @@ def _resolve(monkeypatch, directory, info_by_host=None):
     return result, client
 
 
-LAN = "http://10.0.0.5:8797"
-PUBLIC = "http://203.0.113.9:8797"
+# Served over TLS. Since #649 a signed CONNECT is only sent to loopback in
+# plaintext, so a bare `http://` LAN or public endpoint is skipped and these
+# tests -- which are about ordering and resolution mechanics, not schemes --
+# would be testing the refusal instead. `test_a_captured_connect_opens_nothing_twice.py`
+# is where the refusal itself is pinned.
+LAN = "https://10.0.0.5:8797"
+PUBLIC = "https://203.0.113.9:8797"
 LOCAL = "http://localhost:8797"
 
 
@@ -121,7 +126,7 @@ class TestWhatTheRelayActuallyReturns:
     def test_it_is_the_websocket_form(self, monkeypatch):
         result, _ = _resolve(monkeypatch, self.DIRECTORY, {LAN: {"address": AGENT}})
 
-        assert result == "ws://10.0.0.5:8797/ws"
+        assert result == "wss://10.0.0.5:8797/ws"
 
 
 class TestAnExplicitNoIsStillHonoured:
@@ -166,7 +171,7 @@ class TestTheChecksThatMustStay:
         result, _ = _resolve(monkeypatch, {"endpoints": [LAN, PUBLIC]},
                              {PUBLIC: {"address": AGENT}})
 
-        assert result == "ws://203.0.113.9:8797/ws"
+        assert result == "wss://203.0.113.9:8797/ws"
 
     def test_a_short_address_is_not_looked_up(self, monkeypatch):
         client = FakeClient({}, {})
