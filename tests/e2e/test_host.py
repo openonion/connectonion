@@ -39,11 +39,17 @@ def run_async(coro):
 
 # === Simple ASGI Test Client ===
 
-def create_signed_request(prompt: str, timestamp: float = None) -> dict:
-    """Create a properly signed request for testing."""
+def create_signed_request(prompt: str, timestamp: float = None, signing_key=None) -> dict:
+    """Create a properly signed request for testing.
+
+    `signing_key` lets a caller keep one identity across requests. Since #683
+    reading a session needs a signature and returns only the caller's own, a
+    test that creates a session with one key and reads it with another sees
+    nothing -- correctly, and uselessly.
+    """
     from nacl.signing import SigningKey
 
-    signing_key = SigningKey.generate()
+    signing_key = signing_key or SigningKey.generate()
     public_key = f"0x{signing_key.verify_key.encode().hex()}"
 
     payload = {"prompt": prompt, "timestamp": timestamp or time.time()}
@@ -61,7 +67,13 @@ class ASGITestClient:
     """Minimal ASGI test client - no external dependencies."""
 
     def __init__(self, app):
+        from nacl.signing import SigningKey
+
         self.app = app
+        # One identity per client. Sessions are owned by whoever created them
+        # (#698) and reading one needs a signature (#683), so a client that
+        # generated a new key per request could never read back what it wrote.
+        self.signing_key = SigningKey.generate()
 
     def _run(self, coro):
         # Use new_event_loop to avoid "no current event loop" error in Python 3.10+
@@ -75,21 +87,36 @@ class ASGITestClient:
     def get(self, path: str) -> "Response":
         return self._run(self._request("GET", path))
 
+    def get_signed(self, path: str) -> "Response":
+        """GET with the headers #683 requires, as this client's identity."""
+        from connectonion.network.host.auth import sign_request
+
+        keys = {"address": f"0x{self.signing_key.verify_key.encode().hex()}",
+                "signing_key": self.signing_key}
+        return self._run(self._request("GET", path,
+                                       headers=sign_request(keys, "GET", path)))
+
     def post(self, path: str, json_data: dict = None) -> "Response":
         return self._run(self._request("POST", path, json_data))
 
     def post_signed(self, path: str, prompt: str) -> "Response":
-        """POST with a signed request (protocol requirement)."""
-        signed_data = create_signed_request(prompt)
+        """POST with a signed request (protocol requirement).
+
+        One identity for the life of the client, so a session this creates can
+        be read back by get_signed -- see create_signed_request.
+        """
+        signed_data = create_signed_request(prompt, signing_key=self.signing_key)
         return self._run(self._request("POST", path, signed_data))
 
-    async def _request(self, method: str, path: str, body: dict = None) -> "Response":
+    async def _request(self, method: str, path: str, body: dict = None,
+                       headers: dict = None) -> "Response":
         scope = {
             "type": "http",
             "method": method,
             "path": path,
             "query_string": b"",
-            "headers": [[b"content-type", b"application/json"]],
+            "headers": [[b"content-type", b"application/json"]]
+                       + [[k.encode(), str(v).encode()] for k, v in (headers or {}).items()],
         }
 
         body_bytes = json.dumps(body).encode() if body else b""
@@ -232,7 +259,7 @@ class TestHostEndpoints:
         create_response = client.post_signed("/input", "Hello")
         session_id = create_response.json()["session_id"]
 
-        response = client.get(f"/sessions/{session_id}")
+        response = client.get_signed(f"/sessions/{session_id}")
 
         assert response.status_code == 200
         data = response.json()
@@ -244,14 +271,14 @@ class TestHostEndpoints:
         session_id = create_response.json()["session_id"]
         partial_id = session_id[:8]
 
-        response = client.get(f"/sessions/{partial_id}")
+        response = client.get_signed(f"/sessions/{partial_id}")
 
         # Partial ID should return 404 - exact match required
         assert response.status_code == 404
 
     def test_get_session_not_found(self, client):
         """GET /sessions/{session_id} should return 404 for unknown session."""
-        response = client.get("/sessions/nonexistent")
+        response = client.get_signed("/sessions/nonexistent")
 
         assert response.status_code == 404
 
@@ -260,7 +287,7 @@ class TestHostEndpoints:
         create_response = client.post_signed("/input", "Hello")
         session_id = create_response.json()["session_id"]
 
-        response = client.get(f"/sessions/{session_id}")
+        response = client.get_signed(f"/sessions/{session_id}")
 
         data = response.json()
         assert "expires" in data
@@ -271,7 +298,7 @@ class TestHostEndpoints:
         create_response = client.post_signed("/input", "Hello")
         session_id = create_response.json()["session_id"]
 
-        response = client.get(f"/sessions/{session_id}")
+        response = client.get_signed(f"/sessions/{session_id}")
 
         data = response.json()
         assert "duration_ms" in data
@@ -283,7 +310,7 @@ class TestHostEndpoints:
         client.post_signed("/input", "Session 1")
         client.post_signed("/input", "Session 2")
 
-        response = client.get("/sessions")
+        response = client.get_signed("/sessions")
 
         assert response.status_code == 200
         data = response.json()
@@ -292,7 +319,7 @@ class TestHostEndpoints:
 
     def test_get_sessions_empty(self, client):
         """GET /sessions should return empty list if no sessions."""
-        response = client.get("/sessions")
+        response = client.get_signed("/sessions")
 
         assert response.status_code == 200
         assert response.json()["sessions"] == []
@@ -303,7 +330,7 @@ class TestHostEndpoints:
         time.sleep(0.01)  # Ensure different timestamps
         client.post_signed("/input", "Second")
 
-        response = client.get("/sessions")
+        response = client.get_signed("/sessions")
 
         sessions = response.json()["sessions"]
         assert len(sessions) >= 2

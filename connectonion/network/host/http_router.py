@@ -192,15 +192,34 @@ def exec_handler(create_agent: Callable, permissions: dict, tool_name: str, args
             "duration_ms": int((time.time() - start) * 1000)}
 
 
-def session_handler(storage: SessionStorage, session_id: str) -> dict | None:
-    """GET /sessions/{id}"""
+def session_handler(storage: SessionStorage, session_id: str,
+                    caller: str | None = None) -> dict | None:
+    """GET /sessions/{id} — the caller's own, or nothing.
+
+    Owner recorded by #698. A session stored before that has none and stays
+    readable: silently orphaning existing history on upgrade is a worse
+    surprise than the status quo for data that predates the check.
+    """
+    from .session import session_owner
+
     session = storage.get(session_id)
+    owner = session_owner(session)
+    if owner and owner != caller:
+        return None
     return session.model_dump() if session else None
 
 
-def sessions_handler(storage: SessionStorage) -> dict:
-    """GET /sessions"""
-    return {"sessions": [s.model_dump() for s in storage.list()]}
+def sessions_handler(storage: SessionStorage, caller: str | None = None) -> dict:
+    """GET /sessions — the caller's own.
+
+    This returned every conversation on the agent, to anyone who could reach
+    the port (#683), and was where #696's attack got its session ids.
+    """
+    from .session import session_owner
+
+    mine = [s for s in storage.list()
+            if (session_owner(s) or caller) == caller]
+    return {"sessions": [s.model_dump() for s in mine]}
 
 
 def health_handler(agent_name: str, start_time: float) -> dict:
@@ -434,12 +453,27 @@ async def handle_http(
             return
         await send_json(send, result)
 
-    elif method == "GET" and path.startswith("/sessions/"):
-        result = route_handlers["session"](storage, path[10:])
-        await send_json(send, result or {"error": "not found"}, 404 if not result else 200)
+    elif method == "GET" and (path == "/sessions" or path.startswith("/sessions/")):
+        # Signed, like everything else that reads conversation content. A GET
+        # has no body, so the signature is in headers over {method, path,
+        # timestamp} and is verified by the same _authenticate_signed as every
+        # other frame -- same freshness window, same blacklist (#683).
+        from .auth import request_from_headers, _authenticate_signed
 
-    elif method == "GET" and path == "/sessions":
-        await send_json(send, route_handlers["sessions"](storage))
+        headers = {k.decode(): v.decode() for k, v in scope.get("headers") or []}
+        _, caller, err = _authenticate_signed(
+            request_from_headers(headers, method, path), blacklist=blacklist)
+        if err:
+            await send_json(send, {"error": err},
+                            401 if err.startswith("unauthorized") else 403)
+            return
+
+        if path == "/sessions":
+            await send_json(send, route_handlers["sessions"](storage, caller))
+        else:
+            result = route_handlers["session"](storage, path[10:], caller)
+            await send_json(send, result or {"error": "not found"},
+                            404 if not result else 200)
 
     elif method == "GET" and path == "/health":
         await send_json(send, route_handlers["health"](start_time))

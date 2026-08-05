@@ -226,6 +226,23 @@ class TestCorsHeaders:
         assert b"content-type" in allowed
 
 
+def signed_scope(method: str, path: str) -> dict:
+    """A scope carrying the headers a signed GET needs (#683).
+
+    Reading a session needs an identity, so a routing test that sends no
+    headers now exercises the 401 branch and never reaches the route it is
+    about. The headers come from the real `sign_request`, not a hand-rolled
+    imitation of it.
+    """
+    from connectonion import address
+    from connectonion.network.host.auth import sign_request
+
+    keys = address.generate()
+    headers = sign_request(keys, method, path)
+    return {"method": method, "path": path,
+            "headers": [[k.encode(), v.encode()] for k, v in headers.items()]}
+
+
 @pytest.mark.asyncio
 class TestHandleHttpRouting:
     """Test handle_http routing logic."""
@@ -310,7 +327,7 @@ class TestHandleHttpRouting:
 
     async def test_sessions_list_endpoint(self):
         """GET /sessions returns session list."""
-        scope = {"method": "GET", "path": "/sessions", "headers": []}
+        scope = signed_scope("GET", "/sessions")
         sent = []
 
         async def receive():
@@ -320,7 +337,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "sessions": lambda storage: {"sessions": [{"id": "1"}, {"id": "2"}]},
+            "sessions": lambda storage, caller: {"sessions": [{"id": "1"}, {"id": "2"}]},
         }
 
         await handle_http(
@@ -336,7 +353,7 @@ class TestHandleHttpRouting:
 
     async def test_session_by_id_found(self):
         """GET /sessions/{id} returns session when found."""
-        scope = {"method": "GET", "path": "/sessions/abc123", "headers": []}
+        scope = signed_scope("GET", "/sessions/abc123")
         sent = []
 
         async def receive():
@@ -346,7 +363,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "session": lambda storage, id: {"session_id": id, "status": "done"},
+            "session": lambda storage, id, caller: {"session_id": id, "status": "done"},
         }
 
         await handle_http(
@@ -363,7 +380,7 @@ class TestHandleHttpRouting:
 
     async def test_session_by_id_not_found(self):
         """GET /sessions/{id} returns 404 when not found."""
-        scope = {"method": "GET", "path": "/sessions/unknown", "headers": []}
+        scope = signed_scope("GET", "/sessions/unknown")
         sent = []
 
         async def receive():
@@ -373,7 +390,7 @@ class TestHandleHttpRouting:
             sent.append(msg)
 
         handlers = {
-            "session": lambda storage, id: None,
+            "session": lambda storage, id, caller: None,
         }
 
         await handle_http(
