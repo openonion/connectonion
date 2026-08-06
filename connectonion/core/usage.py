@@ -74,8 +74,22 @@ MODEL_PRICING = {
     "claude-opus-4": {"input": 15.00, "output": 75.00, "cached": 1.50, "cache_write": 18.75},
     "claude-3-7-sonnet": {"input": 3.00, "output": 15.00, "cached": 0.30, "cache_write": 3.75},
 
-    # Google Gemini models - cached = 25% of input (75% discount)
-    "gemini-3.6-flash": {"input": 1.50, "output": 7.50, "cached": 0.15},
+    # Google Gemini models - cached = 25% of input (75% discount), except where
+    # a row says otherwise. input/output for gemini-3.6-flash are confirmed
+    # against real charges: input_tokens x 1.50/1M + (total - input) x 7.50/1M
+    # reproduced what the backend billed to a ratio of 1.0000 and 1.0009 on two
+    # calls — so the server bills every non-input token, reasoning included, at
+    # the output rate. See test_the_cached_rate_follows_its_stated_rule.py.
+    "gemini-3.6-flash": {"input": 1.50, "output": 7.50,
+                         # unverified: 10% of input, not the 25% every other row
+                         # uses, and 0.15 is exactly gemini-2.5-flash's INPUT
+                         # price one line down. Left as found rather than
+                         # "corrected" to 0.375, which would be a made-up price —
+                         # the thing this release removed. Unreachable on the co/
+                         # path (the server states the cost, and cached_tokens
+                         # came back 0 even on a repeated 6k-token prefix); it
+                         # applies to a direct Gemini API call.
+                         "cached": 0.15},
     "gemini-3.5-flash": {"input": 1.50, "output": 9.00, "cached": 0.375},
     "gemini-3-pro-preview": {"input": 2.00, "output": 12.00, "cached": 0.50},
     "gemini-3-pro-image-preview": {"input": 2.00, "output": 0.134},
