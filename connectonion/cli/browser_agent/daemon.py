@@ -114,6 +114,26 @@ def _tab_label(key) -> str:
     return "main" if key is None else key
 
 
+def _daemon_account() -> "str | None":
+    """The address whose credits `do` spends, or None if there is none to name.
+
+    The daemon is shared and long-lived, and `do` runs the agent inside it, so
+    the model is paid for out of *this process's* environment — the directory
+    whoever started the browser was standing in, not the caller's. Running `do`
+    from a worktree holding a different key charged 0x561605f3 and reported its
+    balance, an account the reader had no way to place (#728).
+
+    Page verbs touch no model and are unaffected; only `do` spends.
+
+    The address is public — an agent announces it to the relay — so naming it
+    here reveals nothing. The key is never read out.
+    """
+    from ... import address
+
+    data = address.load(Path.cwd() / ".co") or address.load(Path.home() / ".co")
+    return (data or {}).get("address")
+
+
 def _owner_alive(sock_path: str) -> bool:
     """True when the daemon that bound `sock_path` is still a running process.
     No pid file (pre-pidfile daemon, or already cleaned up) reads as dead."""
@@ -356,6 +376,15 @@ class BrowserDaemon:
         stealth, version, detail = driver_stealth_status()
         mark = {"ok": "✓", "broken": "✗", "missing": "○"}[stealth]
         lines.append(f"Stealth driver: {mark} patchright {version} — {detail}".rstrip(" —"))
+        # Whose credits `do` spends. Never lets status fail: this is the command
+        # you run when something is already wrong.
+        try:
+            account = _daemon_account()
+        except Exception:
+            account = None
+        if account:
+            lines.append(f"`do` is billed to: {account[:10]}… "
+                         f"(the account this daemon was started under, not the caller's)")
         if self.last_command:
             lines.append(f'Last command: "{self.last_command["line"]}" · {_ago(time.time() - self.last_command["at"])}')
         else:
