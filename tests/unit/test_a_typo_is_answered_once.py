@@ -137,18 +137,23 @@ class TestEverySubAppBehavesTheSame:
     """The doubling was at every level, so every registered group must be fixed."""
 
     def _groups(self):
-        """Every group, at every depth — `co outlook contact` is one too."""
-        import click
+        """Every group, at every depth — `co outlook contact` is one too.
 
+        Identified by having `.commands`, not by `isinstance(x, click.Group)`.
+        typer 0.27 vendors its own Click, so its groups are not instances of the
+        installed click's Group and the isinstance walk found zero of the twelve
+        — the test passed locally on typer 0.20 and failed in CI.
+        """
         from connectonion.cli.main import app as main_app
 
         found = []
 
         def walk(name, command):
-            if not isinstance(command, click.Group):
+            children = getattr(command, "commands", None)
+            if not isinstance(children, dict):
                 return
             found.append((name, command))
-            for child_name, child in command.commands.items():
+            for child_name, child in children.items():
                 walk(f"{name} {child_name}", child)
 
         walk("co", typer_main_group(main_app))

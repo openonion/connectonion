@@ -75,12 +75,16 @@ class _OneSuggestion(typer.core.TyperGroup):
     """
 
     def resolve_command(self, ctx, args):
-        import click
-
         try:
             return super().resolve_command(ctx, args)
-        except click.UsageError as error:
-            if getattr(error, "possibilities", None):
+        except Exception as error:
+            # Not `except click.UsageError`: typer 0.27 vendors its own Click
+            # (typer._click), so the exception it raises is a different class from
+            # the installed click's and the handler would silently never run —
+            # inert in exactly the version where CI runs. Catching broadly is safe
+            # because this always re-raises and only touches an object carrying
+            # both of the attributes it is about to use.
+            if getattr(error, "possibilities", None) and hasattr(error, "message"):
                 error.message = _SUGGESTION_RE.sub("", error.message).rstrip()
             raise
 
