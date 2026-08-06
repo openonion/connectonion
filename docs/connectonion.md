@@ -68,7 +68,7 @@ co init --template co-ai
 ### CLI Options
 
 - `co init` - Initialize a new agent project
-  - `--template, -t` - Choose template: `minimal` (default), `browser`, `hosted-browser`, `coder`, `co-ai`, `web-research`, `custom`
+  - `--template, -t` - Choose template: `co-ai` (default), `custom`
   - `--key` - API key
   - `--description` - Description for custom template
   - `--yes, -y` - Skip prompts
@@ -90,22 +90,26 @@ my-project/
 
 ### Available Templates
 
-**minimal (Default)** - General-purpose agent with file tools and browser automation:
-- `bash`, `read_file`, `edit`, `glob`, `grep`, `write` - Filesystem tools
-- `BrowserAutomation` - Full browser control (navigate, click, screenshot, etc.)
-- Plugins: `image_result_formatter`, `tool_approval`
+**co-ai (Default)** - the same agent as `co ai`, wrapped in `host()`:
 
-**coder** - Coding assistant with filesystem and shell access:
-- `bash`, `read_file`, `edit`, `glob`, `grep`, `write`
-- `max_iterations=50` for complex multi-step coding tasks
+```python
+from connectonion import host
+from connectonion.cli.co_ai.agent import create_agent
 
-**browser** - Dedicated browser automation agent:
-- `BrowserAutomation` (headless, max_iterations=200)
-- Plugins: `image_result_formatter`, `ui_stream`
-- Note: requires `pip install patchright && patchright install chrome`
+agent = create_agent(role="coding")
 
-**web-research** - Web research and data extraction:
-- `search_web`, `extract_data`, `analyze_data`, `save_research`
+host(agent)
+```
+
+That is the whole file. You do not add tools to make it useful — it already has
+files, shell, browser, planning, todos and sub-agents. What makes it yours is
+what sits next to it: `.co/skills/<name>/SKILL.md` for the procedures it should
+follow, and `role=` for what kind of agent it is. Roles ship with the SDK in
+`connectonion/cli/co_ai/prompts/roles/`; `role=None` gives an agent with no
+domain at all.
+
+**custom** - describe the agent you want and the CLI generates `agent.py` for
+it, with `--description`.
 
 ### Interactive Features
 
@@ -118,15 +122,19 @@ The CLI will:
 ### Quick Start After Init
 
 ```bash
-# 1. Copy environment template
-cp .env.example .env
-
-# 2. Add your OpenAI API key to .env
-echo "OPENAI_API_KEY=sk-your-key-here" > .env
-
-# 3. Run your agent
+# Nothing to configure. `co create` already wrote .env with a managed key,
+# your agent's address and its email, so this runs as it stands:
 python agent.py
 ```
+
+To use your own provider key instead, **append** it — do not overwrite the file,
+which holds `OPENONION_API_KEY`, `AGENT_ADDRESS` and `AGENT_EMAIL`:
+
+```bash
+echo "OPENAI_API_KEY=sk-your-key-here" >> .env
+```
+
+then pass the model you want: `create_agent(role="coding", model="gpt-5")`.
 
 ---
 
