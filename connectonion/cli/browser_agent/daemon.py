@@ -1,7 +1,7 @@
 """
 Purpose: Persistent browser daemon — owns one BrowserAutomation and dispatches CLI requests to it over the platform transport (POSIX Unix socket / Windows named pipe), arbitrating concurrent agents through per-tab ownership.
 LLM-Note:
-  Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, browser_agent.agent (resolve_api_key, build_browser_agent), browser_agent.transport] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
+  Dependencies: imports from [socket, os, sys, time, json, shlex, inspect, signal, atexit, threading, datetime, pathlib, useful_tools.browser_tools.BrowserAutomation, useful_tools.browser_tools.browser.driver_stealth_status, useful_tools.browser_tools.browser.installed_browser_path, browser_agent.agent (resolve_api_key, build_browser_agent), browser_agent.transport] | imported by [browser_agent/client.py (spawns via python -m), cli/commands/browser_commands.py (list_functions)] | tested by [tests/e2e/cli/test_browser_daemon.py]
   Data flow: client sends ONE request = wire-v1 JSON envelope {v, caller, tab, line} (a bare string is accepted as an anonymous main-tab request) → _parse_envelope → shlex.split(line) → dispatch: `tab`/`status`/`use`/`newtab`/`closetab` route first; a -t target that is not `main`/registered is exit 3 unless the verb is READONLY → an unknown verb is rejected BEFORE any claim → page-driving verbs and a targeted `close` pass _register_tab + _held_by_other (exit-4-busy if a DIFFERENT identity holds the tab within GUARD_WINDOW, 120s) then _stamp_claim → `do` hands the parsed instruction to the NL Agent on the same live browser; a matched method is called via getattr(browser, verb)(*coerced args); an unmatched verb returns "unknown command" (it is NOT auto-run as NL — only `do` is) → reply "OK\n<payload>" | "ERR\n<msg>" | "ERR <code>\n<msg>" (code ∈ {2 usage,3 unknown tab,4 busy}) written back, connection closed
   State/Effects: single-threaded serial server (sync Playwright requires one thread) | owns one BrowserAutomation for daemon lifetime | the tab REGISTRY + claims live on browser._tab_meta[key] (key None = shared 'main'): who/purpose/opened_at/caller/claim_at/last_line/last_at | tracks last_command for `status` | binds the endpoint at default_sock_path() via `transport` — POSIX: a raw AF_UNIX socket (unchanged); Windows: a native named pipe (multiprocessing.connection) with an HMAC authkey — under a lifetime OS lock (transport.lock_path: fcntl.flock POSIX / msvcrt Windows, released by the OS on any death, so simultaneous cold-starts can't both bind) and records its owner pid in transport.pid_path so a refused probe can tell busy from stale; 120s per-connection recv timeout | _cleanup closes the listener (POSIX also unlinks the socket) + pidfile only while the pidfile still names this process (browser teardown is the driver pipe closing on process death — the executor is already gone when atexit runs) | serve() exits (releasing the endpoint) when browser._context_is_alive() goes false or _launch_failed()
   Integration: exposes default_sock_path(), signature_str(), list_functions(), BrowserDaemon, main() | launched detached via `python -m connectonion.cli.browser_agent.daemon <sock_path> [--headless]` | module helpers _key()/_tab_label()/_held_by_other()/_owner_alive() define the None↔main aliasing, the shared claim-expiry predicate (dispatch, _tab_open, _closetab), and the socket-owner liveness check (client + _bind)
@@ -24,7 +24,9 @@ from datetime import datetime
 from pathlib import Path
 
 from connectonion.useful_tools.browser_tools import BrowserAutomation
-from connectonion.useful_tools.browser_tools.browser import driver_stealth_status
+from connectonion.useful_tools.browser_tools.browser import (
+    driver_stealth_status, installed_browser_path,
+)
 from .agent import resolve_api_key, build_browser_agent
 from . import transport
 
@@ -387,6 +389,16 @@ class BrowserDaemon:
         stealth, version, detail = driver_stealth_status()
         mark = {"ok": "✓", "broken": "✗", "missing": "○"}[stealth]
         lines.append(f"Stealth driver: {mark} patchright {version} — {detail}".rstrip(" —"))
+        # That line is about the PACKAGE. On a deployed agent it read ✓ while
+        # every page command answered "Executable doesn't exist at
+        # .../chromium-1228/chrome-linux64/chrome", so the one thing that has to
+        # be true before anything works was the one thing not reported.
+        try:
+            binary = installed_browser_path()
+        except Exception:
+            binary = None  # status is what you run when things are already broken
+        lines.append(f"Browser binary: ✓ {binary}" if binary else
+                     "Browser binary: ✗ none installed — run: patchright install chromium")
         # Whose credits `do` spends. Never lets status fail: this is the command
         # you run when something is already wrong.
         try:
