@@ -42,13 +42,41 @@ for _env_file in (Path.home() / ".co" / "keys.env", Path.cwd() / ".env"):
         load_dotenv(_env_file)
 
 console = Console()
+
+
+class _OneSuggestion(typer.core.TyperGroup):
+    """Answer a mistyped command once.
+
+    Click builds "No such command 'skil'. Did you mean 'skills'?" and Typer's
+    resolve_command appends its own to whatever Click produced, so every typo
+    read `Did you mean 'skills'? Did you mean 'skills'?` — at every level,
+    including subcommands (#714).
+
+    Ours is the one that goes: Click's is what would still be there if Typer
+    were dropped tomorrow.
+    """
+
+    def __init__(self, *args, **kwargs):
+        kwargs["suggest_commands"] = False
+        super().__init__(*args, **kwargs)
+
+
+def _typer_app(**kwargs) -> typer.Typer:
+    """Every group in this CLI. One place, so no sub-app is left behind.
+
+    The doubling above was present on all twelve groups, and a fix applied at
+    the call sites is a fix that the thirteenth group will not get.
+    """
+    return typer.Typer(cls=_OneSuggestion, **kwargs)
+
+
 # pretty_exceptions_show_locals defaults to True in Typer, which dumps every
 # local variable of every frame on an uncaught exception. The OAuth paths hold
 # OPENONION_API_KEY, refresh tokens and access tokens in locals, so a routine
 # "session expired" crash printed live credentials into the terminal — and from
 # there into scrollback, CI logs, and any error output a user pastes into a
 # chat or an issue.
-app = typer.Typer(
+app = _typer_app(
     add_completion=False,
     no_args_is_help=False,
     pretty_exceptions_show_locals=False,
@@ -336,7 +364,7 @@ def announce(
 
 
 # Server command group — the machines `co deploy --to` can target
-server_app = typer.Typer(help="Register, list and preflight the servers you can deploy to")
+server_app = _typer_app(help="Register, list and preflight the servers you can deploy to")
 app.add_typer(server_app, name="server")
 
 
@@ -431,7 +459,7 @@ def server_destroy(
 
 
 # Skills command group
-skills_app = typer.Typer(help="Discover, copy, and list SKILL.md files from agent tool directories")
+skills_app = _typer_app(help="Discover, copy, and list SKILL.md files from agent tool directories")
 app.add_typer(skills_app, name="skills")
 
 
@@ -496,7 +524,7 @@ def skills_link(
 
 
 # Trust command group
-trust_app = typer.Typer(help="Manage trust lists (contacts, whitelist, blocklist, admins)")
+trust_app = _typer_app(help="Manage trust lists (contacts, whitelist, blocklist, admins)")
 app.add_typer(trust_app, name="trust")
 
 
@@ -558,7 +586,7 @@ def trust_unblock(address: str = typer.Argument(..., help="Address to unblock"))
 
 
 # Admin subcommand group
-admin_app = typer.Typer(help="Manage admins (super admin only)")
+admin_app = _typer_app(help="Manage admins (super admin only)")
 trust_app.add_typer(admin_app, name="admin")
 
 
@@ -577,7 +605,7 @@ def admin_remove(address: str = typer.Argument(..., help="Address to remove from
 
 
 # Email command group. `co email` (no args) shows the inbox.
-email_app = typer.Typer(help="Send and read email from the agent's address")
+email_app = _typer_app(help="Send and read email from the agent's address")
 app.add_typer(email_app, name="email")
 
 
@@ -640,7 +668,7 @@ def email_upgrade(
 
 # Gmail command group. `co gmail` (no args) shows the Gmail inbox.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
-gmail_app = typer.Typer(help="Send and read email from your Gmail account. Bare 'co gmail' shows the inbox.")
+gmail_app = _typer_app(help="Send and read email from your Gmail account. Bare 'co gmail' shows the inbox.")
 app.add_typer(gmail_app, name="gmail")
 
 
@@ -714,7 +742,7 @@ def gmail_search(
     handle_gmail_search(query, last=last)
 # Google Drive command group. `co gdrive` (no args) lists recent files.
 # Uses the GOOGLE_* OAuth tokens saved to .env by `co auth google`.
-gdrive_app = typer.Typer(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
+gdrive_app = _typer_app(help="List, search, download, and upload Google Drive files. Bare 'co gdrive' lists recent files.")
 app.add_typer(gdrive_app, name="gdrive")
 
 
@@ -776,7 +804,7 @@ def gdrive_rm(
 
 # Synology command group. `co syno` (no args) lists your shared folders.
 # Uses the SYNOLOGY_* credentials saved to keys.env by `co syno login`.
-syno_app = typer.Typer(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
+syno_app = _typer_app(help="Browse, search, download, upload, and share Synology NAS files. Bare 'co syno' lists shared folders.")
 app.add_typer(syno_app, name="syno")
 
 
@@ -850,7 +878,7 @@ def syno_share(
 
 # Outlook command group. `co outlook` (no args) shows the Outlook inbox.
 # Uses the MICROSOFT_* OAuth tokens saved to .env by `co auth microsoft`.
-outlook_app = typer.Typer(help="Send and read email from your Outlook account. Bare 'co outlook' shows the inbox.")
+outlook_app = _typer_app(help="Send and read email from your Outlook account. Bare 'co outlook' shows the inbox.")
 app.add_typer(outlook_app, name="outlook")
 
 
@@ -862,7 +890,7 @@ def outlook_callback(ctx: typer.Context):
         handle_outlook_inbox()
 
 
-outlook_contact_app = typer.Typer(
+outlook_contact_app = _typer_app(
     help="Add, list, and search Outlook contacts.",
     no_args_is_help=True,
 )
@@ -976,7 +1004,7 @@ def outlook_search(
 
 # Subscription command group. `co sub` (no args) syncs every subscription.
 # `co sub sync <addr>` syncs one. `list` and `remove` are the secondary verbs.
-sub_app = typer.Typer(help="Subscribe to published agents — sync skills from the relay into your coding agents")
+sub_app = _typer_app(help="Subscribe to published agents — sync skills from the relay into your coding agents")
 app.add_typer(sub_app, name="sub")
 
 
