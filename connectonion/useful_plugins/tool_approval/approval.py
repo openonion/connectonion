@@ -429,6 +429,17 @@ def check_approval(agent: 'Agent') -> None:
         tool_name = pending['name']
         tool_args = pending['arguments']
 
+        # Before the whitelist, and before the mode: these decide what this
+        # agent may do and who may command it, so no configuration grants them.
+        # is_tool_permitted has the same guard, but this is the path the agent's
+        # own turn takes -- that function is for callers outside the LLM loop,
+        # and a guard added only there would have left the case #722 is about
+        # untouched. Two copies of the matching already live in this file; this
+        # comment is here so the third does not go unnoticed.
+        refusal = _refuse_control_file(tool_name, tool_args)
+        if refusal:
+            raise ValueError(refusal)
+
         # Get permissions from session (includes safe tools from template)
         permissions = agent.current_session.get('permissions', {})
 
@@ -754,6 +765,26 @@ def _is_control_file(path: str) -> bool:
 CO_DIR_NAME = ".co"
 
 
+def _refuse_control_file(tool_name: str, tool_args: dict):
+    """The reason this call may not touch the agent's own control files, or None.
+
+    Shared by the two places that decide whether a tool may run: this module's
+    `check_approval` (the agent's own turn) and `is_tool_permitted` (network
+    EXEC and anything else outside the loop).
+    """
+    for key in ("file_path", "path", "target", "filename"):
+        candidate = tool_args.get(key)
+        if candidate and _is_control_file(candidate):
+            return (f"{Path(str(candidate)).name} decides what this agent may do — "
+                    f"the agent does not get to write it")
+
+    if tool_name == 'bash' and 'command' in tool_args:
+        command = str(tool_args['command'])
+        if any(_is_control_file(word.strip("'\"")) for word in command.split()):
+            return ("this command names a file that decides what this agent may do")
+    return None
+
+
 def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tuple[bool, str]:
     """Check one tool call against a permission whitelist. Returns (allowed, reason).
 
@@ -770,11 +801,9 @@ def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tup
     # Before the whitelist, not through it: these are refused however generously
     # the operator configured file writing, because they are what "how
     # generously" is stored in.
-    for key in ("file_path", "path", "target", "filename"):
-        candidate = tool_args.get(key)
-        if candidate and _is_control_file(candidate):
-            return False, (f"{Path(str(candidate)).name} decides what this agent may do — "
-                           f"the agent does not get to write it")
+    refusal = _refuse_control_file(tool_name, tool_args)
+    if refusal:
+        return False, refusal
 
     # A speed bump for bash, not a boundary — and worth being exact about which.
     # It catches a control path written literally (`> .co/host.yaml`). It does
@@ -785,11 +814,6 @@ def is_tool_permitted(tool_name: str, tool_args: dict, permissions: dict) -> tup
     # already granted everything, and this does not take it back. The complete
     # protection here is for the file tools above, where the path is an argument
     # rather than a string to be interpreted.
-    if tool_name == 'bash' and 'command' in tool_args:
-        command = str(tool_args['command'])
-        if any(_is_control_file(word.strip("'\"")) for word in command.split()):
-            return False, ("this command names a file that decides what this agent "
-                           "may do")
 
     # Bash chains: every subcommand in "a && b | c" must be individually
     # permitted. This is AUTHORITATIVE for bash — we never fall through to the

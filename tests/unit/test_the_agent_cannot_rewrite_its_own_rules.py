@@ -168,3 +168,66 @@ class TestWhatTheBashCheckDoesNotCover:
             "bash", {"command": "cd .co && echo x > host.yaml"}, perms)
 
         assert allowed is False
+
+
+class TestTheAgentsOwnLoopIsCoveredToo:
+    """`is_tool_permitted` is not the path the attack takes.
+
+    `check_approval` — the before_each_tool hook, which is what runs when the
+    agent itself calls a tool — has its own copy of the matching logic and never
+    calls `is_tool_permitted`. Its docstring describes them as *"same matching
+    the LLM approval flow uses in check_approval"*, which reads like a guarantee
+    and is a duplication.
+
+    So a guard added only to `is_tool_permitted` protects network EXEC and
+    leaves the agent's own turn — the case #722 is about — untouched. I nearly
+    shipped exactly that.
+    """
+
+    def _approve(self, tool_name, tool_args, permissions):
+        """Drive the real hook, and report whether the call was let through.
+
+        `check_approval(agent)` takes only the agent — the call under
+        consideration comes from `session['pending_tool']`. My first version
+        passed `tool_name=`/`tool_args=` as keywords, which are not parameters:
+        every call raised TypeError, the `except` read it as a refusal, and the
+        two tests that expected a refusal passed for that reason. Two tests
+        green off a TypeError is exactly the false evidence this file is about.
+        """
+        from types import SimpleNamespace
+
+        from connectonion.useful_plugins.tool_approval.approval import check_approval
+
+        agent = SimpleNamespace(
+            current_session={
+                "pending_tool": {"name": tool_name, "arguments": tool_args},
+                "permissions": permissions,
+                "mode": "auto_review",
+            },
+            io=None, logger=None,
+        )
+        try:
+            check_approval(agent)
+        except ValueError as exc:           # a refusal is raised, not returned
+            return False, str(exc)
+        return True, "allowed"
+
+    def test_the_agent_cannot_write_its_own_whitelist(self):
+        allowed, reason = self._approve("write", {"file_path": ".co/host.yaml"}, OPEN)
+
+        assert allowed is False, "the agent's own loop still lets it rewrite host.yaml"
+
+    def test_the_agent_cannot_write_its_own_schedule(self):
+        allowed, _reason = self._approve("write", {"file_path": ".co/schedule.yaml"}, OPEN)
+
+        assert allowed is False
+
+    def test_the_agent_can_still_write_its_home_page(self):
+        allowed, _reason = self._approve("write", {"file_path": ".co/dashboard.html"}, OPEN)
+
+        assert allowed is True
+
+    def test_the_agent_can_still_write_ordinary_files(self):
+        allowed, _reason = self._approve("write", {"file_path": "src/main.py"}, OPEN)
+
+        assert allowed is True
