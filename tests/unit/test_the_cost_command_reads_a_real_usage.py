@@ -90,3 +90,80 @@ class TestNoUsageYetIsStillFine:
 
     def test_it_still_names_the_model(self, cost_output):
         assert "gemini" in cost_output(None)
+
+
+class TestTheTotalIsTheWholeSession:
+    """"Total Tokens" was the most recent call, beside a cumulative "Total Cost".
+
+    `total_cost` accumulates over the agent's life (agent.py: `self.total_cost +=
+    response.usage.cost`), and the session persists across input() calls — it is
+    built once, under `elif self.current_session is None`. `last_usage` is only
+    the latest call. So the table paired a lifetime cost with one call's tokens
+    and called the second one a total.
+
+    Measured over two turns against the real backend:
+
+        session trace:            192 tokens, $0.001176
+        agent.total_cost:                     $0.001176   ← agrees exactly
+        last_usage.billed_tokens: 101                     ← labelled "Total Tokens"
+
+    The cost and the trace agree to the cent because they are the same numbers,
+    so the trace is where a token count that matches the cost comes from.
+    """
+
+    @staticmethod
+    def _agent_with_two_calls():
+        from types import SimpleNamespace
+
+        from connectonion.core.usage import TokenUsage
+
+        first = TokenUsage(input_tokens=17, output_tokens=3, total_tokens=91,
+                           cost=0.000576)
+        second = TokenUsage(input_tokens=40, output_tokens=5, total_tokens=101,
+                            cost=0.000600)
+        return SimpleNamespace(
+            llm=SimpleNamespace(model="co/gemini-3.6-flash"),
+            total_cost=0.001176,
+            last_usage=second,
+            context_percent=12.0,
+            current_session={"trace": [
+                {"type": "llm_result", "usage": first.model_dump()},
+                {"type": "llm_result", "usage": second.model_dump()},
+            ]},
+        )
+
+    def _output(self, capsys):
+        from connectonion.cli.co_ai.commands import cost as cost_mod
+
+        cost_mod.set_agent(self._agent_with_two_calls())
+        result = cost_mod.cmd_cost()
+        return (capsys.readouterr().out or "") + (result or "")
+
+    def test_the_total_covers_every_call(self, capsys):
+        assert "192" in self._output(capsys)
+
+    def test_it_is_not_the_last_call_alone(self, capsys):
+        output = self._output(capsys)
+        total_row = [l for l in output.splitlines() if "Total Tokens" in l]
+
+        assert total_row, output
+        assert "101" not in total_row[0], total_row[0]
+
+    def test_the_last_call_is_still_shown_and_labelled_as_such(self, capsys):
+        """The per-call detail is useful; calling it a total was the problem."""
+        output = self._output(capsys)
+
+        assert "Last Call" in output
+        assert "101" in output
+
+    def test_a_session_with_no_trace_does_not_raise(self, capsys):
+        """An agent that has not run, and any caller that passes no session."""
+        from types import SimpleNamespace
+
+        from connectonion.cli.co_ai.commands import cost as cost_mod
+
+        cost_mod.set_agent(SimpleNamespace(
+            llm=SimpleNamespace(model="m"), total_cost=0.0,
+            last_usage=None, context_percent=0, current_session=None))
+
+        cost_mod.cmd_cost()
