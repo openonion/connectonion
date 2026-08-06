@@ -61,6 +61,24 @@ async def _admin_signature(method, scope, receive, route_handlers, *, read_body,
     if err or not sig_valid:
         return False, 401, err or "unauthorized: invalid signature", data
 
+    # One signature, one call. Measured before this: a single signature over
+    # {timestamp} read /admin/logs, then /admin/sessions, then /admin/logs again
+    # — all 200. For its five-minute window a captured admin signature was a
+    # bearer token for the whole admin surface.
+    #
+    # signature_already_used() is auth.py's, the same record CONNECT uses against
+    # the replay in #649, called here rather than reimplemented.
+    #
+    # What this does not fix: the payload is {timestamp} alone, so a signature is
+    # still not bound to the route it was made for. Binding it to method and path
+    # — which auth.py's own signed-GET scheme does, over {method, path,
+    # timestamp} with x-co-* headers — is a protocol change for any client
+    # already signing admin calls, so it is filed rather than slipped in here.
+    from ..host.auth import signature_already_used
+
+    if signature_already_used(data):
+        return False, 401, "unauthorized: signature already used", data
+
     trust_agent = route_handlers.get("trust_agent")
     if trust_agent is None:
         return False, 401, "unauthorized", data
