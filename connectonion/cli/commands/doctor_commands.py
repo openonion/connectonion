@@ -53,10 +53,16 @@ EVALS_NOTE_THRESHOLD_MB = 20
 def disk_usage_note() -> "str | None":
     """What to say about the space `co` has taken, or None.
 
-    `co ai` writes one eval per distinct first prompt, plus a directory of runs
-    for it. Runs inside an eval are capped at KEEP_RUNS_PER_EVAL and trimmed
-    after every write, so a repeated prompt stays bounded. The number of evals
-    is not capped by anything: a one-off prompt leaves its directory for good.
+    One eval per distinct first prompt, plus a directory of runs for it. Runs
+    inside an eval are capped at KEEP_RUNS_PER_EVAL and trimmed after every
+    write, so a repeated prompt stays bounded. The number of evals is not capped
+    by anything: a one-off prompt leaves its directory for good.
+
+    Two directories grow this way, and only one used to be reported. `co ai`
+    writes to ~/.co/evals; the library's logger writes to the PROJECT's
+    .co/evals whenever an agent runs inside a project, which is the normal case
+    for `Agent(...)` — the shipped quickstart from a fresh `co init` put its eval
+    in <project>/.co/evals/.
 
     On the machine this was written on, ~/.co/evals held 857 evals across 227 MB
     and nothing in `co doctor` or `co status` mentioned it — the largest thing
@@ -67,7 +73,31 @@ def disk_usage_note() -> "str | None":
     it. Quiet below the threshold, because a line printed every run is a line
     nobody reads.
     """
-    evals = Path.home() / ".co" / "evals"
+    # Both places, because they are different growths. `co ai` writes to
+    # ~/.co/evals, and the library's logger writes to the PROJECT's .co/evals
+    # whenever an agent runs inside a project — which is the normal case for
+    # `Agent(...)`. Measured on this machine: ~/.co/evals held 1085 evals across
+    # 237 MB while the project directory beside it held its own, and only the
+    # first was ever reported. A project that crossed the threshold said nothing.
+    candidates = [("~/.co/evals", Path.home() / ".co" / "evals")]
+    project = project_co_dir()
+    if project:
+        here = project / "evals"
+        if here.resolve() != (Path.home() / ".co" / "evals").resolve():
+            # _shown, not the absolute path: this panel is narrow, and the helper
+            # exists because resolving the project properly once made these rows
+            # print the machine's whole directory tree. An absolute path here
+            # wrapped so far that the note began mid-sentence with "holds 3
+            # evals across 42 MB" and never said which directory.
+            candidates.append((_shown(here), here))
+
+    notes = [_evals_note(label, path) for label, path in candidates]
+    notes = [n for n in notes if n]
+    return "  ".join(notes) if notes else None
+
+
+def _evals_note(label: str, evals: Path) -> "str | None":
+    """The note for one evals directory, or None if it is absent or small."""
     if not evals.is_dir():
         return None
 
@@ -92,7 +122,7 @@ def disk_usage_note() -> "str | None":
     if megabytes < EVALS_NOTE_THRESHOLD_MB:
         return None
 
-    return (f"~/.co/evals holds {count} evals across {megabytes:.0f} MB — "
+    return (f"{label} holds {count} evals across {megabytes:.0f} MB — "
             f"runs within one eval are capped, the number of evals is not. "
             f"Delete the ones you no longer want.")
 

@@ -2,7 +2,7 @@
 Purpose: Register, list and preflight the machines `co deploy --to` can target
 LLM-Note:
   Dependencies: imports from [subprocess, shutil, pathlib, yaml, rich] | imported by [cli/main.py via handle_server_*] | tested by [tests/unit/test_server_commands.py]
-  Data flow: handle_server_add(name, ssh_target) → _load()/_save() ~/.co/servers.yaml → handle_server_list() renders the table | handle_server_check(name) → _ssh(target, probe script) → parses one KEY=value line per requirement → prints the first failure by name
+  Data flow: handle_server_add(name, ssh_target) → _load()/_save() ~/.co/servers.yaml → handle_server_list() renders the table | handle_server_check(name) → _ssh(target, probe script) → parses one KEY=value line per requirement → prints every failure by name, and caches the first as `needs <requirement>` (the bare name read as a fact about the server in the LAST CHECK column)
   State/Effects: reads and writes ~/.co/servers.yaml (name → ssh target, last check result) | shells out to the system ssh binary | never stores a credential
   Integration: exposes handle_server_add(), handle_server_list(), handle_server_check(), load_server() for deploy | requirement list is Ubuntu 24.04, python 3.11+, systemd the user may manage, free disk
   Performance: one ssh round trip per check; the probe is a single command, not one per requirement
