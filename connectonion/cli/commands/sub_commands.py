@@ -256,12 +256,23 @@ def handle_sub_sync_one(target: str, relay: Optional[str] = None) -> None:
     results = install_all(SUBS_DIR / alias, alias)
     console.print(f"[green]✓ Subscribed to {alias}[/green] ({address})")
     console.print(f"  mirrored {n_skills} skill(s) → {SUBS_DIR / alias}")
-    if results:
-        for tool, n in results.items():
+
+    # Report the roll-call and the restart only when something was actually
+    # installed. Against a live publisher whose only skill was withheld, this
+    # printed a green tick, four lines of "installed 0 skill(s)", and "Restart
+    # your coding agent to load the new skills" — sending the reader off to
+    # restart four tools for nothing. The subscription is still worth reporting:
+    # it is recorded, so a later sync picks up bodies if they are ever published.
+    installed = {tool: n for tool, n in (results or {}).items() if n}
+    if installed:
+        for tool, n in installed.items():
             console.print(f"  {tool}: installed {n} skill(s)")
-    else:
+        console.print("\n[yellow]→ Restart your coding agent to load the new skills.[/yellow]")
+    elif not results:
         console.print("  [dim]No coding agents detected — bodies mirrored but not installed.[/dim]")
-    console.print("\n[yellow]→ Restart your coding agent to load the new skills.[/yellow]")
+    else:
+        console.print("  [dim]No skills to install — nothing to restart for. "
+                      "A later `co sub sync` picks up bodies the publisher adds.[/dim]")
 
 
 def handle_sub_list() -> None:
